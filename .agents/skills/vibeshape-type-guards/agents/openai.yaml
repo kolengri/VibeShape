@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Type Guards"
+  short_description: "Choose safe guards and boundary validation"
+  default_prompt: "Use $vibeshape-type-guards to implement or review this runtime narrowing."

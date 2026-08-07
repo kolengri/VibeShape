@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Verify Scope"
+  short_description: "Run the smallest correct verification scope"
+  default_prompt: "Use $vibeshape-verify-scope to verify the affected VibeShape workspaces."

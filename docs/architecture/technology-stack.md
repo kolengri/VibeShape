@@ -20,7 +20,7 @@
 | Large binary cache | OPFS | Efficient local files accessed from workers |
 | Offline | Web App Manifest and service worker | Installable offline static PWA |
 | Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
-| Quality | ESLint/import rules plus Prettier or Biome | Deterministic workflow; final selection occurs during scaffold |
+| Quality | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
 | CI | GitHub Actions | Typecheck, tests, format conformance, and browser smoke tests |
 
 ## Reviewed package-version snapshot
@@ -77,6 +77,31 @@ Rules:
 **Bun does not replace Vite** for the browser build. Vite remains responsible for React HMR, the browser bundle, the Tailwind plugin, workers, and WASM assets. Bun's bundler and test runner may be evaluated later, but the project must not maintain competing production builds.
 
 **Turborepo is not part of the foundation.** The official shadcn monorepo scaffold may add it, but one application and the initial library set do not justify another task layer. Add Turbo only after measurements show dependency-aware caching materially reduces CI or local build time.
+
+## Tooling and package patterns
+
+The foundation adopts these proven monorepo patterns:
+
+- one root Biome configuration with Git integration, recommended rules, import organization, and Tailwind v4 directive parsing;
+- root scripts for `format`, `format:check`, and `lint`, with path-scoped Biome checks during iteration;
+- a private `@vibeshape/typescript-config` workspace with separate `base`, `browser`, `worker`, and `react-library` configurations;
+- `strict`, `noUncheckedIndexedAccess`, `isolatedModules`, bundler resolution, and forced casing consistency in the base TypeScript contract;
+- browser configs that include DOM types without Node or Bun globals;
+- worker configs that include Web Worker types without exposing DOM window APIs;
+- explicit package subpath exports instead of broad root barrels;
+- a single `cn` implementation in `@vibeshape/ui`, built from `clsx` and `tailwind-merge`;
+- repository-local skills for UI, testing, scoped verification, dependency audits, type guards, and documentation synchronization.
+
+Do not copy patterns that do not fit this product:
+
+- no Turborepo until measured build-graph or cache pressure exists;
+- no syncpack while Bun catalogs are the single shared-version mechanism;
+- no generic `utils` package as a default destination for unrelated helpers;
+- no Node or Bun ambient types in browser-facing packages;
+- no Next.js-specific shadcn, Tailwind, or package boundaries;
+- no dependency overrides without an advisory, upstream constraint, and removal plan.
+
+Biome does not replace TypeScript typechecking, dependency-boundary tests, browser tests, geometry fixtures, or format validators. Its exact version and schema are pinned with the initial scaffold.
 
 ## Why OCCT instead of mesh CSG
 

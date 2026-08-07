@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Dependency Audit"
+  short_description: "Audit and remediate Bun dependency vulnerabilities"
+  default_prompt: "Use $vibeshape-dependency-audit to audit and safely remediate vulnerable dependencies."

@@ -84,8 +84,10 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | [shadcn/ui monorepo](https://ui.shadcn.com/docs/monorepo) | CLI routing, per-workspace `components.json`, shared UI exports, and the Tailwind v4 configuration rule |
 | [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) | Vite and Tailwind integration plus monorepo-aware component addition |
 | [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | `init`, `add`, `view`, `diff`, and `info` workflows plus source-component management |
+| [Biome configuration](https://biomejs.dev/reference/configuration/) | Git ignore integration, formatting, linting, import organization, scoped file selection, and Tailwind CSS directive parsing |
+| [Biome in large projects](https://biomejs.dev/guides/big-projects/) | Root and nested configuration behavior for monorepos and workspaces |
 
-**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports.
+**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports. Biome provides the selected formatter and linter, including current Tailwind v4 parser support, while TypeScript and project-specific tests remain separate gates.
 
 ## UX, Accessibility, and Component Behavior
 
