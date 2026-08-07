@@ -1,3 +1,4 @@
+export * from "./command-dispatcher"
 export * from "./commands"
 export * from "./document"
 export * from "./drafts"

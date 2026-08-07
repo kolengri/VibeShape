@@ -32,6 +32,8 @@ The first integration does not provide:
 
 UI controls, first-party modules, third-party extensions, tests, and MCP all request the same domain commands. Adapters may shape presentation and transport, but they cannot bypass eligibility, normalization, revision, geometry, or persistence rules.
 
+The current trusted dispatcher implements the first executable portion of this path. Serializable module and command descriptors remain separate from function-valued first-party handlers. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, or owner and schema-version metadata drift. Dispatch then validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation and reduction to the owning handler. It does not yet implement eligibility, geometry preview, persistence, confirmation, or third-party runtime proxies.
+
 ```mermaid
 flowchart LR
     MODEL["AI client"] -->|"MCP stdio"| BRIDGE["Local Bun MCP bridge"]

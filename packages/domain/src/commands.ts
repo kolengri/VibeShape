@@ -137,6 +137,10 @@ export type DocumentCommandResult =
   | { ok: true; snapshot: DocumentSnapshot; event: DocumentEvent }
   | { ok: false; diagnostic: DomainDiagnostic }
 
+export type DocumentCommandOptions = Readonly<{
+  transactionId?: z.infer<typeof draftIdSchema> | null
+}>
+
 export type DocumentEventResult =
   | { ok: true; snapshot: DocumentSnapshot }
   | { ok: false; diagnostic: DomainDiagnostic }
@@ -363,7 +367,7 @@ export function parseDocumentCommand(input: unknown) {
 export function applyDocumentCommand(
   snapshot: DocumentSnapshot | null,
   input: unknown,
-  options: { transactionId?: z.infer<typeof draftIdSchema> | null } = {},
+  options: DocumentCommandOptions = {},
 ): DocumentCommandResult {
   const parsed = parseDocumentCommand(input)
 

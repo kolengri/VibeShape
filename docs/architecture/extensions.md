@@ -63,6 +63,8 @@ First-party modules and third-party extensions share contribution semantics wher
 
 Built-in code does not receive a second private document mutation path. UI and modules request the same domain commands used by extensions and automation. Trusted performance-sensitive evaluators may access internal host ports that are never promised to third parties, but they still cannot bypass transactions, revisions, geometry ownership, or persistence invariants.
 
+The initial domain implementation keeps serializable descriptors and trusted executable handlers as distinct registrations. Startup composition requires one handler for every command descriptor and rejects duplicates, orphaned handlers, owner mismatch, and schema-version mismatch. This is a first-party runtime invariant, not a public extension execution API: third-party handlers still require the `SPK-006` proxy, isolation, capability, lifecycle, and recovery evidence.
+
 Modularity does not require one Bun workspace or distributable package per feature. Closely related features can live in one module family until dependency, execution, ownership, testing, or publication evidence justifies extraction. Module dependencies are explicit, acyclic, and unable to change evaluation semantics through registration order.
 
 ## Why this differs from Onshape
