@@ -79,8 +79,9 @@ jobs:
       - name: Run browser E2E tests
         run: bun run test:e2e -- --project=${{ matrix.browser }}
 
-      - name: Upload Playwright diagnostics
-        if: ${{ !cancelled() }}
+      - name: Upload Playwright failure diagnostics
+        if: ${{ failure() && !cancelled() }}
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: playwright-${{ matrix.browser }}

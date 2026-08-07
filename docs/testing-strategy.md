@@ -139,7 +139,7 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 - Install missing local engines with `bunx playwright install chromium firefox webkit`.
 - Tests use role, label, and other user-facing locators with web-first assertions. Fixed sleeps and selectors coupled to styling or implementation details are prohibited.
 - The automatic runtime-health fixture fails the owning test on browser console errors or uncaught page exceptions.
-- Failure diagnostics are written under `.artifacts/playwright`; CI retains the HTML report, screenshot, video, and first-retry trace for 14 days.
+- Failure diagnostics are written under `.artifacts/playwright`; CI attempts to retain the HTML report, screenshot, video, and first-retry trace for 14 days without letting an exhausted artifact quota mask the E2E result.
 - CI runs one isolated browser project per matrix job after the workspace verification gate. Each project owns its Vite server lifecycle and report artifact.
 
 ## Monorepo and toolchain checks
