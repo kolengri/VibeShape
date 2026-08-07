@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light;
+  --background: oklch(0.985 0.002 247.84);
+  --foreground: oklch(0.18 0.006 285.89);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.006 285.89);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.006 285.89);
+  --primary: oklch(0.55 0.16 252.9);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0.004 286.32);
+  --secondary-foreground: oklch(0.25 0.006 285.89);
+  --muted: oklch(0.95 0.003 286.35);
+  --muted-foreground: oklch(0.5 0.012 285.76);
+  --accent: oklch(0.92 0.008 255.5);
+  --accent-foreground: oklch(0.24 0.02 255.1);
+  --destructive: oklch(0.58 0.22 27.33);
+  --border: oklch(0.88 0.006 286.29);
+  --input: oklch(0.88 0.006 286.29);
+  --ring: oklch(0.55 0.16 252.9);
+  --panel: oklch(0.965 0.003 286.35);
+  --panel-muted: oklch(0.94 0.004 286.32);
+  --toolbar: oklch(0.975 0.002 247.84);
+  --viewport-background: oklch(0.93 0.007 260.73);
+  --selection: oklch(0.68 0.17 252.9);
+  --preselection: oklch(0.76 0.12 199.5);
+  --diagnostic-warning: oklch(0.72 0.15 75.8);
+  --diagnostic-error: oklch(0.58 0.22 27.33);
+  --radius: 0.25rem;
+  --model-tree-width: 15rem;
+  --task-panel-width: 20rem;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.006 285.89);
+  --foreground: oklch(0.94 0.004 286.32);
+  --card: oklch(0.19 0.006 285.89);
+  --card-foreground: oklch(0.94 0.004 286.32);
+  --popover: oklch(0.19 0.006 285.89);
+  --popover-foreground: oklch(0.94 0.004 286.32);
+  --primary: oklch(0.7 0.15 252.9);
+  --primary-foreground: oklch(0.17 0.02 252.9);
+  --secondary: oklch(0.25 0.008 285.83);
+  --secondary-foreground: oklch(0.94 0.004 286.32);
+  --muted: oklch(0.23 0.007 285.83);
+  --muted-foreground: oklch(0.68 0.012 285.76);
+  --accent: oklch(0.28 0.025 255.1);
+  --accent-foreground: oklch(0.94 0.004 286.32);
+  --destructive: oklch(0.64 0.21 25.33);
+  --border: oklch(0.29 0.009 285.83);
+  --input: oklch(0.31 0.009 285.83);
+  --ring: oklch(0.7 0.15 252.9);
+  --panel: oklch(0.19 0.006 285.89);
+  --panel-muted: oklch(0.22 0.007 285.83);
+  --toolbar: oklch(0.18 0.006 285.89);
+  --viewport-background: oklch(0.13 0.012 260.73);
+  --selection: oklch(0.72 0.16 252.9);
+  --preselection: oklch(0.75 0.13 199.5);
+  --diagnostic-warning: oklch(0.78 0.14 75.8);
+  --diagnostic-error: oklch(0.68 0.2 25.33);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-panel: var(--panel);
+  --color-panel-muted: var(--panel-muted);
+  --color-toolbar: var(--toolbar);
+  --color-viewport-background: var(--viewport-background);
+  --color-selection: var(--selection);
+  --color-preselection: var(--preselection);
+  --color-diagnostic-warning: var(--diagnostic-warning);
+  --color-diagnostic-error: var(--diagnostic-error);
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --radius-xs: calc(var(--radius) * 0.75);
+  --radius-sm: var(--radius);
+  --radius-md: calc(var(--radius) * 1.25);
+  --radius-lg: calc(var(--radius) * 1.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    margin: 0;
+    min-width: 20rem;
+  }
+}

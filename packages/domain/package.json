@@ -1,0 +1,17 @@
+{
+  "name": "@vibeshape/domain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure VibeShape model, unit, command, event, and invariant types.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

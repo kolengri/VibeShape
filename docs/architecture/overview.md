@@ -91,7 +91,7 @@ Minimal stable interfaces:
 
 React components, command palette, model tree, property panels, diagnostics, and project library. UI geometry consists of IDs and immutable view models, never kernel handles.
 
-## Proposed monorepo structure
+## Monorepo structure
 
 ```text
 apps/
@@ -107,10 +107,13 @@ packages/
   print-analysis/         # mesh and build-volume checks
   ui/                     # Tailwind v4, shadcn/Radix primitives, tokens
   test-models/            # fixtures and expected invariants
+  typescript-config/      # browser, worker, React, and pure-library configs
 docs/
 ```
 
 The root `package.json` declares Bun workspaces for `apps/*` and `packages/*`. Local packages use `workspace:*`; shared React, TypeScript, Tailwind, and test versions use Bun default or named catalogs; `bun.lock` is committed.
+
+This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite and proves Tailwind discovery across `@vibeshape/ui`. The domain, protocol, geometry, solver, viewer, persistence, format, print-analysis, and test-model packages expose intentionally empty entry points. Their public contracts are introduced only together with the owning spike, invariant tests, and dependency evidence.
 
 Lint and import rules enforce package boundaries. For example, `domain` cannot import `viewer`, `geometry-worker`, or `ui`.
 

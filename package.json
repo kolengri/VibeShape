@@ -1,0 +1,60 @@
+{
+  "name": "@vibeshape/root",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "@tailwindcss/vite": "4.3.3",
+      "@types/react": "19.2.18",
+      "@types/react-dom": "19.2.4",
+      "@vitejs/plugin-react": "6.0.5",
+      "class-variance-authority": "0.7.1",
+      "clsx": "2.1.1",
+      "radix-ui": "1.6.7",
+      "react": "19.2.8",
+      "react-dom": "19.2.8",
+      "tailwind-merge": "3.6.0",
+      "tailwindcss": "4.3.3",
+      "vite": "8.2.1"
+    }
+  },
+  "scripts": {
+    "preinstall": "bun run check:bun",
+    "check:bun": "bun run scripts/check-bun-version.ts",
+    "dev": "bun run --cwd apps/web dev",
+    "build": "bun run --cwd apps/web build",
+    "preview": "bun run --cwd apps/web preview",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write .",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
+    "typecheck": "bun run typecheck:scripts && bun run --workspaces typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "skills:validate": "bun run scripts/validate-agent-skills.ts",
+    "fallow": "fallow",
+    "fallow:audit": "fallow audit",
+    "fallow:health": "fallow health --score",
+    "audit": "bun audit --audit-level=critical",
+    "shadcn:add": "shadcn add --cwd apps/web",
+    "check": "bun run skills:validate && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "@playwright/test": "1.62.1",
+    "@types/bun": "1.3.14",
+    "fallow": "3.14.0",
+    "shadcn": "4.16.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

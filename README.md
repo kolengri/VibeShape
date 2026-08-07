@@ -10,7 +10,7 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
-The repository currently contains the **research and specification** required to begin implementation. Application code has not been created yet.
+The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, Tailwind tokens, and first source-owned shadcn primitive are operational. CAD domain behavior, the geometry engine, sketch solver, persistence, and file codecs remain intentionally unimplemented until their Phase 0 spikes pass.
 
 Key decisions:
 
@@ -51,6 +51,25 @@ Key decisions:
 | [Risk register](docs/risks.md) | Technical and product risks |
 | [Research sources](docs/research-sources.md) | Primary sources and review date |
 | [ADRs](docs/adr/README.md) | Accepted architecture decisions |
+
+## Development
+
+Use the Bun version pinned in `packageManager`:
+
+```bash
+bun install
+bun run dev
+```
+
+The repository-level verification contract is:
+
+```bash
+bun run check
+bun run fallow
+bun run test:e2e
+```
+
+Run `bun ci` to verify a frozen installation from `bun.lock`. The first local browser test may require `bunx playwright install chromium`. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited.
 
 ## Next practical step
 

@@ -26,8 +26,10 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Replicad | MIT | Preserve notice and license |
 | SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
 | React | MIT | Include a third-party notice |
+| React DOM | MIT | Include a third-party notice |
 | Three.js | MIT | Include a third-party notice |
 | Vite | MIT | Include a build-time notice according to release policy |
+| Vite React plugin | MIT | Include a build-time notice according to release policy |
 | Zustand | MIT | Include a third-party notice |
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
@@ -36,6 +38,12 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React | ISC | Include a third-party notice |
+| class-variance-authority | Apache-2.0 | Include the license and applicable notice obligations |
+| clsx / tailwind-merge | MIT | Include third-party notices |
+| TypeScript | Apache-2.0 | Record as a build tool and include the license according to release policy |
+| Biome | MIT OR Apache-2.0 | Record the selected license path in build-tool notices |
+| Vitest | MIT | Include a build-time notice according to release policy |
+| Playwright | Apache-2.0 | Record the test tool; browser distributions are development downloads and are not shipped with the app |
 | Fallow static analyzer and GitHub Action | MIT | Pin the development tool and action revision; include its license in build-tool notices according to release policy |
 | 3MF specification | Royalty-free specification terms | Follow specification attribution and terms; the VibeShape writer remains GPL-licensed |
 | PrusaSlicer / CuraEngine | AGPL-3.0 | Do not bundle in the MVP; record any future integration in a separate ADR |

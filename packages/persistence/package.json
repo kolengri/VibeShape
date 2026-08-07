@@ -1,0 +1,17 @@
+{
+  "name": "@vibeshape/persistence",
+  "version": "0.0.0",
+  "private": true,
+  "description": "IndexedDB, OPFS, migration, journal, and recovery adapters.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}
