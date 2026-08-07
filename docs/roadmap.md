@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-The UI shell is not the first milestone. First remove four uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. Development then proceeds through vertical slices that each end with a working model and export.
+The UI shell is not the first milestone. First remove four core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export.
 
 All estimates below are **approximate engineering ranges**, not calendar commitments.
 
@@ -21,7 +21,8 @@ SPK-001 now has executable functional evidence and a **Rework** result: browser 
 - `TopoRef` experiment on the model corpus.
 - Minimal 3MF writer or adapter with slicer round-trip.
 - Browser startup and memory matrix.
-- Finalized ADR-0001 through ADR-0009 and updated estimates.
+- Extension sandbox, immutable package, capability, and restricted-mode spike.
+- Reviewed ADR set and updated estimates, including the proposed extension decision.
 
 ### Exit criteria
 
@@ -32,6 +33,7 @@ SPK-001 now has executable functional evidence and a **Rework** result: browser 
 - The `TopoRef` experiment distinguishes `resolved`, `ambiguous`, and `missing`.
 - Generated 3MF opens in at least two slicers.
 - A baseline browser and device are defined.
+- `SPK-006` either proves a safe executable-extension path or keeps third-party execution disabled with documented rework evidence. This result gates extension releases, not the core modeling alpha.
 
 ## Phase 1 — foundation vertical slice (3–5 weeks)
 
@@ -47,6 +49,7 @@ SPK-001 now has executable functional evidence and a **Rework** result: browser 
 - IndexedDB autosave and `.vshape` v0.
 - Primitive or extrusion modeling without the full sketcher.
 - STEP/STL smoke export.
+- Stable built-in feature and command registries plus preservation of extension locks and unknown custom-feature payloads, without executing third-party code.
 
 ### Demo
 
@@ -135,6 +138,7 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 - Improved print heuristics.
 - Tablet usability and additional translated catalogs.
 - Documented native format v1.
+- Restricted-mode open and repair flows for documents that reference unavailable extensions.
 
 ## Later tracks
 
@@ -144,7 +148,7 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 | Drawings | Stable projected topology and dimensions |
 | Branch and merge | Formal command-conflict model |
 | Optional sync/collaboration | Privacy/security ADR and merge semantics |
-| Plugin SDK | Stable commands, features, migrations, and sandbox |
+| Extension SDK and local/self-hosted catalogs | Accepted `SPK-006`, stable commands, features, migrations, permissions, and package governance |
 | Integrated slicing | Separate licensing, performance, and safety spike |
 | AI features | Deterministic command API, preview, sandbox, and no hidden uploads |
 

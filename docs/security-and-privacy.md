@@ -2,7 +2,7 @@
 
 ## Trust model
 
-The user trusts the installed static VibeShape build but does not need to trust imported `.vshape`, STEP, STL, SVG/DXF, or 3MF files. Every import is potentially hostile structured or binary input.
+The user trusts the installed static VibeShape build but does not need to trust imported `.vshape`, STEP, STL, SVG/DXF, or 3MF files or third-party extension packages. Every import and extension is potentially hostile structured, binary, or executable input.
 
 Local-first design reduces CAD-file disclosure but does not eliminate supply-chain risk, parser vulnerabilities, resource exhaustion, or browser-storage loss.
 
@@ -45,6 +45,25 @@ Phase 0 validates the exact CSP against Emscripten and Vite output. A build requ
 - COOP/COEP requires a separate ADR because it changes deployment and embedding.
 
 A worker is not a security sandbox against compromised same-origin code. XSS remains critical.
+
+## Extension isolation
+
+The target extension platform is specified in [Extension architecture](architecture/extensions.md) and remains gated by `SPK-006`. Until that spike is accepted, the production application does not execute third-party code.
+
+- Native projects never embed auto-executable JavaScript, WebAssembly, HTML, or remote loaders.
+- Opening a project never installs, enables, grants, updates, or downloads an extension.
+- Parametric feature modules receive no network, clock, randomness, DOM, storage, file, clipboard, or raw-kernel authority.
+- Workspace extension code runs outside the application main realm and can act only through runtime-validated, capability-checked messages.
+- Custom UI uses an opaque-origin sandboxed iframe with extension-specific CSP; it cannot mount into the application DOM.
+- CPU-bound extension code runs in a terminable worker or stricter runtime with time, memory, message, output-size, and restart budgets.
+- Every package is structurally validated, content-addressed, and integrity-checked before installation.
+- Publisher signatures identify an artifact source but never replace isolation, least privilege, resource limits, or review.
+- Restricted mode disables executable third-party entry points while preserving documents and unknown feature payloads.
+- Installed, enabled, and granted are separate states; capability expansion on update requires new approval.
+
+Extension packages use the same archive defenses as native files and additionally reject undeclared executable entries, incompatible API versions, invalid entry points, and checksum mismatches. Exact network origins and reasons are declared in the manifest and shown before a grant. Wildcards are prohibited in the initial capability model.
+
+An extension failure is contained to its host. It cannot commit a partial domain command or geometry result, and revocation terminates active hosts. Diagnostics identify the extension ID, version, integrity digest, entry point, capability, and resource limit without including document content by default.
 
 ## Import policy
 

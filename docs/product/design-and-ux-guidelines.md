@@ -439,6 +439,52 @@ Responsive behavior prioritizes model visibility:
 
 Do not hide Apply, Cancel, errors, save state, or the active selection filter solely to fit a narrow viewport.
 
+## Extension Experience
+
+Third-party extensions follow the same interaction grammar as built-in functionality, while their trust and ownership remain explicit.
+
+### Extension manager
+
+The extension manager distinguishes **Installed**, **Enabled**, and **Granted** states and shows:
+
+- package name, stable ID, exact version, source, integrity, publisher identity, and license;
+- declared contribution points and activation conditions;
+- capabilities grouped by document data, mutation, files, clipboard, and network;
+- every allowed network origin with the extension author's reason;
+- documents that still require an installed version;
+- compatibility, quarantine, update, runtime, and resource-limit diagnostics;
+- direct Disable, Review permissions, Inspect details, Roll back, and Uninstall actions when eligible.
+
+Installation, enablement, permission approval, update, and uninstall are separate decisions. A permission dialog names the requested capability and concrete effect; it does not use a single broad "Trust this extension" checkbox. The safe default is to keep new authority denied.
+
+Updating an extension shows added or removed permissions, version/API changes, affected documents, and disposable rebuild results before commit. Declining an update keeps the exact installed version available. Uninstall warns when local documents still reference the artifact and must not make those documents unrecoverable without explicit confirmation.
+
+### Project open and failure
+
+Opening a project never installs or executes an unavailable extension. Missing, disabled, incompatible, timed-out, or failed extensions are shown on the owning feature-tree rows and in a persistent document-level summary.
+
+The primary recovery actions are:
+
+- locate or install the exact required package;
+- enable it or review denied permissions;
+- keep the project in restricted mode;
+- replace the version through an explicit migration preview;
+- remove the owning feature through an ordinary document command;
+- export the untouched original archive.
+
+Last valid geometry may remain visible only with a persistent **Stale preview** label and styling. It is not selectable as validated geometry for downstream authoring or silently exported.
+
+### Contributions
+
+- Extension commands use the shared command registry, palette, eligibility, preview, Apply/Cancel, async busy, double-activation, cancellation, and undo contracts.
+- The UI identifies the owning extension in command details and diagnostics without adding noisy badges to every normal toolbar action.
+- Extension panels occupy declared host slots and cannot cover the application bar, save state, permission UI, or critical diagnostics.
+- Sandboxed panels inherit semantic theme values but remain responsible for keyboard access, focus, 200% zoom, localization, and non-color cues.
+- Extension UI cannot imitate host permission, file picker, save, destructive confirmation, or recovery surfaces.
+- Host-owned security and permission copy always uses VibeShape catalogs; extension copy cannot redefine the meaning of a capability.
+
+The technical trust and lifecycle contract is defined in [Extension architecture](../architecture/extensions.md).
+
 ## Content and Terminology
 
 - Canonical product copy is English and uses sentence case.
@@ -500,6 +546,9 @@ Generated shadcn source is reviewed as project code. Component variants express 
 - Capturing shortcuts while the user is typing
 - Rebuilding the model because the user only changed theme, panels, or camera
 - Sending analytics or crash data without a separate explicit opt-in decision
+- Installing, enabling, granting, updating, or downloading an extension merely because a project was opened
+- One-click blanket trust that hides individual extension capabilities or network origins
+- Extension panels that imitate VibeShape permission, save, file, or destructive-confirmation UI
 
 ## Definition of Done for UI Work
 

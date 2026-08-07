@@ -16,6 +16,7 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 | Component | Tree, property editor, diagnostics | Testing Library |
 | E2E | Complete CAD, print, offline, and recovery flows | Playwright |
 | Manual release | Slicers, Safari, interaction quality | Release checklist |
+| Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
 
 ## Geometry assertions
 
@@ -200,6 +201,26 @@ Manual alpha review includes keyboard-only completion of all non-spatial parts o
 - Dependency audit and SBOM.
 - No-network privacy test while offline.
 
+## Extension conformance and isolation
+
+Executable extension tests remain part of `SPK-006` until [ADR-0012](adr/0012-capability-based-extension-platform.md) is accepted. Any later extension-enabled release must cover:
+
+- deterministic replay of parametric feature modules across fresh hosts;
+- absence of network, time, randomness, DOM, storage, file, clipboard, undeclared imports, and raw-kernel access in the feature profile;
+- manifest, entry-point, integrity, API-version, normalized-path, duplicate, traversal, decompression, asset, message, and output limits;
+- exact coexistence of two versions and rejection of same-version/different-integrity substitution;
+- missing, disabled, incompatible, timed-out, resource-limited, and failed extension states;
+- restricted-mode open, preservation, original-archive export, repair, and later successful rebuild;
+- CPU loop termination, worker restart, message flood containment, memory budget, and no partial commit;
+- opaque-origin iframe CSP, `MessagePort` handshake, schema validation, session/sequence checks, and navigation denial;
+- capability deny, grant, update expansion, revocation, and host termination with no residual authority;
+- update preview, disposable rebuild, invariant comparison, one-command lock commit, and rollback;
+- extension-command parity for eligibility, async busy, double activation, cancellation, undo, localization, keyboard access, focus, and diagnostics;
+- English base-catalog and ICU placeholder parity without allowing extension copy to replace host security text;
+- license, notices, source, signature, and publisher identity as separate validation results.
+
+A Web Worker or successful WebAssembly instantiation alone is not isolation evidence. Tests must exercise the browser APIs and host messages that a hostile package would attempt to abuse.
+
 ## Release gates
 
 Release is blocked by:
@@ -212,3 +233,4 @@ Release is blocked by:
 - migration without a fixture and backup path;
 - P0 accessibility blocker;
 - unexplained major memory or performance regression.
+- executable extension support without an accepted sandbox result, deterministic version lock, permission revocation, and non-destructive restricted mode.

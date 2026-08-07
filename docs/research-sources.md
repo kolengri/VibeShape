@@ -75,6 +75,25 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 **Conclusion:** OPFS and IndexedDB are suitable for the internal working set but are not a guaranteed backup. Native `.vshape` files and fallback upload/download flows are mandatory.
 
+## Extension Platforms and Browser Isolation
+
+| Source | Evidence |
+|---|---|
+| [Onshape FeatureScript introduction](https://cad.onshape.com/FsDoc/intro.html) | Built-in and custom feature types share a function model; regeneration executes the build function; determinism excludes external input, time, and randomness |
+| [Onshape custom features](https://cad.onshape.com/help/Content/PartStudio/add_custom_features.htm?cshid=customfeature) | Custom features link to exact document versions, update explicitly, remain available to existing models, and execute in a Part Studio-limited sandbox with acknowledged resource-exhaustion risk |
+| [Onshape application extensions](https://onshape-public.github.io/docs/app-dev/extensions/) | Hosted applications integrate separately through iframe UI or REST actions and validate message origins and document context |
+| [VS Code extension hosts](https://code.visualstudio.com/api/advanced-topics/extension-host) | Extensions run outside the UI process in environment-specific hosts and activate lazily to reduce startup and UI impact |
+| [VS Code web extensions](https://code.visualstudio.com/api/extension-guides/web-extensions) | Browser extensions use a Web Worker host, lack Node.js APIs, and access workspace files through a host API rather than ambient filesystem access |
+| [VS Code Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust) | Restricted Mode prevents automatic code execution from untrusted workspaces and distinguishes full, limited, and unsupported extension behavior |
+| [Figma plugin manifest](https://developers.figma.com/docs/plugins/manifest/) | Manifest-declared API version, code/UI entry points, document access, and exact network allowlists including an explicit no-network value |
+| [MDN iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe) | Omitting `allow-same-origin` gives sandboxed content a special origin; combining same-origin and scripts for same-origin content defeats the intended isolation |
+| [MDN `postMessage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage) | Cross-context messages require sender/source checks, exact target origins where available, and validation of received data |
+| [MDN Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy) | CSP constrains script, connection, frame, worker, and other resource sources but must be applied to each relevant execution context |
+| [WebAssembly security](https://webassembly.org/docs/security/) | WebAssembly provides fault isolation but remains subject to its embedding and host APIs |
+| [WebAssembly portability](https://webassembly.org/docs/portability/) | WebAssembly defines imports rather than system calls, allowing the host to control which external functions exist |
+
+**Conclusion:** VibeShape should copy Onshape's deterministic, version-linked feature principle, not its mandatory cloud application topology. The safer browser design combines immutable artifact locks, separate execution profiles, capability-scoped host APIs, opaque-origin UI, runtime message validation, termination budgets, and restricted-mode recovery. No single worker, iframe, WebAssembly module, signature, or CSP rule is a complete extension sandbox.
+
 ## Monorepo and UI Toolchain
 
 Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the current configuration and CI contract were cross-checked against the version-matched 3.14.0 package schema, CLI, GitHub Action, and npm metadata.

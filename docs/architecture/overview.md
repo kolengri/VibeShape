@@ -214,4 +214,15 @@ A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untruste
 
 ## Extensibility
 
-The plugin system is outside alpha. The command schema, feature registry, and file migrations must stabilize first. A future plugin API never receives raw kernel pointers and `.vshape` never executes embedded code. Trusted extensions load only from explicitly installed packages.
+The executable extension platform is outside alpha, but the foundation must remain extension-ready. [ADR-0012](../adr/0012-capability-based-extension-platform.md) proposes separate profiles for deterministic parametric feature modules, capability-based workspace extensions, and bounded compute or codec modules.
+
+Durable constraints apply before the SDK exists:
+
+- built-in feature types register through explicit stable identifiers rather than switch statements scattered across packages;
+- commands and UI contribution points use registries with ownership metadata and eligibility checks;
+- domain and worker protocols accept serializable feature-type and extension-lock metadata without importing an extension runtime;
+- feature and cache hashes reserve the exact extension ID, version, API version, and integrity identity;
+- raw kernel handles, application stores, React nodes, file handles, and ambient browser APIs never become extension contracts;
+- `.vshape` never executes embedded code, auto-installs a package, or silently resolves a missing version from the network.
+
+No empty extension workspace is added yet. `SPK-006` must first prove the sandbox, package validation, resource limits, permissions, cross-browser lifecycle, and recovery behavior. See [Extension architecture](extensions.md) for the target design and explicit gate.

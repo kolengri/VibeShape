@@ -14,6 +14,8 @@
 | R8 | A WASM distribution violates LGPL or GPL obligations | Medium | Critical | Source archives, patches, builds, notices, a release gate, and legal review |
 | R9 | Geometry results change after dependency updates | High | High | Exact version pins, engine build ID in files and caches, and corpus tests before upgrades |
 | R10 | Mesh generation, picking, or rendering blocks the main thread | Medium | High | Geometry worker, transferable arrays, levels of detail, and profiling |
+| R11 | A third-party extension exfiltrates data, blocks the UI, corrupts a project, or retains revoked authority | High | Critical | No execution before `SPK-006`; separate profiles, least-privilege capabilities, isolated hosts, strict CSP, budgets, termination, and restricted mode |
+| R12 | An unavailable or silently updated extension makes a document irreproducible | High | Critical | Exact version and integrity lock, offline artifact retention, explicit updates, payload preservation, invariant preview, and rollback |
 
 ## Details
 
@@ -69,6 +71,16 @@ GPL reduces uncertainty around solver integration but limits proprietary reuse. 
 
 **Gate:** CI builds the compliance artifact together with every release; it is not assembled manually after publication.
 
+### Extension trust and reproducibility
+
+Browser workers improve responsiveness but are not, by themselves, a security boundary for untrusted same-origin JavaScript. UI iframes, WebAssembly modules, package signatures, and catalog review also solve only parts of the problem.
+
+**Rule:** third-party executable packages stay disabled until `SPK-006` proves the combined runtime, capability, message, resource, and recovery model across the supported browsers. Opening a project never grants trust or retrieves code.
+
+**Reproducibility rule:** document and feature identity include the exact extension artifact. A different artifact with the same package name and version is rejected, and updates occur through an explicit disposable rebuild plus rollback path.
+
+**Fallback:** ship only stable built-in registries and preserve extension metadata in restricted mode. This keeps future extensibility possible without accepting untrusted execution risk in alpha.
+
 ## Decisions with a High Cost of Change
 
 - Stable IDs and reference format
@@ -78,6 +90,7 @@ GPL reduces uncertainty around solver integration but limits proprietary reuse. 
 - License
 - Units and coordinate system
 - Local-first versus server-authoritative data model
+- Extension execution, capability, package, and document-lock boundary
 
 These decisions require an ADR and fixtures before implementation. UI colors, component-library choices, and layout are reversible and must not block geometry spikes.
 
