@@ -78,6 +78,8 @@ For a web/WASM release, VibeShape must:
 
 SPK-001 deliberately reports `opencascadeSourceRevision: null`: the published `replicad-opencascadejs@0.23.0` metadata pins the wrapper package but does not disclose the exact OCCT source revision used for its WASM. That artifact is suitable for feasibility testing only. A public release is blocked until VibeShape owns a reproducible build from a recorded OCCT revision or receives equivalent complete corresponding-source evidence.
 
+The rework harness under `native/occt` now pins and verifies source archives for OpenCascade.js `5ff2b750`, OCCT `bb368e27`, and the Replicad `0.23.0` build config, along with an immutable builder image digest. These archives improve traceability and corresponding-source preparation, but they do not retroactively establish the source of the published npm WASM. The controlled artifact must be built, regression-tested, and accompanied by a source-built builder before release provenance is considered closed.
+
 ## SolveSpace Reuse
 
 Only the solver files that are needed may be reused, and only while retaining copyright and license notices and publishing the corresponding source and changes. The project must record:

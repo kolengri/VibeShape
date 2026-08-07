@@ -31,7 +31,7 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 
 **Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
-**SPK-001 evidence:** required operations pass in Chromium, Firefox, and WebKit, and adapter-owned wrapper counts balance. However, five 1,000-operation Chromium batches increased WASM linear-memory capacity from 20,185,088 to 260,243,456 bytes. The current binding cannot distinguish allocator live bytes from retained high-water capacity, so R2 remains open and the spike result is **Rework**.
+**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit, adapter-owned wrapper counts balance, and the controlled source inputs are checksum-verified. However, five 1,000-operation Chromium batches increased WASM linear-memory capacity from 20,185,088 to 260,243,456 bytes. Protocol v2 now locates capacity changes by stage and can consume validated allocator metrics, but the current published binding still exposes capacity only. R2 remains open and the spike result is **Rework**.
 
 ### Solver
 

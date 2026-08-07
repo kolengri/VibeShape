@@ -1,4 +1,4 @@
-import type { GeometryWorkerResponse } from "../../packages/protocol/src"
+import { GEOMETRY_MEMORY_STAGES, type GeometryWorkerResponse } from "../../packages/protocol/src"
 import {
   createKernelSpikeParameters,
   kernelSpikeExpectedInvariants,
@@ -14,6 +14,12 @@ interface GeometrySpikeHarnessState {
   results: KernelResponse[]
   health: HealthResponse | null
   disposal: DisposalResponse | null
+  restart: {
+    beforeTermination: HealthResponse
+    afterInitialization: HealthResponse
+    result: KernelResponse
+    disposal: DisposalResponse
+  } | null
   progress: string[]
   error: string | null
 }
@@ -89,7 +95,7 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
 
   expect(result.engine).toMatchObject({
     adapter: "replicad",
-    adapterVersion: "spike-1",
+    adapterVersion: "spike-2",
     replicadVersion: "0.23.1",
     opencascadePackageVersion: "0.23.0",
     opencascadeSourceRevision: null,
@@ -130,6 +136,10 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
   expect(result.lifecycle.ownedShapesAfter).toBe(result.lifecycle.ownedShapesBefore)
   expect(spike.results).toHaveLength(lifecycleBatches)
   expect(spike.results.every(hasBalancedOwnership)).toBe(true)
+  expect(result.memory.source).toBe("heap-capacity-only")
+  expect(result.memory.snapshots.map((snapshot) => snapshot.stage)).toEqual(GEOMETRY_MEMORY_STAGES)
+  expect(result.memory.snapshots.every((snapshot) => snapshot.allocator === null)).toBe(true)
+  expect(result.memory.snapshots.every((snapshot) => snapshot.heapCapacityBytes > 0)).toBe(true)
   const expectedProgress = [
     "creating-primitives",
     "boolean-cut",
@@ -147,6 +157,21 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
   )
   expect(spike.health).toMatchObject({ initialized: true, ownedShapeCount: 0 })
   expect(spike.disposal).toMatchObject({ ownedShapeCount: 0 })
+  const restart = requireResult(spike.restart)
+  expect(restart.beforeTermination).toMatchObject({ initialized: true, ownedShapeCount: 0 })
+  expect(restart.afterInitialization).toMatchObject({ initialized: true, ownedShapeCount: 0 })
+  expect(restart.afterInitialization.wasmHeapBytes).toBeLessThanOrEqual(
+    restart.beforeTermination.wasmHeapBytes,
+  )
+  expect(restart.result.shape.valid).toBe(true)
+  expect(restart.result.shape.solidCount).toBe(1)
+  expect(restart.result.shape.volume).toBeCloseTo(result.shape.volume, 6)
+  expect(restart.result.lifecycle).toMatchObject({
+    iterations: 1,
+    ownedShapesBefore: 2,
+    ownedShapesAfter: 2,
+  })
+  expect(restart.disposal).toMatchObject({ ownedShapeCount: 0 })
 
   const evidence = {
     engine: result.engine,
@@ -157,9 +182,11 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
     },
     exchange: result.exchange,
     lifecycle: spike.results.map((batch) => batch.lifecycle),
+    memory: spike.results.map((batch) => batch.memory),
     timings: result.timings,
     health: spike.health,
     disposal: spike.disposal,
+    restart,
   }
   await testInfo.attach("geometry-worker-evidence", {
     body: JSON.stringify(evidence, null, 2),

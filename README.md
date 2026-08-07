@@ -10,7 +10,7 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
-The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, typed ICU localization, Tailwind tokens, and first source-owned shadcn primitives are operational. SPK-001 now provides an isolated OCCT/Replicad worker, runtime-validated protocol, deterministic CAD fixture, and cross-browser WASM tests. Its result is **Rework**, not production acceptance, because exact embedded OCCT provenance and unexplained WASM linear-memory growth remain open. CAD domain behavior, the sketch solver, persistence, and production file codecs remain intentionally unimplemented until their Phase 0 gates pass.
+The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, typed ICU localization, Tailwind tokens, and first source-owned shadcn primitives are operational. SPK-001 now provides an isolated OCCT/Replicad worker, runtime-validated protocol v2, deterministic CAD fixture, stage memory checkpoints, hard worker restart, checksum-verified controlled-build inputs, and cross-browser WASM tests. Its result is **Rework**, not production acceptance, because the controlled WASM has not yet been built, exact provenance of the published artifact remains unknown, and allocator-level plateau evidence remains open. CAD domain behavior, the sketch solver, persistence, and production file codecs remain intentionally unimplemented until their Phase 0 gates pass.
 
 Key decisions:
 
@@ -72,7 +72,7 @@ bun run fallow
 bun run test:e2e
 ```
 
-Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cross-browser run may require `bunx playwright install chromium firefox webkit`; use `bun run test:e2e:chromium` for the fastest local E2E feedback and `bun run test:e2e:ui` for Playwright UI mode. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited.
+Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cross-browser run may require `bunx playwright install chromium firefox webkit`; use `bun run test:e2e:chromium` for the fastest local E2E feedback and `bun run test:e2e:ui` for Playwright UI mode. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited. `bun run occt:prepare` verifies and prepares the pinned controlled OCCT build inputs; `bun run occt:build` additionally requires Docker and keeps generated artifacts quarantined under `.artifacts` until the geometry gate passes.
 
 ## Next practical step
 

@@ -2,7 +2,7 @@
 
 ## Method
 
-Reviewed on **2026-08-07**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on the same date.
+Reviewed on **2026-08-08**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on 2026-08-07.
 
 Context7 was used for library documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/mrdoob/three.js` and `/oven-sh/bun`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
 
@@ -20,8 +20,13 @@ Context7 was used for library documentation. Searches for `OpenCascade.js` and `
 | [Replicad upstream](https://github.com/sgenoud/replicad) | MIT-licensed TypeScript abstraction over OpenCascade |
 | [Replicad npm package](https://www.npmjs.com/package/replicad) | Published `0.23.1` metadata, dependency set, integrity, and source `gitHead` used by SPK-001 |
 | [Replicad custom OCJS npm package](https://www.npmjs.com/package/replicad-opencascadejs) | Published `0.23.0` loader/WASM package used by SPK-001; its metadata does not identify the embedded OCCT source revision |
+| [Replicad `0.23.0` OCJS build source](https://github.com/sgenoud/replicad/tree/19fb8212e0bb12a07a7a49f96950f8903903d469/packages/replicad-opencascadejs) | Exact binding list and build config; its build command uses an untagged OpenCascade.js builder image, so it cannot prove the npm WASM's OCCT source by itself |
+| [OpenCascade.js upstream Dockerfile](https://github.com/donalffons/opencascade.js/blob/5ff2b750ba4b9a9fdfbff8842712cbb562e78ce7/Dockerfile) | Emscripten `3.1.14`, OCCT commit `bb368e271e24f63078129283148ce83db6b9670a`, and custom-build toolchain used as the controlled-build baseline |
+| [Official OCCT GitHub repository](https://github.com/Open-Cascade-SAS/OCCT) | Official source mirror, exact revision archive, LGPL-2.1 with exception, and source/build documentation |
+| [Emscripten debugging guidance](https://emscripten.org/docs/porting/Debugging.html) | `mallinfo()` support for current allocation evidence |
+| [Emscripten settings reference](https://emscripten.org/docs/tools_reference/settings_reference.html) | `ALLOW_MEMORY_GROWTH`, heap overgrowth, allocator choices, and the distinction between linear-memory capacity and live allocations |
 
-**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. SPK-001 confirms that Replicad accelerates the required browser operations, but it remains behind an adapter because of incomplete provenance, allocator-observability, binding, and topology-history risks. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. SPK-001 confirms that Replicad accelerates the required browser operations, but it remains behind an adapter because of incomplete published-artifact provenance, allocator-observability, binding, and topology-history risks. The controlled-build inputs and allocator binding are now prepared, not yet accepted. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ## Viewport
 

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 1 as const
+export const GEOMETRY_PROTOCOL_VERSION = 2 as const
 
 const finiteNumberSchema = z.number().finite()
 const cadLengthSchema = finiteNumberSchema.min(0.001).max(100_000)
@@ -158,6 +158,47 @@ const lifecycleSchema = z
   })
   .strict()
 
+export const GEOMETRY_MEMORY_STAGES = [
+  "initialized",
+  "primitives-created",
+  "boolean-completed",
+  "fillet-completed",
+  "validation-completed",
+  "tessellation-completed",
+  "step-exported",
+  "step-imported",
+  "stl-exported",
+  "lifecycle-completed",
+  "shapes-disposed",
+] as const
+
+export const geometryMemoryStageSchema = z.enum(GEOMETRY_MEMORY_STAGES)
+
+const allocatorMetricsSchema = z
+  .object({
+    arenaBytes: nonNegativeIntegerSchema,
+    allocatedBytes: nonNegativeIntegerSchema,
+    freeBytes: nonNegativeIntegerSchema,
+  })
+  .strict()
+
+const memoryProfileSchema = z
+  .object({
+    source: z.enum(["heap-capacity-only", "allocator-instrumented"]),
+    snapshots: z
+      .array(
+        z
+          .object({
+            stage: geometryMemoryStageSchema,
+            heapCapacityBytes: nonNegativeIntegerSchema,
+            allocator: allocatorMetricsSchema.nullable(),
+          })
+          .strict(),
+      )
+      .length(geometryMemoryStageSchema.options.length),
+  })
+  .strict()
+
 const exchangeMetricsSchema = z
   .object({
     stepBytes: nonNegativeIntegerSchema,
@@ -185,6 +226,7 @@ const kernelSpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   mesh: meshPayloadSchema,
   exchange: exchangeMetricsSchema,
   lifecycle: lifecycleSchema,
+  memory: memoryProfileSchema,
   timings: timingSchema,
 })
 
@@ -255,6 +297,7 @@ export type GeometryRequestEnvelope = Pick<
 >
 export type GeometryTerminalResponse = Exclude<GeometryWorkerResponse, { type: "progress" }>
 export type GeometryProgressStage = z.infer<typeof geometryProgressStageSchema>
+export type GeometryMemoryStage = z.infer<typeof geometryMemoryStageSchema>
 export type GeometryDiagnosticCode = z.infer<typeof geometryDiagnosticCodeSchema>
 export type GeometryEngineMetadata = Extract<
   GeometryWorkerResponse,
@@ -266,5 +309,5 @@ export type KernelSpikeCompletedResponse = Extract<
 >
 export type KernelSpikeEngineResult = Pick<
   KernelSpikeCompletedResponse,
-  "engine" | "shape" | "mesh" | "exchange" | "lifecycle" | "timings"
+  "engine" | "shape" | "mesh" | "exchange" | "lifecycle" | "memory" | "timings"
 >

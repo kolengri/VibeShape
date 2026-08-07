@@ -24,13 +24,16 @@ import {
   REPLICAD_OPENCASCADE_VERSION,
   REPLICAD_VERSION,
 } from "./build-info"
+import {
+  createMemoryProfile,
+  getWasmHeapBytes,
+  type OpenCascadeMemoryModule,
+} from "./memory-profile"
 import { OwnedShapeRegistry } from "./shape-registry"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
 
-type OpenCascadeModule = OpenCascadeInstance & {
-  HEAP8?: Int8Array
-}
+type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
 
 type OpenCascadeInitializer = (options: {
   locateFile: (path: string) => string
@@ -72,10 +75,6 @@ function createCylinder(parameters: KernelSpikeParameters) {
     .sketchOnPlane("XY", parameters.cylinderOrigin)
     .extrude(parameters.cylinderHeight)
     .asShape3D()
-}
-
-function getWasmHeapBytes(opencascade: OpenCascadeModule | null) {
-  return opencascade?.HEAP8?.byteLength ?? 0
 }
 
 function deleteShapeWrappers(shapes: Array<{ delete: () => void }>) {
@@ -257,6 +256,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     const totalStartedAt = performance.now()
     let finalShape: Shape3D | null = null
     let importedShape: Shape3D | null = null
+    const memoryProfile = createMemoryProfile(opencascade)
+    memoryProfile.capture("initialized")
 
     try {
       reportProgress("creating-primitives", 0.1)
@@ -265,6 +266,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const box = this.#ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight))
       const cylinder = this.#ownedShapes.own(createCylinder(parameters))
       const createPrimitivesMs = elapsed(stageStartedAt)
+      memoryProfile.capture("primitives-created")
 
       reportProgress("boolean-cut", 0.2)
       stageStartedAt = performance.now()
@@ -272,6 +274,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       this.#ownedShapes.dispose(box)
       this.#ownedShapes.dispose(cylinder)
       const booleanCutMs = elapsed(stageStartedAt)
+      memoryProfile.capture("boolean-completed")
 
       reportProgress("fillet", 0.3)
       stageStartedAt = performance.now()
@@ -280,11 +283,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       )
       this.#ownedShapes.dispose(cutShape)
       const filletMs = elapsed(stageStartedAt)
+      memoryProfile.capture("fillet-completed")
 
       reportProgress("validation", 0.4)
       stageStartedAt = performance.now()
       const shape = measureShape(opencascade, finalShape)
       const validationMs = elapsed(stageStartedAt)
+      memoryProfile.capture("validation-completed")
 
       if (!shape.valid || shape.solidCount !== 1 || shape.volume <= 0) {
         throw new Error("The kernel result is not one valid positive-volume solid.")
@@ -294,12 +299,14 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       stageStartedAt = performance.now()
       const mesh = tessellate(finalShape, parameters)
       const tessellationMs = elapsed(stageStartedAt)
+      memoryProfile.capture("tessellation-completed")
 
       reportProgress("step-export", 0.6)
       stageStartedAt = performance.now()
       const stepBlob = finalShape.blobSTEP()
       const stepBytes = new Uint8Array(await stepBlob.arrayBuffer())
       const stepExportMs = elapsed(stageStartedAt)
+      memoryProfile.capture("step-exported")
 
       reportProgress("step-import", 0.7)
       stageStartedAt = performance.now()
@@ -308,6 +315,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       )
       const importedShapeMetrics = measureShape(opencascade, importedShape)
       const stepImportMs = elapsed(stageStartedAt)
+      memoryProfile.capture("step-imported")
 
       reportProgress("stl-export", 0.8)
       stageStartedAt = performance.now()
@@ -318,11 +326,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       })
       const stlBytes = (await stlBlob.arrayBuffer()).byteLength
       const stlExportMs = elapsed(stageStartedAt)
+      memoryProfile.capture("stl-exported")
 
       reportProgress("lifecycle-check", 0.9)
       stageStartedAt = performance.now()
       const lifecycle = this.#runLifecycleCheck(parameters)
       const lifecycleCheckMs = elapsed(stageStartedAt)
+      memoryProfile.capture("lifecycle-completed")
 
       reportProgress("complete", 1)
 
@@ -337,6 +347,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           relativeVolumeError: relativeError(shape.volume, importedShapeMetrics.volume),
         },
         lifecycle,
+        memory: memoryProfile.memory,
         timings: {
           createPrimitivesMs,
           booleanCutMs,
@@ -352,6 +363,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       }
     } finally {
       this.#ownedShapes.disposeAll()
+      memoryProfile.capture("shapes-disposed")
     }
   }
 
