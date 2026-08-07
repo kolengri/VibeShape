@@ -47,6 +47,7 @@ Not a primary v1 audience:
 - **Portable.** Projects use a documented container and derived geometry uses open formats.
 - **Keyboard and accessibility aware.** Core commands are keyboard-accessible and never depend on color alone.
 - **Extensible without executable projects.** Future features and integrations use versioned, least-privilege extension hosts; opening a project never means running embedded code.
+- **One command path.** Human UI, first-party modules, approved extensions, tests, and future MCP automation use the same validated document commands; no adapter receives a hidden mutation API.
 
 ## v0.1 alpha scope
 

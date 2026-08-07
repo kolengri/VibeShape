@@ -243,8 +243,11 @@ After Proceed:
 7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, typed ICU copy through `@vibeshape/i18n`, shadcn/Radix configuration, tokens, compact shell primitives, state harness, keyboard behavior, and accessibility baseline from the design and UX contract.
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 9. `E09 Extension-ready seams`: stable built-in feature and command registries, extension-lock preservation, unknown custom-feature preservation, and restricted-mode diagnostics without executing third-party code.
+10. `E10 Automation-ready seams`: first-party module ownership, bounded revision-tagged query views, schema-backed command descriptors, disposable drafts, preview and confirmation classes, idempotency and revision preconditions, cancellation, and actor provenance without importing MCP types into domain packages.
 
 Every epic includes positive, failure, recovery, and license or format acceptance criteria. User-visible epics also include the applicable [Design and UX Guidelines](product/design-and-ux-guidelines.md) definition-of-done checks.
+
+The first local MCP bridge is an integration spike after `E02`, `E03`, `E06`, and `E10` provide one real query and one draftable command. Its executable acceptance gate is defined in [Automation and MCP architecture](architecture/automation-and-mcp.md). Do not scaffold an empty MCP workspace or pin an SDK merely to advertise future compatibility.
 
 ### Foundation scaffold status
 

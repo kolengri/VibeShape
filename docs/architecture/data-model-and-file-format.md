@@ -46,7 +46,7 @@ Document
 
 `features[]` uses a stable presentation order, while every feature retains explicit inputs. Opening a file constructs the DAG and rejects missing IDs and cycles.
 
-A built-in feature stores a stable application-owned type identifier. A custom feature additionally stores:
+A built-in feature stores a stable first-party module ID, module version, contributed feature-type ID, and feature schema version. A custom feature additionally stores:
 
 - its contributed feature-type identifier;
 - parameter-schema version;
@@ -69,6 +69,7 @@ A command contains:
 
 - `commandId`, `documentId`, and `baseRevision`;
 - `kind`, `schemaVersion`, and typed payload;
+- structured actor provenance such as `user`, `extension`, `mcp`, or `system`, with bounded source and session identifiers where applicable but no model prompt;
 - `issuedAt` for UX and audit only, never for the geometry result;
 - inverse data or sufficient information for deterministic reduction;
 - resulting revision and content hash.

@@ -439,6 +439,27 @@ Responsive behavior prioritizes model visibility:
 
 Do not hide Apply, Cancel, errors, save state, or the active selection filter solely to fit a narrow viewport.
 
+## Automation and MCP Experience
+
+AI automation is an inspectable participant in the existing command workflow, not an invisible cursor. Pairing and document sharing are separate explicit user actions.
+
+The automation surface shows:
+
+- the connected client name, session state, shared document scope, and a persistent Disconnect action;
+- currently running tool, owning first-party module or extension, real progress stage, cancellation, and elapsed time;
+- an automation draft separate from committed history, with affected features, diagnostics, geometry-invariant summary, and viewport preview;
+- the base document revision and a clear conflict state when the document changed during the proposal;
+- the exact commands proposed for commit, grouped as one undoable transaction when valid;
+- MCP actor and client provenance in history without storing private model prompts by default.
+
+Mutating proposals use host-owned **Review changes**, **Apply**, and **Discard** controls. Destructive effects require an explicit confirmation that names the affected features or data. A client-provided description or MCP tool annotation cannot replace host copy or suppress confirmation.
+
+Disconnect, cancellation, timeout, browser close, worker restart, extension revocation, or validation failure discards or preserves the draft for explicit review according to recovery policy; none silently commits. The user can continue manual modeling while a draft exists, but a changed base revision forces the automation proposal into a visible conflict state rather than automatic rebasing.
+
+The interface never presents model output as validated geometry merely because a tool call succeeded. Preview, committed, stale, blocked, invalid, and unverified-analysis states remain visually and programmatically distinct.
+
+The technical boundary is defined in [Automation and MCP architecture](../architecture/automation-and-mcp.md).
+
 ## Extension Experience
 
 Third-party extensions follow the same interaction grammar as built-in functionality, while their trust and ownership remain explicit.

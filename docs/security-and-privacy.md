@@ -4,7 +4,7 @@
 
 The user trusts the installed static VibeShape build but does not need to trust imported `.vshape`, STEP, STL, SVG/DXF, or 3MF files or third-party extension packages. Every import and extension is potentially hostile structured, binary, or executable input.
 
-Local-first design reduces CAD-file disclosure but does not eliminate supply-chain risk, parser vulnerabilities, resource exhaustion, or browser-storage loss.
+Local-first design reduces CAD-file disclosure but does not eliminate supply-chain risk, parser vulnerabilities, resource exhaustion, browser-storage loss, or unsafe disclosure through an explicitly connected automation client.
 
 ## Privacy by default
 
@@ -64,6 +64,22 @@ The target extension platform is specified in [Extension architecture](architect
 Extension packages use the same archive defenses as native files and additionally reject undeclared executable entries, incompatible API versions, invalid entry points, and checksum mismatches. Exact network origins and reasons are declared in the manifest and shown before a grant. Wildcards are prohibited in the initial capability model.
 
 An extension failure is contained to its host. It cannot commit a partial domain command or geometry result, and revocation terminates active hosts. Diagnostics identify the extension ID, version, integrity digest, entry point, capability, and resource limit without including document content by default.
+
+## Automation and MCP isolation
+
+The target local AI integration is specified in [Automation and MCP architecture](architecture/automation-and-mcp.md). MCP terminates in a local adapter and never becomes a privileged API inside domain, geometry, persistence, or extension packages.
+
+- Pairing is explicit, revocable, and scoped to selected open documents.
+- The initial server uses MCP `stdio` and serves the reviewed static application build plus browser session endpoint from one stable `127.0.0.1` origin in automation mode.
+- The loopback endpoint validates exact `Host` and `Origin` values, authenticates every request with a session credential outside URLs, applies strict size and rate limits, and provides no wildcard CORS.
+- Resources are bounded, revision-tagged serializable views; pairing never exposes other tabs, the project library, raw files, paths, tokens, or private extension storage.
+- Tools are generated only from host-approved schema-backed commands and cannot access application stores, browser storage, file internals, raw kernel state, or extension management.
+- Write tools modify disposable drafts. Commit requires a matching base revision and host-owned policy or confirmation, then records ordinary undo history and MCP actor provenance.
+- Tool annotations are treated as advisory. VibeShape enforces read-only, destructive, idempotent, open-world, capability, and confirmation behavior independently.
+- Cancellation, disconnect, timeout, invalid output, and worker failure cannot publish partial geometry or persistence state.
+- Tool descriptions, model output, extension metadata, imported text, and document names are untrusted content and cannot alter host policy or confirmation copy.
+
+Connecting an independently hosted PWA, Streamable HTTP, and remote access are disabled in the initial bridge. Cross-origin local pairing requires CSP, mixed-content, CORS, Private Network Access, DNS-rebinding, and browser-matrix evidence. A later HTTP MCP transport also requires a separate deployment threat model, Origin validation, authentication, secure session handling, token audience checks, and the current MCP authorization profile.
 
 ## Import policy
 

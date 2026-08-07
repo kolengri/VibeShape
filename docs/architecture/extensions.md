@@ -2,9 +2,9 @@
 
 ## Recommendation
 
-VibeShape should support extensions through **separate deterministic and interactive profiles**, not one general-purpose plugin runtime. Parametric regeneration must stay reproducible and offline; UI and external integrations need explicit capabilities and stronger isolation.
+VibeShape should use a **microkernel with modular first-party features and separate deterministic and interactive third-party extension profiles**, not one general-purpose plugin runtime. Parametric regeneration must stay reproducible and offline; UI and external integrations need explicit capabilities and stronger isolation.
 
-This document describes the target contract proposed by [ADR-0012](../adr/0012-capability-based-extension-platform.md). It is not yet an implemented public API. `SPK-006` must accept the sandbox and package model before any SDK compatibility promise is made.
+This document describes the target contract proposed by [ADR-0012](../adr/0012-capability-based-extension-platform.md). [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines which functionality remains in the trusted kernel, how first-party modules reuse the contribution model, and how external automation reaches commands. This is not yet an implemented public API. `SPK-006` must accept the sandbox and package model before any SDK compatibility promise is made.
 
 ## Goals and non-goals
 
@@ -36,6 +36,34 @@ The first platform does not provide:
 | Compute or codec module | Mesh analysis, format codecs, bounded algorithms | Dedicated worker, preferably WebAssembly with explicit imports | Typed buffers and narrowly scoped callbacks | Required when its output enters semantic state |
 
 One package may contain more than one profile, but each entry point has its own capability set, lifecycle, and resource budget. Privileges never flow from a workspace entry point into a feature entry point.
+
+## Trusted kernel and first-party modules
+
+Not every application subsystem is an extension. The trusted kernel owns the invariants required to load, validate, execute, disable, and recover every optional module:
+
+- document IDs, revisions, transactions, command dispatch, and undo/redo;
+- feature-DAG scheduling, schema migration, and unknown-payload preservation;
+- geometry, solver, persistence, and file-format ownership ports;
+- extension installation, integrity, capability, lifecycle, and recovery policy;
+- automation session policy, audit provenance, and host-owned confirmation;
+- localization, diagnostics, and security-critical UI meaning.
+
+Product capabilities above that kernel are cohesive first-party modules. Sketching, part design, exchange, print analysis, and measurement register stable feature types, commands, queries, analyses, codecs, property schemas, and declarative UI contributions. This keeps feature ownership explicit and lets new families be added without editing a central switch statement.
+
+First-party modules and third-party extensions share contribution semantics where practical, but **contract parity is not runtime parity**:
+
+| Concern | First-party module | Third-party extension |
+|---|---|---|
+| Distribution | Bundled and reviewed with the application | Immutable installed `.vsext` artifact |
+| Trust | Project source under normal review and release controls | Untrusted by default |
+| Execution | Trusted main-thread or worker container selected by subsystem | Restricted feature, workspace, iframe, or compute host |
+| Permissions | Release-reviewed host authority | Declared and user-granted capabilities |
+| Availability | Required module families participate in application compatibility | May be missing, disabled, incompatible, or quarantined |
+| Contract | Explicit registries, commands, schemas, diagnostics, and ownership | Compatible public subset plus package and sandbox protocol |
+
+Built-in code does not receive a second private document mutation path. UI and modules request the same domain commands used by extensions and automation. Trusted performance-sensitive evaluators may access internal host ports that are never promised to third parties, but they still cannot bypass transactions, revisions, geometry ownership, or persistence invariants.
+
+Modularity does not require one Bun workspace or distributable package per feature. Closely related features can live in one module family until dependency, execution, ownership, testing, or publication evidence justifies extraction. Module dependencies are explicit, acyclic, and unable to change evaluation semantics through registration order.
 
 ## Why this differs from Onshape
 
@@ -315,6 +343,8 @@ packages/
 ```
 
 These packages are intentionally not scaffolded yet. Their names and boundaries may change based on the sandbox spike. The public API should expose explicit package subpaths, generated API documentation, compatibility fixtures, and a CLI run through Bun for pack, inspect, sign, and test operations.
+
+First-party module descriptors and the adapter-neutral automation surface are designed before this public SDK. MCP is not an extension entry point: it translates protocol resources and tools into the same bounded query, draft, and command contracts. Extension-contributed commands require a separate host-controlled automation approval before they can appear through MCP. See [Automation and MCP architecture](automation-and-mcp.md).
 
 An extension release must pass:
 

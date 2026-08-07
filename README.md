@@ -23,6 +23,7 @@ Key decisions:
 - internationalization: typed ICU messages through **use-intl** in a local-first `@vibeshape/i18n` package;
 - code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
 - extensibility: a proposed **capability-based extension platform** with deterministic, exact-version feature modules separated from sandboxed UI/integration code; executable third-party support remains gated by `SPK-006`;
+- modularity and automation: a proposed **microkernel plus cohesive first-party modules**, with a local MCP bridge planned over the same revisioned query, draft, preview, and command contracts used by the application;
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
 - primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;
@@ -43,6 +44,7 @@ Key decisions:
 | [Internationalization](docs/architecture/internationalization.md) | Typed messages, locale resolution, catalog ownership, and verification |
 | [Geometry and parametrics](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming, and caching |
 | [Extension architecture](docs/architecture/extensions.md) | Extension profiles, packages, version locks, capabilities, isolation, UX, and spike gate |
+| [Automation and MCP](docs/architecture/automation-and-mcp.md) | First-party module boundary, local MCP bridge, resources, tools, drafts, pairing, and safety gates |
 | [Data model and `.vshape`](docs/architecture/data-model-and-file-format.md) | Entities, events, units, and native format |
 | [Local-first persistence](docs/architecture/local-first-storage.md) | Autosave, recovery, OPFS, and portability |
 | [3D-printing workflow](docs/3d-printing.md) | Analysis, tolerances, export, and slicing boundary |

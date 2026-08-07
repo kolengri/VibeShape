@@ -16,6 +16,7 @@
 | R10 | Mesh generation, picking, or rendering blocks the main thread | Medium | High | Geometry worker, transferable arrays, levels of detail, and profiling |
 | R11 | A third-party extension exfiltrates data, blocks the UI, corrupts a project, or retains revoked authority | High | Critical | No execution before `SPK-006`; separate profiles, least-privilege capabilities, isolated hosts, strict CSP, budgets, termination, and restricted mode |
 | R12 | An unavailable or silently updated extension makes a document irreproducible | High | Critical | Exact version and integrity lock, offline artifact retention, explicit updates, payload preservation, invariant preview, and rollback |
+| R13 | An AI client bypasses document invariants, commits stale or unintended geometry, or exposes private local context through MCP | High | Critical | Local opt-in pairing, bounded resources, explicit schema-backed tools, disposable drafts, host confirmation, revision preconditions, cancellation, provenance, and no generic execution tool |
 
 ## Details
 
@@ -81,6 +82,16 @@ Browser workers improve responsiveness but are not, by themselves, a security bo
 
 **Fallback:** ship only stable built-in registries and preserve extension metadata in restricted mode. This keeps future extensibility possible without accepting untrusted execution risk in alpha.
 
+### AI automation and MCP
+
+MCP makes tools model-controlled but does not make model output trustworthy or tool annotations enforceable. A loopback server is also network-reachable by local browser processes unless origin, authentication, and session scope are enforced deliberately.
+
+**Rule:** the MCP bridge is an external adapter over the normal query and command path. It cannot mutate document storage, application stores, geometry handles, or extension state directly. Every write occurs in a disposable draft, returns a bounded preview and diagnostics, and commits only under host policy with a matching base revision.
+
+**Privacy rule:** pairing is local, explicit, revocable, and scoped to selected open documents. Resources exclude other tabs, the project library, raw files, private extension storage, paths, tokens, and hidden application state.
+
+**Fallback:** keep the adapter-neutral automation API for tests and accessibility tooling while shipping no MCP server. The core modeling workflow remains independent of any AI client.
+
 ## Decisions with a High Cost of Change
 
 - Stable IDs and reference format
@@ -91,6 +102,7 @@ Browser workers improve responsiveness but are not, by themselves, a security bo
 - Units and coordinate system
 - Local-first versus server-authoritative data model
 - Extension execution, capability, package, and document-lock boundary
+- First-party module, automation command, and MCP authority boundary
 
 These decisions require an ADR and fixtures before implementation. UI colors, component-library choices, and layout are reversible and must not block geometry spikes.
 

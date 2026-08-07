@@ -7,6 +7,8 @@
 
 VibeShape needs third-party extensibility without weakening deterministic rebuilds, local-first ownership, geometry isolation, or the rule that native project files are not executable. CAD features and general application integrations have different trust and lifecycle requirements and therefore cannot share one unrestricted JavaScript runtime.
 
+The application also needs first-party modularity. Built-in modules should converge on the same contribution and command meanings where practical, but they do not have the same trust, installation, or execution lifecycle as third-party packages. [ADR-0013](0013-microkernel-modules-and-mcp-automation.md) defines that microkernel boundary and the external automation path.
+
 Onshape provides two useful references: deterministic, version-linked FeatureScript custom features and separately hosted OAuth applications embedded in its interface. VibeShape should preserve the former's reproducibility while avoiding a mandatory cloud service and applying a stricter least-privilege model to UI and integration code.
 
 ## Decision
@@ -28,6 +30,7 @@ The complete proposed contract is defined in [Extension architecture](../archite
 ## Consequences
 
 - Built-in and third-party parametric features can eventually share a feature contract without sharing trust.
+- First-party modules use compatible contribution meanings without requiring `.vsext` installation, third-party permission prompts, or identical runtime placement.
 - Rebuild and cache identity include the exact extension artifact, improving reproducibility and offline behavior.
 - The application needs an extension registry, package store, permission store, lifecycle host, and stable contribution-point schemas.
 - Feature modules cannot call arbitrary JavaScript packages or web APIs; functionality must be exposed deliberately through a versioned host API.

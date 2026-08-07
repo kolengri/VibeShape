@@ -17,6 +17,7 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 | E2E | Complete CAD, print, offline, and recovery flows | Playwright |
 | Manual release | Slicers, Safari, interaction quality | Release checklist |
 | Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
+| Automation and MCP conformance | Resources, schemas, draft safety, pairing, consent, progress, cancellation | Contract tests, hostile loopback fixtures, and real MCP client E2E |
 
 ## Geometry assertions
 
@@ -221,6 +222,27 @@ Executable extension tests remain part of `SPK-006` until [ADR-0012](adr/0012-ca
 
 A Web Worker or successful WebAssembly instantiation alone is not isolation evidence. Tests must exercise the browser APIs and host messages that a hostile package would attempt to abuse.
 
+## Automation and MCP conformance
+
+The adapter-neutral automation layer is tested before an MCP dependency exists. Query and command fixtures cover:
+
+- bounded, revision-tagged resources with pagination and semantic-versus-derived markers;
+- explicit command input and structured output schemas plus stable diagnostics;
+- disposable draft creation, multi-command preview, validation, commit, discard, and expiry;
+- stale base revisions, duplicate idempotency keys, conflicts, cancellation, worker crash, and browser disconnect;
+- actor provenance and ordinary undo/redo after an automation commit;
+- denial of direct store, storage, raw file, kernel, extension-management, and generic execution access.
+
+The first MCP bridge additionally requires:
+
+- protocol initialization, capability negotiation, tool/resource discovery, structured output, progress, cancellation, and clean stdio framing;
+- authenticated explicit browser pairing, exact-origin validation, session revocation, document scoping, rate limits, and hostile DNS-rebinding or cross-origin fixtures;
+- host-owned confirmation for writes and destructive effects even when tool annotations or client behavior are incorrect;
+- tool-list removal and draft invalidation when a contributing extension is disabled or revoked;
+- an offline real-client E2E that creates, previews, commits, and undoes one deterministic feature without partial state.
+
+Do not claim MCP support from schema snapshots or an Inspector-only demonstration. The gate requires a real paired browser, the normal worker boundary, persistence, recovery behavior, and one external client.
+
 ## Release gates
 
 Release is blocked by:
@@ -232,5 +254,6 @@ Release is blocked by:
 - missing license notice or source offer;
 - migration without a fixture and backup path;
 - P0 accessibility blocker;
-- unexplained major memory or performance regression.
-- executable extension support without an accepted sandbox result, deterministic version lock, permission revocation, and non-destructive restricted mode.
+- unexplained major memory or performance regression;
+- executable extension support without an accepted sandbox result, deterministic version lock, permission revocation, and non-destructive restricted mode;
+- advertised MCP write support without accepted pairing, draft isolation, confirmation, revision, cancellation, provenance, and real-client E2E evidence.

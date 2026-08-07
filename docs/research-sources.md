@@ -2,9 +2,9 @@
 
 ## Method
 
-Reviewed on **2026-08-07**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on the same date.
+Reviewed on **2026-08-08**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on 2026-08-07.
 
-Context7 was used for library documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/mrdoob/three.js` and `/oven-sh/bun`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
+Context7 was used for library and protocol documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/mrdoob/three.js`, `/oven-sh/bun`, and `/modelcontextprotocol/modelcontextprotocol`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
 
 ## CAD Kernel and Browser Binding
 
@@ -93,6 +93,23 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | [WebAssembly portability](https://webassembly.org/docs/portability/) | WebAssembly defines imports rather than system calls, allowing the host to control which external functions exist |
 
 **Conclusion:** VibeShape should copy Onshape's deterministic, version-linked feature principle, not its mandatory cloud application topology. The safer browser design combines immutable artifact locks, separate execution profiles, capability-scoped host APIs, opaque-origin UI, runtime message validation, termination budgets, and restricted-mode recovery. No single worker, iframe, WebAssembly module, signature, or CSP rule is a complete extension sandbox.
+
+## Model Context Protocol
+
+Context7 resolved the primary MCP specification to `/modelcontextprotocol/modelcontextprotocol`. The architecture targets negotiated protocol compatibility and does not pin a TypeScript SDK until the first executable integration spike.
+
+| Source | Evidence |
+|---|---|
+| [MCP server feature overview](https://modelcontextprotocol.io/specification/2025-11-25/server) | Tools are model-controlled, resources are application-controlled, and prompts are user-controlled protocol primitives |
+| [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) | JSON input/output schemas, structured results, tool annotations, tool-list changes, validation, and human-in-the-loop guidance |
+| [MCP resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources) | URI-addressed context, templates, pagination, subscriptions, and change notifications |
+| [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) | Standard `stdio` and Streamable HTTP transports; local HTTP requires Origin validation, localhost binding, and authentication to prevent DNS rebinding |
+| [MCP progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress) | Request-scoped progress tokens and monotonic progress notifications for active operations |
+| [MCP cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) | Cancellation notifications, race handling, and terminal-request behavior |
+| [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) | HTTP authorization, protected resource metadata, resource indicators, token audience validation, PKCE, and the prohibition on token passthrough |
+| [MCP TypeScript schema](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/schema) | The versioned TypeScript and generated JSON schemas are the normative machine-readable protocol definition |
+
+**Conclusion:** MCP should terminate in a local adapter rather than inside domain or extension packages. Resources map to bounded revisioned views, tools map to explicit draftable commands, and protocol annotations supplement rather than replace VibeShape authorization, preview, confirmation, and audit enforcement. `stdio` is the smallest first transport; a browser pairing channel still needs explicit loopback authentication and origin defense.
 
 ## Monorepo and UI Toolchain
 

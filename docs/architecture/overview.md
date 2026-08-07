@@ -214,7 +214,9 @@ A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untruste
 
 ## Extensibility
 
-The executable extension platform is outside alpha, but the foundation must remain extension-ready. [ADR-0012](../adr/0012-capability-based-extension-platform.md) proposes separate profiles for deterministic parametric feature modules, capability-based workspace extensions, and bounded compute or codec modules.
+The architecture follows a microkernel boundary. Trusted kernel services own transactions, revisions, history, feature scheduling, persistence and geometry ports, capability policy, recovery, and audit provenance. Product functionality such as sketching, part design, exchange, and print analysis is organized as cohesive first-party modules with explicit registries. [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines this boundary.
+
+The executable third-party extension platform is outside alpha, but the foundation must remain extension-ready. [ADR-0012](../adr/0012-capability-based-extension-platform.md) proposes separate profiles for deterministic parametric feature modules, capability-based workspace extensions, and bounded compute or codec modules.
 
 Durable constraints apply before the SDK exists:
 
@@ -224,5 +226,10 @@ Durable constraints apply before the SDK exists:
 - feature and cache hashes reserve the exact extension ID, version, API version, and integrity identity;
 - raw kernel handles, application stores, React nodes, file handles, and ambient browser APIs never become extension contracts;
 - `.vshape` never executes embedded code, auto-installs a package, or silently resolves a missing version from the network.
+- built-in UI, extensions, tests, and automation request the same serializable domain commands rather than mutating stores or documents directly;
+- command descriptors reserve machine-readable schemas, ownership, eligibility, side-effect annotations, preview behavior, revision preconditions, cancellation, and diagnostics;
+- bounded revision-tagged query views can later back accessibility, diagnostics, tests, and MCP resources without exposing internal object graphs.
 
 No empty extension workspace is added yet. `SPK-006` must first prove the sandbox, package validation, resource limits, permissions, cross-browser lifecycle, and recovery behavior. See [Extension architecture](extensions.md) for the target design and explicit gate.
+
+The initial AI automation path is a local MCP bridge over those same query and command contracts. The bridge never owns document state or bypasses draft, preview, confirmation, commit, undo, and persistence behavior. See [Automation and MCP architecture](automation-and-mcp.md).

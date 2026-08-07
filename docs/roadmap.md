@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-The UI shell is not the first milestone. First remove four core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export.
+The UI shell is not the first milestone. First remove four core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export. First-party feature modules and automation share the ordinary command path from the start; an MCP transport is added only when that path can support a real draft, preview, and commit scenario.
 
 All estimates below are **approximate engineering ranges**, not calendar commitments.
 
@@ -50,6 +50,7 @@ SPK-001 now has executable functional evidence and a **Rework** result: browser 
 - Primitive or extrusion modeling without the full sketcher.
 - STEP/STL smoke export.
 - Stable built-in feature and command registries plus preservation of extension locks and unknown custom-feature payloads, without executing third-party code.
+- Cohesive first-party module descriptors and adapter-neutral automation contracts: bounded revision-tagged queries, schema-backed command metadata, disposable drafts, preview, confirmation classes, actor provenance, and revision-safe commit.
 
 ### Demo
 
@@ -149,8 +150,9 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 | Branch and merge | Formal command-conflict model |
 | Optional sync/collaboration | Privacy/security ADR and merge semantics |
 | Extension SDK and local/self-hosted catalogs | Accepted `SPK-006`, stable commands, features, migrations, permissions, and package governance |
+| Local MCP automation bridge | Stable query and command schemas, disposable drafts, preview/commit policy, actor provenance, and an accepted local pairing/security spike |
 | Integrated slicing | Separate licensing, performance, and safety spike |
-| AI features | Deterministic command API, preview, sandbox, and no hidden uploads |
+| Higher-level AI features | Accepted MCP or equivalent automation boundary, deterministic command API, preview, sandbox, and no hidden uploads |
 
 ## Backlog prioritization
 
