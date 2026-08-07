@@ -1,75 +1,76 @@
-# Локальный deployment
+# Local deployment
 
-## Решение
+## Decision
 
-Production VibeShape — набор статических файлов, но запускать его через `file://` нельзя. Нужен локальный или self-hosted HTTP(S) server, потому что module workers, WASM, service worker и storage APIs зависят от origin/secure context.
+Production VibeShape is a set of static files, but it cannot run through `file://`. It requires a local or self-hosted HTTP(S) server because module workers, WASM, service workers, and storage APIs depend on an origin and secure context.
 
-## Режимы
+## Modes
 
-| Режим | Назначение | Сеть после установки |
+| Mode | Purpose | Network after installation |
 |---|---|---|
-| `localhost` static server | полностью локальная установка/разработка | не нужна для core после наличия assets |
-| Self-hosted HTTPS | домашняя сеть, школа, организация | нужна только для загрузки/updates; CAD local |
-| Installable PWA | desktop-like launch/offline | core offline после первой успешной установки |
-| Public static host | удобная доставка | файлы проекта всё равно обрабатываются локально |
+| `localhost` static server | Fully local installation and development | Not required for core once assets exist |
+| Self-hosted HTTPS | Home network, school, or organization | Required only for loading and updates; CAD remains local |
+| Installable PWA | Desktop-like launch and offline use | Core works offline after the first successful installation |
+| Public static host | Convenient delivery | Project files are still processed locally |
 
-Desktop wrapper/Tauri/Electron не нужен для v1. Он MAY появиться как дополнительная упаковка того же web build, но не должен стать отдельной логикой продукта.
+A Tauri or Electron wrapper is unnecessary for v1. A later wrapper MAY package the same web build but cannot create a separate product-logic path.
 
-## Обязательные свойства server
+## Required server behavior
 
-- корректный MIME для `.wasm` (`application/wasm`), JS modules и manifest;
-- immutable cache для content-hashed assets;
-- no-cache/revalidation для entry HTML/service-worker control files;
-- SPA fallback только для UI routes, не для assets/formats;
-- CSP и security headers;
-- byte-range только если реально нужен large asset strategy;
-- compression Brotli/gzip для JS/WASM, без двойной компрессии ZIP/3MF;
-- отсутствие CDN runtime dependencies.
+- Correct MIME type for `.wasm`: `application/wasm`.
+- Correct MIME types for JavaScript modules and manifest.
+- Immutable caching for content-hashed assets.
+- Revalidation or no-cache for entry HTML and service-worker control files.
+- SPA fallback only for UI routes, never for assets and file formats.
+- Content Security Policy and security headers.
+- Byte ranges only when a measured large-asset strategy needs them.
+- Brotli or gzip for JS/WASM without recompressing ZIP/3MF.
+- No runtime CDN dependencies.
 
 ## Secure context
 
-`localhost` считается secure context в современных browsers для многих web APIs; self-hosted по сети должен использовать HTTPS. Конкретные API feature-detect, а не предполагаются по protocol/UA.
+Modern browsers treat `localhost` as a secure context for many APIs. Self-hosting over a network requires HTTPS. Feature-detect every capability instead of inferring it from protocol or user agent.
 
-## COOP/COEP
+## COOP and COEP
 
-Baseline не требует `SharedArrayBuffer` и multithreaded WASM. Если profiling докажет необходимость threads:
+The baseline does not require `SharedArrayBuffer` or multithreaded WASM. If profiling proves threads are necessary:
 
-- добавить `Cross-Origin-Opener-Policy: same-origin`;
-- добавить `Cross-Origin-Embedder-Policy: require-corp` или согласованную credentialless policy;
-- self-host все subresources с корректными CORP/CORS;
-- проверить OAuth/popups/embedding и third-party integrations;
-- зафиксировать change отдельным ADR.
+- add `Cross-Origin-Opener-Policy: same-origin`;
+- add `Cross-Origin-Embedder-Policy: require-corp` or a reviewed credentialless policy;
+- self-host all subresources with correct CORP/CORS;
+- test popups, embedding, authentication, and third-party integrations;
+- record the change in a separate ADR.
 
-Не включать isolation «на всякий случай»: он меняет hosting и integration surface.
+Do not enable cross-origin isolation speculatively; it changes hosting and integration constraints.
 
-## Offline/update flow
+## Offline and update flow
 
-1. Первая загрузка получает versioned app shell/worker/WASM.
-2. Service worker precache завершается и сообщает offline readiness.
-3. Новый build скачивается в фоне.
-4. При dirty/open project activation ждёт.
-5. UI предлагает сохранить snapshot/экспортировать и перезагрузить.
-6. После reload storage migrations идут backup-first.
-7. При failure предыдущий semantic snapshot остаётся читаемым; app shell rollback strategy тестируется.
+1. First load obtains the versioned application shell, worker, and WASM.
+2. Service-worker precache completes and reports offline readiness.
+3. A new build downloads in the background.
+4. Activation waits while a dirty project is open.
+5. The UI offers snapshot save or recovery export before reload.
+6. Storage migrations run backup-first after reload.
+7. Failure preserves the previous semantic snapshot and follows the tested application-shell rollback strategy.
 
-## Локальный дистрибутив позже
+## Future local distribution
 
-Release MAY включать:
+A release MAY include:
 
-- статический архив;
-- маленький open-source local server launcher;
-- checksums/signatures;
-- SBOM и source bundles OCCT/SolveSpace;
-- инструкции Windows/macOS/Linux.
+- static archive;
+- a small open-source local-server launcher;
+- checksums and signatures;
+- SBOM and OCCT/SolveSpace source bundles;
+- Windows, macOS, and Linux instructions.
 
-Launcher не получает доступ к проектам и не поднимает backend API без отдельной необходимости. Открытие браузера/автообновление — packaging details, не CAD architecture.
+The launcher does not access projects and does not expose a backend API without a separate requirement. Browser launch and auto-update are packaging details, not CAD architecture.
 
-## Acceptance
+## Acceptance criteria
 
-- clean install и offline reopen на browser matrix;
-- WASM загружается с правильным MIME;
-- no network request в offline core workflow;
-- update не теряет открытый документ;
-- self-host deployment не требует proprietary service;
-- license/source/notices доступны без сети;
-- storage origin видим пользователю: смена host/port создаёт другое browser storage и об этом нужно предупреждать.
+- Clean install and offline reopen across the browser matrix.
+- WASM loads with the correct MIME type.
+- Core offline workflow makes no network requests.
+- Updates do not lose an open document.
+- Self-hosting requires no proprietary service.
+- Licenses, source offers, and notices remain available offline.
+- The storage origin is visible to users: changing host or port creates separate browser storage and must be explained.

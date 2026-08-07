@@ -1,27 +1,27 @@
-# Контур 3D-печати
+# 3D-printing workflow
 
-## Рекомендация
+## Recommendation
 
-VibeShape отвечает за **моделирование, валидацию и качественный обмен**, а слайсер — за технологические траектории. Основной экспорт v1 — 3MF; STEP нужен для точного CAD-обмена, STL — для совместимости.
+VibeShape owns **modeling, validation, and high-quality exchange**. A slicer owns manufacturing toolpaths. The primary v1 output is 3MF; STEP is the exact CAD exchange format, and STL is retained for compatibility.
 
-Встроенный slicer не входит в MVP: PrusaSlicer/libslic3r и CuraEngine — большие самостоятельные AGPL C++-проекты со сложными профилями принтеров. Их WebAssembly-перенос не должен блокировать CAD.
+A built-in slicer is outside the MVP. PrusaSlicer/libslic3r and CuraEngine are large standalone AGPL C++ projects with complex printer-profile systems. Porting and maintaining them in a browser must not block CAD development.
 
 ## Printer profile
 
-Локальный профиль содержит только сведения, нужные CAD-анализу:
+A local profile contains only information required for CAD analysis:
 
 - build volume X/Y/Z;
-- форма bed: rectangular/circular;
-- nozzle diameter(s);
+- rectangular or circular bed shape;
+- nozzle diameter or diameters;
 - nominal layer height;
-- process: FDM/FFF или resin;
-- material family и пользовательские design rules;
-- minimum wall/hole/clearance recommendations;
+- FDM/FFF or resin process;
+- material family and user-defined design rules;
+- recommended minimum wall, hole, and clearance;
 - overhang warning angle;
-- shrink/fit notes;
-- имя/источник/версия профиля.
+- shrinkage and fit notes;
+- profile name, source, and version.
 
-Это не полный slicer profile: temperatures, speeds, accelerations и G-code scripts не входят в alpha.
+It is not a complete slicer profile. Temperatures, speeds, acceleration, and G-code scripts are outside alpha.
 
 ## Print Check pipeline
 
@@ -37,122 +37,122 @@ flowchart TD
     R --> E["3MF/STL export"]
 ```
 
-### Обязательные P0 проверки
+### Required P0 checks
 
-- документ и export units;
-- B-Rep validity и наличие solid;
+- document and export units;
+- B-Rep validity and solid existence;
 - non-zero volume;
-- mesh closed/manifold;
-- degenerate triangles, NaN/Infinity, zero-area faces;
+- closed and manifold mesh;
+- degenerate triangles, NaN/Infinity, and zero-area faces;
 - consistent triangle orientation;
-- disconnected shells/components;
-- bounding box и попадание в build volume;
-- triangle count/file size estimate;
-- выбранная tessellation tolerance;
-- parts below/above bed после placement.
+- disconnected shells or components;
+- bounding box and fit within the build volume;
+- estimated triangle count and file size;
+- selected tessellation tolerance;
+- parts below or above the build plate after placement.
 
-### P1 эвристики
+### P1 heuristics
 
-- overhang heatmap относительно выбранного build direction;
+- overhang heatmap relative to build direction;
 - bridge candidates;
-- thin-wall approximation через sampling/raycast/SDF strategy;
-- minimum hole/slot/embossed feature warnings;
-- unsupported islands по слоям (coarse analysis);
-- clearance/interference для нескольких bodies;
-- orientation suggestions по contact area, height, overhang и support proxy;
-- enclosed void/resin drain warnings для SLA, если можно определить надёжно.
+- thin-wall approximation using sampling, ray casting, or an SDF strategy;
+- minimum hole, slot, and embossed-feature warnings;
+- coarse unsupported-island analysis by layer;
+- clearance and interference between bodies;
+- orientation suggestions based on contact area, height, overhang, and a support proxy;
+- enclosed-void and resin-drain warnings where they can be determined reliably.
 
-Каждый результат имеет:
+Every result includes:
 
-- severity `info/warning/error`;
-- геометрическую selection/overlay;
-- правило и его порог;
-- confidence/ограничение метода;
-- suggestion, но не автоматическую destructive repair по умолчанию.
+- severity: `info`, `warning`, or `error`;
+- geometry selection or overlay;
+- rule and threshold;
+- confidence and method limitation;
+- suggestion, without destructive automatic repair by default.
 
-## Design rules и допуски
+## Design rules and tolerances
 
-Нельзя вшивать универсальные «правильные» числа: они зависят от принтера, материала, ориентации и калибровки.
+There are no universal correct numbers. Results depend on printer, material, orientation, calibration, and process.
 
-Приложение предоставляет:
+The application provides:
 
-- безопасные стартовые presets, явно помеченные рекомендациями;
-- пользовательские калибровочные значения;
+- conservative starter presets explicitly labeled as recommendations;
+- user calibration values;
 - per-document overrides;
-- fit intent: loose/sliding/press/custom;
-- сохранение фактически выбранного clearance как параметра модели;
-- предупреждение, что компенсация размеров должна подтверждаться тестовой печатью.
+- fit intent: loose, sliding, press, or custom;
+- the selected clearance as an explicit model parameter;
+- a warning that compensation requires validation with a test print.
 
 ## 3MF
 
-3MF — ZIP/XML-формат со специфицированными units, mesh, components/transforms, metadata и extensions. Для v1 поддерживается минимальный совместимый профиль:
+3MF is a ZIP/XML format with defined units, meshes, components and transforms, metadata, and extensions. v1 supports a minimal interoperable profile:
 
 - Core mesh;
-- unit `millimeter`;
-- несколько objects/components;
-- build items/transforms;
-- base color/material labels, если корректно поддержаны;
-- thumbnail и application metadata;
-- без vendor-specific slicer settings в первом релизе.
+- `millimeter` units;
+- multiple objects and components;
+- build items and transforms;
+- base color or material labels when supported correctly;
+- thumbnail and application metadata;
+- no vendor-specific slicer settings in the first release.
 
-Writer обязан:
+The writer must:
 
-- следовать OPC package/relationship структуре;
-- выдавать valid XML без внешних entities;
-- использовать UTF-8;
-- обеспечивать уникальные resource IDs;
-- писать только finite coordinates;
-- проходить official samples/conformance validation, если доступно;
-- открываться минимум в двух независимых slicers в release smoke test.
+- follow OPC package and relationship structure;
+- emit valid XML without external entities;
+- use UTF-8;
+- use unique resource IDs;
+- write only finite coordinates;
+- pass official conformance samples or validation where available;
+- open in at least two independent slicers in release smoke tests.
 
-Не следует обещать сохранение slicer profiles между разными программами: vendor metadata и extensions различаются.
+Do not promise portability of slicer profiles between vendors; metadata and extensions differ.
 
 ## STL
 
-- binary STL export по умолчанию;
-- единицы явно показываются пользователю и фиксируются в export report, потому что сам STL не переносит надёжную unit semantics;
-- export строится из print-quality tessellation, не display LOD;
-- normal пересчитываются/проверяются;
-- multi-body: отдельные файлы или один согласованный mesh по выбору;
-- import создаёт `MeshBody`; repair не превращает его в точный параметрический solid.
+- Export binary STL by default.
+- Show units explicitly and record them in the export report because STL does not carry reliable unit semantics.
+- Build export from print-quality tessellation, never display LOD.
+- Recompute or validate normals.
+- For multiple bodies, offer separate files or one agreed mesh.
+- Import creates a `MeshBody`; repair does not turn it into an exact parametric solid.
 
 ## STEP
 
-- используется для сохранения точной B-Rep geometry;
-- рекомендуемый профиль — AP242, fallback AP214 после compatibility spike;
-- names/colors/layers сохраняются через XDE, где binding это позволяет;
-- import report показывает units, bodies, unsupported entities и healing;
-- round-trip сравнивается по geometric invariants, а не byte equality;
-- STEP export не содержит feature history VibeShape.
+- Preserve exact B-Rep geometry.
+- Prefer AP242 and use AP214 as a compatibility fallback after the spike.
+- Preserve names, colors, and layers through XDE where bindings allow it.
+- The import report records units, bodies, unsupported entities, and healing.
+- Round-trip tests compare geometry invariants, not bytes.
+- STEP export does not contain VibeShape feature history.
 
 ## Placement
 
-Placement for print — производная конфигурация, а не изменение design coordinates:
+Print placement is a derived configuration, not a change to design coordinates:
 
-- body transform на build plate хранится в print setup;
-- `Place face on bed`, rotate, arrange вручную;
-- design origin не переписывается;
-- 3MF build items получают placement transforms;
-- STEP export по умолчанию использует design coordinates, с явной опцией applied placement.
+- body transform on the build plate belongs to print setup;
+- provide Place Face on Bed, rotate, and manual arrangement;
+- never rewrite design origin;
+- 3MF build items receive placement transforms;
+- STEP exports design coordinates by default, with an explicit Apply Placement option.
 
-## Слайсер: поздний adapter
+## Future slicer adapter
 
-Возможные P2 пути после v1:
+Possible P2 paths after v1:
 
-1. deep-link/export в установленный slicer;
-2. localhost connector к desktop PrusaSlicer/Cura/Orca CLI с явным consent;
-3. отдельный WASM slicer worker;
-4. remote opt-in slicing service.
+1. Deep-link or export to an installed slicer.
+2. A localhost connector to desktop PrusaSlicer, Cura, or Orca CLI with explicit consent.
+3. A dedicated WASM slicer worker.
+4. An optional remote slicing service.
 
-Каждый путь требует отдельного ADR по лицензии, профилям, безопасности G-code и ресурсам. VibeShape не отправляет G-code на реальный принтер без отдельного подтверждаемого safety workflow.
+Every path requires a separate ADR covering licensing, profiles, G-code safety, and resources. VibeShape never sends G-code to a real printer without a separate, explicit safety workflow.
 
 ## Release fixtures
 
-- single watertight bracket;
-- two-color/two-object assembly-like 3MF;
-- thin-wall warning model;
-- overhang calibration model;
-- multiple disconnected shells;
-- intentionally non-manifold STL;
-- very large mesh near resource limits;
-- millimeter/inch STEP imports с известным bounding box.
+- Single watertight bracket.
+- Two-object or two-color 3MF.
+- Thin-wall warning model.
+- Overhang calibration model.
+- Multiple disconnected shells.
+- Intentionally non-manifold STL.
+- Very large mesh near resource limits.
+- Millimeter and inch STEP imports with known bounding boxes.

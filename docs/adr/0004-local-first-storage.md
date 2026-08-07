@@ -1,16 +1,16 @@
-# ADR-0004: IndexedDB, OPFS и `.vshape`
+# ADR-0004: IndexedDB, OPFS, and `.vshape`
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Решение
+## Decision
 
-Semantic snapshots/events хранятся транзакционно в IndexedDB через Dexie, крупный disposable cache — в OPFS. Переносимый ZIP-контейнер `.vshape` является user-controlled backup/exchange.
+Store semantic snapshots and events transactionally in IndexedDB through Dexie, and store large disposable caches in OPFS. The portable `.vshape` ZIP container is the user-controlled backup and exchange format.
 
-## Последствия
+## Consequences
 
-- нет обязательного backend;
-- browser storage может быть очищено, поэтому UI различает internal save и file backup;
-- File System Access — progressive enhancement;
-- multi-tab alpha использует single-writer lease;
-- SQLite WASM отложен до доказанной необходимости.
+- No mandatory backend is required.
+- Browser storage can be cleared, so the UI must distinguish internal saves from file backups.
+- File System Access is a progressive enhancement.
+- The alpha uses a single-writer lease across tabs.
+- SQLite WASM is deferred until a demonstrated need exists.

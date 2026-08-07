@@ -1,10 +1,10 @@
-# План начала реализации
+# Implementation starting plan
 
-## Рекомендация
+## Recommendation
 
-Создать пять короткоживущих spike-веток/пакетов, а production monorepo scaffold завершать только после stop/go review. Код spike можно выбросить; fixtures, benchmark harness, build scripts и выводы сохраняются.
+Create five short-lived spike branches or packages. Finalize the production monorepo scaffold only after a stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
 
-## Зависимости
+## Dependencies
 
 ```mermaid
 flowchart LR
@@ -17,191 +17,191 @@ flowchart LR
     G --> F["Phase 1 foundation"]
 ```
 
-SPK-001, SPK-002 и SPK-005 можно выполнять параллельно командой. Один разработчик делает их последовательно в указанном порядке: 001 → 002 → 003 → 004 → 005.
+With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. One developer should use this order: 001 → 002 → 003 → 004 → 005.
 
 ## SPK-001 — OCCT/Replicad worker
 
-### Вопрос
+### Question
 
-Можно ли получить требуемое exact CAD API, STEP и operation history в приемлемом browser resource budget?
+Can the browser provide the required exact CAD API, STEP support, and operation history within an acceptable resource budget?
 
-### Сценарий
+### Scenario
 
-1. Инициализировать WASM в module worker.
-2. Создать box и cylinder.
-3. Boolean cut.
-4. Fillet выбранных semantic edges.
-5. Проверить solid/volume/bbox.
-6. Tessellate и передать typed arrays main thread.
-7. Export STEP и binary STL.
-8. Повторить create/dispose 1 000 раз.
-9. Import полученного STEP и сравнить invariants.
+1. Initialize WASM in a module worker.
+2. Create a box and cylinder.
+3. Perform boolean cut.
+4. Fillet selected semantic edges.
+5. Validate the solid, volume, and bounding box.
+6. Tessellate and transfer typed arrays to the main thread.
+7. Export STEP and binary STL.
+8. Repeat create/dispose 1,000 times.
+9. Import the exported STEP and compare invariants.
 
-### Сравнить
+### Compare
 
-- Replicad custom build;
-- direct/custom OpenCascade.js binding.
+- Replicad with its custom build.
+- Direct/custom OpenCascade.js bindings.
 
-### Артефакты
+### Artifacts
 
-- pinned upstream commits и toolchain;
+- pinned upstream commits and toolchain;
 - reproducible build;
-- список bindings;
-- gzip/brotli/raw size;
-- startup/operation/peak memory по browser matrix;
+- binding list;
+- raw, gzip, and Brotli size;
+- startup, operation, and peak-memory data across browsers;
 - leak chart;
-- API gaps;
-- recommendation update к ADR-0001.
+- API-gap report;
+- recommendation update for ADR-0001.
 
 ### Stop/go
 
-Go, если STEP/boolean/fillet/validation/history доступны, main thread не блокируется, repeated run не имеет необъяснённого unbounded growth. Иначе уменьшить bindings/сменить adapter; не строить feature UI поверх непроверенного API.
+Proceed only when STEP, boolean, fillet, validation, and history are available; the main thread stays responsive; and repeated runs show no unexplained unbounded growth. Otherwise, reduce bindings or replace the adapter before building feature UI.
 
 ## SPK-002 — sketch solver
 
-### Вопрос
+### Question
 
-Можно ли выделить из SolveSpace устойчивый, тестируемый solver ABI без зависимости от экспериментального UI/web-port?
+Can the SolveSpace solver be isolated behind a robust, testable ABI without depending on its experimental UI or web port?
 
-### Набор
+### Coverage
 
-- entities: point/line/circle/arc;
-- P0 constraints из feature matrix;
-- under/fully/over-constrained;
+- point, line, circle, and arc entities;
+- all P0 constraints;
+- under-, fully-, and over-constrained states;
 - conflict reporting;
 - drag continuation;
-- 100 randomized perturbations каждого canonical sketch;
-- degenerate/coincident geometry;
-- create/solve/dispose loop.
+- 100 randomized perturbations per canonical sketch;
+- degenerate and coincident geometry;
+- repeated create, solve, and dispose.
 
 ### ABI goal
 
-Typed arrays/flat records in, typed solution/residual/status/conflicts out. Никаких solver C++ pointers за adapter boundary.
+Flat records and typed arrays in; typed solution, residual, status, and conflict set out. No C++ solver pointers cross the adapter boundary.
 
-### Артефакты
+### Artifacts
 
-- upstream commit/selected files/patches;
+- upstream commit, selected files, and patches;
 - build and license bundle;
 - fixture corpus;
-- residual/performance/memory report;
-- список unsupported constraints;
-- stop/go и fallback estimate.
+- residual, performance, and memory report;
+- unsupported-constraint list;
+- stop/go result and fallback estimate.
 
 ## SPK-003 — TopoRef
 
-### Вопрос
+### Question
 
-Достаточны ли OCCT history + semantic roles + signatures, чтобы не делать silent remap?
+Are OCCT history, semantic roles, and geometry signatures sufficient to prevent silent topology remapping?
 
 ### Corpus
 
-- extrude side/caps;
-- hole through face;
-- boolean creates/splits faces;
-- fillet changes adjacent edges;
+- extrusion side faces and caps;
+- hole through a face;
+- boolean-created and split faces;
+- fillet changes to adjacent edges;
 - symmetric bodies;
-- pattern count change;
-- suppress/re-enable upstream feature.
+- pattern count changes;
+- suppression and re-enable of upstream features.
 
-### Проверка
+### Verification
 
-Для каждого parameter mutation заранее разметить expected `resolved/ambiguous/missing`. Измерить precision/recall автоматического resolve, но главным failure считать **false confident match**.
+Pre-label the expected `resolved`, `ambiguous`, or `missing` outcome for every parameter mutation. Measure precision and recall, but treat a **false confident match** as the primary failure.
 
 ### Stop/go
 
-Go при нулевом silent wrong match на обязательном corpus и объяснимой ambiguity. Низкий auto-resolve допустим временно; неверенная автоматика — нет.
+Proceed only with zero silent wrong matches in the required corpus and explainable ambiguity. A temporarily low automatic-resolution rate is acceptable; incorrect automation is not.
 
-## SPK-004 — STEP/STL/3MF
+## SPK-004 — STEP, STL, and 3MF
 
-### Вопрос
+### Question
 
-Можно ли обеспечить interoperable outputs полностью локально?
+Can fully local exports interoperate reliably?
 
-### Сценарии
+### Scenarios
 
-- STEP AP242/AP214, mm/inch, multiple solids, names/colors если доступны;
-- binary STL с двумя tessellation tolerances;
-- 3MF Core: units, 1/2 objects, components/transforms, thumbnail;
-- malicious/truncated/oversized fixtures;
-- round-trip dimensions/invariants;
-- open в PrusaSlicer и Cura/OrcaSlicer.
+- STEP AP242/AP214 with millimeters/inches, multiple solids, names, and colors where available;
+- binary STL with two tessellation tolerances;
+- 3MF Core with units, one or two objects, components, transforms, and thumbnail;
+- malicious, truncated, and oversized fixtures;
+- round-trip dimension and invariant checks;
+- open results in PrusaSlicer and Cura/OrcaSlicer.
 
-### Артефакты
+### Artifacts
 
-- writer/adapter decision;
+- writer or adapter decision;
 - conformance and slicer matrix;
-- export report schema;
+- export-report schema;
 - resource limits;
 - known metadata loss.
 
 ## SPK-005 — local-first PWA
 
-### Вопрос
+### Question
 
-Надёжны ли autosave/recovery/update/fallback на целевых браузерах?
+Are autosave, recovery, update, and fallback behavior reliable across target browsers?
 
-### Сценарии
+### Scenarios
 
-- IndexedDB transaction journal + snapshot;
-- OPFS cache write/checksum/orphan cleanup;
-- forced tab kill во время command/save;
+- IndexedDB transaction journal and snapshot;
+- OPFS cache write, checksum, and orphan cleanup;
+- forced tab termination during command and save;
 - quota error;
-- multi-tab lease/takeover;
-- service-worker update с открытым dirty project;
+- multi-tab lease and takeover;
+- service-worker update with an open dirty project;
 - offline reopen;
-- system picker где доступен и download/upload fallback.
+- system picker where available and upload/download fallback elsewhere.
 
-### Артефакты
+### Artifacts
 
 - browser matrix;
 - recovery loss bound;
 - storage schema v0;
 - failure UX;
-- decision о persistent storage prompt.
+- persistent-storage prompt decision.
 
-## Architecture review после spikes
+## Architecture review after spikes
 
-Обновить:
+Update:
 
-- ADR status и concrete engine/solver versions;
-- technology stack/lock policy;
+- ADR statuses and exact engine/solver versions;
+- technology stack and lock policy;
 - performance budgets;
 - risk probabilities;
 - roadmap estimates;
-- native manifest engine metadata;
-- license/source distribution plan.
+- native-manifest engine metadata;
+- license and source-distribution plan.
 
-Review заканчивается одним из решений:
+The review ends with one decision:
 
-- **Proceed** — все critical gates пройдены;
-- **Proceed with reduced scope** — функции alpha урезаны и документы синхронизированы;
-- **Rework** — повторить конкретный spike;
-- **Stop** — browser-only exact CAD не проходит принятые ограничения.
+- **Proceed** — all critical gates pass.
+- **Proceed with reduced scope** — alpha is reduced and documentation is synchronized.
+- **Rework** — repeat a specific spike.
+- **Stop** — browser-only exact CAD does not meet accepted constraints.
 
-## Первые Phase 1 epics
+## Initial Phase 1 epics
 
-После Proceed:
+After Proceed:
 
-1. `E01 Tooling`: Bun workspaces, pinned Bun + `bun.lock`, catalogs, strict TS, `bun ci`, license/SBOM skeleton.
-2. `E02 Domain`: IDs, units, Document/Feature DAG, commands/revisions.
-3. `E03 Protocol`: schemas, worker lifecycle, diagnostics, generation cancellation.
-4. `E04 Geometry`: production adapter из SPK-001, ownership/leak guard.
-5. `E05 Viewer`: Three.js scene, LOD, selection mapping, dispose.
-6. `E06 Persistence`: journal/snapshot/recovery and `.vshape` v0.
-7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configs/tokens и compact shell primitives.
+1. `E01 Tooling`: Bun workspaces, pinned Bun and `bun.lock`, catalogs, strict TypeScript, `bun ci`, and license/SBOM skeleton.
+2. `E02 Domain`: IDs, units, `Document`/`Feature` DAG, commands, and revisions.
+3. `E03 Protocol`: schemas, worker lifecycle, diagnostics, and generation cancellation.
+4. `E04 Geometry`: production adapter from SPK-001 with ownership and leak guards.
+5. `E05 Viewer`: Three.js scene, LOD, selection mapping, and disposal.
+6. `E06 Persistence`: journal, snapshot, recovery, and `.vshape` v0.
+7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configuration, tokens, and compact shell primitives.
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 
-Каждый epic имеет positive, failure, recovery и license/format acceptance criteria.
+Every epic includes positive, failure, recovery, and license or format acceptance criteria.
 
-## Definition of Done для геометрической функции
+## Definition of Done for a geometry feature
 
-- domain schema и migration impact определены;
-- preview/commit/cancel работают;
-- worker message runtime-валидируется;
-- kernel result проверен, temporaries освобождены;
-- TopoRef outputs/references определены;
-- undo/redo и reopen/rebuild тестируются;
-- invalid/degenerate inputs имеют typed diagnostic;
-- fixture assertions используют invariants;
-- performance/memory не выходят за budget без ADR;
-- docs/known limitations обновлены.
+- Domain schema and migration impact are defined.
+- Preview, commit, and cancel work.
+- Worker messages are runtime-validated.
+- Kernel result is validated and temporary objects are released.
+- `TopoRef` outputs and references are defined.
+- Undo/redo and reopen/rebuild are tested.
+- Invalid and degenerate inputs return typed diagnostics.
+- Fixture assertions use invariants.
+- Performance and memory stay within budget or have an ADR.
+- Documentation and known limitations are updated in English.

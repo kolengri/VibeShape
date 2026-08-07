@@ -1,16 +1,16 @@
-# ADR-0002: Geometry worker boundary
+# ADR-0002: Geometry Worker Boundary
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Решение
+## Decision
 
-OCCT, solver, rebuild, tessellation и CAD import/export выполняются вне main thread. Граница — versioned structured-clone protocol; большие buffers передаются transfer.
+Run OCCT, the solver, rebuilds, tessellation, and CAD import and export outside the main thread. The boundary is a versioned structured-clone protocol, and large buffers are transferred rather than copied.
 
-## Последствия
+## Consequences
 
-- UI не блокируется синхронными kernel-вызовами;
-- kernel handles не протекают в React/Three;
-- worker можно перезапустить из committed snapshot;
-- cancel часто логический, а не прерывание текущего C++ вызова;
-- protocol и diagnostics требуют явного versioning/testing.
+- Synchronous kernel calls do not block the UI.
+- Kernel handles cannot leak into React or Three.js.
+- The worker can restart from a committed snapshot.
+- Cancellation is often logical cancellation rather than interruption of the active C++ call.
+- The protocol and its diagnostics require explicit versioning and testing.

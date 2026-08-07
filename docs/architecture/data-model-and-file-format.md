@@ -1,6 +1,6 @@
-# Модель данных и native-формат
+# Data model and native file format
 
-## Основные сущности
+## Core entities
 
 ```mermaid
 erDiagram
@@ -18,18 +18,18 @@ erDiagram
     DOCUMENT }o--o| PRINTER_PROFILE : uses
 ```
 
-## Идентификаторы
+## Identifiers
 
-- UUIDv7/совместимый sortable ID для persistent entities;
-- ID не содержит позицию в массиве или имя пользователя;
-- rename не меняет ID;
-- copy создаёт новые IDs и явную `derivedFrom` metadata;
-- sub-elements sketch имеют свои IDs;
-- kernel handles и array indices никогда не сериализуются как identity.
+- Use UUIDv7 or a compatible sortable ID for persistent entities.
+- IDs never encode array position or user-visible names.
+- Renaming does not change an ID.
+- Copying creates new IDs and explicit `derivedFrom` metadata.
+- Sketch sub-elements have their own IDs.
+- Kernel handles and array indices are never serialized as identity.
 
 ## Document schema
 
-Концептуально:
+Conceptually:
 
 ```text
 Document
@@ -43,41 +43,41 @@ Document
   applicationMetadata
 ```
 
-`features[]` хранится в стабильном presentation order, но каждый feature имеет explicit inputs. При чтении строится DAG, проверяются missing IDs и cycles.
+`features[]` uses a stable presentation order, while every feature retains explicit inputs. Opening a file constructs the DAG and rejects missing IDs and cycles.
 
-## Command и event model
+## Command and event model
 
-Alpha использует гибрид:
+Alpha uses a hybrid model:
 
-- current snapshot быстро открывает проект;
-- append-only command/event journal обеспечивает autosave, undo и crash recovery;
-- periodic snapshots ограничивают время replay;
-- geometry caches не входят в semantic event stream.
+- A current snapshot opens the project quickly.
+- An append-only command/event journal supports autosave, undo, and crash recovery.
+- Periodic snapshots bound replay time.
+- Geometry caches never enter the semantic event stream.
 
-Команда имеет:
+A command contains:
 
-- `commandId`, `documentId`, `baseRevision`;
-- `kind`, `schemaVersion`, typed payload;
-- `issuedAt` для UX/audit, но не для геометрического результата;
-- inverse data или достаточно информации для deterministic reducer;
-- result revision и content hash.
+- `commandId`, `documentId`, and `baseRevision`;
+- `kind`, `schemaVersion`, and typed payload;
+- `issuedAt` for UX and audit only, never for the geometry result;
+- inverse data or sufficient information for deterministic reduction;
+- resulting revision and content hash.
 
-Domain reducer MUST быть детерминированным: один snapshot + те же commands дают одинаковый domain state. Геометрические результаты могут слегка отличаться между OCCT builds, поэтому engine build записывается отдельно.
+The domain reducer MUST be deterministic: one snapshot plus the same commands produces the same domain state. Geometry may vary slightly between OCCT builds, so engine build metadata is recorded separately.
 
-## Units и expressions
+## Units and expressions
 
-Numeric parameter хранится как:
+A numeric parameter stores:
 
-- canonical SI-like dimension vector (`length`, `angle`, dimensionless), но базовое CAD-значение длины — mm;
+- canonical dimension vector such as length, angle, or dimensionless, with millimeters as the CAD length basis;
 - normalized numeric value;
 - optional original expression string;
-- display unit preference отдельно.
+- separate display-unit preference.
 
-Нельзя полагаться на локаль JSON. В native-файле decimal separator всегда `.`. UI принимает локализованный ввод и нормализует его до commit.
+JSON never depends on locale. The native decimal separator is always `.`. The UI may accept localized input but normalizes it before commit.
 
 ## `.vshape`
 
-Расширение — ZIP-контейнер с MIME `application/vnd.vibeshape.project+zip`.
+The extension identifies a ZIP container with MIME type `application/vnd.vibeshape.project+zip`.
 
 ```text
 project.vshape
@@ -93,11 +93,11 @@ project.vshape
   licenses/NOTICE.txt                 # optional per-project attachments
 ```
 
-Для alpha допустим gzip/deflate вместо zstd, если это уменьшает зависимости. Алгоритм compression записывается в manifest.
+Alpha may use gzip or deflate instead of zstd to reduce dependencies. The selected compression algorithm is recorded in the manifest.
 
 ### `manifest.json`
 
-Обязательные поля:
+Required fields:
 
 - `format: "vshape"`;
 - `formatVersion`;
@@ -106,69 +106,69 @@ project.vshape
 - `createdBy: { application, version, build }`;
 - `engine: { adapter, occtVersion, buildHash, tolerancePolicyVersion }`;
 - `rootDocument: "document.json"`;
-- `checksums` для semantic entries;
-- `capabilities`/extensions;
-- `createdAt`, `exportedAt`;
-- `units`, `coordinateSystem`.
+- semantic-entry `checksums`;
+- `capabilities` or extensions;
+- `createdAt` and `exportedAt`;
+- `units` and `coordinateSystem`.
 
-### Источник истины в архиве
+### Authoritative data
 
-`document.json` + journal/snapshots являются authoritative. `cache/` и `reports/` MAY быть удалены без потери проекта. Reader обязан открыть проект без cache и не доверять B-Rep/mesh checksum, version или topology mapping.
+`document.json` plus journals and snapshots are authoritative. `cache/` and `reports/` MAY be deleted without project loss. Readers must open a project without cache and must not trust B-Rep, mesh, topology mapping, version, or checksum blindly.
 
 ### Versioning
 
-- major format change меняет `formatVersion` и может требовать explicit migration;
-- minor additive fields игнорируются старым reader только если extension помечено optional;
-- неизвестный required capability блокирует редактирование, но SHOULD позволить safe metadata preview/export original;
-- migrations pure, sequential и test-fixtured;
-- reader не перезаписывает исходный файл при migration без успешного полного save;
-- экспорт старой версии возможен только при доказанной lossless conversion.
+- Major format changes update `formatVersion` and may require explicit migration.
+- Old readers ignore additive fields only when the extension is optional.
+- Unknown required capabilities block editing but SHOULD allow safe metadata preview and export of the original archive.
+- Migrations are pure, sequential, and fixture-tested.
+- Readers never overwrite the source during migration until a complete save succeeds.
+- Export to an older version is allowed only when conversion is proven lossless.
 
-## External vs embedded imports
+## External and embedded imports
 
-По умолчанию импортируемый STEP/STL **встраивается** в `.vshape`, чтобы проект был переносимым. Advanced mode может хранить external handle/path hint, но:
+By default, imported STEP and STL sources are **embedded** so the project remains portable. Advanced mode may retain an external handle or path hint, but:
 
-- browser permission не гарантируется между сессиями;
-- path не является identity;
-- источник имеет checksum и last imported report;
-- изменение внешнего файла не применяется автоматически;
-- privacy-sensitive absolute paths не экспортируются без явного выбора.
+- browser permissions may not survive sessions;
+- a path is not identity;
+- the source has a checksum and last import report;
+- external changes never apply automatically;
+- privacy-sensitive absolute paths are excluded from export unless explicitly requested.
 
 ## Binary mesh cache
 
-Собственный простой little-endian envelope:
+Use a simple project-owned little-endian envelope:
 
-- magic/version;
-- body ID, source feature hash, tolerance policy;
-- counts и byte lengths;
+- magic and version;
+- body ID, source feature hash, and tolerance policy;
+- counts and byte lengths;
 - typed-array sections;
 - checksum;
 - optional face mapping.
 
-Все counts проверяются до allocation; арифметика размеров защищена от overflow.
+Validate all counts before allocation and protect size arithmetic from overflow.
 
-## Ограничения reader
+## Reader limits
 
-Начальные safe defaults:
+Initial safe defaults:
 
-| Ограничение | Default |
+| Limit | Default |
 |---|---:|
-| ZIP compressed file | 512 MiB |
-| ZIP uncompressed total | 2 GiB или доступная quota, что меньше |
-| Compression ratio | 100:1 warning/block policy |
-| Entries | 10 000 |
+| Compressed ZIP input | 512 MiB |
+| Total uncompressed ZIP size | 2 GiB or available quota, whichever is lower |
+| Compression ratio | Warn or block at 100:1 according to policy |
+| Entry count | 10,000 |
 | JSON depth | 100 |
-| Features | 100 000 hard limit, существенно меньший UX warning |
-| Single typed array allocation | 512 MiB |
-| Filename/path | 1024 UTF-8 bytes |
+| Feature count | 100,000 hard limit with a much lower UX warning |
+| Single typed-array allocation | 512 MiB |
+| Filename/path | 1,024 UTF-8 bytes |
 
-Значения уточняются fuzz/performance tests. ZIP entries с `..`, absolute path, symlink или duplicate normalized path отклоняются.
+Fuzzing and performance tests refine these numbers. Reject entries containing `..`, absolute paths, symlinks, or duplicate normalized paths.
 
 ## Compatibility promise
 
-До v1 формат experimental. Начиная с v1:
+The format remains experimental before v1. Starting with v1:
 
-- текущая версия читает все стабильные старые `.vshape` через migrations;
-- last two stable writers проверяются в CI fixture corpus;
-- semantic data не удаляется без explicit migration report;
-- формат специфицирован достаточно, чтобы независимая реализация могла извлечь document/events/imports без CAD-ядра.
+- the current reader opens every older stable `.vshape` through migrations;
+- the last two stable writer versions remain in the CI fixture corpus;
+- semantic data is never removed without an explicit migration report;
+- the format is documented well enough for an independent implementation to extract documents, events, and imports without a CAD kernel.

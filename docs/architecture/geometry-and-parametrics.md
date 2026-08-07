@@ -1,8 +1,8 @@
-# Геометрия и параметрика
+# Geometry and parametrics
 
-## Источник истины
+## Source of truth
 
-Параметрический **feature graph** — источник design intent. B-Rep является вычисленным точным состоянием тела, а triangle mesh — производным состоянием визуализации/печати.
+The parametric **feature graph** is the source of design intent. B-Rep is the computed exact body state; the triangle mesh is a derived visualization and manufacturing state.
 
 ```mermaid
 flowchart LR
@@ -16,182 +16,182 @@ flowchart LR
     MESH --> MF["3MF / STL"]
 ```
 
-Нельзя восстанавливать параметрику из mesh и нельзя считать красиво отрисованный mesh доказательством валидного solid.
+Parametrics cannot be reconstructed from a mesh, and a visually correct mesh is not proof of a valid solid.
 
-## Геометрические соглашения
+## Geometry conventions
 
-- правая система координат, **Z вверх**;
-- внутренняя единица документа — **millimeter**;
-- углы в domain serialization — radians с явным unit metadata ввода;
-- вычисления — `float64`;
-- tolerance policy централизована и versioned;
-- UI не сравнивает геометрию через `===` или произвольный epsilon;
-- imported document units преобразуются явно и записываются в import report.
+- Right-handed coordinate system with **Z up**.
+- Internal document length unit is **millimeter**.
+- Domain serialization stores angles in radians, while retaining explicit input-unit metadata.
+- Calculations use `float64`.
+- The tolerance policy is centralized and versioned.
+- UI code never compares geometry with `===` or an arbitrary epsilon.
+- Imported units are converted explicitly and recorded in the import report.
 
-Начальные tolerance goals, подтверждаемые spike:
+Initial tolerance goals, subject to spike validation:
 
-| Параметр | Стартовое значение | Назначение |
+| Parameter | Initial value | Purpose |
 |---|---:|---|
-| modeling linear tolerance | `1e-7 mm` либо kernel default | точные операции; не использовать слепо для mesh |
-| sketch solve tolerance | `1e-6 mm` | residual constraints |
-| angular tolerance | `1e-8 rad` | parallel/perpendicular checks |
-| display chord tolerance | адаптивно, default `0.05 mm` | viewport mesh |
-| export chord tolerance | профиль, default `0.02 mm` | STL/3MF |
+| Modeling linear tolerance | `1e-7 mm` or kernel default | Exact operations; never reuse blindly for meshes |
+| Sketch solve tolerance | `1e-6 mm` | Constraint residuals |
+| Angular tolerance | `1e-8 rad` | Parallel and perpendicular checks |
+| Display chord tolerance | Adaptive, default `0.05 mm` | Viewport mesh |
+| Export chord tolerance | Profile-driven, default `0.02 mm` | STL and 3MF |
 
-Числа являются гипотезой. Слишком малые tolerance ухудшают устойчивость; их нужно калибровать на model corpus.
+These values are hypotheses. Excessively small tolerances reduce robustness and must be calibrated against the model corpus.
 
 ## Feature evaluator
 
-Каждый feature — pure-like декларация:
+Every feature is a declarative, pure-like record:
 
-- `id`, `kind`, `schemaVersion`;
+- `id`, `kind`, and `schemaVersion`;
 - `parameters`;
 - `inputs`;
 - `references`;
 - `suppressed`;
-- optional user label/metadata.
+- optional user label and metadata.
 
-Evaluator возвращает:
+The evaluator returns:
 
 - zero or more output bodies;
-- OCCT operation history, если доступна;
+- OCCT operation history where available;
 - generated semantic roles;
-- `TopoSignature` для faces/edges/vertices;
+- `TopoSignature` values for faces, edges, and vertices;
 - validation metrics;
 - typed diagnostics;
 - content hash.
 
-Feature не мутирует committed input shape. Если OCCT API использует mutable объект, adapter обеспечивает copy/ownership boundary.
+A feature never mutates its committed input shape. If the OCCT API uses mutable objects, the adapter establishes explicit copy and ownership boundaries.
 
 ## Sketch representation
 
-Эскиз хранит аналитические entities, а не sampled polyline:
+Sketches store analytical entities, not sampled polylines:
 
-- point `(x,y)`;
+- point `(x, y)`;
 - line segment;
 - circle;
 - arc;
-- позднее ellipse/B-spline;
+- ellipse and B-spline later;
 - construction flag;
-- constraint records со ссылками на entity/sub-element;
-- dimensional constraints, связанные с variable/expression.
+- constraint records referencing entities and sub-elements;
+- dimensional constraints linked to variables or expressions.
 
-Solver получает нормализованный массив параметров и constraints, возвращает solved coordinates, degrees of freedom, residuals и conflicts. Committed document хранит исходные значения и подтверждённое solved state только как cache; после смены solver version решает заново.
+The solver receives normalized parameters and constraints and returns solved coordinates, degrees of freedom, residuals, and conflicts. The committed document may cache solved state, but changes to solver version always trigger a fresh solve.
 
-## Профили эскиза
+## Sketch profiles
 
-После solve отдельный topology builder:
+After solving, a separate topology builder:
 
-1. находит intersections в tolerance;
-2. строит half-edge graph;
-3. выделяет замкнутые loops;
-4. определяет outer/inner nesting;
-5. сообщает open/self-intersecting/duplicate segments;
-6. создаёт OCCT wires/faces только из выбранных profiles.
+1. Finds intersections within tolerance.
+2. Builds a half-edge graph.
+3. Extracts closed loops.
+4. Determines outer and inner nesting.
+5. Reports open, self-intersecting, and duplicate segments.
+6. Creates OCCT wires and faces only from selected profiles.
 
-Preview закрашивает распознанные regions, чтобы пользователь видел фактический профиль до extrude.
+Preview fills recognized regions so users see the exact profile before extrusion.
 
 ## Topological naming problem
 
-Индекс `Face3` или порядок рёбер OCCT нестабилен после boolean/fillet/изменения параметров. Ссылка только по индексу приведёт к сломанным или, что хуже, неверно переназначенным операциям.
+An index such as `Face3` or the OCCT edge order is unstable after booleans, fillets, and parameter changes. An index-only reference leads to broken or, worse, incorrectly reassigned features.
 
 ### `TopoRef`
 
-Ссылка содержит:
+A reference contains:
 
-- owning/producing `FeatureId`;
-- subshape kind;
-- semantic role, если операция может его выдать (`extrude.side(profileEdgeId)`, `extrude.cap.start`);
-- kernel history lineage (`generated/modified/deleted`), если доступна;
-- геометрическую signature;
+- owning or producing `FeatureId`;
+- sub-shape kind;
+- semantic role when the operation can provide one, such as `extrude.side(profileEdgeId)` or `extrude.cap.start`;
+- kernel history lineage such as `generated`, `modified`, and `deleted`, where available;
+- geometry signature;
 - adjacency signature;
-- user intent hints: near point, expected normal/axis, selection context;
-- последнюю confidence и repair history.
+- user-intent hints such as near point, expected normal/axis, and selection context;
+- latest confidence and repair history.
 
-Face signature MAY включать surface type, normalized analytic parameters, area, centroid, normal/axis, bounding box, loop count и соседние edge signatures. Edge signature — curve type, length, endpoints/center/axis и adjacent face roles. Значения quantized по tolerance policy.
+A face signature MAY include surface type, normalized analytical parameters, area, centroid, normal or axis, bounding box, loop count, and neighboring edge signatures. An edge signature may include curve type, length, endpoints, center or axis, and adjacent face roles. Values are quantized according to the tolerance policy.
 
-### Алгоритм разрешения
+### Resolution algorithm
 
-1. Exact semantic/history match.
-2. Match persistent lineage от непосредственной операции.
-3. Candidate filter по kind/surface/adjacency.
-4. Weighted geometric score относительно прежней signature и intent point.
-5. Если один кандидат проходит порог и margin — `resolved`.
-6. Если кандидаты близки — `ambiguous`, downstream feature не вычисляется молча.
-7. Если кандидатов нет — `missing` с первым сломанным feature.
+1. Exact semantic or history match.
+2. Persistent lineage match from the immediate operation.
+3. Candidate filtering by kind, surface, and adjacency.
+4. Weighted geometry score against the previous signature and intent point.
+5. If one candidate passes the threshold and margin, return `resolved`.
+6. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
+7. If no candidate exists, return `missing` and identify the first broken feature.
 
-Пороги и веса versioned. Пользовательский repair сохраняет новый intent hint и событие, но не переписывает старую историю задним числом.
+Thresholds and weights are versioned. A user repair stores a new intent hint and event without rewriting old history.
 
-### Правила устойчивого моделирования
+### Robust-modeling rules
 
-- sketch по умолчанию крепится к origin/datum plane, а не к случайной face;
-- datum plane/axis/point вводятся в P1;
-- выбор face допустим, но UI показывает степень устойчивости reference;
-- pattern/mirror наследуют semantic IDs исходных элементов;
-- fillet/chamfer выбирают edge set через reference collection, а не порядковый номер.
+- By default, attach sketches to origin or datum planes, not arbitrary faces.
+- Add datum plane, axis, and point in P1.
+- Face attachment is allowed, but the UI shows reference stability.
+- Pattern and mirror operations preserve semantic IDs from source elements.
+- Fillet and chamfer select edge sets through reference collections, never positional indices.
 
-## Dirty propagation и partial rebuild
+## Dirty propagation and partial rebuild
 
-- изменение feature помечает dirty все downstream nodes;
-- независимые upstream ветви сохраняют cache;
-- evaluator идёт topological order;
-- первый failure блокирует только зависимых потомков; независимые bodies остаются доступны;
-- старый последний валидный result может отображаться ghosted, но MUST иметь явную метку stale и не экспортироваться по умолчанию.
+- Editing a feature marks all downstream nodes dirty.
+- Independent upstream branches retain their caches.
+- The evaluator processes nodes in topological order.
+- The first failure blocks only dependent descendants; independent bodies remain available.
+- The last valid result may be shown as a ghost, but MUST be visibly marked stale and excluded from export by default.
 
 ## Tessellation
 
-Для каждого body строятся минимум два LOD:
+Each body has at least two levels of detail:
 
 - interactive/display;
-- print/export по заданной chord/angular tolerance.
+- print/export using the configured chord and angular tolerances.
 
 Mesh payload:
 
-- positions/normals `Float32Array`;
-- indices `Uint32Array` или `Uint16Array` при возможности;
+- positions and normals as `Float32Array`;
+- indices as `Uint32Array`, or `Uint16Array` where possible;
 - triangle-to-face mapping;
-- edge polylines отдельно;
-- body/face material IDs;
-- bounding box и revision/hash.
+- edge polylines in separate buffers;
+- body and face material IDs;
+- bounding box and revision/hash.
 
-Тесселяция выполняется в worker. UI никогда не строит OCCT mesh. При изменении качества display cache меняется независимо от B-Rep.
+Tessellation runs in the worker. The UI never builds an OCCT mesh. Changing display quality invalidates display mesh cache independently of B-Rep.
 
-## Валидация B-Rep
+## B-Rep validation
 
-После committed моделирующей операции проверяются:
+After every committed modeling operation, check:
 
-- kernel algorithm completion/error status;
+- kernel algorithm completion and error status;
 - non-null result;
-- допустимый shape type;
-- `BRepCheck`/аналог shape validity;
-- отсутствие неожиданных zero-volume solids;
-- ожидаемое число bodies/solids;
-- finiteness metrics;
-- optional shape healing только как явная политика операции/import.
+- allowed shape type;
+- `BRepCheck` or equivalent shape validity;
+- absence of unexpected zero-volume solids;
+- expected body and solid count;
+- finite metrics;
+- optional shape healing only as an explicit operation or import policy.
 
-Healing не должен скрывать существенное изменение геометрии; import report записывает применённые исправления.
+Healing must not hide material geometry changes. The import report records every applied correction.
 
 ## Kernel memory policy
 
-Emscripten/C++ objects с ручным `.delete()` оборачиваются в scoped registry:
+Emscripten/C++ objects requiring `.delete()` are wrapped in a scoped registry:
 
-- все временные объекты регистрируются сразу после создания;
-- `finally` освобождает их в обратном порядке;
-- ownership transfer явно снимает объект с registry;
-- permanent document heap индексируется по opaque ID;
-- development build считает live objects и падает тестом при leak delta.
+- Register temporary objects immediately after creation.
+- Release them in reverse order in `finally`.
+- Explicitly remove ownership-transferred objects from the registry.
+- Index permanent document objects by opaque IDs.
+- Development builds count live objects and fail tests when the leak delta exceeds the budget.
 
 ## Phase 0 corpus
 
-Минимальные модели:
+Minimum models:
 
-- bracket с holes/pattern/fillet;
-- enclosure с shell, lid clearance и bosses;
-- flange с revolve и circular pattern;
+- bracket with holes, pattern, and fillet;
+- enclosure with shell, lid clearance, and bosses;
+- flange with revolve and circular pattern;
 - lofted adapter;
-- imported STEP + mating part;
-- intentionally failing boolean/fillet;
-- symmetric model с заведомо ambiguous topology;
+- imported STEP plus a mating part;
+- intentionally failing boolean and fillet;
+- symmetric model with intentionally ambiguous topology;
 - large mesh import.
 
-Сравниваются не B-Rep bytes, а invariants: validity, body/face counts в допустимых местах, volume/area/bbox, semantic reference outcomes и экспортный round-trip.
+Compare invariants rather than B-Rep bytes: validity, body count, expected topology counts where stable, volume, area, bounding box, semantic reference outcomes, and export round-trip.

@@ -1,6 +1,6 @@
-# UX и ключевые сценарии
+# UX and core flows
 
-## Каркас интерфейса
+## Interface frame
 
 Desktop layout:
 
@@ -18,13 +18,13 @@ Desktop layout:
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-В sketch mode правая панель показывает constraints и dimensions, а viewport переходит в ортографический вид normal-to-plane. В print mode дерево не исчезает, но правая панель становится отчётом анализа и экспортом.
+In sketch mode, the right panel shows constraints and dimensions while the viewport switches to an orthographic normal-to-plane view. In print mode, the model tree remains visible and the right panel becomes the analysis and export report.
 
-UI shell строится на Tailwind CSS v4 и source-owned shadcn/Radix primitives из `@vibeshape/ui`. Это не меняет application commands: toolbar, command palette, menu и shortcut вызывают один и тот же use case. Model tree и viewport overlays остаются специализированными accessible CAD-компонентами, а не маскируются под универсальные `Card`/`Table`.
+The shell uses Tailwind CSS v4 and source-owned shadcn/Radix primitives from `@vibeshape/ui`. Toolbar, command palette, menu, and shortcut invoke the same application command. The model tree and viewport overlays remain specialized accessible CAD components rather than being forced into generic `Card` or `Table` components.
 
-## Состояния команды
+## Command states
 
-Любая моделирующая команда следует одной машине состояний:
+Every modeling command uses the same state machine:
 
 ```mermaid
 stateDiagram-v2
@@ -38,70 +38,70 @@ stateDiagram-v2
     Committed --> Idle
 ```
 
-- Preview не меняет документ и может строить низкокачественную временную тесселяцию.
-- Apply создаёт одну domain transaction и одну undo-запись.
-- Ошибка обязана сохранить введённые параметры и проблемную selection.
-- Escape всегда отменяет текущую команду до изменения документа.
+- Preview does not modify the document and may use low-quality temporary tessellation.
+- Apply creates one domain transaction and one undo entry.
+- An error preserves parameters and the failing selection.
+- Escape always cancels the active command before the document changes.
 
-## Flow 1: новая печатная деталь
+## Flow 1: create a printable part
 
-1. Пользователь создаёт проект и выбирает профиль принтера или «без профиля».
-2. Выбирает origin plane и создаёт sketch.
-3. Рисует, добавляет constraints, доводит solver до понятного статуса.
-4. Завершает sketch и делает extrude.
-5. Добавляет операции в feature tree; изменения показывают preview перед commit.
-6. Открывает Print Check: единицы, solid validity, mesh validity, габариты, overhang и wall warnings.
-7. Экспортирует 3MF; при необходимости STEP/STL.
+1. Create a project and choose a printer profile or no profile.
+2. Select an origin plane and create a sketch.
+3. Draw geometry, apply constraints, and reach a clear solver state.
+4. Finish the sketch and extrude it.
+5. Add feature-tree operations; preview changes before commit.
+6. Open Print Check for units, solid validity, mesh validity, dimensions, overhang, and wall warnings.
+7. Export 3MF and optionally STEP or STL.
 
-## Flow 2: изменение раннего параметра
+## Flow 2: edit an early parameter
 
-1. Double-click feature/dimension в дереве или viewport.
-2. Ввести новое значение; показать debounce-preview.
-3. Rebuild идёт в worker, UI остаётся интерактивным.
-4. При успехе commit атомарен.
-5. При `TopoRef ambiguous` downstream операции подсвечены, пользователь выбирает новую геометрию из ограниченного набора кандидатов.
-6. После repair обновлённая ссылка сохраняется как часть команды.
+1. Double-click a feature or dimension in the tree or viewport.
+2. Enter a new value and show a debounced preview.
+3. Rebuild in the worker while keeping the UI responsive.
+4. Commit atomically on success.
+5. If a `TopoRef` is ambiguous, highlight affected downstream operations and present a bounded candidate set.
+6. Save the repaired reference as part of the command.
 
-## Flow 3: импорт STEP как контекст
+## Flow 3: import STEP as context
 
-1. Import → STEP, чтение локально.
-2. До commit показать размер файла, единицы/предположение, число тел и диагностические сообщения healing.
-3. Создать `ImportedBRepFeature`; исходный файл может быть embedded или external-reference по выбору.
-4. Пользователь измеряет и строит собственное тело рядом/вокруг импорта.
-5. Изменение внешнего файла выполняется явной командой Replace Source; скрытая перезагрузка запрещена.
+1. Choose Import → STEP; parse locally.
+2. Before commit, show file size, units or assumptions, body count, and healing diagnostics.
+3. Create an `ImportedBRepFeature`; let the user embed the source or keep an explicit external reference.
+4. Measure the import and build a mating body around it.
+5. Replace an external source only through an explicit Replace Source command; never reload it silently.
 
-## Flow 4: аварийное восстановление
+## Flow 4: crash recovery
 
-1. При открытии сравнить последнюю экспортированную версию, snapshot и autosave journal.
-2. Если journal новее clean-close marker, показать время и список последних команд.
-3. Восстановление создаёт новый recovery snapshot; исходное состояние не перезаписывается немедленно.
-4. Пользователь сохраняет, сравнивает или отбрасывает recovery.
+1. Compare the latest exported version, snapshot, and autosave journal.
+2. If the journal is newer than the clean-close marker, show its time and latest commands.
+3. Restore into a new recovery snapshot; do not overwrite the original immediately.
+4. Let the user save, compare, or discard the recovery state.
 
-## Ошибки
+## Errors
 
-Ошибки делятся на:
+Errors are classified as:
 
-- **input error** — неверное число, единица или selection; исправляется в активной команде;
-- **solver conflict** — показать минимальный известный набор конфликтов;
-- **kernel failure** — назвать операцию и предложить геометрически осмысленные действия: уменьшить fillet, убрать tangent edge, изменить порядок;
-- **topology ambiguity** — показать кандидатов, запретить молчаливую подмену;
-- **resource failure** — quota/memory/worker crash; предложить export recovery и restart worker;
-- **format error** — путь внутри файла, лимит или unsupported entity без выполнения содержимого.
+- **Input error** — invalid number, unit, or selection; corrected inside the active command.
+- **Solver conflict** — show the smallest known conflicting set.
+- **Kernel failure** — name the operation and suggest geometry-aware actions such as reducing a fillet, removing a tangent edge, or changing order.
+- **Topology ambiguity** — show candidates and prohibit silent substitution.
+- **Resource failure** — quota, memory, or worker crash; offer recovery export and worker restart.
+- **Format error** — identify the file location, resource limit, or unsupported entity without executing file content.
 
-Raw stack trace доступен в локальном diagnostic bundle, но не заменяет пользовательское сообщение.
+Raw stack traces belong in a local diagnostic bundle but never replace a user-facing explanation.
 
-## Горячие клавиши alpha
+## Alpha keyboard shortcuts
 
-| Действие | Shortcut |
+| Action | Shortcut |
 |---|---|
 | Command palette | `Ctrl/Cmd+K` |
 | Undo / redo | `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` |
-| Save/export native | `Ctrl/Cmd+S` |
+| Save/export native project | `Ctrl/Cmd+S` |
 | Fit view | `F` |
-| Delete selection | `Delete/Backspace` с защитой текстового ввода |
+| Delete selection | `Delete/Backspace`, guarded during text input |
 | Cancel command | `Escape` |
-| Apply command | `Enter` только когда focus не в multiline input |
+| Apply command | `Enter` when focus is not in a multiline input |
 | Toggle orthographic | `O` |
-| Standard views | цифровые пресеты, финально после usability test |
+| Standard views | Numeric presets, finalized after usability testing |
 
-Shortcuts настраиваемы в P1. На macOS используется `Cmd`, на Windows/Linux `Ctrl`.
+Shortcuts become configurable in P1. macOS uses `Cmd`; Windows and Linux use `Ctrl`.

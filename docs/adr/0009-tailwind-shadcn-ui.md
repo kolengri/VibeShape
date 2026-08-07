@@ -1,30 +1,30 @@
-# ADR-0009: Tailwind CSS v4 + shadcn/ui/Radix
+# ADR-0009: Tailwind CSS v4 with shadcn/ui and Radix
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Контекст
+## Context
 
-CAD требует плотного keyboard-first интерфейса: toolbar, menus, command palette, dialogs, panels, property forms и сложные состояния. Нужны accessible primitives, единые tokens и возможность глубокой адаптации без зависимости от закрытой design system.
+CAD requires a dense, keyboard-first interface with toolbars, menus, a command palette, dialogs, panels, property forms, and complex states. The application needs accessible primitives, shared tokens, and deep customization without depending on a closed design system.
 
-## Решение
+## Decision
 
-Использовать Tailwind CSS v4 через официальный Vite plugin и shadcn/ui CLI v4 с Radix base. Generated source и tokens хранятся в `@vibeshape/ui`; CAD-specific components остаются в app/feature layer.
+Use Tailwind CSS v4 through its official Vite plugin and shadcn/ui CLI v4 with the Radix base. Generated source and tokens live in `@vibeshape/ui`; CAD-specific components remain in the application or feature layer.
 
-Базовое направление: compact dark-first `new-york`, neutral/zinc, один accent, semantic CAD tokens, Lucide icons. Добавляются только используемые primitives.
+The initial direction is compact and dark-first, using `new-york`, neutral or zinc colors, one accent color, semantic CAD tokens, and Lucide icons. Add only the primitives that are actually used.
 
-## Последствия
+## Consequences
 
-- исходники components принадлежат repo и требуют code review/maintenance;
-- monorepo `components.json`/aliases/exports должны быть согласованы;
-- utility classes не должны заменить semantic tokens и component variants;
-- model tree/viewport overlays требуют собственных accessible компонентов;
-- обновления shadcn выполняются diff-based, не слепым overwrite;
-- MIT/ISC notices включаются в third-party compliance.
+- Component source belongs to the repository and requires code review and maintenance.
+- Monorepo `components.json` files, aliases, and exports must remain aligned.
+- Utility classes must not replace semantic tokens and component variants.
+- The model tree and viewport overlays require custom accessible components.
+- shadcn updates are applied by reviewing diffs, never by blind overwrite.
+- MIT and ISC notices are included in third-party compliance artifacts.
 
-## Отклонено
+## Rejected Alternatives
 
-- CSS Modules как единственная система — больше ручной работы для tokens/variants;
-- monolithic component library — хуже source ownership/custom density;
-- raw controls без primitives — повышенный accessibility/consistency риск;
-- `shadcn add --all` — раздувает shipped/review surface.
+- CSS Modules as the only styling system require more manual work for tokens and variants.
+- A monolithic component library provides less source ownership and less control over interface density.
+- Raw controls without primitives increase accessibility and consistency risk.
+- `shadcn add --all` unnecessarily expands the shipped and review surface.

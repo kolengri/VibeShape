@@ -1,90 +1,90 @@
-# Реестр рисков
+# Risk Register
 
-## Самые опасные риски
+## Highest-Risk Items
 
-| ID | Риск | Вероятность | Влияние | Митигация / gate |
+| ID | Risk | Likelihood | Impact | Mitigation or gate |
 |---|---|---:|---:|---|
-| R1 | Topological naming приводит к silent wrong references | высокая | критическое | semantic history + signatures + ambiguous UI; fixture matrix до feature expansion |
-| R2 | OCCT WASM слишком тяжёлый/медленный/течёт | высокая | высокое | custom binding, worker, memory harness, cache; Phase 0 stop/go |
-| R3 | Sketch solver нестабилен или плохо диагностирует конфликт | высокая | критическое | isolated spike, corpus, ограничить constraints; fallback decision |
-| R4 | Browser storage очищается/заканчивается | средняя | критическое | `.vshape` export, persist request, quota UI, journal/snapshots, bulk backup |
-| R5 | Imported CAD/ZIP вызывает crash или resource exhaustion | высокая | высокое | limits, worker, fuzz, timeout, recovery |
-| R6 | 3MF writer формально создаёт файл, несовместимый со slicерами | средняя | высокое | spec/conformance + два независимых slicer smoke |
-| R7 | Scope разрастается до полного Onshape | высокая | критическое | фиксированный alpha flow, explicit non-goals, roadmap gates |
-| R8 | LGPL/GPL compliance нарушен в WASM distribution | средняя | критическое | source archive, patches/builds/notices, release gate и legal review |
-| R9 | Geometry results меняются после dependency update | высокая | высокое | exact pin, engine build in file/cache, corpus before upgrade |
-| R10 | Main thread блокируется mesh/picking/render | средняя | высокое | geometry worker, transferable arrays, LOD, profiling |
+| R1 | Topological naming creates silently incorrect references | High | Critical | Semantic history, geometric signatures, ambiguity UI, and a fixture matrix before feature expansion |
+| R2 | OCCT WASM is too large, slow, or prone to memory leaks | High | High | Custom bindings, a worker boundary, memory harnesses, caching, and a Phase 0 go/no-go gate |
+| R3 | The sketch solver is unstable or reports conflicts poorly | High | Critical | Isolated spike, solver corpus, limited constraint set, and an explicit fallback decision |
+| R4 | Browser storage is cleared or exhausted | Medium | Critical | `.vshape` export, persistent-storage request, quota UI, journal and snapshots, and bulk backup |
+| R5 | Imported CAD or ZIP data crashes the application or exhausts resources | High | High | Limits, worker isolation, fuzzing, timeouts, and recovery paths |
+| R6 | The 3MF writer produces formally valid files that slicers cannot use | Medium | High | Specification and conformance checks plus smoke tests in two independent slicers |
+| R7 | Scope expands toward a complete Onshape replacement | High | Critical | Fixed alpha workflow, explicit non-goals, and roadmap gates |
+| R8 | A WASM distribution violates LGPL or GPL obligations | Medium | Critical | Source archives, patches, builds, notices, a release gate, and legal review |
+| R9 | Geometry results change after dependency updates | High | High | Exact version pins, engine build ID in files and caches, and corpus tests before upgrades |
+| R10 | Mesh generation, picking, or rendering blocks the main thread | Medium | High | Geometry worker, transferable arrays, levels of detail, and profiling |
 
-## Подробности
+## Details
 
-### Topological naming
+### Topological Naming
 
-Нельзя «исправить позже»: формат references и feature outputs должен учитывать проблему с первого feature. UI должен предпочитать datum/origin references и показывать ambiguity.
+This cannot be fixed later: reference formats and feature outputs must account for topology changes from the first implemented feature. The UI should prefer datum and origin references and expose ambiguity instead of guessing.
 
-**Stop condition:** если spike не даёт приемлемого результата, alpha ограничивает face-based downstream features и не обещает их устойчивость.
+**Stop condition:** if the spike does not achieve acceptable behavior, the alpha must limit downstream face-based features and must not promise that those references are stable.
 
-### WASM size/startup/memory
+### WASM Size, Startup, and Memory
 
-Полная OCCT binding может быть слишком большой, а ручной lifetime C++ wrappers — источник утечек.
+A complete OCCT binding may be too large, while manual lifetime management for C++ wrappers is a likely source of leaks.
 
-**Measurements:** compressed bytes, parsed/compiled time, first operation, peak/steady heap, repeated operation delta на трёх браузерах.
+**Measurements:** compressed bytes, parse and compile time, first-operation latency, peak and steady-state heap usage, and repeated-operation deltas in three browsers.
 
-**Fallback:** уменьшить bindings, lazy data-exchange module, кэшировать compiled module, убрать параллельные документы.
+**Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
 ### Solver
 
-Полный SolveSpace web app экспериментален, а выделение solver subset может потребовать значительной C++ работы.
+The complete SolveSpace web application is experimental, and extracting a solver subset may require substantial C++ work.
 
-**Fallback order:** subset port → другой FOSS solver → урезанный alpha → собственный solver как отдельный проект.
+**Fallback order:** subset port -> another free and open-source solver -> reduced alpha constraint scope -> a custom solver as a separate project.
 
-### Data loss
+### Data Loss
 
-OPFS/IndexedDB зависят от origin и политики браузера. Пользователь может очистить site data.
+OPFS and IndexedDB are tied to the browser origin and its storage policy. Users can clear site data.
 
-**Rule:** internal autosave не называется backup. UI различает «сохранено локально в браузере» и «экспортирован файл».
+**Rule:** internal autosave is not called a backup. The UI must distinguish between "saved locally in this browser" and "exported as a file."
 
-### Cross-browser
+### Cross-Browser Support
 
-File System Access и PWA installation различаются. Safari/Firefox могут иметь иные memory/worker ограничения.
+File System Access and PWA installation support vary. Safari and Firefox may impose different memory and worker constraints.
 
-**Rule:** picker — enhancement, upload/download — baseline. Chromium не единственный test target.
+**Rule:** a native file picker is an enhancement; upload and download are the baseline. Chromium is not the only test target.
 
-### Performance cliffs
+### Performance Cliffs
 
-Fillet/boolean, dense STEP и export-quality tessellation могут занимать секунды/минуты.
+Fillets, booleans, dense STEP imports, and export-quality tessellation may take seconds or minutes.
 
-**Mitigation:** progress stages, stale generation discard, preview LOD, timeouts, diagnostic, model complexity warnings. Не показывать фиктивные проценты, если kernel не сообщает progress.
+**Mitigation:** progress stages, discard of stale generations, preview levels of detail, timeouts, diagnostics, and model-complexity warnings. Do not show fabricated percentages when the kernel cannot report real progress.
 
-### Feature creep
+### Feature Creep
 
-Assemblies, drawings, collaboration и slicing каждый сопоставимы с отдельным продуктовым треком.
+Assemblies, drawings, collaboration, and slicing are each comparable to an independent product track.
 
-**Gate:** новая функция alpha должна сокращать основной sketch→print flow или устранять data/correctness risk.
+**Gate:** every new alpha feature must shorten the primary sketch-to-print workflow or eliminate a data-integrity or correctness risk.
 
 ### Licenses
 
-GPL choice уменьшает неопределённость solver, но ограничивает proprietary reuse. OCCT LGPL требует replaceability/source offer даже при GPL application.
+GPL reduces uncertainty around solver integration but limits proprietary reuse. The OCCT LGPL still requires replaceability and a source offer even when the application itself is GPL-licensed.
 
-**Gate:** compliance artifact строится CI вместе с release, не вручную после публикации.
+**Gate:** CI builds the compliance artifact together with every release; it is not assembled manually after publication.
 
-## Решения с высокой стоимостью изменения
+## Decisions with a High Cost of Change
 
-- stable IDs/reference format;
-- document commands/events;
-- native file versioning;
-- geometry engine ownership boundary;
-- license;
-- units/coordinate system;
-- local-first vs server-authoritative model.
+- Stable IDs and reference format
+- Document commands and events
+- Native file versioning
+- Geometry-engine ownership boundary
+- License
+- Units and coordinate system
+- Local-first versus server-authoritative data model
 
-Они требуют ADR и fixture до реализации. Цвета UI, component library и layout — обратимые решения и не должны блокировать geometry spikes.
+These decisions require an ADR and fixtures before implementation. UI colors, component-library choices, and layout are reversible and must not block geometry spikes.
 
-## Risk review cadence
+## Risk Review Cadence
 
-- после каждого Phase exit;
-- перед обновлением OCCT/Replicad/solver;
-- перед изменением file format major/minor;
-- перед public alpha;
-- после data-loss/silent-geometry incident.
+- After each phase exit
+- Before updating OCCT, Replicad, or the solver
+- Before changing the native file format's major or minor version
+- Before public alpha
+- After any data-loss or silently incorrect geometry incident
 
-Каждый закрытый риск сохраняет ссылку на benchmark/test/ADR, а не только статус «исправлено».
+Every closed risk must retain a link to its benchmark, test, or ADR instead of only carrying a "fixed" status.

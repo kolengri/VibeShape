@@ -1,8 +1,8 @@
-# Архитектура
+# Architecture
 
-## Решение
+## Decision
 
-VibeShape — **статическое local-first web-приложение** с разделением UI и геометрического процесса. Backend отсутствует в обязательной конфигурации. CAD-ядро и solver исполняются в WebAssembly внутри worker; главный поток управляет интерфейсом и Three.js viewport.
+VibeShape is a **static local-first web application** that separates the UI process from the geometry process. The required configuration has no backend. The CAD kernel and sketch solver execute as WebAssembly inside workers; the main thread owns the interface and Three.js viewport.
 
 ```mermaid
 flowchart LR
@@ -42,31 +42,31 @@ flowchart LR
     CACHE --> UI
 ```
 
-## Слои
+## Layers
 
 ### `domain`
 
-Чистый TypeScript без DOM, React, Three.js и OCCT:
+Pure TypeScript without DOM, React, Three.js, or OCCT dependencies:
 
-- `Document`, `Feature`, `Sketch`, `Body`, `Variable`, `Material`, `PrinterProfile`;
-- IDs, units, expressions и типы параметров;
-- команды, события, undo/redo и DAG dependency rules;
-- invariants и schema migrations;
-- состояния ошибок без текстов UI.
+- `Document`, `Feature`, `Sketch`, `Body`, `Variable`, `Material`, and `PrinterProfile`;
+- IDs, units, expressions, and parameter types;
+- commands, events, undo/redo, and DAG dependency rules;
+- invariants and schema migrations;
+- typed error states without UI copy.
 
-Domain не содержит экземпляры WASM-классов и не сериализует объекты сторонней CAD-библиотеки.
+The domain never contains WASM-class instances and never serializes third-party CAD objects.
 
 ### `application`
 
-- use cases: create/edit/suppress feature, import/export, save/recover;
-- orchestration preview/commit/rebuild;
-- generation/revision control;
-- transaction boundary;
-- адаптация domain diagnostics в пользовательские сценарии.
+- use cases for creating, editing, and suppressing features, importing/exporting, and save/recovery;
+- preview, commit, and rebuild orchestration;
+- generation and revision control;
+- transaction boundaries;
+- adaptation of domain diagnostics into user workflows.
 
 ### `ports`
 
-Минимальные стабильные интерфейсы:
+Minimal stable interfaces:
 
 - `GeometryEngine`;
 - `SketchSolver`;
@@ -75,57 +75,59 @@ Domain не содержит экземпляры WASM-классов и не с
 - `NativeFormatCodec`;
 - `CadExchangeCodec`;
 - `PrintMeshCodec`;
-- `Clock`, `IdGenerator`, `Telemetry` (no-op по умолчанию).
+- `Clock`, `IdGenerator`, and `Telemetry`, with telemetry using a no-op default.
 
 ### `adapters`
 
 - Replicad/OpenCascade.js worker;
 - SolveSpace-derived WASM solver;
-- Three.js renderer/picker;
-- Dexie/IndexedDB и OPFS;
-- File System Access/download/upload;
-- STEP, STL, 3MF codecs;
-- PWA/service worker.
+- Three.js renderer and picker;
+- Dexie/IndexedDB and OPFS;
+- File System Access plus upload/download fallbacks;
+- STEP, STL, and 3MF codecs;
+- PWA and service worker.
 
 ### `ui`
 
-React-компоненты, command palette, model tree, properties, diagnostics и project library. Геометрия в UI представлена IDs и immutable view-model, не kernel handles.
+React components, command palette, model tree, property panels, diagnostics, and project library. UI geometry consists of IDs and immutable view models, never kernel handles.
 
-## Предлагаемая структура будущего monorepo
+## Proposed monorepo structure
 
 ```text
 apps/
-  web/                    # PWA shell и composition root
+  web/                    # PWA shell and composition root
 packages/
-  domain/                 # модель, units, commands, events
-  protocol/               # сообщения main ↔ worker и schema versions
-  geometry-worker/        # evaluator и OCCT adapter
-  sketch-solver/          # solver adapter/WASM build
+  domain/                 # model, units, commands, events
+  protocol/               # main ↔ worker messages and schema versions
+  geometry-worker/        # evaluator and OCCT adapter
+  sketch-solver/          # solver adapter and WASM build
   viewer/                 # Three.js scene, selection, overlays
   persistence/            # IndexedDB, OPFS, migrations, recovery
   formats/                # .vshape, STEP orchestration, STL, 3MF
-  print-analysis/         # mesh/build-volume checks
-  ui/                     # Tailwind v4 + shadcn/Radix primitives и tokens
-  test-models/            # fixtures и expected invariants
+  print-analysis/         # mesh and build-volume checks
+  ui/                     # Tailwind v4, shadcn/Radix primitives, tokens
+  test-models/            # fixtures and expected invariants
 docs/
 ```
 
-Корневой `package.json` объявляет Bun workspaces `apps/*` и `packages/*`. Локальные зависимости используют `workspace:*`, общие версии React/TypeScript/Tailwind/testing — Bun `catalog:`/named catalogs, а `bun.lock` коммитится. Package boundaries проверяются lint/import rules: например, `domain` не может импортировать `viewer`, `geometry-worker` или `ui`.
+The root `package.json` declares Bun workspaces for `apps/*` and `packages/*`. Local packages use `workspace:*`; shared React, TypeScript, Tailwind, and test versions use Bun default or named catalogs; `bun.lock` is committed.
 
-`packages/ui` экспортирует только визуальные primitives, hooks, tokens и CSS. CAD-specific композиции (`ModelTree`, `FeatureEditor`, `PrintCheckPanel`) остаются в `apps/web` или позднее в отдельном feature package; UI package не импортирует domain/geometry.
+Lint and import rules enforce package boundaries. For example, `domain` cannot import `viewer`, `geometry-worker`, or `ui`.
 
-## Протокол main ↔ worker
+`packages/ui` exports only visual primitives, hooks, tokens, and CSS. CAD-specific compositions such as `ModelTree`, `FeatureEditor`, and `PrintCheckPanel` remain in `apps/web` or a later feature package. The UI package cannot import domain or geometry packages.
 
-Все сообщения:
+## Main-to-worker protocol
 
-- имеют `protocolVersion`, `requestId`, `documentId`, `revision` и `generation`;
-- валидируются runtime-schema на обеих сторонах;
-- содержат только structured-clone данные;
-- передают большие typed arrays как `Transferable`, не копируют их;
-- возвращают progress stage и typed diagnostic;
-- не раскрывают OCCT pointer/handle.
+Every message:
 
-Минимальные команды:
+- includes `protocolVersion`, `requestId`, `documentId`, `revision`, and `generation`;
+- is validated with runtime schemas on both sides;
+- contains only structured-clone data;
+- transfers large typed arrays as `Transferable` objects instead of copying them;
+- reports a progress stage and typed diagnostic;
+- never exposes an OCCT pointer or handle.
+
+Minimum commands:
 
 - `initializeEngine`;
 - `openDocumentSnapshot`;
@@ -139,14 +141,14 @@ docs/
 - `disposeDocument`;
 - `healthCheck`.
 
-`cancel(requestId)` в alpha является **логической отменой**: результат старой generation игнорируется. Синхронный вызов OCCT не всегда можно безопасно прервать. Для зависшего/превысившего timeout вызова worker перезапускается и документ восстанавливается из последнего committed snapshot.
+In alpha, `cancel(requestId)` is a **logical cancellation**: results from an obsolete generation are ignored. A synchronous OCCT call cannot always be interrupted safely. If a call exceeds its timeout or hangs, the worker is restarted and the document is restored from the latest committed snapshot.
 
-## Два состояния документа
+## Two document states
 
-- **Committed domain state** — единственный источник параметрической истины, сериализуется и участвует в undo/redo.
-- **Derived geometry state** — OCCT shapes, meshes, BVH, B-Rep cache и analysis; всегда может быть перестроено.
+- **Committed domain state** is the sole source of parametric truth. It is serialized and participates in undo/redo.
+- **Derived geometry state** includes OCCT shapes, meshes, BVHs, B-Rep caches, and analysis. It can always be rebuilt.
 
-Preview является третьим короткоживущим состоянием, но не может попасть в autosave как подтверждённая операция.
+Preview is a third, short-lived state but can never enter autosave as a confirmed operation.
 
 ## Rebuild pipeline
 
@@ -179,30 +181,31 @@ sequenceDiagram
     end
 ```
 
-Порядок feature list в UI обычно совпадает с topological order, но истинная структура — DAG. Reorder разрешается только если не создаёт цикл и все inputs доступны раньше feature.
+The UI feature-list order usually matches topological order, but the real structure is a DAG. Reordering is allowed only when it creates no cycle and all inputs remain available before the feature.
 
-## Кэширование
+## Caching
 
-Для каждого feature вычисляется content hash из:
+Every feature has a content hash derived from:
 
-- типа и schema version операции;
-- нормализованных параметров и units;
-- hashes входных features;
-- canonicalized references;
-- версии geometry adapter/OCCT и tolerance policy.
+- operation type and schema version;
+- normalized parameters and units;
+- input-feature hashes;
+- canonical references;
+- geometry adapter and OCCT versions;
+- tolerance-policy version.
 
-Совпавший hash MAY повторно использовать B-Rep cache и tessellation. Любой cache считается недоверенным производным данным: после несовпадения версии/контрольной суммы он удаляется и перестраивается.
+A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untrusted derived data. Version or checksum mismatches delete and rebuild it.
 
-## Зависания и память
+## Hangs and memory
 
-- один geometry worker на активный документ в alpha;
-- очередь CAD-задач последовательная, чтобы не делить mutable OCCT state;
-- каждый временный kernel object освобождается в `finally`/RAII façade;
-- после закрытия документа вызывается `disposeDocument` и проверяется счётчик живых handles;
-- viewer освобождает `BufferGeometry`, material, texture и render target при замене;
-- soft memory threshold инициирует удаление mesh/B-Rep cache;
-- hard threshold/worker crash приводит к безопасному restart и recovery.
+- One geometry worker per active document in alpha.
+- CAD jobs execute sequentially to avoid shared mutable OCCT state.
+- Every temporary kernel object is released with a `finally` or RAII-style facade.
+- Closing a document invokes `disposeDocument` and verifies live-handle counts.
+- The viewer disposes `BufferGeometry`, materials, textures, and render targets when replacing them.
+- A soft memory threshold evicts mesh and B-Rep caches.
+- A hard threshold or worker crash triggers a safe restart and recovery.
 
-## Расширяемость
+## Extensibility
 
-Плагинная система не входит в alpha. Сначала command schema, feature registry и file migrations должны стать стабильными. Поздний plugin API не получает прямого kernel pointer и не исполняется из `.vshape`; trusted extensions загружаются только из явно установленного пакета.
+The plugin system is outside alpha. The command schema, feature registry, and file migrations must stabilize first. A future plugin API never receives raw kernel pointers and `.vshape` never executes embedded code. Trusted extensions load only from explicitly installed packages.
