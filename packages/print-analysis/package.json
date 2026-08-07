@@ -1,0 +1,17 @@
+{
+  "name": "@vibeshape/print-analysis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mesh, solid, tolerance, overhang, wall, and build-volume checks.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

@@ -26,12 +26,14 @@
 
 ## Reviewed package-version snapshot
 
-Verified against the npm registry on **2026-08-07**. These versions guide Phase 0; they are not permission to use floating versions.
+Verified against the npm registry on **2026-08-07**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
 
 | Package | Version | License |
 |---|---:|---|
 | `react` | 19.2.8 | MIT |
+| `react-dom` | 19.2.8 | MIT |
 | `vite` | 8.2.1 | MIT |
+| `@vitejs/plugin-react` | 6.0.5 | MIT |
 | `three` | 0.185.1 | MIT |
 | `replicad` | 0.23.1 | MIT |
 | `opencascade.js` | 1.1.1 | LGPL-2.1-only |
@@ -43,11 +45,18 @@ Verified against the npm registry on **2026-08-07**. These versions guide Phase 
 | `shadcn` CLI | 4.16.2 | MIT |
 | `radix-ui` | 1.6.7 | MIT |
 | `lucide-react` | 1.30.0 | ISC |
+| `class-variance-authority` | 0.7.1 | Apache-2.0 |
+| `clsx` | 2.1.1 | MIT |
+| `tailwind-merge` | 3.6.0 | MIT |
+| `typescript` | 7.0.2 | Apache-2.0 |
+| `@biomejs/biome` | 2.5.7 | MIT OR Apache-2.0 |
+| `vitest` | 4.1.10 | MIT |
+| `@playwright/test` | 1.62.1 | Apache-2.0 |
 | `fallow` | 3.14.0 | MIT |
 
-The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The initial scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
+The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
 
-Before the first install:
+Before adding or updating a dependency:
 
 1. Review release notes and peer dependencies.
 2. Pin exact versions in the lockfile.
@@ -71,7 +80,7 @@ Rules:
 - workspaces are `apps/*` and `packages/*`;
 - internal package dependencies use `workspace:*`;
 - React, React DOM, TypeScript, Tailwind, and the test stack use catalogs;
-- dependencies are declared in the workspace that uses them, not accumulated at the root;
+- runtime dependencies are declared in the workspace that uses them; the root contains only repository-wide development and quality CLIs;
 - `bun.lock` is mandatory and verified with `bun ci`;
 - root scripts invoke package scripts through Bun filters;
 - npm, pnpm, and Yarn lockfiles are not committed.
@@ -110,7 +119,7 @@ The quality gates are complementary:
 - **Fallow** owns changed-code risk, unused/dependency graph evidence, duplication, complexity, design-token drift signals, and configured internal package boundaries.
 - **Tests and validators** own runtime behavior, geometry invariants, storage recovery, browser interactions, and file interoperability.
 
-Fallow is installed as an exact root development dependency. Root scripts expose `fallow`, `fallow:audit`, and a score-oriented health command. `.fallowrc.jsonc` is version-pinned, discovers `apps/*` and `packages/*`, gates stale or reasonless suppressions, ignores generated trees, and encodes only durable package rules initially: `domain` and shared `ui` cannot import other internal packages. More boundary rules are added only after package contracts are accepted.
+Fallow is installed as an exact root development dependency. Root scripts expose `fallow`, `fallow:audit`, and a score-oriented health command. `.fallowrc.jsonc` is version-pinned, discovers `apps/*` and `packages/*`, gates stale or reasonless suppressions, ignores generated trees, and encodes only durable package rules initially: `domain` and shared `ui` cannot import other internal packages. More boundary rules are added only after package contracts are accepted. The first full-repository run reported no dead code, duplication, architecture violations, or threshold failures after the shell and validator were decomposed.
 
 Pull requests use `fallow audit` with the new-only gate and full Git history so inherited debt remains visible without blocking unrelated work. The GitHub Action and CLI are pinned to the same reviewed release; CI disables analysis cache for correctness across force-updated PR heads. PR comments require explicit least-privilege workflow permissions and are never a substitute for local output. Fallow's optional runtime product, telemetry, MCP server, and automatic fixes are not foundation requirements; automatic cleanup always begins with a dry run.
 

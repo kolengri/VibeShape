@@ -1,0 +1,20 @@
+{
+  "name": "@vibeshape/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "files": [
+    "base.json",
+    "browser.json",
+    "library.json",
+    "react-library.json",
+    "worker.json"
+  ],
+  "exports": {
+    "./base.json": "./base.json",
+    "./browser.json": "./browser.json",
+    "./library.json": "./library.json",
+    "./react-library.json": "./react-library.json",
+    "./worker.json": "./worker.json"
+  }
+}

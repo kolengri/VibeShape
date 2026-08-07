@@ -8,6 +8,8 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 ## Phase 0 — spikes and measurements (2–4 weeks)
 
+The repository foundation scaffold is already available for implementing and measuring these spikes. Engine, solver, storage, and format package entry points remain empty until the corresponding evidence exists.
+
 ### Deliverables
 
 - Reproducible OCCT/Replicad worker prototype.

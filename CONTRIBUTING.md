@@ -2,6 +2,17 @@
 
 Before implementation begins, changes must preserve the boundaries defined by the documentation.
 
+## Local setup
+
+Install the exact Bun version declared by `packageManager`, then run:
+
+```bash
+bun install
+bun run check
+```
+
+Use `bun run dev` for the Vite application and `bun run test:e2e` for the Chromium smoke test. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
+
 ## Language policy
 
 - Write all documentation, ADRs, source identifiers, commit messages, diagnostics intended for developers, tests, and code comments in **English**.

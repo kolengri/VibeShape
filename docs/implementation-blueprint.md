@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-Create five short-lived spike branches or packages. Finalize the production monorepo scaffold only after a stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
+Create five short-lived spike branches or packages. The checked-in monorepo is a minimal tooling, package-boundary, and UI-shell scaffold; do not fill its engine-specific packages with production adapters until the stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
 
 ## Dependencies
 
@@ -192,6 +192,10 @@ After Proceed:
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 
 Every epic includes positive, failure, recovery, and license or format acceptance criteria. User-visible epics also include the applicable [Design and UX Guidelines](product/design-and-ux-guidelines.md) definition-of-done checks.
+
+### Foundation scaffold status
+
+The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright Chromium smoke coverage, Vite, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and broader browser jobs remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
 
 ## Definition of Done for a geometry feature
 

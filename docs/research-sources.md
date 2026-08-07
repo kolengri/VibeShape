@@ -118,7 +118,9 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 Results from `npm view <package> version license` on 2026-08-07:
 
 - React 19.2.8, MIT
+- React DOM 19.2.8, MIT
 - Vite 8.2.1, MIT
+- `@vitejs/plugin-react` 6.0.5, MIT
 - Three.js 0.185.1, MIT
 - Replicad 0.23.1, MIT
 - OpenCascade.js 1.1.1, LGPL-2.1-only
@@ -130,9 +132,16 @@ Results from `npm view <package> version license` on 2026-08-07:
 - shadcn CLI 4.16.2, MIT
 - Unified `radix-ui` 1.6.7, MIT
 - Lucide React 1.30.0, ISC
+- class-variance-authority 0.7.1, Apache-2.0
+- clsx 2.1.1, MIT
+- tailwind-merge 3.6.0, MIT
+- TypeScript 7.0.2, Apache-2.0
+- Biome 2.5.7, MIT OR Apache-2.0
+- Vitest 4.1.10, MIT
+- Playwright 1.62.1, Apache-2.0
 - Fallow 3.14.0, MIT
 
-The local Bun version was 1.3.14 (`1.3.14+0d9b296af`); it will be pinned during scaffolding.
+The local Bun version is 1.3.14 (`1.3.14+0d9b296af`) and is pinned in `packageManager`, CI, and the generated lockfile workflow. Context7 resolved shadcn/ui to `/shadcn-ui/ui`; the scaffold was cross-checked with the current Vite monorepo, package-import, Tailwind v4, and CLI v4 guidance. `shadcn info` resolved the checked-in app as Vite, Tailwind v4, Radix, `new-york`, and the shared `@vibeshape/ui` aliases.
 
 Registry metadata does not replace the license files in the exact lockfile and distribution.
 

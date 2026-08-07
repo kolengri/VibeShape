@@ -1,0 +1,17 @@
+{
+  "name": "@vibeshape/geometry-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Geometry evaluation worker and CAD kernel adapter boundary.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

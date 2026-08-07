@@ -145,6 +145,8 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
+The foundation scaffold implements these gates as root Bun scripts. Vitest discovers focused tests across workspaces, Playwright runs the initial Chromium shell smoke test against a real Vite server, and GitHub Actions repeats frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser smoke, and Fallow changed-code analysis. Firefox, WebKit, PWA, worker, WASM, and offline tests are added with the features they verify; the initial Chromium smoke test is not evidence for those future release gates.
+
 ## Design and UX acceptance
 
 Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).
