@@ -341,6 +341,8 @@ Status changes that do not move focus use the appropriate live-region semantics.
 
 ### Long-Running Operations
 
+- An action that starts asynchronous work becomes single-flight until that attempt settles. Its control exposes a named loading state, blocks accidental double activation, preserves its accessible name, and does not hide rejection behind an indefinitely spinning indicator.
+- Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
 - Otherwise use indeterminate progress with elapsed time after an appropriate delay.

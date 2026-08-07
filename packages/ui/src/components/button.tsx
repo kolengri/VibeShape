@@ -1,11 +1,11 @@
-import { type VariantProps, cva } from "class-variance-authority"
+import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
-import type * as React from "react"
-
+import * as React from "react"
+import { Spinner } from "#components/spinner"
 import { cn } from "#lib/cn"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "relative inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[loading=true]:cursor-wait dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -36,26 +36,90 @@ const buttonVariants = cva(
   },
 )
 
+type ButtonClickHandler = (event: React.MouseEvent<HTMLButtonElement>) => unknown
+
+export type ButtonProps = Omit<React.ComponentProps<"button">, "onClick" | "onDoubleClick"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+    isLoading?: boolean
+    onClick?: ButtonClickHandler
+  }
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    return false
+  }
+
+  return "then" in value && typeof value.then === "function"
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
+  isLoading = false,
+  disabled = false,
+  children,
+  onClick,
+  "aria-busy": ariaBusy,
+  "aria-disabled": ariaDisabled,
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
+}: ButtonProps) {
   const Component = asChild ? Slot.Root : "button"
+  const pendingRef = React.useRef(false)
+  const [isInternallyLoading, setIsInternallyLoading] = React.useState(false)
+  const showLoading = isLoading || isInternallyLoading
+  const isDisabled = disabled || showLoading
+
+  const finishPendingAction = React.useCallback(() => {
+    pendingRef.current = false
+    setIsInternallyLoading(false)
+  }, [])
+
+  const handleClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (isDisabled || pendingRef.current || event.detail > 1) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      const result = onClick?.(event)
+
+      if (!isPromiseLike(result)) {
+        return
+      }
+
+      pendingRef.current = true
+      setIsInternallyLoading(true)
+      void Promise.resolve(result).then(finishPendingAction, finishPendingAction)
+    },
+    [finishPendingAction, isDisabled, onClick],
+  )
+
+  const handleDoubleClick = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
 
   return (
     <Component
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      data-loading={showLoading}
+      aria-busy={showLoading || ariaBusy || undefined}
+      aria-disabled={(asChild && isDisabled) || ariaDisabled || undefined}
+      disabled={asChild ? undefined : isDisabled}
       className={cn(buttonVariants({ variant, size, className }))}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       {...props}
-    />
+    >
+      {showLoading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+      <Slot.Slottable>{children}</Slot.Slottable>
+    </Component>
   )
 }
 

@@ -11,6 +11,7 @@
 | [0007](0007-gpl-project-license.md) | Accepted | GPL-3.0-or-later |
 | [0008](0008-bun-workspaces.md) | Accepted | Bun workspaces, `bun.lock`, and `bun ci` |
 | [0009](0009-tailwind-shadcn-ui.md) | Accepted | Tailwind CSS v4 with shadcn/ui and Radix |
+| [0010](0010-uncontrolled-form-primitives-and-tanstack-form.md) | Accepted | Uncontrolled-first form primitives with TanStack Form adapters |
 
 Statuses:
 

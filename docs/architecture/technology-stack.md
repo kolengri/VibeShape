@@ -12,6 +12,7 @@
 | Sketch solver | SolveSpace solver subset compiled to WASM | Mature constraint set and GPL-compatible licensing |
 | Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
 | UI state | Zustand | Transient local UI state, separate from domain state |
+| Form state | TanStack Form | Typed field and submission state behind adapters; base controls remain state-agnostic |
 | Runtime schemas | Zod | Worker-message, file, and migration validation |
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
@@ -34,6 +35,7 @@ Verified against the npm registry on **2026-08-07**. Packages already used by th
 | `react-dom` | 19.2.8 | MIT |
 | `vite` | 8.2.1 | MIT |
 | `@vitejs/plugin-react` | 6.0.5 | MIT |
+| `@tanstack/react-form` | 1.33.3 | MIT |
 | `three` | 0.185.1 | MIT |
 | `replicad` | 0.23.1 | MIT |
 | `opencascade.js` | 1.1.1 | LGPL-2.1-only |
@@ -52,6 +54,10 @@ Verified against the npm registry on **2026-08-07**. Packages already used by th
 | `@biomejs/biome` | 2.5.7 | MIT OR Apache-2.0 |
 | `vitest` | 4.1.10 | MIT |
 | `@playwright/test` | 1.62.1 | Apache-2.0 |
+| `@testing-library/dom` | 10.4.1 | MIT |
+| `@testing-library/react` | 16.3.2 | MIT |
+| `@testing-library/user-event` | 14.6.3 | MIT |
+| `jsdom` | 30.0.1 | MIT |
 | `fallow` | 3.14.0 | MIT |
 
 The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
@@ -101,6 +107,8 @@ The foundation adopts these proven monorepo patterns:
 - worker configs that include Web Worker types without exposing DOM window APIs;
 - explicit package subpath exports instead of broad root barrels;
 - a single `cn` implementation in `@vibeshape/ui`, built from `clsx` and `tailwind-merge`;
+- state-agnostic form primitives with a separate TanStack Form integration export;
+- single-flight async action controls that expose disabled, busy, loading, settlement, and duplicate-activation behavior;
 - repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
 Do not copy patterns that do not fit this product:

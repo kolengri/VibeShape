@@ -15,6 +15,8 @@
 - Keep `packages/domain` independent of React, Three.js, persistence, and the geometry adapter.
 - Use Bun workspaces and `bun.lock`; keep Vite as the browser build pipeline unless an ADR supersedes that decision.
 - Treat generated shadcn components as reviewed project source, not as opaque dependencies.
+- Build form controls as state-agnostic, uncontrolled-first primitives before adding separate TanStack Form adapters.
+- Async action controls must prevent duplicate activation, expose accessible pending state, and release their lock on both fulfillment and rejection.
 
 ## Project skills
 

@@ -7,7 +7,7 @@
 3. [Design and UX guidelines](product/design-and-ux-guidelines.md) and [core flows](product/ux-flows.md).
 4. [Architecture overview](architecture/overview.md).
 5. [Technology stack](architecture/technology-stack.md).
-6. [UI system](architecture/ui-system.md) and [geometry/parametrics](architecture/geometry-and-parametrics.md).
+6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Data model and native format](architecture/data-model-and-file-format.md).
 8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
@@ -31,6 +31,7 @@ The documents use these terms:
 - 3MF is the preferred print export.
 - The monorepo is managed with Bun workspaces; Vite remains the browser bundler.
 - UI primitives live in `@vibeshape/ui` and use Tailwind CSS v4 with shadcn/ui/Radix.
+- Form controls are uncontrolled-first primitives with separate TanStack Form adapters.
 - Topology-reference failures are never repaired silently; ambiguity is visible to the user.
 - English is the canonical language for documentation and code comments.
 

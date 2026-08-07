@@ -86,6 +86,8 @@ Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the curre
 | [shadcn/ui monorepo](https://ui.shadcn.com/docs/monorepo) | CLI routing, per-workspace `components.json`, shared UI exports, and the Tailwind v4 configuration rule |
 | [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) | Vite and Tailwind integration plus monorepo-aware component addition |
 | [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | `init`, `add`, `view`, `diff`, and `info` workflows plus source-component management |
+| [TanStack Form React quick start](https://tanstack.com/form/latest/docs/framework/react/quick-start) | `createFormHookContexts`, `createFormHook`, reusable field/form components, typed values, and async submission |
+| [TanStack Form reactivity](https://tanstack.com/form/latest/docs/framework/react/guides/reactivity) | Focused `form.Subscribe` state selection for submit controls and other reactive UI |
 | [Biome configuration](https://biomejs.dev/reference/configuration/) | Git ignore integration, formatting, linting, import organization, scoped file selection, and Tailwind CSS directive parsing |
 | [Biome in large projects](https://biomejs.dev/guides/big-projects/) | Root and nested configuration behavior for monorepos and workspaces |
 | [Fallow documentation](https://docs.fallow.tools/) | Static codebase intelligence scope, configuration, audit workflow, exit semantics, and integrations |
@@ -121,6 +123,7 @@ Results from `npm view <package> version license` on 2026-08-07:
 - React DOM 19.2.8, MIT
 - Vite 8.2.1, MIT
 - `@vitejs/plugin-react` 6.0.5, MIT
+- `@tanstack/react-form` 1.33.3, MIT
 - Three.js 0.185.1, MIT
 - Replicad 0.23.1, MIT
 - OpenCascade.js 1.1.1, LGPL-2.1-only
@@ -139,6 +142,8 @@ Results from `npm view <package> version license` on 2026-08-07:
 - Biome 2.5.7, MIT OR Apache-2.0
 - Vitest 4.1.10, MIT
 - Playwright 1.62.1, Apache-2.0
+- Testing Library DOM 10.4.1, React 16.3.2, and user-event 14.6.3, MIT
+- jsdom 30.0.1, MIT
 - Fallow 3.14.0, MIT
 
 The local Bun version is 1.3.14 (`1.3.14+0d9b296af`) and is pinned in `packageManager`, CI, and the generated lockfile workflow. Context7 resolved shadcn/ui to `/shadcn-ui/ui`; the scaffold was cross-checked with the current Vite monorepo, package-import, Tailwind v4, and CLI v4 guidance. `shadcn info` resolved the checked-in app as Vite, Tailwind v4, Radix, `new-york`, and the shared `@vibeshape/ui` aliases.
