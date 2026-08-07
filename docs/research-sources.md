@@ -88,6 +88,8 @@ Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the curre
 | [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | `init`, `add`, `view`, `diff`, and `info` workflows plus source-component management |
 | [TanStack Form React quick start](https://tanstack.com/form/latest/docs/framework/react/quick-start) | `createFormHookContexts`, `createFormHook`, reusable field/form components, typed values, and async submission |
 | [TanStack Form reactivity](https://tanstack.com/form/latest/docs/framework/react/guides/reactivity) | Focused `form.Subscribe` state selection for submit controls and other reactive UI |
+| [use-intl package guide](https://github.com/amannn/next-intl/tree/main/packages/use-intl) | Framework-agnostic `IntlProvider`, typed `useTranslations`, nested ICU messages, and React usage without Next.js |
+| [next-intl TypeScript guide](https://next-intl.dev/docs/workflows/typescript) | `AppConfig` augmentation for typed Locale, Messages, and Formats, shared with the underlying `use-intl` package |
 | [Biome configuration](https://biomejs.dev/reference/configuration/) | Git ignore integration, formatting, linting, import organization, scoped file selection, and Tailwind CSS directive parsing |
 | [Biome in large projects](https://biomejs.dev/guides/big-projects/) | Root and nested configuration behavior for monorepos and workspaces |
 | [Fallow documentation](https://docs.fallow.tools/) | Static codebase intelligence scope, configuration, audit workflow, exit semantics, and integrations |
@@ -124,6 +126,7 @@ Results from `npm view <package> version license` on 2026-08-07:
 - Vite 8.2.1, MIT
 - `@vitejs/plugin-react` 6.0.5, MIT
 - `@tanstack/react-form` 1.33.3, MIT
+- `use-intl` 4.13.5, MIT; its direct runtime dependencies are MIT except `intl-messageformat` 11.1.0, which is BSD-3-Clause
 - Three.js 0.185.1, MIT
 - Replicad 0.23.1, MIT
 - OpenCascade.js 1.1.1, LGPL-2.1-only

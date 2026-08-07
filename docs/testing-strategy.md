@@ -142,6 +142,7 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 - Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - Shared UI component tests cover native uncontrolled behavior before TanStack Form adapters, including double activation, async settlement, disabled/busy semantics, labels, and validation relationships.
+- I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.

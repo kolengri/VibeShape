@@ -13,6 +13,7 @@
 | Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
 | UI state | Zustand | Transient local UI state, separate from domain state |
 | Form state | TanStack Form | Typed field and submission state behind adapters; base controls remain state-agnostic |
+| Internationalization | `use-intl` | Typed ICU messages and formatting without a Next.js or backend dependency |
 | Runtime schemas | Zod | Worker-message, file, and migration validation |
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
@@ -36,6 +37,7 @@ Verified against the npm registry on **2026-08-07**. Packages already used by th
 | `vite` | 8.2.1 | MIT |
 | `@vitejs/plugin-react` | 6.0.5 | MIT |
 | `@tanstack/react-form` | 1.33.3 | MIT |
+| `use-intl` | 4.13.5 | MIT |
 | `three` | 0.185.1 | MIT |
 | `replicad` | 0.23.1 | MIT |
 | `opencascade.js` | 1.1.1 | LGPL-2.1-only |
@@ -109,6 +111,7 @@ The foundation adopts these proven monorepo patterns:
 - a single `cn` implementation in `@vibeshape/ui`, built from `clsx` and `tailwind-merge`;
 - state-agnostic form primitives with a separate TanStack Form integration export;
 - single-flight async action controls that expose disabled, busy, loading, settlement, and duplicate-activation behavior;
+- a framework-agnostic `@vibeshape/i18n` workspace for typed ICU catalogs, locale preference, and React context;
 - repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
 Do not copy patterns that do not fit this product:

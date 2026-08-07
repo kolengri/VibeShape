@@ -71,7 +71,7 @@ function TextFieldError({ id, error }: { id: string; error?: React.ReactNode }) 
       role={hasError ? "alert" : undefined}
       className={cn("min-h-4 text-xs leading-4 text-destructive", !hasError && "invisible")}
     >
-      {hasError ? error : "No validation error"}
+      {hasError ? error : "\u00A0"}
     </p>
   )
 }

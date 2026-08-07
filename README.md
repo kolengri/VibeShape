@@ -10,7 +10,7 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
-The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, Tailwind tokens, and first source-owned shadcn primitive are operational. CAD domain behavior, the geometry engine, sketch solver, persistence, and file codecs remain intentionally unimplemented until their Phase 0 spikes pass.
+The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, typed ICU localization, Tailwind tokens, and first source-owned shadcn primitives are operational. CAD domain behavior, the geometry engine, sketch solver, persistence, and file codecs remain intentionally unimplemented until their Phase 0 spikes pass.
 
 Key decisions:
 
@@ -20,6 +20,7 @@ Key decisions:
 - sketch solver: a narrow WebAssembly build of the **SolveSpace** solver, subject to a technical spike;
 - application: **React + TypeScript + Vite** in a **Bun workspaces monorepo**, delivered as a static installable PWA without a backend;
 - UI foundation: **Tailwind CSS v4 + shadcn/ui (Radix)** in a dedicated `@vibeshape/ui` package;
+- internationalization: typed ICU messages through **use-intl** in a local-first `@vibeshape/i18n` package;
 - code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
@@ -38,6 +39,7 @@ Key decisions:
 | [Architecture](docs/architecture/overview.md) | Layers, processes, worker protocol, and rebuild model |
 | [Technology stack](docs/architecture/technology-stack.md) | Libraries, alternatives, and reviewed versions |
 | [UI system](docs/architecture/ui-system.md) | Tailwind, shadcn/ui, tokens, and component boundaries |
+| [Internationalization](docs/architecture/internationalization.md) | Typed messages, locale resolution, catalog ownership, and verification |
 | [Geometry and parametrics](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming, and caching |
 | [Data model and `.vshape`](docs/architecture/data-model-and-file-format.md) | Entities, events, units, and native format |
 | [Local-first persistence](docs/architecture/local-first-storage.md) | Autosave, recovery, OPFS, and portability |

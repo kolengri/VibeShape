@@ -39,6 +39,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React | ISC | Include a third-party notice |
 | TanStack Form | MIT | Include a third-party notice |
+| use-intl and ICU formatting dependencies | MIT; BSD-3-Clause for `intl-messageformat` | Include third-party notices; these packages ship in the browser bundle |
 | class-variance-authority | Apache-2.0 | Include the license and applicable notice obligations |
 | clsx / tailwind-merge | MIT | Include third-party notices |
 | TypeScript | Apache-2.0 | Record as a build tool and include the license according to release policy |

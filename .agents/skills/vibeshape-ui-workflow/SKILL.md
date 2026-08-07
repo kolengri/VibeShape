@@ -46,6 +46,16 @@ Use current library documentation through Context7 before changing shadcn, Radix
 - TanStack field and submit adapters live behind the explicit UI integration export and reuse base components without duplicating markup or styles.
 - Test the base uncontrolled component first, then value binding, validation, dirty/submitting policy, and repeat submission through the adapter.
 
+## Localization
+
+- Follow `docs/architecture/internationalization.md` for user-facing copy, locale resolution, catalog ownership, and verification.
+- Author canonical copy in the English ICU catalog and render it through the typed `@vibeshape/i18n` exports.
+- Keep stable domain identifiers, command IDs, diagnostic codes, units, file-format names, and telemetry fields separate from translated labels.
+- Never build a sentence by concatenating translated fragments. Use one ICU message with named values, plural, or select clauses.
+- Shared packages own distinct top-level namespaces; merge catalogs through `mergeMessages`, which rejects duplicate namespace ownership.
+- A new locale must match English keys and placeholders, preserve CAD terminology, and pass long-label, keyboard, accessibility, and layout checks.
+- Locale is a local UI preference. Changing it must not rebuild geometry, mutate the document, or require network access.
+
 ## Tailwind and shadcn Rules
 
 - Use semantic theme tokens for foundational surfaces and CAD state; do not add ad hoc hex colors.

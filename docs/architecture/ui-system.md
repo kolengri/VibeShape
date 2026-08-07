@@ -35,6 +35,8 @@ packages/ui/
 
 `@vibeshape/ui` MAY import React, Radix, class-variance-authority, Tailwind utilities, Lucide, and TanStack Form inside its explicit integration entry point. Base components MUST NOT import TanStack Form. The package MUST NOT import domain, geometry worker, persistence, or application-state packages.
 
+`apps/web` owns product-copy catalogs and composes the `@vibeshape/i18n` provider accepted in [ADR-0011](../adr/0011-use-intl-localization-layer.md). Shared primitives remain copy-free when possible; component-owned copy uses a distinct shared catalog namespace rather than hard-coded display strings.
+
 `apps/web` owns:
 
 - `ModelTree`, `FeatureEditor`, and `SketchConstraintList`;
@@ -114,6 +116,7 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 ## Composition rules
 
 - Follow the complete [UI component contracts](ui-component-contracts.md) for component layering, asynchronous actions, form adapters, state inventories, and verification.
+- Follow [Internationalization](internationalization.md) for all product copy, accessible names, validation, status, and diagnostic messages.
 - Build the native or state-agnostic primitive before its TanStack Form adapter; the adapter imports the primitive, never the reverse.
 - Buttons that start Promise-like work become single-flight, expose an accessible pending state, and suppress accidental double activation. Error reporting remains owned by the command or form.
 - Use `AlertDialog`, not `Dialog`, for destructive confirmation.

@@ -1,27 +1,30 @@
 import { Button } from "@vibeshape/ui/components/button"
+import { useTranslations } from "@vibeshape/i18n"
 
 export function CommandToolbar() {
+  const t = useTranslations("app.shell.commandToolbar")
+
   return (
     <nav
-      aria-label="Model commands"
+      aria-label={t("ariaLabel")}
       className="flex items-center gap-1 border-b bg-toolbar px-2"
       role="toolbar"
     >
       <Button type="button" size="sm" variant="secondary" aria-pressed="true">
-        Model
+        {t("model")}
       </Button>
       <Button type="button" size="sm" variant="ghost">
-        Sketch
+        {t("sketch")}
       </Button>
       <Button type="button" size="sm" variant="ghost">
-        Print
+        {t("print")}
       </Button>
       <span className="mx-1 h-5 border-l" aria-hidden="true" />
       <Button type="button" size="sm" variant="ghost">
-        Create sketch
+        {t("createSketch")}
       </Button>
       <Button type="button" size="sm" variant="ghost">
-        Extrude
+        {t("extrude")}
       </Button>
     </nav>
   )

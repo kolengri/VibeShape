@@ -105,6 +105,7 @@ packages/
   persistence/            # IndexedDB, OPFS, migrations, recovery
   formats/                # .vshape, STEP orchestration, STL, 3MF
   print-analysis/         # mesh and build-volume checks
+  i18n/                   # ICU catalogs, locale resolution, React provider
   ui/                     # Tailwind v4, shadcn/Radix primitives, tokens
   test-models/            # fixtures and expected invariants
   typescript-config/      # browser, worker, React, and pure-library configs
@@ -113,11 +114,13 @@ docs/
 
 The root `package.json` declares Bun workspaces for `apps/*` and `packages/*`. Local packages use `workspace:*`; shared React, TypeScript, Tailwind, and test versions use Bun default or named catalogs; `bun.lock` is committed.
 
-This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite and proves Tailwind discovery across `@vibeshape/ui`. The domain, protocol, geometry, solver, viewer, persistence, format, print-analysis, and test-model packages expose intentionally empty entry points. Their public contracts are introduced only together with the owning spike, invariant tests, and dependency evidence.
+This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite, resolves typed product copy through `@vibeshape/i18n`, and proves Tailwind discovery across `@vibeshape/ui`. The domain, protocol, geometry, solver, viewer, persistence, format, print-analysis, and test-model packages expose intentionally empty entry points. Their public contracts are introduced only together with the owning spike, invariant tests, and dependency evidence.
 
 Lint and import rules enforce package boundaries. For example, `domain` cannot import `viewer`, `geometry-worker`, or `ui`.
 
 `packages/ui` exports only visual primitives, hooks, tokens, and CSS. CAD-specific compositions such as `ModelTree`, `FeatureEditor`, and `PrintCheckPanel` remain in `apps/web` or a later feature package. The UI package cannot import domain or geometry packages.
+
+`packages/i18n` exports locale resolution, safe local preference storage, catalog validation and merging, the React provider, and typed `use-intl` hooks. It is independent of application, UI, domain, persistence, and geometry packages. The complete contract is defined in [Internationalization](internationalization.md) and [ADR-0011](../adr/0011-use-intl-localization-layer.md).
 
 ## Main-to-worker protocol
 

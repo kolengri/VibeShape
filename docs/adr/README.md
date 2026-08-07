@@ -12,6 +12,7 @@
 | [0008](0008-bun-workspaces.md) | Accepted | Bun workspaces, `bun.lock`, and `bun ci` |
 | [0009](0009-tailwind-shadcn-ui.md) | Accepted | Tailwind CSS v4 with shadcn/ui and Radix |
 | [0010](0010-uncontrolled-form-primitives-and-tanstack-form.md) | Accepted | Uncontrolled-first form primitives with TanStack Form adapters |
+| [0011](0011-use-intl-localization-layer.md) | Accepted | `use-intl` localization for the static React application |
 
 Statuses:
 

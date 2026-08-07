@@ -1,0 +1,52 @@
+{
+  "app": {
+    "shell": {
+      "applicationBar": {
+        "export": "Export…",
+        "savedInBrowser": "Saved in this browser",
+        "untitledProject": "Untitled project"
+      },
+      "commandToolbar": {
+        "ariaLabel": "Model commands",
+        "createSketch": "Create sketch",
+        "extrude": "Extrude",
+        "model": "Model",
+        "print": "Print",
+        "sketch": "Sketch"
+      },
+      "modelTree": {
+        "ariaLabel": "Model tree",
+        "items": {
+          "bodies": "Bodies",
+          "features": "Features",
+          "origin": "Origin",
+          "sketches": "Sketches"
+        },
+        "projectFeatures": "Project features",
+        "title": "Model tree"
+      },
+      "statusBar": {
+        "ready": "Ready",
+        "selection": "Selection: {filter}",
+        "selectionAny": "Any",
+        "units": "Units: {unit}"
+      },
+      "taskPanel": {
+        "ariaLabel": "Task panel",
+        "createSketch": "Create sketch",
+        "description": "Select an origin plane, create a sketch, and preview each feature before applying it.",
+        "foundationStatus": "Foundation status",
+        "geometryEngineNotLoaded": "Geometry engine not loaded",
+        "sharedUiTokensActive": "Shared UI tokens active",
+        "startModeling": "Start modeling",
+        "workspacesConfigured": "Bun workspaces configured"
+      },
+      "viewport": {
+        "ariaLabel": "3D viewport",
+        "description": "Geometry and worker integration arrive after the Phase 0 engine spikes.",
+        "orientation": "{plane} · millimeters",
+        "title": "3D viewport"
+      }
+    }
+  }
+}

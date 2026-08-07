@@ -6,6 +6,8 @@
 - Keep comments concise and explain intent, invariants, ownership, or non-obvious constraints. Do not restate the code.
 - Do not add bilingual comments or parallel translated documentation to the source tree.
 - User-facing product copy must be authored in English and routed through the localization layer when localization is introduced.
+- Put product copy in typed ICU message catalogs; do not concatenate translated fragments or use display copy as a domain identifier.
+- English is the source catalog. Every added locale must match its keys and placeholders before merge.
 - Preserve official product, library, standard, and file-format names exactly as published.
 
 ## Architecture discipline

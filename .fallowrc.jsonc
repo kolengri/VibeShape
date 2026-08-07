@@ -12,6 +12,7 @@
   "boundaries": {
     "zones": [
       { "name": "web", "patterns": ["apps/web/**"] },
+      { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
       { "name": "protocol", "patterns": ["packages/protocol/**"] },
       {
@@ -33,7 +34,9 @@
       // Stable core rule: the domain has no internal package dependencies.
       { "from": "domain", "allow": [] },
       // Shared visual primitives cannot depend on CAD or application packages.
-      { "from": "ui", "allow": [] }
+      { "from": "ui", "allow": [] },
+      // Localization infrastructure remains independent of application and CAD packages.
+      { "from": "i18n", "allow": [] }
     ]
   },
   "rules": {
