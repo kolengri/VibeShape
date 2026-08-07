@@ -195,7 +195,7 @@ Every epic includes positive, failure, recovery, and license or format acceptanc
 
 ### Foundation scaffold status
 
-The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright Chromium smoke coverage, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and broader browser jobs remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
+The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and feature-specific browser scenarios remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
 
 ## Definition of Done for a geometry feature
 

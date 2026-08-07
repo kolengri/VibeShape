@@ -24,7 +24,7 @@
 | Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
 | Format and lint | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
 | Code intelligence | Fallow | Changed-code risk, cleanup evidence, duplication, complexity, dependency hygiene, styling drift, and architecture boundaries |
-| CI | GitHub Actions | Typecheck, tests, format conformance, Fallow audit, and browser smoke tests |
+| CI | GitHub Actions | Typecheck, tests, format conformance, Fallow audit, and Playwright E2E across Chromium, Firefox, and WebKit |
 
 ## Reviewed package-version snapshot
 

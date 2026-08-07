@@ -71,7 +71,7 @@ bun run fallow
 bun run test:e2e
 ```
 
-Run `bun ci` to verify a frozen installation from `bun.lock`. The first local browser test may require `bunx playwright install chromium`. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited.
+Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cross-browser run may require `bunx playwright install chromium firefox webkit`; use `bun run test:e2e:chromium` for the fastest local E2E feedback and `bun run test:e2e:ui` for Playwright UI mode. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited.
 
 ## Next practical step
 

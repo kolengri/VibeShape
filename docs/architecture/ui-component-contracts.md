@@ -72,7 +72,7 @@ Shared interactive components require behavior tests, not snapshots alone.
 - Test async fulfillment and rejection, immediate repeat attempts, external loading, and unmount or cancellation behavior when relevant.
 - Test label and description relationships, validation announcements, and accessible names while pending.
 - Test the TanStack adapter separately for value binding, validation timing, dirty policy, and single submission.
-- Run UI typecheck, focused Vitest tests, production Vite build when styles or exports change, browser smoke for user-visible flows, and Fallow changed-code audit.
+- Run UI typecheck, focused Vitest tests, production Vite build when styles or exports change, Playwright E2E for user-visible flows, and Fallow changed-code audit.
 
 ## Implemented foundation
 

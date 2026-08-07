@@ -11,7 +11,7 @@ bun install
 bun run check
 ```
 
-Use `bun run dev` for the Vite application and `bun run test:e2e` for the Chromium smoke test. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
+Use `bun run dev` for the Vite application, `bun run test:e2e:chromium` for fast browser feedback, and `bun run test:e2e` for the full Chromium, Firefox, and WebKit suite. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
 
 ## Language policy
 
