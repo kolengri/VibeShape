@@ -4,7 +4,7 @@
 
 VibeShape should expose AI automation through a **local MCP adapter over the ordinary document command and query contracts**. MCP is an integration boundary, not a second CAD engine, extension runtime, persistence layer, or privileged scripting API.
 
-This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The first implementation starts only after domain commands can create a disposable draft, validate it, preview it, and commit it with a revision precondition.
+This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral domain foundation now proves command descriptors, actor provenance, multi-command disposable drafts, deterministic event replay, and revision-safe atomic commit for document creation and rename. Draft validation through geometry, bounded preview resources, persistence, confirmation UI, session expiry, and transport remain required before an MCP server is scaffolded.
 
 ## Goals and non-goals
 
@@ -95,6 +95,8 @@ Candidate first-party module families are:
 - `org.vibeshape.core.measurement`.
 
 These are logical identities, not a commitment to one Bun workspace per module. Package extraction follows demonstrated dependency, execution, ownership, or publication needs.
+
+The current registry starts with `org.vibeshape.core.document`. Its `org.vibeshape.document.create` and `org.vibeshape.document.rename` commands are the conformance fixture for one-command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. This minimal descriptor is expected to grow only when a real consumer proves each additional field.
 
 ## MCP primitives
 
