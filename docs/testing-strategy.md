@@ -137,10 +137,13 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 
 - `bun ci` verifies workspace manifests against `bun.lock`.
 - Typecheck, lint, and test run through workspace filters and root aggregate scripts.
+- `fallow audit` gates error-severity findings introduced by a changeset, including dead code, dependency hygiene, duplication, complexity, styling drift, and configured package-boundary violations.
 - Dependency-boundary tests prohibit UI imports in domain and protocol.
 - Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
+
+Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
 ## Design and UX acceptance
 

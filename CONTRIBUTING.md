@@ -20,6 +20,7 @@ Before implementation begins, changes must preserve the boundaries defined by th
 - Pin dependency versions in the lockfile; WASM builds record the upstream commit, build flags, and checksum.
 - The only JavaScript lockfile is `bun.lock`; workspace dependencies use `workspace:*`, and CI uses `bun ci`.
 - Add shadcn components selectively and review them as project-owned source; `add --all` and blind overwrite are prohibited.
+- Run `bun run fallow:audit` after source, style, or package-manifest changes and investigate reported consumers before deleting or suppressing code.
 - Do not combine unrelated refactoring and feature work.
 
 ## Contribution license

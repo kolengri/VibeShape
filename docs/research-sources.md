@@ -75,6 +75,8 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 ## Monorepo and UI Toolchain
 
+Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the current configuration and CI contract were cross-checked against the version-matched 3.14.0 package schema, CLI, GitHub Action, and npm metadata.
+
 | Source | Evidence |
 |---|---|
 | [Bun workspaces](https://bun.sh/docs/pm/workspaces) | Root workspaces, `workspace:*`, filters, and workspace scripts |
@@ -86,8 +88,11 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | `init`, `add`, `view`, `diff`, and `info` workflows plus source-component management |
 | [Biome configuration](https://biomejs.dev/reference/configuration/) | Git ignore integration, formatting, linting, import organization, scoped file selection, and Tailwind CSS directive parsing |
 | [Biome in large projects](https://biomejs.dev/guides/big-projects/) | Root and nested configuration behavior for monorepos and workspaces |
+| [Fallow documentation](https://docs.fallow.tools/) | Static codebase intelligence scope, configuration, audit workflow, exit semantics, and integrations |
+| [Fallow audit reference](https://docs.fallow.tools/cli/audit) | Merge-base changed-file analysis, pass/warn/fail verdicts, and exit codes |
+| [Fallow upstream and GitHub Action](https://github.com/fallow-rs/fallow) | MIT-licensed CLI, versioned Agent Skill, Bun installation, action permissions, full-history checkout, and PR feedback |
 
-**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports. Biome provides the selected formatter and linter, including current Tailwind v4 parser support, while TypeScript and project-specific tests remain separate gates.
+**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports. Biome provides deterministic formatting and linting, TypeScript owns compile-time correctness, and Fallow adds changed-code and architecture intelligence; project-specific tests remain separate gates.
 
 ## UX, Accessibility, and Component Behavior
 
@@ -125,6 +130,7 @@ Results from `npm view <package> version license` on 2026-08-07:
 - shadcn CLI 4.16.2, MIT
 - Unified `radix-ui` 1.6.7, MIT
 - Lucide React 1.30.0, ISC
+- Fallow 3.14.0, MIT
 
 The local Bun version was 1.3.14 (`1.3.14+0d9b296af`); it will be pinned during scaffolding.
 

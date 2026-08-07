@@ -33,7 +33,7 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 ### Scope
 
-- Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, and `bun ci`.
+- Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, Biome, Fallow changed-code auditing, and `bun ci`.
 - Tailwind CSS v4 and `@vibeshape/ui` using shadcn/Radix primitives and tokens.
 - PWA shell and project library following the design and UX contract, including its state and accessibility harness.
 - Domain commands, events, and revisions.

@@ -182,7 +182,7 @@ The review ends with one decision:
 
 After Proceed:
 
-1. `E01 Tooling`: Bun workspaces, pinned Bun and `bun.lock`, catalogs, environment-specific shared TypeScript configs, Biome, scoped verification scripts, project-skill validation, `bun ci`, and license/SBOM skeleton.
+1. `E01 Tooling`: Bun workspaces, pinned Bun and `bun.lock`, catalogs, environment-specific shared TypeScript configs, Biome, Fallow configuration and changed-code PR gate, scoped verification scripts, project-skill validation, `bun ci`, and license/SBOM skeleton.
 2. `E02 Domain`: IDs, units, `Document`/`Feature` DAG, commands, and revisions.
 3. `E03 Protocol`: schemas, worker lifecycle, diagnostics, and generation cancellation.
 4. `E04 Geometry`: production adapter from SPK-001 with ownership and leak guards.

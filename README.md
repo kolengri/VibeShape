@@ -20,6 +20,7 @@ Key decisions:
 - sketch solver: a narrow WebAssembly build of the **SolveSpace** solver, subject to a technical spike;
 - application: **React + TypeScript + Vite** in a **Bun workspaces monorepo**, delivered as a static installable PWA without a backend;
 - UI foundation: **Tailwind CSS v4 + shadcn/ui (Radix)** in a dedicated `@vibeshape/ui` package;
+- code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
 - primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;

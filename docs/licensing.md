@@ -36,6 +36,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React | ISC | Include a third-party notice |
+| Fallow static analyzer and GitHub Action | MIT | Pin the development tool and action revision; include its license in build-tool notices according to release policy |
 | 3MF specification | Royalty-free specification terms | Follow specification attribution and terms; the VibeShape writer remains GPL-licensed |
 | PrusaSlicer / CuraEngine | AGPL-3.0 | Do not bundle in the MVP; record any future integration in a separate ADR |
 

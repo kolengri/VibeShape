@@ -20,8 +20,9 @@
 | Large binary cache | OPFS | Efficient local files accessed from workers |
 | Offline | Web App Manifest and service worker | Installable offline static PWA |
 | Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
-| Quality | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
-| CI | GitHub Actions | Typecheck, tests, format conformance, and browser smoke tests |
+| Format and lint | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
+| Code intelligence | Fallow | Changed-code risk, cleanup evidence, duplication, complexity, dependency hygiene, styling drift, and architecture boundaries |
+| CI | GitHub Actions | Typecheck, tests, format conformance, Fallow audit, and browser smoke tests |
 
 ## Reviewed package-version snapshot
 
@@ -42,6 +43,7 @@ Verified against the npm registry on **2026-08-07**. These versions guide Phase 
 | `shadcn` CLI | 4.16.2 | MIT |
 | `radix-ui` | 1.6.7 | MIT |
 | `lucide-react` | 1.30.0 | ISC |
+| `fallow` | 3.14.0 | MIT |
 
 The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The initial scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
 
@@ -90,7 +92,7 @@ The foundation adopts these proven monorepo patterns:
 - worker configs that include Web Worker types without exposing DOM window APIs;
 - explicit package subpath exports instead of broad root barrels;
 - a single `cn` implementation in `@vibeshape/ui`, built from `clsx` and `tailwind-merge`;
-- repository-local skills for UI, testing, scoped verification, dependency audits, type guards, and documentation synchronization.
+- repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
 Do not copy patterns that do not fit this product:
 
@@ -101,7 +103,54 @@ Do not copy patterns that do not fit this product:
 - no Next.js-specific shadcn, Tailwind, or package boundaries;
 - no dependency overrides without an advisory, upstream constraint, and removal plan.
 
-Biome does not replace TypeScript typechecking, dependency-boundary tests, browser tests, geometry fixtures, or format validators. Its exact version and schema are pinned with the initial scaffold.
+The quality gates are complementary:
+
+- **Biome** owns formatting, lint rules, import organization, and supported source/config syntax.
+- **TypeScript** owns compile-time type correctness for each explicit browser, worker, or library environment.
+- **Fallow** owns changed-code risk, unused/dependency graph evidence, duplication, complexity, design-token drift signals, and configured internal package boundaries.
+- **Tests and validators** own runtime behavior, geometry invariants, storage recovery, browser interactions, and file interoperability.
+
+Fallow is installed as an exact root development dependency. Root scripts expose `fallow`, `fallow:audit`, and a score-oriented health command. `.fallowrc.jsonc` is version-pinned, discovers `apps/*` and `packages/*`, gates stale or reasonless suppressions, ignores generated trees, and encodes only durable package rules initially: `domain` and shared `ui` cannot import other internal packages. More boundary rules are added only after package contracts are accepted.
+
+Pull requests use `fallow audit` with the new-only gate and full Git history so inherited debt remains visible without blocking unrelated work. The GitHub Action and CLI are pinned to the same reviewed release; CI disables analysis cache for correctness across force-updated PR heads. PR comments require explicit least-privilege workflow permissions and are never a substitute for local output. Fallow's optional runtime product, telemetry, MCP server, and automatic fixes are not foundation requirements; automatic cleanup always begins with a dry run.
+
+The Phase 1 root manifest adds this contract:
+
+```json
+{
+  "scripts": {
+    "fallow": "fallow",
+    "fallow:audit": "fallow audit",
+    "fallow:health": "fallow health --score"
+  },
+  "devDependencies": {
+    "fallow": "3.14.0"
+  }
+}
+```
+
+The pull-request workflow checks out full history and uses the reviewed action commit, annotated with its release:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+  checks: write
+
+steps:
+  - name: Fallow audit
+    uses: fallow-rs/fallow@3cf8074a0e2e91c895c0a4224ba1c3bec4630d65 # v3.14.0
+    with:
+      version: "3.14.0"
+      command: audit
+      gate: new-only
+      comment: true
+      review-comments: true
+      no-cache: true
+```
+
+`id-token: write` is required only for branded Fallow App feedback; without it, the action can fall back to the workflow token. If PR comments or reviews are disabled, remove the corresponding write permissions. SARIF upload is a separate opt-in and requires GitHub Code Scanning availability plus `security-events: write`; it is not enabled by default for VibeShape.
 
 ## Why OCCT instead of mesh CSG
 
