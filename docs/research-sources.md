@@ -162,7 +162,7 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 
 ## npm Registry Snapshot
 
-Results from `npm view <package> version license` on 2026-08-07:
+Results from `npm view <package> version license` on 2026-08-07, with `is-what` reviewed on 2026-08-08:
 
 - React 19.2.8, MIT
 - React DOM 19.2.8, MIT
@@ -176,6 +176,7 @@ Results from `npm view <package> version license` on 2026-08-07:
 - Zustand 5.0.14, MIT
 - Dexie 4.4.4, Apache-2.0
 - Zod 4.4.3, MIT
+- `is-what` 5.5.0, MIT; ESM, `sideEffects: false`, bundled TypeScript declarations, and no runtime dependencies
 - Tailwind CSS 4.3.3, MIT
 - `@tailwindcss/vite` 4.3.3, MIT
 - shadcn CLI 4.16.2, MIT

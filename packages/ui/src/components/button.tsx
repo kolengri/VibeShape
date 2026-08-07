@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority"
+import { isAnyObject, isFunction, isPromise } from "is-what"
 import { Slot } from "radix-ui"
 import * as React from "react"
 import { Spinner } from "#components/spinner"
@@ -46,11 +47,11 @@ export type ButtonProps = Omit<React.ComponentProps<"button">, "onClick" | "onDo
   }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+  if (!isPromise(value) && !isAnyObject(value) && !isFunction(value)) {
     return false
   }
 
-  return "then" in value && typeof value.then === "function"
+  return "then" in value && isFunction(value.then)
 }
 
 function Button({

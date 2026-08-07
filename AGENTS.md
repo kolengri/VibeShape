@@ -39,5 +39,6 @@ Keep detailed procedures in skills rather than expanding this always-loaded file
 - Use Biome as the formatter, linter, and import organizer after the code scaffold exists.
 - Run the Fallow changed-code audit after TypeScript, JavaScript, TSX, CSS, or package-manifest changes; investigate graph evidence before deleting or suppressing reported code.
 - Keep separate TypeScript configurations for browser, worker, and library environments; do not expose Node or Bun globals to browser packages by default.
+- Use Zod for untrusted, persisted, versioned, file, worker, and protocol payloads. Use `is-what` for small runtime-kind narrowing inside those validated boundaries; never treat `isObjectLike<T>` or another shallow predicate as shape validation.
 - Prefer explicit package subpath exports. Do not create a generic shared `utils` package until concrete cross-package reuse exists.
 - Add Turborepo only after measured task-graph or caching needs justify it.

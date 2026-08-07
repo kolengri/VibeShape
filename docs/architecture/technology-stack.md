@@ -15,6 +15,7 @@
 | Form state | TanStack Form | Typed field and submission state behind adapters; base controls remain state-agnostic |
 | Internationalization | `use-intl` | Typed ICU messages and formatting without a Next.js or backend dependency |
 | Runtime schemas | Zod | Worker-message, file, and migration validation |
+| Runtime kind guards | `is-what` | Small tree-shakable predicates inside validated boundaries without duplicating schema logic |
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
 | Icons | Lucide React | Consistent low-noise icon set for tools, trees, and actions |
@@ -28,7 +29,7 @@
 
 ## Reviewed package-version snapshot
 
-Verified against the npm registry on **2026-08-07**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
+Verified against the npm registry on **2026-08-07**, with `is-what` reviewed on **2026-08-08**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
 
 | Package | Version | License |
 |---|---:|---|
@@ -45,6 +46,7 @@ Verified against the npm registry on **2026-08-07**. Packages already used by th
 | `zustand` | 5.0.14 | MIT |
 | `dexie` | 4.4.4 | Apache-2.0 |
 | `zod` | 4.4.3 | MIT |
+| `is-what` | 5.5.0 | MIT |
 | `tailwindcss` | 4.3.3 | MIT |
 | `@tailwindcss/vite` | 4.3.3 | MIT |
 | `shadcn` CLI | 4.16.2 | MIT |
@@ -113,6 +115,7 @@ The foundation adopts these proven monorepo patterns:
 - state-agnostic form primitives with a separate TanStack Form integration export;
 - single-flight async action controls that expose disabled, busy, loading, settlement, and duplicate-activation behavior;
 - a framework-agnostic `@vibeshape/i18n` workspace for typed ICU catalogs, locale preference, and React context;
+- Zod schemas at untrusted and versioned boundaries, with `is-what` limited to small runtime-kind narrowing after or alongside those boundaries;
 - repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
 Do not copy patterns that do not fit this product:
