@@ -18,7 +18,8 @@
 - первая интеграция: **Replicad** за собственным интерфейсом `GeometryEngine`, с возможностью перейти на custom-сборку OpenCascade.js;
 - визуализация: **Three.js/WebGL2**;
 - эскизный solver: узкая WebAssembly-сборка solver-части **SolveSpace**, только после технического spike;
-- приложение: **React + TypeScript + Vite**, статическая installable PWA без backend;
+- приложение: **React + TypeScript + Vite** в **Bun workspaces monorepo**, статическая installable PWA без backend;
+- UI-база: **Tailwind CSS v4 + shadcn/ui (Radix)** в отдельном пакете `@vibeshape/ui`;
 - тяжёлые CAD-операции: отдельный **Web Worker**;
 - хранение: IndexedDB/Dexie для модели и журнала, OPFS для крупных бинарных кэшей, экспортируемый контейнер `.vshape` как источник переносимости;
 - основной формат для печати: **3MF**; STEP сохраняет точную геометрию, STL остаётся форматом совместимости;
@@ -34,6 +35,7 @@
 | [UX и ключевые сценарии](docs/product/ux-flows.md) | структура интерфейса и пользовательские потоки |
 | [Архитектура](docs/architecture/overview.md) | слои, процессы, worker-протокол и пересчёт |
 | [Технологический стек](docs/architecture/technology-stack.md) | выбор библиотек, альтернативы и версии |
+| [UI-система](docs/architecture/ui-system.md) | Tailwind, shadcn/ui, токены и границы компонентов |
 | [Геометрия и параметрика](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming и кэширование |
 | [Модель данных и `.vshape`](docs/architecture/data-model-and-file-format.md) | сущности, события, единицы и native-формат |
 | [Local-first хранение](docs/architecture/local-first-storage.md) | autosave, recovery, OPFS и переносимость |

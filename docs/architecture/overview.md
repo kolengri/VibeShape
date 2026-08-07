@@ -105,12 +105,14 @@ packages/
   persistence/            # IndexedDB, OPFS, migrations, recovery
   formats/                # .vshape, STEP orchestration, STL, 3MF
   print-analysis/         # mesh/build-volume checks
-  ui/                     # reusable UI primitives
+  ui/                     # Tailwind v4 + shadcn/Radix primitives и tokens
   test-models/            # fixtures и expected invariants
 docs/
 ```
 
-Package boundaries проверяются lint/import rules: например, `domain` не может импортировать `viewer` или `geometry-worker`.
+Корневой `package.json` объявляет Bun workspaces `apps/*` и `packages/*`. Локальные зависимости используют `workspace:*`, общие версии React/TypeScript/Tailwind/testing — Bun `catalog:`/named catalogs, а `bun.lock` коммитится. Package boundaries проверяются lint/import rules: например, `domain` не может импортировать `viewer`, `geometry-worker` или `ui`.
+
+`packages/ui` экспортирует только визуальные primitives, hooks, tokens и CSS. CAD-specific композиции (`ModelTree`, `FeatureEditor`, `PrintCheckPanel`) остаются в `apps/web` или позднее в отдельном feature package; UI package не импортирует domain/geometry.
 
 ## Протокол main ↔ worker
 

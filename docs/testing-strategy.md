@@ -8,9 +8,9 @@ CAD нельзя проверять только snapshots интерфейса 
 
 | Уровень | Что проверяет | Инструмент/подход |
 |---|---|---|
-| Pure unit | units, expressions, DAG, commands, migrations | Vitest |
+| Pure unit | units, expressions, DAG, commands, migrations | Vitest через `bun run test` |
 | Property-based | parameter ranges, solver degeneracies, TopoRef | fast-check/эквивалент |
-| Worker contract | schema, revisions, cancellation, transfer buffers | Vitest + real worker |
+| Worker contract | schema, revisions, cancellation, transfer buffers | Vitest через Bun + real worker |
 | Kernel fixture | operations, validity, metrics, memory | browser/Node-compatible WASM harness |
 | Format conformance | `.vshape`, STEP, STL, 3MF | validators + round-trip |
 | Component | tree, property editor, diagnostics | Testing Library |
@@ -132,6 +132,15 @@ CAD нельзя проверять только snapshots интерфейса 
 - offline/service-worker отдельный installed-build test;
 - cross-origin isolation mode тестируется только если включён;
 - devicePixelRatio 1/2, integrated/discrete GPU по возможности.
+
+## Monorepo/toolchain checks
+
+- `bun ci` подтверждает соответствие workspace manifests и `bun.lock`;
+- typecheck/lint/test запускаются по workspace filters и из root aggregate scripts;
+- dependency boundary tests запрещают UI imports в domain/protocol;
+- production Vite build проверяет Tailwind classes из `apps/web` и `packages/ui`;
+- shadcn component updates проходят typecheck, обе темы и keyboard E2E;
+- CI pin Bun совпадает с `packageManager`, локальная несовместимая версия даёт понятную ошибку.
 
 ## Security/fuzz
 

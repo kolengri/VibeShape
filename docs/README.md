@@ -8,7 +8,7 @@
 2. [Функциональная матрица](product/feature-matrix.md).
 3. [Обзор архитектуры](architecture/overview.md).
 4. [Стек](architecture/technology-stack.md).
-5. [Геометрия и параметрика](architecture/geometry-and-parametrics.md).
+5. [UI-система](architecture/ui-system.md) и [геометрия/параметрика](architecture/geometry-and-parametrics.md).
 6. [Модель данных и формат](architecture/data-model-and-file-format.md).
 7. [Roadmap](roadmap.md), [план первых экспериментов](implementation-blueprint.md) и [стратегия тестирования](testing-strategy.md).
 8. [Deployment](deployment.md), [ADR](adr/README.md), [риски](risks.md), [лицензии](licensing.md) и [источники](research-sources.md).
@@ -30,6 +30,8 @@
 - Параметрическая история — ориентированный ациклический граф зависимостей с линейным представлением в UI.
 - Основная единица документа — миллиметр; вычисления хранятся как `float64`.
 - 3MF — предпочтительный печатный экспорт.
+- Monorepo управляется Bun workspaces; Vite остаётся browser bundler.
+- UI primitives живут в `@vibeshape/ui` и основаны на Tailwind CSS v4 + shadcn/ui/Radix.
 - Ошибка привязки к топологии не может исправляться молча: неоднозначность должна быть видна пользователю.
 
 ## Что подтверждается в Phase 0

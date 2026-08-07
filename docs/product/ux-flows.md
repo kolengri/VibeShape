@@ -20,6 +20,8 @@ Desktop layout:
 
 В sketch mode правая панель показывает constraints и dimensions, а viewport переходит в ортографический вид normal-to-plane. В print mode дерево не исчезает, но правая панель становится отчётом анализа и экспортом.
 
+UI shell строится на Tailwind CSS v4 и source-owned shadcn/Radix primitives из `@vibeshape/ui`. Это не меняет application commands: toolbar, command palette, menu и shortcut вызывают один и тот же use case. Model tree и viewport overlays остаются специализированными accessible CAD-компонентами, а не маскируются под универсальные `Card`/`Table`.
+
 ## Состояния команды
 
 Любая моделирующая команда следует одной машине состояний:

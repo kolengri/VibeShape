@@ -4,7 +4,7 @@
 
 Проверено **2026-08-07**. Приоритет отдавался официальной документации, спецификациям и upstream-репозиториям. Точные npm-версии сверены с registry в ту же дату.
 
-Context7 использовался для библиотечной документации. Поиск `OpenCascade.js`/`opencascade.js` не нашёл точного package и возвращал нерелевантные результаты, поэтому по правилу точного совпадения они не использовались. Context7 подтвердил `/mrdoob/three.js`; сведения об OCCT/OpenCascade.js взяты из официальной документации и upstream repository.
+Context7 использовался для библиотечной документации. Поиск `OpenCascade.js`/`opencascade.js` не нашёл точного package и возвращал нерелевантные результаты, поэтому по правилу точного совпадения они не использовались. Context7 подтвердил `/mrdoob/three.js` и `/oven-sh/bun`; сведения об OCCT/OpenCascade.js взяты из официальной документации и upstream repository.
 
 ## CAD kernel и browser binding
 
@@ -73,6 +73,20 @@ Context7 использовался для библиотечной докуме
 
 **Вывод:** OPFS/IndexedDB подходят для internal working set, но не являются гарантированным backup. `.vshape` и fallback upload/download обязательны.
 
+## Monorepo и UI toolchain
+
+| Источник | Подтверждает |
+|---|---|
+| [Bun workspaces](https://bun.sh/docs/pm/workspaces) | root workspaces, `workspace:*`, filters и workspace scripts |
+| [Bun catalogs](https://bun.sh/docs/pm/catalogs) | единые default/named dependency versions и lockfile integration |
+| [Bun install/CI](https://bun.sh/docs/pm/cli/install) | `bun ci` как frozen lockfile install и official `setup-bun` CI path |
+| [Tailwind CSS with Vite](https://tailwindcss.com/docs/installation/using-vite) | `tailwindcss`, `@tailwindcss/vite`, Vite plugin и `@import "tailwindcss"` |
+| [shadcn/ui monorepo](https://ui.shadcn.com/docs/monorepo) | CLI routing, per-workspace `components.json`, shared UI exports и Tailwind v4 config rule |
+| [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) | Vite/Tailwind integration и monorepo-aware component addition |
+| [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | init/add/view/diff/info workflow и source component management |
+
+**Вывод:** Bun workspaces закрывают monorepo/package version/CI требования без Turborepo на старте. Tailwind v4 + shadcn/Radix имеют официальный Vite/monorepo path; shared primitives должны жить в отдельном workspace с явными aliases/exports.
+
 ## npm registry snapshot
 
 Команды вида `npm view <package> version license` на 2026-08-07:
@@ -85,6 +99,13 @@ Context7 использовался для библиотечной докуме
 - Zustand 5.0.14 MIT;
 - Dexie 4.4.4 Apache-2.0;
 - Zod 4.4.3 MIT.
+- Tailwind CSS 4.3.3 MIT;
+- `@tailwindcss/vite` 4.3.3 MIT;
+- shadcn CLI 4.16.2 MIT;
+- unified `radix-ui` 1.6.7 MIT;
+- Lucide React 1.30.0 ISC.
+
+Локальный Bun: 1.3.14 (`1.3.14+0d9b296af`); version будет pin-иться при scaffold.
 
 Registry metadata не заменяет license files конкретного lockfile/distribution.
 

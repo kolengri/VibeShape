@@ -182,13 +182,14 @@ Review заканчивается одним из решений:
 
 После Proceed:
 
-1. `E01 Tooling`: pnpm workspace, strict TS, CI, license/SBOM skeleton.
+1. `E01 Tooling`: Bun workspaces, pinned Bun + `bun.lock`, catalogs, strict TS, `bun ci`, license/SBOM skeleton.
 2. `E02 Domain`: IDs, units, Document/Feature DAG, commands/revisions.
 3. `E03 Protocol`: schemas, worker lifecycle, diagnostics, generation cancellation.
 4. `E04 Geometry`: production adapter из SPK-001, ownership/leak guard.
 5. `E05 Viewer`: Three.js scene, LOD, selection mapping, dispose.
 6. `E06 Persistence`: journal/snapshot/recovery and `.vshape` v0.
-7. `E07 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
+7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configs/tokens и compact shell primitives.
+8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 
 Каждый epic имеет positive, failure, recovery и license/format acceptance criteria.
 

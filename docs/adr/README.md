@@ -9,6 +9,8 @@
 | [0005](0005-threejs-webgl2-viewport.md) | Accepted | raw Three.js/WebGL2 baseline |
 | [0006](0006-3mf-primary-print-export.md) | Accepted | 3MF основной print export; slicer deferred |
 | [0007](0007-gpl-project-license.md) | Accepted | GPL-3.0-or-later |
+| [0008](0008-bun-workspaces.md) | Accepted | Bun workspaces, `bun.lock` и `bun ci` |
+| [0009](0009-tailwind-shadcn-ui.md) | Accepted | Tailwind CSS v4 + shadcn/ui/Radix |
 
 Статусы:
 

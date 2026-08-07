@@ -11,6 +11,8 @@
 - не добавлять обязательную сеть/телеметрию;
 - обновлять `docs/research-sources.md` при изменении внешнего технического основания;
 - dependency versions фиксируются lockfile, WASM builds имеют upstream commit/flags/checksum;
+- единственный JS lockfile — `bun.lock`; workspace зависимости используют `workspace:*`, CI — `bun ci`;
+- shadcn components добавляются выборочно и review-ятся как наш source; `add --all`/blind overwrite запрещены;
 - не смешивать несвязанные refactor и feature.
 
 ## Лицензия contributions

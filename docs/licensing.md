@@ -31,10 +31,17 @@
 | Zustand | MIT | third-party notice |
 | Dexie | Apache-2.0 | license + NOTICE obligations, если применимо |
 | Zod | MIT | third-party notice |
+| Bun | MIT | toolchain pin/source link; обычно не часть browser distribution |
+| Tailwind CSS / Vite plugin | MIT | third-party notice |
+| shadcn/ui source/CLI | MIT | сохранять применимые notices при копировании/изменении source |
+| Radix UI | MIT | third-party notice |
+| Lucide React | ISC | third-party notice |
 | 3MF specification | royalty-free specification terms | соблюдать spec attribution/terms; код writer отдельно GPL |
 | PrusaSlicer/CuraEngine | AGPL-3.0 | не bundled в MVP; будущая интеграция — отдельный ADR |
 
 Матрица — snapshot 2026-08-07. Lockfile/SBOM являются источником фактического набора зависимостей на release.
+
+Generated shadcn components входят в source tree VibeShape, но их происхождение не следует стирать: `THIRD_PARTY_NOTICES` фиксирует upstream/CLI version и MIT-лицензию. Наши модификации распространяются в составе GPL-проекта при сохранении permissive notices upstream.
 
 ## OCCT obligations
 

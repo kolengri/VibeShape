@@ -33,7 +33,8 @@ UI-каркас не является первым milestone. Сначала н�
 
 ### Scope
 
-- pnpm monorepo, strict TS, CI;
+- Bun workspaces monorepo, pinned Bun + `bun.lock`, strict TS и `bun ci`;
+- Tailwind CSS v4 + `@vibeshape/ui` на shadcn/Radix, базовые tokens/primitives;
 - PWA shell и project library;
 - domain commands/events/revisions;
 - worker protocol и restart/recovery;
