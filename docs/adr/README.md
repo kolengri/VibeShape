@@ -13,6 +13,8 @@
 | [0009](0009-tailwind-shadcn-ui.md) | Accepted | Tailwind CSS v4 with shadcn/ui and Radix |
 | [0010](0010-uncontrolled-form-primitives-and-tanstack-form.md) | Accepted | Uncontrolled-first form primitives with TanStack Form adapters |
 | [0011](0011-use-intl-localization-layer.md) | Accepted | `use-intl` localization for the static React application |
+| [0012](0012-capability-based-extension-platform.md) | Proposed | Capability-based, version-pinned extension profiles |
+| [0013](0013-microkernel-modules-and-mcp-automation.md) | Proposed | Microkernel feature modules and MCP over the ordinary command path |
 
 Statuses:
 

@@ -97,6 +97,14 @@ Contributions are accepted under GPL-3.0-or-later by default. `CONTRIBUTING.md` 
 
 Examples and fixtures imported from third parties must record their provenance and license. Do not add arbitrary STEP or STL files from the internet without permission.
 
+## Third-party extensions
+
+Every `.vsext` package declares an SPDX license expression and includes the license texts and notices required by its contents. The extension manager displays this metadata before installation and preserves it with the immutable package artifact.
+
+The legal relationship between a public VibeShape extension API, the GPL application, separately distributed extension code, and hosted integration services requires review before the SDK is declared stable. The runtime must not claim that sandboxing, process separation, package signing, or distribution through a separate catalog automatically determines whether an extension is a derivative work.
+
+VibeShape may reject packages from an official catalog for missing or incompatible license information, but a technical manifest validator is not a legal-compliance guarantee. Self-hosted catalogs remain responsible for their own distribution and notice obligations.
+
 ## Release Checklist
 
 - Include the complete `LICENSE` file.

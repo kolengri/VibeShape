@@ -8,7 +8,7 @@
 4. [Architecture overview](architecture/overview.md).
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
-7. [Data model and native format](architecture/data-model-and-file-format.md).
+7. [Extension architecture](architecture/extensions.md), [automation and MCP](architecture/automation-and-mcp.md), and [data model/native format](architecture/data-model-and-file-format.md).
 8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
@@ -36,6 +36,14 @@ The documents use these terms:
 - Topology-reference failures are never repaired silently; ambiguity is visible to the user.
 - English is the canonical language for documentation and code comments.
 
+## Proposed decisions
+
+- Third-party extensibility uses separate deterministic feature, capability-based workspace, and bounded compute profiles.
+- Extension artifacts are immutable and exact-version/integrity pinned; `.vshape` records requirements but never executes embedded code.
+- A public extension API remains blocked on `SPK-006` isolation, termination, permissions, compatibility, and recovery evidence.
+- Product functionality follows a microkernel plus cohesive first-party module model; modularity does not make trusted kernel services installable extensions.
+- MCP is a local external adapter over bounded resources and the ordinary draft/command path, not a privileged document mutation API.
+
 ## Decisions to confirm in Phase 0
 
 SPK-001 has a **Rework** result: required browser operations pass, but exact OCCT build provenance and allocator-level memory evidence remain unresolved.
@@ -46,7 +54,8 @@ SPK-001 has a **Rework** result: required browser operations pass, but exact OCC
 - `TopoRef` matching algorithm and thresholds.
 - 3MF implementation: a minimal project-owned writer or an adapted library.
 - Real startup, memory, rebuild, and storage budgets.
+- Extension sandbox runtime, package schema, capability contract, and cross-browser resource budgets.
 
 ## Decision-change rule
 
-Changing the CAD kernel, solver, license, native format, history model, or local-first boundary requires a new ADR. Updating a package within an accepted decision is normal dependency work.
+Changing the CAD kernel, solver, license, native format, history model, local-first boundary, extension trust boundary, or external automation authority requires a new ADR. Updating a package within an accepted decision is normal dependency work.

@@ -22,6 +22,8 @@ Key decisions:
 - UI foundation: **Tailwind CSS v4 + shadcn/ui (Radix)** in a dedicated `@vibeshape/ui` package;
 - internationalization: typed ICU messages through **use-intl** in a local-first `@vibeshape/i18n` package;
 - code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
+- extensibility: a proposed **capability-based extension platform** with deterministic, exact-version feature modules separated from sandboxed UI/integration code; executable third-party support remains gated by `SPK-006`;
+- modularity and automation: a proposed **microkernel plus cohesive first-party modules**, with a local MCP bridge planned over the same revisioned query, draft, preview, and command contracts used by the application;
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
 - primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;
@@ -41,6 +43,8 @@ Key decisions:
 | [UI system](docs/architecture/ui-system.md) | Tailwind, shadcn/ui, tokens, and component boundaries |
 | [Internationalization](docs/architecture/internationalization.md) | Typed messages, locale resolution, catalog ownership, and verification |
 | [Geometry and parametrics](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming, and caching |
+| [Extension architecture](docs/architecture/extensions.md) | Extension profiles, packages, version locks, capabilities, isolation, UX, and spike gate |
+| [Automation and MCP](docs/architecture/automation-and-mcp.md) | First-party module boundary, local MCP bridge, resources, tools, drafts, pairing, and safety gates |
 | [Data model and `.vshape`](docs/architecture/data-model-and-file-format.md) | Entities, events, units, and native format |
 | [Local-first persistence](docs/architecture/local-first-storage.md) | Autosave, recovery, OPFS, and portability |
 | [3D-printing workflow](docs/3d-printing.md) | Analysis, tolerances, export, and slicing boundary |
@@ -76,12 +80,13 @@ Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cr
 
 ## Next practical step
 
-Implementation continues through **Phase 0 technical spikes**, not interface expansion. SPK-001 has functional evidence but remains in rework. Before promoting the spike adapters into the main product, we must prove four properties:
+Implementation continues through **Phase 0 technical spikes**, not interface expansion. SPK-001 has functional evidence but remains in rework. Before promoting the spike adapters into the main product, we must prove four core properties and one independent extension boundary:
 
 1. A reproducible custom WASM build starts in a worker, performs STEP import, boolean operations, fillets, and STEP/STL export, and reaches a measured memory plateau.
 2. The selected sketch solver reliably handles the required constraint set.
 3. Stable face and edge references survive the parameter-change matrix or explicitly enter an `ambiguous` state.
 4. Generated 3MF files pass validation and open in at least PrusaSlicer and Cura/OrcaSlicer.
+5. Before any executable extension release, `SPK-006` proves deterministic artifact locking, isolation, termination, permissions, restricted-mode recovery, and cross-browser behavior.
 
 If a spike fails, the corresponding ADR must be revisited before the UI is expanded.
 

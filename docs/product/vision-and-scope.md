@@ -46,6 +46,8 @@ Not a primary v1 audience:
 - **Honest failure.** Boolean, solver, and reference failures are explained; geometry is never silently substituted.
 - **Portable.** Projects use a documented container and derived geometry uses open formats.
 - **Keyboard and accessibility aware.** Core commands are keyboard-accessible and never depend on color alone.
+- **Extensible without executable projects.** Future features and integrations use versioned, least-privilege extension hosts; opening a project never means running embedded code.
+- **One command path.** Human UI, first-party modules, approved extensions, tests, and future MCP automation use the same validated document commands; no adapter receives a hidden mutation API.
 
 ## v0.1 alpha scope
 
@@ -76,6 +78,7 @@ Users can:
 - treating imported STL as editable B-Rep;
 - complex authoring on phones; view-only behavior is acceptable;
 - native-format compatibility with Onshape.
+- executable third-party extensions or a public marketplace before the sandbox, capability, package, and recovery gates pass.
 
 ## Alpha success metrics
 

@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-Create five short-lived spike branches or packages. The checked-in monorepo is a minimal tooling, package-boundary, and UI-shell scaffold; do not fill its engine-specific packages with production adapters until the stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
+Create six short-lived spike branches or packages. The checked-in monorepo is a minimal tooling, package-boundary, and UI-shell scaffold; do not fill its engine-specific or extension packages with production adapters until the stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
 
 ## Dependencies
 
@@ -14,10 +14,13 @@ flowchart LR
     S3 --> G
     S4 --> G
     S5["SPK-005 Local-first"] --> G
+    S3 --> S6["SPK-006 Extension sandbox"]
+    S5 --> S6
+    S6 --> G
     G --> F["Phase 1 foundation"]
 ```
 
-With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. One developer should use this order: 001 → 002 → 003 → 004 → 005.
+With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can research packaging and UI isolation early, but its deterministic feature and recovery cases depend on the TopoRef and local-first contracts. One developer should use this order: 001 → 002 → 003 → 004 → 005 → 006.
 
 ## SPK-001 — OCCT/Replicad worker
 
@@ -163,6 +166,50 @@ Are autosave, recovery, update, and fallback behavior reliable across target bro
 - failure UX;
 - persistent-storage prompt decision.
 
+## SPK-006 — extension sandbox and package model
+
+### Question
+
+Can VibeShape execute locally installed third-party feature, workspace, and compute extensions without ambient authority, non-deterministic rebuilds, main-thread stalls, or unrecoverable project dependencies?
+
+### Compare
+
+- at least two restricted compute runtimes for parametric feature modules;
+- dedicated-worker JavaScript versus WebAssembly with explicit host imports;
+- opaque-origin sandboxed iframe UI with a dedicated `MessagePort`;
+- local package import and a self-hosted static catalog;
+- integrity-only packages and signed packages, with signatures treated as identity rather than sandbox bypass.
+
+### Scenarios
+
+1. Install and validate one immutable `.vsext` fixture offline.
+2. Rebuild the same deterministic feature with two host sessions and compare domain and geometry invariants.
+3. Attempt access to network, time, randomness, DOM, storage, undeclared imports, and raw kernel state.
+4. Terminate infinite loops, message floods, oversized output, and memory growth without losing committed work.
+5. Render a keyboard-accessible panel in an opaque-origin iframe under strict CSP.
+6. Deny, grant, expand, and revoke a capability; verify that revocation terminates residual authority.
+7. Keep two exact extension versions installed and rebuild documents pinned to each integrity hash.
+8. Open a document with missing, disabled, incompatible, timed-out, and failed extensions in restricted mode.
+9. Preview an update, compare required invariants, commit one lock change, and roll back.
+10. Reject hostile archives, path traversal, duplicate normalized paths, invalid manifests, and checksum mismatches.
+
+### Artifacts
+
+- threat model and runtime comparison;
+- versioned manifest and host-protocol candidates;
+- package corpus and hostile fixtures;
+- capability matrix and permission UX prototype;
+- CPU, memory, message, output, and startup measurements across Chromium, Firefox, and WebKit;
+- deterministic replay and exact-version coexistence results;
+- restricted-mode, upgrade, rollback, and uninstall-preservation evidence;
+- recommendation update for [ADR-0012](adr/0012-capability-based-extension-platform.md).
+
+### Stop/go
+
+Do not publish `extension-api`, accept third-party executable packages, or promise SDK compatibility until isolation, termination, deterministic replay, exact-version retention, permission revocation, and non-destructive missing-extension recovery pass in all target browsers.
+
+The extension spike does not block the core alpha workflow while third-party execution remains deferred. It becomes a release gate for any build that enables executable extensions.
+
 ## Architecture review after spikes
 
 Update:
@@ -173,6 +220,7 @@ Update:
 - risk probabilities;
 - roadmap estimates;
 - native-manifest engine metadata;
+- extension manifest, lock, trust, and compatibility policy;
 - license and source-distribution plan.
 
 The review ends with one decision:
@@ -194,8 +242,12 @@ After Proceed:
 6. `E06 Persistence`: journal, snapshot, recovery, and `.vshape` v0.
 7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, typed ICU copy through `@vibeshape/i18n`, shadcn/Radix configuration, tokens, compact shell primitives, state harness, keyboard behavior, and accessibility baseline from the design and UX contract.
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
+9. `E09 Extension-ready seams`: stable built-in feature and command registries, extension-lock preservation, unknown custom-feature preservation, and restricted-mode diagnostics without executing third-party code.
+10. `E10 Automation-ready seams`: first-party module ownership, bounded revision-tagged query views, schema-backed command descriptors, disposable drafts, preview and confirmation classes, idempotency and revision preconditions, cancellation, and actor provenance without importing MCP types into domain packages.
 
 Every epic includes positive, failure, recovery, and license or format acceptance criteria. User-visible epics also include the applicable [Design and UX Guidelines](product/design-and-ux-guidelines.md) definition-of-done checks.
+
+The first local MCP bridge is an integration spike after `E02`, `E03`, `E06`, and `E10` provide one real query and one draftable command. Its executable acceptance gate is defined in [Automation and MCP architecture](architecture/automation-and-mcp.md). Do not scaffold an empty MCP workspace or pin an SDK merely to advertise future compatibility.
 
 ### Foundation scaffold status
 

@@ -162,10 +162,41 @@ STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to
 - Touch/tablet authoring comes later; phones are view/export-only.
 - The architecture supports localization, but alpha may ship with one language.
 
+## Modules, extensions, and automation
+
+The microkernel, extension, and automation boundaries are designed during Phase 0. Executable third-party support remains post-alpha until the sandbox gate passes, and MCP is not published until one real draft/preview/commit scenario passes its local pairing and real-client gate.
+
+| Capability | Priority | Completion condition |
+|---|---:|---|
+| Stable built-in feature and command registries | P0 | Core types use owned identifiers and registry metadata without a public plugin runtime |
+| Cohesive first-party module descriptors | P0 | Sketch, part-design, exchange, print-analysis, and measurement ownership is explicit and acyclic without a package-per-feature requirement |
+| Automation-ready query and command contracts | P0 | Bounded revisioned views, machine-readable schemas, drafts, previews, revision preconditions, cancellation, and actor provenance pass domain tests |
+| Preserve extension locks and unknown feature payloads | P0 | `.vshape` can open, inspect, and re-export safely without executing or installing code |
+| Restricted-mode document open | P1 | Missing or disabled extensions preserve the document and visibly block affected DAG nodes |
+| Deterministic parametric feature modules | P2 | `SPK-006` accepted; exact version/integrity replay and resource budgets pass |
+| Capability-based workspace extensions | P2 | Isolated host, sandboxed UI, permission review, revocation, and recovery pass |
+| Compute and codec modules | P2 | Dedicated worker/WASM host passes hostile-input and termination tests |
+| Local or self-hosted package catalogs | P2 | Immutable package retrieval, integrity verification, and offline retention pass |
+| Official public marketplace | P2 | Publisher governance, review, signing, revocation, abuse, and update policy exist |
+| Local MCP bridge | P2 | Explicit local pairing, bounded resources, schema-backed tools, draft confirmation, cancellation, provenance, and real-client E2E pass |
+
+Extension rules:
+
+- Parametric feature modules have no network, time, randomness, DOM, file, storage, clipboard, or raw-kernel access.
+- Interactive extensions cannot mount React components into the application tree or mutate application state directly.
+- Exact extension versions and integrity hashes are part of document and feature identity.
+- Updates, permissions, installation, and enablement are always explicit and reversible.
+- Opening a project never executes embedded code or silently retrieves a missing extension.
+- Extension commands follow the same preview, busy, double-activation, validation, cancellation, undo, localization, and accessibility contracts as built-in commands.
+- First-party modules share contribution and command semantics with extensions without pretending trusted kernel services are optional packages.
+- MCP uses the same command path, exposes no generic execution tool, and never grants an extension additional authority.
+
+See [Extension architecture](../architecture/extensions.md), [Automation and MCP architecture](../architecture/automation-and-mcp.md), [ADR-0012](../adr/0012-capability-based-extension-platform.md), and [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md).
+
 ## Explicitly deferred
 
-- Marketplace/plugins and untrusted code execution.
+- Executable third-party extensions and a public marketplace until `SPK-006` and the stable command/feature contracts pass.
 - Real-time multi-user editing.
 - Direct G-code delivery to printers.
-- Generative or AI CAD before a deterministic command API and sandbox exist.
+- Generative or AI CAD before a deterministic command API, draft/preview boundary, local pairing gate, and sandbox exist.
 - Claims of complete compatibility with Onshape, FreeCAD, or SolidWorks.

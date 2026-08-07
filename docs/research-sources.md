@@ -2,9 +2,9 @@
 
 ## Method
 
-Reviewed on **2026-08-07**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on the same date.
+Reviewed on **2026-08-08**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on 2026-08-07.
 
-Context7 was used for library documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/mrdoob/three.js` and `/oven-sh/bun`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
+Context7 was used for library and protocol documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/mrdoob/three.js`, `/oven-sh/bun`, and `/modelcontextprotocol/modelcontextprotocol`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
 
 ## CAD Kernel and Browser Binding
 
@@ -74,6 +74,42 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | [web.dev: PWA installation](https://web.dev/learn/pwa/installation) | Manifest and installability differences across browsers and operating systems |
 
 **Conclusion:** OPFS and IndexedDB are suitable for the internal working set but are not a guaranteed backup. Native `.vshape` files and fallback upload/download flows are mandatory.
+
+## Extension Platforms and Browser Isolation
+
+| Source | Evidence |
+|---|---|
+| [Onshape FeatureScript introduction](https://cad.onshape.com/FsDoc/intro.html) | Built-in and custom feature types share a function model; regeneration executes the build function; determinism excludes external input, time, and randomness |
+| [Onshape custom features](https://cad.onshape.com/help/Content/PartStudio/add_custom_features.htm?cshid=customfeature) | Custom features link to exact document versions, update explicitly, remain available to existing models, and execute in a Part Studio-limited sandbox with acknowledged resource-exhaustion risk |
+| [Onshape application extensions](https://onshape-public.github.io/docs/app-dev/extensions/) | Hosted applications integrate separately through iframe UI or REST actions and validate message origins and document context |
+| [VS Code extension hosts](https://code.visualstudio.com/api/advanced-topics/extension-host) | Extensions run outside the UI process in environment-specific hosts and activate lazily to reduce startup and UI impact |
+| [VS Code web extensions](https://code.visualstudio.com/api/extension-guides/web-extensions) | Browser extensions use a Web Worker host, lack Node.js APIs, and access workspace files through a host API rather than ambient filesystem access |
+| [VS Code Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust) | Restricted Mode prevents automatic code execution from untrusted workspaces and distinguishes full, limited, and unsupported extension behavior |
+| [Figma plugin manifest](https://developers.figma.com/docs/plugins/manifest/) | Manifest-declared API version, code/UI entry points, document access, and exact network allowlists including an explicit no-network value |
+| [MDN iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe) | Omitting `allow-same-origin` gives sandboxed content a special origin; combining same-origin and scripts for same-origin content defeats the intended isolation |
+| [MDN `postMessage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage) | Cross-context messages require sender/source checks, exact target origins where available, and validation of received data |
+| [MDN Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy) | CSP constrains script, connection, frame, worker, and other resource sources but must be applied to each relevant execution context |
+| [WebAssembly security](https://webassembly.org/docs/security/) | WebAssembly provides fault isolation but remains subject to its embedding and host APIs |
+| [WebAssembly portability](https://webassembly.org/docs/portability/) | WebAssembly defines imports rather than system calls, allowing the host to control which external functions exist |
+
+**Conclusion:** VibeShape should copy Onshape's deterministic, version-linked feature principle, not its mandatory cloud application topology. The safer browser design combines immutable artifact locks, separate execution profiles, capability-scoped host APIs, opaque-origin UI, runtime message validation, termination budgets, and restricted-mode recovery. No single worker, iframe, WebAssembly module, signature, or CSP rule is a complete extension sandbox.
+
+## Model Context Protocol
+
+Context7 resolved the primary MCP specification to `/modelcontextprotocol/modelcontextprotocol`. The architecture targets negotiated protocol compatibility and does not pin a TypeScript SDK until the first executable integration spike.
+
+| Source | Evidence |
+|---|---|
+| [MCP server feature overview](https://modelcontextprotocol.io/specification/2025-11-25/server) | Tools are model-controlled, resources are application-controlled, and prompts are user-controlled protocol primitives |
+| [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) | JSON input/output schemas, structured results, tool annotations, tool-list changes, validation, and human-in-the-loop guidance |
+| [MCP resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources) | URI-addressed context, templates, pagination, subscriptions, and change notifications |
+| [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) | Standard `stdio` and Streamable HTTP transports; local HTTP requires Origin validation, localhost binding, and authentication to prevent DNS rebinding |
+| [MCP progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress) | Request-scoped progress tokens and monotonic progress notifications for active operations |
+| [MCP cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation) | Cancellation notifications, race handling, and terminal-request behavior |
+| [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) | HTTP authorization, protected resource metadata, resource indicators, token audience validation, PKCE, and the prohibition on token passthrough |
+| [MCP TypeScript schema](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/schema) | The versioned TypeScript and generated JSON schemas are the normative machine-readable protocol definition |
+
+**Conclusion:** MCP should terminate in a local adapter rather than inside domain or extension packages. Resources map to bounded revisioned views, tools map to explicit draftable commands, and protocol annotations supplement rather than replace VibeShape authorization, preview, confirmation, and audit enforcement. `stdio` is the smallest first transport; a browser pairing channel still needs explicit loopback authentication and origin defense.
 
 ## Monorepo and UI Toolchain
 

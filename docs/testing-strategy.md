@@ -16,6 +16,8 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 | Component | Tree, property editor, diagnostics | Testing Library |
 | E2E | Complete CAD, print, offline, and recovery flows | Playwright |
 | Manual release | Slicers, Safari, interaction quality | Release checklist |
+| Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
+| Automation and MCP conformance | Resources, schemas, draft safety, pairing, consent, progress, cancellation | Contract tests, hostile loopback fixtures, and real MCP client E2E |
 
 ## Geometry assertions
 
@@ -200,6 +202,47 @@ Manual alpha review includes keyboard-only completion of all non-spatial parts o
 - Dependency audit and SBOM.
 - No-network privacy test while offline.
 
+## Extension conformance and isolation
+
+Executable extension tests remain part of `SPK-006` until [ADR-0012](adr/0012-capability-based-extension-platform.md) is accepted. Any later extension-enabled release must cover:
+
+- deterministic replay of parametric feature modules across fresh hosts;
+- absence of network, time, randomness, DOM, storage, file, clipboard, undeclared imports, and raw-kernel access in the feature profile;
+- manifest, entry-point, integrity, API-version, normalized-path, duplicate, traversal, decompression, asset, message, and output limits;
+- exact coexistence of two versions and rejection of same-version/different-integrity substitution;
+- missing, disabled, incompatible, timed-out, resource-limited, and failed extension states;
+- restricted-mode open, preservation, original-archive export, repair, and later successful rebuild;
+- CPU loop termination, worker restart, message flood containment, memory budget, and no partial commit;
+- opaque-origin iframe CSP, `MessagePort` handshake, schema validation, session/sequence checks, and navigation denial;
+- capability deny, grant, update expansion, revocation, and host termination with no residual authority;
+- update preview, disposable rebuild, invariant comparison, one-command lock commit, and rollback;
+- extension-command parity for eligibility, async busy, double activation, cancellation, undo, localization, keyboard access, focus, and diagnostics;
+- English base-catalog and ICU placeholder parity without allowing extension copy to replace host security text;
+- license, notices, source, signature, and publisher identity as separate validation results.
+
+A Web Worker or successful WebAssembly instantiation alone is not isolation evidence. Tests must exercise the browser APIs and host messages that a hostile package would attempt to abuse.
+
+## Automation and MCP conformance
+
+The adapter-neutral automation layer is tested before an MCP dependency exists. Query and command fixtures cover:
+
+- bounded, revision-tagged resources with pagination and semantic-versus-derived markers;
+- explicit command input and structured output schemas plus stable diagnostics;
+- disposable draft creation, multi-command preview, validation, commit, discard, and expiry;
+- stale base revisions, duplicate idempotency keys, conflicts, cancellation, worker crash, and browser disconnect;
+- actor provenance and ordinary undo/redo after an automation commit;
+- denial of direct store, storage, raw file, kernel, extension-management, and generic execution access.
+
+The first MCP bridge additionally requires:
+
+- protocol initialization, capability negotiation, tool/resource discovery, structured output, progress, cancellation, and clean stdio framing;
+- authenticated explicit browser pairing, exact-origin validation, session revocation, document scoping, rate limits, and hostile DNS-rebinding or cross-origin fixtures;
+- host-owned confirmation for writes and destructive effects even when tool annotations or client behavior are incorrect;
+- tool-list removal and draft invalidation when a contributing extension is disabled or revoked;
+- an offline real-client E2E that creates, previews, commits, and undoes one deterministic feature without partial state.
+
+Do not claim MCP support from schema snapshots or an Inspector-only demonstration. The gate requires a real paired browser, the normal worker boundary, persistence, recovery behavior, and one external client.
+
 ## Release gates
 
 Release is blocked by:
@@ -211,4 +254,6 @@ Release is blocked by:
 - missing license notice or source offer;
 - migration without a fixture and backup path;
 - P0 accessibility blocker;
-- unexplained major memory or performance regression.
+- unexplained major memory or performance regression;
+- executable extension support without an accepted sandbox result, deterministic version lock, permission revocation, and non-destructive restricted mode;
+- advertised MCP write support without accepted pairing, draft isolation, confirmation, revision, cancellation, provenance, and real-client E2E evidence.
