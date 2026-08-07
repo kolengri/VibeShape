@@ -10,12 +10,20 @@ type KernelResponse = Extract<TerminalResponse, { type: "kernelSpikeCompleted" }
 type HealthResponse = Extract<TerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<TerminalResponse, { type: "documentDisposed" }>
 
+interface GeometryWorkerRestartEvidence {
+  beforeTermination: HealthResponse
+  afterInitialization: HealthResponse
+  result: KernelResponse
+  disposal: DisposalResponse
+}
+
 interface GeometrySpikeHarnessState {
   state: "running" | "passed" | "failed"
   result: KernelResponse | null
   results: KernelResponse[]
   health: HealthResponse | null
   disposal: DisposalResponse | null
+  restart: GeometryWorkerRestartEvidence | null
   progress: string[]
   error: string | null
 }
@@ -55,12 +63,15 @@ function requireStatusElement() {
 }
 
 const statusElement = requireStatusElement()
+const documentId = "occt-worker-spike"
+const generation = 1
 const state: GeometrySpikeHarnessState = {
   state: "running",
   result: null,
   results: [],
   health: null,
   disposal: null,
+  restart: null,
   progress: [],
   error: null,
 }
@@ -101,49 +112,101 @@ function createSpikeParameters() {
   return { ...parameters, lifecycleIterations }
 }
 
-async function runSpike() {
-  const client = createGeometryWorkerClient()
-  const documentId = "occt-worker-spike"
-  const generation = 1
+async function initializeEngine(client: GeometryWorkerClient) {
+  const initialized = await client.request({
+    ...createGeometryRequestEnvelope(documentId, generation),
+    type: "initializeEngine",
+  })
+  expectResponse(initialized, "initialized")
+}
 
-  try {
-    const initialized = await client.request({
+async function readHealth(client: GeometryWorkerClient) {
+  return expectResponse(
+    await client.request({
       ...createGeometryRequestEnvelope(documentId, generation),
-      type: "initializeEngine",
-    })
-    expectResponse(initialized, "initialized")
+      type: "healthCheck",
+    }),
+    "health",
+  )
+}
 
-    const lifecycleBatches = readPositiveIntegerParameter("lifecycleBatches", 1, 10)
+async function disposeDocument(client: GeometryWorkerClient) {
+  return expectResponse(
+    await client.request({
+      ...createGeometryRequestEnvelope(documentId, generation),
+      type: "disposeDocument",
+    }),
+    "documentDisposed",
+  )
+}
 
-    for (let batch = 0; batch < lifecycleBatches; batch += 1) {
-      const result = await client.request(
-        {
-          ...createGeometryRequestEnvelope(documentId, generation),
-          type: "runKernelSpike",
-          parameters: createSpikeParameters(),
-        },
-        {
+async function runKernelFixture(
+  client: GeometryWorkerClient,
+  lifecycleIterations: number | null,
+  reportProgress: boolean,
+) {
+  const parameters = createSpikeParameters()
+  const result = await client.request(
+    {
+      ...createGeometryRequestEnvelope(documentId, generation),
+      type: "runKernelSpike",
+      parameters:
+        lifecycleIterations === null ? parameters : { ...parameters, lifecycleIterations },
+    },
+    reportProgress
+      ? {
           onProgress(stage, fraction) {
             state.progress.push(stage)
             statusElement.textContent = `${stage}: ${Math.round(fraction * 100)}%`
           },
-        },
-      )
-      state.result = expectResponse(result, "kernelSpikeCompleted")
+        }
+      : {},
+  )
+
+  return expectResponse(result, "kernelSpikeCompleted")
+}
+
+async function runPrimaryWorker() {
+  const client = createGeometryWorkerClient()
+
+  try {
+    await initializeEngine(client)
+
+    const lifecycleBatches = readPositiveIntegerParameter("lifecycleBatches", 1, 10)
+
+    for (let batch = 0; batch < lifecycleBatches; batch += 1) {
+      state.result = await runKernelFixture(client, null, true)
       state.results.push(state.result)
     }
 
-    const health = await client.request({
-      ...createGeometryRequestEnvelope(documentId, generation),
-      type: "healthCheck",
-    })
-    state.health = expectResponse(health, "health")
+    const beforeTermination = await readHealth(client)
+    state.health = beforeTermination
+    state.disposal = await disposeDocument(client)
+    return beforeTermination
+  } finally {
+    client.terminate()
+  }
+}
 
-    const disposal = await client.request({
-      ...createGeometryRequestEnvelope(documentId, generation),
-      type: "disposeDocument",
-    })
-    state.disposal = expectResponse(disposal, "documentDisposed")
+async function runRestartedWorker(beforeTermination: HealthResponse) {
+  const client = createGeometryWorkerClient()
+
+  try {
+    await initializeEngine(client)
+    const afterInitialization = await readHealth(client)
+    const result = await runKernelFixture(client, 1, false)
+    const disposal = await disposeDocument(client)
+
+    return { beforeTermination, afterInitialization, result, disposal }
+  } finally {
+    client.terminate()
+  }
+}
+
+async function runSpike() {
+  try {
+    const beforeTermination = await runPrimaryWorker()
+    state.restart = await runRestartedWorker(beforeTermination)
 
     state.state = "passed"
     statusElement.dataset.state = "passed"
@@ -153,8 +216,6 @@ async function runSpike() {
     state.error = error instanceof Error ? error.message : "Unknown geometry spike failure."
     statusElement.dataset.state = "failed"
     statusElement.textContent = state.error
-  } finally {
-    client.terminate()
   }
 }
 

@@ -1,8 +1,8 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
 - Status: **Rework**
-- Reviewed: 2026-08-07
-- Adapter build: `spike-1`
+- Reviewed: 2026-08-08
+- Adapter build: `spike-2`
 
 ## Decision
 
@@ -13,7 +13,14 @@ Two release-critical gates remain open:
 1. The published `replicad-opencascadejs` package does not identify the exact OCCT source revision used to build its WASM artifact. VibeShape therefore cannot yet reproduce the artifact or satisfy its planned corresponding-source release process.
 2. The stress harness proves wrapper cleanup but cannot prove allocator cleanup. Across five consecutive 1,000-operation batches, the Emscripten heap capacity grew from 20,185,088 bytes to 260,243,456 bytes. Emscripten does not shrink its linear memory, and the published binding does not expose live allocator bytes, so this result cannot distinguish a retained high-water mark from a native leak.
 
-Continue SPK-001 with a project-controlled OpenCascade.js build, allocator instrumentation, and the same fixture. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
+Continue SPK-001 by executing and validating the prepared project-controlled OpenCascade.js build, then run its allocator instrumentation against the same fixture. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
+
+The rework now has two additional pieces of executable evidence:
+
+- protocol v2 captures ordered Emscripten heap checkpoints after every modeling, tessellation, exchange, lifecycle, and final shape-disposal stage and accepts allocator metrics only from a complete validated binding;
+- the browser harness terminates the first worker, initializes a fresh worker, rebuilds the same invariant fixture, and disposes it successfully in Chromium, Firefox, and WebKit.
+
+The controlled-build harness pins and verifies the OpenCascade.js, OCCT, and Replicad source archives plus the builder image digest and derives the allocator-instrumented build config deterministically. Docker is unavailable on the current development host, so no controlled WASM output is claimed yet.
 
 ## Implemented boundary
 
@@ -29,6 +36,9 @@ The spike adds:
 - health and document-disposal messages;
 - a browser harness at `/spikes/geometry-worker.html`;
 - deterministic Vitest protocol/runtime coverage and Playwright browser coverage.
+- stage-isolated heap-capacity evidence with nullable allocator-level metrics;
+- hard worker restart, engine reinitialization, invariant rebuild, and disposal evidence;
+- a source-checksum and controlled-build preparation harness under `native/occt`.
 
 The protocol is spike-specific. Production document commands such as preview, commit, rebuild, import, and export remain future schema work.
 
@@ -70,6 +80,17 @@ The fillet selection proves the required operation, but it is not a production `
 | Embedded OCCT source | Unknown | The published metadata and runtime do not expose it | **Blocking** for reproducibility and LGPL source delivery |
 | Runtime schema | Zod `4.4.3` | Exact catalog pin and `bun.lock` integrity | MIT; accepted for the protocol boundary |
 | Toolchain | Bun `1.3.14`, Vite `8.2.1`, Playwright `1.62.1` | Root pins and lockfile | Accepted for the spike |
+
+Prepared controlled-build inputs:
+
+| Input | Exact identity | Verification |
+|---|---|---|
+| OpenCascade.js source | `5ff2b750ba4b9a9fdfbff8842712cbb562e78ce7` | GitHub archive SHA-256 `7107d5a36712542997895efa17b44ea0e2b956c3908cbe98b7d95c194f1e556f` |
+| OCCT source | `bb368e271e24f63078129283148ce83db6b9670a` | Official GitHub archive SHA-256 `fabda9f139f2c09e675d5b9717110175b0ad5d9fb09187e3d56687220d2687e6` |
+| Replicad build config | `19fb8212e0bb12a07a7a49f96950f8903903d469` | GitHub archive SHA-256 `83a9fd99e39b77d7128270e08764cafd334117fbd0d083792b3a49aaa181787f` |
+| OpenCascade.js builder image | `linux/amd64` | Registry digest `sha256:3069f4c2e3ab62bb82d81843bad2c0f8552ee92373208f8f655ef9bf71c0524d` |
+
+`bun run occt:prepare` downloaded and verified all three archives and generated the instrumented config successfully. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must later be rebuilt from archived sources and compared.
 
 The npm package declares `replicad-opencascadejs` as MIT. That declaration covers the package wrapper and does not erase the LGPL obligations of the embedded OCCT-derived WASM. The runtime reports `opencascadeSourceRevision: null` deliberately; a guessed value would be false provenance.
 
@@ -140,6 +161,21 @@ Five batches passed 5,000 total lifecycle iterations in one worker. Adapter-owne
 
 The gap between batch 4 after-state and batch 5 before-state occurred during the next full model, tessellation, and STEP round-trip before the lifecycle subtest. Total linear-memory capacity still rose by 240,058,368 bytes from the first observed baseline. This is unexplained growth and fails the current stop/go memory criterion even though wrapper ownership is balanced.
 
+### Stage and restart evidence
+
+A warm Chromium protocol-v2 sample with three lifecycle iterations produced:
+
+| Checkpoint | Heap capacity |
+|---|---:|
+| Initialized through validation | 16,777,216 bytes |
+| After tessellation | 20,185,088 bytes |
+| STEP export/import, STL export, lifecycle, and final shape disposal | 20,185,088 bytes |
+| Fresh worker immediately after reinitialization | 16,777,216 bytes |
+
+This sample locates the first capacity growth in tessellation and confirms that final shape disposal does not shrink linear memory, which is expected with Emscripten memory growth. It does **not** prove that tessellation leaks: the published binding still reports `heap-capacity-only`, and all allocator values remain `null`.
+
+After terminating the first worker, the fresh worker returned to the 16,777,216-byte baseline, rebuilt the same valid solid with matching volume, ran a one-iteration ownership check, and disposed to zero owned shapes. This validates the hard restart path at the spike level; production document restoration still depends on committed snapshot work from the persistence phase.
+
 Required follow-up:
 
 - expose `mallinfo2` or equivalent allocated/live byte metrics in a controlled binding;
@@ -155,14 +191,16 @@ The executable evidence is owned by:
 
 - `packages/protocol/src/geometry-worker.test.ts` for schema and structured-clone payload validation;
 - `packages/geometry-worker/src/runtime.test.ts` for invalid input, initialization, transfer lists, cancellation, and stale generations;
+- `packages/geometry-worker/src/memory-profile.test.ts` for missing, complete, malformed, and invalid allocator bindings;
+- `scripts/occt-build-config.test.ts` for deterministic config instrumentation and upstream-anchor drift;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, modeling, exchange, invariant, progress, lifetime, and disposal behavior.
 
 Playwright attaches a compact JSON evidence record to the HTML report for each browser run. Failure artifacts remain under `.artifacts/playwright` and are not committed.
 
 ## Remaining stop/go work
 
-- Build a minimal project-controlled OpenCascade.js binding from a pinned OCCT source revision.
-- Publish binding configuration, Emscripten version, patches, and reproducible build instructions.
+- Execute the prepared controlled OpenCascade.js build on a Docker-capable host and verify its generated report.
+- Rebuild the pinned builder image from archived sources, compare it with the registry-pinned build, and publish the final build instructions.
 - Add allocator-level memory instrumentation and close the unexplained-growth result.
 - Compare the controlled direct binding with Replicad on API coverage, size, speed, and maintainability.
 - Verify operation history needed by SPK-003.

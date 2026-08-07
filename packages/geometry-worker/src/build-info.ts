@@ -1,4 +1,4 @@
-export const GEOMETRY_ADAPTER_VERSION = "spike-1"
+export const GEOMETRY_ADAPTER_VERSION = "spike-2"
 export const REPLICAD_VERSION = "0.23.1"
 export const REPLICAD_OPENCASCADE_VERSION = "0.23.0"
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
@@ -91,7 +92,7 @@ describe("geometry worker protocol", () => {
       type: "kernelSpikeCompleted",
       engine: {
         adapter: "replicad",
-        adapterVersion: "spike-1",
+        adapterVersion: "spike-2",
         replicadVersion: "0.23.1",
         opencascadePackageVersion: "0.23.0",
         opencascadeSourceRevision: null,
@@ -134,6 +135,14 @@ describe("geometry worker protocol", () => {
         wasmHeapBytesBefore: 1,
         wasmHeapBytesAfter: 1,
         wasmHeapGrowthBytes: 0,
+      },
+      memory: {
+        source: "heap-capacity-only",
+        snapshots: GEOMETRY_MEMORY_STAGES.map((stage) => ({
+          stage,
+          heapCapacityBytes: 1,
+          allocator: null,
+        })),
       },
       timings: {
         createPrimitivesMs: 1,

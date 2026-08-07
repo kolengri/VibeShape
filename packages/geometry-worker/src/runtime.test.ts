@@ -1,4 +1,5 @@
 import {
+  GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
   type GeometryEngineMetadata,
   type GeometryProgressStage,
@@ -14,7 +15,7 @@ import { type GeometryWorkerEndpoint, GeometryWorkerRuntime } from "./runtime"
 
 const engineMetadata: GeometryEngineMetadata = {
   adapter: "replicad",
-  adapterVersion: "spike-1",
+  adapterVersion: "spike-2",
   replicadVersion: "0.23.1",
   opencascadePackageVersion: "0.23.0",
   opencascadeSourceRevision: null,
@@ -58,6 +59,14 @@ function createKernelResult(): KernelSpikeEngineResult {
       wasmHeapBytesBefore: 1,
       wasmHeapBytesAfter: 1,
       wasmHeapGrowthBytes: 0,
+    },
+    memory: {
+      source: "heap-capacity-only",
+      snapshots: GEOMETRY_MEMORY_STAGES.map((stage) => ({
+        stage,
+        heapCapacityBytes: 1,
+        allocator: null,
+      })),
     },
     timings: {
       createPrimitivesMs: 1,
@@ -146,7 +155,11 @@ describe("GeometryWorkerRuntime", () => {
   it("rejects invalid and unsupported requests at the worker boundary", async () => {
     const { messages, runtime } = createHarness()
 
-    await runtime.handle({ ...createEnvelope("invalid"), type: "healthCheck", protocolVersion: 2 })
+    await runtime.handle({
+      ...createEnvelope("invalid"),
+      type: "healthCheck",
+      protocolVersion: GEOMETRY_PROTOCOL_VERSION + 1,
+    })
 
     expect(messages).toHaveLength(1)
     expect(messages[0]).toMatchObject({
