@@ -35,7 +35,7 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 - Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, and `bun ci`.
 - Tailwind CSS v4 and `@vibeshape/ui` using shadcn/Radix primitives and tokens.
-- PWA shell and project library.
+- PWA shell and project library following the design and UX contract, including its state and accessibility harness.
 - Domain commands, events, and revisions.
 - Worker protocol and restart/recovery behavior.
 - Three.js viewport and body/face/edge selection.
@@ -105,6 +105,7 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 - Chromium, Firefox, and Safari browser matrix.
 - Crash, quota, and multi-tab recovery.
 - Accessibility and keyboard workflow.
+- Reference-task usability testing and resolution of critical save-state, command, and geometry misunderstandings.
 - Performance budgets and profiling.
 - LGPL notices, source offer, and reproducible WASM.
 - User documentation and diagnostic bundle.

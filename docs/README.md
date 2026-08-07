@@ -4,12 +4,13 @@
 
 1. [Product vision and scope](product/vision-and-scope.md).
 2. [Feature matrix](product/feature-matrix.md).
-3. [Architecture overview](architecture/overview.md).
-4. [Technology stack](architecture/technology-stack.md).
-5. [UI system](architecture/ui-system.md) and [geometry/parametrics](architecture/geometry-and-parametrics.md).
-6. [Data model and native format](architecture/data-model-and-file-format.md).
-7. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), and [testing strategy](testing-strategy.md).
-8. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
+3. [Design and UX guidelines](product/design-and-ux-guidelines.md) and [core flows](product/ux-flows.md).
+4. [Architecture overview](architecture/overview.md).
+5. [Technology stack](architecture/technology-stack.md).
+6. [UI system](architecture/ui-system.md) and [geometry/parametrics](architecture/geometry-and-parametrics.md).
+7. [Data model and native format](architecture/data-model-and-file-format.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), and [testing strategy](testing-strategy.md).
+9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
 ## Requirement levels
 

@@ -142,6 +142,27 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
+## Design and UX acceptance
+
+Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).
+
+Automated coverage includes:
+
+- keyboard access and focus order for application bars, toolbars, menus, dialogs, the model tree, and the command palette;
+- focus trap and restoration for modal layers;
+- accessible names, dialog titles, form labels, validation relationships, and live status regions;
+- no single-letter shortcut activation while typing or composing text;
+- command Apply, Cancel, `Escape`, and one-entry undo boundaries;
+- persistent save, export, topology, worker, and format failures rather than toast-only messages;
+- dark/light contrast checks and non-color state cues;
+- screenshots at 1440 px, 1024 px, and 200% zoom;
+- minimum pointer target size or compliant target spacing;
+- reduced-motion behavior;
+- long labels and expanded text without loss of primary actions;
+- worker delay, stale response, cancel-requested, and crash-recovery states.
+
+Manual alpha review includes keyboard-only completion of all non-spatial parts of the bracket flow, screen-reader smoke tests for Chrome and Safari platform combinations, trackpad navigation, and the usability tasks defined in the guidelines. Free-form canvas sketching remains a documented limitation rather than an unverified accessibility claim.
+
 ## Security fuzzing
 
 - Schema fuzzing for commands and native files.

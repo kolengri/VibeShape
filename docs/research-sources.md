@@ -87,6 +87,25 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 **Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports.
 
+## UX, Accessibility, and Component Behavior
+
+Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and was used to verify current dialog, alert-dialog, command, context-menu, and composition behavior.
+
+| Source | Evidence |
+|---|---|
+| [shadcn/ui component documentation](https://ui.shadcn.com/docs/components) | Source-owned accessible component compositions for dialogs, alert dialogs, command menus, fields, context menus, tooltips, and related primitives |
+| [W3C: WCAG 2.2](https://www.w3.org/TR/WCAG22/) | Normative accessibility baseline, including keyboard access, contrast, input assistance, focus, target size, and status messages |
+| [W3C: Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum) | 24 × 24 CSS px minimum target or defined spacing exceptions |
+| [W3C: Focus Appearance](https://www.w3.org/WAI/WCAG22/Understanding/focus-appearance) | Focus-indicator area equivalent to a 2 CSS px perimeter and visibility guidance |
+| [W3C: Use of Color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color) | Color cannot be the only visual means of conveying state or action |
+| [W3C: Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification) | Automatically detected errors identify the affected input and describe the error in text |
+| [W3C: Status Messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) | Status changes are programmatically determinable without unnecessarily moving focus |
+| [WAI-ARIA APG: Toolbar pattern](https://www.w3.org/WAI/ARIA/apg/patterns/toolbar/) | One toolbar tab stop with arrow-key navigation among grouped controls |
+| [WAI-ARIA APG: Menu and menubar pattern](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/) | Conventional menu keyboard behavior and ellipsis for commands that open a dialog |
+| [WAI-ARIA APG: Developing a keyboard interface](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/) | Consistent focus movement, shortcut behavior, and composite-widget conventions |
+
+**Conclusion:** VibeShape targets WCAG 2.2 AA for its application chrome and uses tested shadcn/Radix primitives plus APG interaction patterns. The WebGL canvas retains accessible HTML equivalents for document structure, commands, selection summaries, and diagnostics; the project documents limitations of free-form spatial authoring instead of claiming complete canvas accessibility.
+
 ## npm Registry Snapshot
 
 Results from `npm view <package> version license` on 2026-08-07:

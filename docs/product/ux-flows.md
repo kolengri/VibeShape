@@ -1,5 +1,7 @@
 # UX and core flows
 
+The cross-product interaction, visual, accessibility, and content rules are defined in [Design and UX Guidelines](design-and-ux-guidelines.md). This document defines the application frame and canonical end-to-end flows; the guidelines define how every state in those flows behaves.
+
 ## Interface frame
 
 Desktop layout:
@@ -90,6 +92,8 @@ Errors are classified as:
 
 Raw stack traces belong in a local diagnostic bundle but never replace a user-facing explanation.
 
+Error wording, persistence, focus behavior, and recovery actions follow the [feedback and diagnostics rules](design-and-ux-guidelines.md#feedback-progress-and-diagnostics).
+
 ## Alpha keyboard shortcuts
 
 | Action | Shortcut |
@@ -105,3 +109,5 @@ Raw stack traces belong in a local diagnostic bundle but never replace a user-fa
 | Standard views | Numeric presets, finalized after usability testing |
 
 Shortcuts become configurable in P1. macOS uses `Cmd`; Windows and Linux use `Ctrl`.
+
+The complete shortcut safety, toolbar navigation, escape hierarchy, and canvas-accessibility contract is defined in [Design and UX Guidelines](design-and-ux-guidelines.md#accessibility-contract).

@@ -188,10 +188,10 @@ After Proceed:
 4. `E04 Geometry`: production adapter from SPK-001 with ownership and leak guards.
 5. `E05 Viewer`: Three.js scene, LOD, selection mapping, and disposal.
 6. `E06 Persistence`: journal, snapshot, recovery, and `.vshape` v0.
-7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configuration, tokens, and compact shell primitives.
+7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configuration, tokens, compact shell primitives, state harness, keyboard behavior, and accessibility baseline from the design and UX contract.
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 
-Every epic includes positive, failure, recovery, and license or format acceptance criteria.
+Every epic includes positive, failure, recovery, and license or format acceptance criteria. User-visible epics also include the applicable [Design and UX Guidelines](product/design-and-ux-guidelines.md) definition-of-done checks.
 
 ## Definition of Done for a geometry feature
 

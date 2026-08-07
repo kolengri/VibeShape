@@ -152,10 +152,13 @@ STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to
 
 ## Interface and accessibility
 
+- All interface work follows the normative [Design and UX Guidelines](design-and-ux-guidelines.md).
 - Desktop-first, minimum working width of 1024 px.
 - Every core action is available through commands/shortcuts and the command palette.
 - Focus indicators, semantic labels, and keyboard-operable dialogs.
 - State color is reinforced with shape, iconography, or text.
+- Save, export, rebuild, solver, and topology failures remain persistent and recoverable rather than toast-only.
+- Application chrome targets WCAG 2.2 AA; free-form canvas-authoring limitations are documented explicitly.
 - Touch/tablet authoring comes later; phones are view/export-only.
 - The architecture supports localization, but alpha may ship with one language.
 

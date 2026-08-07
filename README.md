@@ -32,6 +32,7 @@ Key decisions:
 | [Documentation overview](docs/README.md) | Reading order and decision status |
 | [Product vision and scope](docs/product/vision-and-scope.md) | Audience, value proposition, MVP, and non-goals |
 | [Feature specification](docs/product/feature-matrix.md) | Complete feature list by release |
+| [Design and UX guidelines](docs/product/design-and-ux-guidelines.md) | Visual system, interaction rules, accessibility, content, and UI acceptance criteria |
 | [UX and core flows](docs/product/ux-flows.md) | Interface structure and user journeys |
 | [Architecture](docs/architecture/overview.md) | Layers, processes, worker protocol, and rebuild model |
 | [Technology stack](docs/architecture/technology-stack.md) | Libraries, alternatives, and reviewed versions |

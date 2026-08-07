@@ -1,5 +1,7 @@
 # UI system: Tailwind CSS and shadcn/ui
 
+This document owns the UI implementation architecture, package boundaries, and token system. [Design and UX Guidelines](../product/design-and-ux-guidelines.md) is the product-level contract for layout, interaction, accessibility, content, and acceptance behavior. Components MUST satisfy both documents.
+
 ## Decision
 
 Use **Tailwind CSS v4** and **shadcn/ui CLI v4 with Radix base** as the interface foundation. Shared primitives and design tokens live in the `@vibeshape/ui` workspace; CAD-specific components are composed in `apps/web`.
@@ -131,8 +133,10 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 ## Verification
 
 - keyboard-only core flows;
+- ARIA toolbar, menu, dialog, tree, and status-message behavior where applicable;
 - focus trap and restoration for dialog, sheet, and popover;
 - contrast and non-color state cues;
+- minimum target size and spacing;
 - 200% zoom at minimum desktop width;
 - long localized labels;
 - pointer and trackpad behavior, with touch later;
