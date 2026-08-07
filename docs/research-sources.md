@@ -18,8 +18,10 @@ Context7 was used for library documentation. Searches for `OpenCascade.js` and `
 | [Replicad](https://replicad.xyz/) | Browser B-Rep API built on OpenCascade, including STEP and fillet capabilities |
 | [Replicad as a library](https://replicad.xyz/docs/use-as-a-library/) | Requirement to inject OCJS and recommendation to run computations in a Web Worker |
 | [Replicad upstream](https://github.com/sgenoud/replicad) | MIT-licensed TypeScript abstraction over OpenCascade |
+| [Replicad npm package](https://www.npmjs.com/package/replicad) | Published `0.23.1` metadata, dependency set, integrity, and source `gitHead` used by SPK-001 |
+| [Replicad custom OCJS npm package](https://www.npmjs.com/package/replicad-opencascadejs) | Published `0.23.0` loader/WASM package used by SPK-001; its metadata does not identify the embedded OCCT source revision |
 
-**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. Replicad accelerates initial work but remains behind an adapter because of incomplete-binding risk and the need for topology history.
+**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. SPK-001 confirms that Replicad accelerates the required browser operations, but it remains behind an adapter because of incomplete provenance, allocator-observability, binding, and topology-history risks. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ## Viewport
 

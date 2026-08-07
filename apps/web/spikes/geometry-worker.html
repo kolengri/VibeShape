@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VibeShape geometry worker spike</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        background: #111113;
+        color: #e4e4e7;
+      }
+
+      body {
+        display: grid;
+        min-height: 100svh;
+        margin: 0;
+        place-items: center;
+      }
+
+      main {
+        width: min(44rem, calc(100% - 3rem));
+        padding: 2rem;
+        border: 1px solid #3f3f46;
+        border-radius: 0.75rem;
+        background: #18181b;
+      }
+
+      h1 {
+        margin: 0 0 1rem;
+        font: 600 1.125rem/1.4 system-ui, sans-serif;
+      }
+
+      [data-state="passed"] {
+        color: #86efac;
+      }
+
+      [data-state="failed"] {
+        color: #fca5a5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OCCT worker integration spike</h1>
+      <p id="status" role="status" aria-live="polite" data-state="running">
+        Initializing the geometry engine…
+      </p>
+    </main>
+    <script type="module" src="../src/spikes/geometry-worker.ts"></script>
+  </body>
+</html>

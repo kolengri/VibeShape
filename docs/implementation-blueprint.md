@@ -21,6 +21,8 @@ With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. One developer sh
 
 ## SPK-001 — OCCT/Replicad worker
 
+**Current result:** **Rework.** The versioned worker, exact modeling scenario, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, and Chromium/Firefox/WebKit smoke matrix are implemented. The 5,000-operation Chromium stress run exposed unexplained WASM linear-memory growth, and the published custom WASM does not disclose the exact OCCT source revision. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+
 ### Question
 
 Can the browser provide the required exact CAD API, STEP support, and operation history within an acceptable resource budget?
@@ -56,6 +58,8 @@ Can the browser provide the required exact CAD API, STEP support, and operation 
 ### Stop/go
 
 Proceed only when STEP, boolean, fillet, validation, and history are available; the main thread stays responsive; and repeated runs show no unexplained unbounded growth. Otherwise, reduce bindings or replace the adapter before building feature UI.
+
+The functional operations pass, but history, reproducible OCCT provenance, allocator-level memory evidence, independent STEP validation, and controlled responsiveness measurements remain open. Do not promote the spike adapter into production feature work yet.
 
 ## SPK-002 — sketch solver
 

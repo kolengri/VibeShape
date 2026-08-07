@@ -10,7 +10,7 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
-The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, typed ICU localization, Tailwind tokens, and first source-owned shadcn primitives are operational. CAD domain behavior, the geometry engine, sketch solver, persistence, and file codecs remain intentionally unimplemented until their Phase 0 spikes pass.
+The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, quality gates, CI, Vite application shell, typed ICU localization, Tailwind tokens, and first source-owned shadcn primitives are operational. SPK-001 now provides an isolated OCCT/Replicad worker, runtime-validated protocol, deterministic CAD fixture, and cross-browser WASM tests. Its result is **Rework**, not production acceptance, because exact embedded OCCT provenance and unexplained WASM linear-memory growth remain open. CAD domain behavior, the sketch solver, persistence, and production file codecs remain intentionally unimplemented until their Phase 0 gates pass.
 
 Key decisions:
 
@@ -46,6 +46,7 @@ Key decisions:
 | [3D-printing workflow](docs/3d-printing.md) | Analysis, tolerances, export, and slicing boundary |
 | [Roadmap](docs/roadmap.md) | Phases, dependencies, and exit criteria |
 | [Initial experiment plan](docs/implementation-blueprint.md) | Issue-ready spikes and implementation order |
+| [SPK-001 OCCT worker evidence](docs/spikes/spk-001-occt-worker.md) | Executable worker results, measurements, provenance, memory findings, and rework decision |
 | [Local deployment](docs/deployment.md) | Static hosting, offline operation, and browser headers |
 | [Testing strategy](docs/testing-strategy.md) | Geometry, formats, UX, security, and performance tests |
 | [Security and privacy](docs/security-and-privacy.md) | Threat model and import limits |
@@ -75,9 +76,9 @@ Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cr
 
 ## Next practical step
 
-Implementation must start with **Phase 0 technical spikes**, not with the interface. Before creating the main codebase, we must prove four properties:
+Implementation continues through **Phase 0 technical spikes**, not interface expansion. SPK-001 has functional evidence but remains in rework. Before promoting the spike adapters into the main product, we must prove four properties:
 
-1. A custom WASM build starts in a worker and performs STEP import, boolean operations, fillets, and STEP/STL export without leaks.
+1. A reproducible custom WASM build starts in a worker, performs STEP import, boolean operations, fillets, and STEP/STL export, and reaches a measured memory plateau.
 2. The selected sketch solver reliably handles the required constraint set.
 3. Stable face and edge references survive the parameter-change matrix or explicitly enter an `ambiguous` state.
 4. Generated 3MF files pass validation and open in at least PrusaSlicer and Cura/OrcaSlicer.
