@@ -20,7 +20,7 @@ erDiagram
 
 ## Identifiers
 
-- Use UUIDv7 or a compatible sortable ID for persistent entities.
+- Use lowercase UUIDv7 identifiers for current document, command, draft, and automation-session contracts. A future compatible sortable identifier requires an explicit schema migration.
 - IDs never encode array position or user-visible names.
 - Renaming does not change an ID.
 - Copying creates new IDs and explicit `derivedFrom` metadata.
@@ -72,9 +72,25 @@ A command contains:
 - structured actor provenance such as `user`, `extension`, `mcp`, or `system`, with bounded source and session identifiers where applicable but no model prompt;
 - `issuedAt` for UX and audit only, never for the geometry result;
 - inverse data or sufficient information for deterministic reduction;
-- resulting revision and content hash.
+- no derived geometry or transport-specific prompt data.
+
+An accepted event records the resulting revision. The persistence transaction will add the authoritative content hash when the journal and snapshot store are implemented.
 
 The domain reducer MUST be deterministic: one snapshot plus the same commands produces the same domain state. Geometry may vary slightly between OCCT builds, so engine build metadata is recorded separately.
+
+### Implemented foundation slice
+
+`@vibeshape/domain` currently implements a deliberately narrow versioned slice:
+
+- strict runtime schemas for document, command, draft, actor, event, module, and command-descriptor boundaries;
+- `org.vibeshape.document.create` and `org.vibeshape.document.rename` command schema version 1;
+- deterministic created and renamed events, canonical snapshots, and event replay;
+- safe non-negative revision preconditions, explicit stale-revision diagnostics, and revision-exhaustion rejection;
+- actor-bound disposable drafts whose commands share one transaction ID and commit only against the original base revision;
+- a first-party `org.vibeshape.core.document` module descriptor and deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
+- automation exposure and confirmation metadata without importing MCP or transport types.
+
+This slice does not yet implement content hashing, persistence, autosave, undo/redo, feature DAGs, units, geometry preview, draft expiry, extension execution, or the `.vshape` codec. Its schemas are internal experimental contracts until their owning ADR and Phase 1 acceptance gates stabilize them.
 
 ## Units and expressions
 

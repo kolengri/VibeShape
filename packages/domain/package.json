@@ -6,10 +6,18 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./commands": "./src/commands.ts",
+    "./document": "./src/document.ts",
+    "./drafts": "./src/drafts.ts",
+    "./identifiers": "./src/identifiers.ts",
+    "./modules": "./src/modules.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"

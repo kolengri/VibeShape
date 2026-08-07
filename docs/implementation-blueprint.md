@@ -251,7 +251,11 @@ The first local MCP bridge is an integration spike after `E02`, `E03`, `E06`, an
 
 ### Foundation scaffold status
 
-The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and feature-specific browser scenarios remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
+The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and feature-specific browser scenarios remain open.
+
+`E02` and `E10` now have one shared executable foundation slice: UUIDv7 domain identities, document create and rename commands, strict actor and event schemas, deterministic replay, revision-safe disposable drafts, and a validated first-party document module with automation metadata. This does not complete either epic: units, feature DAGs, queries, geometry validation and preview, persistence, undo/redo, cancellation, expiry, and confirmation policy remain open. The slice proves an adapter-neutral command path and does not justify an MCP workspace or SDK dependency yet.
+
+This early scaffold and domain slice do not waive any Phase 0 stop/go criterion.
 
 ## Definition of Done for a geometry feature
 
