@@ -9,7 +9,7 @@
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Data model and native format](architecture/data-model-and-file-format.md).
-8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), and [testing strategy](testing-strategy.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
 ## Requirement levels
@@ -37,6 +37,8 @@ The documents use these terms:
 - English is the canonical language for documentation and code comments.
 
 ## Decisions to confirm in Phase 0
+
+SPK-001 has a **Rework** result: required browser operations pass, but exact OCCT build provenance and allocator-level memory evidence remain unresolved.
 
 - Exact OCCT build/version and exported binding set.
 - Whether Replicad is the production facade or only the prototype facade.

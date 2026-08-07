@@ -31,6 +31,8 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 
 **Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
+**SPK-001 evidence:** required operations pass in Chromium, Firefox, and WebKit, and adapter-owned wrapper counts balance. However, five 1,000-operation Chromium batches increased WASM linear-memory capacity from 20,185,088 to 260,243,456 bytes. The current binding cannot distinguish allocator live bytes from retained high-water capacity, so R2 remains open and the spike result is **Rework**.
+
 ### Solver
 
 The complete SolveSpace web application is experimental, and extracting a solver subset may require substantial C++ work.

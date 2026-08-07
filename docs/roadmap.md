@@ -8,7 +8,9 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 ## Phase 0 — spikes and measurements (2–4 weeks)
 
-The repository foundation scaffold is already available for implementing and measuring these spikes. Engine, solver, storage, and format package entry points remain empty until the corresponding evidence exists.
+The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, and test-model packages now contain isolated SPK-001 experiment code; they are not production APIs. Solver, storage, and format package entry points remain empty until their corresponding evidence exists.
+
+SPK-001 now has executable functional evidence and a **Rework** result: browser modeling and exchange pass, while reproducible OCCT provenance and unexplained WASM linear-memory growth remain blocking. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Deliverables
 

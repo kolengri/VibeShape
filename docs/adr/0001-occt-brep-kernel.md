@@ -18,6 +18,10 @@ Use Open CASCADE Technology through WebAssembly. Start with Replicad and a custo
 - Custom bindings are likely to be required.
 - Phase 0 must verify history and topology APIs, size, startup time, memory behavior, and format support.
 
+## Spike Evidence
+
+[SPK-001](../spikes/spk-001-occt-worker.md) proves the required Replicad modeling, tessellation, STEP round-trip, and STL operations in Chromium, Firefox, and WebKit. Its current result is **Rework** because the published WASM does not disclose the exact embedded OCCT source revision and extended Chromium runs show unexplained linear-memory growth. This ADR therefore remains accepted only for the spike; it does not select the production binding.
+
 ## Rejected Alternatives
 
 - Three.js geometry or CSG as the primary kernel

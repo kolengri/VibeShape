@@ -6,12 +6,21 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
+  "dependencies": {
+    "@vibeshape/protocol": "workspace:*",
+    "replicad": "catalog:",
+    "replicad-opencascadejs": "catalog:"
+  },
   "devDependencies": {
-    "@vibeshape/typescript-config": "workspace:*"
+    "@vibeshape/test-models": "workspace:*",
+    "@vibeshape/typescript-config": "workspace:*",
+    "vite": "catalog:"
   }
 }

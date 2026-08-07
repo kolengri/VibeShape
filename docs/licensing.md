@@ -24,6 +24,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Open CASCADE Technology | LGPL-2.1 with Open CASCADE exception | Include notices, license text, exact sources and build instructions, and preserve replaceability |
 | OpenCascade.js | LGPL-2.1 | Apply the same obligations and verify the files actually bundled |
 | Replicad | MIT | Preserve notice and license |
+| `replicad-opencascadejs` package wrapper | MIT declaration; embeds OCCT-derived WASM | Preserve the package notice and independently satisfy OCCT LGPL obligations; do not infer the embedded OCCT revision from the wrapper version |
+| Replicad runtime transitives: Flatbush / FlatQueue; OpenType.js and polyfills | ISC; MIT | Include applicable notices from the exact lockfile in the generated third-party bundle |
 | SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
 | React | MIT | Include a third-party notice |
 | React DOM | MIT | Include a third-party notice |
@@ -73,6 +75,8 @@ For a web/WASM release, VibeShape must:
 5. Include notices and license texts in the distribution.
 6. Document compliance with the Open CASCADE exception.
 7. Never rely only on a link to the upstream `master` branch.
+
+SPK-001 deliberately reports `opencascadeSourceRevision: null`: the published `replicad-opencascadejs@0.23.0` metadata pins the wrapper package but does not disclose the exact OCCT source revision used for its WASM. That artifact is suitable for feasibility testing only. A public release is blocked until VibeShape owns a reproducible build from a recorded OCCT revision or receives equivalent complete corresponding-source evidence.
 
 ## SolveSpace Reuse
 

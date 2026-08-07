@@ -156,7 +156,17 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces, including jsdom-backed Testing Library component tests. Playwright runs the shell contract against a real Vite server in Chromium, Firefox, and WebKit, while GitHub Actions repeats frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser E2E, and Fallow changed-code analysis. The current shell suite covers localization metadata, semantic landmarks, keyboard order, compact layout, runtime errors, and local-only startup; it is not evidence for future PWA, worker, WASM, CAD workflow, recovery, or offline release gates.
+The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces, including jsdom-backed Testing Library component tests. Playwright runs the shell and SPK-001 OCCT worker contracts against a real Vite server in Chromium, Firefox, and WebKit, while GitHub Actions repeats frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser E2E, and Fallow changed-code analysis. The shell suite covers localization metadata, semantic landmarks, keyboard order, compact layout, runtime errors, and local-only startup. The SPK-001 suite covers worker protocol validation, logical cancellation, stale generations, transferable tessellation, exact modeling invariants, STEP round-trip, binary STL export, and owned-wrapper disposal. It does not yet prove PWA recovery, independent format interoperability, allocator-level leak freedom, production CAD workflows, or offline release gates.
+
+Extended OCCT lifecycle runs are parameterized without slowing the normal PR matrix:
+
+```bash
+VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS=1000 \
+VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES=5 \
+bun run test:e2e -- --project=chromium tests/e2e/geometry-worker.spec.ts
+```
+
+The current stress result and its unresolved linear-memory growth are documented in [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ## Design and UX acceptance
 

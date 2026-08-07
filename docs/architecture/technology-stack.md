@@ -40,6 +40,7 @@ Verified against the npm registry on **2026-08-07**. Packages already used by th
 | `use-intl` | 4.13.5 | MIT |
 | `three` | 0.185.1 | MIT |
 | `replicad` | 0.23.1 | MIT |
+| `replicad-opencascadejs` | 0.23.0 | MIT package wrapper; embedded OCCT obligations remain |
 | `opencascade.js` | 1.1.1 | LGPL-2.1-only |
 | `zustand` | 5.0.14 | MIT |
 | `dexie` | 4.4.4 | Apache-2.0 |
@@ -190,6 +191,8 @@ Phase 0 compares:
 Criteria include STEP round-trip, supported operations, WASM size and startup, memory lifecycle, operation history for `TopoRef`, TypeScript-definition quality, and reproducible builds.
 
 If Replicad does not expose the required history or topology data, the adapter moves to direct OCCT without changing the domain or file format.
+
+SPK-001 proved the Replicad `0.23.1` and custom `replicad-opencascadejs` `0.23.0` path across the required modeling and exchange operations in all three automated browser engines. It did not accept that package as the production binding: exact embedded OCCT provenance is unavailable, operation-history coverage is open, and extended Chromium runs show unexplained WASM linear-memory growth. The measurements and rework decision are recorded in [SPK-001 evidence](../spikes/spk-001-occt-worker.md).
 
 ## Why raw Three.js instead of React Three Fiber
 

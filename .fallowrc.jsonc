@@ -1,5 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
+  // Vite loads this spike module through a secondary HTML entry point.
+  "entry": ["apps/web/src/spikes/geometry-worker.ts"],
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },
@@ -36,7 +38,13 @@
       // Shared visual primitives cannot depend on CAD or application packages.
       { "from": "ui", "allow": [] },
       // Localization infrastructure remains independent of application and CAD packages.
-      { "from": "i18n", "allow": [] }
+      { "from": "i18n", "allow": [] },
+      // Protocol schemas are the dependency-free structured-clone boundary.
+      { "from": "protocol", "allow": [] },
+      // The geometry worker depends on contracts, never on UI or persistence.
+      { "from": "geometry-worker", "allow": ["protocol", "test-models"] },
+      // Fixture packages contain data and invariants, not runtime adapters.
+      { "from": "test-models", "allow": [] }
     ]
   },
   "rules": {

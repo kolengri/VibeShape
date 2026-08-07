@@ -114,7 +114,7 @@ docs/
 
 The root `package.json` declares Bun workspaces for `apps/*` and `packages/*`. Local packages use `workspace:*`; shared React, TypeScript, Tailwind, and test versions use Bun default or named catalogs; `bun.lock` is committed.
 
-This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite, resolves typed product copy through `@vibeshape/i18n`, and proves Tailwind discovery across `@vibeshape/ui`. The domain, protocol, geometry, solver, viewer, persistence, format, print-analysis, and test-model packages expose intentionally empty entry points. Their public contracts are introduced only together with the owning spike, invariant tests, and dependency evidence.
+This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite, resolves typed product copy through `@vibeshape/i18n`, and proves Tailwind discovery across `@vibeshape/ui`. `packages/protocol`, `packages/geometry-worker`, and `packages/test-models` now contain the isolated SPK-001 contract, adapter, and invariant fixture; they are not yet production document APIs. The domain, solver, viewer, persistence, format, and print-analysis packages remain intentionally empty until their owning spikes introduce tested contracts and dependency evidence.
 
 Lint and import rules enforce package boundaries. For example, `domain` cannot import `viewer`, `geometry-worker`, or `ui`.
 
