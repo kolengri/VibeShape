@@ -1,128 +1,128 @@
-# Local-first хранение и восстановление
+# Local-first persistence and recovery
 
-## Решение
+## Decision
 
-Использовать три независимых слоя:
+Use three independent layers:
 
-1. **IndexedDB/Dexie** — проекты, domain snapshots, event journal, metadata и небольшие blobs.
-2. **OPFS** — крупные B-Rep/mesh caches и staging экспортов.
-3. **Пользовательский `.vshape`** — переносимая резервная копия и обмен.
+1. **IndexedDB/Dexie** for projects, domain snapshots, event journals, metadata, and small blobs.
+2. **OPFS** for large B-Rep and mesh caches plus export staging.
+3. **User-controlled `.vshape` files** for portable backups and exchange.
 
-OPFS не является пользовательским документом: очистка site data может удалить его. Приложение обязано явно предлагать экспорт `.vshape` и показывать, когда проект существует только во внутреннем browser storage.
+OPFS is not a user document. Clearing site data can remove it. The application must explicitly offer `.vshape` export and show when a project exists only inside browser storage.
 
-## Хранилища IndexedDB
+## IndexedDB stores
 
-Предлагаемые tables:
+Proposed tables:
 
-- `projects`: id, name, timestamps, headRevision, dirty/clean marker, thumbnail key;
-- `snapshots`: documentId + revision, schemaVersion, compressed domain state, checksum;
-- `events`: documentId + revision/sequence, command/event payload;
-- `imports`: source metadata, optional small embedded blob/OPFS key;
-- `settings`: local app preferences и printer profiles;
+- `projects`: ID, name, timestamps, head revision, dirty/clean marker, thumbnail key;
+- `snapshots`: document ID and revision, schema version, compressed domain state, checksum;
+- `events`: document ID and revision/sequence, command or event payload;
+- `imports`: source metadata and optional small embedded blob or OPFS key;
+- `settings`: local application preferences and printer profiles;
 - `recovery`: active transaction markers;
-- `cacheIndex`: content hash → OPFS path, size, lastAccess, engine build;
+- `cacheIndex`: content hash to OPFS path, size, last access, and engine build;
 - `migrations`: applied storage migrations.
 
 ## Commit protocol
 
-Пользовательская команда становится committed только после:
+A user command becomes committed only after:
 
-1. domain validation;
-2. успешного geometry rebuild или explicit сохранения error-state операции, если UX это допускает;
-3. одной IndexedDB transaction, записывающей event, новую head revision и recovery marker;
-4. подтверждения transaction;
-5. обновления UI committed state.
+1. Domain validation.
+2. Successful geometry rebuild, or explicit storage of an error-state feature when the UX permits it.
+3. One IndexedDB transaction records the event, new head revision, and recovery marker.
+4. The transaction is confirmed.
+5. The UI swaps to the new committed state.
 
-OPFS cache записывается до/после независимо и не участвует в semantic atomicity. Cache index публикуется только после полной записи и checksum; orphan cleanup удаляет незарегистрированные временные файлы.
+OPFS cache writes are independent of semantic atomicity. Publish a cache-index entry only after a complete write and checksum. Orphan cleanup removes unregistered temporary files.
 
 ## Autosave
 
-- debounce 0.5–2 s после committed command, а не после каждого pointer move;
-- flush на `visibilitychange`/`pagehide` best-effort, но корректность не зависит от него;
-- periodic snapshot каждые N событий или M MiB journal;
-- clean-close marker записывается после последнего flush;
-- quota error переводит приложение в явный degraded state и предлагает `.vshape` export;
-- никакого `localStorage` для проекта: лимит мал и нет нужных транзакций/blobs.
+- Debounce for 0.5–2 seconds after a committed command, never after each pointer move.
+- Flush on `visibilitychange` and `pagehide` as best effort, but never depend on it for correctness.
+- Create a periodic snapshot after N events or M MiB of journal data.
+- Write a clean-close marker after the final flush.
+- A quota error enters an explicit degraded state and offers `.vshape` export.
+- Never use `localStorage` for projects; its size and transaction model are insufficient.
 
 ## Recovery
 
-При старте:
+At startup:
 
-1. найти документы без clean-close marker;
-2. проверить checksums snapshot/events;
-3. replay до последнего целого event;
-4. открыть как recovery copy;
-5. перестроить geometry из domain state;
-6. не использовать B-Rep cache при несовпадении build/tolerance/checksum;
-7. предложить compare/save/discard.
+1. Find documents without a clean-close marker.
+2. Verify snapshot and event checksums.
+3. Replay through the last complete event.
+4. Open the result as a recovery copy.
+5. Rebuild geometry from domain state.
+6. Ignore B-Rep cache when build, tolerance, version, or checksum differs.
+7. Offer compare, save, or discard.
 
-Повреждённое событие не должно уничтожать предыдущий snapshot. Diagnostic bundle содержит версии, hashes и типы команд, но не geometry/имена без согласия пользователя.
+A corrupted event never destroys the preceding snapshot. A diagnostic bundle may include versions, hashes, and command kinds, but excludes geometry and project names without consent.
 
 ## Persistent storage
 
-После первого сохранённого проекта UI MAY вызвать `navigator.storage.persist()` из пользовательского действия. Отказ не блокирует работу; приложение показывает, что browser может эвакуировать best-effort storage.
+After the first saved project, the UI MAY call `navigator.storage.persist()` from a user gesture. Denial does not block work; the application explains that the browser may evict best-effort storage.
 
-Показывать:
+Display:
 
-- `navigator.storage.estimate()` usage/quota;
-- объём recoverable semantic data и disposable cache отдельно;
-- кнопку clear derived cache;
-- дату последнего `.vshape` export, если её можно надёжно определить локально.
+- `navigator.storage.estimate()` usage and quota;
+- recoverable semantic data and disposable cache separately;
+- a Clear Derived Cache action;
+- latest `.vshape` export time when it can be determined reliably.
 
-## File System Access progressive enhancement
+## File System Access as progressive enhancement
 
-Если доступны `showOpenFilePicker/showSaveFilePicker`:
+When `showOpenFilePicker` and `showSaveFilePicker` are available:
 
-- хранить handle в IndexedDB только с разрешения;
-- проверять/request permission при явном действии пользователя;
-- сохранять через staging и закрывать stream;
-- не считать handle вечным.
+- store handles in IndexedDB only with permission;
+- query or request permission during an explicit user action;
+- write through staging and close the stream;
+- never treat a handle as permanent.
 
-Fallback для всех браузеров:
+Cross-browser fallback:
 
-- `<input type=file>`/drag-and-drop для открытия;
-- Blob download для Save As;
-- понятное сообщение, что автоматическая перезапись исходного файла недоступна.
+- `<input type=file>` or drag and drop for open;
+- Blob download for Save As;
+- clear messaging when automatic overwrite is unavailable.
 
-## Multi-tab
+## Multiple tabs
 
-Alpha допускает один writer на документ:
+Alpha allows one writer per document:
 
-- `BroadcastChannel` объявляет lease/heartbeat;
-- второй tab открывает read-only или просит takeover;
-- revision optimistic check предотвращает lost update;
-- stale lease истекает;
-- takeover создаёт snapshot перед записью.
+- `BroadcastChannel` announces a lease and heartbeat;
+- a second tab opens read-only or requests takeover;
+- optimistic revision checks prevent lost updates;
+- stale leases expire;
+- takeover creates a snapshot before writing.
 
-Настоящий multi-writer merge не имитируется и относится к P2.
+True multi-writer merge is not simulated and remains P2.
 
-## Service worker и обновления
+## Service worker and updates
 
-- precache только versioned app shell, fonts, worker и WASM;
-- project data не хранится в Cache Storage;
-- новый app build скачивается рядом со старым;
-- activation, несовместимая с открытым документом, ждёт explicit reload;
-- до reload приложение сохраняет snapshot/export recovery;
-- откат app shell не откатывает storage schema автоматически;
-- migrations должны быть forward-safe, а destructive migration — backup-first.
+- Precache only versioned application shell, fonts, worker, and WASM.
+- Never store project data in Cache Storage.
+- Download a new application build alongside the old one.
+- Activation incompatible with an open document waits for explicit reload.
+- Before reload, save a snapshot or recovery export.
+- Rolling back the application shell never rolls back storage schema automatically.
+- Migrations are forward-safe; destructive migrations are backup-first.
 
 ## Backup policy
 
-В v1:
+v1 includes:
 
-- напоминание об экспорте для проектов без external file copy;
-- bulk export всех проектов;
-- optional user-selected directory mirror там, где File System Access поддерживается;
-- никаких скрытых uploads;
-- optional sync adapter в будущем шифрует данные client-side и не меняет core semantics.
+- export reminders for projects without an external file copy;
+- bulk export of all projects;
+- optional mirror to a user-selected directory where File System Access is available;
+- no hidden uploads;
+- a future sync adapter that is optional, client-side encrypted, and does not change core semantics.
 
 ## Browser targets
 
 | Browser | Alpha expectation |
 |---|---|
-| Chromium desktop | полный baseline, включая picker при наличии |
-| Firefox desktop | core + OPFS/IndexedDB, save через fallback при отсутствии picker |
-| Safari 17+ desktop | core после реальных memory/OPFS тестов; fallback save |
-| mobile browsers | просмотр/экспорт best effort, authoring не release gate |
+| Chromium desktop | Full baseline, including picker where available |
+| Firefox desktop | Core plus OPFS/IndexedDB, with fallback save when picker is unavailable |
+| Safari 17+ desktop | Core after real memory and OPFS testing, with fallback save |
+| Mobile browsers | Best-effort view/export; authoring is not a release gate |
 
-Compatibility определяется automated и manual test matrix, а не user-agent-only branches.
+Compatibility is defined by automated and manual test matrices, never by user-agent-only branches.

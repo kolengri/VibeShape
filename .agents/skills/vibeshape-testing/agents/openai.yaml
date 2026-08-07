@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Testing"
+  short_description: "Test CAD invariants, workers, formats, and UI"
+  default_prompt: "Use $vibeshape-testing to design the correct tests for this VibeShape change."

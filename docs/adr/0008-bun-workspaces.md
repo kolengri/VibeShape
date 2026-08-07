@@ -1,29 +1,29 @@
-# ADR-0008: Bun workspaces для monorepo
+# ADR-0008: Bun Workspaces for the Monorepo
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Контекст
+## Context
 
-Будущий код естественно делится на web app, domain, worker protocol, CAD adapter, persistence, formats, viewer и UI. Нужны единый lockfile, локальные package boundaries, согласованные версии и воспроизводимый CI.
+The future codebase naturally separates into a web application, domain layer, worker protocol, CAD adapter, persistence layer, format packages, viewer, and UI system. It needs a single lockfile, local package boundaries, aligned versions, and reproducible CI.
 
-## Решение
+## Decision
 
-Использовать Bun workspaces (`apps/*`, `packages/*`) как package manager, runtime для scripts и workspace orchestrator. Локальные зависимости — `workspace:*`, общие версии — Bun catalogs, lockfile — `bun.lock`, CI install — `bun ci`.
+Use Bun workspaces (`apps/*` and `packages/*`) as the package manager, script runtime, and workspace orchestrator. Local dependencies use `workspace:*`, shared versions use Bun catalogs, the lockfile is `bun.lock`, and CI installation uses `bun ci`.
 
-Vite остаётся browser bundler. Vitest/Playwright запускаются через Bun. Turborepo не добавляется до измеренной необходимости task cache/graph.
+Vite remains the browser bundler. Vitest and Playwright run through Bun. Do not add Turborepo until task caching or graph orchestration solves a measured problem.
 
-## Последствия
+## Consequences
 
-- меньше toolchain-команд и быстрые installs;
-- Bun version нужно pin в `packageManager`/CI;
-- Node compatibility сторонних CLI проверяется fixtures/CI;
-- package manifests остаются самостоятельными, root не становится складом dependencies;
-- переход с Bun потребует lockfile/CI change, но domain architecture от него не зависит.
+- The toolchain has fewer commands and fast dependency installation.
+- The Bun version must be pinned in `packageManager` and CI.
+- Fixture tests and CI must verify Node.js compatibility for third-party CLIs.
+- Package manifests remain self-contained; the root manifest does not become a dumping ground for dependencies.
+- Migrating away from Bun would require lockfile and CI changes, but would not alter the domain architecture.
 
-## Отклонено
+## Rejected Alternatives
 
-- pnpm workspaces — технически подходили, но пользователь выбрал Bun и его current workspaces/catalogs закрывают требования;
-- npm workspaces — меньше нужных orchestration/catalog ergonomics;
-- Turborepo с первого дня — лишний слой без доказанного bottleneck;
-- Bun bundler вместо Vite — преждевременный риск для React/Tailwind/worker/WASM pipeline.
+- pnpm workspaces were technically suitable, but Bun was selected and its current workspaces and catalogs meet the requirements.
+- npm workspaces provide less of the required orchestration and catalog ergonomics.
+- Turborepo from day one adds a layer without a demonstrated bottleneck.
+- Using the Bun bundler instead of Vite is premature for the React, Tailwind, worker, and WASM pipeline.

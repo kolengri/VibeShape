@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
+  "workspaces": {
+    "patterns": ["apps/*", "packages/*"]
+  },
+  "ignorePatterns": ["**/__generated__/**", "**/generated/**"],
+  "duplicates": {
+    // Pair-only similarity is often incidental. Gate widespread copy-paste.
+    "minOccurrences": 3,
+    "ignore": ["packages/test-models/**"]
+  },
+  "boundaries": {
+    "zones": [
+      { "name": "web", "patterns": ["apps/web/**"] },
+      { "name": "domain", "patterns": ["packages/domain/**"] },
+      { "name": "protocol", "patterns": ["packages/protocol/**"] },
+      {
+        "name": "geometry-worker",
+        "patterns": ["packages/geometry-worker/**"]
+      },
+      { "name": "sketch-solver", "patterns": ["packages/sketch-solver/**"] },
+      { "name": "viewer", "patterns": ["packages/viewer/**"] },
+      { "name": "persistence", "patterns": ["packages/persistence/**"] },
+      { "name": "formats", "patterns": ["packages/formats/**"] },
+      {
+        "name": "print-analysis",
+        "patterns": ["packages/print-analysis/**"]
+      },
+      { "name": "ui", "patterns": ["packages/ui/**"] },
+      { "name": "test-models", "patterns": ["packages/test-models/**"] }
+    ],
+    "rules": [
+      // Stable core rule: the domain has no internal package dependencies.
+      { "from": "domain", "allow": [] },
+      // Shared visual primitives cannot depend on CAD or application packages.
+      { "from": "ui", "allow": [] }
+    ]
+  },
+  "rules": {
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error"
+  }
+}

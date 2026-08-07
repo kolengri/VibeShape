@@ -1,104 +1,104 @@
-# Безопасность и приватность
+# Security and privacy
 
-## Модель доверия
+## Trust model
 
-Пользователь доверяет установленной статической сборке VibeShape, но не обязан доверять импортированному `.vshape`, STEP, STL, SVG/DXF или 3MF. Любой импорт — потенциально враждебные структурированные/бинарные данные.
+The user trusts the installed static VibeShape build but does not need to trust imported `.vshape`, STEP, STL, SVG/DXF, or 3MF files. Every import is potentially hostile structured or binary input.
 
-Local-first уменьшает утечку CAD-файлов, но не отменяет угрозы supply chain, parser bugs, resource exhaustion и потери данных browser storage.
+Local-first design reduces CAD-file disclosure but does not eliminate supply-chain risk, parser vulnerabilities, resource exhaustion, or browser-storage loss.
 
-## Приватность по умолчанию
+## Privacy by default
 
-- нет обязательного аккаунта;
-- нет telemetry/analytics/error upload без opt-in;
-- все assets, fonts, WASM и docs self-hosted;
-- CAD-файлы не отправляются в сеть;
-- external links открываются только после действия пользователя;
-- diagnostic bundle формируется локально и показывает состав перед экспортом;
-- имена проектов, абсолютные пути и preview не попадают в логи по умолчанию;
-- optional update check не имеет доступа к документу.
+- No mandatory account.
+- No telemetry, analytics, or error upload without opt-in.
+- Self-host all assets, fonts, WASM, and documentation.
+- Never send CAD files to the network.
+- Open external links only after a user action.
+- Generate diagnostic bundles locally and show their contents before export.
+- Exclude project names, absolute paths, and previews from logs by default.
+- Optional update checks cannot access document content.
 
-CI E2E запускает приложение с заблокированной сетью после install и проверяет основной workflow.
+CI E2E blocks networking after installation and runs the core workflow.
 
 ## Content Security Policy
 
 Production goal:
 
 - `default-src 'self'`;
-- scripts/workers/WASM только с origin приложения;
-- без `unsafe-eval`;
+- scripts, workers, and WASM only from the application origin;
+- no `unsafe-eval`;
 - `object-src 'none'`;
 - `base-uri 'none'`;
-- `frame-ancestors 'none'` или явная self-host policy;
-- `connect-src 'self'` и opt-in endpoints только при появлении;
-- запрет mixed content;
-- Trusted Types, если совместимость/инструменты позволяют.
+- `frame-ancestors 'none'` or an explicit self-hosting policy;
+- `connect-src 'self'` plus opt-in endpoints only if they appear;
+- mixed-content blocking;
+- Trusted Types when compatible with the build and tools.
 
-Точная CSP проверяется с Emscripten/Vite build в Phase 0. Решение, требующее `unsafe-eval`, считается проблемой сборки.
+Phase 0 validates the exact CSP against Emscripten and Vite output. A build requiring `unsafe-eval` is treated as a build problem.
 
 ## Worker isolation
 
-- parser/CAD computation не имеют DOM access;
-- versioned schema валидирует вход до allocation/OCCT;
-- timeout и generation cancellation;
-- crash ограничен worker и приводит к recovery;
-- SharedArrayBuffer/multithreaded WASM выключены в baseline;
-- COOP/COEP включаются только отдельным ADR, потому что меняют deployment/embedding requirements.
+- Parser and CAD computation have no DOM access.
+- Versioned schemas validate input before allocation or OCCT calls.
+- Every request has timeout and generation cancellation.
+- Worker crashes are contained and recover from committed state.
+- `SharedArrayBuffer` and multithreaded WASM are disabled in the baseline.
+- COOP/COEP requires a separate ADR because it changes deployment and embedding.
 
-Worker — не security sandbox против скомпрометированного same-origin кода. XSS в UI остаётся критической угрозой.
+A worker is not a security sandbox against compromised same-origin code. XSS remains critical.
 
 ## Import policy
 
-- проверять magic bytes, а не только extension/MIME;
-- resource limits до decompression/allocation;
-- ZIP path normalization и duplicate detection;
-- XML parser без DTD/external entities;
-- SVG не вставляется как live DOM; преобразуется безопасным parser в geometry subset;
-- неизвестные native required capabilities блокируют edit;
-- imported metadata выводится как text, не HTML;
-- STEP entity/count/depth/time limits где позволяет adapter;
-- checksum больших embedded sources;
-- parser failure не меняет текущий документ.
+- Check magic bytes, not only extension or MIME type.
+- Enforce resource limits before decompression and allocation.
+- Normalize ZIP paths and reject duplicates.
+- Parse XML without DTDs or external entities.
+- Never insert SVG as live DOM; convert a safe geometry subset.
+- Unknown required native capabilities block editing.
+- Render imported metadata as text, never HTML.
+- Apply STEP entity, count, depth, and time limits where the adapter allows.
+- Checksum large embedded sources.
+- Parser failure never modifies the current document.
 
 ## File writes
 
-- запись только после explicit user action/permission;
-- Save As по умолчанию не перезаписывает import source;
-- staging + checksum + close перед публикацией;
-- browser handle может стать недействительным — всегда есть download fallback;
-- autosave internal и user-visible file save показываются как разные состояния;
-- destructive delete требует точного project name/undo/trash policy.
+- Write only after an explicit user action and permission.
+- Save As never overwrites an import source by default.
+- Stage, checksum, and close before publishing a file.
+- A browser handle may expire; always retain download fallback.
+- Distinguish internal autosave from user-visible file save.
+- Destructive deletion requires an exact target and recoverable trash/undo policy where practical.
 
 ## Supply chain
 
-- exact dependency versions и committed lockfile;
-- dependency review для WASM/native artifacts;
-- SBOM в release;
-- checksums/provenance для prebuilt WASM;
-- предпочтительно reproducible custom OCCT/solver builds;
-- исходники и build instructions архивируются по требованиям LGPL/GPL;
-- Renovate/Dependabot создаёт PR, но auto-merge geometry/WASM dependencies запрещён;
-- release подписывается, если hosting pipeline это поддерживает.
+- Exact dependency versions and committed lockfile.
+- Dependency review for WASM and native artifacts.
+- SBOM in releases.
+- Checksums and provenance for prebuilt WASM.
+- Prefer reproducible custom OCCT and solver builds.
+- Archive sources and build instructions required by LGPL/GPL.
+- Renovate or Dependabot may create PRs, but geometry and WASM dependencies never auto-merge.
+- Sign releases when the hosting pipeline supports it.
 
 ## Service worker
 
-- только versioned assets;
-- никакой подмены project responses сетью;
-- update не активируется посреди committed transaction;
-- старые caches удаляются после успешной activation;
-- recovery/export до schema migration;
-- cache poisoning тестируется.
+- Cache only versioned assets.
+- Never substitute network responses for project data.
+- Do not activate an update during a committed transaction.
+- Delete old caches only after successful activation.
+- Export recovery before schema migration.
+- Test cache poisoning and rollback behavior.
 
-## Возможный cloud/sync позже
+## Future cloud or sync
 
-Появление sync требует отдельного threat model:
+Introducing synchronization requires a separate threat model:
 
 - explicit opt-in;
-- end-to-end encryption предпочтительно;
-- отдельные auth/tokens от document content;
-- conflict semantics, audit и deletion/export;
-- никакой смены local source of truth без ADR;
-- GDPR/региональные требования рассматриваются только тогда, когда реально появляется сервис и personal data.
+- preferably end-to-end encryption;
+- authentication tokens separated from document content;
+- defined conflict semantics, audit, deletion, and export;
+- no change to local source-of-truth semantics without an ADR;
+- GDPR and regional obligations considered only when a real service and personal data exist.
 
-## Сообщение об уязвимости
+## Vulnerability reporting
 
-До появления публичного канала security contact указывается в `SECURITY.md`. Публичный release не должен состояться без private reporting path и политики supported versions.
+Before a public release, `SECURITY.md` must define a private reporting channel and supported-version policy. Public issues are not the default channel for undisclosed vulnerabilities.

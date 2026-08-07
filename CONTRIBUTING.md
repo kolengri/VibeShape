@@ -1,30 +1,39 @@
-# Вклад в VibeShape
+# Contributing to VibeShape
 
-До начала реализации изменения должны сохранять границы, описанные в документации.
+Before implementation begins, changes must preserve the boundaries defined by the documentation.
 
-## Правила
+## Language policy
 
-- обсуждать смену kernel, solver, лицензии, native-формата, истории или local-first модели через ADR;
-- не добавлять CAD assets без происхождения и совместимой лицензии;
-- geometry change сопровождается fixture и invariant/failure tests;
-- не использовать точный порядок faces/triangles как устойчивую identity;
-- не добавлять обязательную сеть/телеметрию;
-- обновлять `docs/research-sources.md` при изменении внешнего технического основания;
-- dependency versions фиксируются lockfile, WASM builds имеют upstream commit/flags/checksum;
-- единственный JS lockfile — `bun.lock`; workspace зависимости используют `workspace:*`, CI — `bun ci`;
-- shadcn components добавляются выборочно и review-ятся как наш source; `add --all`/blind overwrite запрещены;
-- не смешивать несвязанные refactor и feature.
+- Write all documentation, ADRs, source identifiers, commit messages, diagnostics intended for developers, tests, and code comments in **English**.
+- Product UI strings must use the localization layer once one exists; the canonical source copy is English.
+- Do not add bilingual comments or duplicate English and translated documentation in the same source file.
+- External source titles may retain their original registered names, but explanations remain in English.
 
-## Лицензия contributions
+## Engineering rules
 
-Отправляя вклад, автор соглашается лицензировать его по GPL-3.0-or-later — той же лицензии, что и репозиторий. Перед публичным приёмом contributions проект добавит DCO/sign-off workflow.
+- Propose changes to the kernel, solver, license, native format, history model, or local-first model through an ADR.
+- Do not add CAD assets without provenance and a compatible license.
+- Every geometry change requires fixtures plus invariant and failure tests.
+- Never use face order, edge order, or triangle order as stable identity.
+- Do not introduce mandatory networking or telemetry.
+- Update `docs/research-sources.md` when an external technical basis changes.
+- Pin dependency versions in the lockfile; WASM builds record the upstream commit, build flags, and checksum.
+- The only JavaScript lockfile is `bun.lock`; workspace dependencies use `workspace:*`, and CI uses `bun ci`.
+- Add shadcn components selectively and review them as project-owned source; `add --all` and blind overwrite are prohibited.
+- Run `bun run fallow:audit` after source, style, or package-manifest changes and investigate reported consumers before deleting or suppressing code.
+- Do not combine unrelated refactoring and feature work.
 
-## Документационные изменения
+## Contribution license
 
-Проверить:
+By submitting a contribution, the author agrees to license it under GPL-3.0-or-later, the same license as the repository. Before public contributions are accepted, the project will add a DCO/sign-off workflow.
 
-- ссылки и дату актуальности;
-- отсутствие противоречий с ADR;
-- пометку подтверждённых фактов, goals и предположений;
-- обновление roadmap/рисков, если scope изменён;
-- отсутствие обещаний совместимости без test evidence.
+## Documentation changes
+
+Verify:
+
+- links and review date;
+- consistency with accepted ADRs;
+- clear separation of confirmed facts, goals, estimates, and assumptions;
+- roadmap and risk updates when scope changes;
+- no compatibility claim without test evidence;
+- no non-English repository prose or code comments.

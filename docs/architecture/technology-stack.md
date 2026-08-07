@@ -1,33 +1,34 @@
-# Технологический стек
+# Technology stack
 
-## Рекомендованный stack
+## Recommended stack
 
-| Область | Выбор | Почему |
+| Area | Choice | Rationale |
 |---|---|---|
-| Язык | TypeScript, `strict` | единая типизация domain/UI/protocol, безопасные migrations |
-| UI | React 19 | зрелая экосистема сложных desktop-like интерфейсов |
-| Build/dev | Vite 8 | быстрый статический build, worker/WASM assets, backend не нужен |
-| Package manager/runtime | Bun workspaces | единый lockfile, быстрые installs, `workspace:*`, catalogs, filters и `bun ci` |
-| CAD kernel | OCCT через Replicad/OpenCascade.js | точный B-Rep, booleans, fillets, STEP |
-| Sketch solver | SolveSpace solver subset → WASM | зрелый набор геометрических constraints; GPL совместима с проектом |
-| Viewport | raw Three.js, WebGL2 baseline | полный контроль picking, buffers, clipping и lifecycle |
-| UI state | Zustand | локальное transient state; domain state остаётся отдельно |
-| Runtime schemas | Zod | проверка worker messages, файлов и migrations |
-| Styles | Tailwind CSS v4 через `@tailwindcss/vite` | zero-runtime utility CSS, tokens и штатная Vite-интеграция |
-| UI primitives | shadcn/ui CLI v4, Radix base | accessible source-owned components, удобная monorepo routing |
-| Icons | Lucide React | единый спокойный набор для toolbar/tree/actions |
-| Project DB | IndexedDB через Dexie | транзакции и индексы без второго тяжёлого WASM runtime |
-| Large binary cache | OPFS | эффективные локальные файлы из worker |
-| Offline | Web App Manifest + service worker | installable/offline static PWA |
-| Tests | Vitest, запускаемый через Bun, + Playwright | Vite-native unit/contract tests и реальные browser flows |
-| Quality | ESLint/import rules + Prettier или Biome | единый deterministic workflow; финальный выбор в setup ADR |
-| CI | GitHub Actions | typecheck, tests, format conformance, browser smoke |
+| Language | TypeScript with `strict` | Shared typing across domain, UI, protocol, and migrations |
+| UI | React 19 | Mature ecosystem for complex desktop-like interfaces |
+| Build/dev | Vite 8 | Fast static build, worker/WASM assets, no backend required |
+| Package manager/runtime | Bun workspaces | One lockfile, fast installs, `workspace:*`, catalogs, filters, and `bun ci` |
+| CAD kernel | OCCT through Replicad/OpenCascade.js | Exact B-Rep, booleans, fillets, and STEP |
+| Sketch solver | SolveSpace solver subset compiled to WASM | Mature constraint set and GPL-compatible licensing |
+| Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
+| UI state | Zustand | Transient local UI state, separate from domain state |
+| Runtime schemas | Zod | Worker-message, file, and migration validation |
+| Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
+| UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
+| Icons | Lucide React | Consistent low-noise icon set for tools, trees, and actions |
+| Project DB | IndexedDB through Dexie | Transactions and indexes without another heavy WASM runtime |
+| Large binary cache | OPFS | Efficient local files accessed from workers |
+| Offline | Web App Manifest and service worker | Installable offline static PWA |
+| Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
+| Format and lint | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
+| Code intelligence | Fallow | Changed-code risk, cleanup evidence, duplication, complexity, dependency hygiene, styling drift, and architecture boundaries |
+| CI | GitHub Actions | Typecheck, tests, format conformance, Fallow audit, and browser smoke tests |
 
-## Снимок проверенных npm-версий
+## Reviewed package-version snapshot
 
-Проверено через npm registry **2026-08-07**. Это ориентир для Phase 0, не разрешение использовать floating versions.
+Verified against the npm registry on **2026-08-07**. These versions guide Phase 0; they are not permission to use floating versions.
 
-| Package | Версия | Лицензия |
+| Package | Version | License |
 |---|---:|---|
 | `react` | 19.2.8 | MIT |
 | `vite` | 8.2.1 | MIT |
@@ -42,130 +43,203 @@
 | `shadcn` CLI | 4.16.2 | MIT |
 | `radix-ui` | 1.6.7 | MIT |
 | `lucide-react` | 1.30.0 | ISC |
+| `fallow` | 3.14.0 | MIT |
 
-Локально проверен Bun `1.3.14` (`1.3.14+0d9b296af`). В первом scaffold exact Bun version записывается в `packageManager` и CI `oven-sh/setup-bun`; обновление выполняется осознанным PR вместе с `bun.lock`.
+The locally reviewed Bun build is `1.3.14` (`1.3.14+0d9b296af`). The initial scaffold pins the exact Bun version in `packageManager` and `oven-sh/setup-bun`; Bun upgrades use explicit PRs together with `bun.lock` changes.
 
-Перед первым install нужно:
+Before the first install:
 
-1. проверить release notes и peer dependencies;
-2. зафиксировать exact versions в lockfile;
-3. записать OCCT commit/version и flags custom-сборки;
-4. сохранить исходники соответствующей LGPL-сборки и reproducible build instructions;
-5. запустить compatibility/performance spike на Chromium, Firefox и Safari.
+1. Review release notes and peer dependencies.
+2. Pin exact versions in the lockfile.
+3. Record the OCCT commit/version and custom-build flags.
+4. Preserve corresponding LGPL sources and reproducible build instructions.
+5. Run compatibility and performance spikes on Chromium, Firefox, and Safari.
 
 ## Bun workspaces
 
-Bun используется как:
+Bun is used as:
 
-- package manager и единственный владелец `bun.lock`;
-- runtime для project scripts/CLI;
-- workspace orchestrator через `--filter`/`--workspaces`;
-- источник согласованных версий через default/named catalogs;
-- reproducible CI install через `bun ci`.
+- package manager and sole owner of `bun.lock`;
+- runtime for project scripts and CLIs;
+- workspace orchestrator through `--filter` and `--workspaces`;
+- shared-version source through default and named catalogs;
+- reproducible CI installer through `bun ci`.
 
-Правила:
+Rules:
 
-- root package помечен `private: true`;
-- workspaces: `apps/*`, `packages/*`;
-- зависимости между пакетами — `workspace:*`;
-- React/React DOM, TypeScript, Tailwind и test stack берутся из catalogs;
-- dependencies объявляются в фактически использующем их workspace, а не сваливаются в root;
-- `bun.lock` обязателен и проверяется `bun ci`;
-- scripts запускаются из root через Bun filters;
-- npm/pnpm/yarn lockfiles не коммитятся.
+- the root package is `private: true`;
+- workspaces are `apps/*` and `packages/*`;
+- internal package dependencies use `workspace:*`;
+- React, React DOM, TypeScript, Tailwind, and the test stack use catalogs;
+- dependencies are declared in the workspace that uses them, not accumulated at the root;
+- `bun.lock` is mandatory and verified with `bun ci`;
+- root scripts invoke package scripts through Bun filters;
+- npm, pnpm, and Yarn lockfiles are not committed.
 
-**Bun не заменяет Vite** в browser build. Vite остаётся ответственным за React HMR, browser bundle, Tailwind plugin, worker и WASM asset pipeline. Bun bundler/test runner можно оценить позже, но не нужно создавать две конкурирующие production-сборки.
+**Bun does not replace Vite** for the browser build. Vite remains responsible for React HMR, the browser bundle, the Tailwind plugin, workers, and WASM assets. Bun's bundler and test runner may be evaluated later, but the project must not maintain competing production builds.
 
-**Turborepo не входит в foundation.** Официальный shadcn monorepo scaffold может добавить его, однако для текущего одного приложения и набора библиотечных пакетов достаточно Bun workspace scripts. Turbo вводится отдельным измерением, если dependency-aware cache заметно сокращает CI/local builds.
+**Turborepo is not part of the foundation.** The official shadcn monorepo scaffold may add it, but one application and the initial library set do not justify another task layer. Add Turbo only after measurements show dependency-aware caching materially reduces CI or local build time.
 
-## Почему OCCT, а не mesh-CSG
+## Tooling and package patterns
 
-OCCT представляет тела точными поверхностями/кривыми и topology B-Rep, поддерживает modeling algorithms, shape healing и STEP. Это соответствует параметрическому механическому CAD.
+The foundation adopts these proven monorepo patterns:
 
-Mesh-kernel вроде Manifold полезен для гарантированно manifold треугольных операций и анализа печати, но не заменяет STEP/NURBS/B-Rep. Возможная поздняя роль Manifold — repair/boolean для `MeshBody` и проверка экспортной сетки за отдельным port.
+- one root Biome configuration with Git integration, recommended rules, import organization, and Tailwind v4 directive parsing;
+- root scripts for `format`, `format:check`, and `lint`, with path-scoped Biome checks during iteration;
+- a private `@vibeshape/typescript-config` workspace with separate `base`, `browser`, `worker`, and `react-library` configurations;
+- `strict`, `noUncheckedIndexedAccess`, `isolatedModules`, bundler resolution, and forced casing consistency in the base TypeScript contract;
+- browser configs that include DOM types without Node or Bun globals;
+- worker configs that include Web Worker types without exposing DOM window APIs;
+- explicit package subpath exports instead of broad root barrels;
+- a single `cn` implementation in `@vibeshape/ui`, built from `clsx` and `tailwind-merge`;
+- repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
-## Replicad: façade, не фундамент domain
+Do not copy patterns that do not fit this product:
 
-Replicad уменьшает объём прямого кода OCCT, уже ориентирован на браузер и рекомендует Web Worker. Но проект не должен сериализовать его классы и рассыпать API по UI.
+- no Turborepo until measured build-graph or cache pressure exists;
+- no syncpack while Bun catalogs are the single shared-version mechanism;
+- no generic `utils` package as a default destination for unrelated helpers;
+- no Node or Bun ambient types in browser-facing packages;
+- no Next.js-specific shadcn, Tailwind, or package boundaries;
+- no dependency overrides without an advisory, upstream constraint, and removal plan.
 
-Phase 0 сравнивает:
+The quality gates are complementary:
 
-- Replicad + его custom OC build;
-- direct custom OpenCascade.js build с только нужными bindings.
+- **Biome** owns formatting, lint rules, import organization, and supported source/config syntax.
+- **TypeScript** owns compile-time type correctness for each explicit browser, worker, or library environment.
+- **Fallow** owns changed-code risk, unused/dependency graph evidence, duplication, complexity, design-token drift signals, and configured internal package boundaries.
+- **Tests and validators** own runtime behavior, geometry invariants, storage recovery, browser interactions, and file interoperability.
 
-Критерии: STEP round-trip, supported operations, WASM size/startup, memory lifecycle, доступ к operation history для `TopoRef`, качество TypeScript definitions и воспроизводимость сборки.
+Fallow is installed as an exact root development dependency. Root scripts expose `fallow`, `fallow:audit`, and a score-oriented health command. `.fallowrc.jsonc` is version-pinned, discovers `apps/*` and `packages/*`, gates stale or reasonless suppressions, ignores generated trees, and encodes only durable package rules initially: `domain` and shared `ui` cannot import other internal packages. More boundary rules are added only after package contracts are accepted.
 
-Если Replicad не даёт нужную history/topology информацию, adapter переходит на direct OCCT без изменения domain/file format.
+Pull requests use `fallow audit` with the new-only gate and full Git history so inherited debt remains visible without blocking unrelated work. The GitHub Action and CLI are pinned to the same reviewed release; CI disables analysis cache for correctness across force-updated PR heads. PR comments require explicit least-privilege workflow permissions and are never a substitute for local output. Fallow's optional runtime product, telemetry, MCP server, and automatic fixes are not foundation requirements; automatic cleanup always begins with a dry run.
 
-## Почему raw Three.js, а не React Three Fiber
+The Phase 1 root manifest adds this contract:
 
-React управляет оболочкой интерфейса, но CAD viewport имеет собственный долгоживущий scene graph, частые замены больших buffers, выбор sub-shape и строгий dispose. Raw Three.js за `Viewer` port делает lifetime явным и уменьшает связность render loop с React reconciliation.
+```json
+{
+  "scripts": {
+    "fallow": "fallow",
+    "fallow:audit": "fallow audit",
+    "fallow:health": "fallow health --score"
+  },
+  "devDependencies": {
+    "fallow": "3.14.0"
+  }
+}
+```
 
-WebGL2 — baseline. WebGPU даёт перспективу, но не должен быть условием запуска alpha. Официальные примеры Three.js подтверждают WebGPU renderer, GPU picking, clipping и OffscreenCanvas; каждый из них вводится отдельным измеряемым adapter/spike.
+The pull-request workflow checks out full history and uses the reviewed action commit, annotated with its release:
 
-## Почему Vite, а не Next.js
+```yaml
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+  checks: write
 
-- нет SSR/SEO-маршрутов для CAD workspace;
-- backend не является частью core;
-- static hosting и localhost проще;
-- Worker/WASM assets можно контролировать без server framework;
-- меньше runtime и deployment surface.
+steps:
+  - name: Fallow audit
+    uses: fallow-rs/fallow@3cf8074a0e2e91c895c0a4224ba1c3bec4630d65 # v3.14.0
+    with:
+      version: "3.14.0"
+      command: audit
+      gate: new-only
+      comment: true
+      review-comments: true
+      no-cache: true
+```
 
-Маркетинговый сайт при необходимости живёт отдельно и не определяет архитектуру CAD.
+`id-token: write` is required only for branded Fallow App feedback; without it, the action can fall back to the workflow token. If PR comments or reviews are disabled, remove the corresponding write permissions. SARIF upload is a separate opt-in and requires GitHub Code Scanning availability plus `security-events: write`; it is not enabled by default for VibeShape.
 
-## Почему IndexedDB + OPFS, а не SQLite WASM сразу
+## Why OCCT instead of mesh CSG
 
-Domain документ — объектный snapshot/event log, а не сложная аналитическая реляционная БД. Dexie даёт достаточные транзакции и индексы. OPFS хранит большие B-Rep/mesh cache.
+OCCT represents bodies with exact curves, surfaces, and B-Rep topology. It supports modeling algorithms, shape healing, tessellation, and STEP data exchange. That matches parametric mechanical CAD.
 
-SQLite WASM поддерживает OPFS, но добавляет ещё один WASM runtime, worker/VFS-конфигурацию и browser-specific trade-offs. Его стоит вводить только после доказанного bottleneck или появления запросов, которым реально нужна SQL/FTS.
+A mesh kernel such as Manifold is useful for guaranteed-manifold triangle operations and print analysis, but it does not replace STEP/NURBS/B-Rep. A later `MeshBody` repair adapter may use Manifold behind a separate port.
+
+## Replicad as a facade, not a domain foundation
+
+Replicad reduces direct OCCT code, targets browsers, and recommends Web Workers. The project must not serialize Replicad classes or spread its API through the UI.
+
+Phase 0 compares:
+
+- Replicad with its custom OC build;
+- a direct custom OpenCascade.js build exposing only required bindings.
+
+Criteria include STEP round-trip, supported operations, WASM size and startup, memory lifecycle, operation history for `TopoRef`, TypeScript-definition quality, and reproducible builds.
+
+If Replicad does not expose the required history or topology data, the adapter moves to direct OCCT without changing the domain or file format.
+
+## Why raw Three.js instead of React Three Fiber
+
+React owns the interface shell, but the CAD viewport has a long-lived scene graph, frequent large-buffer replacement, sub-shape selection, and strict disposal requirements. Raw Three.js behind a `Viewer` port makes ownership explicit and keeps the render loop independent of React reconciliation.
+
+WebGL2 is the baseline. WebGPU is promising but not an alpha requirement. Official Three.js examples cover WebGPU, GPU picking, clipping, and OffscreenCanvas; each becomes a separate adapter or measured spike.
+
+## Why Vite instead of Next.js
+
+- The CAD workspace does not need SSR or SEO routes.
+- A backend is not part of the core.
+- Static hosting and localhost deployment are simpler.
+- Worker and WASM assets remain explicit.
+- The runtime and deployment surface stay smaller.
+
+A marketing site may live separately and does not define the CAD architecture.
+
+## Why IndexedDB and OPFS instead of SQLite WASM initially
+
+The domain document is an object snapshot and event journal, not an analytical relational database. Dexie provides sufficient transactions and indexes; OPFS stores large B-Rep and mesh caches.
+
+SQLite WASM supports OPFS but introduces another WASM runtime, worker/VFS configuration, and browser-specific trade-offs. Add it only after a measured bottleneck or a genuine SQL/FTS requirement appears.
 
 ## Sketch solver
 
-SolveSpace распространяется по GPL-3.0-or-later и имеет browser build, который сам проект называет экспериментальным. Поэтому нельзя просто встроить весь web-port.
+SolveSpace is GPL-3.0-or-later and has a browser build that the project describes as experimental. The full web port cannot be embedded without validation.
 
-Spike должен:
+The spike must:
 
-- выделить минимальный solver ABI;
-- собрать отдельный deterministic WASM;
-- покрыть обязательные P0 constraints;
-- проверить conflict diagnostics, degeneracies и memory;
-- документировать изменения исходников и build pipeline.
+- expose a minimal solver ABI;
+- build deterministic standalone WASM;
+- cover every required P0 constraint;
+- test conflict diagnostics, degeneracies, and memory;
+- document source changes and the build pipeline.
 
-Если spike провален, альтернативы:
+If the spike fails, alternatives are:
 
-1. адаптировать другой FOSS nonlinear solver с совместимой лицензией;
-2. реализовать собственный solver — наиболее дорогой вариант;
-3. урезать alpha до ограниченного sketcher без обещания сложных constraints.
+1. Adapt another license-compatible FOSS nonlinear solver.
+2. Implement a project-owned solver, the most expensive option.
+3. Reduce alpha to a constrained sketch subset without broad solver promises.
 
-## Форматы
+## Formats
 
-- STEP читает/пишет geometry worker через OCCT data exchange.
-- STL binary генерируется из контролируемой тесселяции; ASCII — только import при необходимости.
-- 3MF writer реализуется по Core spec и conformance samples либо через адаптированную библиотеку. Официальный lib3mf имеет NodeJS/native bindings, но browser-интеграцию нужно доказать spike; его нельзя считать готовой browser dependency.
-- `.vshape` — собственный versioned ZIP-контейнер, описанный отдельно.
+- STEP is read and written by the geometry worker through OCCT data exchange.
+- Binary STL is generated from controlled tessellation; ASCII import is optional.
+- The 3MF writer follows the Core specification and conformance samples or uses an adapted library. Official lib3mf lists native/Node bindings, but browser integration requires a spike.
+- `.vshape` is a project-owned versioned ZIP container.
 
 ## UI toolkit
 
-UI-база принята: **Tailwind CSS v4 + shadcn/ui CLI v4 с Radix base**. Компоненты shadcn копируются в `packages/ui` как исходный код, поэтому это design-system seed, а не opaque runtime library.
+The accepted UI base is **Tailwind CSS v4 + shadcn/ui CLI v4 with Radix base**. shadcn components are copied into `packages/ui` as source, making them a design-system seed rather than an opaque runtime library.
 
-- интеграция Tailwind — официальный Vite plugin `@tailwindcss/vite` и `@import "tailwindcss"`;
-- `packages/ui/components.json` направляет primitives внутрь shared package;
-- `apps/web/components.json` направляет alias `ui` в `@vibeshape/ui/components`;
-- Tailwind v4 config path в `components.json` остаётся пустым;
-- style/base/icon/baseColor синхронны во всех `components.json`;
-- base — Radix, тема — compact dark-first `new-york`, neutral/zinc + один accent;
-- добавляются только реально используемые primitives; `add --all` запрещён;
-- CAD-specific widgets композируются поверх primitives, а не генерируются в общий package автоматически;
-- foundational colors используются через semantic CSS variables, не ad-hoc palette classes.
+- Tailwind uses the official `@tailwindcss/vite` plugin and `@import "tailwindcss"`.
+- `packages/ui/components.json` routes primitives into the shared package.
+- `apps/web/components.json` routes the `ui` alias to `@vibeshape/ui/components`.
+- The Tailwind v4 config path in `components.json` remains empty.
+- Style, base, icon library, and base color remain synchronized across configs.
+- The base is Radix; the theme is compact, dark-first `new-york`, neutral/zinc, with one accent.
+- Add only used primitives; `add --all` is prohibited.
+- CAD-specific widgets compose primitives instead of being generated blindly into the shared package.
+- Foundational colors use semantic CSS variables, not ad hoc palette classes.
 
-Подробности: [UI system](ui-system.md).
+See [UI system](ui-system.md).
 
 ## Deployment
 
-Поддерживаются:
+Supported modes:
 
-- production static build на `localhost` через небольшой local server;
+- production static build on `localhost` through a small local server;
 - self-hosted HTTPS static server;
-- installable PWA после первой загрузки.
+- installable PWA after the first load.
 
-`file://` не поддерживается: worker modules, WASM, service workers и secure-context APIs требуют HTTP(S). Core не должен зависеть от CDN; шрифты, WASM и assets поставляются вместе со сборкой.
+`file://` is unsupported because module workers, WASM, service workers, and secure-context APIs require HTTP(S). Core functionality cannot depend on a CDN; fonts, WASM, and assets ship with the build.

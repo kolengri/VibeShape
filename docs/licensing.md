@@ -1,98 +1,99 @@
-# Лицензионная стратегия
+# Licensing Strategy
 
-## Решение
+## Decision
 
-Код и документация репозитория VibeShape лицензируются по **GPL-3.0-or-later**. Это соответствует цели свободного локального CAD и позволяет производную интеграцию GPL solver-кода SolveSpace.
+The VibeShape repository's code and documentation are licensed under **GPL-3.0-or-later**. This choice supports the goal of building free, local CAD software and permits derivative integration of GPL-licensed SolveSpace solver code.
 
-Это инженерная стратегия, не юридическая консультация. Перед публичным binary/WASM release необходим formal compliance review.
+This is an engineering strategy, not legal advice. A formal compliance review is required before the first public binary or WASM release.
 
-## Почему GPL-3.0-or-later
+## Why GPL-3.0-or-later
 
-- гарантирует доступ пользователей к исходникам изменённых распространяемых версий;
-- совместима по направлению использования с OCCT LGPL-2.1+exception;
-- не конфликтует с планируемым использованием GPL-3.0-or-later solver-кода;
-- не обещает permissive proprietary embedding, который может оказаться несовместимым с solver;
-- соответствует слову «свободный», а не только «бесплатный».
+- It guarantees that users can access the source code of modified distributed versions.
+- It is compatible with the intended use of OCCT under LGPL-2.1 with the Open CASCADE exception.
+- It does not conflict with the planned use of GPL-3.0-or-later solver code.
+- It does not promise permissive proprietary embedding that may be incompatible with the solver.
+- It matches the goal of software that is free as in freedom, not merely free of charge.
 
-Если бизнес-модель позже потребует permissive/commercial SDK, сначала заменяется GPL solver и проводится новый dependency/license audit; смена лицензии существующих contributions потребует согласия правообладателей или CLA-политики.
+If a future business model requires a permissive or commercial SDK, the GPL solver must first be replaced and a new dependency and license audit must be completed. Relicensing existing contributions would require consent from their copyright holders or an appropriate contributor license agreement policy.
 
-## Dependency matrix
+## Dependency Matrix
 
-| Компонент | Проверенная лицензия | Действие |
+| Component | Verified license | Required action |
 |---|---|---|
-| VibeShape | GPL-3.0-or-later | LICENSE, SPDX headers, source release |
-| Open CASCADE Technology | LGPL-2.1 + Open CASCADE exception | notice, license text, exact sources/build instructions, replaceability |
-| OpenCascade.js | LGPL-2.1 | то же; проверить фактические bundled files |
-| Replicad | MIT | сохранить notice/license |
-| SolveSpace | GPL-3.0-or-later | публиковать source/patches/build scripts; whole combined work GPL-compatible |
-| React | MIT | third-party notice |
-| Three.js | MIT | third-party notice |
-| Vite | MIT | build-time notice по policy |
-| Zustand | MIT | third-party notice |
-| Dexie | Apache-2.0 | license + NOTICE obligations, если применимо |
-| Zod | MIT | third-party notice |
-| Bun | MIT | toolchain pin/source link; обычно не часть browser distribution |
-| Tailwind CSS / Vite plugin | MIT | third-party notice |
-| shadcn/ui source/CLI | MIT | сохранять применимые notices при копировании/изменении source |
-| Radix UI | MIT | third-party notice |
-| Lucide React | ISC | third-party notice |
-| 3MF specification | royalty-free specification terms | соблюдать spec attribution/terms; код writer отдельно GPL |
-| PrusaSlicer/CuraEngine | AGPL-3.0 | не bundled в MVP; будущая интеграция — отдельный ADR |
+| VibeShape | GPL-3.0-or-later | Include `LICENSE`, SPDX headers, and source release |
+| Open CASCADE Technology | LGPL-2.1 with Open CASCADE exception | Include notices, license text, exact sources and build instructions, and preserve replaceability |
+| OpenCascade.js | LGPL-2.1 | Apply the same obligations and verify the files actually bundled |
+| Replicad | MIT | Preserve notice and license |
+| SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
+| React | MIT | Include a third-party notice |
+| Three.js | MIT | Include a third-party notice |
+| Vite | MIT | Include a build-time notice according to release policy |
+| Zustand | MIT | Include a third-party notice |
+| Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
+| Zod | MIT | Include a third-party notice |
+| Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |
+| Tailwind CSS / Vite plugin | MIT | Include a third-party notice |
+| shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
+| Radix UI | MIT | Include a third-party notice |
+| Lucide React | ISC | Include a third-party notice |
+| Fallow static analyzer and GitHub Action | MIT | Pin the development tool and action revision; include its license in build-tool notices according to release policy |
+| 3MF specification | Royalty-free specification terms | Follow specification attribution and terms; the VibeShape writer remains GPL-licensed |
+| PrusaSlicer / CuraEngine | AGPL-3.0 | Do not bundle in the MVP; record any future integration in a separate ADR |
 
-Матрица — snapshot 2026-08-07. Lockfile/SBOM являются источником фактического набора зависимостей на release.
+This matrix is a snapshot from 2026-08-07. The lockfile and software bill of materials are the source of truth for the dependencies present in a release.
 
-Generated shadcn components входят в source tree VibeShape, но их происхождение не следует стирать: `THIRD_PARTY_NOTICES` фиксирует upstream/CLI version и MIT-лицензию. Наши модификации распространяются в составе GPL-проекта при сохранении permissive notices upstream.
+Generated shadcn components become part of the VibeShape source tree, but their provenance must not be erased. `THIRD_PARTY_NOTICES` records the upstream project, CLI version, and MIT license. VibeShape modifications are distributed as part of the GPL project while preserving upstream permissive-license notices.
 
-## OCCT obligations
+## OCCT Obligations
 
-Официальная документация OCCT прямо указывает минимум:
+The official OCCT documentation identifies these minimum obligations:
 
-- заметное уведомление пользователю об использовании OCCT и доступ к LGPL;
-- доступ к исходникам именно использованной версии OCCT;
-- возможность пользователя запустить приложение с модифицированной OCCT;
-- особое внимание к статическому linking/packaging.
+- Provide users with a prominent notice that OCCT is used and access to the LGPL text.
+- Provide the source code of the exact OCCT version used.
+- Allow users to run the application with a modified version of OCCT.
+- Give special attention to static linking and packaging.
 
-Для web/WASM release VibeShape должен:
+For a web/WASM release, VibeShape must:
 
-1. показывать `About → Open source licenses`;
-2. поставлять/ссылаться на exact source archive и patches;
-3. публиковать reproducible build script/flags/bindings;
-4. не обфусцировать способ заменить `.wasm`/loader в self-hosted build;
-5. хранить notices и license тексты внутри distribution;
-6. документировать соответствие Open CASCADE exception;
-7. не полагаться только на ссылку на upstream `master`.
+1. Expose an `About -> Open source licenses` view.
+2. Distribute or link to the exact source archive and patches.
+3. Publish reproducible build scripts, flags, and bindings.
+4. Avoid obscuring how to replace the `.wasm` module and loader in a self-hosted build.
+5. Include notices and license texts in the distribution.
+6. Document compliance with the Open CASCADE exception.
+7. Never rely only on a link to the upstream `master` branch.
 
-## SolveSpace reuse
+## SolveSpace Reuse
 
-Использовать только необходимые solver files допустимо лишь с сохранением copyright/license notices и публикацией соответствующего source/changes. Нужно вести:
+Only the solver files that are needed may be reused, and only while retaining copyright and license notices and publishing the corresponding source and changes. The project must record:
 
-- upstream commit;
-- список включённых файлов;
-- patch series;
-- Emscripten/build toolchain version;
+- the upstream commit;
+- the list of included files;
+- the patch series;
+- the Emscripten and build-toolchain versions;
 - public build instructions;
-- tests, подтверждающие поведение modified subset.
+- tests that verify the behavior of the modified subset.
 
-Не утверждать, что SolveSpace «библиотека с permissive API»: репозиторий лицензирован GPL-3.0-or-later, а официальный web build обозначен экспериментальным.
+Do not describe SolveSpace as a library with a permissive API. Its repository is licensed under GPL-3.0-or-later, and the official web build is explicitly described as experimental.
 
-## Документация и contributions
+## Documentation and Contributions
 
-По умолчанию contributions принимаются под GPL-3.0-or-later для репозитория. `CONTRIBUTING.md` должен явно содержать inbound=outbound policy. DCO (`Signed-off-by`) предпочтительнее тяжёлого CLA до реальной необходимости dual licensing.
+Contributions are accepted under GPL-3.0-or-later by default. `CONTRIBUTING.md` must state the inbound-equals-outbound policy. A Developer Certificate of Origin using `Signed-off-by` is preferable to a heavyweight contributor license agreement until dual licensing becomes a real requirement.
 
-Примеры/fixtures, импортированные от третьих лиц, должны иметь provenance и лицензию. Не добавлять в repo случайные STEP/STL из интернета без разрешения.
+Examples and fixtures imported from third parties must record their provenance and license. Do not add arbitrary STEP or STL files from the internet without permission.
 
-## Release checklist
+## Release Checklist
 
-- полный `LICENSE`;
-- `THIRD_PARTY_NOTICES` из lockfile/SBOM;
-- exact OCCT/OpenCascade.js/SolveSpace sources/patches доступны;
-- About dialog содержит notices;
-- distribution содержит license texts;
-- source build воспроизводит WASM artifact или документирует известные отклонения;
-- trademarks не используются как будто проект связан с Onshape/PTC/Open CASCADE;
-- экспортные sample files имеют собственную понятную лицензию;
-- юридический review перед первым публичным hosted release.
+- Include the complete `LICENSE` file.
+- Generate `THIRD_PARTY_NOTICES` from the lockfile or software bill of materials.
+- Make exact OCCT, OpenCascade.js, and SolveSpace sources, patches, and build instructions available.
+- Include notices in the About dialog.
+- Include all required license texts in the distribution.
+- Ensure the source build reproduces the WASM artifact or documents known deviations.
+- Do not use trademarks in a way that implies affiliation with Onshape, PTC, or Open CASCADE.
+- Give exported sample files a clear license of their own.
+- Complete a legal review before the first public hosted release.
 
-## Название и товарные знаки
+## Name and Trademarks
 
-VibeShape описывается как независимый browser CAD. Onshape упоминается только для функционального сравнения; нельзя использовать их логотипы, UI assets или создавать впечатление официальной связи.
+VibeShape is described as an independent browser-based CAD application. Onshape may be mentioned only for functional comparison. Do not use its logos, UI assets, or language that implies an official relationship.

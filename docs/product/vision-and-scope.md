@@ -1,107 +1,107 @@
-# Видение и границы продукта
+# Product vision and scope
 
-## Прямая рекомендация
+## Recommendation
 
-Строить **локальную параметрическую CAD для makers и функциональной FDM/SLA-печати**, а не универсальную PLM-платформу. Преимущество VibeShape — приватность, офлайн-работа, понятная проверка печатепригодности и свободный код; не совместное редактирование как у Onshape.
+Build a **local parametric CAD system for makers and functional FDM/SLA printing**, not a general-purpose PLM platform. VibeShape's differentiators are privacy, offline operation, understandable printability feedback, and free software—not Onshape-style collaboration.
 
-## Проблема
+## Problem
 
-Пользователю 3D-принтера часто нужен механически точный объект — корпус, кронштейн, адаптер, шаблон, шестерня — с изменяемыми размерами. Mesh-редакторы неудобны для такой работы, desktop CAD тяжёлые, а cloud CAD требуют аккаунта и передачи файлов на сервер.
+3D-printer users often need mechanically accurate parts such as enclosures, brackets, adapters, jigs, and gears with editable dimensions. Mesh editors are awkward for this work, desktop CAD systems are heavy, and cloud CAD requires an account and file uploads.
 
-VibeShape должен позволять спроектировать такую деталь в современном браузере, закрыть вкладку, вернуться офлайн, изменить параметр и получить корректный 3MF/STEP/STL без загрузки проекта в облако.
+VibeShape should let a user design such a part in a modern browser, close the tab, return offline, change a parameter, and produce a correct 3MF/STEP/STL without uploading the project.
 
-## Целевая аудитория
+## Target audience
 
-Основная:
+Primary audience:
 
-- владельцы FDM/SLA-принтеров;
-- makers, преподаватели и студенты;
-- разработчики электроники и корпусов;
-- небольшие мастерские, которым нужен простой local-first CAD;
-- авторы параметрических моделей.
+- FDM/SLA printer owners;
+- makers, teachers, and students;
+- electronics and enclosure designers;
+- small workshops that need simple local-first CAD;
+- authors of parametric models.
 
-Не основная для v1:
+Not a primary v1 audience:
 
-- крупные конструкторские отделы;
-- сложное surface-моделирование Class-A;
-- промышленный CAM/CAE;
-- регулируемые PDM/PLM-процессы;
-- большие assemblies и производство чертежей по строгим стандартам.
+- large engineering organizations;
+- complex Class-A surface modeling;
+- industrial CAM/CAE;
+- regulated PDM/PLM workflows;
+- large assemblies and standards-heavy engineering drawings.
 
-## Работы пользователя
+## User jobs
 
-1. Создать деталь из полностью определённого 2D-эскиза.
-2. Изменить ключевой размер и получить предсказуемый пересчёт.
-3. Импортировать STEP-компонент как референс и спроектировать посадочную деталь вокруг него.
-4. Проверить габариты, замкнутость, минимальные элементы и риски нависаний.
-5. Экспортировать 3MF/STL в слайсер, а STEP — в другую CAD.
-6. Хранить и переносить проект обычным файлом без аккаунта.
+1. Create a part from a fully constrained 2D sketch.
+2. Change a key dimension and get a predictable rebuild.
+3. Import a STEP component as a reference and design a mating part around it.
+4. Check dimensions, closure, minimum features, and overhang risks.
+5. Export 3MF/STL to a slicer and STEP to another CAD system.
+6. Store and transfer the project as a normal file without an account.
 
-## Принципы продукта
+## Product principles
 
-- **Local-first.** Рабочие данные принадлежат пользователю и доступны без сети.
-- **Parametric-first.** История, размеры и зависимости важнее прямого редактирования полигонов.
-- **Exact before mesh.** Источник истины — B-Rep; mesh является представлением/экспортом.
-- **3D-print aware.** Единицы, допуски, build volume и печатные проверки встроены в поток работы.
-- **Honest failure.** Сбой boolean, solver или привязки объясняется; приложение не подменяет геометрию молча.
-- **Portable.** Проект экспортируется в документированный контейнер, а производная геометрия — в открытые форматы.
-- **Keyboard and accessibility aware.** Все основные команды доступны с клавиатуры, интерфейс не зависит только от цвета.
+- **Local-first.** Working data belongs to the user and remains available without a network.
+- **Parametric-first.** History, dimensions, and dependencies matter more than direct polygon editing.
+- **Exact before mesh.** B-Rep is the source of truth; meshes are representations and exports.
+- **3D-print aware.** Units, tolerances, build volume, and print checks are part of the workflow.
+- **Honest failure.** Boolean, solver, and reference failures are explained; geometry is never silently substituted.
+- **Portable.** Projects use a documented container and derived geometry uses open formats.
+- **Keyboard and accessibility aware.** Core commands are keyboard-accessible and never depend on color alone.
 
-## Scope v0.1 alpha
+## v0.1 alpha scope
 
-Пользователь может:
+Users can:
 
-- создавать, переименовывать, дублировать, импортировать и экспортировать локальные проекты;
-- работать офлайн после первой успешной загрузки приложения;
-- строить эскизы на базовых плоскостях XY/XZ/YZ;
-- использовать линии, полилинии, прямоугольники, окружности, дуги и construction geometry;
-- задавать базовые геометрические ограничения и управляющие размеры;
-- выполнять extrude/pad, pocket/cut, revolve, boolean, fillet и chamfer;
-- редактировать/подавлять операцию и пересчитывать зависимые операции;
-- видеть дерево операций, свойства, ошибки и предупреждения;
-- измерять расстояние, угол, радиус, площадь и объём;
-- импортировать STEP и STL как отдельные типы данных;
-- экспортировать STEP, 3MF и STL;
-- запускать базовую printability-проверку и выбирать профиль принтера/build volume;
-- восстанавливать документ после аварийного закрытия.
+- create, rename, duplicate, import, export, and delete local projects;
+- work offline after the first successful application load;
+- sketch on the XY, XZ, and YZ origin planes;
+- use lines, polylines, rectangles, circles, arcs, and construction geometry;
+- apply fundamental geometric constraints and driving dimensions;
+- perform extrude/pad, pocket/cut, revolve, boolean, fillet, and chamfer operations;
+- edit or suppress a feature and rebuild downstream features;
+- inspect the feature tree, properties, errors, and warnings;
+- measure distance, angle, radius, area, and volume;
+- import STEP and STL as distinct data types;
+- export STEP, 3MF, and STL;
+- run basic printability checks and select a printer/build-volume profile;
+- recover a document after an unexpected close.
 
-## Non-goals v0.1/v1
+## v0.1/v1 non-goals
 
-- realtime collaboration, комментарии и присутствие пользователей;
-- server-side вычисления и обязательная синхронизация;
-- assemblies/mates, BOM и drawings;
-- встроенный полноценный слайсер и генерация G-code;
-- CAM, FEA, rendering, анимация и sculpting;
-- импорт проприетарных форматов SolidWorks/Parasolid/Inventor;
-- гарантия редактируемости импортированного STL как B-Rep;
-- мобильное создание сложных моделей; на телефоне допускается просмотр;
-- совместимость native-формата с Onshape.
+- real-time collaboration, comments, and user presence;
+- server-side computation or mandatory synchronization;
+- assemblies, mates, BOMs, and drawings;
+- a complete built-in slicer or G-code generation;
+- CAM, FEA, rendering, animation, and sculpting;
+- proprietary SolidWorks, Parasolid, or Inventor imports;
+- treating imported STL as editable B-Rep;
+- complex authoring on phones; view-only behavior is acceptable;
+- native-format compatibility with Onshape.
 
-## Метрики успеха alpha
+## Alpha success metrics
 
-| Метрика | Цель |
+| Metric | Target |
 |---|---|
-| Первый bracket от пустого проекта до 3MF | до 15 минут без документации |
-| Потеря подтверждённых операций после crash | не более последней транзакции autosave |
-| Изменение раннего размера в эталонных моделях | ≥ 95% сценариев пересчитываются или явно показывают точную причину |
-| Валидность экспортов | все release-fixture открываются в двух независимых слайсерах |
-| Сеть после установки PWA | основные CAD-функции работают при принудительном offline |
-| UI во время CAD-операции | ввод и навигация не блокируются длительной синхронной геометрией |
+| First bracket from empty project to 3MF | Under 15 minutes without documentation |
+| Confirmed operations lost after a crash | No more than the latest autosave transaction |
+| Early-dimension changes in reference models | At least 95% rebuild or report the exact failure cause |
+| Export validity | Every release fixture opens in two independent slicers |
+| Networking after PWA installation | Core CAD functions work while forced offline |
+| UI during CAD computation | Input and navigation remain responsive |
 
-Метрики производительности уточняются на эталонном устройстве после Phase 0.
+Performance targets are refined on a defined reference machine after Phase 0.
 
-## Ключевой демонстрационный сценарий
+## Core demonstration scenario
 
-Эталон alpha — параметрический угловой кронштейн:
+The alpha reference model is a parametric angle bracket:
 
-- базовый эскиз с размерами;
+- dimensioned base sketch;
 - extrude;
-- второй эскиз и pocket;
-- отверстия и линейный pattern;
+- second sketch and pocket;
+- holes and linear pattern;
 - fillet/chamfer;
-- изменение толщины, межосевого расстояния и диаметра;
+- edits to thickness, center distance, and hole diameter;
 - printability report;
-- экспорт STEP и 3MF;
-- закрытие, offline-перезапуск и восстановление.
+- STEP and 3MF export;
+- close, offline restart, and recovery.
 
-Этот сценарий становится первой сквозной acceptance-моделью и сохраняется как versioned fixture.
+This scenario becomes the first end-to-end acceptance fixture and remains versioned.

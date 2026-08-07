@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Fallow"
+  short_description: "Audit changed code and architecture with Fallow"
+  default_prompt: "Use $vibeshape-fallow to audit this VibeShape change and remediate findings safely."

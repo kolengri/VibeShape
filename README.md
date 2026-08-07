@@ -1,76 +1,82 @@
 # VibeShape
 
-**VibeShape** — проект свободной local-first CAD-системы, работающей в браузере и ориентированной на проектирование деталей для 3D-печати.
+**VibeShape** is a free, local-first CAD system that runs in the browser and focuses on designing parts for 3D printing.
 
-Цель — не клонировать весь Onshape. Первая практическая версия должна закрыть короткий и надёжный путь:
+The goal is not to clone all of Onshape. The first practical release must provide one short, reliable path:
 
-> параметрический эскиз → точное B-Rep-тело → проверка печатепригодности → 3MF/STEP/STL
+> parametric sketch → exact B-Rep solid → printability checks → 3MF/STEP/STL
 
-Все вычисления, файлы и история модели по умолчанию остаются на устройстве пользователя. Облачный аккаунт, серверная CAD-сессия и обязательная телеметрия не нужны.
+By default, all computation, files, and model history remain on the user's device. A cloud account, server-side CAD session, and mandatory telemetry are not required.
 
-## Статус
+## Status
 
-Сейчас репозиторий содержит **исследование и спецификацию**, достаточные для начала реализации. Код приложения ещё не создавался.
+The repository currently contains the **research and specification** required to begin implementation. Application code has not been created yet.
 
-Главные принятые решения:
+Key decisions:
 
-- точное геометрическое ядро: **Open CASCADE Technology** через WebAssembly;
-- первая интеграция: **Replicad** за собственным интерфейсом `GeometryEngine`, с возможностью перейти на custom-сборку OpenCascade.js;
-- визуализация: **Three.js/WebGL2**;
-- эскизный solver: узкая WebAssembly-сборка solver-части **SolveSpace**, только после технического spike;
-- приложение: **React + TypeScript + Vite** в **Bun workspaces monorepo**, статическая installable PWA без backend;
-- UI-база: **Tailwind CSS v4 + shadcn/ui (Radix)** в отдельном пакете `@vibeshape/ui`;
-- тяжёлые CAD-операции: отдельный **Web Worker**;
-- хранение: IndexedDB/Dexie для модели и журнала, OPFS для крупных бинарных кэшей, экспортируемый контейнер `.vshape` как источник переносимости;
-- основной формат для печати: **3MF**; STEP сохраняет точную геометрию, STL остаётся форматом совместимости;
-- лицензия проекта: **GPL-3.0-or-later**; OCCT/OpenCascade.js поставляются по LGPL-2.1 с исключением и требуют отдельного compliance-процесса.
+- exact geometry kernel: **Open CASCADE Technology** through WebAssembly;
+- first integration: **Replicad** behind our own `GeometryEngine` interface, with the option to move to a custom OpenCascade.js build;
+- rendering: **Three.js/WebGL2**;
+- sketch solver: a narrow WebAssembly build of the **SolveSpace** solver, subject to a technical spike;
+- application: **React + TypeScript + Vite** in a **Bun workspaces monorepo**, delivered as a static installable PWA without a backend;
+- UI foundation: **Tailwind CSS v4 + shadcn/ui (Radix)** in a dedicated `@vibeshape/ui` package;
+- code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
+- heavy CAD operations: a dedicated **Web Worker**;
+- persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
+- primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;
+- project license: **GPL-3.0-or-later**; OCCT/OpenCascade.js are distributed under LGPL-2.1 terms and require a separate compliance process.
 
-## Карта документации
+## Documentation map
 
-| Документ | Что в нём |
+| Document | Contents |
 |---|---|
-| [Обзор документации](docs/README.md) | порядок чтения и статус решений |
-| [Видение и границы продукта](docs/product/vision-and-scope.md) | аудитория, ценность, MVP и non-goals |
-| [Функциональная спецификация](docs/product/feature-matrix.md) | полный список возможностей по релизам |
-| [UX и ключевые сценарии](docs/product/ux-flows.md) | структура интерфейса и пользовательские потоки |
-| [Архитектура](docs/architecture/overview.md) | слои, процессы, worker-протокол и пересчёт |
-| [Технологический стек](docs/architecture/technology-stack.md) | выбор библиотек, альтернативы и версии |
-| [UI-система](docs/architecture/ui-system.md) | Tailwind, shadcn/ui, токены и границы компонентов |
-| [Геометрия и параметрика](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming и кэширование |
-| [Модель данных и `.vshape`](docs/architecture/data-model-and-file-format.md) | сущности, события, единицы и native-формат |
-| [Local-first хранение](docs/architecture/local-first-storage.md) | autosave, recovery, OPFS и переносимость |
-| [Контур 3D-печати](docs/3d-printing.md) | анализ, допуски, экспорт и границы слайсинга |
-| [Roadmap](docs/roadmap.md) | этапы, зависимости и критерии выхода |
-| [План первых экспериментов](docs/implementation-blueprint.md) | issue-ready spikes и порядок старта |
-| [Локальный deployment](docs/deployment.md) | static hosting, offline и browser headers |
-| [Тестирование](docs/testing-strategy.md) | геометрические, форматные, UX и performance-тесты |
-| [Безопасность и приватность](docs/security-and-privacy.md) | threat model и ограничения импортов |
-| [Лицензии](docs/licensing.md) | лицензия проекта и зависимости |
-| [Риски](docs/risks.md) | реестр технических и продуктовых рисков |
-| [Источники](docs/research-sources.md) | первичные источники и дата проверки |
-| [ADR](docs/adr/README.md) | принятые архитектурные решения |
+| [Documentation overview](docs/README.md) | Reading order and decision status |
+| [Product vision and scope](docs/product/vision-and-scope.md) | Audience, value proposition, MVP, and non-goals |
+| [Feature specification](docs/product/feature-matrix.md) | Complete feature list by release |
+| [Design and UX guidelines](docs/product/design-and-ux-guidelines.md) | Visual system, interaction rules, accessibility, content, and UI acceptance criteria |
+| [UX and core flows](docs/product/ux-flows.md) | Interface structure and user journeys |
+| [Architecture](docs/architecture/overview.md) | Layers, processes, worker protocol, and rebuild model |
+| [Technology stack](docs/architecture/technology-stack.md) | Libraries, alternatives, and reviewed versions |
+| [UI system](docs/architecture/ui-system.md) | Tailwind, shadcn/ui, tokens, and component boundaries |
+| [Geometry and parametrics](docs/architecture/geometry-and-parametrics.md) | B-Rep, solver, topological naming, and caching |
+| [Data model and `.vshape`](docs/architecture/data-model-and-file-format.md) | Entities, events, units, and native format |
+| [Local-first persistence](docs/architecture/local-first-storage.md) | Autosave, recovery, OPFS, and portability |
+| [3D-printing workflow](docs/3d-printing.md) | Analysis, tolerances, export, and slicing boundary |
+| [Roadmap](docs/roadmap.md) | Phases, dependencies, and exit criteria |
+| [Initial experiment plan](docs/implementation-blueprint.md) | Issue-ready spikes and implementation order |
+| [Local deployment](docs/deployment.md) | Static hosting, offline operation, and browser headers |
+| [Testing strategy](docs/testing-strategy.md) | Geometry, formats, UX, security, and performance tests |
+| [Security and privacy](docs/security-and-privacy.md) | Threat model and import limits |
+| [Licensing](docs/licensing.md) | Project and dependency licensing strategy |
+| [Risk register](docs/risks.md) | Technical and product risks |
+| [Research sources](docs/research-sources.md) | Primary sources and review date |
+| [ADRs](docs/adr/README.md) | Accepted architecture decisions |
 
-## Следующий практический шаг
+## Next practical step
 
-Начинать реализацию следует с **Phase 0 — технических spike**, а не с интерфейса. До создания основной кодовой базы нужно доказать четыре свойства:
+Implementation must start with **Phase 0 technical spikes**, not with the interface. Before creating the main codebase, we must prove four properties:
 
-1. custom WASM-сборка стартует в worker и выполняет импорт STEP, boolean, fillet и экспорт STEP/STL без утечек;
-2. выбранный sketch solver устойчиво решает обязательный набор ограничений;
-3. стабильные ссылки на грани/рёбра переживают заданную матрицу параметрических изменений либо честно переходят в состояние `ambiguous`;
-4. 3MF-файл проходит проверку и открывается минимум в PrusaSlicer и Cura/OrcaSlicer.
+1. A custom WASM build starts in a worker and performs STEP import, boolean operations, fillets, and STEP/STL export without leaks.
+2. The selected sketch solver reliably handles the required constraint set.
+3. Stable face and edge references survive the parameter-change matrix or explicitly enter an `ambiguous` state.
+4. Generated 3MF files pass validation and open in at least PrusaSlicer and Cura/OrcaSlicer.
 
-Если любой spike провален, соответствующий ADR пересматривается до наращивания UI.
+If a spike fails, the corresponding ADR must be revisited before the UI is expanded.
 
-## Оценка масштаба
+## Scale estimate
 
-Это сложнее обычного веб-приложения: геометрическая устойчивость, solver и стабильная адресация топологии — самостоятельные инженерные задачи.
+This is harder than a typical web application. Geometry robustness, the sketch solver, and stable topology addressing are independent engineering problems.
 
-- один опытный разработчик: ориентировочно **6–9 месяцев** до полезной alpha и **12–18+ месяцев** до устойчивой v1;
-- команда 3–5 человек с опытом CAD/WebAssembly: ориентировочно **4–7 месяцев** до alpha;
-- полнофункциональный аналог Onshape с assemblies, drawings, PDM и realtime collaboration — многолетний отдельный продукт и не входит в текущий scope.
+- One experienced developer: approximately **6–9 months** to a useful alpha and **12–18+ months** to a robust v1.
+- A 3–5 person team with CAD/WebAssembly experience: approximately **4–7 months** to alpha.
+- A full Onshape equivalent with assemblies, drawings, PDM, and real-time collaboration is a multi-year product and is outside the current scope.
 
-Оценки приблизительные; после Phase 0 их нужно заменить данными spike и benchmark.
+These are estimates, not commitments. Phase 0 measurements must replace them with evidence-based projections.
 
-## Лицензия
+## Repository language
 
-VibeShape распространяется по **GNU General Public License v3.0 or later**. См. [LICENSE](LICENSE) и [лицензионную стратегию](docs/licensing.md).
+All documentation, architecture records, source identifiers, commit-facing technical text, and code comments are written in **English**. Product localization may support other languages later, but English is the canonical source language.
+
+## License
+
+VibeShape is distributed under the **GNU General Public License v3.0 or later**. See [LICENSE](LICENSE) and the [licensing strategy](docs/licensing.md).

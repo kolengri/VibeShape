@@ -1,166 +1,167 @@
-# Roadmap реализации
+# Implementation roadmap
 
-## Общий вывод
+## Recommendation
 
-UI-каркас не является первым milestone. Сначала нужно снять четыре неизвестности: OCCT binding/worker, sketch solver, stable topology references и 3MF interoperability. После этого разработка идёт вертикальными срезами, каждый из которых заканчивается рабочей моделью и export.
+The UI shell is not the first milestone. First remove four uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. Development then proceeds through vertical slices that each end with a working model and export.
 
-Оценки ниже — **приблизительные engineering ranges**, а не календарное обещание.
+All estimates below are **approximate engineering ranges**, not calendar commitments.
 
-## Phase 0 — spikes и измерения (2–4 недели)
+## Phase 0 — spikes and measurements (2–4 weeks)
 
-### Результаты
+### Deliverables
 
-- reproducible OCCT/Replicad worker prototype;
-- STEP import → boolean/fillet → STEP/STL export;
-- memory/leak harness;
-- sketch solver prototype с обязательными constraints;
-- `TopoRef` experiment на model corpus;
-- минимальный 3MF writer/adapter и slicer round-trip;
-- browser startup/memory matrix;
-- финализированные ADR-0001…0007 и обновлённая оценка.
+- Reproducible OCCT/Replicad worker prototype.
+- STEP import → boolean/fillet → STEP/STL export.
+- Memory and leak harness.
+- Sketch solver prototype covering required constraints.
+- `TopoRef` experiment on the model corpus.
+- Minimal 3MF writer or adapter with slicer round-trip.
+- Browser startup and memory matrix.
+- Finalized ADR-0001 through ADR-0009 and updated estimates.
 
 ### Exit criteria
 
-- ни один spike не остаётся «кажется, работает» — есть fixture, команда запуска и числа;
-- известно, какие OCCT symbols входят в custom build;
-- известны WASM compressed/uncompressed size, cold startup и peak memory;
-- solver сообщает under/fully/over-constrained на test set;
-- TopoRef experiment различает resolved/ambiguous/missing;
-- 3MF открывается минимум в двух slicers;
-- выбран baseline browser/device.
+- No spike ends with “seems to work”; every result has a fixture, command, and measurements.
+- Required OCCT symbols in the custom build are known.
+- WASM compressed and uncompressed size, cold startup, and peak memory are known.
+- The solver distinguishes under-, fully-, and over-constrained states on the test set.
+- The `TopoRef` experiment distinguishes `resolved`, `ambiguous`, and `missing`.
+- Generated 3MF opens in at least two slicers.
+- A baseline browser and device are defined.
 
-## Phase 1 — foundation vertical slice (3–5 недель)
+## Phase 1 — foundation vertical slice (3–5 weeks)
 
 ### Scope
 
-- Bun workspaces monorepo, pinned Bun + `bun.lock`, strict TS и `bun ci`;
-- Tailwind CSS v4 + `@vibeshape/ui` на shadcn/Radix, базовые tokens/primitives;
-- PWA shell и project library;
-- domain commands/events/revisions;
-- worker protocol и restart/recovery;
-- Three.js viewport, selection body/face/edge;
-- IndexedDB autosave и `.vshape` v0;
-- primitives/extrude без полного sketcher;
+- Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, Biome, Fallow changed-code auditing, and `bun ci`.
+- Tailwind CSS v4 and `@vibeshape/ui` using shadcn/Radix primitives and tokens.
+- PWA shell and project library following the design and UX contract, including its state and accessibility harness.
+- Domain commands, events, and revisions.
+- Worker protocol and restart/recovery behavior.
+- Three.js viewport and body/face/edge selection.
+- IndexedDB autosave and `.vshape` v0.
+- Primitive or extrusion modeling without the full sketcher.
 - STEP/STL smoke export.
 
 ### Demo
 
-Создать box/cylinder feature, выполнить boolean, перезапустить offline, восстановить проект, экспортировать STEP/STL.
+Create a box and cylinder feature, perform a boolean, restart offline, recover the project, and export STEP/STL.
 
-## Phase 2 — sketcher vertical slice (6–10 недель)
+## Phase 2 — sketcher vertical slice (6–10 weeks)
 
 ### Scope
 
-- origin planes и sketch mode;
-- line/rectangle/circle/arc/construction;
-- P0 constraints/dimensions;
-- solver diagnostics и conflict UX;
-- profile detection;
-- extrude/pocket/revolve;
-- undo/redo на command level;
-- unit-aware inputs.
+- Origin planes and sketch mode.
+- Line, rectangle, circle, arc, and construction geometry.
+- P0 constraints and dimensions.
+- Solver diagnostics and conflict UX.
+- Profile detection.
+- Extrude, pocket, and revolve.
+- Command-level undo/redo.
+- Unit-aware inputs.
 
 ### Demo
 
-Полностью параметрический flange и простой bracket; изменение размеров после reopen.
+A fully parametric flange and simple bracket, with dimensions edited after reopen.
 
-## Phase 3 — устойчивое feature modeling (6–10 недель)
+## Phase 3 — robust feature modeling (6–10 weeks)
 
 ### Scope
 
-- multi-body;
-- booleans, fillet, chamfer;
-- semantic outputs и TopoRef resolver;
-- downstream error/repair UX;
-- suppress/edit/rebuild;
-- measure tools;
-- STEP import as reference;
-- golden/property-based model corpus.
+- Multiple bodies.
+- Booleans, fillet, and chamfer.
+- Semantic outputs and `TopoRef` resolution.
+- Downstream error and repair UX.
+- Suppress, edit, and rebuild.
+- Measurement tools.
+- STEP import as reference.
+- Golden and property-based model corpus.
 
 ### Demo
 
-Эталонный bracket проходит матрицу изменений параметров; симметричная неоднозначность вызывает repair UI, а не silent remap.
+The reference bracket passes its parameter-change matrix. A symmetric ambiguous case opens repair UI instead of silently remapping topology.
 
-## Phase 4 — 3D printing workflow (4–7 недель)
+## Phase 4 — 3D-printing workflow (4–7 weeks)
 
 ### Scope
 
-- print-quality adaptive tessellation;
-- 3MF Core export;
-- printer/build-volume profiles;
-- P0 mesh/solid checks;
-- overhang/build-volume overlays;
-- export reports;
-- slicer compatibility CI/manual release matrix.
+- Print-quality adaptive tessellation.
+- 3MF Core export.
+- Printer and build-volume profiles.
+- P0 mesh and solid checks.
+- Overhang and build-volume overlays.
+- Export reports.
+- Slicer compatibility CI and manual release matrix.
 
 ### Demo
 
-Bracket/enclosure экспортируются в 3MF и STEP, открываются в PrusaSlicer и Cura/Orca, габариты совпадают с tolerance.
+Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca, and retain dimensions within tolerance.
 
-## Phase 5 — alpha hardening (4–8 недель)
+## Phase 5 — alpha hardening (4–8 weeks)
 
 ### Scope
 
-- file/import fuzzing и resource limits;
-- browser matrix Chromium/Firefox/Safari;
-- crash/quota/multi-tab recovery;
-- accessibility и keyboard workflow;
-- performance budgets/profiling;
-- LGPL notices/source offer/reproducible WASM;
-- user documentation и diagnostic bundle;
-- migration fixtures.
+- File and import fuzzing with resource limits.
+- Chromium, Firefox, and Safari browser matrix.
+- Crash, quota, and multi-tab recovery.
+- Accessibility and keyboard workflow.
+- Reference-task usability testing and resolution of critical save-state, command, and geometry misunderstandings.
+- Performance budgets and profiling.
+- LGPL notices, source offer, and reproducible WASM.
+- User documentation and diagnostic bundle.
+- Migration fixtures.
 
-### Exit criteria alpha
+### Alpha exit criteria
 
-- сквозной bracket scenario;
-- no known P0 data-loss issue;
-- model corpus проходит на pinned engine build;
-- все release exports валидны;
-- offline test проходит;
-- известные ограничения опубликованы.
+- End-to-end bracket scenario passes.
+- No known P0 data-loss issue.
+- Model corpus passes against the pinned engine build.
+- All release exports are valid.
+- Offline test passes.
+- Known limitations are published.
 
-## v1 после alpha
+## v1 after alpha
 
-- patterns/mirror/shell/sweep/loft;
-- projected geometry и datum entities;
-- variables/expressions;
-- snapshots/version compare;
-- SVG/DXF;
-- улучшенные print heuristics;
-- tablet usability, локализация;
-- documented native format v1.
+- Pattern, mirror, shell, sweep, and loft.
+- Projected geometry and datum entities.
+- Variables and expressions.
+- Snapshots and version comparison.
+- SVG and DXF.
+- Improved print heuristics.
+- Tablet usability and localization.
+- Documented native format v1.
 
-## Поздние треки
+## Later tracks
 
-| Трек | Предусловие |
+| Track | Prerequisite |
 |---|---|
-| Assemblies/mates | устойчивые components/instances и TopoRef |
-| Drawings | stable projected topology/dimensions |
-| Branch/merge | formal command conflict model |
-| Optional sync/collab | privacy/security ADR и merge semantics |
-| Plugin SDK | stable commands/features/migrations + sandbox |
-| Integrated slicing | отдельный license/performance/safety spike |
-| AI features | deterministic command API, preview, sandbox, no hidden upload |
+| Assemblies and mates | Stable components, instances, and `TopoRef` |
+| Drawings | Stable projected topology and dimensions |
+| Branch and merge | Formal command-conflict model |
+| Optional sync/collaboration | Privacy/security ADR and merge semantics |
+| Plugin SDK | Stable commands, features, migrations, and sandbox |
+| Integrated slicing | Separate licensing, performance, and safety spike |
+| AI features | Deterministic command API, preview, sandbox, and no hidden uploads |
 
-## Приоритизация backlog
+## Backlog prioritization
 
-Каждая задача отвечает на четыре вопроса:
+Every task answers four questions:
 
-1. Какой user flow она завершает?
-2. Какой domain/geometry invariant добавляет?
-3. Как тестируется failure, а не только happy path?
-4. Добавляет ли новый file/schema/API commitment?
+1. Which user flow does it complete?
+2. Which domain or geometry invariant does it add?
+3. How is failure tested, not only the happy path?
+4. Does it create a new file, schema, or API commitment?
 
-Функции, не улучшающие основной sketch → feature → print поток, не входят в alpha даже при низкой видимой стоимости.
+Features that do not improve the sketch-to-feature-to-print workflow or remove correctness/data risk do not enter alpha, even when their visible implementation cost looks small.
 
-## Ресурсная модель команды
+## Team model
 
-Минимально полезное распределение для 3–5 человек:
+A useful 3–5 person allocation:
 
-- geometry/OCCT/WASM;
-- sketch solver/parametric engine;
-- viewport/UI/UX;
-- local-first/formats/testing;
-- product/3D-print validation — роль может совмещаться.
+- geometry, OCCT, and WASM;
+- sketch solver and parametric engine;
+- viewport, UI, and UX;
+- local-first persistence, formats, and testing;
+- product and 3D-print validation, possibly combined with another role.
 
-Без опыта computational geometry сроки Phase 2–3 имеют высокий разброс. Код-review геометрических изменений должен требовать fixture/invariant tests.
+Without computational-geometry experience, Phase 2 and Phase 3 have high uncertainty. Geometry code review always requires fixture and invariant evidence.

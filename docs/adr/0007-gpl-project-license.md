@@ -1,16 +1,16 @@
 # ADR-0007: GPL-3.0-or-later
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Решение
+## Decision
 
-Лицензировать VibeShape по GPL-3.0-or-later. Inbound contributions принимаются на тех же условиях; предпочтителен DCO.
+License VibeShape under GPL-3.0-or-later. Accept inbound contributions under the same terms and prefer a Developer Certificate of Origin.
 
-## Последствия
+## Consequences
 
-- проект и распространяемые модификации остаются свободными;
-- SolveSpace GPL solver subset можно интегрировать при compliance;
-- proprietary embedding ограничен;
-- OCCT/OpenCascade.js LGPL obligations выполняются отдельно;
-- dual licensing позже потребует прав всех contributors или заранее выбранной policy.
+- The project and distributed modifications remain free software.
+- A GPL-licensed SolveSpace solver subset may be integrated when all obligations are met.
+- Proprietary embedding is restricted.
+- OCCT and OpenCascade.js LGPL obligations remain independently applicable.
+- Future dual licensing would require rights from all contributors or a policy established in advance.

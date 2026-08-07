@@ -1,18 +1,18 @@
-# ADR-0003: Feature DAG и stable TopoRef
+# ADR-0003: Feature DAG and Stable TopoRef
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Решение
+## Decision
 
-Design intent хранится как DAG параметрических features. Ссылки на faces/edges/vertices используют producing feature, semantic/history lineage, geometric/adjacency signature и intent hints.
+Store design intent as a directed acyclic graph of parametric features. References to faces, edges, and vertices include the producing feature, semantic or history lineage, geometric and adjacency signatures, and intent hints.
 
-Неоднозначный match возвращает `ambiguous` и требует repair; выбор ближайшего кандидата без достаточного margin запрещён.
+An uncertain match returns `ambiguous` and requires repair. Selecting the nearest candidate without a sufficient confidence margin is forbidden.
 
-## Последствия
+## Consequences
 
-- больше работы до широкого набора features;
-- формат references становится частью native schema;
-- datum/origin references предпочтительны;
-- property-based parameter/topology tests являются release gate;
-- система честно показывает часть перестроений как требующие вмешательства.
+- More foundational work is required before adding a broad feature set.
+- The reference format becomes part of the native schema.
+- Datum and origin references are preferred.
+- Property-based parameter and topology tests are a release gate.
+- The system explicitly identifies rebuilds that require user intervention.

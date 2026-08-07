@@ -1,167 +1,191 @@
-# Стратегия тестирования
+# Testing strategy
 
-## Принцип
+## Principle
 
-CAD нельзя проверять только snapshots интерфейса или точным сравнением B-Rep bytes. Тесты строятся вокруг **design intent, геометрических invariants, формальной валидности и реального round-trip**.
+CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison alone. Tests focus on **design intent, geometry invariants, formal validity, and independent round-trip behavior**.
 
-## Пирамида
+## Test pyramid
 
-| Уровень | Что проверяет | Инструмент/подход |
+| Level | Coverage | Tool or approach |
 |---|---|---|
-| Pure unit | units, expressions, DAG, commands, migrations | Vitest через `bun run test` |
-| Property-based | parameter ranges, solver degeneracies, TopoRef | fast-check/эквивалент |
-| Worker contract | schema, revisions, cancellation, transfer buffers | Vitest через Bun + real worker |
-| Kernel fixture | operations, validity, metrics, memory | browser/Node-compatible WASM harness |
-| Format conformance | `.vshape`, STEP, STL, 3MF | validators + round-trip |
-| Component | tree, property editor, diagnostics | Testing Library |
-| E2E | complete CAD/print/offline/recovery flows | Playwright |
-| Manual release | slicers, Safari, interaction quality | release checklist |
+| Pure unit | Units, expressions, DAG, commands, migrations | Vitest through `bun run test` |
+| Property-based | Parameter ranges, solver degeneracies, `TopoRef` | fast-check or equivalent |
+| Worker contract | Schemas, revisions, cancellation, transfer buffers | Vitest through Bun plus real worker |
+| Kernel fixture | Operations, validity, metrics, memory | Browser or Node-compatible WASM harness |
+| Format conformance | `.vshape`, STEP, STL, 3MF | Validators and round-trip |
+| Component | Tree, property editor, diagnostics | Testing Library |
+| E2E | Complete CAD, print, offline, and recovery flows | Playwright |
+| Manual release | Slicers, Safari, interaction quality | Release checklist |
 
-## Geometric assertions
+## Geometry assertions
 
-Предпочитать:
+Prefer:
 
-- shape valid/solid closed;
-- ожидаемое число solids/shells;
-- volume, area, center of mass, bbox в tolerance;
-- distance/radius/angle;
-- наличие semantic output/reference result;
-- mesh manifoldness и orientation;
+- valid closed solid;
+- expected solid and shell count;
+- volume, area, center of mass, and bounding box within tolerance;
+- distance, radius, and angle;
+- semantic output or reference result;
+- mesh manifoldness and orientation;
 - STEP round-trip metrics;
-- feature failure kind и owning feature.
+- feature-failure kind and owning feature.
 
-Не использовать как единственный oracle:
+Never use these as the only oracle:
 
 - B-Rep binary equality;
-- одинаковый порядок faces/edges;
-- точный triangle order;
-- screenshot красивой формы;
-- отсутствие thrown exception.
+- identical face or edge order;
+- exact triangle order;
+- a screenshot of a plausible shape;
+- absence of a thrown exception.
 
 ## Sketch solver tests
 
-- по одному fixture на каждый constraint;
-- combinations и fully-defined canonical sketches;
-- over-constraint с ожидаемым conflict set;
-- under-constraint и degrees of freedom;
-- near-degenerate geometry;
-- scale от очень малых до крупных деталей;
-- drag continuation без скачков branch solution;
-- randomized perturbation и residual thresholds;
-- deterministic result для одинакового input/build.
+- One fixture for each constraint.
+- Constraint combinations and fully defined canonical sketches.
+- Over-constrained inputs with the expected conflict set.
+- Under-constrained inputs and degrees of freedom.
+- Near-degenerate geometry.
+- Scale from very small to large parts.
+- Drag continuation without branch-solution jumps.
+- Random perturbations and residual thresholds.
+- Deterministic results for the same input and build.
 
 ## TopoRef matrix
 
-Для каждого reference-heavy fixture:
+For every reference-heavy fixture:
 
-- изменить upstream length/radius;
-- пересечь symmetry threshold;
-- добавить/удалить topology через boolean;
-- изменить pattern count;
-- reorder/suppress допустимые features;
-- проверить `resolved`, `ambiguous` или `missing`;
-- убедиться, что ambiguous никогда не становится silent wrong selection;
-- проверить repair → save → reopen → rebuild.
+- change upstream length or radius;
+- cross a symmetry threshold;
+- add or remove topology through a boolean;
+- change pattern count;
+- reorder or suppress valid features;
+- assert `resolved`, `ambiguous`, or `missing`;
+- verify that ambiguity never becomes a silent wrong selection;
+- verify repair → save → reopen → rebuild.
 
 ## Format tests
 
 ### `.vshape`
 
-- round-trip каждой schema version;
-- forward unknown optional field;
+- round-trip every schema version;
+- forward-compatible unknown optional field;
 - unknown required capability;
 - sequential migrations;
-- missing/corrupt cache не влияет на semantic open;
+- missing or corrupt cache does not affect semantic open;
 - checksum corruption;
-- duplicate/path traversal/zip bomb limits;
-- truncated journal recovery;
-- old fixture corpus в каждом release.
+- duplicate path, traversal, and ZIP-bomb limits;
+- truncated-journal recovery;
+- old fixture corpus in every release.
 
 ### STEP
 
-- AP242/AP214 fixtures;
-- mm/inch units;
-- multiple bodies, names/colors;
-- imported invalid shape и healing report;
+- AP242 and AP214 fixtures;
+- millimeter and inch units;
+- multiple bodies, names, and colors;
+- invalid imported shape and healing report;
 - export/import metrics;
-- independent open в FreeCAD/другом доступном reader как manual smoke.
+- independent manual open in FreeCAD or another available reader.
 
-### STL/3MF
+### STL and 3MF
 
-- binary STL facets/endianness/header edge cases;
-- non-manifold import;
-- 3MF OPC relationships/XML schema/resource IDs;
-- components/transforms/units;
-- independent slicer open;
-- dimension comparison после import в slicer;
-- malicious XML/ZIP inputs без external entity/network access.
+- Binary STL facets, endianness, and header edge cases.
+- Non-manifold import.
+- 3MF OPC relationships, XML schema, and resource IDs.
+- Components, transforms, and units.
+- Independent slicer open.
+- Dimension comparison after slicer import.
+- Malicious XML and ZIP inputs with no external entity or network access.
 
-## Memory/leak tests
+## Memory and leak tests
 
-- повторить одну операцию/undo 1 000 раз;
-- открыть/закрыть документ 100 раз;
-- импортировать STEP и dispose;
-- менять display LOD;
-- worker restart;
-- сравнить WASM heap high-water/steady-state и live wrapper counters;
-- viewer `renderer.info.memory` возвращается к baseline с допустимым cache margin.
+- Repeat one operation and undo 1,000 times.
+- Open and close a document 100 times.
+- Import STEP and dispose it.
+- Change display LOD repeatedly.
+- Restart the worker.
+- Compare WASM heap high-water mark, steady-state usage, and live-wrapper counters.
+- Confirm `renderer.info.memory` returns near baseline within an allowed cache margin.
 
-Рост должен иметь числовой budget; «браузер не упал» не является критерием.
+Growth has a numeric budget. “The browser did not crash” is not a criterion.
 
 ## Performance budgets
 
-Начальные goals для baseline laptop после warm-up:
+Initial goals on the baseline laptop after warm-up:
 
-| Сценарий | Goal |
+| Scenario | Goal |
 |---|---:|
-| UI input во время rebuild | no long task > 100 ms на main thread |
-| Worker cold init | < 5 s |
-| Простая feature preview | p95 < 500 ms |
-| Rebuild 50-feature bracket corpus | < 5 s |
-| Viewport 500k triangles | interactive target 60 fps, minimum 30 fps |
-| Autosave domain transaction | < 100 ms typical |
-| Open 20 MiB semantic project без cache | < 3 s + rebuild |
+| UI input during rebuild | No main-thread long task over 100 ms |
+| Worker cold initialization | Under 5 s |
+| Simple feature preview | p95 under 500 ms |
+| Rebuild 50-feature bracket corpus | Under 5 s |
+| Viewport with 500k triangles | Target 60 fps, minimum 30 fps |
+| Typical domain autosave transaction | Under 100 ms |
+| Open a 20 MiB semantic project without cache | Under 3 s plus rebuild |
 
-Числа меняются только через benchmark evidence/ADR. CI ловит крупные regressions; стабильные perf runs выполняются на контролируемом hardware, не только shared runners.
+Budgets change only through benchmark evidence or an ADR. CI detects major regressions; stable performance runs use controlled hardware rather than shared runners alone.
 
 ## Browser matrix
 
-- Chromium stable: каждый PR E2E subset;
-- Firefox stable: каждый PR core subset;
-- WebKit/Safari-compatible automation: каждый PR smoke, manual Safari перед release;
-- offline/service-worker отдельный installed-build test;
-- cross-origin isolation mode тестируется только если включён;
-- devicePixelRatio 1/2, integrated/discrete GPU по возможности.
+- Chromium stable: E2E subset on every PR.
+- Firefox stable: core subset on every PR.
+- WebKit automation: smoke test on every PR, with manual Safari before release.
+- Dedicated installed-build offline/service-worker test.
+- Cross-origin isolation mode only when enabled.
+- Device pixel ratio 1 and 2, plus integrated and discrete GPUs where possible.
 
-## Monorepo/toolchain checks
+## Monorepo and toolchain checks
 
-- `bun ci` подтверждает соответствие workspace manifests и `bun.lock`;
-- typecheck/lint/test запускаются по workspace filters и из root aggregate scripts;
-- dependency boundary tests запрещают UI imports в domain/protocol;
-- production Vite build проверяет Tailwind classes из `apps/web` и `packages/ui`;
-- shadcn component updates проходят typecheck, обе темы и keyboard E2E;
-- CI pin Bun совпадает с `packageManager`, локальная несовместимая версия даёт понятную ошибку.
+- `bun ci` verifies workspace manifests against `bun.lock`.
+- Typecheck, lint, and test run through workspace filters and root aggregate scripts.
+- `fallow audit` gates error-severity findings introduced by a changeset, including dead code, dependency hygiene, duplication, complexity, styling drift, and configured package-boundary violations.
+- Dependency-boundary tests prohibit UI imports in domain and protocol.
+- Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.
+- shadcn component updates pass typecheck, both themes, and keyboard E2E.
+- CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
-## Security/fuzz
+Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-- schema fuzz для commands/native files;
-- ZIP/XML fuzz;
-- STEP/STL parser corpus и timeout;
-- huge counts/NaN/Infinity/overflow;
-- worker crash/restart;
-- Content Security Policy test;
-- dependency audit и SBOM;
-- запрет network request при offline privacy test.
+## Design and UX acceptance
 
-## Release gate
+Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).
 
-Release блокируют:
+Automated coverage includes:
 
-- data loss/corruption;
-- silent topology remap в fixture;
-- export, который не открывается в release matrix;
-- uncontrolled worker/main-thread crash на допустимом input;
-- license notice/source omission;
-- migration, не имеющая fixture/backup path;
+- keyboard access and focus order for application bars, toolbars, menus, dialogs, the model tree, and the command palette;
+- focus trap and restoration for modal layers;
+- accessible names, dialog titles, form labels, validation relationships, and live status regions;
+- no single-letter shortcut activation while typing or composing text;
+- command Apply, Cancel, `Escape`, and one-entry undo boundaries;
+- persistent save, export, topology, worker, and format failures rather than toast-only messages;
+- dark/light contrast checks and non-color state cues;
+- screenshots at 1440 px, 1024 px, and 200% zoom;
+- minimum pointer target size or compliant target spacing;
+- reduced-motion behavior;
+- long labels and expanded text without loss of primary actions;
+- worker delay, stale response, cancel-requested, and crash-recovery states.
+
+Manual alpha review includes keyboard-only completion of all non-spatial parts of the bracket flow, screen-reader smoke tests for Chrome and Safari platform combinations, trackpad navigation, and the usability tasks defined in the guidelines. Free-form canvas sketching remains a documented limitation rather than an unverified accessibility claim.
+
+## Security fuzzing
+
+- Schema fuzzing for commands and native files.
+- ZIP and XML fuzzing.
+- STEP and STL parser corpus with timeouts.
+- Huge counts, NaN, Infinity, and integer overflow.
+- Worker crash and restart.
+- Content Security Policy test.
+- Dependency audit and SBOM.
+- No-network privacy test while offline.
+
+## Release gates
+
+Release is blocked by:
+
+- data loss or corruption;
+- silent topology remapping in any fixture;
+- export that does not open in the release matrix;
+- uncontrolled worker or main-thread crash on valid input;
+- missing license notice or source offer;
+- migration without a fixture and backup path;
 - P0 accessibility blocker;
-- необъяснённый существенный memory/performance regression.
+- unexplained major memory or performance regression.

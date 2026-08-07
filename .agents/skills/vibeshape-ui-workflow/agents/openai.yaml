@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape UI Workflow"
+  short_description: "Build accessible CAD UI with project conventions"
+  default_prompt: "Use $vibeshape-ui-workflow to implement this VibeShape interface change consistently."

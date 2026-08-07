@@ -1,48 +1,48 @@
-# Документация VibeShape
+# VibeShape documentation
 
-## Как читать
+## Recommended reading order
 
-Рекомендуемый порядок:
+1. [Product vision and scope](product/vision-and-scope.md).
+2. [Feature matrix](product/feature-matrix.md).
+3. [Design and UX guidelines](product/design-and-ux-guidelines.md) and [core flows](product/ux-flows.md).
+4. [Architecture overview](architecture/overview.md).
+5. [Technology stack](architecture/technology-stack.md).
+6. [UI system](architecture/ui-system.md) and [geometry/parametrics](architecture/geometry-and-parametrics.md).
+7. [Data model and native format](architecture/data-model-and-file-format.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), and [testing strategy](testing-strategy.md).
+9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
-1. [Видение и границы](product/vision-and-scope.md).
-2. [Функциональная матрица](product/feature-matrix.md).
-3. [Обзор архитектуры](architecture/overview.md).
-4. [Стек](architecture/technology-stack.md).
-5. [UI-система](architecture/ui-system.md) и [геометрия/параметрика](architecture/geometry-and-parametrics.md).
-6. [Модель данных и формат](architecture/data-model-and-file-format.md).
-7. [Roadmap](roadmap.md), [план первых экспериментов](implementation-blueprint.md) и [стратегия тестирования](testing-strategy.md).
-8. [Deployment](deployment.md), [ADR](adr/README.md), [риски](risks.md), [лицензии](licensing.md) и [источники](research-sources.md).
+## Requirement levels
 
-## Уровни обязательности
+The documents use these terms:
 
-В документах используются термины:
+- **MUST** — required for the specified release.
+- **SHOULD** — expected behavior; deviation requires a documented reason in an issue or ADR.
+- **MAY** — an acceptable extension.
+- **Spike** — a bounded experiment that ends with a measurable decision, not production code.
 
-- **MUST** — обязательно для указанного релиза;
-- **SHOULD** — ожидаемое поведение, отступление требует причины в issue/ADR;
-- **MAY** — допустимое расширение;
-- **Spike** — ограниченный эксперимент, который заканчивается измеримым решением, а не production-кодом.
+## Accepted decisions
 
-## Что уже решено
+- Local-first architecture without a mandatory backend.
+- B-Rep/STEP through OCCT WASM; Three.js is not used as the CAD kernel.
+- CAD objects exist only inside a worker; the UI receives serializable data and mesh buffers.
+- Parametric history is a directed acyclic dependency graph with a linear presentation in the UI.
+- The document length unit is millimeters; calculations use `float64`.
+- 3MF is the preferred print export.
+- The monorepo is managed with Bun workspaces; Vite remains the browser bundler.
+- UI primitives live in `@vibeshape/ui` and use Tailwind CSS v4 with shadcn/ui/Radix.
+- Topology-reference failures are never repaired silently; ambiguity is visible to the user.
+- English is the canonical language for documentation and code comments.
 
-- Архитектура local-first, без обязательного backend.
-- B-Rep/STEP через OCCT WASM; Three.js не используется как CAD-ядро.
-- CAD-объекты живут только внутри worker; UI получает сериализуемые данные и mesh-буферы.
-- Параметрическая история — ориентированный ациклический граф зависимостей с линейным представлением в UI.
-- Основная единица документа — миллиметр; вычисления хранятся как `float64`.
-- 3MF — предпочтительный печатный экспорт.
-- Monorepo управляется Bun workspaces; Vite остаётся browser bundler.
-- UI primitives живут в `@vibeshape/ui` и основаны на Tailwind CSS v4 + shadcn/ui/Radix.
-- Ошибка привязки к топологии не может исправляться молча: неоднозначность должна быть видна пользователю.
+## Decisions to confirm in Phase 0
 
-## Что подтверждается в Phase 0
+- Exact OCCT build/version and exported binding set.
+- Whether Replicad is the production facade or only the prototype facade.
+- Suitability of the SolveSpace solver subset as a standalone WASM module.
+- `TopoRef` matching algorithm and thresholds.
+- 3MF implementation: a minimal project-owned writer or an adapted library.
+- Real startup, memory, rebuild, and storage budgets.
 
-- конкретная сборка/версия OCCT и состав экспортируемых binding;
-- Replicad как production façade или только как прототип;
-- пригодность solver-части SolveSpace для отдельного WASM-модуля;
-- алгоритм `TopoRef` и пороги сопоставления;
-- реализация 3MF: собственный минимальный writer либо адаптированная библиотека;
-- реальные бюджеты startup, памяти и пересчёта.
+## Decision-change rule
 
-## Правило изменения решений
-
-Смена CAD-ядра, solver, лицензии, native-формата, модели истории или границы local-first требует нового ADR. Обновление версии пакета в пределах принятого решения — обычная dependency-задача.
+Changing the CAD kernel, solver, license, native format, history model, or local-first boundary requires a new ADR. Updating a package within an accepted decision is normal dependency work.

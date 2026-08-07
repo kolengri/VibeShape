@@ -1,52 +1,52 @@
-# Функциональная спецификация
+# Feature specification
 
-## Приоритеты
+## Priorities
 
-- **P0 / alpha:** без функции нельзя доказать основной поток.
-- **P1 / v1:** функция нужна для регулярной практической работы.
-- **P2 / later:** расширение после стабилизации ядра.
-- **Out:** сознательно не планируется в обозримой версии.
+- **P0 / alpha:** required to prove the core workflow.
+- **P1 / v1:** required for regular practical use.
+- **P2 / later:** expansion after the core is stable.
+- **Out:** intentionally outside the foreseeable scope.
 
-## Проекты и local-first
+## Projects and local-first behavior
 
-| Возможность | Приоритет | Условие готовности |
+| Capability | Priority | Completion condition |
 |---|---:|---|
-| Локальная библиотека проектов | P0 | карточка, preview, дата, дублирование, удаление с подтверждением |
-| Autosave и crash recovery | P0 | журнал транзакций восстанавливает последнюю подтверждённую команду |
-| `.vshape` import/export | P0 | round-trip без потери параметрики |
-| Save/Open через системный picker | P1 | progressive enhancement; download/upload fallback обязателен |
-| Снимки/именованные версии | P1 | immutable snapshot с восстановлением |
-| Ветки и merge | P2 | только после формальной модели конфликтов операций |
-| Облачная синхронизация | P2 | отдельный opt-in adapter, не зависимость ядра |
+| Local project library | P0 | Card, preview, timestamp, duplicate, and confirmed deletion |
+| Autosave and crash recovery | P0 | Transaction journal restores the latest confirmed command |
+| `.vshape` import/export | P0 | Round-trip without losing parametrics |
+| Save/Open through system picker | P1 | Progressive enhancement with mandatory download/upload fallback |
+| Named snapshots/versions | P1 | Immutable snapshot with restore |
+| Branching and merge | P2 | Only after a formal operation-conflict model exists |
+| Cloud synchronization | P2 | Separate opt-in adapter, never a core dependency |
 
-## Viewport и навигация
+## Viewport and navigation
 
-| Возможность | Приоритет | Примечание |
+| Capability | Priority | Notes |
 |---|---:|---|
-| Orbit/pan/zoom, fit, standard views | P0 | предсказуемые CAD-пресеты мыши/трекпада |
-| Perspective/orthographic | P0 | orthographic по умолчанию для эскизов |
-| Выбор body/face/edge/vertex | P0 | фильтры выбора и hover preselection |
-| Shaded, edges, wireframe | P0 | без повторной CAD-тесселяции |
-| Grid, axes, origin planes | P0 | единицы и шаг сетки видимы |
-| Section/clipping plane | P1 | одна интерактивная плоскость |
-| Exploded view | P2 | зависит от assemblies |
-| WebGPU renderer | P2 | экспериментальный adapter, не baseline |
+| Orbit, pan, zoom, fit, standard views | P0 | Predictable CAD mouse and trackpad presets |
+| Perspective and orthographic modes | P0 | Orthographic by default in sketch mode |
+| Body, face, edge, and vertex selection | P0 | Selection filters and hover preselection |
+| Shaded, edges, and wireframe modes | P0 | No CAD retessellation required |
+| Grid, axes, and origin planes | P0 | Visible units and grid spacing |
+| Section/clipping plane | P1 | One interactive plane |
+| Exploded view | P2 | Depends on assemblies |
+| WebGPU renderer | P2 | Experimental adapter, not the baseline |
 
-## Эскиз
+## Sketcher
 
-| Возможность | P0 | P1 | P2 |
+| Capability | P0 | P1 | P2 |
 |---|:---:|:---:|:---:|
 | Point, line/polyline, rectangle | ✓ |  |  |
-| Circle, arc (center/3-point) | ✓ |  |  |
+| Circle, center/three-point arc | ✓ |  |  |
 | Construction geometry, trim, extend | ✓ |  |  |
 | Slot, polygon, ellipse, spline |  | ✓ |  |
 | Project/use edge |  | ✓ |  |
-| Text/SVG contours |  | ✓ |  |
+| Text and SVG contours |  | ✓ |  |
 | Offset sketch entities |  | ✓ |  |
-| Sketch patterns/mirror |  | ✓ |  |
+| Sketch patterns and mirror |  | ✓ |  |
 | 3D sketch |  |  | ✓ |
 
-Обязательные P0 constraints:
+Required P0 constraints:
 
 - coincidence;
 - horizontal/vertical;
@@ -56,15 +56,15 @@
 - concentric;
 - point-on-line/curve;
 - fixed;
-- distance horizontal/vertical/general;
+- horizontal, vertical, and general distance;
 - angle;
 - radius/diameter.
 
-Solver MUST показывать `under-constrained`, `fully-constrained`, `over-constrained` и набор конфликтующих ограничений. Удалять constraint автоматически без подтверждения запрещено.
+The solver MUST report `under-constrained`, `fully-constrained`, and `over-constrained`, including the conflicting constraint set where possible. Automatically deleting constraints without confirmation is prohibited.
 
-## Параметрические 3D-операции
+## Parametric 3D features
 
-| Операция | P0 | P1 | P2 |
+| Operation | P0 | P1 | P2 |
 |---|:---:|:---:|:---:|
 | Extrude: new/add/remove/intersect | ✓ |  |  |
 | Revolve: new/add/remove/intersect | ✓ |  |  |
@@ -79,90 +79,93 @@ Solver MUST показывать `under-constrained`, `fully-constrained`, `over
 | Direct face move/delete |  |  | ✓ |
 | Surface modeling |  |  | ✓ |
 
-Для каждой операции обязательны:
+Every feature requires:
 
-- стабильный `FeatureId`;
-- типизированные параметры с единицами;
-- ссылки на входы через `TopoRef`/`EntityRef`;
-- `active/suppressed/error`;
-- диагностическое сообщение;
-- детерминированный hash входов;
-- atomically применяемые edit/cancel.
+- a stable `FeatureId`;
+- typed parameters with units;
+- inputs referenced through `TopoRef`/`EntityRef`;
+- `active`, `suppressed`, or `error` state;
+- a diagnostic message;
+- a deterministic input hash;
+- atomic apply and cancel behavior.
 
-## Variables и expressions
+## Variables and expressions
 
-P1 включает:
+P1 includes:
 
-- именованные document variables;
-- арифметику `+ - * / ^`, скобки;
-- литералы `mm`, `cm`, `m`, `in`, `deg`, `rad`;
-- функции `min`, `max`, `abs`, `round`, `sin`, `cos`, `tan`;
-- dimension checking: длину нельзя сложить с безразмерным числом;
-- обнаружение циклов;
-- явный десятичный разделитель `.` в файле, локализованный ввод в UI.
+- named document variables;
+- arithmetic with `+ - * / ^` and parentheses;
+- literals using `mm`, `cm`, `m`, `in`, `deg`, and `rad`;
+- `min`, `max`, `abs`, `round`, `sin`, `cos`, and `tan`;
+- dimensional checking: a length cannot be added to a dimensionless number;
+- cycle detection;
+- `.` as the serialized decimal separator, with localized UI input.
 
-Произвольный JavaScript в документе запрещён: native-файл не должен быть исполняемым.
+Arbitrary JavaScript is prohibited in documents. Native files must not be executable.
 
-## Bodies, parts и assemblies
+## Bodies, parts, and assemblies
 
-| Возможность | Приоритет |
+| Capability | Priority |
 |---|---:|
-| Несколько bodies в документе | P0 |
-| Видимость, цвет, имя, material label | P0 |
+| Multiple bodies in one document | P0 |
+| Visibility, color, name, material label | P0 |
 | Multi-body boolean | P0 |
 | Components/instances | P1 |
-| Простые rigid transforms | P1 |
-| Assemblies и mates | P2 |
+| Simple rigid transforms | P1 |
+| Assemblies and mates | P2 |
 | BOM | P2 |
 | Drawings | P2 |
 
-## Измерения и анализ
+## Measurement and analysis
 
-- P0: point-to-point, minimum distance, edge length, angle, radius/diameter, face area, body volume, bounding box, center of mass.
-- P0: OCCT shape validity и closed-solid check.
-- P0: mesh manifoldness, inverted/degenerate triangles, disconnected shells.
-- P1: minimum wall approximation, minimum hole/feature, overhang visualization, build-volume collision, clearance/interference.
-- P2: tolerance stack, draft analysis, mass по material density, basic FEA adapter.
+- P0: point-to-point and minimum distance, edge length, angle, radius/diameter, face area, body volume, bounding box, and center of mass.
+- P0: OCCT shape validity and closed-solid checks.
+- P0: mesh manifoldness, inverted/degenerate triangles, and disconnected shells.
+- P1: approximate minimum wall, minimum hole/feature, overhang visualization, build-volume collision, and clearance/interference.
+- P2: tolerance stack, draft analysis, material-density mass, and basic FEA adapter.
 
-Printability-предупреждение — эвристика, а не гарантия успешной печати.
+A printability warning is a heuristic, not a guarantee of a successful print.
 
-## Импорт и экспорт
+## Import and export
 
-| Формат | Import | Export | Роль |
+| Format | Import | Export | Role |
 |---|---:|---:|---|
-| `.vshape` | P0 | P0 | параметрический native-проект |
-| STEP AP242/AP214 | P0 | P0 | точный B-Rep обмен |
-| STL binary | P0 | P0 | mesh-совместимость |
-| 3MF Core | P1 в alpha, P0 для v1 | P0 | основной печатный обмен |
-| SVG/DXF 2D | P1 | P1 | эскизы/шаблоны |
-| OBJ/glTF | P2 | P2 | визуальные mesh-сценарии |
-| IGES | P2 | P2 | legacy CAD |
-| проприетарные CAD | Out | Out | нужны коммерческие SDK/конвертеры |
+| `.vshape` | P0 | P0 | Parametric native project |
+| STEP AP242/AP214 | P0 | P0 | Exact B-Rep exchange |
+| Binary STL | P0 | P0 | Mesh compatibility |
+| 3MF Core | P1 in alpha, P0 for v1 | P0 | Primary printing exchange |
+| SVG/DXF 2D | P1 | P1 | Sketches and templates |
+| OBJ/glTF | P2 | P2 | Visual mesh workflows |
+| IGES | P2 | P2 | Legacy CAD |
+| Proprietary CAD | Out | Out | Requires commercial SDKs or converters |
 
-Импорт STL создаёт `MeshBody`, не фальшивый точный `SolidBody`. Автоматическое mesh-to-B-Rep не обещается.
+STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to-B-Rep conversion is not promised.
 
-## Undo/redo и история
+## Undo, redo, and history
 
-- P0: undo/redo на уровне пользовательских команд, не отдельных pointer events.
-- P0: редактирование ранней операции и downstream recompute.
+- P0: undo/redo at user-command granularity, not per pointer event.
+- P0: edit an early feature and rebuild downstream features.
 - P0: suppress/unsuppress.
-- P1: reorder с валидацией DAG.
-- P1: compare двух snapshots по feature/parameter/geometry metrics.
+- P1: reorder with DAG validation.
+- P1: compare two snapshots by feature, parameter, and geometry metrics.
 - P2: branch/merge.
 
-## Интерфейс и доступность
+## Interface and accessibility
 
-- desktop-first, минимальная рабочая ширина 1024 px;
-- все основные команды имеют команды/shortcuts и доступны из command palette;
-- focus indicator, semantic labels, управление диалогами с клавиатуры;
-- цвет статуса дублируется формой/текстом;
-- touch/tablet позже; phone — view/export-only;
-- локализация архитектурно готова, но alpha может быть на одном языке.
+- All interface work follows the normative [Design and UX Guidelines](design-and-ux-guidelines.md).
+- Desktop-first, minimum working width of 1024 px.
+- Every core action is available through commands/shortcuts and the command palette.
+- Focus indicators, semantic labels, and keyboard-operable dialogs.
+- State color is reinforced with shape, iconography, or text.
+- Save, export, rebuild, solver, and topology failures remain persistent and recoverable rather than toast-only.
+- Application chrome targets WCAG 2.2 AA; free-form canvas-authoring limitations are documented explicitly.
+- Touch/tablet authoring comes later; phones are view/export-only.
+- The architecture supports localization, but alpha may ship with one language.
 
-## Явно отложено
+## Explicitly deferred
 
-- marketplace/plugins и выполнение непроверенного кода;
-- realtime multi-user;
-- встроенная отправка G-code на принтер;
-- генеративный/AI CAD до появления детерминированного command API и sandbox;
-- обещание полной совместимости с Onshape/FreeCAD/SolidWorks.
+- Marketplace/plugins and untrusted code execution.
+- Real-time multi-user editing.
+- Direct G-code delivery to printers.
+- Generative or AI CAD before a deterministic command API and sandbox exist.
+- Claims of complete compatibility with Onshape, FreeCAD, or SolidWorks.

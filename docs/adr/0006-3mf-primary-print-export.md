@@ -1,16 +1,16 @@
-# ADR-0006: 3MF основной print export
+# ADR-0006: 3MF as the Primary Print Export
 
-- Статус: **Accepted**
-- Дата: 2026-08-07
+- Status: **Accepted**
+- Date: 2026-08-07
 
-## Решение
+## Decision
 
-3MF Core — основной формат передачи в slicer; STEP — точный CAD exchange; STL — compatibility. Полноценный встроенный slicer не входит в v1.
+Use 3MF Core as the primary slicer-exchange format, STEP as the exact CAD-exchange format, and STL for compatibility. A complete integrated slicer is outside the v1 scope.
 
-## Последствия
+## Consequences
 
-- writer обязан соблюдать OPC/XML/spec и проходить independent slicer tests;
-- multiple objects/units/metadata имеют явную модель;
-- print mesh строится отдельно от display mesh;
-- vendor slicer settings не обещаются;
-- будущий slicer integration требует нового ADR и license review.
+- The writer must comply with OPC, XML, and 3MF requirements and pass tests in independent slicers.
+- Multiple objects, units, and metadata have explicit representations.
+- Print meshes are generated separately from display meshes.
+- Vendor-specific slicer settings are not promised.
+- Future slicer integration requires a new ADR and license review.
