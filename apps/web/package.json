@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@vibeshape/i18n": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"

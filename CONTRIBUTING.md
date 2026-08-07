@@ -11,12 +11,13 @@ bun install
 bun run check
 ```
 
-Use `bun run dev` for the Vite application and `bun run test:e2e` for the Chromium smoke test. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
+Use `bun run dev` for the Vite application, `bun run test:e2e:chromium` for fast browser feedback, and `bun run test:e2e` for the full Chromium, Firefox, and WebKit suite. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
 
 ## Language policy
 
 - Write all documentation, ADRs, source identifiers, commit messages, diagnostics intended for developers, tests, and code comments in **English**.
 - Product UI strings must use the localization layer once one exists; the canonical source copy is English.
+- Add canonical product copy to the English ICU catalog; every translated catalog must preserve its keys and placeholders.
 - Do not add bilingual comments or duplicate English and translated documentation in the same source file.
 - External source titles may retain their original registered names, but explanations remain in English.
 
@@ -27,6 +28,7 @@ Use `bun run dev` for the Vite application and `bun run test:e2e` for the Chromi
 - Every geometry change requires fixtures plus invariant and failure tests.
 - Never use face order, edge order, or triangle order as stable identity.
 - Do not introduce mandatory networking or telemetry.
+- Do not concatenate translated fragments or use localized labels as domain, command, persistence, or diagnostic identifiers.
 - Update `docs/research-sources.md` when an external technical basis changes.
 - Pin dependency versions in the lockfile; WASM builds record the upstream commit, build flags, and checksum.
 - The only JavaScript lockfile is `bun.lock`; workspace dependencies use `workspace:*`, and CI uses `bun ci`.

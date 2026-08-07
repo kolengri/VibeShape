@@ -341,6 +341,8 @@ Status changes that do not move focus use the appropriate live-region semantics.
 
 ### Long-Running Operations
 
+- An action that starts asynchronous work becomes single-flight until that attempt settles. Its control exposes a named loading state, blocks accidental double activation, preserves its accessible name, and does not hide rejection behind an indefinitely spinning indicator.
+- Disabling the initiating control does not disable unrelated navigation or inspection. Conflicting actions use the same operation state instead of implementing independent timers.
 - Show named stages such as `Reading STEP`, `Healing geometry`, `Rebuilding features`, and `Tessellating`.
 - Show a percentage only when the underlying operation reports meaningful progress.
 - Otherwise use indeterminate progress with elapsed time after an appropriate delay.
@@ -440,6 +442,9 @@ Do not hide Apply, Cancel, errors, save state, or the active selection filter so
 ## Content and Terminology
 
 - Canonical product copy is English and uses sentence case.
+- All user-facing labels, accessible names, descriptions, validation, status, recovery, and error copy originates in typed ICU message catalogs, even before another locale ships.
+- Do not concatenate translated fragments or use translated copy as a command, domain, persistence, analytics, or diagnostic identifier.
+- Locale is a local UI preference. Changing it updates the document language but never creates an undo entry, rebuilds geometry, changes project data, or requires network access.
 - Buttons use specific verbs: `Create sketch`, `Apply fillet`, `Export 3MF`.
 - Use established CAD terms when they improve precision, with short contextual help for new users.
 - Use `body`, `solid`, `face`, `edge`, `vertex`, `sketch`, `feature`, and `constraint` consistently with the domain model.

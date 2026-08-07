@@ -37,6 +37,7 @@ The repository foundation scaffold is already available for implementing and mea
 
 - Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, Biome, Fallow changed-code auditing, and `bun ci`.
 - Tailwind CSS v4 and `@vibeshape/ui` using shadcn/Radix primitives and tokens.
+- Typed English product copy and locale preference through `@vibeshape/i18n`; additional translated catalogs remain later scope.
 - PWA shell and project library following the design and UX contract, including its state and accessibility harness.
 - Domain commands, events, and revisions.
 - Worker protocol and restart/recovery behavior.
@@ -130,7 +131,7 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 - Snapshots and version comparison.
 - SVG and DXF.
 - Improved print heuristics.
-- Tablet usability and localization.
+- Tablet usability and additional translated catalogs.
 - Documented native format v1.
 
 ## Later tracks

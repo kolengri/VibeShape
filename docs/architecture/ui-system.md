@@ -4,7 +4,7 @@ This document owns the UI implementation architecture, package boundaries, and t
 
 ## Decision
 
-Use **Tailwind CSS v4** and **shadcn/ui CLI v4 with Radix base** as the interface foundation. Shared primitives and design tokens live in the `@vibeshape/ui` workspace; CAD-specific components are composed in `apps/web`.
+Use **Tailwind CSS v4** and **shadcn/ui CLI v4 with Radix base** as the interface foundation. Shared primitives and design tokens live in the `@vibeshape/ui` workspace; CAD-specific components are composed in `apps/web`. Form primitives are state-agnostic and uncontrolled by default, while typed product forms use the separate TanStack Form adapter accepted in [ADR-0010](../adr/0010-uncontrolled-form-primitives-and-tanstack-form.md).
 
 shadcn/ui is not an opaque component dependency. Its CLI copies component source into the repository. We own and review that source, can add compact variants, and maintain it as application code.
 
@@ -26,13 +26,16 @@ packages/ui/
   src/
     components/          # shadcn/Radix primitives
     hooks/               # purely visual/shared hooks
+    integrations/        # optional adapters such as TanStack Form
     lib/cn.ts
     styles/globals.css   # Tailwind import + semantic tokens
   components.json
   package.json           # explicit exports
 ```
 
-`@vibeshape/ui` MAY import React, Radix, class-variance-authority, Tailwind utilities, and Lucide. It MUST NOT import domain, geometry worker, persistence, or application-state packages.
+`@vibeshape/ui` MAY import React, Radix, class-variance-authority, Tailwind utilities, Lucide, and TanStack Form inside its explicit integration entry point. Base components MUST NOT import TanStack Form. The package MUST NOT import domain, geometry worker, persistence, or application-state packages.
+
+`apps/web` owns product-copy catalogs and composes the `@vibeshape/i18n` provider accepted in [ADR-0011](../adr/0011-use-intl-localization-layer.md). Shared primitives remain copy-free when possible; component-owned copy uses a distinct shared catalog namespace rather than hard-coded display strings.
 
 `apps/web` owns:
 
@@ -112,6 +115,10 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 
 ## Composition rules
 
+- Follow the complete [UI component contracts](ui-component-contracts.md) for component layering, asynchronous actions, form adapters, state inventories, and verification.
+- Follow [Internationalization](internationalization.md) for all product copy, accessible names, validation, status, and diagnostic messages.
+- Build the native or state-agnostic primitive before its TanStack Form adapter; the adapter imports the primitive, never the reverse.
+- Buttons that start Promise-like work become single-flight, expose an accessible pending state, and suppress accidental double activation. Error reporting remains owned by the command or form.
 - Use `AlertDialog`, not `Dialog`, for destructive confirmation.
 - Provide one tooltip provider at the application root.
 - Toolbar actions use button variants without losing native focus and keyboard behavior.

@@ -6,6 +6,8 @@
 - Keep comments concise and explain intent, invariants, ownership, or non-obvious constraints. Do not restate the code.
 - Do not add bilingual comments or parallel translated documentation to the source tree.
 - User-facing product copy must be authored in English and routed through the localization layer when localization is introduced.
+- Put product copy in typed ICU message catalogs; do not concatenate translated fragments or use display copy as a domain identifier.
+- English is the source catalog. Every added locale must match its keys and placeholders before merge.
 - Preserve official product, library, standard, and file-format names exactly as published.
 
 ## Architecture discipline
@@ -15,6 +17,8 @@
 - Keep `packages/domain` independent of React, Three.js, persistence, and the geometry adapter.
 - Use Bun workspaces and `bun.lock`; keep Vite as the browser build pipeline unless an ADR supersedes that decision.
 - Treat generated shadcn components as reviewed project source, not as opaque dependencies.
+- Build form controls as state-agnostic, uncontrolled-first primitives before adding separate TanStack Form adapters.
+- Async action controls must prevent duplicate activation, expose accessible pending state, and release their lock on both fulfillment and rejection.
 
 ## Project skills
 

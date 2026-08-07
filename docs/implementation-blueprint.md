@@ -188,14 +188,14 @@ After Proceed:
 4. `E04 Geometry`: production adapter from SPK-001 with ownership and leak guards.
 5. `E05 Viewer`: Three.js scene, LOD, selection mapping, and disposal.
 6. `E06 Persistence`: journal, snapshot, recovery, and `.vshape` v0.
-7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, shadcn/Radix configuration, tokens, compact shell primitives, state harness, keyboard behavior, and accessibility baseline from the design and UX contract.
+7. `E07 UI foundation`: Tailwind v4, shared `@vibeshape/ui`, typed ICU copy through `@vibeshape/i18n`, shadcn/Radix configuration, tokens, compact shell primitives, state harness, keyboard behavior, and accessibility baseline from the design and UX contract.
 8. `E08 Vertical demo`: primitives → boolean → save/offline/reopen → STEP/STL.
 
 Every epic includes positive, failure, recovery, and license or format acceptance criteria. User-visible epics also include the applicable [Design and UX Guidelines](product/design-and-ux-guidelines.md) definition-of-done checks.
 
 ### Foundation scaffold status
 
-The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright Chromium smoke coverage, Vite, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and broader browser jobs remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
+The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and feature-specific browser scenarios remain open. This early scaffold validates tooling only and does not waive any Phase 0 stop/go criterion.
 
 ## Definition of Done for a geometry feature
 

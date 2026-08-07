@@ -126,12 +126,21 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 
 ## Browser matrix
 
-- Chromium stable: E2E subset on every PR.
-- Firefox stable: core subset on every PR.
-- WebKit automation: smoke test on every PR, with manual Safari before release.
+- Chromium, Firefox, and WebKit automation: the current E2E suite on every PR.
+- Manual Safari: release smoke coverage for platform integration that WebKit automation cannot prove.
 - Dedicated installed-build offline/service-worker test.
 - Cross-origin isolation mode only when enabled.
 - Device pixel ratio 1 and 2, plus integrated and discrete GPUs where possible.
+
+## Playwright execution contract
+
+- `bun run test:e2e:chromium` is the fast local browser gate; `bun run test:e2e` runs all configured engines.
+- `bun run test:e2e:ui` opens Playwright UI mode, and `bun run test:e2e:report` reopens the last HTML report.
+- Install missing local engines with `bunx playwright install chromium firefox webkit`.
+- Tests use role, label, and other user-facing locators with web-first assertions. Fixed sleeps and selectors coupled to styling or implementation details are prohibited.
+- The automatic runtime-health fixture fails the owning test on browser console errors or uncaught page exceptions.
+- Failure diagnostics are written under `.artifacts/playwright`; CI attempts to retain the HTML report, screenshot, video, and first-retry trace for 14 days without letting an exhausted artifact quota mask the E2E result.
+- CI runs one isolated browser project per matrix job after the workspace verification gate. Each project owns its Vite server lifecycle and report artifact.
 
 ## Monorepo and toolchain checks
 
@@ -141,11 +150,13 @@ Budgets change only through benchmark evidence or an ADR. CI detects major regre
 - Dependency-boundary tests prohibit UI imports in domain and protocol.
 - Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
+- Shared UI component tests cover native uncontrolled behavior before TanStack Form adapters, including double activation, async settlement, disabled/busy semantics, labels, and validation relationships.
+- I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-The foundation scaffold implements these gates as root Bun scripts. Vitest discovers focused tests across workspaces, Playwright runs the initial Chromium shell smoke test against a real Vite server, and GitHub Actions repeats frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser smoke, and Fallow changed-code analysis. Firefox, WebKit, PWA, worker, WASM, and offline tests are added with the features they verify; the initial Chromium smoke test is not evidence for those future release gates.
+The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces, including jsdom-backed Testing Library component tests. Playwright runs the shell contract against a real Vite server in Chromium, Firefox, and WebKit, while GitHub Actions repeats frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser E2E, and Fallow changed-code analysis. The current shell suite covers localization metadata, semantic landmarks, keyboard order, compact layout, runtime errors, and local-only startup; it is not evidence for future PWA, worker, WASM, CAD workflow, recovery, or offline release gates.
 
 ## Design and UX acceptance
 
