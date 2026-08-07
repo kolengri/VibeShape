@@ -88,6 +88,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - safe non-negative revision preconditions, explicit stale-revision diagnostics, and revision-exhaustion rejection;
 - actor-bound disposable drafts whose commands share one transaction ID and commit only against the original base revision;
 - a first-party `org.vibeshape.core.document` module descriptor and deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
+- an executable trusted-command dispatcher that requires exactly one handler per descriptor and validates command route, owner, and schema-version parity before execution;
 - automation exposure and confirmation metadata without importing MCP or transport types.
 
 This slice does not yet implement content hashing, persistence, autosave, undo/redo, feature DAGs, units, geometry preview, draft expiry, extension execution, or the `.vshape` codec. Its schemas are internal experimental contracts until their owning ADR and Phase 1 acceptance gates stabilize them.
