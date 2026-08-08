@@ -3,6 +3,7 @@ import {
   createKernelSpikeParameters,
   kernelSpikeExpectedInvariants,
 } from "../../packages/test-models/src"
+import { OCCT_BUILD_INPUTS } from "../../scripts/occt-build-config"
 import { expect, test } from "./fixtures"
 
 type KernelResponse = Extract<GeometryWorkerResponse, { type: "kernelSpikeCompleted" }>
@@ -25,6 +26,9 @@ interface GeometrySpikeHarnessState {
 }
 
 test.setTimeout(120_000)
+
+const controlledOcctMode = process.env.VIBESHAPE_CONTROLLED_OCCT === "1"
+const controlledOcctSourceRevision = OCCT_BUILD_INPUTS.sources.occt.revision
 
 function expectVectorClose(actual: number[], expected: number[], precision = 5) {
   expect(actual).toHaveLength(expected.length)
@@ -93,13 +97,16 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
 
   expect(spike.error).toBeNull()
 
-  expect(result.engine).toMatchObject({
+  const expectedEngine = {
     adapter: "replicad",
-    adapterVersion: "spike-2",
+    adapterVersion: controlledOcctMode ? "spike-controlled-1" : "spike-2",
     replicadVersion: "0.23.1",
-    opencascadePackageVersion: "0.23.0",
-    opencascadeSourceRevision: null,
-  })
+    opencascadePackageVersion: controlledOcctMode
+      ? `controlled-${controlledOcctSourceRevision.slice(0, 12)}`
+      : "0.23.0",
+    opencascadeSourceRevision: controlledOcctMode ? controlledOcctSourceRevision : null,
+  }
+  expect(result.engine).toMatchObject(expectedEngine)
   expect(result.engine.wasmBytes).toBeGreaterThan(1_000_000)
 
   expect(result.shape.valid).toBe(true)
@@ -136,10 +143,16 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
   expect(result.lifecycle.ownedShapesAfter).toBe(result.lifecycle.ownedShapesBefore)
   expect(spike.results).toHaveLength(lifecycleBatches)
   expect(spike.results.every(hasBalancedOwnership)).toBe(true)
-  expect(result.memory.source).toBe("heap-capacity-only")
   expect(result.memory.snapshots.map((snapshot) => snapshot.stage)).toEqual(GEOMETRY_MEMORY_STAGES)
-  expect(result.memory.snapshots.every((snapshot) => snapshot.allocator === null)).toBe(true)
   expect(result.memory.snapshots.every((snapshot) => snapshot.heapCapacityBytes > 0)).toBe(true)
+  expect(result.memory.source).toBe(
+    controlledOcctMode ? "allocator-instrumented" : "heap-capacity-only",
+  )
+  expect(
+    result.memory.snapshots.every((snapshot) =>
+      controlledOcctMode ? snapshot.allocator !== null : snapshot.allocator === null,
+    ),
+  ).toBe(true)
   const expectedProgress = [
     "creating-primitives",
     "boolean-cut",
@@ -166,6 +179,10 @@ test("executes the OCCT modeling and exchange spike inside a Web Worker", async 
   expect(restart.result.shape.valid).toBe(true)
   expect(restart.result.shape.solidCount).toBe(1)
   expect(restart.result.shape.volume).toBeCloseTo(result.shape.volume, 6)
+  expect(restart.result.engine).toMatchObject(expectedEngine)
+  expect(restart.result.memory.source).toBe(
+    controlledOcctMode ? "allocator-instrumented" : "heap-capacity-only",
+  )
   expect(restart.result.lifecycle).toMatchObject({
     iterations: 1,
     ownedShapesBefore: 2,

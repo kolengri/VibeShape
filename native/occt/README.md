@@ -43,6 +43,10 @@ bun run occt:build
 
 The command runs the pinned `linux/amd64` image, using emulation where the local Docker installation supports it, then validates the JavaScript, WebAssembly, and TypeScript outputs and writes the generated-config and output SHA-256 digests to `.artifacts/occt-build/build-report.json`.
 
+It also stages a private package under `.artifacts/occt-build/package`. The normal application build never consumes that directory. The `controlled-occt` Vite mode aliases only `replicad-opencascadejs` to the staged package so the existing adapter can run the controlled artifact without mutating `node_modules` or changing production dependency resolution.
+
+The `Controlled OCCT evidence` workflow runs automatically when its build, adapter-selection, or geometry-evidence paths change and can also be started manually after it exists on the default branch. It builds with read-only repository permissions, runs the extended allocator-instrumented Chromium fixture, and retains the build report, exact sources, outputs, and Playwright evidence for seven days. A successful workflow artifact is engineering evidence, not a release distribution.
+
 The generated artifacts remain quarantined in `.artifacts`. Promotion requires:
 
 1. replace the worker import behind the existing adapter boundary;

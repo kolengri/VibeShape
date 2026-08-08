@@ -1,18 +1,19 @@
 import { spawnSync } from "node:child_process"
-import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
+import {
+  requireControlledBuildOutputs,
+  sha256,
+  stageControlledBuildPackage,
+} from "./occt-build-artifacts"
 import { instrumentReplicadBuildConfig, OCCT_BUILD_INPUTS } from "./occt-build-config"
 
 const repositoryRoot = resolve(import.meta.dir, "..")
 const artifactRoot = join(repositoryRoot, ".artifacts", "occt-build")
 const sourceDirectory = join(artifactRoot, "sources")
 const inputDirectory = join(artifactRoot, "input")
+const packageDirectory = join(artifactRoot, "package")
 const buildConfigPath = join(inputDirectory, `${OCCT_BUILD_INPUTS.outputBaseName}.yml`)
-
-function sha256(path: string) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex")
-}
 
 function assertSourceChecksum(path: string, expected: string, url: string) {
   const digest = sha256(path)
@@ -117,21 +118,7 @@ function invokeControlledBuild() {
   }
 }
 
-function requireBuildOutputs() {
-  const outputFiles = ["js", "wasm", "d.ts"].map((extension) =>
-    join(inputDirectory, `${OCCT_BUILD_INPUTS.outputBaseName}.${extension}`),
-  )
-
-  for (const outputFile of outputFiles) {
-    if (!existsSync(outputFile)) {
-      throw new Error(`Controlled OCCT build did not produce ${outputFile}.`)
-    }
-  }
-
-  return outputFiles
-}
-
-function writeBuildReport(outputFiles: string[]) {
+function writeBuildReport(outputs: Array<{ bytes: number; file: string; sha256: string }>) {
   const report = {
     schemaVersion: 1,
     inputs: {
@@ -142,7 +129,7 @@ function writeBuildReport(outputFiles: string[]) {
       },
     },
     outputs: Object.fromEntries(
-      outputFiles.map((outputFile) => [basename(outputFile), { sha256: sha256(outputFile) }]),
+      outputs.map((output) => [output.file, { bytes: output.bytes, sha256: output.sha256 }]),
     ),
   }
   writeFileSync(join(artifactRoot, "build-report.json"), `${JSON.stringify(report, null, 2)}\n`)
@@ -151,7 +138,16 @@ function writeBuildReport(outputFiles: string[]) {
 function runBuild() {
   requireDocker()
   invokeControlledBuild()
-  writeBuildReport(requireBuildOutputs())
+  const { outputFiles, outputs } = requireControlledBuildOutputs(
+    inputDirectory,
+    OCCT_BUILD_INPUTS.outputBaseName,
+  )
+  writeBuildReport(outputs)
+  stageControlledBuildPackage(
+    outputFiles,
+    packageDirectory,
+    OCCT_BUILD_INPUTS.sources.occt.revision,
+  )
 }
 
 async function main() {
