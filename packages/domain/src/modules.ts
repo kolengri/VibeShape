@@ -19,16 +19,33 @@ export const commandDescriptorSchema = z
   })
   .strict()
 
+export const queryDescriptorSchema = z
+  .object({
+    kind: technicalIdentifierSchema,
+    schemaVersion: z.number().int().positive().safe(),
+    ownerModuleId: moduleIdSchema,
+    classification: z.enum(["semantic", "derived"]),
+    automation: z
+      .object({
+        exposure: z.enum(["none", "resource"]),
+        pagination: z.enum(["none", "cursor"]),
+      })
+      .strict(),
+  })
+  .strict()
+
 export const moduleDescriptorSchema = z
   .object({
     id: moduleIdSchema,
     version: moduleVersionSchema,
     dependencies: z.array(moduleIdSchema),
     commands: z.array(commandDescriptorSchema),
+    queries: z.array(queryDescriptorSchema),
   })
   .strict()
 
 export type CommandDescriptor = Readonly<z.infer<typeof commandDescriptorSchema>>
+export type QueryDescriptor = Readonly<z.infer<typeof queryDescriptorSchema>>
 export type ModuleDescriptor = Readonly<z.infer<typeof moduleDescriptorSchema>>
 
 export type ModuleRegistryDiagnostic = Readonly<{
@@ -36,7 +53,9 @@ export type ModuleRegistryDiagnostic = Readonly<{
     | "invalid-module"
     | "duplicate-module"
     | "duplicate-command"
+    | "duplicate-query"
     | "command-owner-mismatch"
+    | "query-owner-mismatch"
     | "missing-module-dependency"
     | "module-dependency-cycle"
   message: string
@@ -45,8 +64,10 @@ export type ModuleRegistryDiagnostic = Readonly<{
 export type ModuleRegistry = Readonly<{
   modules: readonly ModuleDescriptor[]
   commands: readonly CommandDescriptor[]
+  queries: readonly QueryDescriptor[]
   getModule: (id: string) => ModuleDescriptor | undefined
   getCommand: (kind: string) => CommandDescriptor | undefined
+  getQuery: (kind: string) => QueryDescriptor | undefined
 }>
 
 export type ModuleRegistryResult =
@@ -60,6 +81,7 @@ type RegistryStepResult<Value> =
 type IndexedModules = Readonly<{
   modulesById: Map<string, ModuleDescriptor>
   commandsByKind: Map<string, CommandDescriptor>
+  queriesByKind: Map<string, QueryDescriptor>
 }>
 
 export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse({
@@ -91,6 +113,18 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
         destructive: false,
         idempotent: false,
         openWorld: false,
+      },
+    },
+  ],
+  queries: [
+    {
+      kind: "org.vibeshape.document.summary",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "semantic",
+      automation: {
+        exposure: "resource",
+        pagination: "none",
       },
     },
   ],
@@ -157,11 +191,62 @@ function parseModuleDescriptors(
   return { ok: true, value: parsedModules }
 }
 
+function indexModuleCommands(
+  module: ModuleDescriptor,
+  commandsByKind: Map<string, CommandDescriptor>,
+): ModuleRegistryDiagnostic | null {
+  for (const command of module.commands) {
+    if (command.ownerModuleId !== module.id) {
+      return {
+        code: "command-owner-mismatch",
+        message: `Command ${command.kind} does not belong to module ${module.id}.`,
+      }
+    }
+
+    if (commandsByKind.has(command.kind)) {
+      return {
+        code: "duplicate-command",
+        message: `Command ${command.kind} is registered twice.`,
+      }
+    }
+
+    commandsByKind.set(command.kind, command)
+  }
+
+  return null
+}
+
+function indexModuleQueries(
+  module: ModuleDescriptor,
+  queriesByKind: Map<string, QueryDescriptor>,
+): ModuleRegistryDiagnostic | null {
+  for (const query of module.queries) {
+    if (query.ownerModuleId !== module.id) {
+      return {
+        code: "query-owner-mismatch",
+        message: `Query ${query.kind} does not belong to module ${module.id}.`,
+      }
+    }
+
+    if (queriesByKind.has(query.kind)) {
+      return {
+        code: "duplicate-query",
+        message: `Query ${query.kind} is registered twice.`,
+      }
+    }
+
+    queriesByKind.set(query.kind, query)
+  }
+
+  return null
+}
+
 function indexModuleDescriptors(
   modules: readonly ModuleDescriptor[],
 ): RegistryStepResult<IndexedModules> {
   const modulesById = new Map<string, ModuleDescriptor>()
   const commandsByKind = new Map<string, CommandDescriptor>()
+  const queriesByKind = new Map<string, QueryDescriptor>()
 
   for (const module of modules) {
     if (modulesById.has(module.id)) {
@@ -170,23 +255,15 @@ function indexModuleDescriptors(
 
     modulesById.set(module.id, module)
 
-    for (const command of module.commands) {
-      if (command.ownerModuleId !== module.id) {
-        return stepFailure(
-          "command-owner-mismatch",
-          `Command ${command.kind} does not belong to module ${module.id}.`,
-        )
-      }
+    const contributionDiagnostic =
+      indexModuleCommands(module, commandsByKind) ?? indexModuleQueries(module, queriesByKind)
 
-      if (commandsByKind.has(command.kind)) {
-        return stepFailure("duplicate-command", `Command ${command.kind} is registered twice.`)
-      }
-
-      commandsByKind.set(command.kind, command)
+    if (contributionDiagnostic) {
+      return { ok: false, diagnostic: contributionDiagnostic }
     }
   }
 
-  return { ok: true, value: { modulesById, commandsByKind } }
+  return { ok: true, value: { modulesById, commandsByKind, queriesByKind } }
 }
 
 function validateModuleDependencies(
@@ -235,14 +312,19 @@ export function createModuleRegistry(inputs: readonly unknown[]): ModuleRegistry
   const commands = [...indexed.value.commandsByKind.values()].sort((left, right) =>
     left.kind.localeCompare(right.kind),
   )
+  const queries = [...indexed.value.queriesByKind.values()].sort((left, right) =>
+    left.kind.localeCompare(right.kind),
+  )
 
   return {
     ok: true,
     registry: {
       modules,
       commands,
+      queries,
       getModule: (id) => indexed.value.modulesById.get(id),
       getCommand: (kind) => indexed.value.commandsByKind.get(kind),
+      getQuery: (kind) => indexed.value.queriesByKind.get(kind),
     },
   }
 }

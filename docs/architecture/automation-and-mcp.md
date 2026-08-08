@@ -4,7 +4,7 @@
 
 VibeShape should expose AI automation through a **local MCP adapter over the ordinary document command and query contracts**. MCP is an integration boundary, not a second CAD engine, extension runtime, persistence layer, or privileged scripting API.
 
-This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral domain foundation now proves command descriptors, actor provenance, multi-command disposable drafts, deterministic event replay, and revision-safe atomic commit for document creation and rename. Draft validation through geometry, bounded preview resources, persistence, confirmation UI, session expiry, and transport remain required before an MCP server is scaffolded.
+This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral foundation now proves command and query descriptors, actor provenance, multi-command disposable drafts, deterministic event replay, revision-safe atomic commit for document creation and rename, and one strict bounded document-summary view. The query dispatcher fails closed on missing, orphaned, duplicate, owner-drifted, or version-drifted handlers and rejects stale requested revisions. Draft validation through geometry, bounded preview resources, persistence, confirmation UI, session expiry, and transport remain required before an MCP server is scaffolded.
 
 ## Goals and non-goals
 
@@ -32,7 +32,7 @@ The first integration does not provide:
 
 UI controls, first-party modules, third-party extensions, tests, and MCP all request the same domain commands. Adapters may shape presentation and transport, but they cannot bypass eligibility, normalization, revision, geometry, or persistence rules.
 
-The current trusted dispatcher implements the first executable portion of this path. Serializable module and command descriptors remain separate from function-valued first-party handlers. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, or owner and schema-version metadata drift. Dispatch then validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation and reduction to the owning handler. It does not yet implement eligibility, geometry preview, persistence, confirmation, or third-party runtime proxies.
+The current trusted dispatchers implement the first executable portions of this path. Serializable module, command, and query descriptors remain separate from function-valued first-party handlers. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, or owner and schema-version metadata drift. Dispatch validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation to the owning handler. The command path then reduces through the domain model; the query path returns only its versioned bounded view. Neither path yet implements eligibility, geometry preview, persistence, confirmation, or third-party runtime proxies.
 
 ```mermaid
 flowchart LR
@@ -119,6 +119,8 @@ vibeshape://documents/{documentId}/drafts/{draftId}/preview
 ```
 
 Every document resource includes `documentId`, `revision`, schema version, truncation or pagination state, and whether values are semantic state or derived evidence. Large meshes, B-Rep payloads, arbitrary extension HTML, secrets, file handles, and hidden application state are not resources.
+
+The first implemented view is `org.vibeshape.document.summary` schema version 1 in `@vibeshape/automation-api`. It requires an exact document revision and returns semantic name and timestamp fields with `truncated: false`. It exposes no event log, actor data, mutable object graph, storage identity, file path, or geometry payload. URI mapping remains a future adapter responsibility.
 
 Resource subscriptions may announce that a view changed, but a client must reread and validate the new revision. Notifications are never a delta mutation protocol.
 
@@ -226,14 +228,14 @@ The bridge and application enforce:
 
 Tool descriptions, extension catalogs, document names, parameters, and imported metadata are untrusted content. They cannot modify tool definitions, capability policy, confirmation copy, or host instructions.
 
-## Planned boundaries
+## Implementation boundaries
 
-The likely implementation boundaries, after an executable slice justifies them, are:
+The executable document-summary query justifies the first package boundary. The remaining boundaries are created only when their own executable slices require them:
 
 ```text
 packages/
-  automation-api/        # serializable snapshots, command descriptors, drafts, provenance
-  automation-host/       # session policy and adapter-neutral query/command coordination
+  automation-api/        # implemented: serializable query schemas, views, and dispatch
+  automation-host/       # planned: session policy and query/command coordination
 
 apps/
   mcp-server/            # local Bun MCP transport and authenticated browser pairing bridge
@@ -241,7 +243,7 @@ apps/
 
 The MCP SDK belongs only in `apps/mcp-server`. Domain, geometry, persistence, and feature packages never import it. The browser depends on the adapter-neutral automation protocol rather than MCP types.
 
-These workspaces are intentionally not scaffolded until the first tool can exercise a real domain command end to end. Empty packages would imply stability without proving the boundary.
+`packages/automation-api` is checked in because its first query is executed and tested. `packages/automation-host` and `apps/mcp-server` remain absent until an owner-bound draft lifecycle and a complete paired transport slice respectively prove those boundaries. Empty packages would imply stability without executable evidence.
 
 ## Acceptance gate
 

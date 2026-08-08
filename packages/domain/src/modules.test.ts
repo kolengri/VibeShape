@@ -25,11 +25,23 @@ function moduleDescriptor(
         },
       },
     ],
+    queries: [
+      {
+        kind: `${id}.query.summary`,
+        schemaVersion: 1,
+        ownerModuleId: id,
+        classification: "semantic",
+        automation: {
+          exposure: "resource",
+          pagination: "none",
+        },
+      },
+    ],
   }
 }
 
 describe("module registry", () => {
-  it("registers the first-party document module and exposes command metadata", () => {
+  it("registers the first-party document module and exposes contribution metadata", () => {
     const result = createModuleRegistry([documentCoreModule])
 
     expect(result.ok).toBe(true)
@@ -40,10 +52,16 @@ describe("module registry", () => {
         automation: { exposure: "draft", idempotent: false },
       })
       expect(result.registry.getCommand("org.vibeshape.unknown")).toBeUndefined()
+      expect(result.registry.getQuery("org.vibeshape.document.summary")).toMatchObject({
+        ownerModuleId: "org.vibeshape.core.document",
+        classification: "semantic",
+        automation: { exposure: "resource", pagination: "none" },
+      })
+      expect(result.registry.getQuery("org.vibeshape.unknown")).toBeUndefined()
     }
   })
 
-  it("returns modules and commands in deterministic identifier order", () => {
+  it("returns contributions in deterministic identifier order", () => {
     const beta = moduleDescriptor("org.example.beta")
     const alpha = moduleDescriptor("org.example.alpha")
     const result = createModuleRegistry([beta, alpha])
@@ -57,6 +75,10 @@ describe("module registry", () => {
       expect(result.registry.commands.map((command) => command.kind)).toEqual([
         "org.example.alpha.command.run",
         "org.example.beta.command.run",
+      ])
+      expect(result.registry.queries.map((query) => query.kind)).toEqual([
+        "org.example.alpha.query.summary",
+        "org.example.beta.query.summary",
       ])
     }
   })
@@ -87,6 +109,35 @@ describe("module registry", () => {
     expect(createModuleRegistry([wrongOwner])).toMatchObject({
       ok: false,
       diagnostic: { code: "command-owner-mismatch" },
+    })
+  })
+
+  it("rejects duplicate queries and owner mismatches", () => {
+    const alpha = moduleDescriptor("org.example.alpha")
+    const beta = moduleDescriptor("org.example.beta")
+    const alphaQuery = alpha.queries[0]
+    const betaQuery = beta.queries[0]
+
+    if (!alphaQuery || !betaQuery) {
+      throw new Error("Module fixtures must expose query descriptors.")
+    }
+
+    const duplicate = {
+      ...beta,
+      queries: [{ ...betaQuery, kind: alphaQuery.kind }],
+    }
+    const wrongOwner = {
+      ...alpha,
+      queries: [{ ...alphaQuery, ownerModuleId: "org.example.beta" }],
+    }
+
+    expect(createModuleRegistry([alpha, duplicate])).toMatchObject({
+      ok: false,
+      diagnostic: { code: "duplicate-query" },
+    })
+    expect(createModuleRegistry([wrongOwner])).toMatchObject({
+      ok: false,
+      diagnostic: { code: "query-owner-mismatch" },
     })
   })
 

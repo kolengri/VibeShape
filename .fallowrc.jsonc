@@ -16,6 +16,10 @@
       { "name": "web", "patterns": ["apps/web/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
+      {
+        "name": "automation-api",
+        "patterns": ["packages/automation-api/**"]
+      },
       { "name": "protocol", "patterns": ["packages/protocol/**"] },
       {
         "name": "geometry-worker",
@@ -35,6 +39,8 @@
     "rules": [
       // Stable core rule: the domain has no internal package dependencies.
       { "from": "domain", "allow": [] },
+      // Serializable automation contracts may depend only on the pure domain model.
+      { "from": "automation-api", "allow": ["domain"] },
       // Shared visual primitives cannot depend on CAD or application packages.
       { "from": "ui", "allow": [] },
       // Localization infrastructure remains independent of application and CAD packages.
