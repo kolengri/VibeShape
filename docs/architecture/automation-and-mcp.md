@@ -4,7 +4,7 @@
 
 VibeShape should expose AI automation through a **local MCP adapter over the ordinary document command and query contracts**. MCP is an integration boundary, not a second CAD engine, extension runtime, persistence layer, or privileged scripting API.
 
-This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral foundation now proves command and query descriptors, actor provenance, multi-command disposable drafts, deterministic event replay, revision-safe atomic commit for document creation and rename, and one strict bounded document-summary view. The query dispatcher fails closed on missing, orphaned, duplicate, owner-drifted, or version-drifted handlers and rejects stale requested revisions. Draft validation through geometry, bounded preview resources, persistence, confirmation UI, session expiry, and transport remain required before an MCP server is scaffolded.
+This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral foundation now proves command and query descriptors, actor provenance, deterministic event replay, one strict bounded document-summary view, and an owner-bound multi-command draft lifecycle. The query dispatcher fails closed on handler drift and stale requested revisions. The host generates draft IDs, validates authenticated actor context separately from payloads, serializes operations, enforces inactivity and count limits, returns bounded previews through the query dispatcher, and delegates revision-safe persistence to an atomic compare-and-commit port. Geometry validation, durable persistence integration, confirmation UI, automation-session pairing and expiry, undo/redo integration, cancellation, and transport remain required before an MCP server is scaffolded.
 
 ## Goals and non-goals
 
@@ -32,7 +32,7 @@ The first integration does not provide:
 
 UI controls, first-party modules, third-party extensions, tests, and MCP all request the same domain commands. Adapters may shape presentation and transport, but they cannot bypass eligibility, normalization, revision, geometry, or persistence rules.
 
-The current trusted dispatchers implement the first executable portions of this path. Serializable module, command, and query descriptors remain separate from function-valued first-party handlers. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, or owner and schema-version metadata drift. Dispatch validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation to the owning handler. The command path then reduces through the domain model; the query path returns only its versioned bounded view. Neither path yet implements eligibility, geometry preview, persistence, confirmation, or third-party runtime proxies.
+The current trusted dispatchers and automation host implement the first executable portions of this path. Serializable module, command, query, and lifecycle contracts remain separate from function-valued first-party handlers and injected storage ports. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, or owner and schema-version metadata drift. Dispatch validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation to the owning handler. The host wraps that path with owner, document, revision, duplicate-command-ID, expiry, and resource-limit checks. The command path reduces an isolated draft; the query path returns only its versioned bounded view; commit crosses one atomic port. Eligibility, geometry validation, durable persistence, confirmation, and third-party runtime proxies remain open.
 
 ```mermaid
 flowchart LR
@@ -167,6 +167,8 @@ A mutating automation sequence is transactional:
 
 A disconnected, cancelled, timed-out, invalid, or rejected request cannot leave partial committed geometry. Drafts have owner-bound unguessable IDs, inactivity expiry, memory limits, and a per-session concurrency limit.
 
+The current `@vibeshape/automation-host` implements the non-geometry portion of this lifecycle for the document create and rename fixtures. Draft IDs come from a required host generator, full actor identity controls every operation, inactivity renews only after successful activity, explicit discard is idempotent, and per-actor plus per-draft command limits bound retained state. Operations are initially serialized through one host queue so concurrent requests cannot overwrite draft revisions. A failed or stale atomic commit retains the draft for inspection or explicit discard; a successful commit removes it. The injected document port, not the host, owns the durable compare-and-commit transaction. Geometry rebuild, validation, progress, confirmation, undo/redo, session revocation, and persistence adapters are not implemented by this slice.
+
 ## Local transport and pairing
 
 The first bridge uses MCP `stdio` because the client launches a local subprocess and the protocol channel does not require a listening MCP port. Protocol JSON is the only stdout content; diagnostics use stderr.
@@ -234,8 +236,8 @@ The executable document-summary query justifies the first package boundary. The 
 
 ```text
 packages/
-  automation-api/        # implemented: serializable query schemas, views, and dispatch
-  automation-host/       # planned: session policy and query/command coordination
+  automation-api/        # implemented: serializable query and draft lifecycle contracts
+  automation-host/       # implemented: owner-bound draft and query/command coordination
 
 apps/
   mcp-server/            # local Bun MCP transport and authenticated browser pairing bridge
@@ -243,7 +245,7 @@ apps/
 
 The MCP SDK belongs only in `apps/mcp-server`. Domain, geometry, persistence, and feature packages never import it. The browser depends on the adapter-neutral automation protocol rather than MCP types.
 
-`packages/automation-api` is checked in because its first query is executed and tested. `packages/automation-host` and `apps/mcp-server` remain absent until an owner-bound draft lifecycle and a complete paired transport slice respectively prove those boundaries. Empty packages would imply stability without executable evidence.
+`packages/automation-api` and `packages/automation-host` are checked in because the document-summary query and owner-bound draft lifecycle execute end to end in tests. `apps/mcp-server` remains absent until a complete paired transport slice proves that boundary. Empty packages would imply stability without executable evidence.
 
 ## Acceptance gate
 

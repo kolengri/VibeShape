@@ -3,6 +3,7 @@ import {
   applyDocumentCommand,
   type CommandActor,
   commandActorSchema,
+  commandActorsEqual,
   type DocumentEvent,
   type DomainDiagnostic,
   parseDocumentCommand,
@@ -73,23 +74,6 @@ function invalidDraftDiagnostic(error: z.ZodError): DraftDiagnostic {
   }
 }
 
-function actorIdentity(actor: CommandActor) {
-  switch (actor.type) {
-    case "user":
-      return `${actor.type}:${actor.userId ?? "anonymous"}`
-    case "mcp":
-      return `${actor.type}:${actor.clientId}:${actor.sessionId}`
-    case "extension":
-      return `${actor.type}:${actor.extensionId}:${actor.integrity}`
-    case "system":
-      return `${actor.type}:${actor.source}`
-  }
-}
-
-function actorsEqual(left: CommandActor, right: CommandActor) {
-  return actorIdentity(left) === actorIdentity(right)
-}
-
 export function createDocumentDraft(input: {
   draftId: unknown
   documentId: unknown
@@ -154,7 +138,7 @@ export function applyCommandToDraft(draft: DocumentDraft, input: unknown): Draft
     }
   }
 
-  if (!actorsEqual(parsed.command.actor, draft.actor)) {
+  if (!commandActorsEqual(parsed.command.actor, draft.actor)) {
     return {
       ok: false,
       diagnostic: draftDiagnostic(

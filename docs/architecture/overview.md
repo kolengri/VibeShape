@@ -99,6 +99,7 @@ apps/
 packages/
   domain/                 # model, units, commands, events
   automation-api/         # versioned bounded query views and dispatch
+  automation-host/        # owner-bound draft lifecycle and host policy
   protocol/               # main ↔ worker messages and schema versions
   geometry-worker/        # evaluator and OCCT adapter
   sketch-solver/          # solver adapter and WASM build
@@ -115,7 +116,7 @@ docs/
 
 The root `package.json` declares Bun workspaces for `apps/*` and `packages/*`. Local packages use `workspace:*`; shared React, TypeScript, Tailwind, and test versions use Bun default or named catalogs; `bun.lock` is committed.
 
-This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite, resolves typed product copy through `@vibeshape/i18n`, and proves Tailwind discovery across `@vibeshape/ui`. `packages/protocol`, `packages/geometry-worker`, and `packages/test-models` contain the isolated SPK-001 contract, adapter, and invariant fixture; they are not yet production document APIs. `packages/domain` contains the first narrow document-command slice, including strict schemas, deterministic events, revision-safe drafts, module descriptors, and trusted command-handler dispatch. `packages/automation-api` contains the first real read contract: a strict, bounded, revision-tagged document-summary view plus a trusted query dispatcher that enforces descriptor-handler parity. Neither package yet contains the feature DAG, units, undo/redo, persistence, or automation session policy. The solver, viewer, persistence, format, and print-analysis package entry points remain intentionally empty until their owning spikes introduce tested contracts and dependency evidence.
+This structure is now checked in. `apps/web` renders a static, accessible CAD-shell placeholder through Vite, resolves typed product copy through `@vibeshape/i18n`, and proves Tailwind discovery across `@vibeshape/ui`. `packages/protocol`, `packages/geometry-worker`, and `packages/test-models` contain the isolated SPK-001 contract, adapter, and invariant fixture; they are not yet production document APIs. `packages/domain` contains the first narrow document-command slice, including strict schemas, deterministic events, revision-safe drafts, module descriptors, and trusted command-handler dispatch. `packages/automation-api` contains strict draft-lifecycle schemas, the bounded revision-tagged document-summary view, and trusted query dispatch. `packages/automation-host` binds host-generated drafts to a complete actor identity, serializes lifecycle operations, enforces inactivity and count limits, previews through the query dispatcher, and commits only through an injected atomic compare-and-commit port. These packages do not yet provide the feature DAG, units, undo/redo, persistence, geometry validation, confirmation UI, or paired automation sessions. The solver, viewer, persistence, format, and print-analysis package entry points remain intentionally empty until their owning spikes introduce tested contracts and dependency evidence.
 
 Lint and import rules enforce package boundaries. For example, `domain` cannot import `viewer`, `geometry-worker`, or `ui`.
 

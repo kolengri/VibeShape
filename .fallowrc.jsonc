@@ -20,6 +20,10 @@
         "name": "automation-api",
         "patterns": ["packages/automation-api/**"]
       },
+      {
+        "name": "automation-host",
+        "patterns": ["packages/automation-host/**"]
+      },
       { "name": "protocol", "patterns": ["packages/protocol/**"] },
       {
         "name": "geometry-worker",
@@ -41,6 +45,11 @@
       { "from": "domain", "allow": [] },
       // Serializable automation contracts may depend only on the pure domain model.
       { "from": "automation-api", "allow": ["domain"] },
+      // Host policy coordinates public automation contracts and pure domain operations.
+      {
+        "from": "automation-host",
+        "allow": ["automation-api", "domain"]
+      },
       // Shared visual primitives cannot depend on CAD or application packages.
       { "from": "ui", "allow": [] },
       // Localization infrastructure remains independent of application and CAD packages.

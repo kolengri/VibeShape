@@ -265,7 +265,7 @@ See [UI system](ui-system.md).
 MCP is a transport dependency of the planned local Bun bridge, not a domain dependency. The repository does not pin `@modelcontextprotocol/sdk` until one real command can exercise the complete query, draft, preview, confirmation, commit, undo, and recovery path.
 
 - `packages/domain`, geometry, persistence, feature, UI, and extension packages never import MCP types.
-- Adapter-neutral automation schemas use plain serializable TypeScript contracts with runtime validation.
+- `packages/automation-api` and `packages/automation-host` use plain serializable TypeScript contracts, Zod boundary validation, and injected ports without importing MCP types.
 - The first MCP transport is `stdio`; protocol output is isolated from stderr diagnostics.
 - In automation mode the bridge serves the reviewed static build and authenticated browser session from one stable localhost-only origin; connecting an independently hosted PWA is deferred.
 - Streamable HTTP, OAuth authorization, remote deployment, and headless document ownership require later gates.
