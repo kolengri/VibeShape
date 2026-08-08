@@ -17,6 +17,8 @@ Base form controls are uncontrolled by default through native attributes such as
 
 VibeShape's TanStack Form adapter is exported from `@vibeshape/ui/integrations/tanstack-form`. Feature code uses the adapter for form state while remaining free to use base components for isolated native forms, search fields, file inputs, and progressive enhancement.
 
+Form integration follows one discoverable form-kit layout: shared contexts at the integration root, field adapters under `fields/`, form-owned controls under `components/`, and a single public `index.ts`. Reusable visual structure belongs to base `Field` primitives rather than being repeated in each adapter.
+
 ## Asynchronous action controls
 
 An action control that observes a Promise-like handler result follows a single-flight contract:
@@ -81,5 +83,6 @@ The foundation includes:
 - `Button` with double-click suppression, Promise-like single-flight loading, native or slotted disabled semantics, and external `isLoading` support;
 - `Spinner` with standalone status semantics and decorative use inside named controls;
 - native `Input` and state-agnostic `TextField` with label, description, and stable validation relationships;
-- a TanStack Form integration exposing `useAppForm`, `TextField`, and `SubmitButton` adapters;
+- shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
+- a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, and `SubmitButton` adapters;
 - Vitest and Testing Library coverage for the base and integrated layers.

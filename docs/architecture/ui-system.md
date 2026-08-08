@@ -24,9 +24,10 @@ apps/web/
 
 packages/ui/
   src/
-    components/          # shadcn/Radix primitives
+    components/          # shadcn/Radix primitives and state-agnostic field compositions
     hooks/               # purely visual/shared hooks
-    integrations/        # optional adapters such as TanStack Form
+    integrations/
+      tanstack-form/     # contexts, registered fields, form components, and public entry point
     lib/cn.ts
     styles/globals.css   # Tailwind import + semantic tokens
   components.json
@@ -67,6 +68,7 @@ Add primitives from `apps/web` or with an explicit working directory. Run `--dry
 - Define the theme primarily through CSS custom properties and `@theme inline`.
 - Never generate runtime class fragments such as ``bg-${color}-500``.
 - Express repeated variants with `cva` and merge classes through `cn()` using `clsx` and `tailwind-merge`.
+- Group long static utility sets by interaction concern instead of storing an entire component style in one opaque line.
 - Use arbitrary values only for genuinely computed layout or overlay geometry.
 - Viewport model geometry is not styled with Tailwind classes.
 

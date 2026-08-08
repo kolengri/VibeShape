@@ -15,7 +15,7 @@
   "exports": {
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
-    "./integrations/*": "./src/integrations/*.tsx",
+    "./integrations/tanstack-form": "./src/integrations/tanstack-form/index.ts",
     "./lib/*": "./src/lib/*.ts",
     "./globals.css": "./src/styles/globals.css"
   },
