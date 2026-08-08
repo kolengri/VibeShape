@@ -54,12 +54,15 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | Source | Evidence |
 |---|---|
 | [SolveSpace upstream](https://github.com/solvespace/solvespace) | Parametric 2D and 3D CAD, GPL-3.0-or-later, and an experimental web build with critical bugs and unimplemented functions |
+| [SolveSpace v3.2 release](https://github.com/solvespace/solvespace/releases/tag/v3.2) | Stable source release selected by SPK-002 |
+| [SolveSpace C solver API](https://github.com/solvespace/solvespace/blob/27b6a080c8b669421bd4d444650c3b8eddec5687/include/slvs.h) | `Slvs_System`, entity and constraint records, result codes, failed constraints, and degrees of freedom |
+| [SolveSpace WASM target](https://github.com/solvespace/solvespace/blob/27b6a080c8b669421bd4d444650c3b8eddec5687/src/slvs/CMakeLists.txt) | Official Emscripten target and the broad upstream Embind boundary replaced by the narrow spike wrapper |
 | [SolveSpace license](https://github.com/solvespace/solvespace/blob/master/COPYING.txt) | Full GPL-3.0 text and terms |
 | [FreeCAD: topological naming problem mirror](https://reqrefusion.github.io/FreeCAD-Documentation-html/wiki/cs/Topological_naming_problem.html) | Face and edge references break after topology changes; the problem is general to CAD; datum and origin references are more stable |
 | [Onshape Part Studios help](https://cad.onshape.com/help/Content/PartStudio/part_studios.htm) | Feature list and Part Studio as a useful functional-model reference |
 | [Onshape integrated PDM](https://www.onshape.com/en/features/product-data-management) | History, versions, branching, and merging as intentionally deferred cloud and PDM scope |
 
-**Conclusion:** the solver needs a dedicated subset spike; the complete experimental SolveSpace web UI will not be embedded. Topological naming must be designed before the feature model, not patched after the MVP.
+**Conclusion:** SPK-002 validates the stable solver subset behind VibeShape's flat worker ABI; the complete experimental SolveSpace web UI will not be embedded. Topological naming must be designed before the feature model, not patched after the MVP.
 
 ## 3D Printing and Formats
 

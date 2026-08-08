@@ -12,6 +12,8 @@ The repository foundation scaffold is already available for implementing and mea
 
 SPK-001 now passes its Phase 0 stop/go gate with executable evidence. The project source-builds the pinned builder with the reviewed destructor correction, verifies transient boolean and fillet history relations, reaches a 448-byte post-warmup allocator drift with zero retained bytes in every 1,000-operation lifecycle block, passes its local controlled Chromium performance budgets on the declared Apple M1 baseline, creates a verified corresponding-source bundle, and validates the browser-exported STEP fixture through headless FreeCAD. The controlled package remains quarantined until the production facade and extended corpus are reviewed. Stable `TopoRef` resolution remains SPK-003 work. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
+SPK-002 also passes its solver-selection gate. The pinned SolveSpace v3.2 subset exposes no native pointers, covers all P0 primitives through a Zod-validated typed-array ABI, distinguishes constraint states with conflict handles, completes 1,600 perturbation solves and 1,000 lifecycle cycles without post-corpus heap growth, runs in a Chromium module worker, and builds byte-identically after pinning the compilation epoch. Production sketch records and the worker protocol remain Phase 2 implementation work. See [SPK-002 evidence](spikes/spk-002-sketch-solver.md).
+
 ### Deliverables
 
 - Reproducible OCCT/Replicad worker prototype.

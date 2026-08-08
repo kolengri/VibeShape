@@ -78,6 +78,8 @@ Sketches store analytical entities, not sampled polylines:
 
 The solver receives normalized parameters and constraints and returns solved coordinates, degrees of freedom, residuals, and conflicts. The committed document may cache solved state, but changes to solver version always trigger a fresh solve.
 
+ADR-0014 selects the pinned SolveSpace v3.2 subset behind a Zod-validated flat typed-array ABI. Native execution is stateless per solve: parameters, entities, constraints, scalar values, and dragged handles are copied in; solved values, normalized status inputs, residual, and failed constraint handles are copied out. No SolveSpace or C++ pointer is stored in the document or exposed to UI code. Horizontal and vertical dimensions project against immutable sketch axes, concentric constraints share coincident centers, and radius input is converted to the native diameter equation.
+
 ## Sketch profiles
 
 After solving, a separate topology builder:

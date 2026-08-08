@@ -52,6 +52,8 @@ Never use these as the only oracle:
 - Random perturbations and residual thresholds.
 - Deterministic results for the same input and build.
 
+SPK-002 implements this baseline through `bun run solvespace:evidence`: 15 P0 constraint fixtures receive 100 deterministic perturbations each, the canonical dragged line receives 100 larger perturbations, conflicting dimensions return handles, a zero-length line stays finite, 1,000 create/solve/dispose cycles verify the post-corpus heap plateau, and the raw ABI repeats its fixture corpus inside a Chromium module worker. `bun run solvespace:build` and the evidence command reject truthy `CI`; ordinary PR tests exercise only the fast TypeScript adapter with a fake native module.
+
 ## TopoRef matrix
 
 For every reference-heavy fixture:

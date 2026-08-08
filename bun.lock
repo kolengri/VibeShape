@@ -144,6 +144,9 @@
     "packages/sketch-solver": {
       "name": "@vibeshape/sketch-solver",
       "version": "0.0.0",
+      "dependencies": {
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "@vibeshape/typescript-config": "workspace:*",
       },
