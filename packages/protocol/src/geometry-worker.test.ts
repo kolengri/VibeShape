@@ -90,6 +90,7 @@ describe("geometry worker protocol", () => {
       featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
       content: boxContent,
       contentHash: "a".repeat(64),
+      dependencies: [],
       mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
     }
 
@@ -124,6 +125,71 @@ describe("geometry worker protocol", () => {
             ),
           },
         },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("binds dependent evaluation slots to ordered feature hashes", () => {
+    const inputHashes = ["a".repeat(64), "b".repeat(64)]
+    const request = {
+      ...validEnvelope,
+      type: "evaluateFeature",
+      featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3103",
+      content: {
+        ...boxContent,
+        feature: {
+          ...boxContent.feature,
+          type: { ...boxContent.feature.type, typeId: "org.vibeshape.feature.part-design.boolean" },
+          parameters: { operation: "subtract" },
+          inputs: inputHashes,
+        },
+      },
+      contentHash: "c".repeat(64),
+      dependencies: [
+        {
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          contentHash: inputHashes[0],
+        },
+        {
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3102",
+          contentHash: inputHashes[1],
+        },
+      ],
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    }
+
+    expect(geometryWorkerRequestSchema.safeParse(request).success).toBe(true)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        dependencies: [...request.dependencies].reverse(),
+      }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        dependencies: [request.dependencies[0]],
+      }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        dependencies: [
+          request.dependencies[0],
+          {
+            ...request.dependencies[1],
+            featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        dependencies: [
+          { ...request.dependencies[0], featureId: request.featureId },
+          request.dependencies[1],
+        ],
       }).success,
     ).toBe(false)
   })

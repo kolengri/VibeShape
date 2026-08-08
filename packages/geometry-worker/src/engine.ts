@@ -1,4 +1,5 @@
 import {
+  booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   type FeatureContentEnvironment,
@@ -58,17 +59,21 @@ import {
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
 type EvaluateFeatureRequest = Extract<GeometryWorkerRequest, { type: "evaluateFeature" }>
 
-export type PrimitiveFeatureEvaluationInput = Pick<
+export type FeatureEvaluationInput = Pick<
   EvaluateFeatureRequest,
-  "documentId" | "featureId" | "content" | "contentHash" | "mesh"
+  "documentId" | "featureId" | "content" | "contentHash" | "dependencies" | "mesh"
 >
 
-export type PrimitiveFeatureEvaluationResult =
+export type FeatureEvaluationResult =
   | { ok: true; result: FeatureEvaluationEngineResult }
   | {
       ok: false
       diagnostic: Readonly<{
-        code: "unsupported-feature-type" | "invalid-feature-parameters" | "invalid-feature-geometry"
+        code:
+          | "unsupported-feature-type"
+          | "invalid-feature-parameters"
+          | "invalid-feature-geometry"
+          | "missing-feature-dependency"
         message: string
       }>
     }
@@ -80,6 +85,8 @@ const BOX_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.box#1"
 const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
+const BOOLEAN_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
@@ -132,10 +139,10 @@ function createFeatureContentEnvironment(): FeatureContentEnvironment {
   })
 }
 
-function primitiveFailure(
-  code: Extract<PrimitiveFeatureEvaluationResult, { ok: false }>["diagnostic"]["code"],
+function featureFailure(
+  code: Extract<FeatureEvaluationResult, { ok: false }>["diagnostic"]["code"],
   message: string,
-): Extract<PrimitiveFeatureEvaluationResult, { ok: false }> {
+): Extract<FeatureEvaluationResult, { ok: false }> {
   return { ok: false, diagnostic: { code, message } }
 }
 
@@ -367,6 +374,7 @@ function planeSemanticRole(
   ])
 }
 
+type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParametersSchema.parse>
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 
@@ -431,78 +439,118 @@ function cylinderFeatureSemanticRole(
   ])
 }
 
-type ParsedPrimitiveFeature =
+type ParsedFeature =
+  | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
 
-function parsePrimitiveFeature(feature: EvaluateFeatureRequest["content"]["feature"]):
-  | { ok: true; feature: ParsedPrimitiveFeature }
+type FeatureParseResult =
+  | { ok: true; feature: ParsedFeature }
   | {
       ok: false
-      diagnostic: Extract<PrimitiveFeatureEvaluationResult, { ok: false }>["diagnostic"]
-    } {
-  if (feature.inputs.length !== 0 || feature.references.length !== 0) {
-    return primitiveFailure(
+      diagnostic: Extract<FeatureEvaluationResult, { ok: false }>["diagnostic"]
+    }
+
+function invalidInputCardinality(message: string) {
+  return featureFailure("invalid-feature-parameters", message)
+}
+
+function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
+    return invalidInputCardinality("Box features cannot declare dependency inputs.")
+  }
+  const parameters = boxFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Box content parameters are invalid.")
+  }
+  if (
+    !withinFeatureWorkspace([parameters.data.width, parameters.data.depth, parameters.data.height])
+  ) {
+    return featureFailure(
       "invalid-feature-parameters",
-      "Primitive features cannot declare dependency inputs or topology references.",
+      `Box dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+    )
+  }
+  return { ok: true, feature: { kind: "box", parameters: parameters.data } }
+}
+
+function parseCylinderFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
+    return invalidInputCardinality("Cylinder features cannot declare dependency inputs.")
+  }
+  const parameters = cylinderFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Cylinder content parameters are invalid.")
+  }
+  if (!withinFeatureWorkspace([parameters.data.radius, parameters.data.height])) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      `Cylinder dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+    )
+  }
+  return { ok: true, feature: { kind: "cylinder", parameters: parameters.data } }
+}
+
+function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (feature.inputs.length !== 2 || input.dependencies.length !== 2) {
+    return invalidInputCardinality("Boolean subtraction requires two ordered dependency inputs.")
+  }
+  const parameters = booleanFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "boolean", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
+}
+
+const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
+  [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
+  [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
+  [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
+])
+
+function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (feature.references.length !== 0) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "The current feature evaluator does not accept topology references.",
     )
   }
 
   const key = featureTypeKey(feature.type)
-  if (key === BOX_FEATURE_TYPE_KEY) {
-    const parameters = boxFeatureContentParametersSchema.safeParse(feature.parameters)
-    if (!parameters.success) {
-      return primitiveFailure("invalid-feature-parameters", "Box content parameters are invalid.")
-    }
-    if (
-      !withinFeatureWorkspace([
-        parameters.data.width,
-        parameters.data.depth,
-        parameters.data.height,
-      ])
-    ) {
-      return primitiveFailure(
-        "invalid-feature-parameters",
-        `Box dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
-      )
-    }
-    return { ok: true, feature: { kind: "box", parameters: parameters.data } }
-  }
+  const parse = FEATURE_PARSERS.get(key)
+  if (parse) return parse(input)
 
-  if (key === CYLINDER_FEATURE_TYPE_KEY) {
-    const parameters = cylinderFeatureContentParametersSchema.safeParse(feature.parameters)
-    if (!parameters.success) {
-      return primitiveFailure(
-        "invalid-feature-parameters",
-        "Cylinder content parameters are invalid.",
-      )
-    }
-    if (!withinFeatureWorkspace([parameters.data.radius, parameters.data.height])) {
-      return primitiveFailure(
-        "invalid-feature-parameters",
-        `Cylinder dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
-      )
-    }
-    return { ok: true, feature: { kind: "cylinder", parameters: parameters.data } }
-  }
-
-  return primitiveFailure(
+  return featureFailure(
     "unsupported-feature-type",
-    `Feature type ${key} is not supported by the primitive geometry evaluator.`,
+    `Feature type ${key} is not supported by the geometry evaluator.`,
   )
 }
 
-function createPrimitiveShape(opencascade: OpenCascadeInstance, feature: ParsedPrimitiveFeature) {
+function createFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: ParsedFeature,
+  dependencyShapes: readonly Shape3D[],
+) {
   if (feature.kind === "box") {
     const { width, depth, height, centered } = feature.parameters
     return createOcctBox(opencascade, [width, depth, height], centered)
   }
 
-  const { radius, height, centered } = feature.parameters
-  return createOcctCylinder(opencascade, radius, height, [0, 0, centered ? -height / 2 : 0])
+  if (feature.kind === "cylinder") {
+    const { radius, height, centered } = feature.parameters
+    return createOcctCylinder(opencascade, radius, height, [0, 0, centered ? -height / 2 : 0])
+  }
+
+  const [target, tool] = dependencyShapes
+  if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
+  return cutOcctShapes(opencascade, target, tool)
 }
 
-function capturePrimitiveTopology(shape: Shape3D, feature: ParsedPrimitiveFeature) {
+function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
+  if (feature.kind === "boolean") return captureReplicadTopologyCandidates(shape)
   return captureReplicadTopologyCandidates(shape, {
     semanticRole: (context) =>
       feature.kind === "box"
@@ -511,27 +559,27 @@ function capturePrimitiveTopology(shape: Shape3D, feature: ParsedPrimitiveFeatur
   })
 }
 
-function evaluatePrimitiveGeometry(
+function evaluateFeatureGeometry(
   opencascade: OpenCascadeInstance,
   shape: Shape3D,
-  feature: ParsedPrimitiveFeature,
+  feature: ParsedFeature,
 ) {
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
   if (!metrics.valid || metrics.solidCount !== 1 || metrics.volume <= 0) {
-    throw new Error("Primitive evaluation did not produce one valid positive-volume solid.")
+    throw new Error("Feature evaluation did not produce one valid positive-volume solid.")
   }
   return {
     metrics,
-    topologyCandidates: capturePrimitiveTopology(shape, feature),
+    topologyCandidates: captureFeatureTopology(shape, feature),
     evaluationMs: elapsed(startedAt),
   }
 }
 
-function tessellatePrimitiveGeometry(
+function tessellateFeatureGeometry(
   opencascade: OpenCascadeInstance,
   shape: Shape3D,
-  meshPolicy: PrimitiveFeatureEvaluationInput["mesh"],
+  meshPolicy: FeatureEvaluationInput["mesh"],
 ) {
   const startedAt = performance.now()
   const mesh = tessellate(opencascade, shape, {
@@ -541,7 +589,7 @@ function tessellatePrimitiveGeometry(
   return { mesh, tessellationMs: elapsed(startedAt) }
 }
 
-function disposePrimitiveShape(shape: Shape3D | null) {
+function disposeFeatureShape(shape: Shape3D | null) {
   if (!shape) return true
   try {
     shape.delete()
@@ -549,6 +597,29 @@ function disposePrimitiveShape(shape: Shape3D | null) {
   } catch {
     return false
   }
+}
+
+type FeatureShapeSource =
+  | { ok: true; brepHit: true; shape: Shape3D }
+  | { ok: true; brepHit: false; dependencies: Shape3D[] }
+  | Extract<FeatureEvaluationResult, { ok: false }>
+
+function resolveFeatureShapeSource(
+  registry: DocumentFeatureShapeRegistry<Shape3D>,
+  input: FeatureEvaluationInput,
+): FeatureShapeSource {
+  const cached = registry.get(input.documentId, input.featureId, input.contentHash)
+  if (cached) return { ok: true, shape: cached, brepHit: true }
+
+  const dependencies = registry.resolve(input.documentId, input.dependencies)
+  if (!dependencies) {
+    return featureFailure(
+      "missing-feature-dependency",
+      "One or more exact feature dependency shapes are unavailable.",
+    )
+  }
+
+  return { ok: true, dependencies, brepHit: false }
 }
 
 interface TopologyHolePosition {
@@ -662,10 +733,10 @@ export interface GeometryKernelEngine {
   initialize(): Promise<GeometryEngineMetadata>
   isInitialized(): boolean
   getFeatureContentEnvironment(): FeatureContentEnvironment | null
-  evaluatePrimitiveFeature(
-    input: PrimitiveFeatureEvaluationInput,
+  evaluateFeature(
+    input: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
-  ): Promise<PrimitiveFeatureEvaluationResult>
+  ): Promise<FeatureEvaluationResult>
   runKernelSpike(
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
@@ -752,32 +823,35 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     return this.#featureShapes.disposeDocument(documentId)
   }
 
-  async evaluatePrimitiveFeature(
-    input: PrimitiveFeatureEvaluationInput,
+  async evaluateFeature(
+    input: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
-  ): Promise<PrimitiveFeatureEvaluationResult> {
+  ): Promise<FeatureEvaluationResult> {
     const engine = await this.initialize()
     const opencascade = this.#opencascade
     if (!opencascade) {
-      return primitiveFailure("invalid-feature-geometry", "OpenCascade did not initialize.")
+      return featureFailure("invalid-feature-geometry", "OpenCascade did not initialize.")
     }
 
     reportProgress("feature-validation", 0.1)
-    const parsed = parsePrimitiveFeature(input.content.feature)
+    const parsed = parseFeature(input)
     if (!parsed.ok) return parsed
 
     const totalStartedAt = performance.now()
-    const cached = this.#featureShapes.get(input.documentId, input.featureId, input.contentHash)
+    const source = resolveFeatureShapeSource(this.#featureShapes, input)
+    if (!source.ok) return source
     let temporaryShape: Shape3D | null = null
 
     try {
       reportProgress("feature-evaluation", 0.35)
-      const shape = cached ?? createPrimitiveShape(opencascade, parsed.feature)
-      if (!cached) temporaryShape = shape
-      const evaluation = evaluatePrimitiveGeometry(opencascade, shape, parsed.feature)
+      const shape = source.brepHit
+        ? source.shape
+        : createFeatureShape(opencascade, parsed.feature, source.dependencies)
+      if (!source.brepHit) temporaryShape = shape
+      const evaluation = evaluateFeatureGeometry(opencascade, shape, parsed.feature)
 
       reportProgress("feature-tessellation", 0.7)
-      const tessellation = tessellatePrimitiveGeometry(opencascade, shape, input.mesh)
+      const tessellation = tessellateFeatureGeometry(opencascade, shape, input.mesh)
 
       if (temporaryShape) {
         this.#featureShapes.replace(
@@ -797,7 +871,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           shape: evaluation.metrics,
           topologyCandidates: evaluation.topologyCandidates,
           mesh: tessellation.mesh,
-          cache: { brepHit: cached !== undefined },
+          cache: { brepHit: source.brepHit },
           timings: {
             evaluationMs: evaluation.evaluationMs,
             tessellationMs: tessellation.tessellationMs,
@@ -806,12 +880,12 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         },
       }
     } catch {
-      const cleanupSucceeded = disposePrimitiveShape(temporaryShape)
-      return primitiveFailure(
+      const cleanupSucceeded = disposeFeatureShape(temporaryShape)
+      return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded
-          ? "Primitive geometry evaluation failed."
-          : "Primitive geometry evaluation failed and temporary shape cleanup did not complete.",
+          ? "Feature geometry evaluation failed."
+          : "Feature geometry evaluation failed and temporary shape cleanup did not complete.",
       )
     }
   }

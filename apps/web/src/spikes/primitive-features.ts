@@ -1,4 +1,5 @@
 import {
+  booleanFeatureType,
   boxFeatureType,
   computeFeatureContentHash,
   createFeatureTypeRegistry,
@@ -6,8 +7,8 @@ import {
   createModuleRegistry,
   cylinderFeatureType,
   documentCoreModule,
-  featureCoreModule,
   type FeatureId,
+  featureCoreModule,
   featureIdSchema,
   partDesignFeatureTypeHandlers,
   partDesignModule,
@@ -16,19 +17,24 @@ import {
   createGeometryRequestEnvelope,
   createGeometryWorkerClient,
   type GeometryWorkerClient,
+  GeometryWorkerRequestError,
 } from "@vibeshape/geometry-worker/client"
-import { primitiveFeatureContentIdentitySchema } from "@vibeshape/protocol"
+import { featureContentIdentitySchema } from "@vibeshape/protocol"
 
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
 type FeatureResponse = Extract<TerminalResponse, { type: "featureEvaluated" }>
 type HealthResponse = Extract<TerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<TerminalResponse, { type: "documentDisposed" }>
 
-interface PrimitiveFeatureHarnessState {
+interface FeatureEvaluationHarnessState {
   state: "running" | "passed" | "failed"
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
+  boolean: FeatureResponse | null
+  cachedBoolean: FeatureResponse | null
+  invalidBooleanDiagnostic: string | null
+  missingDependencyDiagnostic: string | null
   health: HealthResponse | null
   disposal: DisposalResponse | null
   progress: string[]
@@ -37,19 +43,26 @@ interface PrimitiveFeatureHarnessState {
 
 declare global {
   interface Window {
-    __VIBESHAPE_PRIMITIVE_FEATURES__: PrimitiveFeatureHarnessState
+    __VIBESHAPE_PRIMITIVE_FEATURES__: FeatureEvaluationHarnessState
   }
 }
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const boxFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101")
 const cylinderFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102")
+const booleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103")
+const identicalToolFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104")
+const missingBooleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3105")
 const generation = 1
-const state: PrimitiveFeatureHarnessState = {
+const state: FeatureEvaluationHarnessState = {
   state: "running",
   box: null,
   cachedBox: null,
   cylinder: null,
+  boolean: null,
+  cachedBoolean: null,
+  invalidBooleanDiagnostic: null,
+  missingDependencyDiagnostic: null,
   health: null,
   disposal: null,
   progress: [],
@@ -82,35 +95,51 @@ function featureRegistry() {
   return featureTypes.registry
 }
 
-function feature(kind: "box" | "cylinder", featureId: FeatureId) {
-  return kind === "box"
-    ? {
-        schemaVersion: 0,
-        id: featureId,
-        type: boxFeatureType.type,
-        parameters: {
-          width: createLengthQuantity(2, "cm"),
-          depth: createLengthQuantity(30),
-          height: createLengthQuantity(1, "in"),
-          centered: false,
-        },
-        dependencies: [],
-        references: [],
-        suppressed: false,
-      }
-    : {
-        schemaVersion: 0,
-        id: featureId,
-        type: cylinderFeatureType.type,
-        parameters: {
-          radius: createLengthQuantity(5),
-          height: createLengthQuantity(20),
-          centered: true,
-        },
-        dependencies: [],
-        references: [],
-        suppressed: false,
-      }
+function feature(
+  kind: "boolean" | "box" | "cylinder",
+  featureId: FeatureId,
+  dependencies: readonly FeatureId[],
+) {
+  if (kind === "box") {
+    return {
+      schemaVersion: 0,
+      id: featureId,
+      type: boxFeatureType.type,
+      parameters: {
+        width: createLengthQuantity(2, "cm"),
+        depth: createLengthQuantity(30),
+        height: createLengthQuantity(1, "in"),
+        centered: false,
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+  }
+  if (kind === "cylinder") {
+    return {
+      schemaVersion: 0,
+      id: featureId,
+      type: cylinderFeatureType.type,
+      parameters: {
+        radius: createLengthQuantity(5),
+        height: createLengthQuantity(60),
+        centered: true,
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+  }
+  return {
+    schemaVersion: 0,
+    id: featureId,
+    type: booleanFeatureType.type,
+    parameters: { operation: "subtract" },
+    dependencies,
+    references: [],
+    suppressed: false,
+  }
 }
 
 async function sha256(canonicalPayload: string) {
@@ -120,17 +149,26 @@ async function sha256(canonicalPayload: string) {
 
 async function evaluate(
   client: GeometryWorkerClient,
-  kind: "box" | "cylinder",
+  kind: "boolean" | "box" | "cylinder",
   featureId: FeatureId,
   environment: unknown,
+  dependencies: readonly { featureId: FeatureId; contentHash: string }[] = [],
 ) {
   const content = await computeFeatureContentHash(
     featureRegistry(),
-    { feature: feature(kind, featureId), dependencies: [], environment },
+    {
+      feature: feature(
+        kind,
+        featureId,
+        dependencies.map(({ featureId: dependencyId }) => dependencyId),
+      ),
+      dependencies,
+      environment,
+    },
     sha256,
   )
   if (!content.ok) throw new Error(content.diagnostic.message)
-  const wireContent = primitiveFeatureContentIdentitySchema.parse(content.identity)
+  const wireContent = featureContentIdentitySchema.parse(content.identity)
 
   return expectResponse(
     await client.request(
@@ -140,6 +178,7 @@ async function evaluate(
         featureId,
         content: wireContent,
         contentHash: content.contentHash,
+        dependencies: [...dependencies],
         mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
       },
       {
@@ -150,6 +189,27 @@ async function evaluate(
     ),
     "featureEvaluated",
   )
+}
+
+function featureFailureResponse(error: unknown) {
+  if (!(error instanceof GeometryWorkerRequestError)) return null
+  const response = error.response
+  if (response?.type !== "failure") return null
+  return response
+}
+
+async function expectedEvaluationFailure(
+  operation: () => Promise<FeatureResponse>,
+  unexpectedSuccessMessage: string,
+) {
+  try {
+    await operation()
+    throw new Error(unexpectedSuccessMessage)
+  } catch (error) {
+    const response = featureFailureResponse(error)
+    if (!response) throw error
+    return response.diagnostic.code
+  }
 }
 
 async function run() {
@@ -164,9 +224,46 @@ async function run() {
       "initialized",
     )
     const environment = initialized.engine.featureContentEnvironment
-    state.box = await evaluate(client, "box", boxFeatureId, environment)
+    const box = await evaluate(client, "box", boxFeatureId, environment)
+    state.box = box
     state.cachedBox = await evaluate(client, "box", boxFeatureId, environment)
-    state.cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
+    const cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
+    state.cylinder = cylinder
+    const booleanDependencies = [
+      { featureId: boxFeatureId, contentHash: box.contentHash },
+      { featureId: cylinderFeatureId, contentHash: cylinder.contentHash },
+    ]
+    state.boolean = await evaluate(
+      client,
+      "boolean",
+      booleanFeatureId,
+      environment,
+      booleanDependencies,
+    )
+    const identicalTool = await evaluate(client, "box", identicalToolFeatureId, environment)
+    state.invalidBooleanDiagnostic = await expectedEvaluationFailure(
+      () =>
+        evaluate(client, "boolean", booleanFeatureId, environment, [
+          { featureId: boxFeatureId, contentHash: box.contentHash },
+          { featureId: identicalToolFeatureId, contentHash: identicalTool.contentHash },
+        ]),
+      "Boolean evaluation unexpectedly accepted an empty subtraction result.",
+    )
+    state.cachedBoolean = await evaluate(
+      client,
+      "boolean",
+      booleanFeatureId,
+      environment,
+      booleanDependencies,
+    )
+    state.missingDependencyDiagnostic = await expectedEvaluationFailure(
+      () =>
+        evaluate(client, "boolean", missingBooleanFeatureId, environment, [
+          { featureId: boxFeatureId, contentHash: "d".repeat(64) },
+          { featureId: cylinderFeatureId, contentHash: "e".repeat(64) },
+        ]),
+      "Boolean evaluation unexpectedly accepted unavailable dependency shapes.",
+    )
     state.health = expectResponse(
       await client.request({
         ...createGeometryRequestEnvelope(documentId, generation),

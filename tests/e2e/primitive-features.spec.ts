@@ -5,11 +5,15 @@ type FeatureResponse = Extract<GeometryWorkerResponse, { type: "featureEvaluated
 type HealthResponse = Extract<GeometryWorkerResponse, { type: "health" }>
 type DisposalResponse = Extract<GeometryWorkerResponse, { type: "documentDisposed" }>
 
-interface PrimitiveFeatureHarnessState {
+interface FeatureEvaluationHarnessState {
   state: "running" | "passed" | "failed"
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
+  boolean: FeatureResponse | null
+  cachedBoolean: FeatureResponse | null
+  invalidBooleanDiagnostic: string | null
+  missingDependencyDiagnostic: string | null
   health: HealthResponse | null
   disposal: DisposalResponse | null
   progress: string[]
@@ -42,7 +46,7 @@ function expectMesh(result: FeatureResponse) {
   expect(result.mesh.triangleFaceIds.length).toBe(result.mesh.indices.length / 3)
 }
 
-test("evaluates and caches canonical box and cylinder features in the geometry worker", async ({
+test("evaluates and caches canonical primitive and Boolean features in the geometry worker", async ({
   page,
 }) => {
   await page.goto("/spikes/primitive-features.html")
@@ -51,13 +55,15 @@ test("evaluates and caches canonical box and cylinder features in the geometry w
   await expect(status).not.toHaveAttribute("data-state", "running", { timeout: 120_000 })
   await expect(status).toHaveAttribute("data-state", "passed")
 
-  const state = await page.evaluate<PrimitiveFeatureHarnessState>(() =>
+  const state = await page.evaluate<FeatureEvaluationHarnessState>(() =>
     Reflect.get(globalThis, "__VIBESHAPE_PRIMITIVE_FEATURES__"),
   )
   expect(state.error).toBeNull()
   const box = requireResult(state.box)
   const cachedBox = requireResult(state.cachedBox)
   const cylinder = requireResult(state.cylinder)
+  const boolean = requireResult(state.boolean)
+  const cachedBoolean = requireResult(state.cachedBoolean)
 
   expect(box.cache.brepHit).toBe(false)
   expect(cachedBox.cache.brepHit).toBe(true)
@@ -81,8 +87,8 @@ test("evaluates and caches canonical box and cylinder features in the geometry w
   expect(cylinder.cache.brepHit).toBe(false)
   expect(cylinder.shape.valid).toBe(true)
   expect(cylinder.shape.solidCount).toBe(1)
-  expect(cylinder.shape.volume).toBeCloseTo(Math.PI * 5 ** 2 * 20, 5)
-  expectBounds(cylinder.shape.bounds, { min: [-5, -5, -10], max: [5, 5, 10] })
+  expect(cylinder.shape.volume).toBeCloseTo(Math.PI * 5 ** 2 * 60, 5)
+  expectBounds(cylinder.shape.bounds, { min: [-5, -5, -30], max: [5, 5, 30] })
   expect(cylinder.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? [])).toEqual(
     expect.arrayContaining([
       "primitive.cylinder.cap.start",
@@ -92,14 +98,33 @@ test("evaluates and caches canonical box and cylinder features in the geometry w
   )
   expectMesh(cylinder)
 
-  expect(state.progress).toEqual(
-    Array.from({ length: 3 }).flatMap(() => [
+  expect(boolean.cache.brepHit).toBe(false)
+  expect(cachedBoolean.cache.brepHit).toBe(true)
+  expect(cachedBoolean.contentHash).toBe(boolean.contentHash)
+  expect(boolean.shape.valid).toBe(true)
+  expect(boolean.shape.solidCount).toBe(1)
+  expect(boolean.shape.volume).toBeCloseTo(20 * 30 * 25.4 - Math.PI * 5 ** 2 * 25.4, 5)
+  expectBounds(boolean.shape.bounds, { min: [-10, -15, 0], max: [10, 15, 25.4] })
+  expect(boolean.topologyCandidates.length).toBeGreaterThan(0)
+  expectMesh(boolean)
+  expect(state.invalidBooleanDiagnostic).toBe("invalid-feature-geometry")
+  expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
+
+  expect(state.progress).toEqual([
+    ...Array.from({ length: 5 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
       "complete",
     ]),
-  )
-  expect(state.health).toMatchObject({ ownedShapeCount: 2, activeDocuments: 1 })
+    "feature-validation",
+    "feature-evaluation",
+    "feature-validation",
+    "feature-evaluation",
+    "feature-tessellation",
+    "complete",
+    "feature-validation",
+  ])
+  expect(state.health).toMatchObject({ ownedShapeCount: 4, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

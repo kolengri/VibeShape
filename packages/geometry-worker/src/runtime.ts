@@ -8,7 +8,7 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   serializeFeatureContentEnvironment,
-  serializePrimitiveFeatureContentIdentity,
+  serializeFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import type { GeometryKernelEngine } from "./engine"
@@ -234,7 +234,7 @@ export class GeometryWorkerRuntime {
 
     let currentStage: GeometryProgressStage | null = "feature-validation"
     this.#activeDocuments.add(request.documentId)
-    const result = await this.engine.evaluatePrimitiveFeature(request, (stage, fraction) => {
+    const result = await this.engine.evaluateFeature(request, (stage, fraction) => {
       currentStage = stage
       this.#postProgress(request, stage, fraction)
     })
@@ -279,7 +279,7 @@ export class GeometryWorkerRuntime {
       return false
     }
 
-    const actualHash = await sha256Text(serializePrimitiveFeatureContentIdentity(request.content))
+    const actualHash = await sha256Text(serializeFeatureContentIdentity(request.content))
     if (actualHash === request.contentHash) return true
 
     this.#postFailure(

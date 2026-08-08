@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 6 as const
+export const GEOMETRY_PROTOCOL_VERSION = 7 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -43,6 +43,10 @@ export const cylinderFeatureContentParametersSchema = z
     height: cadLengthSchema,
     centered: z.boolean(),
   })
+  .strict()
+
+export const booleanFeatureContentParametersSchema = z
+  .object({ operation: z.literal("subtract") })
   .strict()
 
 const normalizedBuildVersionSchema = z
@@ -96,7 +100,7 @@ const featureTypeSchema = z
   })
   .strict()
 
-const primitiveContentParametersSchema = z
+const featureContentParametersSchema = z
   .record(z.string().min(1).max(128), z.json())
   .refine(
     (parameters) => Object.keys(parameters).length <= 16,
@@ -107,15 +111,15 @@ const primitiveContentParametersSchema = z
     "Primitive content parameters exceed the encoded-size limit.",
   )
 
-export const primitiveFeatureContentIdentitySchema = z
+export const featureContentIdentitySchema = z
   .object({
     schemaVersion: z.literal(0),
     feature: z
       .object({
         schemaVersion: z.literal(0),
         type: featureTypeSchema,
-        parameters: primitiveContentParametersSchema,
-        inputs: z.tuple([]),
+        parameters: featureContentParametersSchema,
+        inputs: z.array(sha256Schema).max(8),
         references: z.tuple([]),
       })
       .strict(),
@@ -141,8 +145,8 @@ export function serializeFeatureContentEnvironment(input: unknown) {
   return canonicalJson(featureContentEnvironmentSchema.parse(input))
 }
 
-export function serializePrimitiveFeatureContentIdentity(input: unknown) {
-  return canonicalJson(primitiveFeatureContentIdentitySchema.parse(input))
+export function serializeFeatureContentIdentity(input: unknown) {
+  return canonicalJson(featureContentIdentitySchema.parse(input))
 }
 
 export const featureMeshPolicySchema = z
@@ -335,13 +339,54 @@ const runTopologySpikeRequestSchema = requestEnvelopeSchema.extend({
   parameters: topologySpikeParametersSchema,
 })
 
-const evaluateFeatureRequestSchema = requestEnvelopeSchema.extend({
-  type: z.literal("evaluateFeature"),
-  featureId: featureIdSchema,
-  content: primitiveFeatureContentIdentitySchema,
-  contentHash: sha256Schema,
-  mesh: featureMeshPolicySchema,
-})
+export const featureEvaluationDependencySchema = z
+  .object({ featureId: featureIdSchema, contentHash: sha256Schema })
+  .strict()
+
+const evaluateFeatureRequestSchema = requestEnvelopeSchema
+  .extend({
+    type: z.literal("evaluateFeature"),
+    featureId: featureIdSchema,
+    content: featureContentIdentitySchema,
+    contentHash: sha256Schema,
+    dependencies: z.array(featureEvaluationDependencySchema).max(8),
+    mesh: featureMeshPolicySchema,
+  })
+  .superRefine((request, context) => {
+    if (request.dependencies.length !== request.content.feature.inputs.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies"],
+        message: "Evaluation dependencies must match the canonical input slots.",
+      })
+      return
+    }
+    const featureIds = new Set<string>()
+    for (const [index, dependency] of request.dependencies.entries()) {
+      if (dependency.contentHash !== request.content.feature.inputs[index]) {
+        context.addIssue({
+          code: "custom",
+          path: ["dependencies", index, "contentHash"],
+          message: "Evaluation dependency hashes must preserve canonical input order.",
+        })
+      }
+      if (featureIds.has(dependency.featureId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["dependencies", index, "featureId"],
+          message: "Evaluation dependency feature IDs must be unique.",
+        })
+      }
+      if (dependency.featureId === request.featureId) {
+        context.addIssue({
+          code: "custom",
+          path: ["dependencies", index, "featureId"],
+          message: "A feature cannot evaluate from its own prior shape.",
+        })
+      }
+      featureIds.add(dependency.featureId)
+    }
+  })
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({
   type: z.literal("healthCheck"),
@@ -632,6 +677,7 @@ export const geometryDiagnosticCodeSchema = z.enum([
   "unsupported-feature-type",
   "invalid-feature-parameters",
   "invalid-feature-geometry",
+  "missing-feature-dependency",
   "cancelled",
   "stale-generation",
   "internal-error",
@@ -666,6 +712,8 @@ export type KernelSpikeParameters = z.infer<typeof kernelSpikeParametersSchema>
 export type TopologySpikeParameters = z.infer<typeof topologySpikeParametersSchema>
 export type FeatureMeshPolicy = z.infer<typeof featureMeshPolicySchema>
 export type FeatureContentEnvironment = z.infer<typeof featureContentEnvironmentSchema>
+export type FeatureContentIdentity = z.infer<typeof featureContentIdentitySchema>
+export type FeatureEvaluationDependency = z.infer<typeof featureEvaluationDependencySchema>
 export type GeometryWorkerRequest = z.infer<typeof geometryWorkerRequestSchema>
 export type GeometryWorkerResponse = z.infer<typeof geometryWorkerResponseSchema>
 export type GeometryRequestEnvelope = Pick<

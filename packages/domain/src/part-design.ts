@@ -46,6 +46,12 @@ export const cylinderFeatureContentParametersSchema = z
   })
   .strict()
 
+export const booleanFeatureParametersSchema = z
+  .object({ operation: z.literal("subtract") })
+  .strict()
+
+export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
+
 export const boxFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -69,6 +75,19 @@ export const cylinderFeatureType = featureTypeDescriptorSchema.parse({
   },
   classification: "solid",
   dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export const booleanFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.boolean",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 2, max: 2 },
   references: { min: 0, max: 0 },
 })
 
@@ -96,6 +115,13 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         height: cylinder.height.value,
         centered: cylinder.centered,
       })
+    },
+  },
+  {
+    type: booleanFeatureType.type,
+    parametersSchema: booleanFeatureParametersSchema,
+    contentParameters(parameters) {
+      return booleanFeatureContentParametersSchema.parse(parameters)
     },
   },
 ]

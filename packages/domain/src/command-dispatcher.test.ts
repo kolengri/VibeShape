@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
-  createCoreCommandHandlers,
   createCommandDispatcher,
+  createCoreCommandHandlers,
   documentCoreCommandHandlers,
   type TrustedCommandHandler,
 } from "./command-dispatcher"
@@ -229,8 +229,8 @@ describe("trusted command dispatcher", () => {
 
   it("rejects a feature whose trusted semantic content projection fails", () => {
     const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
-    const [boxHandler, cylinderHandler] = partDesignFeatureTypeHandlers
-    if (!modules.ok || !boxHandler || !cylinderHandler) {
+    const [boxHandler, cylinderHandler, booleanHandler] = partDesignFeatureTypeHandlers
+    if (!modules.ok || !boxHandler || !cylinderHandler || !booleanHandler) {
       throw new Error("The part design command composition fixture is invalid.")
     }
     const featureTypes = createFeatureTypeRegistry(modules.registry, [
@@ -241,6 +241,7 @@ describe("trusted command dispatcher", () => {
         },
       },
       cylinderHandler,
+      booleanHandler,
     ])
     if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
     const composed = createCommandDispatcher(
