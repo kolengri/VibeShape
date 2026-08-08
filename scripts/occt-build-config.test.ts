@@ -16,6 +16,25 @@ describe("controlled OCCT build config", () => {
     expect(CONTROLLED_OCCT_SOURCE_REVISION).toBe(OCCT_BUILD_INPUTS.sources.occt.revision)
   })
 
+  it("pins every source-builder input and the registry comparison baseline", () => {
+    expect(OCCT_BUILD_INPUTS.sourceBuilder.emscriptenImage).toMatch(
+      /^emscripten\/emsdk@sha256:[a-f0-9]{64}$/,
+    )
+    expect(OCCT_BUILD_INPUTS.sourceBuilder.pythonPackages).toEqual([
+      "argparse==1.4.0",
+      "cerberus==1.3.4",
+      "libclang==15.0.6.1",
+      "pyyaml==6.0",
+    ])
+    expect(OCCT_BUILD_INPUTS.sources.rapidjson.sha256).toHaveLength(64)
+    expect(OCCT_BUILD_INPUTS.sources.freetype.sha256).toHaveLength(64)
+    expect(Object.keys(OCCT_BUILD_INPUTS.sourceBuilder.registryBaselineOutputs)).toEqual([
+      "vibeshape_occt.js",
+      "vibeshape_occt.wasm",
+      "vibeshape_occt.d.ts",
+    ])
+  })
+
   it("adds allocator and native lifecycle instrumentation without changing unrelated bindings", () => {
     const result = instrumentReplicadBuildConfig(minimalUpstreamConfig)
 

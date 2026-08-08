@@ -7,13 +7,16 @@ import {
   stageControlledBuildPackage,
 } from "./occt-build-artifacts"
 import { instrumentReplicadBuildConfig, OCCT_BUILD_INPUTS } from "./occt-build-config"
+import { prepareOcctBuilderContext } from "./occt-builder-context"
 
 const repositoryRoot = resolve(import.meta.dir, "..")
 const artifactRoot = join(repositoryRoot, ".artifacts", "occt-build")
 const sourceDirectory = join(artifactRoot, "sources")
 const inputDirectory = join(artifactRoot, "input")
 const packageDirectory = join(artifactRoot, "package")
+const builderContextDirectory = join(artifactRoot, "builder-context")
 const buildConfigPath = join(inputDirectory, `${OCCT_BUILD_INPUTS.outputBaseName}.yml`)
+const builderDockerfilePath = join(repositoryRoot, "native", "occt", "Dockerfile.builder")
 
 function assertSourceChecksum(path: string, expected: string, url: string) {
   const digest = sha256(path)
@@ -155,12 +158,24 @@ async function main() {
   mkdirSync(inputDirectory, { recursive: true })
 
   const sourceDownloads = {
+    freetype: downloadVerifiedSource(OCCT_BUILD_INPUTS.sources.freetype),
     opencascadeJs: downloadVerifiedSource(OCCT_BUILD_INPUTS.sources.opencascadeJs),
     occt: downloadVerifiedSource(OCCT_BUILD_INPUTS.sources.occt),
+    rapidjson: downloadVerifiedSource(OCCT_BUILD_INPUTS.sources.rapidjson),
     replicad: downloadVerifiedSource(OCCT_BUILD_INPUTS.sources.replicad),
   }
   await Promise.all(Object.values(sourceDownloads))
   const replicadArchive = await sourceDownloads.replicad
+  prepareOcctBuilderContext({
+    contextDirectory: builderContextDirectory,
+    dockerfilePath: builderDockerfilePath,
+    sourceArchives: {
+      freetype: await sourceDownloads.freetype,
+      occt: await sourceDownloads.occt,
+      opencascadeJs: await sourceDownloads.opencascadeJs,
+      rapidjson: await sourceDownloads.rapidjson,
+    },
+  })
 
   const upstreamConfig = readReplicadBuildConfig(replicadArchive)
   writeFileSync(buildConfigPath, instrumentReplicadBuildConfig(upstreamConfig))

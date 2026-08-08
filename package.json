@@ -53,6 +53,7 @@
     "skills:validate": "bun run scripts/validate-agent-skills.ts",
     "occt:prepare": "bun run scripts/prepare-occt-build.ts",
     "occt:build": "bun run scripts/prepare-occt-build.ts --build",
+    "occt:build:source": "bun run occt:prepare && bun run scripts/build-occt-source-builder.ts",
     "fallow": "fallow",
     "fallow:audit": "fallow audit",
     "fallow:health": "fallow health --score",

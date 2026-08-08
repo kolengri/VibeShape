@@ -22,6 +22,10 @@ on:
       - "scripts/occt-build-artifacts.ts"
       - "scripts/occt-build-config.test.ts"
       - "scripts/occt-build-config.ts"
+      - "scripts/occt-builder-context.test.ts"
+      - "scripts/occt-builder-context.ts"
+      - "scripts/build-occt-source-builder.test.ts"
+      - "scripts/build-occt-source-builder.ts"
       - "scripts/prepare-occt-build.ts"
       - "tests/e2e/geometry-worker.spec.ts"
 
@@ -50,10 +54,10 @@ jobs:
         run: bun ci
 
       - name: Test controlled-build tooling
-        run: bunx vitest run scripts/occt-build-artifacts.test.ts scripts/occt-build-config.test.ts
+        run: bunx vitest run scripts/occt-build-artifacts.test.ts scripts/occt-build-config.test.ts scripts/occt-builder-context.test.ts scripts/build-occt-source-builder.test.ts
 
-      - name: Build controlled OCCT artifact
-        run: bun run occt:build
+      - name: Build source-reproduced and patched OCCT artifact
+        run: bun run occt:build:source
 
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
@@ -83,6 +87,8 @@ jobs:
           name: controlled-occt-evidence
           path: |
             .artifacts/occt-build/build-report.json
+            .artifacts/occt-build/source-builder-baseline-report.json
+            .artifacts/occt-build/builder-context/manifest.json
             .artifacts/occt-build/geometry-worker-evidence-*.json
             .artifacts/occt-build/input/vibeshape_occt.d.ts
             .artifacts/occt-build/input/vibeshape_occt.js
