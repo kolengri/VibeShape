@@ -13,6 +13,10 @@ export const domainDiagnosticCodeSchema = z.enum([
   "feature-already-exists",
   "feature-not-found",
   "invalid-feature-graph",
+  "feature-type-unavailable",
+  "invalid-feature-parameters",
+  "invalid-feature-dependency-count",
+  "invalid-feature-reference-count",
 ])
 
 const domainDiagnosticSchema = z

@@ -4,8 +4,11 @@ import {
   type DocumentCommandOptions,
   type DocumentCommandResult,
   type DomainDiagnostic,
+  parseDocumentCommand,
 } from "./commands"
 import type { DocumentSnapshot } from "./document"
+import { featureTypeKey } from "./feature-type-contracts"
+import type { FeatureTypeRegistry, FeatureValidationDiagnostic } from "./feature-type-registry"
 import { technicalIdentifierSchema } from "./identifiers"
 import {
   type CommandDescriptor,
@@ -25,6 +28,7 @@ export type TrustedCommandHandler = Readonly<{
   kind: CommandDescriptor["kind"]
   schemaVersion: CommandDescriptor["schemaVersion"]
   ownerModuleId: CommandDescriptor["ownerModuleId"]
+  featureTypeKeys?: readonly string[]
   execute: (
     snapshot: DocumentSnapshot | null,
     input: unknown,
@@ -41,6 +45,7 @@ export type CommandDispatcherDiagnosticCode =
   | "orphan-command-handler"
   | "command-handler-owner-mismatch"
   | "command-handler-version-mismatch"
+  | "command-handler-feature-types-mismatch"
 
 export type CommandDispatcherDiagnostic = Readonly<{
   code: CommandDispatcherDiagnosticCode
@@ -85,6 +90,7 @@ function invalidRouteDiagnostic(error: z.ZodError): CommandDispatcherDiagnostic 
 }
 
 function validateHandlerDescriptor(
+  moduleRegistry: ModuleRegistry,
   descriptor: CommandDescriptor,
   handler: TrustedCommandHandler,
 ): CommandDispatcherDiagnostic | null {
@@ -95,12 +101,27 @@ function validateHandlerDescriptor(
     )
   }
 
-  return handler.schemaVersion === descriptor.schemaVersion
-    ? null
-    : dispatcherDiagnostic(
-        "command-handler-version-mismatch",
-        `Command handler ${handler.kind} does not implement schema version ${descriptor.schemaVersion}.`,
+  if (handler.schemaVersion !== descriptor.schemaVersion) {
+    return dispatcherDiagnostic(
+      "command-handler-version-mismatch",
+      `Command handler ${handler.kind} does not implement schema version ${descriptor.schemaVersion}.`,
+    )
+  }
+
+  if (handler.featureTypeKeys) {
+    const registered = moduleRegistry.featureTypes.map(({ type }) => featureTypeKey(type))
+    if (
+      handler.featureTypeKeys.length !== registered.length ||
+      handler.featureTypeKeys.some((key, index) => key !== registered[index])
+    ) {
+      return dispatcherDiagnostic(
+        "command-handler-feature-types-mismatch",
+        `Command handler ${handler.kind} uses a different feature type composition.`,
       )
+    }
+  }
+
+  return null
 }
 
 function indexCommandHandlers(
@@ -132,7 +153,7 @@ function indexCommandHandlers(
       } as const
     }
 
-    const diagnostic = validateHandlerDescriptor(descriptor, handler)
+    const diagnostic = validateHandlerDescriptor(moduleRegistry, descriptor, handler)
 
     if (diagnostic) {
       return { ok: false, diagnostic } as const
@@ -227,28 +248,92 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
   },
 ]
 
-export const featureCoreCommandHandlers: readonly TrustedCommandHandler[] = [
-  {
-    kind: "org.vibeshape.feature.add",
-    schemaVersion: 1,
-    ownerModuleId: featureCoreModule.id,
-    execute: applyDocumentCommand,
-  },
-  {
-    kind: "org.vibeshape.feature.set-suppressed",
-    schemaVersion: 1,
-    ownerModuleId: featureCoreModule.id,
-    execute: applyDocumentCommand,
-  },
-  {
-    kind: "org.vibeshape.feature.update",
-    schemaVersion: 1,
-    ownerModuleId: featureCoreModule.id,
-    execute: applyDocumentCommand,
-  },
-]
+function featureValidationResult(diagnostic: FeatureValidationDiagnostic): DocumentCommandResult {
+  return {
+    ok: false,
+    diagnostic: {
+      code: diagnostic.code === "invalid-feature" ? "invalid-command" : diagnostic.code,
+      message: diagnostic.message,
+      retryable: false,
+      issues: diagnostic.issues.slice(0, 8),
+    },
+  }
+}
 
-export const coreCommandHandlers: readonly TrustedCommandHandler[] = [
-  ...documentCoreCommandHandlers,
-  ...featureCoreCommandHandlers,
-]
+function executeFeatureCommand(
+  featureTypes: FeatureTypeRegistry,
+  snapshot: DocumentSnapshot | null,
+  input: unknown,
+  options: DocumentCommandOptions,
+): DocumentCommandResult {
+  const parsed = parseDocumentCommand(input)
+
+  if (!parsed.ok) return parsed
+  if (
+    parsed.command.kind === "org.vibeshape.document.create" ||
+    parsed.command.kind === "org.vibeshape.document.rename"
+  ) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-command",
+        message: "The feature handler received a document command.",
+        retryable: false,
+        issues: [],
+      },
+    }
+  }
+  if (parsed.command.kind === "org.vibeshape.feature.set-suppressed") {
+    return applyDocumentCommand(snapshot, parsed.command, options)
+  }
+
+  const preflight = applyDocumentCommand(snapshot, parsed.command, options)
+  if (!preflight.ok) return preflight
+
+  const validated = featureTypes.validateFeature(parsed.command.payload.feature)
+  if (!validated.ok) return featureValidationResult(validated.diagnostic)
+
+  return applyDocumentCommand(
+    snapshot,
+    { ...parsed.command, payload: { feature: validated.feature } },
+    options,
+  )
+}
+
+export function createFeatureCoreCommandHandlers(
+  featureTypes: FeatureTypeRegistry,
+): readonly TrustedCommandHandler[] {
+  const execute: TrustedCommandHandler["execute"] = (snapshot, input, options = {}) =>
+    executeFeatureCommand(featureTypes, snapshot, input, options)
+  const featureTypeKeys = featureTypes.descriptors.map(({ type }) => featureTypeKey(type))
+
+  return [
+    {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      ownerModuleId: featureCoreModule.id,
+      featureTypeKeys,
+      execute,
+    },
+    {
+      kind: "org.vibeshape.feature.set-suppressed",
+      schemaVersion: 1,
+      ownerModuleId: featureCoreModule.id,
+      featureTypeKeys,
+      execute,
+    },
+    {
+      kind: "org.vibeshape.feature.update",
+      schemaVersion: 1,
+      ownerModuleId: featureCoreModule.id,
+      featureTypeKeys,
+      execute,
+    },
+  ]
+}
+
+export function createCoreCommandHandlers(
+  featureTypes: FeatureTypeRegistry,
+): readonly TrustedCommandHandler[] {
+  return [...documentCoreCommandHandlers, ...createFeatureCoreCommandHandlers(featureTypes)]
+}
