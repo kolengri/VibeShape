@@ -12,6 +12,7 @@ function createUuidV7Schema<Name extends string>(name: Name) {
 export const commandIdSchema = createUuidV7Schema("CommandId")
 export const documentIdSchema = createUuidV7Schema("DocumentId")
 export const draftIdSchema = createUuidV7Schema("DraftId")
+export const featureIdSchema = createUuidV7Schema("FeatureId")
 export const sessionIdSchema = createUuidV7Schema("SessionId")
 
 export const technicalIdentifierSchema = z
@@ -31,5 +32,6 @@ export const timestampSchema = z.iso.datetime({ offset: true })
 export type CommandId = z.infer<typeof commandIdSchema>
 export type DocumentId = z.infer<typeof documentIdSchema>
 export type DraftId = z.infer<typeof draftIdSchema>
+export type FeatureId = z.infer<typeof featureIdSchema>
 export type ModuleId = z.infer<typeof moduleIdSchema>
 export type SessionId = z.infer<typeof sessionIdSchema>

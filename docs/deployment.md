@@ -63,7 +63,7 @@ A release MAY include:
 - SBOM and OCCT/SolveSpace source bundles;
 - Windows, macOS, and Linux instructions.
 
-Heavy OCCT and SolveSpace source builds, native evidence, and corresponding-source bundle generation run on reviewed local hardware, not the ordinary GitHub pull-request workflow. SolveSpace build and evidence entry points fail when a truthy `CI` environment is present. A release consumes locally generated archives only after their verification and records manifests and checksums with the release evidence.
+Heavy OCCT and SolveSpace source builds, native evidence, stable topology evidence, and corresponding-source bundle generation run on reviewed local hardware, not the ordinary GitHub pull-request workflow. Their dedicated entry points fail when a truthy `CI` environment is present. A release consumes locally generated archives only after their verification and records manifests and checksums with the release evidence.
 
 The launcher does not access projects and does not expose a backend API without a separate requirement. Browser launch and auto-update are packaging details, not CAD architecture.
 

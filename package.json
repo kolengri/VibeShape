@@ -64,6 +64,7 @@
     "solvespace:build": "bun run scripts/prepare-solvespace-build.ts --build",
     "solvespace:evidence": "bun run scripts/run-solvespace-evidence.ts && bun run scripts/run-solvespace-browser-evidence.ts",
     "solvespace:bundle:compliance": "bun run scripts/create-solvespace-compliance-bundle.ts",
+    "topology:evidence": "bun run scripts/run-topology-evidence.ts",
     "fallow": "fallow",
     "fallow:audit": "fallow audit",
     "fallow:health": "fallow health --score",

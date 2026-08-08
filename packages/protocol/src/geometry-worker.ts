@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 4 as const
+export const GEOMETRY_PROTOCOL_VERSION = 5 as const
 
 const finiteNumberSchema = z.number().finite()
 const cadLengthSchema = finiteNumberSchema.min(0.001).max(100_000)
@@ -9,7 +9,66 @@ const meshToleranceSchema = finiteNumberSchema.min(0.001).max(10)
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe()
 const identifierSchema = z.string().trim().min(1).max(128)
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
+const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
+
+function isNormalized(vector: readonly number[]) {
+  return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
+}
+
+export const topologyKindSchema = z.enum(["vertex", "edge", "face"])
+export const topologySignatureSchema = z
+  .object({
+    kind: topologyKindSchema,
+    geometryClass: z.string().min(1).max(64),
+    measure: finiteNumberSchema.nonnegative(),
+    centroid: vector3Schema,
+    bounds: z.object({ min: vector3Schema, max: vector3Schema }).strict(),
+    direction: vector3Schema.optional(),
+    directionMode: z.enum(["oriented", "axis"]).optional(),
+    boundaryCount: nonNegativeIntegerSchema,
+    adjacentGeometryClasses: z.array(z.string().min(1).max(64)).max(256),
+  })
+  .strict()
+  .superRefine((signature, context) => {
+    const hasDirection = signature.direction !== undefined
+    if (hasDirection !== (signature.directionMode !== undefined)) {
+      context.addIssue({
+        code: "custom",
+        message: "Topology direction and direction mode must be provided together.",
+      })
+    }
+    if (signature.direction && !isNormalized(signature.direction)) {
+      context.addIssue({
+        code: "custom",
+        message: "Topology directions must be normalized.",
+        path: ["direction"],
+      })
+    }
+    for (let axis = 0; axis < 3; axis += 1) {
+      if ((signature.bounds.min[axis] as number) > (signature.bounds.max[axis] as number)) {
+        context.addIssue({
+          code: "custom",
+          message: "Topology signature bounds must be ordered.",
+          path: ["bounds"],
+        })
+        break
+      }
+    }
+  })
+export const topologyCandidateSchema = z
+  .object({
+    candidateId: identifierSchema,
+    kind: topologyKindSchema,
+    semanticRole: z.string().min(1).max(256).optional(),
+    lineageTokens: z.array(z.string().min(1).max(256)).max(256),
+    signature: topologySignatureSchema,
+  })
+  .strict()
+  .refine((candidate) => candidate.kind === candidate.signature.kind, {
+    message: "Topology candidate kind must match its signature kind.",
+    path: ["signature", "kind"],
+  })
 
 export const geometryLifecycleOperationSchema = z.enum([
   "box",
@@ -60,6 +119,68 @@ export const kernelSpikeParametersSchema = z
     }
   })
 
+const topologySpikeParametersBaseSchema = z
+  .object({
+    boxSize: positiveVector3Schema,
+    holeCount: z.number().int().min(0).max(3),
+    holeRadius: cadLengthSchema,
+    holeSpacing: cadLengthSchema,
+    holeCenter: vector2Schema,
+    filletRadius: cadLengthSchema.nullable(),
+  })
+  .strict()
+
+type TopologySpikeParameterValues = z.infer<typeof topologySpikeParametersBaseSchema>
+
+function topologyHolesFitProfile(parameters: TopologySpikeParameterValues) {
+  const [length, width] = parameters.boxSize
+  const [centerX, centerY] = parameters.holeCenter
+  const maximumHoleOffset = parameters.holeCount < 2 ? 0 : parameters.holeSpacing
+  return (
+    Math.abs(centerX) + maximumHoleOffset + parameters.holeRadius < length / 2 &&
+    Math.abs(centerY) + parameters.holeRadius < width / 2
+  )
+}
+
+function topologyHolesOverlap(parameters: TopologySpikeParameterValues) {
+  if (parameters.holeCount === 2) return parameters.holeSpacing <= parameters.holeRadius
+  if (parameters.holeCount === 3) return parameters.holeSpacing <= parameters.holeRadius * 2
+  return false
+}
+
+function topologyFilletFits(parameters: TopologySpikeParameterValues) {
+  return (
+    parameters.filletRadius === null ||
+    parameters.filletRadius < Math.min(...parameters.boxSize) / 2
+  )
+}
+
+export const topologySpikeParametersSchema = topologySpikeParametersBaseSchema.superRefine(
+  (parameters, context) => {
+    if (!topologyHolesFitProfile(parameters)) {
+      context.addIssue({
+        code: "custom",
+        message: "Topology spike holes must remain strictly inside the base profile.",
+        path: ["holeCenter"],
+      })
+    }
+    if (topologyHolesOverlap(parameters)) {
+      context.addIssue({
+        code: "custom",
+        message: "Topology spike pattern holes must not overlap.",
+        path: ["holeSpacing"],
+      })
+    }
+    if (!topologyFilletFits(parameters)) {
+      context.addIssue({
+        code: "custom",
+        message: "Topology spike fillet radius is too large for the base box.",
+        path: ["filletRadius"],
+      })
+    }
+  },
+)
+
 const initializeEngineRequestSchema = requestEnvelopeSchema.extend({
   type: z.literal("initializeEngine"),
 })
@@ -67,6 +188,11 @@ const initializeEngineRequestSchema = requestEnvelopeSchema.extend({
 const runKernelSpikeRequestSchema = requestEnvelopeSchema.extend({
   type: z.literal("runKernelSpike"),
   parameters: kernelSpikeParametersSchema,
+})
+
+const runTopologySpikeRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("runTopologySpike"),
+  parameters: topologySpikeParametersSchema,
 })
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({
@@ -85,6 +211,7 @@ const cancelRequestSchema = requestEnvelopeSchema.extend({
 export const geometryWorkerRequestSchema = z.discriminatedUnion("type", [
   initializeEngineRequestSchema,
   runKernelSpikeRequestSchema,
+  runTopologySpikeRequestSchema,
   healthCheckRequestSchema,
   disposeDocumentRequestSchema,
   cancelRequestSchema,
@@ -284,11 +411,19 @@ const kernelSpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   engine: engineMetadataSchema,
   shape: shapeMetricsSchema,
   history: operationHistorySchema,
+  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
   mesh: meshPayloadSchema,
   exchange: exchangeMetricsSchema,
   lifecycle: lifecycleSchema,
   memory: memoryProfileSchema,
   timings: timingSchema,
+})
+
+const topologySpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
+  type: z.literal("topologySpikeCompleted"),
+  engine: engineMetadataSchema,
+  shape: shapeMetricsSchema,
+  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
 })
 
 const healthResponseSchema = responseEnvelopeSchema.extend({
@@ -342,6 +477,7 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
   initializedResponseSchema,
   progressResponseSchema,
   kernelSpikeCompletedResponseSchema,
+  topologySpikeCompletedResponseSchema,
   healthResponseSchema,
   documentDisposedResponseSchema,
   cancellationAcceptedResponseSchema,
@@ -350,6 +486,7 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
 ])
 
 export type KernelSpikeParameters = z.infer<typeof kernelSpikeParametersSchema>
+export type TopologySpikeParameters = z.infer<typeof topologySpikeParametersSchema>
 export type GeometryWorkerRequest = z.infer<typeof geometryWorkerRequestSchema>
 export type GeometryWorkerResponse = z.infer<typeof geometryWorkerResponseSchema>
 export type GeometryRequestEnvelope = Pick<
@@ -361,6 +498,8 @@ export type GeometryProgressStage = z.infer<typeof geometryProgressStageSchema>
 export type GeometryMemoryStage = z.infer<typeof geometryMemoryStageSchema>
 export type GeometryLifecycleOperation = z.infer<typeof geometryLifecycleOperationSchema>
 export type GeometryDiagnosticCode = z.infer<typeof geometryDiagnosticCodeSchema>
+export type TopologyCandidate = z.infer<typeof topologyCandidateSchema>
+export type TopologySignature = z.infer<typeof topologySignatureSchema>
 export type GeometryEngineMetadata = Extract<
   GeometryWorkerResponse,
   { type: "initialized" }
@@ -371,5 +510,17 @@ export type KernelSpikeCompletedResponse = Extract<
 >
 export type KernelSpikeEngineResult = Pick<
   KernelSpikeCompletedResponse,
-  "engine" | "shape" | "history" | "mesh" | "exchange" | "lifecycle" | "memory" | "timings"
+  | "engine"
+  | "shape"
+  | "history"
+  | "topologyCandidates"
+  | "mesh"
+  | "exchange"
+  | "lifecycle"
+  | "memory"
+  | "timings"
+>
+export type TopologySpikeEngineResult = Pick<
+  Extract<GeometryWorkerResponse, { type: "topologySpikeCompleted" }>,
+  "engine" | "shape" | "topologyCandidates"
 >

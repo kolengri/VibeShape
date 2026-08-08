@@ -5,6 +5,8 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
+  topologySignatureSchema,
+  topologySpikeParametersSchema,
 } from "./geometry-worker"
 
 const validEnvelope = {
@@ -46,6 +48,43 @@ describe("geometry worker protocol", () => {
     })
 
     expect(parsed.type).toBe("runKernelSpike")
+  })
+
+  it("accepts bounded topology parameters and rejects invalid pattern geometry", () => {
+    const parameters = {
+      boxSize: [60, 40, 20],
+      holeCount: 2,
+      holeRadius: 6,
+      holeSpacing: 10,
+      holeCenter: [0, 0],
+      filletRadius: 1.5,
+    }
+
+    expect(topologySpikeParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      topologySpikeParametersSchema.safeParse({ ...parameters, holeCenter: [25, 0] }).success,
+    ).toBe(false)
+    expect(
+      topologySpikeParametersSchema.safeParse({
+        ...parameters,
+        holeCount: 3,
+        holeSpacing: 10,
+      }).success,
+    ).toBe(false)
+  })
+
+  it("rejects unordered topology signature bounds at the worker boundary", () => {
+    expect(
+      topologySignatureSchema.safeParse({
+        kind: "face",
+        geometryClass: "PLANE",
+        measure: 1,
+        centroid: [0, 0, 0],
+        bounds: { min: [1, 0, 0], max: [0, 1, 1] },
+        boundaryCount: 4,
+        adjacentGeometryClasses: [],
+      }).success,
+    ).toBe(false)
   })
 
   it("defaults an omitted lifecycle operation to the existing boolean-cut fixture", () => {
@@ -153,6 +192,25 @@ describe("geometry worker protocol", () => {
           faces: historyStats,
         },
       },
+      topologyCandidates: [
+        {
+          candidateId: "face:0",
+          kind: "face",
+          semanticRole: "base-extrude.cap.end",
+          lineageTokens: [],
+          signature: {
+            kind: "face",
+            geometryClass: "PLANE",
+            measure: 1,
+            centroid: [0.5, 0.5, 1],
+            bounds: { min: [0, 0, 1], max: [1, 1, 1] },
+            direction: [0, 0, 1],
+            directionMode: "oriented",
+            boundaryCount: 4,
+            adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+          },
+        },
+      ],
       mesh: {
         positions: new Float32Array([0, 0, 0]),
         normals: new Float32Array([0, 0, 1]),

@@ -12,7 +12,8 @@
     "./document": "./src/document.ts",
     "./drafts": "./src/drafts.ts",
     "./identifiers": "./src/identifiers.ts",
-    "./modules": "./src/modules.ts"
+    "./modules": "./src/modules.ts",
+    "./topology": "./src/topology.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

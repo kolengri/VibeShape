@@ -9,7 +9,7 @@
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Extension architecture](architecture/extensions.md), [automation and MCP](architecture/automation-and-mcp.md), and [data model/native format](architecture/data-model-and-file-format.md).
-8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), and [testing strategy](testing-strategy.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
 ## Requirement levels
@@ -47,14 +47,15 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 is **Pass — Phase 0 stop/go gate cleared**. Its controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. Headless FreeCAD 1.1.3 imports the exact browser STEP output as one valid solid with matching volume and bounds. The controlled artifact remains quarantined until the production facade and extended corpus are reviewed. SPK-003 still owns the stable `TopoRef` algorithm and ambiguity policy.
+SPK-001 is **Pass — Phase 0 stop/go gate cleared**. Its controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. Headless FreeCAD 1.1.3 imports the exact browser STEP output as one valid solid with matching volume and bounds. The controlled artifact remains quarantined until the production facade and extended corpus are reviewed.
 
 SPK-002 is **Pass — solver selection gate cleared**. The project source-builds the pinned SolveSpace v3.2 subset behind a flat typed-array ABI, covers every P0 constraint primitive, classifies fully, under-, and over-constrained systems with a conflict set, completes 1,600 perturbation solves and 1,000 lifecycle cycles, runs in a Chromium module worker, and produces byte-identical outputs across consecutive clean builds. Generated binaries remain quarantined until the production sketch worker consumes an exact reviewed build.
+
+SPK-003 is **Pass — stable-reference algorithm gate cleared**. Protocol v5 carries semantic roles, durable face-lineage tokens, and geometry signatures without native handles or persistent transient hashes. The local Chromium corpus rebuilds 12 boolean, fillet, pattern, suppression, restoration, and symmetry scenarios with zero false confident matches. Production feature-DAG integration, repair events, persistence, and broader property-based models remain implementation work rather than unresolved algorithm selection.
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
 - Production sketch records, worker protocol, drag branch-continuation policy, and large-sketch budgets on the accepted SolveSpace boundary.
-- `TopoRef` matching algorithm and thresholds.
 - 3MF implementation: a minimal project-owned writer or an adapted library.
 - Real startup, memory, rebuild, and storage budgets.
 - Extension sandbox runtime, package schema, capability contract, and cross-browser resource budgets.
