@@ -16,6 +16,7 @@
 | Internationalization | `use-intl` | Typed ICU messages and formatting without a Next.js or backend dependency |
 | Runtime schemas | Zod | Worker-message, file, and migration validation |
 | Runtime kind guards | `is-what` | Small tree-shakable predicates inside validated boundaries without duplicating schema logic |
+| 3MF ZIP writer | Project-owned Core profile with `fflate` | Deterministic browser-compatible archives without a native format runtime |
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
 | Icons | Lucide React | Consistent low-noise icon set for tools, trees, and actions |
@@ -47,6 +48,7 @@ Verified against the npm registry on **2026-08-07**, with `is-what` reviewed on 
 | `dexie` | 4.4.4 | Apache-2.0 |
 | `zod` | 4.4.3 | MIT |
 | `is-what` | 5.5.0 | MIT |
+| `fflate` | 0.8.3 | MIT |
 | `tailwindcss` | 4.3.3 | MIT |
 | `@tailwindcss/vite` | 4.3.3 | MIT |
 | `shadcn` CLI | 4.16.2 | MIT |
@@ -243,7 +245,7 @@ If the spike fails, alternatives are:
 
 - STEP is read and written by the geometry worker through OCCT data exchange.
 - Binary STL is generated from controlled tessellation; ASCII import is optional.
-- The 3MF writer follows the Core specification and conformance samples or uses an adapted library. Official lib3mf lists native/Node bindings, but browser integration requires a spike.
+- The accepted 3MF path is a project-owned Core writer with `fflate` for deterministic browser-compatible ZIP output. SPK-004 verifies the fixture through PrusaSlicer and the Orca/Bambu family; production work must connect print-quality tessellation and export UX without widening the Core profile silently.
 - `.vshape` is a project-owned versioned ZIP container.
 
 ## UI toolkit

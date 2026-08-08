@@ -28,6 +28,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vibeshape/geometry-worker": "workspace:*",
+    "@vibeshape/formats": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
     "@vibeshape/test-models": "workspace:*",
     "@vibeshape/typescript-config": "workspace:*",

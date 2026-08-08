@@ -124,6 +124,8 @@ Proceed only with zero silent wrong matches in the required corpus and explainab
 
 ## SPK-004 — STEP, STL, and 3MF
 
+**Result: Pass for the minimal 3MF gate.** The project-owned Core writer produces deterministic millimeter archives, enforces strict mesh and resource invariants, and passes local XML plus independent PrusaSlicer and Orca/Bambu consumption with matching facet, manifold, and volume metrics. SPK-001 already covers browser STEP and STL output. Production tessellation orchestration, hostile import, and broader format corpora remain follow-up work. See [SPK-004 evidence](spikes/spk-004-3mf.md).
+
 ### Question
 
 Can fully local exports interoperate reliably?
