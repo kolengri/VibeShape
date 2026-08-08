@@ -83,18 +83,19 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 `@vibeshape/domain` currently implements a deliberately narrow versioned slice:
 
 - strict runtime schemas for document, command, draft, actor, event, module, and command-descriptor boundaries;
-- `org.vibeshape.document.create` and `org.vibeshape.document.rename` command schema version 1;
-- deterministic created and renamed events, canonical snapshots, and event replay;
+- `org.vibeshape.document.create`, `org.vibeshape.document.rename`, `org.vibeshape.feature.add`, `org.vibeshape.feature.update`, and `org.vibeshape.feature.set-suppressed` command schema version 1;
+- deterministic document and feature events, canonical snapshots, and event replay with prior feature state recorded for tamper detection and future inverse generation;
 - safe non-negative revision preconditions, explicit stale-revision diagnostics, and revision-exhaustion rejection;
 - actor-bound disposable drafts whose commands share one transaction ID and commit only against the original base revision;
-- a first-party `org.vibeshape.core.document` module descriptor and deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
+- first-party `org.vibeshape.core.document` and `org.vibeshape.core.features` module descriptors plus deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
 - an executable trusted-command dispatcher that requires exactly one handler per descriptor and validates command route, owner, and schema-version parity before execution;
 - strict feature schema v0 records with stable type ownership, bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and presentation order;
 - deterministic feature-graph construction with duplicate, missing-dependency, self-reference, undeclared-reference, and cycle rejection;
+- atomic feature collection mutations that validate the complete resulting DAG before advancing the document revision and never retain partial state after rejection;
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.
 
-The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. This slice does not yet compute content hashes, mutate feature records through document commands/events, integrate OCCT results, persist evaluation state, implement autosave, undo/redo, units, geometry preview, draft expiry, extension execution, or the `.vshape` codec. Its schemas remain internal contracts until their Phase 1 persistence and geometry integration gates stabilize them.
+The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. The generic feature commands preserve presentation order and unknown schema-valid feature records, but they are trusted kernel seams rather than a public extension or MCP tool surface; module-specific eligibility, parameter migration, and confirmation policy remain required. This slice does not yet compute authoritative content hashes, integrate OCCT results, persist evaluation results, implement autosave, feature deletion, undo/redo, units, geometry preview, extension execution, or the `.vshape` codec. Its schemas remain internal contracts until their Phase 1 persistence and geometry integration gates stabilize them.
 
 ## Units and expressions
 

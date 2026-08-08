@@ -424,6 +424,27 @@ export function createFeatureGraph(inputs: readonly unknown[]): FeatureGraphResu
   return { ok: true, graph }
 }
 
+export const featureRecordsSchema = z
+  .array(featureRecordSchema)
+  .max(MAX_FEATURES)
+  .superRefine((features, context) => {
+    const result = createFeatureGraph(features)
+
+    if (result.ok) return
+
+    context.addIssue({
+      code: "custom",
+      message: result.diagnostic.message,
+    })
+    for (const issue of result.diagnostic.issues.slice(0, 8)) {
+      context.addIssue({
+        code: "custom",
+        path: issue.path.split(".").filter(Boolean),
+        message: issue.message,
+      })
+    }
+  })
+
 function evaluationDiagnostic(
   code: FeatureEvaluationDiagnostic["code"],
   message: string,

@@ -1,12 +1,13 @@
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
-import {
-  createCommandDispatcher,
-  documentCoreCommandHandlers,
-} from "@vibeshape/domain/command-dispatcher"
+import { coreCommandHandlers, createCommandDispatcher } from "@vibeshape/domain/command-dispatcher"
 import { applyDocumentCommand, commandActorSchema } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { commitDocumentDraft, type DraftCommit } from "@vibeshape/domain/drafts"
-import { createModuleRegistry, documentCoreModule } from "@vibeshape/domain/modules"
+import {
+  createModuleRegistry,
+  documentCoreModule,
+  featureCoreModule,
+} from "@vibeshape/domain/modules"
 import { describe, expect, it } from "vitest"
 import { type AutomationDocumentPort, type AutomationHost, createAutomationHost } from "./host"
 
@@ -61,16 +62,13 @@ function createdSnapshot(name = "Enclosure") {
 }
 
 function dispatchers() {
-  const registryResult = createModuleRegistry([documentCoreModule])
+  const registryResult = createModuleRegistry([documentCoreModule, featureCoreModule])
 
   if (!registryResult.ok) {
     throw new Error(registryResult.diagnostic.message)
   }
 
-  const commandResult = createCommandDispatcher(
-    registryResult.registry,
-    documentCoreCommandHandlers,
-  )
+  const commandResult = createCommandDispatcher(registryResult.registry, coreCommandHandlers)
   const queryResult = createQueryDispatcher(registryResult.registry, documentCoreQueryHandlers)
 
   if (!commandResult.ok) {
@@ -231,6 +229,52 @@ describe("automation draft host", () => {
     expect(await host.commitDraft(actor, operationRequest())).toMatchObject({
       ok: false,
       diagnostic: { code: "draft-not-found" },
+    })
+  })
+
+  it("applies a feature command through the ordinary isolated automation draft", async () => {
+    const store = documentStore(createdSnapshot())
+    const host = automationHost(store.port)
+
+    await host.createDraft(actor, createRequest(1))
+    const applied = await host.applyCommand(
+      actor,
+      applyRequest({
+        kind: "org.vibeshape.feature.add",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b21b-7a2c-9c33-67a36a7f21ac",
+        documentId,
+        baseRevision: 1,
+        issuedAt: "2026-08-08T12:00:01Z",
+        actor,
+        payload: {
+          feature: {
+            schemaVersion: 0,
+            id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+            type: {
+              moduleId: "org.vibeshape.core.part-design",
+              moduleVersion: "0.1.0",
+              typeId: "org.vibeshape.feature.test",
+              schemaVersion: 1,
+            },
+            parameters: { length: 10 },
+            dependencies: [],
+            references: [],
+            suppressed: false,
+          },
+        },
+      }),
+    )
+
+    expect(applied).toMatchObject({ ok: true, value: { revision: 2, commandCount: 1 } })
+    expect(store.snapshot()?.features).toEqual([])
+    expect(await host.commitDraft(actor, operationRequest())).toMatchObject({
+      ok: true,
+      value: { baseRevision: 1, revision: 2, commandCount: 1 },
+    })
+    expect(store.snapshot()).toMatchObject({
+      revision: 2,
+      features: [{ id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101" }],
     })
   })
 

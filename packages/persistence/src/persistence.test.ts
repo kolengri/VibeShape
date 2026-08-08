@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import {
   decideUpdateActivation,
   selectSaveAsMethod,
@@ -95,6 +96,62 @@ describe("persistence contracts", () => {
           createdAt: timestamp,
           updatedAt: timestamp,
         },
+      }).success,
+    ).toBe(true)
+  })
+
+  it("accepts a replayable feature revision through the ordinary commit envelope", () => {
+    const created = applyDocumentCommand(null, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId,
+      documentId,
+      baseRevision: 0,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+      payload: { name: "Bracket" },
+    })
+
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21af",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T00:01:00Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          type: {
+            moduleId: "org.vibeshape.core.part-design",
+            moduleVersion: "0.1.0",
+            typeId: "org.vibeshape.feature.test",
+            schemaVersion: 1,
+          },
+          parameters: { length: 10 },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+
+    expect(added.ok).toBe(true)
+    if (!added.ok) return
+
+    expect(
+      persistenceCommitInputSchema.safeParse({
+        sessionId,
+        lease: { epoch: 1, nowMs: 0 },
+        storedAt: added.snapshot.updatedAt,
+        baseSnapshot: created.snapshot,
+        event: added.event,
+        snapshot: added.snapshot,
       }).success,
     ).toBe(true)
   })

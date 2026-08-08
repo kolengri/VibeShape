@@ -130,6 +130,54 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
   ],
 })
 
+export const featureCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse({
+  id: "org.vibeshape.core.features",
+  version: "0.1.0",
+  dependencies: [documentCoreModule.id],
+  commands: [
+    {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.features",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: true,
+      },
+    },
+    {
+      kind: "org.vibeshape.feature.set-suppressed",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.features",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
+      kind: "org.vibeshape.feature.update",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.features",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: true,
+      },
+    },
+  ],
+  queries: [],
+})
+
 function registryFailure(
   code: ModuleRegistryDiagnostic["code"],
   message: string,
