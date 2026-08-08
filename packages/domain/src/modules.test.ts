@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { boxFeatureType } from "./part-design"
 import {
   createModuleRegistry,
   documentCoreModule,
   featureCoreModule,
   partDesignModule,
 } from "./modules"
+import { booleanFeatureType, boxFeatureType } from "./part-design"
 
 function moduleDescriptor(
   id: string,
@@ -91,7 +91,9 @@ describe("module registry", () => {
     if (result.ok) {
       expect(result.registry.getModule(partDesignModule.id)).toEqual(partDesignModule)
       expect(result.registry.getFeatureType(boxFeatureType.type)).toEqual(boxFeatureType)
+      expect(result.registry.getFeatureType(booleanFeatureType.type)).toEqual(booleanFeatureType)
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
+        "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
         "org.vibeshape.feature.part-design.cylinder",
       ])

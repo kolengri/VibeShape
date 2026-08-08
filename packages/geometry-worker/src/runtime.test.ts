@@ -9,15 +9,15 @@ import {
   geometryWorkerRequestSchema,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
+  serializeFeatureContentIdentity,
   type TopologySpikeParameters,
-  serializePrimitiveFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
 import { describe, expect, it } from "vitest"
 import type {
+  FeatureEvaluationInput,
+  FeatureEvaluationResult,
   GeometryKernelEngine,
-  PrimitiveFeatureEvaluationInput,
-  PrimitiveFeatureEvaluationResult,
 } from "./engine"
 import { type GeometryWorkerEndpoint, GeometryWorkerRuntime } from "./runtime"
 
@@ -146,7 +146,7 @@ class FakeEngine implements GeometryKernelEngine {
   runCount = 0
   featureRunCount = 0
   disposalError: Error | null = null
-  featureFailure: Extract<PrimitiveFeatureEvaluationResult, { ok: false }> | null = null
+  featureFailure: Extract<FeatureEvaluationResult, { ok: false }> | null = null
 
   async initialize() {
     this.initialized = true
@@ -161,10 +161,10 @@ class FakeEngine implements GeometryKernelEngine {
     return this.initialized ? featureContentEnvironment : null
   }
 
-  async evaluatePrimitiveFeature(
-    _input: PrimitiveFeatureEvaluationInput,
+  async evaluateFeature(
+    _input: FeatureEvaluationInput,
     reportProgress: (stage: GeometryProgressStage, fraction: number) => void,
-  ): Promise<PrimitiveFeatureEvaluationResult> {
+  ): Promise<FeatureEvaluationResult> {
     this.featureRunCount += 1
     reportProgress("feature-validation", 0.1)
     if (this.featureFailure) return this.featureFailure
@@ -283,8 +283,8 @@ async function createFeatureRunRequest(
     type: "evaluateFeature",
     featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
     content,
-    contentHash:
-      options.contentHash ?? (await sha256(serializePrimitiveFeatureContentIdentity(content))),
+    contentHash: options.contentHash ?? (await sha256(serializeFeatureContentIdentity(content))),
+    dependencies: [],
     mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
   })
 }

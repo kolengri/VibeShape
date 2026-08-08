@@ -62,6 +62,19 @@ export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShap
     return entry?.contentHash === contentHash ? entry.shape : undefined
   }
 
+  resolve(
+    documentId: string,
+    dependencies: readonly { featureId: string; contentHash: string }[],
+  ): Shape[] | null {
+    const shapes: Shape[] = []
+    for (const dependency of dependencies) {
+      const shape = this.get(documentId, dependency.featureId, dependency.contentHash)
+      if (!shape) return null
+      shapes.push(shape)
+    }
+    return shapes
+  }
+
   replace(documentId: string, featureId: string, contentHash: string, shape: Shape) {
     const features = this.#documents.get(documentId) ?? new Map()
     const previous = features.get(featureId)

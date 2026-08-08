@@ -1,20 +1,20 @@
-import { z } from "zod"
 import { describe, expect, it, vi } from "vitest"
+import { z } from "zod"
 import {
   computeFeatureContentHash,
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
 } from "./feature-content-identity"
+import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import { createFeatureTypeRegistry, type FeatureTypeRegistry } from "./feature-type-registry"
-import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import {
   createModuleRegistry,
   documentCoreModule,
   featureCoreModule,
   partDesignModule,
 } from "./modules"
-import { boxFeatureType, partDesignFeatureTypeHandlers } from "./part-design"
+import { booleanFeatureType, boxFeatureType, partDesignFeatureTypeHandlers } from "./part-design"
 import { topoRefSchema } from "./topology"
 import { createLengthQuantity } from "./units"
 
@@ -78,6 +78,18 @@ function boxFeature(
     references: [],
     suppressed: false,
     ...values,
+  })
+}
+
+function booleanFeature(id: string, dependencies: [string, string]) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id,
+    type: booleanFeatureType.type,
+    parameters: { operation: "subtract" },
+    dependencies,
+    references: [],
+    suppressed: false,
   })
 }
 
@@ -209,6 +221,26 @@ describe("feature content identity", () => {
     expect(first.identity.feature.references[0]).toMatchObject({ inputIndex: 1 })
     expect(first.canonicalPayload).not.toContain(featureIds.a)
     expect(first.canonicalPayload).not.toContain(featureIds.b)
+  })
+
+  it("creates first-party Boolean content from two ordered dependency hashes", () => {
+    const result = identity(
+      partDesignRegistry(),
+      booleanFeature(featureIds.e, [featureIds.a, featureIds.b]),
+      [
+        { featureId: featureIds.b, contentHash: "b".repeat(64) },
+        { featureId: featureIds.a, contentHash: "a".repeat(64) },
+      ],
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.identity.feature).toMatchObject({
+      type: booleanFeatureType.type,
+      parameters: { operation: "subtract" },
+      inputs: ["a".repeat(64), "b".repeat(64)],
+      references: [],
+    })
   })
 
   it("changes identity for semantic parameters, input order, runtime, and extension integrity", () => {

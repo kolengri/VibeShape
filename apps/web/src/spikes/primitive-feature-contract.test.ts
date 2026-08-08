@@ -1,4 +1,5 @@
 import {
+  booleanFeatureType,
   boxFeatureType,
   createFeatureContentIdentity,
   createFeatureTypeRegistry,
@@ -11,9 +12,9 @@ import {
   serializeFeatureContentEnvironment as serializeDomainEnvironment,
 } from "@vibeshape/domain"
 import {
-  primitiveFeatureContentIdentitySchema,
+  featureContentIdentitySchema,
+  serializeFeatureContentIdentity,
   serializeFeatureContentEnvironment as serializeProtocolEnvironment,
-  serializePrimitiveFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 
@@ -62,11 +63,46 @@ describe("primitive feature protocol composition", () => {
 
     expect(content.ok).toBe(true)
     if (!content.ok) return
-    const wireContent = primitiveFeatureContentIdentitySchema.parse(content.identity)
+    const wireContent = featureContentIdentitySchema.parse(content.identity)
 
-    expect(serializePrimitiveFeatureContentIdentity(wireContent)).toBe(content.canonicalPayload)
+    expect(serializeFeatureContentIdentity(wireContent)).toBe(content.canonicalPayload)
     expect(serializeProtocolEnvironment(wireContent.environment)).toBe(
       serializeDomainEnvironment(content.identity.environment),
     )
+  })
+
+  it("preserves ordered Boolean input hashes outside the dependency-free protocol package", () => {
+    const content = createFeatureContentIdentity(registry(), {
+      feature: {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f3103",
+        type: booleanFeatureType.type,
+        parameters: { operation: "subtract" },
+        dependencies: [
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3102",
+        ],
+        references: [],
+        suppressed: false,
+      },
+      dependencies: [
+        {
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3102",
+          contentHash: "b".repeat(64),
+        },
+        {
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          contentHash: "a".repeat(64),
+        },
+      ],
+      environment,
+    })
+
+    expect(content.ok).toBe(true)
+    if (!content.ok) return
+    const wireContent = featureContentIdentitySchema.parse(content.identity)
+
+    expect(wireContent.feature.inputs).toEqual(["a".repeat(64), "b".repeat(64)])
+    expect(serializeFeatureContentIdentity(wireContent)).toBe(content.canonicalPayload)
   })
 })

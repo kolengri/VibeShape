@@ -1,8 +1,8 @@
-import { z } from "zod"
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
+import { type FeatureRecord, featureRecordSchema, featureTypeSchema } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import { createFeatureTypeRegistry, type TrustedFeatureTypeHandler } from "./feature-type-registry"
-import { type FeatureRecord, featureRecordSchema, featureTypeSchema } from "./feature-graph"
 import { featureIdSchema } from "./identifiers"
 import {
   createModuleRegistry,
@@ -11,6 +11,7 @@ import {
   partDesignModule,
 } from "./modules"
 import {
+  booleanFeatureType,
   boxFeatureParametersSchema,
   boxFeatureType,
   cylinderFeatureType,
@@ -21,6 +22,8 @@ import { createLengthQuantity } from "./units"
 const featureIds = {
   box: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101"),
   dependency: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
+  tool: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
+  boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104"),
 } as const
 
 function modules() {
@@ -55,6 +58,18 @@ function boxParameters() {
   }
 }
 
+function booleanFeature(dependencies = [featureIds.dependency, featureIds.tool]) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: featureIds.boolean,
+    type: booleanFeatureType.type,
+    parameters: { operation: "subtract" },
+    dependencies,
+    references: [],
+    suppressed: false,
+  })
+}
+
 function registry(handlers: readonly TrustedFeatureTypeHandler[] = partDesignFeatureTypeHandlers) {
   return createFeatureTypeRegistry(modules(), handlers)
 }
@@ -80,6 +95,7 @@ describe("feature type registry", () => {
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
       expect(result.registry.descriptors.map(({ type }) => type.typeId)).toEqual([
+        booleanFeatureType.type.typeId,
         boxFeatureType.type.typeId,
         cylinderFeatureType.type.typeId,
       ])
@@ -105,6 +121,23 @@ describe("feature type registry", () => {
         feature(boxParameters(), { dependencies: [featureIds.dependency] }),
       ),
     ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-dependency-count" },
+    })
+  })
+
+  it("validates Boolean subtraction as an ordered two-input feature", () => {
+    const result = registry()
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.registry.validateFeature(booleanFeature())).toMatchObject({
+      ok: true,
+      descriptor: booleanFeatureType,
+      contentParameters: { operation: "subtract" },
+    })
+    expect(result.registry.validateFeature(booleanFeature([featureIds.dependency]))).toMatchObject({
       ok: false,
       diagnostic: { code: "invalid-feature-dependency-count" },
     })
@@ -178,15 +211,16 @@ describe("feature type registry", () => {
   it("contains trusted schema transforms that return non-JSON parameter objects", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    if (!boxHandler || !cylinderHandler) {
-      throw new Error("The part design fixture must expose both handlers.")
+    const booleanHandler = partDesignFeatureTypeHandlers[2]
+    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+      throw new Error("The part design fixture must expose every handler.")
     }
 
     const malformed: TrustedFeatureTypeHandler = {
       ...boxHandler,
       parametersSchema: boxFeatureParametersSchema.transform(() => new Date(0)),
     }
-    const result = registry([malformed, cylinderHandler])
+    const result = registry([malformed, cylinderHandler, booleanHandler])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -200,8 +234,9 @@ describe("feature type registry", () => {
   it("contains trusted parameter normalizer exceptions as stable diagnostics", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    if (!boxHandler || !cylinderHandler) {
-      throw new Error("The part design fixture must expose both handlers.")
+    const booleanHandler = partDesignFeatureTypeHandlers[2]
+    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+      throw new Error("The part design fixture must expose every handler.")
     }
 
     const throwing: TrustedFeatureTypeHandler = {
@@ -210,7 +245,7 @@ describe("feature type registry", () => {
         throw new Error("fixture detail")
       }),
     }
-    const result = registry([throwing, cylinderHandler])
+    const result = registry([throwing, cylinderHandler, booleanHandler])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -226,14 +261,15 @@ describe("feature type registry", () => {
   })
 
   it("contains invalid and throwing content normalizers as stable diagnostics", () => {
-    const [boxHandler, cylinderHandler] = partDesignFeatureTypeHandlers
-    if (!boxHandler || !cylinderHandler) {
-      throw new Error("The part design fixture must expose both handlers.")
+    const [boxHandler, cylinderHandler, booleanHandler] = partDesignFeatureTypeHandlers
+    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+      throw new Error("The part design fixture must expose every handler.")
     }
 
     const invalid = registry([
       { ...boxHandler, contentParameters: () => new Date(0) },
       cylinderHandler,
+      booleanHandler,
     ])
     expect(invalid.ok).toBe(true)
     if (invalid.ok) {
@@ -251,6 +287,7 @@ describe("feature type registry", () => {
         },
       },
       cylinderHandler,
+      booleanHandler,
     ])
     expect(throwing.ok).toBe(true)
     if (throwing.ok) {

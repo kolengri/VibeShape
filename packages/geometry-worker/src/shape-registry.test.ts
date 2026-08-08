@@ -89,6 +89,27 @@ describe("DocumentFeatureShapeRegistry", () => {
     expect(registry.get("document-b", "feature-b", "b".repeat(64))).toBe(second)
   })
 
+  it("resolves ordered exact-hash dependencies within one document", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const first = new TrackedShape("first", [])
+    const second = new TrackedShape("second", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), first)
+    registry.replace("document-a", "feature-b", "b".repeat(64), second)
+
+    expect(
+      registry.resolve("document-a", [
+        { featureId: "feature-b", contentHash: "b".repeat(64) },
+        { featureId: "feature-a", contentHash: "a".repeat(64) },
+      ]),
+    ).toEqual([second, first])
+    expect(
+      registry.resolve("document-a", [{ featureId: "feature-a", contentHash: "c".repeat(64) }]),
+    ).toBeNull()
+    expect(
+      registry.resolve("document-b", [{ featureId: "feature-a", contentHash: "a".repeat(64) }]),
+    ).toBeNull()
+  })
+
   it("keeps failed document disposal visible for recovery", () => {
     const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
     registry.replace(
