@@ -144,6 +144,10 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 - The first failure blocks only dependent descendants; independent bodies remain available.
 - The last valid result may be shown as a ghost, but MUST be visibly marked stale and excluded from export by default.
 
+`@vibeshape/domain/feature-graph` now implements the pure scheduling boundary. Feature schema v0 binds a stable feature and type identity to bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and optional normalized labels. Graph creation preserves presentation order separately from a deterministic stable topological order and fails closed on invalid records, duplicates, missing dependencies, self-dependencies, undeclared reference owners, and cycles.
+
+The injected evaluator receives only the current immutable feature record, ordered dependency results, and its previous result. Missing cache records and explicit edits mark transitive descendants dirty; independent successful or failed results are reused. A failed or suppressed feature blocks only its dependent branch, while independent branches continue. Thrown and malformed evaluator results become stable diagnostics rather than leaking implementation details. This is a domain seam: content-hash computation, OCCT transactions, cancellation, stale-geometry retention, persistence, and repair events remain production integration work.
+
 ## Tessellation
 
 Each body has at least two levels of detail:

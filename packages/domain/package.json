@@ -11,6 +11,7 @@
     "./commands": "./src/commands.ts",
     "./document": "./src/document.ts",
     "./drafts": "./src/drafts.ts",
+    "./feature-graph": "./src/feature-graph.ts",
     "./identifiers": "./src/identifiers.ts",
     "./modules": "./src/modules.ts",
     "./topology": "./src/topology.ts"

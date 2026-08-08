@@ -49,6 +49,8 @@ SPK-006 records **Proceed with reduced scope**. Immutable exact-integrity packag
 
 ## Phase 1 — foundation vertical slice (3–5 weeks)
 
+The first production-oriented domain slice now implements feature schema v0, deterministic graph validation and ordering, transitive rebuild planning, independent cache reuse, conservative suppression, and dependent-only failure propagation. It remains geometry- and persistence-neutral; document commands/events, content hashing, worker execution, save/reopen, cancellation, and undo integration are the next gates.
+
 ### Scope
 
 - Bun workspaces monorepo, pinned Bun and `bun.lock`, strict TypeScript, Biome, Fallow changed-code auditing, and `bun ci`.
