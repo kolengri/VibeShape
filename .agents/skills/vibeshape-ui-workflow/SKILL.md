@@ -23,6 +23,7 @@ Use current library documentation through Context7 before changing shadcn, Radix
 - Keep feature-specific composition in `apps/web`.
 - Keep React and UI state out of `packages/domain`, worker protocols, geometry adapters, persistence, and file-format packages.
 - Prefer explicit package subpath exports over a large root barrel.
+- Keep source-owned primitives in `components/`; organize each form integration as one directory with root contexts, `fields/`, form-owned `components/`, and a single public entry point.
 
 ## Implement in This Order
 
@@ -44,6 +45,7 @@ Use current library documentation through Context7 before changing shadcn, Radix
 - Keep errors, retry, cancellation, persistence, and idempotency in the owning form or command; a Button owns only activation and pending presentation.
 - Base inputs preserve native `defaultValue`, `defaultChecked`, ref, name, focus, and keyboard behavior without importing TanStack Form.
 - TanStack field and submit adapters live behind the explicit UI integration export and reuse base components without duplicating markup or styles.
+- Put shared label, description, error, loading, and field-layout markup in state-agnostic `Field` compositions. Adapters bind state only.
 - Test the base uncontrolled component first, then value binding, validation, dirty/submitting policy, and repeat submission through the adapter.
 
 ## Localization
@@ -63,6 +65,8 @@ Use current library documentation through Context7 before changing shadcn, Radix
 - Use the single `cn` export from `@vibeshape/ui` for conditionals, variants, or caller `className` overrides.
 - Do not concatenate Tailwind class strings or add another `cn` implementation.
 - Use static classes that Tailwind can discover; arbitrary values are reserved for computed viewport geometry.
+- Keep primitive styles colocated with the owning TSX component and theme tokens in shared CSS. Do not move ordinary component utilities into ad hoc CSS selectors.
+- Split long static utility sets into readable groups by base layout, interaction, accessibility, and theme state. Do not store a complete component contract in one opaque class string.
 - Add only required shadcn primitives and review generated source and dependency changes.
 - Never run `shadcn add --all` or blindly overwrite modified components.
 

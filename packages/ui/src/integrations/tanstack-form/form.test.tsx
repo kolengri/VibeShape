@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { useAppForm } from "./tanstack-form"
+import { Form, useAppForm } from "./index"
 
 function deferred<T>() {
   let resolve: (value: T | PromiseLike<T>) => void = () => undefined
@@ -28,20 +28,12 @@ function FormHarness({ onSubmit }: { onSubmit: (value: FormValue) => Promise<voi
   })
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        void form.handleSubmit()
-      }}
-    >
+    <Form form={form} aria-label="Project settings">
       <form.AppField name="name">
         {(field) => <field.TextField label="Project name" />}
       </form.AppField>
-      <form.AppForm>
-        <form.SubmitButton>Save project</form.SubmitButton>
-      </form.AppForm>
-    </form>
+      <form.SubmitButton>Save project</form.SubmitButton>
+    </Form>
   )
 }
 
