@@ -12,9 +12,13 @@
     "./document": "./src/document.ts",
     "./drafts": "./src/drafts.ts",
     "./feature-graph": "./src/feature-graph.ts",
+    "./feature-type-contracts": "./src/feature-type-contracts.ts",
+    "./feature-type-registry": "./src/feature-type-registry.ts",
     "./identifiers": "./src/identifiers.ts",
     "./modules": "./src/modules.ts",
-    "./topology": "./src/topology.ts"
+    "./part-design": "./src/part-design.ts",
+    "./topology": "./src/topology.ts",
+    "./units": "./src/units.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

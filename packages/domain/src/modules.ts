@@ -1,5 +1,12 @@
 import { z } from "zod"
+import {
+  type FeatureTypeDescriptor,
+  featureTypeDescriptorSchema,
+  type FeatureTypeIdentity,
+  featureTypeKey,
+} from "./feature-type-contracts"
 import { moduleIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
+import { boxFeatureType, cylinderFeatureType } from "./part-design"
 
 export const commandDescriptorSchema = z
   .object({
@@ -41,6 +48,7 @@ export const moduleDescriptorSchema = z
     dependencies: z.array(moduleIdSchema),
     commands: z.array(commandDescriptorSchema),
     queries: z.array(queryDescriptorSchema),
+    featureTypes: z.array(featureTypeDescriptorSchema).default([]),
   })
   .strict()
 
@@ -54,8 +62,11 @@ export type ModuleRegistryDiagnostic = Readonly<{
     | "duplicate-module"
     | "duplicate-command"
     | "duplicate-query"
+    | "duplicate-feature-type"
     | "command-owner-mismatch"
     | "query-owner-mismatch"
+    | "feature-type-owner-mismatch"
+    | "feature-type-version-mismatch"
     | "missing-module-dependency"
     | "module-dependency-cycle"
   message: string
@@ -65,9 +76,11 @@ export type ModuleRegistry = Readonly<{
   modules: readonly ModuleDescriptor[]
   commands: readonly CommandDescriptor[]
   queries: readonly QueryDescriptor[]
+  featureTypes: readonly FeatureTypeDescriptor[]
   getModule: (id: string) => ModuleDescriptor | undefined
   getCommand: (kind: string) => CommandDescriptor | undefined
   getQuery: (kind: string) => QueryDescriptor | undefined
+  getFeatureType: (type: FeatureTypeIdentity) => FeatureTypeDescriptor | undefined
 }>
 
 export type ModuleRegistryResult =
@@ -82,6 +95,7 @@ type IndexedModules = Readonly<{
   modulesById: Map<string, ModuleDescriptor>
   commandsByKind: Map<string, CommandDescriptor>
   queriesByKind: Map<string, QueryDescriptor>
+  featureTypesByKey: Map<string, FeatureTypeDescriptor>
 }>
 
 export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse({
@@ -176,6 +190,15 @@ export const featureCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse(
     },
   ],
   queries: [],
+})
+
+export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
+  id: "org.vibeshape.core.part-design",
+  version: "0.1.0",
+  dependencies: [featureCoreModule.id],
+  commands: [],
+  queries: [],
+  featureTypes: [boxFeatureType, cylinderFeatureType],
 })
 
 function registryFailure(
@@ -289,12 +312,46 @@ function indexModuleQueries(
   return null
 }
 
+function indexModuleFeatureTypes(
+  module: ModuleDescriptor,
+  featureTypesByKey: Map<string, FeatureTypeDescriptor>,
+): ModuleRegistryDiagnostic | null {
+  for (const featureType of module.featureTypes) {
+    if (featureType.type.moduleId !== module.id) {
+      return {
+        code: "feature-type-owner-mismatch",
+        message: `Feature type ${featureType.type.typeId} does not belong to module ${module.id}.`,
+      }
+    }
+
+    if (featureType.type.moduleVersion !== module.version) {
+      return {
+        code: "feature-type-version-mismatch",
+        message: `Feature type ${featureType.type.typeId} does not use module version ${module.version}.`,
+      }
+    }
+
+    const key = featureTypeKey(featureType.type)
+    if (featureTypesByKey.has(key)) {
+      return {
+        code: "duplicate-feature-type",
+        message: `Feature type ${key} is registered twice.`,
+      }
+    }
+
+    featureTypesByKey.set(key, featureType)
+  }
+
+  return null
+}
+
 function indexModuleDescriptors(
   modules: readonly ModuleDescriptor[],
 ): RegistryStepResult<IndexedModules> {
   const modulesById = new Map<string, ModuleDescriptor>()
   const commandsByKind = new Map<string, CommandDescriptor>()
   const queriesByKind = new Map<string, QueryDescriptor>()
+  const featureTypesByKey = new Map<string, FeatureTypeDescriptor>()
 
   for (const module of modules) {
     if (modulesById.has(module.id)) {
@@ -304,14 +361,19 @@ function indexModuleDescriptors(
     modulesById.set(module.id, module)
 
     const contributionDiagnostic =
-      indexModuleCommands(module, commandsByKind) ?? indexModuleQueries(module, queriesByKind)
+      indexModuleCommands(module, commandsByKind) ??
+      indexModuleQueries(module, queriesByKind) ??
+      indexModuleFeatureTypes(module, featureTypesByKey)
 
     if (contributionDiagnostic) {
       return { ok: false, diagnostic: contributionDiagnostic }
     }
   }
 
-  return { ok: true, value: { modulesById, commandsByKind, queriesByKind } }
+  return {
+    ok: true,
+    value: { modulesById, commandsByKind, queriesByKind, featureTypesByKey },
+  }
 }
 
 function validateModuleDependencies(
@@ -363,6 +425,9 @@ export function createModuleRegistry(inputs: readonly unknown[]): ModuleRegistry
   const queries = [...indexed.value.queriesByKind.values()].sort((left, right) =>
     left.kind.localeCompare(right.kind),
   )
+  const featureTypes = [...indexed.value.featureTypesByKey.values()].sort((left, right) =>
+    featureTypeKey(left.type).localeCompare(featureTypeKey(right.type)),
+  )
 
   return {
     ok: true,
@@ -370,9 +435,11 @@ export function createModuleRegistry(inputs: readonly unknown[]): ModuleRegistry
       modules,
       commands,
       queries,
+      featureTypes,
       getModule: (id) => indexed.value.modulesById.get(id),
       getCommand: (kind) => indexed.value.commandsByKind.get(kind),
       getQuery: (kind) => indexed.value.queriesByKind.get(kind),
+      getFeatureType: (type) => indexed.value.featureTypesByKey.get(featureTypeKey(type)),
     },
   }
 }

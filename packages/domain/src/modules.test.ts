@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { createModuleRegistry, documentCoreModule, featureCoreModule } from "./modules"
+import { boxFeatureType } from "./part-design"
+import {
+  createModuleRegistry,
+  documentCoreModule,
+  featureCoreModule,
+  partDesignModule,
+} from "./modules"
 
 function moduleDescriptor(
   id: string,
@@ -75,6 +81,20 @@ describe("module registry", () => {
       expect(result.registry.getCommand("org.vibeshape.feature.set-suppressed")).toMatchObject({
         automation: { exposure: "draft", openWorld: false },
       })
+    }
+  })
+
+  it("registers first-party feature type descriptors in deterministic identity order", () => {
+    const result = createModuleRegistry([partDesignModule, featureCoreModule, documentCoreModule])
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.registry.getModule(partDesignModule.id)).toEqual(partDesignModule)
+      expect(result.registry.getFeatureType(boxFeatureType.type)).toEqual(boxFeatureType)
+      expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
+        "org.vibeshape.feature.part-design.box",
+        "org.vibeshape.feature.part-design.cylinder",
+      ])
     }
   })
 
@@ -156,6 +176,42 @@ describe("module registry", () => {
       ok: false,
       diagnostic: { code: "query-owner-mismatch" },
     })
+  })
+
+  it("rejects duplicate feature types and feature ownership or version drift", () => {
+    const duplicate = {
+      ...partDesignModule,
+      featureTypes: [...partDesignModule.featureTypes, boxFeatureType],
+    }
+    const wrongOwner = {
+      ...partDesignModule,
+      featureTypes: [
+        {
+          ...boxFeatureType,
+          type: { ...boxFeatureType.type, moduleId: "org.example.part-design" },
+        },
+      ],
+    }
+    const wrongVersion = {
+      ...partDesignModule,
+      featureTypes: [
+        {
+          ...boxFeatureType,
+          type: { ...boxFeatureType.type, moduleVersion: "0.2.0" },
+        },
+      ],
+    }
+
+    expect(createModuleRegistry([duplicate, featureCoreModule, documentCoreModule])).toMatchObject({
+      ok: false,
+      diagnostic: { code: "duplicate-feature-type" },
+    })
+    expect(createModuleRegistry([wrongOwner, featureCoreModule, documentCoreModule])).toMatchObject(
+      { ok: false, diagnostic: { code: "feature-type-owner-mismatch" } },
+    )
+    expect(
+      createModuleRegistry([wrongVersion, featureCoreModule, documentCoreModule]),
+    ).toMatchObject({ ok: false, diagnostic: { code: "feature-type-version-mismatch" } })
   })
 
   it("rejects missing dependencies and dependency cycles", () => {
