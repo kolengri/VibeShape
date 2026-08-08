@@ -28,6 +28,15 @@ const validParameters = {
   purgeAfterLifecycle: false,
 } as const
 
+const historyStats = {
+  sourceCount: 1,
+  modifiedSourceCount: 0,
+  modifiedRelationCount: 0,
+  generatedSourceCount: 0,
+  generatedRelationCount: 0,
+  deletedSourceCount: 0,
+}
+
 describe("geometry worker protocol", () => {
   it("accepts a finite versioned kernel spike request", () => {
     const parsed = geometryWorkerRequestSchema.parse({
@@ -130,6 +139,19 @@ describe("geometry worker protocol", () => {
         faceCount: 6,
         edgeCount: 12,
         solidCount: 1,
+      },
+      history: {
+        booleanCut: {
+          vertices: historyStats,
+          edges: historyStats,
+          faces: historyStats,
+          solids: historyStats,
+        },
+        fillet: {
+          vertices: historyStats,
+          edges: historyStats,
+          faces: historyStats,
+        },
       },
       mesh: {
         positions: new Float32Array([0, 0, 0]),

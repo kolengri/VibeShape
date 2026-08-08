@@ -1,19 +1,20 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
-- Status: **Rework — source build and memory gates passed**
+- Status: **Rework — source build, history API, and memory gates passed**
 - Reviewed: 2026-08-08
 - Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
 ## Decision
 
-The controlled OCCT path is viable for browser-based exact modeling, tessellation, STEP round-trip, binary STL export, deterministic native ownership, and bounded repeated execution inside a Web Worker.
+The controlled OCCT path is viable for browser-based exact modeling, transient operation-history capture, tessellation, STEP round-trip, binary STL export, deterministic native ownership, and bounded repeated execution inside a Web Worker.
 
-The two blockers that caused the earlier rework are closed:
+Three earlier blockers are closed:
 
 1. The project now builds the pinned OpenCascade.js and OCCT revisions from verified source archives, applies a reviewed generator correction, and compares an unpatched source build with the immutable registry baseline before accepting the patched artifact.
-2. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 432 bytes across four full batches after warmup.
+2. Boolean and fillet builders expose the documented modified, generated, and deleted relations needed as inputs to the SPK-003 stable-reference experiment. The worker captures aggregate evidence after boolean result simplification without persisting transient OCCT identities.
+3. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 448 bytes across four full batches after warmup.
 
-The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is operation-history coverage for SPK-003, independent STEP validation, declared cold-start and long-task budgets, and the release compliance bundle. Replicad and OCCT types remain inside the geometry adapter boundary.
+The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is independent STEP validation, declared cold-start and long-task budgets, and the release compliance bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
@@ -21,6 +22,7 @@ The spike provides:
 
 - a strict Zod protocol with protocol version, request ID, document ID, revision, and generation;
 - runtime validation on both sides of the worker boundary;
+- aggregate transient boolean and fillet history statistics in protocol v3;
 - sequential dispatch, logical cancellation, and stale-generation rejection;
 - transferable positions, normals, indices, and triangle-to-face IDs;
 - progress and structured failure diagnostics;
@@ -51,8 +53,8 @@ The deterministic fixture uses millimeters:
 The worker performs:
 
 1. centered box creation;
-2. cylinder creation and boolean cut;
-3. top-plane edge selection and fillet;
+2. cylinder creation, boolean cut, and post-simplification history capture;
+3. top-plane edge selection, fillet, and documented history capture;
 4. validity, volume, surface, bounds, face, edge, and solid measurement;
 5. tessellation to transferable typed arrays;
 6. STEP export and reimport;
@@ -61,7 +63,7 @@ The worker performs:
 9. repeated lifecycle operations and deterministic disposal;
 10. final cleanup, worker restart, invariant rebuild, and health reporting.
 
-The fillet fixture does not solve stable topological naming. SPK-003 still owns semantic topology references and operation-history evaluation.
+The fixture does not solve stable topological naming. SPK-003 still owns semantic topology references, geometric signatures, relation selection, and ambiguity handling.
 
 ## Pinned inputs and provenance
 
@@ -121,6 +123,7 @@ Replicad 0.23.1 also routes several high-level operations through `FinalizationR
 - STL export consumes the existing triangulation and calls `BRepTools.Clean` immediately afterward;
 - STEP import calls `ClearShapes`, and STEP export resets its writer model;
 - topology counts use direct explorers and delete every raw current shape.
+- history capture deletes every explorer, current-shape, and returned list wrapper before the builder is released.
 
 Replicad remains the facade and type wrapper inside the adapter. The project-owned layer supplies deterministic native ownership where the upstream high-level scopes cannot.
 
@@ -145,6 +148,26 @@ Bounds remain within approximately `1e-7` of `(-30, -20, 0)` to `(30, 20, 20)`, 
 
 This is a local development sample, not a p95 benchmark. Hardware, browser process state, AMD64 emulation during the separate build, and development-server overhead affect timings.
 
+## Operation-history evidence
+
+Protocol v3 reports aggregate history statistics by source topology type. This proves that the required OCCT relation APIs are available through the pinned bindings and can be queried across the worker boundary; it intentionally does not expose native handles or treat transient topology hashes as persistent identity.
+
+The boolean adapter enables history collection, builds the cut, calls `SimplifyResult`, and only then reads the merged `Modified`, `Generated`, and `IsDeleted` relations for source vertices, edges, faces, and solids. The fillet adapter follows the narrower OCCT contract: it reads `Generated` for source vertices and edges, then `Modified` and `IsDeleted` for source faces.
+
+One local controlled fixture produced:
+
+| Operation and source topology | Sources | Modified relations | Generated relations | Deleted sources |
+|---|---:|---:|---:|---:|
+| Boolean vertices | 10 | 0 | 0 | 2 |
+| Boolean edges | 15 | 1 | 2 | 2 |
+| Boolean faces | 9 | 3 | 6 | 2 |
+| Boolean solids | 2 | 1 | 0 | 1 |
+| Fillet vertices | 10 | 0 | 0 | 0 |
+| Fillet edges | 15 | 0 | 5 | 0 |
+| Fillet faces | 7 | 6 | 0 | 0 |
+
+Tests require internally consistent counts and meaningful relation families, not exact ordering or a frozen topology count. `HashCode` is used only to deduplicate explorer occurrences inside one evaluation. Turning these transient relationships into durable semantic references is explicitly deferred to SPK-003.
+
 ## Memory evidence
 
 `heapCapacityBytes` is Emscripten's linear-memory high-water mark and does not shrink. The controlled build therefore exposes `mallinfo()` live allocation through `VibeShapeAllocatorStats`:
@@ -164,13 +187,13 @@ The representative post-disposal plateau was:
 | Checkpoint | Live allocated bytes |
 |---|---:|
 | Cold initialized | 128,336 |
-| Batch 1 disposed after warmup | 481,872 |
-| Batch 2 disposed | 481,984 |
-| Batch 3 disposed | 482,096 |
+| Batch 1 disposed after warmup | 481,864 |
+| Batch 2 disposed | 481,976 |
+| Batch 3 disposed | 482,088 |
 | Batch 4 disposed | 482,200 |
-| Batch 5 disposed | 482,304 |
+| Batch 5 disposed | 482,312 |
 
-Post-warmup retained drift is **432 bytes** across four further complete batches. The executable ceiling is 64 KiB. Every isolated 1,000-operation lifecycle block records **0 bytes** of growth; its executable ceiling is 8 KiB.
+Post-warmup retained drift is **448 bytes** across four further complete batches. The executable ceiling is 64 KiB. Every isolated 1,000-operation lifecycle block records **0 bytes** of growth; its executable ceiling is 8 KiB.
 
 The first full run creates stable STEP and OCCT process caches. Tessellation temporarily adds approximately 393 KiB, and `BRepTools.Clean` releases that attached triangulation after STL export. Final shape disposal releases approximately 47 KiB of exact-model and imported-shape state. Arena capacity can still grow while live allocation remains flat, so allocator capacity is not reported as a leak.
 
@@ -190,6 +213,7 @@ Executable evidence is owned by:
 - `packages/geometry-worker/src/runtime.test.ts` for dispatch, initialization, transfer, cancellation, and stale generations;
 - `packages/geometry-worker/src/memory-profile.test.ts` for allocator-binding validation;
 - `packages/geometry-worker/src/occt-diagnostics.test.ts` for native lifecycle and purge controls;
+- `packages/geometry-worker/src/occt-history.test.ts` for relation-family selection, transient topology deduplication, and wrapper cleanup;
 - `packages/geometry-worker/src/occt-shapes.test.ts` for primitive, boolean, and fillet ownership;
 - `packages/geometry-worker/src/occt-mesh.test.ts` for tessellation and STL cleanup;
 - `packages/geometry-worker/src/occt-exchange.test.ts` for STEP reader/writer ownership;
@@ -201,10 +225,9 @@ Executable evidence is owned by:
 
 ## Remaining stop/go work
 
-- Verify OCCT operation history needed by SPK-003 and choose the production topology-history seam.
 - Open the exported STEP fixture independently in FreeCAD or another implementation.
 - Measure cold startup, main-thread long tasks, p95 operation latency, and peak memory on declared baseline hardware.
-- Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features.
+- Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features, including the durable history records required by SPK-003.
 - Repeat the required extended format and lifecycle cases across target browsers where practical.
 - Archive the exact source bundle, patch, build recipe, output manifest, license texts, notices, and replacement instructions for release.
 

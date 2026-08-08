@@ -25,7 +25,13 @@ import {
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
-import { createOcctBox, createOcctCylinder, cutOcctShapes, filletOcctEdgesAtZ } from "./occt-shapes"
+import {
+  createOcctBox,
+  createOcctCylinder,
+  cutOcctShapes,
+  cutOcctShapesWithHistory,
+  filletOcctEdgesAtZWithHistory,
+} from "./occt-shapes"
 import { OwnedShapeRegistry } from "./shape-registry"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
@@ -356,7 +362,8 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
       reportProgress("boolean-cut", 0.2)
       stageStartedAt = performance.now()
-      const cutShape = this.#ownedShapes.own(cutOcctShapes(opencascade, box, cylinder))
+      const booleanCut = cutOcctShapesWithHistory(opencascade, box, cylinder)
+      const cutShape = this.#ownedShapes.own(booleanCut.shape)
       this.#ownedShapes.dispose(box)
       this.#ownedShapes.dispose(cylinder)
       const booleanCutMs = elapsed(stageStartedAt)
@@ -364,9 +371,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
       reportProgress("fillet", 0.3)
       stageStartedAt = performance.now()
-      finalShape = this.#ownedShapes.own(
-        filletOcctEdgesAtZ(opencascade, cutShape, parameters.filletRadius, boxHeight),
+      const fillet = filletOcctEdgesAtZWithHistory(
+        opencascade,
+        cutShape,
+        parameters.filletRadius,
+        boxHeight,
       )
+      finalShape = this.#ownedShapes.own(fillet.shape)
       this.#ownedShapes.dispose(cutShape)
       const filletMs = elapsed(stageStartedAt)
       memoryProfile.capture("fillet-completed")
@@ -418,6 +429,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return {
         engine,
         shape,
+        history: {
+          booleanCut: booleanCut.history,
+          fillet: fillet.history,
+        },
         mesh,
         exchange: {
           stepBytes: stepBytes.byteLength,

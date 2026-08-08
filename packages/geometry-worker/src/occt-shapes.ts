@@ -1,6 +1,12 @@
 import type { Shape3D } from "replicad"
 import type { OpenCascadeInstance, TopAbs_ShapeEnum, TopoDS_Edge } from "replicad-opencascadejs"
 import { adoptOcctShape, castOcctShape, type OcctShapeCaster } from "./occt-cast"
+import {
+  captureOcctBooleanHistory,
+  captureOcctFilletHistory,
+  type OcctBooleanHistory,
+  type OcctFilletHistory,
+} from "./occt-history"
 
 type Vector3 = readonly [number, number, number]
 export function createOcctShapeOperations(castShape: OcctShapeCaster) {
@@ -46,18 +52,41 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     }
   }
 
-  function cutShapes(opencascade: OpenCascadeInstance, source: Shape3D, tool: Shape3D): Shape3D {
+  function performCut(
+    opencascade: OpenCascadeInstance,
+    source: Shape3D,
+    tool: Shape3D,
+    captureHistory: boolean,
+  ): { history: OcctBooleanHistory | null; shape: Shape3D } {
     const progress = new opencascade.Message_ProgressRange_1()
     const cutter = new opencascade.BRepAlgoAPI_Cut_3(source.wrapped, tool.wrapped, progress)
 
     try {
+      cutter.SetToFillHistory(captureHistory)
       cutter.Build(progress)
       cutter.SimplifyResult(true, true, 1e-3)
-      return adoptOcctShape(cutter.Shape(), castShape)
+      const history = captureHistory
+        ? captureOcctBooleanHistory(opencascade, cutter, [source.wrapped, tool.wrapped])
+        : null
+      return { history, shape: adoptOcctShape(cutter.Shape(), castShape) }
     } finally {
       cutter.delete()
       progress.delete()
     }
+  }
+
+  function cutShapes(opencascade: OpenCascadeInstance, source: Shape3D, tool: Shape3D): Shape3D {
+    return performCut(opencascade, source, tool, false).shape
+  }
+
+  function cutShapesWithHistory(opencascade: OpenCascadeInstance, source: Shape3D, tool: Shape3D) {
+    const result = performCut(opencascade, source, tool, true)
+
+    if (!result.history) {
+      throw new Error("OCCT boolean history was not captured.")
+    }
+
+    return { history: result.history, shape: result.shape }
   }
 
   function edgeLiesAtZ(
@@ -100,12 +129,13 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     return vertexCount > 0 && matches
   }
 
-  function filletEdgesAtZ(
+  function performFilletEdgesAtZ(
     opencascade: OpenCascadeInstance,
     source: Shape3D,
     radius: number,
     z: number,
-  ): Shape3D {
+    captureHistory: boolean,
+  ): { history: OcctFilletHistory | null; shape: Shape3D } {
     const filletShape = opencascade.ChFi3d_FilletShape.ChFi3d_Rational as never
     const builder = new opencascade.BRepFilletAPI_MakeFillet(source.wrapped, filletShape)
     const edgeType = opencascade.TopAbs_ShapeEnum.TopAbs_EDGE as TopAbs_ShapeEnum
@@ -137,7 +167,10 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
       }
 
       builder.Build(progress)
-      return adoptOcctShape(builder.Shape(), castShape)
+      const history = captureHistory
+        ? captureOcctFilletHistory(opencascade, builder, source.wrapped)
+        : null
+      return { history, shape: adoptOcctShape(builder.Shape(), castShape) }
     } finally {
       progress.delete()
       explorer.delete()
@@ -145,12 +178,44 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     }
   }
 
-  return { createBox, createCylinder, cutShapes, filletEdgesAtZ }
+  function filletEdgesAtZ(
+    opencascade: OpenCascadeInstance,
+    source: Shape3D,
+    radius: number,
+    z: number,
+  ): Shape3D {
+    return performFilletEdgesAtZ(opencascade, source, radius, z, false).shape
+  }
+
+  function filletEdgesAtZWithHistory(
+    opencascade: OpenCascadeInstance,
+    source: Shape3D,
+    radius: number,
+    z: number,
+  ) {
+    const result = performFilletEdgesAtZ(opencascade, source, radius, z, true)
+
+    if (!result.history) {
+      throw new Error("OCCT fillet history was not captured.")
+    }
+
+    return { history: result.history, shape: result.shape }
+  }
+
+  return {
+    createBox,
+    createCylinder,
+    cutShapes,
+    cutShapesWithHistory,
+    filletEdgesAtZ,
+    filletEdgesAtZWithHistory,
+  }
 }
 
 export const {
   createBox: createOcctBox,
   createCylinder: createOcctCylinder,
   cutShapes: cutOcctShapes,
-  filletEdgesAtZ: filletOcctEdgesAtZ,
+  cutShapesWithHistory: cutOcctShapesWithHistory,
+  filletEdgesAtZWithHistory: filletOcctEdgesAtZWithHistory,
 } = createOcctShapeOperations(castOcctShape)

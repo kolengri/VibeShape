@@ -40,6 +40,19 @@ function createKernelResult(): KernelSpikeEngineResult {
   return {
     engine: engineMetadata,
     shape,
+    history: {
+      booleanCut: {
+        vertices: createHistoryStats(),
+        edges: createHistoryStats(),
+        faces: createHistoryStats(),
+        solids: createHistoryStats(),
+      },
+      fillet: {
+        vertices: createHistoryStats(),
+        edges: createHistoryStats(),
+        faces: createHistoryStats(),
+      },
+    },
     mesh: {
       positions: new Float32Array([0, 0, 0]),
       normals: new Float32Array([0, 0, 1]),
@@ -82,6 +95,17 @@ function createKernelResult(): KernelSpikeEngineResult {
       lifecycleCheckMs: 1,
       totalMs: 9,
     },
+  }
+}
+
+function createHistoryStats() {
+  return {
+    sourceCount: 1,
+    modifiedSourceCount: 0,
+    modifiedRelationCount: 0,
+    generatedSourceCount: 0,
+    generatedRelationCount: 0,
+    deletedSourceCount: 0,
   }
 }
 

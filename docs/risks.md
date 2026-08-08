@@ -34,7 +34,7 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 
 **Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
-**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit. The controlled candidate is source-built from checksum-verified archives with the reviewed OpenCascade.js destructor correction. Purpose-owned OCCT adapters retain zero bytes in every 1,000-operation lifecycle block, and post-warmup live allocation drifts by 432 bytes across four further complete batches. R2 is reduced but remains open for declared cold-start, long-task, p95 operation, peak-memory, independent STEP, and release-compliance gates; the spike result remains **Rework**.
+**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit. The controlled candidate is source-built from checksum-verified archives with the reviewed OpenCascade.js destructor correction. Purpose-owned OCCT adapters expose transient boolean and fillet history, retain zero bytes in every 1,000-operation lifecycle block, and reach 448 bytes of post-warmup live-allocation drift across four further complete batches. R2 is reduced but remains open for declared cold-start, long-task, p95 operation, peak-memory, independent STEP, and release-compliance gates; the spike result remains **Rework**.
 
 ### Solver
 
