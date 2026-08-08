@@ -1,48 +1,37 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
-- Status: **Rework**
+- Status: **Rework — source build and memory gates passed**
 - Reviewed: 2026-08-08
 - Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
 ## Decision
 
-The Replicad path is functionally viable for browser-based exact modeling, tessellation, STEP round-trip, and binary STL export inside a Web Worker. It is **not yet accepted as the production geometry adapter**.
+The controlled OCCT path is viable for browser-based exact modeling, tessellation, STEP round-trip, binary STL export, deterministic native ownership, and bounded repeated execution inside a Web Worker.
 
-Two production gates remain open:
+The two blockers that caused the earlier rework are closed:
 
-1. The controlled candidate identifies and verifies the exact OCCT source revision, but the pinned upstream builder image has not yet been rebuilt from archived sources and compared. Registry-image reproducibility is engineering evidence, not the final corresponding-source release process.
-2. Allocator instrumentation confirms retained live allocation rather than only linear-memory capacity. Operation-isolated evidence localizes the growth to the generated Embind destructor policy: native C++ scoped primitive cycles retain zero bytes, while equivalent direct binding cycles retain allocation linearly. The binding generator deliberately replaces destruction with a no-op for OCCT classes that declare placement delete. The production blocker is now a specific source-build patch and plateau verification rather than an unexplained OCCT allocator problem.
+1. The project now builds the pinned OpenCascade.js and OCCT revisions from verified source archives, applies a reviewed generator correction, and compares an unpatched source build with the immutable registry baseline before accepting the patched artifact.
+2. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 432 bytes across four full batches after warmup.
 
-The controlled candidate successfully builds, loads through the existing adapter boundary, executes modeling and exchange operations, emits allocator evidence, and resets to its cold allocator baseline after a hard worker restart. Continue SPK-001 by rebuilding the builder image from archived sources with a reviewed destructor-generator patch, then repeat the same evidence matrix. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
-
-The rework now has two additional pieces of executable evidence:
-
-- protocol v2 captures ordered Emscripten heap checkpoints after every modeling, tessellation, exchange, lifecycle, and final shape-disposal stage and accepts allocator metrics only from a complete validated binding;
-- protocol v2 selects Replicad, direct Embind, and native C++ scoped lifecycle operations and records whether `Standard::Purge()` was requested and how many blocks it released;
-- the browser harness terminates the first worker, initializes a fresh worker, rebuilds the same invariant fixture, and disposes it successfully in Chromium, Firefox, and WebKit.
-
-The controlled-build harness pins and verifies the OpenCascade.js, OCCT, and Replicad source archives plus the builder image digest and derives the allocator-instrumented build config deterministically. The GitHub evidence workflow executed that build and its extended browser fixture successfully on `linux/amd64` without mutating `node_modules` or the production dependency lock.
+The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is operation-history coverage for SPK-003, independent STEP validation, declared cold-start and long-task budgets, and the release compliance bundle. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
-The spike adds:
+The spike provides:
 
-- a strict Zod protocol with protocol version, request ID, document ID, revision, and generation on every message;
-- runtime request and response validation on both sides of the worker boundary;
-- sequential kernel operation dispatch;
-- logical cancellation and stale-generation rejection;
-- typed progress and failure diagnostics;
-- transferable mesh buffers for positions, normals, indices, and triangle-to-face IDs;
-- explicit adapter-owned shape registration and deterministic deletion;
-- health and document-disposal messages;
-- a browser harness at `/spikes/geometry-worker.html`;
-- deterministic Vitest protocol/runtime coverage and Playwright browser coverage.
-- stage-isolated heap-capacity evidence with nullable allocator-level metrics;
-- hard worker restart, engine reinitialization, invariant rebuild, and disposal evidence;
-- controlled native C++ lifecycle probes and allocator-purge controls;
-- a source-checksum and controlled-build preparation harness under `native/occt`.
+- a strict Zod protocol with protocol version, request ID, document ID, revision, and generation;
+- runtime validation on both sides of the worker boundary;
+- sequential dispatch, logical cancellation, and stale-generation rejection;
+- transferable positions, normals, indices, and triangle-to-face IDs;
+- progress and structured failure diagnostics;
+- adapter-owned shape registration, health, and document disposal;
+- ordered heap-capacity and allocator checkpoints;
+- hard worker restart and cold-baseline verification;
+- direct native lifecycle and allocator-purge diagnostics;
+- a source-built controlled package selected only by Vite's `controlled-occt` mode;
+- deterministic Vitest and Playwright coverage.
 
-The protocol is spike-specific. Production document commands such as preview, commit, rebuild, import, and export remain future schema work.
+The protocol is spike-specific. Production preview, commit, rebuild, import, export, and recovery commands remain future schema work.
 
 ## Fixture and operations
 
@@ -56,217 +45,167 @@ The deterministic fixture uses millimeters:
 | Mesh linear tolerance | 0.05 |
 | Mesh angular tolerance | 0.1 radians |
 | Fast PR lifecycle count | 3 |
-| Extended lifecycle batch | 1,000 |
+| Controlled lifecycle batch | 1,000 |
+| Controlled full batches | 5 |
 
 The worker performs:
 
 1. centered box creation;
 2. cylinder creation and boolean cut;
 3. top-plane edge selection and fillet;
-4. `BRepCheck_Analyzer` validation and invariant measurement;
+4. validity, volume, surface, bounds, face, edge, and solid measurement;
 5. tessellation to transferable typed arrays;
-6. STEP export;
-7. STEP reimport and invariant comparison;
+6. STEP export and reimport;
+7. independent invariant measurement of the imported shape;
 8. binary STL export;
-9. repeated create, cut, and deterministic disposal;
-10. final cleanup and health reporting.
+9. repeated lifecycle operations and deterministic disposal;
+10. final cleanup, worker restart, invariant rebuild, and health reporting.
 
-The fillet selection proves the required operation, but it is not a production `TopoRef` solution. SPK-003 still owns stable semantic topology references and operation-history evaluation.
+The fillet fixture does not solve stable topological naming. SPK-003 still owns semantic topology references and operation-history evaluation.
 
 ## Pinned inputs and provenance
 
-| Input | Version or identity | Evidence | Release assessment |
-|---|---|---|---|
-| Replicad | `0.23.1`; npm `gitHead` `45b9b8b7c594cd5dc38617edaf220ab4cd72778f` | Exact catalog pin and `bun.lock` integrity | MIT package provenance is adequate |
-| Replicad custom OCJS package | `0.23.0`; npm `gitHead` `19fb8212e0bb12a07a7a49f96950f8903903d469` | Exact catalog pin and `bun.lock` integrity | Loader/package provenance is known |
-| Embedded OCCT source | Unknown | The published metadata and runtime do not expose it | **Blocking** for reproducibility and LGPL source delivery |
-| Runtime schema | Zod `4.4.3` | Exact catalog pin and `bun.lock` integrity | MIT; accepted for the protocol boundary |
-| Toolchain | Bun `1.3.14`, Vite `8.2.1`, Playwright `1.62.1` | Root pins and lockfile | Accepted for the spike |
+Published feasibility dependencies:
 
-Prepared controlled-build inputs:
+| Input | Version or identity | Assessment |
+|---|---|---|
+| Replicad | `0.23.1`; npm `gitHead` `45b9b8b7c594cd5dc38617edaf220ab4cd72778f` | MIT package, retained behind the adapter |
+| Replicad OpenCascade.js package | `0.23.0`; npm `gitHead` `19fb8212e0bb12a07a7a49f96950f8903903d469` | Published wrapper does not disclose the embedded OCCT revision |
+| Runtime schema | Zod `4.4.3` | Exact catalog pin and lockfile integrity |
+
+Controlled source-build inputs:
 
 | Input | Exact identity | Verification |
 |---|---|---|
-| OpenCascade.js source | `5ff2b750ba4b9a9fdfbff8842712cbb562e78ce7` | GitHub archive SHA-256 `7107d5a36712542997895efa17b44ea0e2b956c3908cbe98b7d95c194f1e556f` |
-| OCCT source | `bb368e271e24f63078129283148ce83db6b9670a` | Official GitHub archive SHA-256 `fabda9f139f2c09e675d5b9717110175b0ad5d9fb09187e3d56687220d2687e6` |
-| Replicad build config | `19fb8212e0bb12a07a7a49f96950f8903903d469` | GitHub archive SHA-256 `83a9fd99e39b77d7128270e08764cafd334117fbd0d083792b3a49aaa181787f` |
-| OpenCascade.js builder image | `linux/amd64` | Registry digest `sha256:3069f4c2e3ab62bb82d81843bad2c0f8552ee92373208f8f655ef9bf71c0524d` |
+| OpenCascade.js | `5ff2b750ba4b9a9fdfbff8842712cbb562e78ce7` | SHA-256 `7107d5a36712542997895efa17b44ea0e2b956c3908cbe98b7d95c194f1e556f` |
+| OCCT | `bb368e271e24f63078129283148ce83db6b9670a` | SHA-256 `fabda9f139f2c09e675d5b9717110175b0ad5d9fb09187e3d56687220d2687e6` |
+| Replicad build config | `19fb8212e0bb12a07a7a49f96950f8903903d469` | SHA-256 `83a9fd99e39b77d7128270e08764cafd334117fbd0d083792b3a49aaa181787f` |
+| RapidJSON | `v1.1.0` | SHA-256 `bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e` |
+| FreeType | `VER-2-13-0` | SHA-256 `a683f1091aee95d2deaca9292d976f87415610b8ae1ea186abeebcb08e83ab12` |
+| Emscripten SDK image | `linux/amd64` | Digest `sha256:4c3e0a0dac61430b719e82118ae9b2c7480902a2713267e80fa296d39f7ab921` |
+| Registry comparison builder | `linux/amd64` | Digest `sha256:3069f4c2e3ab62bb82d81843bad2c0f8552ee92373208f8f655ef9bf71c0524d` |
 
-The executed candidate produced:
+The builder generates the 262 bindings selected by the reviewed Replicad configuration. The unpatched source image and patched image share the same compiled OCCT source objects; only the generated binding destructor policy differs.
+
+## Source reproduction contract
+
+The unpatched source build must match the registry baseline through:
+
+- exact JavaScript bytes and SHA-256;
+- exact TypeScript declaration bytes and SHA-256;
+- equal output dimensions;
+- identical sorted WebAssembly imports and exports.
+
+Repeated upstream links are not bit-reproducible: the registry builder can produce different WASM hashes for the same inputs while preserving dimensions and the runtime interface. The harness records every hash but deliberately uses the structural contract instead of a false static-WASM-hash assertion.
+
+The locally verified patched output is:
 
 | Output | Bytes | SHA-256 |
 |---|---:|---|
-| `vibeshape_occt.js` | 135,503 | `d28f69b40b60f3881ccd3a996664a1732527a34cc154e2511dbfa02cd5c5081c` |
-| `vibeshape_occt.wasm` | 10,852,832 | `a6878af17b88a59e97243929ad89bca44fbb43884297077aa5941a42c88b15fd` |
-| `vibeshape_occt.d.ts` | 410,813 | `fa6eb436aad62f5c85f3a1a8e3ce67b3a4202e9a08b7a482db00aae0b6a79152` |
+| `vibeshape_occt.js` | 135,503 | `32a41bedb97df18af4c7fd8f57b32418315af1620eae42730cd98b3a14e7adf6` |
+| `vibeshape_occt.wasm` | 10,856,959 | `7195d6866a895c6648bba4dc04e8b49edb76f52d531b29972343c3c076ff36dd` |
+| `vibeshape_occt.d.ts` | 410,813 | `82bf07aa9cb20b2a241e34525de89880b20ee97fb3c4f0ffbe566a6082e46ab5` |
 
-The earlier allocator-only candidate produced identical hashes in two clean workflow runs. The operation-isolation candidate above was then built cleanly from generated config SHA-256 `35151667e11e5705bd9ab52da10bf2220dff063c7ce3b532af94963bc023bc93`. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must be rebuilt from archived sources with the destructor patch and compared.
+The corrected WASM is 90 bytes larger than the paired unpatched source output. JavaScript and declarations remain exact, and the WebAssembly interface remains unchanged.
 
-The npm package declares `replicad-opencascadejs` as MIT. That declaration covers the package wrapper and does not erase the LGPL obligations of the embedded OCCT-derived WASM. The runtime reports `opencascadeSourceRevision: null` deliberately; a guessed value would be false provenance.
+## Destructor correction and ownership model
 
-## Payload size
+The pinned OpenCascade.js generator emitted a no-op `raw_destructor<T>` whenever a class declared two-argument placement delete. OCCT's `DEFINE_STANDARD_ALLOC` declares placement delete together with a usable public ordinary delete, so generated `.delete()` calls invalidated JS handles without running the native destructor.
 
-Measured from `replicad_single.wasm` with the exact locked package:
+The reviewed correction suppresses destruction only when ordinary deletion is unavailable. Generator fixtures cover public, non-public, ordinary, and placement-delete combinations. Direct Embind primitive loops return to their pre-loop live allocation with the patched package.
 
-| Encoding | Bytes | MiB |
-|---|---:|---:|
-| Raw | 10,855,736 | 10.35 |
-| gzip level 9 | 4,535,371 | 4.33 |
-| Brotli quality 11 | 3,382,379 | 3.23 |
+Replicad 0.23.1 also routes several high-level operations through `FinalizationRegistry`-based scopes that do not deterministically delete temporary bindings at function return. VibeShape therefore owns the critical adapter path:
 
-The allocator-only controlled candidate measured:
+- primitives, boolean cut, and fillet use explicit OCCT builders and `try/finally`;
+- tessellation explicitly deletes owned mesh, explorer, face, location, transform, node, normal, connectivity, and triangle wrappers;
+- STL export consumes the existing triangulation and calls `BRepTools.Clean` immediately afterward;
+- STEP import calls `ClearShapes`, and STEP export resets its writer model;
+- topology counts use direct explorers and delete every raw current shape.
 
-| Encoding | Bytes | MiB |
-|---|---:|---:|
-| Raw | 10,852,193 | 10.35 |
-| gzip level 9 | 4,565,318 | 4.35 |
-| Brotli quality 11 | 3,393,856 | 3.24 |
-
-These numbers cover the WASM file only. They do not include the Replicad JavaScript, application code, HTTP headers, cache behavior, or source-compliance artifacts. A source-built release image must repeat this measurement from a clean build.
+Replicad remains the facade and type wrapper inside the adapter. The project-owned layer supplies deterministic native ownership where the upstream high-level scopes cannot.
 
 ## Functional result
 
-One warm local Chromium sample on an Apple M1 MacBook Pro with 16 GB memory produced:
+One local controlled Chromium sample produced:
 
 | Measurement | Result |
 |---|---:|
-| Engine initialization | 105.8 ms |
-| Complete modeled scenario | 328.4 ms |
+| Engine initialization | 191.7 ms |
+| Complete modeled scenario | 229.3 ms |
 | Valid solids | 1 |
 | Volume | 43,858.197429 mm³ |
 | Surface area | 9,241.790019 mm² |
 | Faces / edges | 12 / 25 |
-| Mesh vertices / triangles | 5,057 / 8,912 |
-| STEP bytes | 36,290 |
-| Binary STL bytes | 445,684 |
-| STEP relative volume error | `4.811e-15` |
+| Mesh vertices / triangles | 5,043 / 8,898 |
+| STEP bytes | 35,650 |
+| Binary STL bytes | 444,984 |
+| STEP relative volume error | `6.47e-15` |
 
-The measured bounds differ from `(-30, -20, 0)` to `(30, 20, 20)` by approximately `1e-7`, which is expected kernel tolerance behavior. Tests compare numeric geometry within tolerance and never depend on byte equality, topology order, or exact triangle order.
+Bounds remain within approximately `1e-7` of `(-30, -20, 0)` to `(30, 20, 20)`, which is expected kernel-tolerance behavior. Tests never depend on topology order, exact triangle order, or exchange-file byte equality.
 
-This is a development-server sample, not a stable performance benchmark. It does not establish cold network startup, p95 performance, peak resident memory, or main-thread responsiveness on controlled hardware.
+This is a local development sample, not a p95 benchmark. Hardware, browser process state, AMD64 emulation during the separate build, and development-server overhead affect timings.
 
-## Browser matrix
+## Memory evidence
 
-The default three-iteration scenario passed through Playwright in:
+`heapCapacityBytes` is Emscripten's linear-memory high-water mark and does not shrink. The controlled build therefore exposes `mallinfo()` live allocation through `VibeShapeAllocatorStats`:
 
-| Engine | Playwright browser version | Result | Observed test duration |
-|---|---:|---|---:|
-| Chromium | 151.0.7922.34 | Pass | 1.1 s |
-| Firefox | 153.0 | Pass | 3.1 s |
-| WebKit | 26.5 | Pass | 1.7 s |
+- `arenaBytes` — allocator-owned arena capacity;
+- `allocatedBytes` — live allocated bytes;
+- `freeBytes` — allocator-owned free bytes.
 
-The duration includes page and harness overhead and is not a kernel-only benchmark. Automated WebKit does not replace the required manual Safari release smoke test.
+`bun run occt:evidence:memory` executes:
 
-## Lifetime evidence
+- seven operation scenarios with 5 × 1,000 lifecycle iterations each;
+- four allocator-purge controls with 5 × 1,000 iterations each;
+- full boolean, fillet, validation, tessellation, STEP, STL, disposal, and worker-restart checks in every scenario.
 
-The fast browser gate checks three create/cut/dispose iterations in every Playwright engine. The extended Chromium command is:
+The representative post-disposal plateau was:
 
-```bash
-VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS=1000 \
-VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES=5 \
-bun run test:e2e -- --project=chromium tests/e2e/geometry-worker.spec.ts
-```
-
-Five batches passed 5,000 total lifecycle iterations in one worker. Adapter-owned shape counts returned from 2 to 2 inside every batch and to 0 after the completed request. WASM heap capacity behaved as follows:
-
-| Batch | Before | After | Growth |
-|---:|---:|---:|---:|
-| 1 | 20,185,088 | 150,536,192 | 130,351,104 |
-| 2 | 150,536,192 | 180,682,752 | 30,146,560 |
-| 3 | 180,682,752 | 216,858,624 | 36,175,872 |
-| 4 | 216,858,624 | 216,858,624 | 0 |
-| 5 | 260,243,456 | 260,243,456 | 0 |
-
-The gap between batch 4 after-state and batch 5 before-state occurred during the next full model, tessellation, and STEP round-trip before the lifecycle subtest. Total linear-memory capacity still rose by 240,058,368 bytes from the first observed baseline. This is unexplained growth and fails the current stop/go memory criterion even though wrapper ownership is balanced.
-
-### Stage and restart evidence
-
-A warm Chromium protocol-v2 sample with three lifecycle iterations produced:
-
-| Checkpoint | Heap capacity |
+| Checkpoint | Live allocated bytes |
 |---|---:|
-| Initialized through validation | 16,777,216 bytes |
-| After tessellation | 20,185,088 bytes |
-| STEP export/import, STL export, lifecycle, and final shape disposal | 20,185,088 bytes |
-| Fresh worker immediately after reinitialization | 16,777,216 bytes |
+| Cold initialized | 128,336 |
+| Batch 1 disposed after warmup | 481,872 |
+| Batch 2 disposed | 481,984 |
+| Batch 3 disposed | 482,096 |
+| Batch 4 disposed | 482,200 |
+| Batch 5 disposed | 482,304 |
 
-This sample locates the first capacity growth in tessellation and confirms that final shape disposal does not shrink linear memory, which is expected with Emscripten memory growth. It does **not** prove that tessellation leaks: the published binding still reports `heap-capacity-only`, and all allocator values remain `null`.
+Post-warmup retained drift is **432 bytes** across four further complete batches. The executable ceiling is 64 KiB. Every isolated 1,000-operation lifecycle block records **0 bytes** of growth; its executable ceiling is 8 KiB.
 
-After terminating the first worker, the fresh worker returned to the 16,777,216-byte baseline, rebuilt the same valid solid with matching volume, ran a one-iteration ownership check, and disposed to zero owned shapes. This validates the hard restart path at the spike level; production document restoration still depends on committed snapshot work from the persistence phase.
+The first full run creates stable STEP and OCCT process caches. Tessellation temporarily adds approximately 393 KiB, and `BRepTools.Clean` releases that attached triangulation after STL export. Final shape disposal releases approximately 47 KiB of exact-model and imported-shape state. Arena capacity can still grow while live allocation remains flat, so allocator capacity is not reported as a leak.
 
-### Controlled allocator evidence
+The purge control releases no additional cached blocks and does not change the plateau. A fresh worker returns to the exact cold allocator checkpoint, validating the hard-release fallback independently of the steady-state result.
 
-The allocator-instrumented candidate reports `mallinfo()` arena, allocated, and free bytes at every existing memory checkpoint. The green extended Chromium workflow produced:
+## Browser and CI policy
 
-| Batch | Allocated at initialization | Allocated after shape disposal |
-|---:|---:|---:|
-| 1 | 128,360 | 128,895,280 |
-| 2 | 37,885,208 | 154,171,880 |
-| 3 | 56,633,672 | 179,303,752 |
-| 4 | 80,035,952 | 204,388,472 |
-| 5 | 102,407,216 | 228,994,488 |
+The fast fixture passes in Chromium, Firefox, and WebKit. The extended allocator matrix is Chromium-only because it consumes a locally staged controlled package and is intended for targeted native evidence, not every pull request.
 
-Allocated bytes at the same post-disposal stage drifted by 100,099,208 bytes from batch 1 to batch 5. The executable evidence gate caps this known rework state at 134,217,728 bytes so future changes cannot silently worsen it. That ceiling is a regression guardrail, **not** the production acceptance criterion.
+Heavy OCCT image builds and extended memory matrices are local-first. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for this workload. Generated sources, images, packages, reports, and Playwright JSON remain under `.artifacts` and are not committed.
 
-After terminating the stressed worker, the replacement worker returned to 16,777,216 bytes of linear-memory capacity and 128,360 allocated bytes, exactly matching the cold allocator checkpoint. Hard restart is therefore a verified memory-release mechanism while in-worker retention remains unresolved.
+## Verification ownership
 
-### Operation-isolation evidence
+Executable evidence is owned by:
 
-The controlled workflow repeated five 1,000-iteration batches for Replicad operations, direct generated bindings, and native C++ scoped operations. The lifecycle delta compares `stl-exported` immediately before the isolated loop with `lifecycle-completed` immediately after it, so unrelated full-fixture work does not contaminate the result.
-
-| Lifecycle operation | Ownership boundary | Allocated-byte delta per 1,000 iterations |
-|---|---|---:|
-| Native box | Entire maker and solid lifetime inside C++ | `0` in all five batches |
-| Native cylinder | Entire maker and solid lifetime inside C++ | `0` in all five batches |
-| Direct Embind box | JS constructs and calls `.delete()` on maker and solid | approximately 9.62 MB |
-| Direct Embind cylinder | JS constructs and calls `.delete()` on maker and solid | approximately 3.04 MB |
-| Replicad box | Replicad wrappers over Embind | approximately 10.73 MB |
-| Replicad cylinder | Replicad wrappers over Embind | approximately 7.88 MB |
-| Replicad boolean cut | Replicad wrappers over Embind | 126.45–126.85 MB |
-
-The purge control repeated all four direct/native scenarios with `Standard::Purge()` after each lifecycle block. Every call released zero blocks, and the direct-binding deltas were unchanged. This matches the pinned OCCT source: its default `Standard_MMgrRaw` delegates to `malloc`/`free`, while `Purge()` has no cached free-list work.
-
-The pinned OpenCascade.js generator supplies the missing causal link. In `src/bindings.py`, it specializes `emscripten::internal::raw_destructor<T>` to a no-op whenever a class declares a two-argument placement `operator delete`. OCCT's `DEFINE_STANDARD_ALLOC` declares both a normal one-argument delete and that placement delete. Consequently, generated `.delete()` calls invalidate their JS handles but skip the native destructor for affected public-destructor OCCT classes. Native scoped cycles avoid that generated policy and return exactly to their pre-loop allocation.
-
-The smallest justified remediation is:
-
-1. rebuild the pinned OpenCascade.js builder from the archived OpenCascade.js and OCCT sources;
-2. patch the generator so placement delete alone does not suppress a publicly destructible class, with generator fixtures for public, non-public, ordinary, and placement delete combinations;
-3. rebuild the controlled binding and require direct Embind primitive loops to return to zero retained lifecycle delta before measuring a production plateau;
-4. rerun Replicad boolean, tessellation, STEP writer/reader, hard-restart, browser, and geometry invariants;
-5. archive the reviewed patch, exact sources, build recipe, output manifest, license texts, and replacement instructions.
-
-Required follow-up:
-
-- source-build and validate the destructor-generator correction;
-- isolate fillet, mesh, STEP writer, and STEP reader loops after the primitive leak is removed;
-- repeat batches until a numeric plateau is established or a leak is fixed;
-- record peak and steady-state bytes separately from linear-memory capacity;
-- validate document recovery on top of the verified hard memory-release path;
-- define an accepted steady-state and per-document budget through benchmark evidence.
-
-## Verification
-
-The executable evidence is owned by:
-
-- `packages/protocol/src/geometry-worker.test.ts` for schema and structured-clone payload validation;
-- `packages/geometry-worker/src/runtime.test.ts` for invalid input, initialization, transfer lists, cancellation, and stale generations;
-- `packages/geometry-worker/src/memory-profile.test.ts` for missing, complete, malformed, and invalid allocator bindings;
-- `packages/geometry-worker/src/occt-diagnostics.test.ts` for controlled binding validation, native lifecycle dispatch, and purge results;
-- `scripts/occt-build-config.test.ts` for deterministic config instrumentation and upstream-anchor drift;
-- `scripts/occt-build-artifacts.test.ts` for output validation and isolated package staging;
-- `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, modeling, exchange, invariant, progress, lifetime, and disposal behavior.
-
-Playwright attaches a compact JSON evidence record to the HTML report for each browser run. The controlled workflow also writes one operation- and purge-qualified `geometry-worker-evidence-*.json` file per scenario beside the build report and archives the reports, exact sources, generated outputs, and browser diagnostics for seven days. Generated evidence is not committed.
+- `packages/protocol/src/geometry-worker.test.ts` for schema and structured-clone validation;
+- `packages/geometry-worker/src/runtime.test.ts` for dispatch, initialization, transfer, cancellation, and stale generations;
+- `packages/geometry-worker/src/memory-profile.test.ts` for allocator-binding validation;
+- `packages/geometry-worker/src/occt-diagnostics.test.ts` for native lifecycle and purge controls;
+- `packages/geometry-worker/src/occt-shapes.test.ts` for primitive, boolean, and fillet ownership;
+- `packages/geometry-worker/src/occt-mesh.test.ts` for tessellation and STL cleanup;
+- `packages/geometry-worker/src/occt-exchange.test.ts` for STEP reader/writer ownership;
+- `scripts/occt-build-config.test.ts` for deterministic instrumentation;
+- `scripts/occt-builder-context.test.ts` for immutable builder context creation;
+- `scripts/build-occt-source-builder.test.ts` for paired output-contract comparison;
+- `scripts/run-occt-memory-evidence.test.ts` for the local matrix contract;
+- `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, geometry, exchange, plateau, restart, and disposal behavior.
 
 ## Remaining stop/go work
 
-- Rebuild the pinned builder image from archived sources with the reviewed destructor-generator patch, then publish the final build instructions and comparison.
-- Prove the corrected binding's allocator plateau and establish a production threshold.
-- Compare the controlled direct binding with Replicad on API coverage, size, speed, and maintainability.
-- Verify operation history needed by SPK-003.
-- Open exported STEP independently in FreeCAD or another reader.
-- Measure cold startup, main-thread long tasks, p95 operations, and memory on a declared baseline device.
-- Repeat the extended lifecycle and format matrix across target browsers where practical.
+- Verify OCCT operation history needed by SPK-003 and choose the production topology-history seam.
+- Open the exported STEP fixture independently in FreeCAD or another implementation.
+- Measure cold startup, main-thread long tasks, p95 operation latency, and peak memory on declared baseline hardware.
+- Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features.
+- Repeat the required extended format and lifecycle cases across target browsers where practical.
+- Archive the exact source bundle, patch, build recipe, output manifest, license texts, notices, and replacement instructions for release.
 
 Until those items pass, ADR-0001 remains **Accepted for spike** rather than accepted for production.

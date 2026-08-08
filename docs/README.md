@@ -46,9 +46,9 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 has a **Rework** result: required browser operations, stage checkpoints, the controlled candidate build, allocator instrumentation, operation isolation, and hard worker restart pass. Native C++ scoped primitives are allocation-neutral, while the pinned OpenCascade.js generator disables native destruction for OCCT placement-delete classes. A source-rebuilt generator correction and allocator-level plateau evidence remain unresolved.
+SPK-001 remains **Rework**, but its source-reproduction and memory blockers are closed. The controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, and post-warmup live allocation drifts by 432 bytes across four further full batches. Operation history, independent STEP validation, declared performance budgets, and release compliance evidence remain unresolved.
 
-- Exact OCCT build/version and exported binding set.
+- Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
 - Suitability of the SolveSpace solver subset as a standalone WASM module.
 - `TopoRef` matching algorithm and thresholds.

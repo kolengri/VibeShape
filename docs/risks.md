@@ -34,7 +34,7 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 
 **Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
-**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit, adapter-owned wrapper counts balance, and the controlled candidate builds from checksum-verified sources. Native C++ scoped primitive loops retain zero lifecycle bytes, while equivalent direct bindings retain approximately 9.62 MB per 1,000 boxes and 3.04 MB per 1,000 cylinders. The pinned OpenCascade.js generator emits no-op native destructors when OCCT placement delete is present; allocator purge has no effect. R2 remains open until a source-rebuilt generator correction establishes a plateau, and the spike result is **Rework**.
+**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit. The controlled candidate is source-built from checksum-verified archives with the reviewed OpenCascade.js destructor correction. Purpose-owned OCCT adapters retain zero bytes in every 1,000-operation lifecycle block, and post-warmup live allocation drifts by 432 bytes across four further complete batches. R2 is reduced but remains open for declared cold-start, long-task, p95 operation, peak-memory, independent STEP, and release-compliance gates; the spike result remains **Rework**.
 
 ### Solver
 

@@ -37,8 +37,8 @@ test.setTimeout(120_000)
 
 const controlledOcctMode = process.env.VIBESHAPE_CONTROLLED_OCCT === "1"
 const controlledOcctSourceRevision = OCCT_BUILD_INPUTS.sources.occt.revision
-// This bounds the known rework state; it is not the production plateau criterion.
-const controlledOcctRetainedAllocatorDriftCeilingBytes = 128 * 1024 * 1024
+const controlledOcctPostWarmupDriftCeilingBytes = 64 * 1024
+const controlledOcctLifecycleGrowthCeilingBytes = 8 * 1024
 const expectedProgress = [
   "creating-primitives",
   "boolean-cut",
@@ -219,14 +219,27 @@ function expectMemoryEvidence(spike: GeometrySpikeHarnessState, result: KernelRe
   const firstDisposed = requireAllocatorSnapshot(firstResult, "shapes-disposed")
   const lastDisposed = requireAllocatorSnapshot(result, "shapes-disposed")
   const retainedDriftBytes = lastDisposed.allocatedBytes - firstDisposed.allocatedBytes
-  expect(retainedDriftBytes).toBeLessThanOrEqual(controlledOcctRetainedAllocatorDriftCeilingBytes)
+  const lifecycleGrowthBytes = spike.results.map((batch) => {
+    const beforeLifecycle = requireAllocatorSnapshot(batch, "stl-exported")
+    const afterLifecycle = requireAllocatorSnapshot(batch, "lifecycle-completed")
+    return afterLifecycle.allocatedBytes - beforeLifecycle.allocatedBytes
+  })
+
+  expect(retainedDriftBytes).toBeLessThanOrEqual(controlledOcctPostWarmupDriftCeilingBytes)
+  expect(
+    lifecycleGrowthBytes.every(
+      (growthBytes) => growthBytes <= controlledOcctLifecycleGrowthCeilingBytes,
+    ),
+  ).toBe(true)
 
   return {
     firstInitialized,
     firstDisposed,
     lastDisposed,
     retainedDriftBytes,
-    regressionCeilingBytes: controlledOcctRetainedAllocatorDriftCeilingBytes,
+    postWarmupDriftCeilingBytes: controlledOcctPostWarmupDriftCeilingBytes,
+    lifecycleGrowthBytes,
+    lifecycleGrowthCeilingBytes: controlledOcctLifecycleGrowthCeilingBytes,
   }
 }
 
