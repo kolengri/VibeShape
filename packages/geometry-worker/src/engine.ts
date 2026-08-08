@@ -1,11 +1,17 @@
-import type {
-  GeometryEngineMetadata,
-  GeometryProgressStage,
-  KernelSpikeEngineResult,
-  KernelSpikeParameters,
-  TopologyCandidate,
-  TopologySpikeEngineResult,
-  TopologySpikeParameters,
+import {
+  boxFeatureContentParametersSchema,
+  cylinderFeatureContentParametersSchema,
+  type FeatureContentEnvironment,
+  type FeatureEvaluationEngineResult,
+  featureContentEnvironmentSchema,
+  type GeometryEngineMetadata,
+  type GeometryProgressStage,
+  type GeometryWorkerRequest,
+  type KernelSpikeEngineResult,
+  type KernelSpikeParameters,
+  type TopologyCandidate,
+  type TopologySpikeEngineResult,
+  type TopologySpikeParameters,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
 import { type Shape3D, setOC } from "replicad"
@@ -15,7 +21,11 @@ import initializeOpenCascade, {
 } from "replicad-opencascadejs"
 import opencascadeWasmUrl from "replicad-opencascadejs/src/replicad_single.wasm?url"
 import {
+  FEATURE_CONTENT_HOST_API_VERSION,
+  GEOMETRY_ADAPTER_ID,
   GEOMETRY_ADAPTER_VERSION,
+  GEOMETRY_KERNEL_ID,
+  MODELING_TOLERANCE_POLICY_VERSION,
   OPENCASCADE_SOURCE_REVISION,
   REPLICAD_OPENCASCADE_VERSION,
   REPLICAD_VERSION,
@@ -37,7 +47,7 @@ import {
   filletOcctEdgesAtZWithHistory,
   filletOcctEdgesAtZWithLineage,
 } from "./occt-shapes"
-import { OwnedShapeRegistry } from "./shape-registry"
+import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
 import {
   captureReplicadTopologyCandidates,
   captureReplicadTopologySnapshot,
@@ -46,8 +56,34 @@ import {
 } from "./topology-signatures"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
+type EvaluateFeatureRequest = Extract<GeometryWorkerRequest, { type: "evaluateFeature" }>
+
+export type PrimitiveFeatureEvaluationInput = Pick<
+  EvaluateFeatureRequest,
+  "documentId" | "featureId" | "content" | "contentHash" | "mesh"
+>
+
+export type PrimitiveFeatureEvaluationResult =
+  | { ok: true; result: FeatureEvaluationEngineResult }
+  | {
+      ok: false
+      diagnostic: Readonly<{
+        code: "unsupported-feature-type" | "invalid-feature-parameters" | "invalid-feature-geometry"
+        message: string
+      }>
+    }
 
 type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
+
+const MAX_FEATURE_WORKSPACE_LENGTH_MM = 100_000
+const BOX_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.box#1"
+const CYLINDER_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
+
+function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
+  return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
+}
 
 type OpenCascadeInitializer = (options: {
   locateFile: (path: string) => string
@@ -78,6 +114,33 @@ function readTopAbsShapeEnum(opencascade: OpenCascadeInstance, member: keyof Top
 
 function elapsed(startedAt: number) {
   return performance.now() - startedAt
+}
+
+function createFeatureContentEnvironment(): FeatureContentEnvironment {
+  return featureContentEnvironmentSchema.parse({
+    schemaVersion: 0,
+    hostApiVersion: FEATURE_CONTENT_HOST_API_VERSION,
+    geometry: {
+      adapterId: GEOMETRY_ADAPTER_ID,
+      adapterVersion: GEOMETRY_ADAPTER_VERSION,
+      kernelId: GEOMETRY_KERNEL_ID,
+      kernelVersion: REPLICAD_OPENCASCADE_VERSION,
+      kernelSourceRevision: OPENCASCADE_SOURCE_REVISION,
+    },
+    modelingTolerancePolicyVersion: MODELING_TOLERANCE_POLICY_VERSION,
+    provider: { kind: "built-in" },
+  })
+}
+
+function primitiveFailure(
+  code: Extract<PrimitiveFeatureEvaluationResult, { ok: false }>["diagnostic"]["code"],
+  message: string,
+): Extract<PrimitiveFeatureEvaluationResult, { ok: false }> {
+  return { ok: false, diagnostic: { code, message } }
+}
+
+function withinFeatureWorkspace(values: readonly number[]) {
+  return values.every((value) => value <= MAX_FEATURE_WORKSPACE_LENGTH_MM)
 }
 
 function relativeError(expected: number, actual: number) {
@@ -235,7 +298,7 @@ function measureShape(opencascade: OpenCascadeInstance, shape: Shape3D) {
 function tessellate(
   opencascade: OpenCascadeInstance,
   shape: Shape3D,
-  parameters: KernelSpikeParameters,
+  parameters: { meshTolerance: number; angularTolerance: number },
 ) {
   const source = meshOcctShape(opencascade, shape, {
     tolerance: parameters.meshTolerance,
@@ -302,6 +365,190 @@ function planeSemanticRole(
     [Math.abs(normalY) > 0.999 && nearlyEqual(y, -width / 2), "base-extrude.side.y-min"],
     [Math.abs(normalY) > 0.999 && nearlyEqual(y, width / 2), "base-extrude.side.y-max"],
   ])
+}
+
+type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
+type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
+
+function boxFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: BoxContentParameters,
+) {
+  if (context.kind !== "face" || context.signature.geometryClass !== "PLANE") {
+    return undefined
+  }
+  const { centroid, direction } = context.signature
+  if (!direction) return undefined
+  const minimumZ = parameters.centered ? -parameters.height / 2 : 0
+  const maximumZ = parameters.centered ? parameters.height / 2 : parameters.height
+  const axes = [
+    {
+      coordinate: centroid[0],
+      normal: direction[0],
+      minimum: -parameters.width / 2,
+      maximum: parameters.width / 2,
+      minimumRole: "primitive.box.side.x-min",
+      maximumRole: "primitive.box.side.x-max",
+    },
+    {
+      coordinate: centroid[1],
+      normal: direction[1],
+      minimum: -parameters.depth / 2,
+      maximum: parameters.depth / 2,
+      minimumRole: "primitive.box.side.y-min",
+      maximumRole: "primitive.box.side.y-max",
+    },
+    {
+      coordinate: centroid[2],
+      normal: direction[2],
+      minimum: minimumZ,
+      maximum: maximumZ,
+      minimumRole: "primitive.box.cap.start",
+      maximumRole: "primitive.box.cap.end",
+    },
+  ]
+  const axis = axes.find(({ normal }) => Math.abs(normal) > 0.999)
+  if (!axis) return undefined
+  return firstMatchingRole([
+    [nearlyEqual(axis.coordinate, axis.minimum), axis.minimumRole],
+    [nearlyEqual(axis.coordinate, axis.maximum), axis.maximumRole],
+  ])
+}
+
+function cylinderFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: CylinderContentParameters,
+) {
+  if (context.kind !== "face") return undefined
+  if (context.signature.geometryClass === "CYLINDRE") return "primitive.cylinder.wall"
+  if (context.signature.geometryClass !== "PLANE" || !context.signature.direction) return undefined
+  const z = context.signature.centroid[2]
+  const minimumZ = parameters.centered ? -parameters.height / 2 : 0
+  const maximumZ = parameters.centered ? parameters.height / 2 : parameters.height
+  return firstMatchingRole([
+    [nearlyEqual(z, minimumZ), "primitive.cylinder.cap.start"],
+    [nearlyEqual(z, maximumZ), "primitive.cylinder.cap.end"],
+  ])
+}
+
+type ParsedPrimitiveFeature =
+  | { kind: "box"; parameters: BoxContentParameters }
+  | { kind: "cylinder"; parameters: CylinderContentParameters }
+
+function parsePrimitiveFeature(feature: EvaluateFeatureRequest["content"]["feature"]):
+  | { ok: true; feature: ParsedPrimitiveFeature }
+  | {
+      ok: false
+      diagnostic: Extract<PrimitiveFeatureEvaluationResult, { ok: false }>["diagnostic"]
+    } {
+  if (feature.inputs.length !== 0 || feature.references.length !== 0) {
+    return primitiveFailure(
+      "invalid-feature-parameters",
+      "Primitive features cannot declare dependency inputs or topology references.",
+    )
+  }
+
+  const key = featureTypeKey(feature.type)
+  if (key === BOX_FEATURE_TYPE_KEY) {
+    const parameters = boxFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (!parameters.success) {
+      return primitiveFailure("invalid-feature-parameters", "Box content parameters are invalid.")
+    }
+    if (
+      !withinFeatureWorkspace([
+        parameters.data.width,
+        parameters.data.depth,
+        parameters.data.height,
+      ])
+    ) {
+      return primitiveFailure(
+        "invalid-feature-parameters",
+        `Box dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+      )
+    }
+    return { ok: true, feature: { kind: "box", parameters: parameters.data } }
+  }
+
+  if (key === CYLINDER_FEATURE_TYPE_KEY) {
+    const parameters = cylinderFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (!parameters.success) {
+      return primitiveFailure(
+        "invalid-feature-parameters",
+        "Cylinder content parameters are invalid.",
+      )
+    }
+    if (!withinFeatureWorkspace([parameters.data.radius, parameters.data.height])) {
+      return primitiveFailure(
+        "invalid-feature-parameters",
+        `Cylinder dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+      )
+    }
+    return { ok: true, feature: { kind: "cylinder", parameters: parameters.data } }
+  }
+
+  return primitiveFailure(
+    "unsupported-feature-type",
+    `Feature type ${key} is not supported by the primitive geometry evaluator.`,
+  )
+}
+
+function createPrimitiveShape(opencascade: OpenCascadeInstance, feature: ParsedPrimitiveFeature) {
+  if (feature.kind === "box") {
+    const { width, depth, height, centered } = feature.parameters
+    return createOcctBox(opencascade, [width, depth, height], centered)
+  }
+
+  const { radius, height, centered } = feature.parameters
+  return createOcctCylinder(opencascade, radius, height, [0, 0, centered ? -height / 2 : 0])
+}
+
+function capturePrimitiveTopology(shape: Shape3D, feature: ParsedPrimitiveFeature) {
+  return captureReplicadTopologyCandidates(shape, {
+    semanticRole: (context) =>
+      feature.kind === "box"
+        ? boxFeatureSemanticRole(context, feature.parameters)
+        : cylinderFeatureSemanticRole(context, feature.parameters),
+  })
+}
+
+function evaluatePrimitiveGeometry(
+  opencascade: OpenCascadeInstance,
+  shape: Shape3D,
+  feature: ParsedPrimitiveFeature,
+) {
+  const startedAt = performance.now()
+  const metrics = measureShape(opencascade, shape)
+  if (!metrics.valid || metrics.solidCount !== 1 || metrics.volume <= 0) {
+    throw new Error("Primitive evaluation did not produce one valid positive-volume solid.")
+  }
+  return {
+    metrics,
+    topologyCandidates: capturePrimitiveTopology(shape, feature),
+    evaluationMs: elapsed(startedAt),
+  }
+}
+
+function tessellatePrimitiveGeometry(
+  opencascade: OpenCascadeInstance,
+  shape: Shape3D,
+  meshPolicy: PrimitiveFeatureEvaluationInput["mesh"],
+) {
+  const startedAt = performance.now()
+  const mesh = tessellate(opencascade, shape, {
+    meshTolerance: meshPolicy.chordTolerance,
+    angularTolerance: meshPolicy.angularTolerance,
+  })
+  return { mesh, tessellationMs: elapsed(startedAt) }
+}
+
+function disposePrimitiveShape(shape: Shape3D | null) {
+  if (!shape) return true
+  try {
+    shape.delete()
+    return true
+  } catch {
+    return false
+  }
 }
 
 interface TopologyHolePosition {
@@ -414,6 +661,11 @@ function kernelFixtureSemanticRole(
 export interface GeometryKernelEngine {
   initialize(): Promise<GeometryEngineMetadata>
   isInitialized(): boolean
+  getFeatureContentEnvironment(): FeatureContentEnvironment | null
+  evaluatePrimitiveFeature(
+    input: PrimitiveFeatureEvaluationInput,
+    reportProgress: ProgressReporter,
+  ): Promise<PrimitiveFeatureEvaluationResult>
   runKernelSpike(
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
@@ -429,12 +681,17 @@ export interface GeometryKernelEngine {
 
 export class ReplicadGeometryEngine implements GeometryKernelEngine {
   readonly #ownedShapes = new OwnedShapeRegistry()
+  readonly #featureShapes = new DocumentFeatureShapeRegistry<Shape3D>()
   #metadata: GeometryEngineMetadata | null = null
   #opencascade: OpenCascadeModule | null = null
   #initialization: Promise<GeometryEngineMetadata> | null = null
 
   isInitialized() {
     return this.#metadata !== null && this.#opencascade !== null
+  }
+
+  getFeatureContentEnvironment() {
+    return this.#metadata?.featureContentEnvironment ?? null
   }
 
   async initialize() {
@@ -476,6 +733,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       opencascadeSourceRevision: OPENCASCADE_SOURCE_REVISION,
       wasmBytes: wasmBinary.byteLength,
       initializedInMs: elapsed(startedAt),
+      featureContentEnvironment: createFeatureContentEnvironment(),
     }
 
     return this.#metadata
@@ -484,14 +742,78 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   getHealth() {
     return {
       initialized: this.isInitialized(),
-      ownedShapeCount: this.#ownedShapes.size,
+      ownedShapeCount: this.#ownedShapes.size + this.#featureShapes.size,
       wasmHeapBytes: getWasmHeapBytes(this.#opencascade),
     }
   }
 
-  disposeDocument(_documentId: string) {
+  disposeDocument(documentId: string) {
     this.#ownedShapes.disposeAll()
-    return this.#ownedShapes.size
+    return this.#featureShapes.disposeDocument(documentId)
+  }
+
+  async evaluatePrimitiveFeature(
+    input: PrimitiveFeatureEvaluationInput,
+    reportProgress: ProgressReporter,
+  ): Promise<PrimitiveFeatureEvaluationResult> {
+    const engine = await this.initialize()
+    const opencascade = this.#opencascade
+    if (!opencascade) {
+      return primitiveFailure("invalid-feature-geometry", "OpenCascade did not initialize.")
+    }
+
+    reportProgress("feature-validation", 0.1)
+    const parsed = parsePrimitiveFeature(input.content.feature)
+    if (!parsed.ok) return parsed
+
+    const totalStartedAt = performance.now()
+    const cached = this.#featureShapes.get(input.documentId, input.featureId, input.contentHash)
+    let temporaryShape: Shape3D | null = null
+
+    try {
+      reportProgress("feature-evaluation", 0.35)
+      const shape = cached ?? createPrimitiveShape(opencascade, parsed.feature)
+      if (!cached) temporaryShape = shape
+      const evaluation = evaluatePrimitiveGeometry(opencascade, shape, parsed.feature)
+
+      reportProgress("feature-tessellation", 0.7)
+      const tessellation = tessellatePrimitiveGeometry(opencascade, shape, input.mesh)
+
+      if (temporaryShape) {
+        this.#featureShapes.replace(
+          input.documentId,
+          input.featureId,
+          input.contentHash,
+          temporaryShape,
+        )
+        temporaryShape = null
+      }
+
+      reportProgress("complete", 1)
+      return {
+        ok: true,
+        result: {
+          engine,
+          shape: evaluation.metrics,
+          topologyCandidates: evaluation.topologyCandidates,
+          mesh: tessellation.mesh,
+          cache: { brepHit: cached !== undefined },
+          timings: {
+            evaluationMs: evaluation.evaluationMs,
+            tessellationMs: tessellation.tessellationMs,
+            totalMs: elapsed(totalStartedAt),
+          },
+        },
+      }
+    } catch {
+      const cleanupSucceeded = disposePrimitiveShape(temporaryShape)
+      return primitiveFailure(
+        "invalid-feature-geometry",
+        cleanupSucceeded
+          ? "Primitive geometry evaluation failed."
+          : "Primitive geometry evaluation failed and temporary shape cleanup did not complete.",
+      )
+    }
   }
 
   async runKernelSpike(parameters: KernelSpikeParameters, reportProgress: ProgressReporter) {

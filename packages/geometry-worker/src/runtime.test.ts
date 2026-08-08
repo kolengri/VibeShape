@@ -1,18 +1,46 @@
 import {
+  type FeatureContentEnvironment,
   GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
   type GeometryEngineMetadata,
   type GeometryProgressStage,
   type GeometryWorkerRequest,
   type GeometryWorkerResponse,
+  geometryWorkerRequestSchema,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
   type TopologySpikeParameters,
+  serializePrimitiveFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
 import { describe, expect, it } from "vitest"
-import type { GeometryKernelEngine } from "./engine"
+import type {
+  GeometryKernelEngine,
+  PrimitiveFeatureEvaluationInput,
+  PrimitiveFeatureEvaluationResult,
+} from "./engine"
 import { type GeometryWorkerEndpoint, GeometryWorkerRuntime } from "./runtime"
+
+const featureContentEnvironment: FeatureContentEnvironment = {
+  schemaVersion: 0,
+  hostApiVersion: "0.1.0",
+  geometry: {
+    adapterId: "org.vibeshape.geometry.replicad",
+    adapterVersion: "spike-2",
+    kernelId: "org.opencascade.occt",
+    kernelVersion: "0.23.0",
+    kernelSourceRevision: null,
+  },
+  modelingTolerancePolicyVersion: 1,
+  provider: { kind: "built-in" },
+}
+
+const boxFeatureType = {
+  moduleId: "org.vibeshape.core.part-design",
+  moduleVersion: "0.1.0",
+  typeId: "org.vibeshape.feature.part-design.box",
+  schemaVersion: 1,
+} as const
 
 const engineMetadata: GeometryEngineMetadata = {
   adapter: "replicad",
@@ -22,6 +50,7 @@ const engineMetadata: GeometryEngineMetadata = {
   opencascadeSourceRevision: null,
   wasmBytes: 1,
   initializedInMs: 1,
+  featureContentEnvironment,
 }
 
 function createKernelResult(): KernelSpikeEngineResult {
@@ -115,7 +144,9 @@ function createHistoryStats() {
 class FakeEngine implements GeometryKernelEngine {
   initialized = false
   runCount = 0
+  featureRunCount = 0
   disposalError: Error | null = null
+  featureFailure: Extract<PrimitiveFeatureEvaluationResult, { ok: false }> | null = null
 
   async initialize() {
     this.initialized = true
@@ -124,6 +155,34 @@ class FakeEngine implements GeometryKernelEngine {
 
   isInitialized() {
     return this.initialized
+  }
+
+  getFeatureContentEnvironment() {
+    return this.initialized ? featureContentEnvironment : null
+  }
+
+  async evaluatePrimitiveFeature(
+    _input: PrimitiveFeatureEvaluationInput,
+    reportProgress: (stage: GeometryProgressStage, fraction: number) => void,
+  ): Promise<PrimitiveFeatureEvaluationResult> {
+    this.featureRunCount += 1
+    reportProgress("feature-validation", 0.1)
+    if (this.featureFailure) return this.featureFailure
+    reportProgress("feature-evaluation", 0.35)
+    reportProgress("feature-tessellation", 0.7)
+    reportProgress("complete", 1)
+    const result = createKernelResult()
+    return {
+      ok: true,
+      result: {
+        engine: result.engine,
+        shape: result.shape,
+        topologyCandidates: result.topologyCandidates,
+        mesh: result.mesh,
+        cache: { brepHit: false },
+        timings: { evaluationMs: 1, tessellationMs: 1, totalMs: 2 },
+      },
+    }
   }
 
   async runKernelSpike(
@@ -189,6 +248,45 @@ function createTopologyRunRequest(requestId: string): GeometryWorkerRequest {
       filletRadius: 1.5,
     },
   }
+}
+
+function boxContent(environment: FeatureContentEnvironment = featureContentEnvironment) {
+  return {
+    schemaVersion: 0,
+    feature: {
+      schemaVersion: 0,
+      type: boxFeatureType,
+      parameters: { width: 20, depth: 30, height: 25.4, centered: true },
+      inputs: [],
+      references: [],
+    },
+    environment,
+  } as const
+}
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
+async function createFeatureRunRequest(
+  requestId: string,
+  options: {
+    content?: ReturnType<typeof boxContent>
+    contentHash?: string
+    generation?: number
+  } = {},
+) {
+  const content = options.content ?? boxContent()
+  return geometryWorkerRequestSchema.parse({
+    ...createEnvelope(requestId, options.generation),
+    type: "evaluateFeature",
+    featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+    content,
+    contentHash:
+      options.contentHash ?? (await sha256(serializePrimitiveFeatureContentIdentity(content))),
+    mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+  })
 }
 
 function createHarness() {
@@ -258,6 +356,75 @@ describe("GeometryWorkerRuntime", () => {
 
     expect(messages.at(-1)).toMatchObject({ type: "topologySpikeCompleted" })
     expect(transfers.at(-1)).toHaveLength(0)
+  })
+
+  it("verifies and evaluates canonical primitive feature content with transferable meshes", async () => {
+    const { engine, messages, runtime, transfers } = createHarness()
+
+    await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
+    await runtime.handle(await createFeatureRunRequest("feature"))
+
+    expect(engine.featureRunCount).toBe(1)
+    expect(messages.map(({ type }) => type)).toEqual([
+      "progress",
+      "initialized",
+      "progress",
+      "progress",
+      "progress",
+      "progress",
+      "featureEvaluated",
+    ])
+    expect(messages.at(-1)).toMatchObject({
+      type: "featureEvaluated",
+      featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+      cache: { brepHit: false },
+    })
+    expect(transfers.at(-1)).toHaveLength(4)
+  })
+
+  it("rejects mismatched feature environments and hashes before engine execution", async () => {
+    const { engine, messages, runtime } = createHarness()
+    await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
+
+    await runtime.handle(
+      await createFeatureRunRequest("wrong-environment", {
+        content: boxContent({
+          ...featureContentEnvironment,
+          geometry: { ...featureContentEnvironment.geometry, adapterVersion: "other-build" },
+        }),
+      }),
+    )
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "feature-content-environment-mismatch" },
+    })
+
+    await runtime.handle(
+      await createFeatureRunRequest("wrong-hash", { contentHash: "f".repeat(64) }),
+    )
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "feature-content-hash-mismatch" },
+    })
+    expect(engine.featureRunCount).toBe(0)
+  })
+
+  it("maps primitive evaluator failures to stable worker diagnostics", async () => {
+    const { engine, messages, runtime } = createHarness()
+    engine.featureFailure = {
+      ok: false,
+      diagnostic: {
+        code: "unsupported-feature-type",
+        message: "The feature type is unsupported.",
+      },
+    }
+    await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
+    await runtime.handle(await createFeatureRunRequest("feature"))
+
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "unsupported-feature-type", stage: "feature-validation" },
+    })
   })
 
   it("does not run work that was cancelled before dispatch", async () => {

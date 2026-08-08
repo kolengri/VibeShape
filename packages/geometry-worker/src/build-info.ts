@@ -1,4 +1,8 @@
 export const CONTROLLED_OCCT_SOURCE_REVISION = "bb368e271e24f63078129283148ce83db6b9670a"
+export const FEATURE_CONTENT_HOST_API_VERSION = "0.1.0"
+export const MODELING_TOLERANCE_POLICY_VERSION = 1
+export const GEOMETRY_ADAPTER_ID = "org.vibeshape.geometry.replicad"
+export const GEOMETRY_KERNEL_ID = "org.opencascade.occt"
 
 const isControlledBuild = import.meta.env.MODE === "controlled-occt"
 

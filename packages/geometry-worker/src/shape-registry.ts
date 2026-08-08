@@ -43,3 +43,58 @@ export class OwnedShapeRegistry<Shape extends DeletableShape = AnyShape> {
     }
   }
 }
+
+type FeatureShapeEntry<Shape> = Readonly<{
+  contentHash: string
+  shape: Shape
+}>
+
+export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShape> {
+  readonly #documents = new Map<string, Map<string, FeatureShapeEntry<Shape>>>()
+  #size = 0
+
+  get size() {
+    return this.#size
+  }
+
+  get(documentId: string, featureId: string, contentHash: string) {
+    const entry = this.#documents.get(documentId)?.get(featureId)
+    return entry?.contentHash === contentHash ? entry.shape : undefined
+  }
+
+  replace(documentId: string, featureId: string, contentHash: string, shape: Shape) {
+    const features = this.#documents.get(documentId) ?? new Map()
+    const previous = features.get(featureId)
+
+    if (previous) {
+      previous.shape.delete()
+    } else {
+      this.#size += 1
+    }
+
+    features.set(featureId, { contentHash, shape })
+    this.#documents.set(documentId, features)
+  }
+
+  disposeDocument(documentId: string) {
+    const features = this.#documents.get(documentId)
+    if (!features) return this.#size
+
+    let firstError: unknown
+    for (const [featureId, entry] of [...features].reverse()) {
+      try {
+        entry.shape.delete()
+        features.delete(featureId)
+        this.#size -= 1
+      } catch (error) {
+        firstError ??= error
+      }
+    }
+
+    if (features.size === 0) {
+      this.#documents.delete(documentId)
+    }
+    if (firstError) throw firstError
+    return this.#size
+  }
+}

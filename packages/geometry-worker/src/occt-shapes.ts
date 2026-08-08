@@ -104,9 +104,13 @@ function addLinearFilletEdgesAtZ(
 }
 
 export function createOcctShapeOperations(castShape: OcctShapeCaster) {
-  function createBox(opencascade: OpenCascadeInstance, dimensions: Vector3): Shape3D {
+  function createBox(
+    opencascade: OpenCascadeInstance,
+    dimensions: Vector3,
+    centeredZ = false,
+  ): Shape3D {
     const [length, width, height] = dimensions
-    const corner = new opencascade.gp_Pnt_3(-length / 2, -width / 2, 0)
+    const corner = new opencascade.gp_Pnt_3(-length / 2, -width / 2, centeredZ ? -height / 2 : 0)
 
     try {
       const maker = new opencascade.BRepPrimAPI_MakeBox_3(corner, length, width, height)

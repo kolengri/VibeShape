@@ -10,6 +10,8 @@ const primitiveLengthSchema = lengthQuantitySchema.refine(
   `Primitive lengths must be greater than zero and at most ${MAX_PRIMITIVE_LENGTH_MM} mm.`,
 )
 
+const primitiveContentLengthSchema = z.number().finite().positive().max(MAX_PRIMITIVE_LENGTH_MM)
+
 export const boxFeatureParametersSchema = z
   .object({
     width: primitiveLengthSchema,
@@ -23,6 +25,23 @@ export const cylinderFeatureParametersSchema = z
   .object({
     radius: primitiveLengthSchema,
     height: primitiveLengthSchema,
+    centered: z.boolean(),
+  })
+  .strict()
+
+export const boxFeatureContentParametersSchema = z
+  .object({
+    width: primitiveContentLengthSchema,
+    depth: primitiveContentLengthSchema,
+    height: primitiveContentLengthSchema,
+    centered: z.boolean(),
+  })
+  .strict()
+
+export const cylinderFeatureContentParametersSchema = z
+  .object({
+    radius: primitiveContentLengthSchema,
+    height: primitiveContentLengthSchema,
     centered: z.boolean(),
   })
   .strict()
@@ -59,12 +78,12 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     parametersSchema: boxFeatureParametersSchema,
     contentParameters(parameters) {
       const box = boxFeatureParametersSchema.parse(parameters)
-      return {
+      return boxFeatureContentParametersSchema.parse({
         width: box.width.value,
         depth: box.depth.value,
         height: box.height.value,
         centered: box.centered,
-      }
+      })
     },
   },
   {
@@ -72,11 +91,11 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     parametersSchema: cylinderFeatureParametersSchema,
     contentParameters(parameters) {
       const cylinder = cylinderFeatureParametersSchema.parse(parameters)
-      return {
+      return cylinderFeatureContentParametersSchema.parse({
         radius: cylinder.radius.value,
         height: cylinder.height.value,
         centered: cylinder.centered,
-      }
+      })
     },
   },
 ]

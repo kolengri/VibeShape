@@ -151,6 +151,8 @@ Minimum commands:
 
 In alpha, `cancel(requestId)` is a **logical cancellation**: results from an obsolete generation are ignored. A synchronous OCCT call cannot always be interrupted safely. If a call exceeds its timeout or hangs, the worker is restarted and the document is restored from the latest committed snapshot.
 
+Protocol v6 implements `initializeEngine`, `evaluateFeature`, `cancel`, `disposeDocument`, and `healthCheck` for the first production-oriented primitive path while retaining the isolated spike operations. `evaluateFeature` currently accepts only dependency-free built-in box and cylinder content identities. It verifies the exact runtime environment and recomputed SHA-256 digest before OCCT execution, reports validation/evaluation/tessellation progress, returns typed failures, and transfers positions, normals, triangle indices, and triangle-to-face IDs without copying. The broader minimum command set above remains the target contract rather than a claim of current implementation.
+
 ## Two document states
 
 - **Committed domain state** is the sole source of parametric truth. It is serialized and participates in undo/redo.
@@ -204,7 +206,7 @@ Every feature has a content hash derived from:
 
 A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untrusted derived data. Version or checksum mismatches delete and rebuild it.
 
-The domain now defines canonical feature-content identity schema version `0`. Trusted feature-type handlers project validated records into bounded semantic parameters; the initial primitive projections retain canonical millimeter values but exclude source-unit presentation metadata. Dependency hashes remain ordered by declared input slots, and topology-reference owners become slot indices so equivalent documents do not diverge solely because their feature UUIDs differ. Feature UUID, label, and suppression are not geometry content. The environment identity includes exact host API, adapter, kernel, optional source revision, modeling-tolerance policy, and built-in or exact-integrity extension provider metadata. Canonical JSON sorts object keys while preserving array order. The domain validates the output of an injected SHA-256 port, but the production worker does not yet compute or persist this hash, and no cache may be trusted until that integration is complete.
+The domain now defines canonical feature-content identity schema version `0`. Trusted feature-type handlers project validated records into bounded semantic parameters; the initial primitive projections retain canonical millimeter values but exclude source-unit presentation metadata. Dependency hashes remain ordered by declared input slots, and topology-reference owners become slot indices so equivalent documents do not diverge solely because their feature UUIDs differ. Feature UUID, label, and suppression are not geometry content. The environment identity includes exact host API, adapter, kernel, optional source revision, modeling-tolerance policy, and built-in or exact-integrity extension provider metadata. Canonical JSON sorts object keys while preserving array order. The domain validates the output of an injected SHA-256 port. The protocol-v6 worker independently reproduces that serialization and digest for dependency-free box and cylinder identities, then owns an in-memory per-document B-Rep entry per feature. This cache is exact-hash-only, disposable, and never authoritative; persistence and dependency-aware cache orchestration are not implemented.
 
 ## Hangs and memory
 

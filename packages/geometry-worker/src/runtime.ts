@@ -7,6 +7,8 @@ import {
   type GeometryWorkerResponse,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
+  serializeFeatureContentEnvironment,
+  serializePrimitiveFeatureContentIdentity,
 } from "@vibeshape/protocol"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import type { GeometryKernelEngine } from "./engine"
@@ -43,17 +45,25 @@ function errorMessage(error: unknown) {
 }
 
 function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
-  if (response.type !== "kernelSpikeCompleted") {
+  if (response.type !== "kernelSpikeCompleted" && response.type !== "featureEvaluated") {
     return []
   }
 
-  return [
+  const buffers: ArrayBufferLike[] = [
     response.mesh.positions.buffer,
     response.mesh.normals.buffer,
     response.mesh.indices.buffer,
     response.mesh.triangleFaceIds.buffer,
-    response.exchange.stepFile.buffer,
-  ].filter((buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer)
+  ]
+  if (response.type === "kernelSpikeCompleted") {
+    buffers.push(response.exchange.stepFile.buffer)
+  }
+  return buffers.filter((buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer)
+}
+
+async function sha256Text(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
 export class GeometryWorkerRuntime {
@@ -125,8 +135,24 @@ export class GeometryWorkerRuntime {
     })
   }
 
+  #shouldSkipRequest(request: GeometryWorkerRequest) {
+    if (this.#cancelledRequests.delete(request.requestId)) {
+      this.#postCancelled(request, "cancelled")
+      return true
+    }
+    if (this.#isStale(request)) {
+      this.#postCancelled(request, "stale-generation")
+      return true
+    }
+    return false
+  }
+
   #trackGeneration(request: GeometryWorkerRequest) {
-    if (request.type !== "runKernelSpike" && request.type !== "runTopologySpike") {
+    if (
+      request.type !== "runKernelSpike" &&
+      request.type !== "runTopologySpike" &&
+      request.type !== "evaluateFeature"
+    ) {
       return
     }
 
@@ -167,6 +193,11 @@ export class GeometryWorkerRuntime {
       return
     }
 
+    if (request.type === "evaluateFeature") {
+      await this.#evaluateFeature(request)
+      return
+    }
+
     await this.#runKernelSpike(request)
   }
 
@@ -187,6 +218,80 @@ export class GeometryWorkerRuntime {
     }
   }
 
+  async #evaluateFeature(request: Extract<GeometryWorkerRequest, { type: "evaluateFeature" }>) {
+    if (!this.engine.isInitialized()) {
+      this.#postFailure(
+        this.#envelope(request),
+        "engine-not-initialized",
+        "Initialize the geometry engine before evaluating features.",
+        null,
+        true,
+      )
+      return
+    }
+    if (this.#shouldSkipRequest(request)) return
+    if (!(await this.#featureRequestIsCompatible(request))) return
+
+    let currentStage: GeometryProgressStage | null = "feature-validation"
+    this.#activeDocuments.add(request.documentId)
+    const result = await this.engine.evaluatePrimitiveFeature(request, (stage, fraction) => {
+      currentStage = stage
+      this.#postProgress(request, stage, fraction)
+    })
+
+    if (this.#shouldSkipRequest(request)) return
+    if (!result.ok) {
+      this.#postFailure(
+        this.#envelope(request),
+        result.diagnostic.code,
+        result.diagnostic.message,
+        currentStage,
+        false,
+      )
+      return
+    }
+
+    this.#post({
+      ...this.#envelope(request),
+      type: "featureEvaluated",
+      featureId: request.featureId,
+      contentHash: request.contentHash,
+      ...result.result,
+    })
+  }
+
+  async #featureRequestIsCompatible(
+    request: Extract<GeometryWorkerRequest, { type: "evaluateFeature" }>,
+  ) {
+    const expectedEnvironment = this.engine.getFeatureContentEnvironment()
+    const environmentMatches =
+      expectedEnvironment !== null &&
+      serializeFeatureContentEnvironment(request.content.environment) ===
+        serializeFeatureContentEnvironment(expectedEnvironment)
+    if (!environmentMatches) {
+      this.#postFailure(
+        this.#envelope(request),
+        "feature-content-environment-mismatch",
+        "Feature content identity does not match the active geometry environment.",
+        "feature-validation",
+        false,
+      )
+      return false
+    }
+
+    const actualHash = await sha256Text(serializePrimitiveFeatureContentIdentity(request.content))
+    if (actualHash === request.contentHash) return true
+
+    this.#postFailure(
+      this.#envelope(request),
+      "feature-content-hash-mismatch",
+      "Feature content identity does not match its declared SHA-256 digest.",
+      "feature-validation",
+      false,
+    )
+    return false
+  }
+
   async #runKernelSpike(request: Extract<GeometryWorkerRequest, { type: "runKernelSpike" }>) {
     if (!this.engine.isInitialized()) {
       this.#postFailure(
@@ -199,15 +304,7 @@ export class GeometryWorkerRuntime {
       return
     }
 
-    if (this.#cancelledRequests.delete(request.requestId)) {
-      this.#postCancelled(request, "cancelled")
-      return
-    }
-
-    if (this.#isStale(request)) {
-      this.#postCancelled(request, "stale-generation")
-      return
-    }
+    if (this.#shouldSkipRequest(request)) return
 
     let currentStage: GeometryProgressStage | null = null
     this.#activeDocuments.add(request.documentId)
@@ -218,15 +315,7 @@ export class GeometryWorkerRuntime {
         this.#postProgress(request, stage, fraction)
       })
 
-      if (this.#cancelledRequests.delete(request.requestId)) {
-        this.#postCancelled(request, "cancelled")
-        return
-      }
-
-      if (this.#isStale(request)) {
-        this.#postCancelled(request, "stale-generation")
-        return
-      }
+      if (this.#shouldSkipRequest(request)) return
 
       this.#post({ ...this.#envelope(request), type: "kernelSpikeCompleted", ...result })
     } catch (error) {
@@ -251,26 +340,12 @@ export class GeometryWorkerRuntime {
       )
       return
     }
-    if (this.#cancelledRequests.delete(request.requestId)) {
-      this.#postCancelled(request, "cancelled")
-      return
-    }
-    if (this.#isStale(request)) {
-      this.#postCancelled(request, "stale-generation")
-      return
-    }
+    if (this.#shouldSkipRequest(request)) return
 
     this.#activeDocuments.add(request.documentId)
     try {
       const result = await this.engine.runTopologySpike(request.parameters)
-      if (this.#cancelledRequests.delete(request.requestId)) {
-        this.#postCancelled(request, "cancelled")
-        return
-      }
-      if (this.#isStale(request)) {
-        this.#postCancelled(request, "stale-generation")
-        return
-      }
+      if (this.#shouldSkipRequest(request)) return
       this.#post({ ...this.#envelope(request), type: "topologySpikeCompleted", ...result })
     } catch (error) {
       this.#postFailure(

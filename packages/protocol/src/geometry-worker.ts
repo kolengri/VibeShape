@@ -1,8 +1,24 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 5 as const
+export const GEOMETRY_PROTOCOL_VERSION = 6 as const
 
 const finiteNumberSchema = z.number().finite()
+const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const reverseDnsPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$/
+const semverPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+const featureIdSchema = z
+  .string()
+  .regex(uuidV7Pattern, "Feature IDs must be lowercase UUIDv7 values.")
+const technicalIdentifierSchema = z
+  .string()
+  .min(3)
+  .max(128)
+  .regex(reverseDnsPattern, "Technical identifiers must use a lowercase dotted namespace.")
+const moduleVersionSchema = z
+  .string()
+  .regex(semverPattern, "Module versions must be exact semantic versions.")
+export const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/, "Expected a SHA-256 digest.")
 const cadLengthSchema = finiteNumberSchema.min(0.001).max(100_000)
 const cadCoordinateSchema = finiteNumberSchema.min(-100_000).max(100_000)
 const meshToleranceSchema = finiteNumberSchema.min(0.001).max(10)
@@ -11,6 +27,130 @@ const identifierSchema = z.string().trim().min(1).max(128)
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
+
+export const boxFeatureContentParametersSchema = z
+  .object({
+    width: cadLengthSchema,
+    depth: cadLengthSchema,
+    height: cadLengthSchema,
+    centered: z.boolean(),
+  })
+  .strict()
+
+export const cylinderFeatureContentParametersSchema = z
+  .object({
+    radius: cadLengthSchema,
+    height: cadLengthSchema,
+    centered: z.boolean(),
+  })
+  .strict()
+
+const normalizedBuildVersionSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .refine((value) => value.trim() === value, "Build versions must be normalized.")
+const sourceRevisionSchema = z
+  .string()
+  .regex(
+    /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/,
+    "Source revisions must be exact lowercase hexadecimal identifiers.",
+  )
+  .nullable()
+
+export const featureContentEnvironmentSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    hostApiVersion: moduleVersionSchema,
+    geometry: z
+      .object({
+        adapterId: technicalIdentifierSchema,
+        adapterVersion: normalizedBuildVersionSchema,
+        kernelId: technicalIdentifierSchema,
+        kernelVersion: normalizedBuildVersionSchema,
+        kernelSourceRevision: sourceRevisionSchema,
+      })
+      .strict(),
+    modelingTolerancePolicyVersion: z.number().int().positive().safe(),
+    provider: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("built-in") }).strict(),
+      z
+        .object({
+          kind: z.literal("extension"),
+          extensionId: technicalIdentifierSchema,
+          extensionVersion: moduleVersionSchema,
+          apiVersion: moduleVersionSchema,
+          integrity: sha256Schema,
+        })
+        .strict(),
+    ]),
+  })
+  .strict()
+
+const featureTypeSchema = z
+  .object({
+    moduleId: technicalIdentifierSchema,
+    moduleVersion: moduleVersionSchema,
+    typeId: technicalIdentifierSchema,
+    schemaVersion: z.number().int().positive().safe(),
+  })
+  .strict()
+
+const primitiveContentParametersSchema = z
+  .record(z.string().min(1).max(128), z.json())
+  .refine(
+    (parameters) => Object.keys(parameters).length <= 16,
+    "Primitive content parameters are limited to 16 keys.",
+  )
+  .refine(
+    (parameters) => JSON.stringify(parameters).length <= 64 * 1024,
+    "Primitive content parameters exceed the encoded-size limit.",
+  )
+
+export const primitiveFeatureContentIdentitySchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    feature: z
+      .object({
+        schemaVersion: z.literal(0),
+        type: featureTypeSchema,
+        parameters: primitiveContentParametersSchema,
+        inputs: z.tuple([]),
+        references: z.tuple([]),
+      })
+      .strict(),
+    environment: featureContentEnvironmentSchema,
+  })
+  .strict()
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
+  if (value === null || typeof value !== "object") {
+    const serialized = JSON.stringify(value)
+    if (serialized === undefined) throw new TypeError("Canonical JSON accepts only JSON values.")
+    return serialized
+  }
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`
+}
+
+export function serializeFeatureContentEnvironment(input: unknown) {
+  return canonicalJson(featureContentEnvironmentSchema.parse(input))
+}
+
+export function serializePrimitiveFeatureContentIdentity(input: unknown) {
+  return canonicalJson(primitiveFeatureContentIdentitySchema.parse(input))
+}
+
+export const featureMeshPolicySchema = z
+  .object({
+    chordTolerance: meshToleranceSchema,
+    angularTolerance: finiteNumberSchema.min(0.001).max(Math.PI),
+  })
+  .strict()
 
 function isNormalized(vector: readonly number[]) {
   return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
@@ -195,6 +335,14 @@ const runTopologySpikeRequestSchema = requestEnvelopeSchema.extend({
   parameters: topologySpikeParametersSchema,
 })
 
+const evaluateFeatureRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("evaluateFeature"),
+  featureId: featureIdSchema,
+  content: primitiveFeatureContentIdentitySchema,
+  contentHash: sha256Schema,
+  mesh: featureMeshPolicySchema,
+})
+
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({
   type: z.literal("healthCheck"),
 })
@@ -212,6 +360,7 @@ export const geometryWorkerRequestSchema = z.discriminatedUnion("type", [
   initializeEngineRequestSchema,
   runKernelSpikeRequestSchema,
   runTopologySpikeRequestSchema,
+  evaluateFeatureRequestSchema,
   healthCheckRequestSchema,
   disposeDocumentRequestSchema,
   cancelRequestSchema,
@@ -228,6 +377,9 @@ export const geometryProgressStageSchema = z.enum([
   "step-import",
   "stl-export",
   "lifecycle-check",
+  "feature-validation",
+  "feature-evaluation",
+  "feature-tessellation",
   "complete",
 ])
 
@@ -240,6 +392,7 @@ const engineMetadataSchema = z
     opencascadeSourceRevision: z.string().min(1).nullable(),
     wasmBytes: nonNegativeIntegerSchema,
     initializedInMs: finiteNumberSchema.nonnegative(),
+    featureContentEnvironment: featureContentEnvironmentSchema,
   })
   .strict()
 
@@ -426,6 +579,24 @@ const topologySpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
 })
 
+const featureEvaluatedResponseSchema = responseEnvelopeSchema.extend({
+  type: z.literal("featureEvaluated"),
+  featureId: featureIdSchema,
+  contentHash: sha256Schema,
+  engine: engineMetadataSchema,
+  shape: shapeMetricsSchema,
+  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
+  mesh: meshPayloadSchema,
+  cache: z.object({ brepHit: z.boolean() }).strict(),
+  timings: z
+    .object({
+      evaluationMs: finiteNumberSchema.nonnegative(),
+      tessellationMs: finiteNumberSchema.nonnegative(),
+      totalMs: finiteNumberSchema.nonnegative(),
+    })
+    .strict(),
+})
+
 const healthResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("health"),
   initialized: z.boolean(),
@@ -456,6 +627,11 @@ export const geometryDiagnosticCodeSchema = z.enum([
   "engine-not-initialized",
   "kernel-initialization-failed",
   "geometry-operation-failed",
+  "feature-content-environment-mismatch",
+  "feature-content-hash-mismatch",
+  "unsupported-feature-type",
+  "invalid-feature-parameters",
+  "invalid-feature-geometry",
   "cancelled",
   "stale-generation",
   "internal-error",
@@ -478,6 +654,7 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
   progressResponseSchema,
   kernelSpikeCompletedResponseSchema,
   topologySpikeCompletedResponseSchema,
+  featureEvaluatedResponseSchema,
   healthResponseSchema,
   documentDisposedResponseSchema,
   cancellationAcceptedResponseSchema,
@@ -487,6 +664,8 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
 
 export type KernelSpikeParameters = z.infer<typeof kernelSpikeParametersSchema>
 export type TopologySpikeParameters = z.infer<typeof topologySpikeParametersSchema>
+export type FeatureMeshPolicy = z.infer<typeof featureMeshPolicySchema>
+export type FeatureContentEnvironment = z.infer<typeof featureContentEnvironmentSchema>
 export type GeometryWorkerRequest = z.infer<typeof geometryWorkerRequestSchema>
 export type GeometryWorkerResponse = z.infer<typeof geometryWorkerResponseSchema>
 export type GeometryRequestEnvelope = Pick<
@@ -523,4 +702,9 @@ export type KernelSpikeEngineResult = Pick<
 export type TopologySpikeEngineResult = Pick<
   Extract<GeometryWorkerResponse, { type: "topologySpikeCompleted" }>,
   "engine" | "shape" | "topologyCandidates"
+>
+export type FeatureEvaluatedResponse = Extract<GeometryWorkerResponse, { type: "featureEvaluated" }>
+export type FeatureEvaluationEngineResult = Pick<
+  FeatureEvaluatedResponse,
+  "engine" | "shape" | "topologyCandidates" | "mesh" | "cache" | "timings"
 >
