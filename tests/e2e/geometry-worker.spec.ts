@@ -139,6 +139,43 @@ function createExpectedEngine() {
   }
 }
 
+function expectHistoryStatsConsistent(stats: {
+  sourceCount: number
+  modifiedSourceCount: number
+  modifiedRelationCount: number
+  generatedSourceCount: number
+  generatedRelationCount: number
+  deletedSourceCount: number
+}) {
+  expect(stats.sourceCount).toBeGreaterThan(0)
+  expect(stats.modifiedSourceCount).toBeLessThanOrEqual(stats.sourceCount)
+  expect(stats.modifiedRelationCount).toBeGreaterThanOrEqual(stats.modifiedSourceCount)
+  expect(stats.generatedSourceCount).toBeLessThanOrEqual(stats.sourceCount)
+  expect(stats.generatedRelationCount).toBeGreaterThanOrEqual(stats.generatedSourceCount)
+  expect(stats.deletedSourceCount).toBeLessThanOrEqual(stats.sourceCount)
+}
+
+function expectOperationHistory(result: KernelResponse) {
+  for (const stats of Object.values(result.history.booleanCut)) {
+    expectHistoryStatsConsistent(stats)
+  }
+
+  for (const stats of Object.values(result.history.fillet)) {
+    expectHistoryStatsConsistent(stats)
+  }
+
+  expect(result.history.booleanCut.edges.modifiedRelationCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.edges.generatedRelationCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.edges.deletedSourceCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.faces.modifiedRelationCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.faces.generatedRelationCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.faces.deletedSourceCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.solids.modifiedRelationCount).toBeGreaterThan(0)
+  expect(result.history.booleanCut.solids.deletedSourceCount).toBeGreaterThan(0)
+  expect(result.history.fillet.edges.generatedRelationCount).toBeGreaterThan(0)
+  expect(result.history.fillet.faces.modifiedRelationCount).toBeGreaterThan(0)
+}
+
 function expectGeometryResult(
   result: KernelResponse,
   expectedEngine: ReturnType<typeof createExpectedEngine>,
@@ -171,6 +208,7 @@ function expectGeometryResult(
   expect(result.exchange.relativeVolumeError).toBeLessThanOrEqual(
     kernelSpikeExpectedInvariants.maximumRelativeStepVolumeError,
   )
+  expectOperationHistory(result)
 }
 
 function expectLifecycleEvidence(
@@ -288,6 +326,7 @@ function createEvidence(
   return {
     engine: result.engine,
     shape: result.shape,
+    history: result.history,
     mesh: {
       vertexCount: result.mesh.positions.length / 3,
       triangleCount: result.mesh.indices.length / 3,

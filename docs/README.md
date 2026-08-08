@@ -46,7 +46,7 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 remains **Rework**, but its source-reproduction and memory blockers are closed. The controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, and post-warmup live allocation drifts by 432 bytes across four further full batches. Operation history, independent STEP validation, declared performance budgets, and release compliance evidence remain unresolved.
+SPK-001 remains **Rework**, but its source-reproduction, transient operation-history, and memory blockers are closed. The controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, and post-warmup live allocation drifts by 448 bytes across four further full batches. Independent STEP validation, declared performance budgets, and release compliance evidence remain unresolved. SPK-003 still owns the stable `TopoRef` algorithm and ambiguity policy.
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.

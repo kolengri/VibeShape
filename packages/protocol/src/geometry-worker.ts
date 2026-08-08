@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 2 as const
+export const GEOMETRY_PROTOCOL_VERSION = 3 as const
 
 const finiteNumberSchema = z.number().finite()
 const cadLengthSchema = finiteNumberSchema.min(0.001).max(100_000)
@@ -144,6 +144,37 @@ const meshPayloadSchema = z
   })
   .strict()
 
+const operationHistoryStatsSchema = z
+  .object({
+    sourceCount: nonNegativeIntegerSchema,
+    modifiedSourceCount: nonNegativeIntegerSchema,
+    modifiedRelationCount: nonNegativeIntegerSchema,
+    generatedSourceCount: nonNegativeIntegerSchema,
+    generatedRelationCount: nonNegativeIntegerSchema,
+    deletedSourceCount: nonNegativeIntegerSchema,
+  })
+  .strict()
+
+const operationHistorySchema = z
+  .object({
+    booleanCut: z
+      .object({
+        vertices: operationHistoryStatsSchema,
+        edges: operationHistoryStatsSchema,
+        faces: operationHistoryStatsSchema,
+        solids: operationHistoryStatsSchema,
+      })
+      .strict(),
+    fillet: z
+      .object({
+        vertices: operationHistoryStatsSchema,
+        edges: operationHistoryStatsSchema,
+        faces: operationHistoryStatsSchema,
+      })
+      .strict(),
+  })
+  .strict()
+
 const timingSchema = z
   .object({
     createPrimitivesMs: finiteNumberSchema.nonnegative(),
@@ -242,6 +273,7 @@ const kernelSpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("kernelSpikeCompleted"),
   engine: engineMetadataSchema,
   shape: shapeMetricsSchema,
+  history: operationHistorySchema,
   mesh: meshPayloadSchema,
   exchange: exchangeMetricsSchema,
   lifecycle: lifecycleSchema,
@@ -329,5 +361,5 @@ export type KernelSpikeCompletedResponse = Extract<
 >
 export type KernelSpikeEngineResult = Pick<
   KernelSpikeCompletedResponse,
-  "engine" | "shape" | "mesh" | "exchange" | "lifecycle" | "memory" | "timings"
+  "engine" | "shape" | "history" | "mesh" | "exchange" | "lifecycle" | "memory" | "timings"
 >

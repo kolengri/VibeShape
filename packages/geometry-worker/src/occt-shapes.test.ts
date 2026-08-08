@@ -81,6 +81,7 @@ describe("owned OCCT boolean adapter", () => {
     const cutter = {
       ...createDeletable(),
       Build: vi.fn(),
+      SetToFillHistory: vi.fn(),
       Shape: vi.fn(() => rawShape),
       SimplifyResult: vi.fn(),
     }
@@ -96,6 +97,7 @@ describe("owned OCCT boolean adapter", () => {
 
     expect(result).toBe(wrappedShape)
     expect(cutter.Build).toHaveBeenCalledWith(progress)
+    expect(cutter.SetToFillHistory).toHaveBeenCalledWith(false)
     expect(cutter.SimplifyResult).toHaveBeenCalledWith(true, true, 1e-3)
     expect(rawShape.delete).toHaveBeenCalledOnce()
     expect(cutter.delete).toHaveBeenCalledOnce()
