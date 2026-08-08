@@ -20,7 +20,7 @@ Use Open CASCADE Technology through WebAssembly. Start with Replicad and a custo
 
 ## Spike Evidence
 
-[SPK-001](../spikes/spk-001-occt-worker.md) proves the required Replicad modeling, tessellation, STEP round-trip, STL operations, stage memory checkpoints, and hard worker restart in Chromium, Firefox, and WebKit. Its controlled candidate builds from a recorded OCCT revision and exposes allocator metrics. Operation-isolated evidence traces linear retention to the pinned OpenCascade.js generator's no-op destructor policy for OCCT placement-delete classes; equivalent native C++ scoped cycles retain zero bytes. The builder image is not yet source-reproduced with the required correction and the corrected binding has no proven plateau. This ADR therefore remains accepted only for the spike; it does not select the production binding.
+[SPK-001](../spikes/spk-001-occt-worker.md) proves the required Replicad modeling, tessellation, STEP round-trip, STL operations, stage memory checkpoints, and hard worker restart in Chromium, Firefox, and WebKit. Its controlled candidate is source-built from verified archives with the reviewed OpenCascade.js destructor correction and exposes allocator metrics. Purpose-owned OCCT adapters record zero retained bytes in every 1,000-operation lifecycle block and 432 bytes of post-warmup drift across four further complete batches. Operation history, independent STEP validation, declared performance budgets, and release compliance evidence remain open. This ADR therefore remains accepted only for the spike; it does not yet select the production binding.
 
 ## Rejected Alternatives
 

@@ -47,15 +47,19 @@ FROM source-base AS source-objects
 RUN /opencascade.js/src/compileSources.py single-threaded
 
 FROM source-objects AS unpatched-builder
-RUN /opencascade.js/src/generateBindings.py \
+COPY config/configured-bindings.txt /tmp/vibeshape-configured-bindings.txt
+COPY scripts/generate-configured-bindings.py /opencascade.js/src/generate-configured-bindings.py
+RUN python3 /opencascade.js/src/generate-configured-bindings.py all /tmp/vibeshape-configured-bindings.txt \
   && /opencascade.js/src/compileBindings.py single-threaded \
   && chmod -R 777 /opencascade.js /occt
 WORKDIR /src
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
 
-FROM source-objects AS patched-builder
+FROM unpatched-builder AS patched-builder
 COPY patches/bindings.py /opencascade.js/src/bindings.py
-RUN /opencascade.js/src/generateBindings.py \
+WORKDIR /opencascade.js/src
+RUN find /opencascade.js/build/bindings -type f \( -name '*.cpp' -o -name '*.cpp.o' \) -delete \
+  && python3 /opencascade.js/src/generate-configured-bindings.py embind /tmp/vibeshape-configured-bindings.txt \
   && /opencascade.js/src/compileBindings.py single-threaded \
   && chmod -R 777 /opencascade.js /occt
 WORKDIR /src

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { correctOpenCascadeJsDestructorPolicy } from "./occt-builder-context"
+import {
+  correctOpenCascadeJsDestructorPolicy,
+  createConfiguredBindingSymbols,
+} from "./occt-builder-context"
 
 const upstreamPolicy = `before
     nonPublicDestructor = any(x.kind == clang.cindex.CursorKind.DESTRUCTOR and not x.access_specifier == clang.cindex.AccessSpecifier.PUBLIC for x in theClass.get_children())
@@ -30,5 +33,27 @@ describe(correctOpenCascadeJsDestructorPolicy.name, () => {
     expect(() =>
       correctOpenCascadeJsDestructorPolicy(`${upstreamPolicy}${upstreamPolicy}`),
     ).toThrow("Expected exactly one OpenCascade.js destructor-policy anchor.")
+  })
+})
+
+describe(createConfiguredBindingSymbols.name, () => {
+  it("creates a sorted, unique allowlist from every configured build", () => {
+    expect(
+      createConfiguredBindingSymbols(`mainBuild:
+  bindings:
+  - symbol: TopoDS_Shape
+  - symbol: BRepPrimAPI_MakeBox
+extraBuilds:
+- bindings:
+  - symbol: TopoDS_Shape
+  - symbol: VibeShapeOcctDiagnostics
+`),
+    ).toEqual(["BRepPrimAPI_MakeBox", "TopoDS_Shape", "VibeShapeOcctDiagnostics"])
+  })
+
+  it("rejects a config without an explicit binding contract", () => {
+    expect(() => createConfiguredBindingSymbols("mainBuild: {}\n")).toThrow(
+      "does not declare any binding symbols",
+    )
   })
 })

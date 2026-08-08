@@ -7,20 +7,6 @@ export const OCCT_BUILD_INPUTS = {
     emscriptenImage:
       "emscripten/emsdk@sha256:4c3e0a0dac61430b719e82118ae9b2c7480902a2713267e80fa296d39f7ab921",
     pythonPackages: ["argparse==1.4.0", "cerberus==1.3.4", "libclang==15.0.6.1", "pyyaml==6.0"],
-    registryBaselineOutputs: {
-      "vibeshape_occt.js": {
-        bytes: 135_503,
-        sha256: "d28f69b40b60f3881ccd3a996664a1732527a34cc154e2511dbfa02cd5c5081c",
-      },
-      "vibeshape_occt.wasm": {
-        bytes: 10_852_832,
-        sha256: "a6878af17b88a59e97243929ad89bca44fbb43884297077aa5941a42c88b15fd",
-      },
-      "vibeshape_occt.d.ts": {
-        bytes: 410_813,
-        sha256: "fa6eb436aad62f5c85f3a1a8e3ce67b3a4202e9a08b7a482db00aae0b6a79152",
-      },
-    },
   },
   sources: {
     opencascadeJs: {

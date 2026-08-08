@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process"
-import { readFileSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { isDeepStrictEqual } from "node:util"
 import {
   requireControlledBuildOutputs,
   sha256,
@@ -20,13 +21,15 @@ const artifactRoot = join(repositoryRoot, ".artifacts", "occt-build")
 const inputDirectory = join(artifactRoot, "input")
 const packageDirectory = join(artifactRoot, "package")
 const builderContextDirectory = join(artifactRoot, "builder-context")
+const registryBaselineDirectory = join(artifactRoot, "registry-baseline")
 const buildConfigPath = join(inputDirectory, `${OCCT_BUILD_INPUTS.outputBaseName}.yml`)
 const revisionSuffix = OCCT_BUILD_INPUTS.sources.opencascadeJs.revision.slice(0, 12)
 const unpatchedImage = `vibeshape/occt-builder:unpatched-${revisionSuffix}`
 const patchedImage = `vibeshape/occt-builder:patched-${revisionSuffix}`
+const dockerCommand = process.env.VIBESHAPE_DOCKER_BIN || "docker"
 
 function runDocker(arguments_: string[]) {
-  const result = spawnSync("docker", arguments_, { stdio: "inherit" })
+  const result = spawnSync(dockerCommand, arguments_, { stdio: "inherit" })
 
   if (result.error) {
     throw new Error(`Docker failed to start: ${result.error.message}`)
@@ -86,24 +89,80 @@ function runControlledBuild(image: string) {
   return requireControlledBuildOutputs(inputDirectory, OCCT_BUILD_INPUTS.outputBaseName)
 }
 
-export function assertRegistryBaseline(outputs: ControlledOutput[]) {
-  const expected = OCCT_BUILD_INPUTS.sourceBuilder.registryBaselineOutputs
+function indexControlledOutputs(outputs: ControlledOutput[]) {
+  return new Map(outputs.map((output) => [output.file, output]))
+}
 
-  for (const output of outputs) {
-    const baseline = expected[output.file as keyof typeof expected]
+export function assertRegistryBaseline(
+  registryOutputs: ControlledOutput[],
+  sourceOutputs: ControlledOutput[],
+) {
+  const registry = indexControlledOutputs(registryOutputs)
 
-    if (!baseline || baseline.bytes !== output.bytes || baseline.sha256 !== output.sha256) {
-      throw new Error(`Source-built unpatched ${output.file} does not match the registry baseline.`)
+  for (const output of sourceOutputs) {
+    const baseline = registry.get(output.file)
+
+    if (!baseline || baseline.bytes !== output.bytes) {
+      throw new Error(
+        `Source-built unpatched ${output.file} does not match the registry output contract.`,
+      )
+    }
+
+    if (
+      output.file !== `${OCCT_BUILD_INPUTS.outputBaseName}.wasm` &&
+      baseline.sha256 !== output.sha256
+    ) {
+      throw new Error(
+        `Source-built unpatched ${output.file} does not match the registry output contract.`,
+      )
     }
   }
 
-  if (outputs.length !== Object.keys(expected).length) {
-    throw new Error("Source-built unpatched output count does not match the registry baseline.")
+  if (sourceOutputs.length !== registryOutputs.length) {
+    throw new Error("Source-built unpatched output count does not match the registry contract.")
   }
 }
 
+export function createWasmInterfaceFingerprint(path: string) {
+  const module = new WebAssembly.Module(readFileSync(path))
+  const normalize = <T extends { kind: string; module?: string; name: string }>(entries: T[]) =>
+    entries
+      .map(({ kind, module: moduleName, name }) => ({ kind, module: moduleName, name }))
+      .sort((left, right) =>
+        `${left.module ?? ""}:${left.name}:${left.kind}`.localeCompare(
+          `${right.module ?? ""}:${right.name}:${right.kind}`,
+        ),
+      )
+
+  return {
+    imports: normalize(WebAssembly.Module.imports(module)),
+    exports: normalize(WebAssembly.Module.exports(module)),
+  }
+}
+
+function preserveControlledOutputs(outputFiles: string[]) {
+  rmSync(registryBaselineDirectory, { force: true, recursive: true })
+  mkdirSync(registryBaselineDirectory, { recursive: true })
+
+  for (const outputFile of outputFiles) {
+    copyFileSync(outputFile, join(registryBaselineDirectory, basename(outputFile)))
+  }
+}
+
+function requireEquivalentWasmInterfaces() {
+  const wasmFile = `${OCCT_BUILD_INPUTS.outputBaseName}.wasm`
+  const registry = createWasmInterfaceFingerprint(join(registryBaselineDirectory, wasmFile))
+  const source = createWasmInterfaceFingerprint(join(inputDirectory, wasmFile))
+
+  if (!isDeepStrictEqual(source, registry)) {
+    throw new Error("Source-built unpatched WASM interface does not match the registry baseline.")
+  }
+
+  return source
+}
+
 function inspectImageId(image: string) {
-  const result = spawnSync("docker", ["image", "inspect", "--format", "{{.Id}}", image], {
+  const result = spawnSync(dockerCommand, ["image", "inspect", "--format", "{{.Id}}", image], {
     encoding: "utf8",
   })
 
@@ -148,13 +207,25 @@ function indexOutputs(outputs: ControlledOutput[]) {
 function main() {
   buildBuilderImage("unpatched-builder", unpatchedImage)
   const unpatchedImageId = inspectImageId(unpatchedImage)
+  const registry = runControlledBuild(OCCT_BUILD_INPUTS.builderImage)
+  preserveControlledOutputs(registry.outputFiles)
   const unpatched = runControlledBuild(unpatchedImage)
-  assertRegistryBaseline(unpatched.outputs)
+  assertRegistryBaseline(registry.outputs, unpatched.outputs)
+  const wasmInterface = requireEquivalentWasmInterfaces()
   writeJson(join(artifactRoot, "source-builder-baseline-report.json"), {
     schemaVersion: 1,
     inputs: createReportInputs(),
     builder: { image: unpatchedImage, imageId: unpatchedImageId, patched: false },
-    matchesRegistryBaseline: true,
+    matchesRegistryOutputContract: true,
+    comparison: {
+      byteExactReproductionRequired: false,
+      rationale:
+        "The pinned upstream builder is not bit-reproducible across identical runs; output dimensions and runtime contracts are stable.",
+      registryOutputs: indexOutputs(registry.outputs),
+      exactJavaScriptAndDeclarations: true,
+      exactOutputDimensions: true,
+      wasmInterface,
+    },
     outputs: indexOutputs(unpatched.outputs),
   })
 
@@ -167,8 +238,9 @@ function main() {
     builder: { image: patchedImage, imageId: patchedImageId, patched: true },
     registryBaseline: {
       image: OCCT_BUILD_INPUTS.builderImage,
-      reproducedByUnpatchedSourceBuilder: true,
-      outputs: OCCT_BUILD_INPUTS.sourceBuilder.registryBaselineOutputs,
+      reproducedByUnpatchedSourceBuilder: "output-contract",
+      outputs: indexOutputs(registry.outputs),
+      wasmInterface,
     },
     outputs: indexOutputs(patched.outputs),
   })

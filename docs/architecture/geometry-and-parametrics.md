@@ -173,13 +173,15 @@ Healing must not hide material geometry changes. The import report records every
 
 ## Kernel memory policy
 
-Emscripten/C++ objects requiring `.delete()` are wrapped in a scoped registry:
+Emscripten/C++ objects requiring `.delete()` have an explicit owner. Persistent document shapes use an adapter-owned registry; operation temporaries use lexical `try/finally` scopes:
 
-- Register temporary objects immediately after creation.
-- Release them in reverse order in `finally`.
-- Explicitly remove ownership-transferred objects from the registry.
+- Register persistent or ownership-transferred shapes immediately after creation.
+- Delete temporary builders, explorers, progress ranges, locations, transforms, mesh values, and exchange handles in reverse order in `finally`.
+- Do not rely on `FinalizationRegistry` as an operation-lifetime boundary.
+- Clear OCCT caches that outlive their consumer, including attached display triangulation after STL export and reader/writer-owned STEP state.
+- Explicitly remove transferred or disposed shapes from the persistent registry.
 - Index permanent document objects by opaque IDs.
-- Development builds count live objects and fail tests when the leak delta exceeds the budget.
+- Controlled builds report live allocator bytes and fail post-warmup and per-operation budgets.
 
 ## Phase 0 corpus
 

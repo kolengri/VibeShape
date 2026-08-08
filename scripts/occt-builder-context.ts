@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import { sha256 } from "./occt-build-artifacts"
 import { OCCT_BUILD_INPUTS } from "./occt-build-config"
@@ -39,6 +39,19 @@ export function correctOpenCascadeJsDestructorPolicy(source: string) {
   return replaceExactlyOnce(source, upstreamDestructorPolicy, correctedDestructorPolicy)
 }
 
+export function createConfiguredBindingSymbols(buildConfig: string) {
+  const symbols = Array.from(
+    buildConfig.matchAll(/^\s*-\s+symbol:\s+([A-Za-z_][A-Za-z0-9_]*)\s*$/gm),
+    (match) => match[1],
+  ).filter((symbol): symbol is string => symbol !== undefined)
+
+  if (symbols.length === 0) {
+    throw new Error("The controlled OCCT build config does not declare any binding symbols.")
+  }
+
+  return Array.from(new Set(symbols)).sort()
+}
+
 function readArchiveEntry(archivePath: string, entry: string) {
   const result = spawnSync("tar", ["-xOf", archivePath, entry], {
     encoding: "utf8",
@@ -57,13 +70,23 @@ function readArchiveEntry(archivePath: string, entry: string) {
 }
 
 export function prepareOcctBuilderContext(options: {
+  buildConfigPath: string
+  configuredGeneratorPath: string
   contextDirectory: string
   dockerfilePath: string
   sourceArchives: OcctBuilderSourceArchives
 }) {
-  const { contextDirectory, dockerfilePath, sourceArchives } = options
+  const {
+    buildConfigPath,
+    configuredGeneratorPath,
+    contextDirectory,
+    dockerfilePath,
+    sourceArchives,
+  } = options
   const contextSources = join(contextDirectory, "sources")
   const contextPatch = join(contextDirectory, "patches", "bindings.py")
+  const configuredBindingsPath = join(contextDirectory, "config", "configured-bindings.txt")
+  const contextGeneratorPath = join(contextDirectory, "scripts", "generate-configured-bindings.py")
   const sourceRevision = OCCT_BUILD_INPUTS.sources.opencascadeJs.revision
   const bindingEntry = `opencascade.js-${sourceRevision}/src/bindings.py`
   const upstreamBindings = readArchiveEntry(sourceArchives.opencascadeJs, bindingEntry)
@@ -71,6 +94,8 @@ export function prepareOcctBuilderContext(options: {
   rmSync(contextDirectory, { force: true, recursive: true })
   mkdirSync(contextSources, { recursive: true })
   mkdirSync(join(contextDirectory, "patches"), { recursive: true })
+  mkdirSync(join(contextDirectory, "config"), { recursive: true })
+  mkdirSync(join(contextDirectory, "scripts"), { recursive: true })
 
   for (const [sourceName, archiveName] of Object.entries(archiveNames)) {
     copyFileSync(
@@ -80,7 +105,12 @@ export function prepareOcctBuilderContext(options: {
   }
 
   copyFileSync(dockerfilePath, join(contextDirectory, "Dockerfile"))
+  copyFileSync(configuredGeneratorPath, contextGeneratorPath)
   writeFileSync(contextPatch, correctOpenCascadeJsDestructorPolicy(upstreamBindings))
+  writeFileSync(
+    configuredBindingsPath,
+    `${createConfiguredBindingSymbols(readFileSync(buildConfigPath, "utf8")).join("\n")}\n`,
+  )
 
   const manifest = {
     schemaVersion: 1,
@@ -105,6 +135,15 @@ export function prepareOcctBuilderContext(options: {
       upstreamSha256: sha256Text(upstreamBindings),
       correctedFile: "patches/bindings.py",
       correctedSha256: sha256(contextPatch),
+    },
+    configuredBindings: {
+      file: "config/configured-bindings.txt",
+      sha256: sha256(configuredBindingsPath),
+    },
+    configuredGenerator: {
+      file: "scripts/generate-configured-bindings.py",
+      source: `native/occt/${basename(configuredGeneratorPath)}`,
+      sha256: sha256(contextGeneratorPath),
     },
   }
 

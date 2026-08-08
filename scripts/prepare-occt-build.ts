@@ -17,6 +17,13 @@ const packageDirectory = join(artifactRoot, "package")
 const builderContextDirectory = join(artifactRoot, "builder-context")
 const buildConfigPath = join(inputDirectory, `${OCCT_BUILD_INPUTS.outputBaseName}.yml`)
 const builderDockerfilePath = join(repositoryRoot, "native", "occt", "Dockerfile.builder")
+const configuredGeneratorPath = join(
+  repositoryRoot,
+  "native",
+  "occt",
+  "generate-configured-bindings.py",
+)
+const dockerCommand = process.env.VIBESHAPE_DOCKER_BIN || "docker"
 
 function assertSourceChecksum(path: string, expected: string, url: string) {
   const digest = sha256(path)
@@ -75,7 +82,7 @@ function readReplicadBuildConfig(archivePath: string) {
 }
 
 function requireDocker() {
-  const result = spawnSync("docker", ["--version"], { encoding: "utf8" })
+  const result = spawnSync(dockerCommand, ["--version"], { encoding: "utf8" })
 
   if (result.error || result.status !== 0) {
     throw new Error(
@@ -97,7 +104,7 @@ function createDockerUserArguments() {
 
 function invokeControlledBuild() {
   const result = spawnSync(
-    "docker",
+    dockerCommand,
     [
       "run",
       "--rm",
@@ -166,7 +173,11 @@ async function main() {
   }
   await Promise.all(Object.values(sourceDownloads))
   const replicadArchive = await sourceDownloads.replicad
+  const upstreamConfig = readReplicadBuildConfig(replicadArchive)
+  writeFileSync(buildConfigPath, instrumentReplicadBuildConfig(upstreamConfig))
   prepareOcctBuilderContext({
+    buildConfigPath,
+    configuredGeneratorPath,
     contextDirectory: builderContextDirectory,
     dockerfilePath: builderDockerfilePath,
     sourceArchives: {
@@ -176,9 +187,6 @@ async function main() {
       rapidjson: await sourceDownloads.rapidjson,
     },
   })
-
-  const upstreamConfig = readReplicadBuildConfig(replicadArchive)
-  writeFileSync(buildConfigPath, instrumentReplicadBuildConfig(upstreamConfig))
 
   if (process.argv.includes("--build")) {
     runBuild()

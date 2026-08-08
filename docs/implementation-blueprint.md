@@ -24,7 +24,7 @@ With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can re
 
 ## SPK-001 — OCCT/Replicad worker
 
-**Current result:** **Rework.** The protocol-v2 worker, exact modeling scenario, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, and Chromium/Firefox/WebKit matrix are implemented. The controlled workflow builds a checksum-verified candidate from recorded sources and reports live allocator metrics. Operation-isolated Chromium evidence records zero retained lifecycle bytes for native C++ scoped primitives but linear retention through direct Embind and Replicad calls. The pinned generator emits no-op destructors for OCCT classes that declare placement delete; a source-rebuilt, patched builder and corrected plateau remain required. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Current result:** **Rework — source build and memory gates passed.** The protocol-v2 worker, exact modeling scenario, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, and Chromium/Firefox/WebKit matrix are implemented. The controlled package is built locally from verified OpenCascade.js and OCCT archives with the reviewed destructor correction. Purpose-owned OCCT adapters eliminate `FinalizationRegistry`-dependent lifetimes in the critical path. Every 1,000-operation lifecycle block retains zero bytes, and post-warmup live allocation drifts by 432 bytes across four further full batches. Operation history, independent STEP validation, declared performance budgets, and the release compliance bundle remain required. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Question
 
@@ -62,7 +62,7 @@ Can the browser provide the required exact CAD API, STEP support, and operation 
 
 Proceed only when STEP, boolean, fillet, validation, and history are available; the main thread stays responsive; and repeated runs show no unexplained unbounded growth. Otherwise, reduce bindings or replace the adapter before building feature UI.
 
-The functional operations, controlled candidate build, allocator instrumentation, operation isolation, and hard restart pass. History, a source-rebuilt builder with corrected destructor generation, allocator-level plateau evidence, independent STEP validation, and controlled responsiveness measurements remain open. Do not promote the spike adapter into production feature work yet.
+The functional operations, source-built destructor correction, allocator plateau, operation isolation, and hard restart pass. History, independent STEP validation, controlled responsiveness measurements, production-facade comparison, and release compliance evidence remain open. Do not promote the spike adapter into production feature work yet.
 
 ## SPK-002 — sketch solver
 

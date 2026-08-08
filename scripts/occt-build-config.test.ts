@@ -16,7 +16,7 @@ describe("controlled OCCT build config", () => {
     expect(CONTROLLED_OCCT_SOURCE_REVISION).toBe(OCCT_BUILD_INPUTS.sources.occt.revision)
   })
 
-  it("pins every source-builder input and the registry comparison baseline", () => {
+  it("pins every source-builder input and the registry comparison image", () => {
     expect(OCCT_BUILD_INPUTS.sourceBuilder.emscriptenImage).toMatch(
       /^emscripten\/emsdk@sha256:[a-f0-9]{64}$/,
     )
@@ -28,11 +28,9 @@ describe("controlled OCCT build config", () => {
     ])
     expect(OCCT_BUILD_INPUTS.sources.rapidjson.sha256).toHaveLength(64)
     expect(OCCT_BUILD_INPUTS.sources.freetype.sha256).toHaveLength(64)
-    expect(Object.keys(OCCT_BUILD_INPUTS.sourceBuilder.registryBaselineOutputs)).toEqual([
-      "vibeshape_occt.js",
-      "vibeshape_occt.wasm",
-      "vibeshape_occt.d.ts",
-    ])
+    expect(OCCT_BUILD_INPUTS.builderImage).toMatch(
+      /^donalffons\/opencascade\.js@sha256:[a-f0-9]{64}$/,
+    )
   })
 
   it("adds allocator and native lifecycle instrumentation without changing unrelated bindings", () => {

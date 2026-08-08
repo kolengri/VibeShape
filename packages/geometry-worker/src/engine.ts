@@ -5,15 +5,7 @@ import type {
   KernelSpikeParameters,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
-import {
-  drawCircle,
-  importSTEP,
-  makeBaseBox,
-  measureShapeSurfaceProperties,
-  measureShapeVolumeProperties,
-  type Shape3D,
-  setOC,
-} from "replicad"
+import { type Shape3D, setOC } from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopAbs_ShapeEnum,
@@ -31,6 +23,9 @@ import {
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
+import { exportOcctStep, importOcctStep } from "./occt-exchange"
+import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
+import { createOcctBox, createOcctCylinder, cutOcctShapes, filletOcctEdgesAtZ } from "./occt-shapes"
 import { OwnedShapeRegistry } from "./shape-registry"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
@@ -70,19 +65,6 @@ function elapsed(startedAt: number) {
 
 function relativeError(expected: number, actual: number) {
   return Math.abs(expected - actual) / Math.max(Math.abs(expected), Number.EPSILON)
-}
-
-function createCylinder(parameters: KernelSpikeParameters) {
-  return drawCircle(parameters.cylinderRadius)
-    .sketchOnPlane("XY", parameters.cylinderOrigin)
-    .extrude(parameters.cylinderHeight)
-    .asShape3D()
-}
-
-function deleteShapeWrappers(shapes: Array<{ delete: () => void }>) {
-  for (const shape of shapes) {
-    shape.delete()
-  }
 }
 
 function runLifecycleIteration(
@@ -130,27 +112,47 @@ function runLifecycleIteration(
   }
 
   if (parameters.lifecycleOperation === "box") {
-    ownedShapes.dispose(ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight)))
+    ownedShapes.dispose(ownedShapes.own(createOcctBox(opencascade, parameters.boxSize)))
     return
   }
 
   if (parameters.lifecycleOperation === "cylinder") {
-    ownedShapes.dispose(ownedShapes.own(createCylinder(parameters)))
+    ownedShapes.dispose(
+      ownedShapes.own(
+        createOcctCylinder(
+          opencascade,
+          parameters.cylinderRadius,
+          parameters.cylinderHeight,
+          parameters.cylinderOrigin,
+        ),
+      ),
+    )
     return
   }
 
-  const box = ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight))
-  const cylinder = ownedShapes.own(createCylinder(parameters))
-  const cutShape = ownedShapes.own(box.cut(cylinder))
+  const box = ownedShapes.own(createOcctBox(opencascade, parameters.boxSize))
+  const cylinder = ownedShapes.own(
+    createOcctCylinder(
+      opencascade,
+      parameters.cylinderRadius,
+      parameters.cylinderHeight,
+      parameters.cylinderOrigin,
+    ),
+  )
+  const cutShape = ownedShapes.own(cutOcctShapes(opencascade, box, cylinder))
   ownedShapes.dispose(cutShape)
   ownedShapes.dispose(cylinder)
   ownedShapes.dispose(box)
 }
 
-function countSolids(opencascade: OpenCascadeInstance, shape: Shape3D) {
+function countSubshapes(
+  opencascade: OpenCascadeInstance,
+  shape: Shape3D,
+  shapeType: "TopAbs_EDGE" | "TopAbs_FACE" | "TopAbs_SOLID",
+) {
   const explorer = new opencascade.TopExp_Explorer_2(
     shape.wrapped,
-    readTopAbsShapeEnum(opencascade, "TopAbs_SOLID"),
+    readTopAbsShapeEnum(opencascade, shapeType),
     readTopAbsShapeEnum(opencascade, "TopAbs_SHAPE"),
   )
   const hashes = new Set<number>()
@@ -176,36 +178,49 @@ function countSolids(opencascade: OpenCascadeInstance, shape: Shape3D) {
 
 function measureShape(opencascade: OpenCascadeInstance, shape: Shape3D) {
   const analyzer = new opencascade.BRepCheck_Analyzer(shape.wrapped, true, false)
-  const volumeProperties = measureShapeVolumeProperties(shape)
-  const surfaceProperties = measureShapeSurfaceProperties(shape)
-  const boundingBox = shape.boundingBox
-  const faces = shape.faces
-  const edges = shape.edges
+  const volumeProperties = new opencascade.GProp_GProps_1()
+  const surfaceProperties = new opencascade.GProp_GProps_1()
+  const boundingBox = new opencascade.Bnd_Box_1()
 
   try {
-    const [min, max] = boundingBox.bounds
+    opencascade.BRepGProp.VolumeProperties_1(shape.wrapped, volumeProperties, false, false, false)
+    opencascade.BRepGProp.SurfaceProperties_1(shape.wrapped, surfaceProperties, false, false)
+    opencascade.BRepBndLib.Add(shape.wrapped, boundingBox, true)
+    const xMin = { current: 0 }
+    const yMin = { current: 0 }
+    const zMin = { current: 0 }
+    const xMax = { current: 0 }
+    const yMax = { current: 0 }
+    const zMax = { current: 0 }
+    // The generated declaration misses Emscripten's mutable numeric out-parameter objects.
+    Reflect.apply(boundingBox.Get, boundingBox, [xMin, yMin, zMin, xMax, yMax, zMax])
 
     return {
       valid: analyzer.IsValid_2(),
-      volume: volumeProperties.volume,
-      surfaceArea: surfaceProperties.area,
-      bounds: { min, max },
-      faceCount: faces.length,
-      edgeCount: edges.length,
-      solidCount: countSolids(opencascade, shape),
+      volume: volumeProperties.Mass(),
+      surfaceArea: surfaceProperties.Mass(),
+      bounds: {
+        min: [xMin.current, yMin.current, zMin.current] as [number, number, number],
+        max: [xMax.current, yMax.current, zMax.current] as [number, number, number],
+      },
+      faceCount: countSubshapes(opencascade, shape, "TopAbs_FACE"),
+      edgeCount: countSubshapes(opencascade, shape, "TopAbs_EDGE"),
+      solidCount: countSubshapes(opencascade, shape, "TopAbs_SOLID"),
     }
   } finally {
     analyzer.delete()
     volumeProperties.delete()
     surfaceProperties.delete()
     boundingBox.delete()
-    deleteShapeWrappers(faces)
-    deleteShapeWrappers(edges)
   }
 }
 
-function tessellate(shape: Shape3D, parameters: KernelSpikeParameters) {
-  const source = shape.mesh({
+function tessellate(
+  opencascade: OpenCascadeInstance,
+  shape: Shape3D,
+  parameters: KernelSpikeParameters,
+) {
+  const source = meshOcctShape(opencascade, shape, {
     tolerance: parameters.meshTolerance,
     angularTolerance: parameters.angularTolerance,
   })
@@ -326,15 +341,22 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     try {
       reportProgress("creating-primitives", 0.1)
       let stageStartedAt = performance.now()
-      const [boxLength, boxWidth, boxHeight] = parameters.boxSize
-      const box = this.#ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight))
-      const cylinder = this.#ownedShapes.own(createCylinder(parameters))
+      const [, , boxHeight] = parameters.boxSize
+      const box = this.#ownedShapes.own(createOcctBox(opencascade, parameters.boxSize))
+      const cylinder = this.#ownedShapes.own(
+        createOcctCylinder(
+          opencascade,
+          parameters.cylinderRadius,
+          parameters.cylinderHeight,
+          parameters.cylinderOrigin,
+        ),
+      )
       const createPrimitivesMs = elapsed(stageStartedAt)
       memoryProfile.capture("primitives-created")
 
       reportProgress("boolean-cut", 0.2)
       stageStartedAt = performance.now()
-      const cutShape = this.#ownedShapes.own(box.cut(cylinder))
+      const cutShape = this.#ownedShapes.own(cutOcctShapes(opencascade, box, cylinder))
       this.#ownedShapes.dispose(box)
       this.#ownedShapes.dispose(cylinder)
       const booleanCutMs = elapsed(stageStartedAt)
@@ -343,7 +365,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       reportProgress("fillet", 0.3)
       stageStartedAt = performance.now()
       finalShape = this.#ownedShapes.own(
-        cutShape.fillet(parameters.filletRadius, (finder) => finder.inPlane("XY", boxHeight)),
+        filletOcctEdgesAtZ(opencascade, cutShape, parameters.filletRadius, boxHeight),
       )
       this.#ownedShapes.dispose(cutShape)
       const filletMs = elapsed(stageStartedAt)
@@ -361,33 +383,26 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
       reportProgress("tessellation", 0.5)
       stageStartedAt = performance.now()
-      const mesh = tessellate(finalShape, parameters)
+      const mesh = tessellate(opencascade, finalShape, parameters)
       const tessellationMs = elapsed(stageStartedAt)
       memoryProfile.capture("tessellation-completed")
 
       reportProgress("step-export", 0.6)
       stageStartedAt = performance.now()
-      const stepBlob = finalShape.blobSTEP()
-      const stepBytes = new Uint8Array(await stepBlob.arrayBuffer())
+      const stepBytes = exportOcctStep(opencascade, finalShape.wrapped)
       const stepExportMs = elapsed(stageStartedAt)
       memoryProfile.capture("step-exported")
 
       reportProgress("step-import", 0.7)
       stageStartedAt = performance.now()
-      importedShape = this.#ownedShapes.own(
-        (await importSTEP(new Blob([stepBytes], { type: "application/step" }))).asShape3D(),
-      )
+      importedShape = this.#ownedShapes.own(importOcctStep(opencascade, stepBytes))
       const importedShapeMetrics = measureShape(opencascade, importedShape)
       const stepImportMs = elapsed(stageStartedAt)
       memoryProfile.capture("step-imported")
 
       reportProgress("stl-export", 0.8)
       stageStartedAt = performance.now()
-      const stlBlob = finalShape.blobSTL({
-        tolerance: parameters.meshTolerance,
-        angularTolerance: parameters.angularTolerance,
-        binary: true,
-      })
+      const stlBlob = exportMeshedOcctStl(opencascade, finalShape, true)
       const stlBytes = (await stlBlob.arrayBuffer()).byteLength
       const stlExportMs = elapsed(stageStartedAt)
       memoryProfile.capture("stl-exported")

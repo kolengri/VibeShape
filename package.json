@@ -54,6 +54,8 @@
     "occt:prepare": "bun run scripts/prepare-occt-build.ts",
     "occt:build": "bun run scripts/prepare-occt-build.ts --build",
     "occt:build:source": "bun run occt:prepare && bun run scripts/build-occt-source-builder.ts",
+    "occt:evidence": "bun run occt:build:source && bun run occt:evidence:memory",
+    "occt:evidence:memory": "bun run scripts/run-occt-memory-evidence.ts",
     "fallow": "fallow",
     "fallow:audit": "fallow audit",
     "fallow:health": "fallow health --score",
