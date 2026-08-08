@@ -16,6 +16,7 @@ import type { ModuleRegistry } from "./modules"
 export type TrustedFeatureTypeHandler = Readonly<{
   type: FeatureTypeIdentity
   parametersSchema: z.ZodType
+  contentParameters: (parameters: FeatureParameters) => unknown
 }>
 
 export type FeatureTypeRegistryDiagnostic = Readonly<{
@@ -32,6 +33,7 @@ export type FeatureValidationDiagnostic = Readonly<{
     | "invalid-feature"
     | "feature-type-unavailable"
     | "invalid-feature-parameters"
+    | "invalid-feature-content-parameters"
     | "invalid-feature-dependency-count"
     | "invalid-feature-reference-count"
   message: string
@@ -39,7 +41,12 @@ export type FeatureValidationDiagnostic = Readonly<{
 }>
 
 export type FeatureValidationResult =
-  | { ok: true; feature: FeatureRecord; descriptor: FeatureTypeDescriptor }
+  | {
+      ok: true
+      feature: FeatureRecord
+      descriptor: FeatureTypeDescriptor
+      contentParameters: FeatureParameters
+    }
   | { ok: false; diagnostic: FeatureValidationDiagnostic }
 
 export type FeatureTypeRegistry = Readonly<{
@@ -82,7 +89,11 @@ function indexHandlers(
 
   for (const handler of handlers) {
     const parsedType = featureTypeSchema.safeParse(handler.type)
-    if (!parsedType.success || typeof handler.parametersSchema?.safeParse !== "function") {
+    if (
+      !parsedType.success ||
+      typeof handler.parametersSchema?.safeParse !== "function" ||
+      typeof handler.contentParameters !== "function"
+    ) {
       return registryFailure(
         "invalid-feature-type-handler",
         "A trusted feature type handler is invalid.",
@@ -176,6 +187,33 @@ function normalizedParameters(
       )
 }
 
+function normalizedContentParameters(
+  handler: TrustedFeatureTypeHandler,
+  parameters: FeatureParameters,
+):
+  | { ok: true; contentParameters: FeatureParameters }
+  | { ok: false; diagnostic: FeatureValidationDiagnostic } {
+  let contentParameters: unknown
+
+  try {
+    contentParameters = handler.contentParameters(parameters)
+  } catch {
+    return validationFailure(
+      "invalid-feature-content-parameters",
+      "The trusted feature content normalizer failed.",
+    )
+  }
+
+  const parsed = featureParametersSchema.safeParse(contentParameters)
+  return parsed.success
+    ? { ok: true, contentParameters: parsed.data }
+    : validationFailure(
+        "invalid-feature-content-parameters",
+        "The feature content normalizer returned a non-JSON or oversized object.",
+        zodIssues(parsed.error, "parameters"),
+      )
+}
+
 function validateRegisteredFeature(
   moduleRegistry: ModuleRegistry,
   handlersByKey: ReadonlyMap<string, TrustedFeatureTypeHandler>,
@@ -203,9 +241,13 @@ function validateRegisteredFeature(
   if (cardinality) return cardinality
 
   const parameters = normalizedParameters(handler, parsed.data.parameters)
-  return parameters.ok
-    ? { ok: true, feature: { ...parsed.data, parameters: parameters.parameters }, descriptor }
-    : parameters
+  if (!parameters.ok) return parameters
+
+  const feature = { ...parsed.data, parameters: parameters.parameters }
+  const contentParameters = normalizedContentParameters(handler, feature.parameters)
+  return contentParameters.ok
+    ? { ok: true, feature, descriptor, contentParameters: contentParameters.contentParameters }
+    : contentParameters
 }
 
 export function createFeatureTypeRegistry(
