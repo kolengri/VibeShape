@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process"
+import { assertSuccessfulOcctProcess } from "./occt-process"
 
 export const CONTROLLED_OCCT_EVIDENCE_RUNS = [
   {
@@ -47,15 +48,7 @@ function runEvidenceMatrix() {
       },
     )
 
-    if (result.error) {
-      throw new Error(`Bun failed to start: ${result.error.message}`)
-    }
-
-    if (result.status !== 0) {
-      throw new Error(
-        `Controlled OCCT ${evidenceRun.name} exited with status ${String(result.status)}.`,
-      )
-    }
+    assertSuccessfulOcctProcess(result, `Controlled OCCT ${evidenceRun.name}`)
   }
 }
 
