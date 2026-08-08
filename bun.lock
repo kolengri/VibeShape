@@ -47,6 +47,18 @@
         "@vibeshape/typescript-config": "workspace:*",
       },
     },
+    "packages/automation-host": {
+      "name": "@vibeshape/automation-host",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/automation-api": "workspace:*",
+        "@vibeshape/domain": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
+      },
+    },
     "packages/domain": {
       "name": "@vibeshape/domain",
       "version": "0.0.0",
@@ -622,6 +634,8 @@
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
     "@vibeshape/automation-api": ["@vibeshape/automation-api@workspace:packages/automation-api"],
+
+    "@vibeshape/automation-host": ["@vibeshape/automation-host@workspace:packages/automation-host"],
 
     "@vibeshape/domain": ["@vibeshape/domain@workspace:packages/domain"],
 

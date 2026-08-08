@@ -145,6 +145,31 @@ export type DocumentEventResult =
   | { ok: true; snapshot: DocumentSnapshot }
   | { ok: false; diagnostic: DomainDiagnostic }
 
+export function commandActorsEqual(left: CommandActor, right: CommandActor) {
+  if (left.type !== right.type) {
+    return false
+  }
+
+  switch (left.type) {
+    case "user":
+      return right.type === "user" && left.userId === right.userId
+    case "mcp":
+      return (
+        right.type === "mcp" &&
+        left.clientId === right.clientId &&
+        left.sessionId === right.sessionId
+      )
+    case "extension":
+      return (
+        right.type === "extension" &&
+        left.extensionId === right.extensionId &&
+        left.integrity === right.integrity
+      )
+    case "system":
+      return right.type === "system" && left.source === right.source
+  }
+}
+
 function diagnostic(
   code: z.infer<typeof domainDiagnosticCodeSchema>,
   message: string,

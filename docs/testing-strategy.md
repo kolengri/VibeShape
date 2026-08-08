@@ -233,7 +233,7 @@ The adapter-neutral automation layer is tested before an MCP dependency exists. 
 - actor provenance and ordinary undo/redo after an automation commit;
 - denial of direct store, storage, raw file, kernel, extension-management, and generic execution access.
 
-The current conformance fixture covers the first bullet for `org.vibeshape.document.summary`: strict input rejection, exact-revision reads, bounded semantic output, descriptor-handler parity, and fail-closed routing. Pagination, derived views, draft preview, and the remaining lifecycle failures stay open until their executable contracts exist.
+The current conformance fixtures cover strict input rejection, exact-revision reads, bounded semantic summary output, descriptor-handler parity, owner and document isolation, host-generated draft identity, multi-command preview and commit, inactivity renewal and expiry, idempotent discard, count limits, duplicate command rejection, concurrent operation serialization, stale atomic commit retention, and contained port failure. Pagination, derived views, geometry validation, progress, cancellation, idempotent replay results, durable persistence, undo/redo, confirmation, pairing, and browser disconnect behavior stay open until their executable contracts exist.
 
 The first MCP bridge additionally requires:
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
   applyDocumentCommand,
+  commandActorSchema,
+  commandActorsEqual,
   parseDocumentCommand,
   reduceDocumentEvent,
   replayDocumentEvents,
@@ -53,6 +55,26 @@ function createDocument() {
 }
 
 describe("document commands", () => {
+  it("compares complete actor identities without conflating sessions or actor kinds", () => {
+    const mcpActor = commandActorSchema.parse({
+      type: "mcp",
+      clientId: "org.example.model-client",
+      sessionId: "0195b5ac-b217-7a2c-8c33-67a36a7f21ac",
+    })
+
+    expect(commandActorsEqual(mcpActor, { ...mcpActor })).toBe(true)
+    expect(
+      commandActorsEqual(
+        mcpActor,
+        commandActorSchema.parse({
+          ...mcpActor,
+          sessionId: "0195b5ac-b218-7a2c-8c33-67a36a7f21ac",
+        }),
+      ),
+    ).toBe(false)
+    expect(commandActorsEqual(mcpActor, userActor)).toBe(false)
+  })
+
   it("normalizes a create command and emits a deterministic first revision", () => {
     const result = createDocument()
 
