@@ -46,7 +46,7 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 has a **Rework** result: required browser operations, stage checkpoints, and hard worker restart pass, and controlled source inputs are prepared. The controlled artifact build, exact release provenance, and allocator-level plateau evidence remain unresolved.
+SPK-001 has a **Rework** result: required browser operations, stage checkpoints, the controlled candidate build, allocator instrumentation, and hard worker restart pass. A source-rebuilt builder image and allocator-level plateau evidence remain unresolved.
 
 - Exact OCCT build/version and exported binding set.
 - Whether Replicad is the production facade or only the prototype facade.
