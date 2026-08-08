@@ -11,6 +11,16 @@ const identifierSchema = z.string().trim().min(1).max(128)
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
 
+export const geometryLifecycleOperationSchema = z.enum([
+  "box",
+  "cylinder",
+  "boolean-cut",
+  "occt-box",
+  "occt-cylinder",
+  "occt-native-box",
+  "occt-native-cylinder",
+])
+
 const requestEnvelopeSchema = z
   .object({
     protocolVersion: z.literal(GEOMETRY_PROTOCOL_VERSION),
@@ -33,6 +43,8 @@ export const kernelSpikeParametersSchema = z
     meshTolerance: meshToleranceSchema,
     angularTolerance: finiteNumberSchema.min(0.001).max(Math.PI),
     lifecycleIterations: z.number().int().min(1).max(1_000),
+    lifecycleOperation: geometryLifecycleOperationSchema.default("boolean-cut"),
+    purgeAfterLifecycle: z.boolean().default(false),
   })
   .strict()
   .superRefine((parameters, context) => {
@@ -149,12 +161,19 @@ const timingSchema = z
 
 const lifecycleSchema = z
   .object({
+    operation: geometryLifecycleOperationSchema,
     iterations: z.number().int().min(1).max(1_000),
     ownedShapesBefore: nonNegativeIntegerSchema,
     ownedShapesAfter: nonNegativeIntegerSchema,
     wasmHeapBytesBefore: nonNegativeIntegerSchema,
     wasmHeapBytesAfter: nonNegativeIntegerSchema,
     wasmHeapGrowthBytes: z.number().int().safe(),
+    allocatorPurge: z
+      .object({
+        requested: z.boolean(),
+        releasedBlocks: nonNegativeIntegerSchema,
+      })
+      .strict(),
   })
   .strict()
 
@@ -298,6 +317,7 @@ export type GeometryRequestEnvelope = Pick<
 export type GeometryTerminalResponse = Exclude<GeometryWorkerResponse, { type: "progress" }>
 export type GeometryProgressStage = z.infer<typeof geometryProgressStageSchema>
 export type GeometryMemoryStage = z.infer<typeof geometryMemoryStageSchema>
+export type GeometryLifecycleOperation = z.infer<typeof geometryLifecycleOperationSchema>
 export type GeometryDiagnosticCode = z.infer<typeof geometryDiagnosticCodeSchema>
 export type GeometryEngineMetadata = Extract<
   GeometryWorkerResponse,

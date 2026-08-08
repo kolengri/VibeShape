@@ -46,7 +46,7 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 has a **Rework** result: required browser operations, stage checkpoints, the controlled candidate build, allocator instrumentation, and hard worker restart pass. A source-rebuilt builder image and allocator-level plateau evidence remain unresolved.
+SPK-001 has a **Rework** result: required browser operations, stage checkpoints, the controlled candidate build, allocator instrumentation, operation isolation, and hard worker restart pass. Native C++ scoped primitives are allocation-neutral, while the pinned OpenCascade.js generator disables native destruction for OCCT placement-delete classes. A source-rebuilt generator correction and allocator-level plateau evidence remain unresolved.
 
 - Exact OCCT build/version and exported binding set.
 - Whether Replicad is the production facade or only the prototype facade.

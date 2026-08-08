@@ -1,5 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs"
-import { GEOMETRY_MEMORY_STAGES, type GeometryWorkerResponse } from "../../packages/protocol/src"
+import {
+  GEOMETRY_MEMORY_STAGES,
+  type GeometryLifecycleOperation,
+  type GeometryWorkerResponse,
+  geometryLifecycleOperationSchema,
+} from "../../packages/protocol/src"
 import {
   createKernelSpikeParameters,
   kernelSpikeExpectedInvariants,
@@ -67,6 +72,31 @@ function readBoundedEnvironmentInteger(name: string, fallback: number, maximum: 
   }
 
   return value
+}
+
+function readLifecycleOperations(fallback: GeometryLifecycleOperation) {
+  const values = (process.env.VIBESHAPE_GEOMETRY_LIFECYCLE_OPERATIONS ?? fallback).split(",")
+  const operations = values.map((value) => geometryLifecycleOperationSchema.parse(value.trim()))
+
+  if (new Set(operations).size !== operations.length) {
+    throw new Error("VIBESHAPE_GEOMETRY_LIFECYCLE_OPERATIONS must not contain duplicates.")
+  }
+
+  return operations
+}
+
+function readBooleanEnvironment(name: string, fallback: boolean) {
+  const value = process.env[name]
+
+  if (value === undefined) {
+    return fallback
+  }
+
+  if (value !== "0" && value !== "1") {
+    throw new Error(`${name} must be 0 or 1.`)
+  }
+
+  return value === "1"
 }
 
 function requireResult<Result>(result: Result | null): Result {
@@ -148,11 +178,22 @@ function expectLifecycleEvidence(
   result: KernelResponse,
   lifecycleIterations: number,
   lifecycleBatches: number,
+  lifecycleOperation: GeometryLifecycleOperation,
+  purgeAfterLifecycle: boolean,
 ) {
+  expect(result.lifecycle.operation).toBe(lifecycleOperation)
   expect(result.lifecycle.iterations).toBe(lifecycleIterations)
   expect(result.lifecycle.ownedShapesAfter).toBe(result.lifecycle.ownedShapesBefore)
   expect(spike.results).toHaveLength(lifecycleBatches)
   expect(spike.results.every(hasBalancedOwnership)).toBe(true)
+  expect(spike.results.every((batch) => batch.lifecycle.operation === lifecycleOperation)).toBe(
+    true,
+  )
+  expect(
+    spike.results.every(
+      (batch) => batch.lifecycle.allocatorPurge.requested === purgeAfterLifecycle,
+    ),
+  ).toBe(true)
   expect(spike.progress).toEqual(
     Array.from({ length: lifecycleBatches }, () => expectedProgress).flat(),
   )
@@ -194,6 +235,8 @@ function expectRestartEvidence(
   result: KernelResponse,
   expectedEngine: ReturnType<typeof createExpectedEngine>,
   allocatorEvidence: ReturnType<typeof expectMemoryEvidence>,
+  lifecycleOperation: GeometryLifecycleOperation,
+  purgeAfterLifecycle: boolean,
 ) {
   expect(restart.beforeTermination).toMatchObject({ initialized: true, ownedShapeCount: 0 })
   expect(restart.afterInitialization).toMatchObject({ initialized: true, ownedShapeCount: 0 })
@@ -214,9 +257,11 @@ function expectRestartEvidence(
   }
 
   expect(restart.result.lifecycle).toMatchObject({
+    operation: lifecycleOperation,
     iterations: 1,
     ownedShapesBefore: 2,
     ownedShapesAfter: 2,
+    allocatorPurge: { requested: purgeAfterLifecycle },
   })
   expect(restart.disposal).toMatchObject({ ownedShapeCount: 0 })
 }
@@ -257,55 +302,82 @@ function createEvidence(
   }
 }
 
-test("executes the OCCT modeling and exchange spike inside a Web Worker", async ({
-  page,
-}, testInfo) => {
-  const defaultParameters = createKernelSpikeParameters()
-  const lifecycleIterations = readBoundedEnvironmentInteger(
-    "VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS",
-    defaultParameters.lifecycleIterations,
-    1_000,
-  )
-  const lifecycleBatches = readBoundedEnvironmentInteger(
-    "VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES",
-    1,
-    10,
-  )
+const defaultParameters = createKernelSpikeParameters()
+const lifecycleIterations = readBoundedEnvironmentInteger(
+  "VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS",
+  defaultParameters.lifecycleIterations,
+  1_000,
+)
+const lifecycleBatches = readBoundedEnvironmentInteger(
+  "VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES",
+  1,
+  10,
+)
+const lifecycleOperations = readLifecycleOperations(defaultParameters.lifecycleOperation)
+const purgeAfterLifecycle = readBooleanEnvironment(
+  "VIBESHAPE_GEOMETRY_PURGE_AFTER_LIFECYCLE",
+  defaultParameters.purgeAfterLifecycle,
+)
 
-  await page.goto(
-    `/spikes/geometry-worker.html?lifecycleIterations=${String(lifecycleIterations)}&lifecycleBatches=${String(lifecycleBatches)}`,
-  )
+for (const lifecycleOperation of lifecycleOperations) {
+  const scenarioName = `${lifecycleOperation}${purgeAfterLifecycle ? ", allocator purge" : ""}`
+  const evidenceName = `${lifecycleOperation}${purgeAfterLifecycle ? "-purged" : ""}`
 
-  const status = page.getByRole("status")
-  await expect(status).not.toHaveAttribute("data-state", "running", { timeout: 120_000 })
-  await expect(status).toHaveAttribute("data-state", "passed")
+  test(`executes the OCCT modeling and exchange spike inside a Web Worker (${scenarioName})`, async ({
+    page,
+  }, testInfo) => {
+    await page.goto(
+      `/spikes/geometry-worker.html?lifecycleIterations=${String(lifecycleIterations)}&lifecycleBatches=${String(lifecycleBatches)}&lifecycleOperation=${lifecycleOperation}&purgeAfterLifecycle=${String(purgeAfterLifecycle)}`,
+    )
 
-  const spike = await page.evaluate<GeometrySpikeHarnessState>(() =>
-    Reflect.get(globalThis, "__VIBESHAPE_GEOMETRY_SPIKE__"),
-  )
-  const result = requireResult(spike.result)
-  expect(spike.error).toBeNull()
+    const status = page.getByRole("status")
+    await expect(status).not.toHaveAttribute("data-state", "running", { timeout: 120_000 })
+    await expect(status).toHaveAttribute("data-state", "passed")
 
-  const expectedEngine = createExpectedEngine()
-  expectGeometryResult(result, expectedEngine)
-  expectLifecycleEvidence(spike, result, lifecycleIterations, lifecycleBatches)
-  const controlledAllocatorEvidence = expectMemoryEvidence(spike, result)
-  const restart = requireResult(spike.restart)
-  expectRestartEvidence(restart, result, expectedEngine, controlledAllocatorEvidence)
+    const spike = await page.evaluate<GeometrySpikeHarnessState>(() =>
+      Reflect.get(globalThis, "__VIBESHAPE_GEOMETRY_SPIKE__"),
+    )
+    const result = requireResult(spike.result)
+    expect(spike.error).toBeNull()
 
-  const evidenceJson = JSON.stringify(
-    createEvidence(spike, result, restart, controlledAllocatorEvidence),
-    null,
-    2,
-  )
+    const expectedEngine = createExpectedEngine()
+    expectGeometryResult(result, expectedEngine)
+    expectLifecycleEvidence(
+      spike,
+      result,
+      lifecycleIterations,
+      lifecycleBatches,
+      lifecycleOperation,
+      purgeAfterLifecycle,
+    )
+    const controlledAllocatorEvidence = expectMemoryEvidence(spike, result)
+    const restart = requireResult(spike.restart)
+    expectRestartEvidence(
+      restart,
+      result,
+      expectedEngine,
+      controlledAllocatorEvidence,
+      lifecycleOperation,
+      purgeAfterLifecycle,
+    )
 
-  if (controlledOcctMode) {
-    mkdirSync(".artifacts/occt-build", { recursive: true })
-    writeFileSync(".artifacts/occt-build/geometry-worker-evidence.json", `${evidenceJson}\n`)
-  }
+    const evidenceJson = JSON.stringify(
+      createEvidence(spike, result, restart, controlledAllocatorEvidence),
+      null,
+      2,
+    )
 
-  await testInfo.attach("geometry-worker-evidence", {
-    body: evidenceJson,
-    contentType: "application/json",
+    if (controlledOcctMode) {
+      mkdirSync(".artifacts/occt-build", { recursive: true })
+      writeFileSync(
+        `.artifacts/occt-build/geometry-worker-evidence-${evidenceName}.json`,
+        `${evidenceJson}\n`,
+      )
+    }
+
+    await testInfo.attach("geometry-worker-evidence", {
+      body: evidenceJson,
+      contentType: "application/json",
+    })
   })
-})
+}

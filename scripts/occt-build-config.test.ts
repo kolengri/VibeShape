@@ -16,14 +16,20 @@ describe("controlled OCCT build config", () => {
     expect(CONTROLLED_OCCT_SOURCE_REVISION).toBe(OCCT_BUILD_INPUTS.sources.occt.revision)
   })
 
-  it("adds allocator instrumentation without changing unrelated bindings", () => {
+  it("adds allocator and native lifecycle instrumentation without changing unrelated bindings", () => {
     const result = instrumentReplicadBuildConfig(minimalUpstreamConfig)
 
     expect(result).toContain("name: vibeshape_occt.js")
-    expect(result).toContain("- symbol: GeomToolsWrapper\n  - symbol: VibeShapeAllocatorStats")
+    expect(result).toContain(
+      "- symbol: GeomToolsWrapper\n  - symbol: VibeShapeAllocatorStats\n  - symbol: VibeShapeOcctDiagnostics",
+    )
     expect(result).toContain("#include <malloc.h>")
+    expect(result).toContain("#include <Standard.hxx>")
     expect(result).toContain("static double AllocatedBytes()")
     expect(result).toContain("mallinfo().uordblks")
+    expect(result).toContain("static double PurgeAllocator()")
+    expect(result).toContain("static double RunNativeBoxCycle()")
+    expect(result).toContain("static double RunNativeCylinderCycle()")
     expect(result).toContain("class BRepToolsWrapper")
   })
 

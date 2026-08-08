@@ -30,6 +30,7 @@ import {
   getWasmHeapBytes,
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
+import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { OwnedShapeRegistry } from "./shape-registry"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
@@ -82,6 +83,68 @@ function deleteShapeWrappers(shapes: Array<{ delete: () => void }>) {
   for (const shape of shapes) {
     shape.delete()
   }
+}
+
+function runLifecycleIteration(
+  ownedShapes: OwnedShapeRegistry,
+  opencascade: OpenCascadeModule,
+  parameters: KernelSpikeParameters,
+) {
+  const [boxLength, boxWidth, boxHeight] = parameters.boxSize
+
+  if (parameters.lifecycleOperation === "occt-native-box") {
+    runNativeOcctLifecycleCycle(opencascade, "box")
+    return
+  }
+
+  if (parameters.lifecycleOperation === "occt-native-cylinder") {
+    runNativeOcctLifecycleCycle(opencascade, "cylinder")
+    return
+  }
+
+  if (parameters.lifecycleOperation === "occt-box") {
+    const maker = new opencascade.BRepPrimAPI_MakeBox_2(boxLength, boxWidth, boxHeight)
+    const shape = maker.Solid()
+
+    try {
+      return
+    } finally {
+      shape.delete()
+      maker.delete()
+    }
+  }
+
+  if (parameters.lifecycleOperation === "occt-cylinder") {
+    const maker = new opencascade.BRepPrimAPI_MakeCylinder_1(
+      parameters.cylinderRadius,
+      parameters.cylinderHeight,
+    )
+    const shape = maker.Solid()
+
+    try {
+      return
+    } finally {
+      shape.delete()
+      maker.delete()
+    }
+  }
+
+  if (parameters.lifecycleOperation === "box") {
+    ownedShapes.dispose(ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight)))
+    return
+  }
+
+  if (parameters.lifecycleOperation === "cylinder") {
+    ownedShapes.dispose(ownedShapes.own(createCylinder(parameters)))
+    return
+  }
+
+  const box = ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight))
+  const cylinder = ownedShapes.own(createCylinder(parameters))
+  const cutShape = ownedShapes.own(box.cut(cylinder))
+  ownedShapes.dispose(cutShape)
+  ownedShapes.dispose(cylinder)
+  ownedShapes.dispose(box)
 }
 
 function countSolids(opencascade: OpenCascadeInstance, shape: Shape3D) {
@@ -377,19 +440,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
     const ownedShapesBefore = this.#ownedShapes.size
     const wasmHeapBytesBefore = getWasmHeapBytes(opencascade)
-    const [boxLength, boxWidth, boxHeight] = parameters.boxSize
 
     for (let iteration = 0; iteration < parameters.lifecycleIterations; iteration += 1) {
-      const box = this.#ownedShapes.own(makeBaseBox(boxLength, boxWidth, boxHeight))
-      const cylinder = this.#ownedShapes.own(createCylinder(parameters))
-      const cutShape = this.#ownedShapes.own(box.cut(cylinder))
-
-      this.#ownedShapes.dispose(cutShape)
-      this.#ownedShapes.dispose(cylinder)
-      this.#ownedShapes.dispose(box)
+      runLifecycleIteration(this.#ownedShapes, opencascade, parameters)
     }
 
     const ownedShapesAfter = this.#ownedShapes.size
+    const releasedBlocks = parameters.purgeAfterLifecycle ? purgeOcctAllocator(opencascade) : 0
     const wasmHeapBytesAfter = getWasmHeapBytes(opencascade)
 
     if (ownedShapesAfter !== ownedShapesBefore) {
@@ -397,12 +454,17 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
 
     return {
+      operation: parameters.lifecycleOperation,
       iterations: parameters.lifecycleIterations,
       ownedShapesBefore,
       ownedShapesAfter,
       wasmHeapBytesBefore,
       wasmHeapBytesAfter,
       wasmHeapGrowthBytes: wasmHeapBytesAfter - wasmHeapBytesBefore,
+      allocatorPurge: {
+        requested: parameters.purgeAfterLifecycle,
+        releasedBlocks,
+      },
     }
   }
 }

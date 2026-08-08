@@ -54,6 +54,15 @@ export function requireControlledBuildOutputs(inputDirectory: string, outputBase
     throw new Error("Controlled OCCT declarations omit allocator instrumentation.")
   }
 
+  if (
+    !declaration.includes("VibeShapeOcctDiagnostics") ||
+    !declaration.includes("PurgeAllocator") ||
+    !declaration.includes("RunNativeBoxCycle") ||
+    !declaration.includes("RunNativeCylinderCycle")
+  ) {
+    throw new Error("Controlled OCCT declarations omit native lifecycle instrumentation.")
+  }
+
   if (!wasmMagic.equals(Buffer.from([0x00, 0x61, 0x73, 0x6d]))) {
     throw new Error("Controlled OCCT output does not have a WebAssembly header.")
   }

@@ -8,12 +8,16 @@ on:
     paths:
       - ".github/workflows/controlled-occt.yml"
       - "apps/web/vite.config.ts"
+      - "apps/web/src/spikes/geometry-worker.ts"
       - "native/occt/**"
       - "package.json"
       - "playwright.config.ts"
       - "packages/geometry-worker/src/build-info.ts"
+      - "packages/geometry-worker/src/engine.ts"
       - "packages/geometry-worker/src/memory-profile.ts"
       - "packages/geometry-worker/src/vite-modules.d.ts"
+      - "packages/protocol/src/geometry-worker.ts"
+      - "packages/test-models/src/kernel-spike.ts"
       - "scripts/occt-build-artifacts.test.ts"
       - "scripts/occt-build-artifacts.ts"
       - "scripts/occt-build-config.test.ts"
@@ -59,6 +63,16 @@ jobs:
           VIBESHAPE_CONTROLLED_OCCT: "1"
           VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES: "5"
           VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS: "1000"
+          VIBESHAPE_GEOMETRY_LIFECYCLE_OPERATIONS: "box,cylinder,boolean-cut,occt-box,occt-cylinder,occt-native-box,occt-native-cylinder"
+        run: bun run test:e2e -- --project=chromium tests/e2e/geometry-worker.spec.ts
+
+      - name: Run OCCT allocator purge control
+        env:
+          VIBESHAPE_CONTROLLED_OCCT: "1"
+          VIBESHAPE_GEOMETRY_LIFECYCLE_BATCHES: "5"
+          VIBESHAPE_GEOMETRY_LIFECYCLE_ITERATIONS: "1000"
+          VIBESHAPE_GEOMETRY_LIFECYCLE_OPERATIONS: "occt-box,occt-cylinder,occt-native-box,occt-native-cylinder"
+          VIBESHAPE_GEOMETRY_PURGE_AFTER_LIFECYCLE: "1"
         run: bun run test:e2e -- --project=chromium tests/e2e/geometry-worker.spec.ts
 
       - name: Upload controlled-build evidence
@@ -69,7 +83,7 @@ jobs:
           name: controlled-occt-evidence
           path: |
             .artifacts/occt-build/build-report.json
-            .artifacts/occt-build/geometry-worker-evidence.json
+            .artifacts/occt-build/geometry-worker-evidence-*.json
             .artifacts/occt-build/input/vibeshape_occt.d.ts
             .artifacts/occt-build/input/vibeshape_occt.js
             .artifacts/occt-build/input/vibeshape_occt.wasm

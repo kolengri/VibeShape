@@ -53,12 +53,14 @@ function createKernelResult(): KernelSpikeEngineResult {
       relativeVolumeError: 0,
     },
     lifecycle: {
+      operation: "boolean-cut",
       iterations: 1,
       ownedShapesBefore: 0,
       ownedShapesAfter: 0,
       wasmHeapBytesBefore: 1,
       wasmHeapBytesAfter: 1,
       wasmHeapGrowthBytes: 0,
+      allocatorPurge: { requested: false, releasedBlocks: 0 },
     },
     memory: {
       source: "heap-capacity-only",
