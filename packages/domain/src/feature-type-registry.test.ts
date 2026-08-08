@@ -72,6 +72,12 @@ describe("feature type registry", () => {
     if (validated.ok) {
       expect(validated.descriptor).toEqual(boxFeatureType)
       expect(validated.feature.parameters).toEqual(boxParameters())
+      expect(validated.contentParameters).toEqual({
+        width: 20,
+        depth: 30,
+        height: 25.4,
+        centered: true,
+      })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
       expect(result.registry.descriptors.map(({ type }) => type.typeId)).toEqual([
         boxFeatureType.type.typeId,
@@ -154,6 +160,7 @@ describe("feature type registry", () => {
             schemaVersion: 1,
           }),
           parametersSchema: z.object({}).strict(),
+          contentParameters: () => ({}),
         },
       ]),
     ).toMatchObject({ ok: false, diagnostic: { code: "orphan-feature-type-handler" } })
@@ -169,11 +176,14 @@ describe("feature type registry", () => {
   })
 
   it("contains trusted schema transforms that return non-JSON parameter objects", () => {
+    const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    if (!cylinderHandler) throw new Error("The part design fixture must expose both handlers.")
+    if (!boxHandler || !cylinderHandler) {
+      throw new Error("The part design fixture must expose both handlers.")
+    }
 
     const malformed: TrustedFeatureTypeHandler = {
-      type: boxFeatureType.type,
+      ...boxHandler,
       parametersSchema: boxFeatureParametersSchema.transform(() => new Date(0)),
     }
     const result = registry([malformed, cylinderHandler])
@@ -188,11 +198,14 @@ describe("feature type registry", () => {
   })
 
   it("contains trusted parameter normalizer exceptions as stable diagnostics", () => {
+    const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    if (!cylinderHandler) throw new Error("The part design fixture must expose both handlers.")
+    if (!boxHandler || !cylinderHandler) {
+      throw new Error("The part design fixture must expose both handlers.")
+    }
 
     const throwing: TrustedFeatureTypeHandler = {
-      type: boxFeatureType.type,
+      ...boxHandler,
       parametersSchema: z.unknown().transform(() => {
         throw new Error("fixture detail")
       }),
@@ -208,6 +221,43 @@ describe("feature type registry", () => {
           code: "invalid-feature-parameters",
           message: "The trusted feature parameter normalizer failed.",
         },
+      })
+    }
+  })
+
+  it("contains invalid and throwing content normalizers as stable diagnostics", () => {
+    const [boxHandler, cylinderHandler] = partDesignFeatureTypeHandlers
+    if (!boxHandler || !cylinderHandler) {
+      throw new Error("The part design fixture must expose both handlers.")
+    }
+
+    const invalid = registry([
+      { ...boxHandler, contentParameters: () => new Date(0) },
+      cylinderHandler,
+    ])
+    expect(invalid.ok).toBe(true)
+    if (invalid.ok) {
+      expect(invalid.registry.validateFeature(feature(boxParameters()))).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-content-parameters" },
+      })
+    }
+
+    const throwing = registry([
+      {
+        ...boxHandler,
+        contentParameters() {
+          throw new Error("fixture detail")
+        },
+      },
+      cylinderHandler,
+    ])
+    expect(throwing.ok).toBe(true)
+    if (throwing.ok) {
+      expect(() => throwing.registry.validateFeature(feature(boxParameters()))).not.toThrow()
+      expect(throwing.registry.validateFeature(feature(boxParameters()))).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-content-parameters" },
       })
     }
   })

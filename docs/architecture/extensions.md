@@ -168,6 +168,8 @@ ExtensionLockEntry
 
 The feature content hash includes the lock entry, feature type, normalized parameters, inputs, host API version, geometry adapter build, and tolerance policy. An installed package with the same ID and version but different bytes is rejected.
 
+The current domain identity contract reserves this boundary without enabling extension execution. An extension provider identity carries the exact extension ID, semantic version, host API version, and integrity digest; trusted type handlers must also return bounded semantic content parameters. Dependency owners are represented by ordered input slots rather than document UUIDs. The production extension host must derive provider metadata from the active document lock and package registry rather than accepting it from extension code. Worker hashing, persisted lock integration, update/rollback, and cache reuse remain future gates.
+
 Updates are explicit transactions:
 
 1. Download or import the new immutable package without replacing the old version.

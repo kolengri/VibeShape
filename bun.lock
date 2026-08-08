@@ -42,6 +42,7 @@
         "@vibeshape/test-models": "workspace:*",
         "@vibeshape/typescript-config": "workspace:*",
         "@vitejs/plugin-react": "catalog:",
+        "fflate": "catalog:",
         "tailwindcss": "catalog:",
         "vite": "catalog:",
       },
@@ -73,6 +74,7 @@
       "name": "@vibeshape/domain",
       "version": "0.0.0",
       "dependencies": {
+        "is-what": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

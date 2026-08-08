@@ -227,6 +227,58 @@ describe("trusted command dispatcher", () => {
     expect(created.snapshot).toMatchObject({ revision: 1, features: [] })
   })
 
+  it("rejects a feature whose trusted semantic content projection fails", () => {
+    const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
+    const [boxHandler, cylinderHandler] = partDesignFeatureTypeHandlers
+    if (!modules.ok || !boxHandler || !cylinderHandler) {
+      throw new Error("The part design command composition fixture is invalid.")
+    }
+    const featureTypes = createFeatureTypeRegistry(modules.registry, [
+      {
+        ...boxHandler,
+        contentParameters() {
+          throw new Error("trusted implementation detail")
+        },
+      },
+      cylinderHandler,
+    ])
+    if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
+    const composed = createCommandDispatcher(
+      modules.registry,
+      createCoreCommandHandlers(featureTypes.registry),
+    )
+    if (!composed.ok) throw new Error(composed.diagnostic.message)
+
+    const created = composed.dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    expect(
+      composed.dispatcher.dispatch(created.snapshot, {
+        kind: "org.vibeshape.feature.add",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+        documentId,
+        baseRevision: 1,
+        issuedAt: "2026-08-08T12:01:00Z",
+        actor: userActor,
+        payload: { feature: boxFeature() },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-content-parameters" },
+    })
+    expect(created.snapshot).toMatchObject({ revision: 1, features: [] })
+  })
+
   it("validates updates but permits suppression of a preserved unavailable feature", () => {
     const dispatcher = featureCommandDispatcher()
     const created = dispatcher.dispatch(

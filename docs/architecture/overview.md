@@ -204,6 +204,8 @@ Every feature has a content hash derived from:
 
 A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untrusted derived data. Version or checksum mismatches delete and rebuild it.
 
+The domain now defines canonical feature-content identity schema version `0`. Trusted feature-type handlers project validated records into bounded semantic parameters; the initial primitive projections retain canonical millimeter values but exclude source-unit presentation metadata. Dependency hashes remain ordered by declared input slots, and topology-reference owners become slot indices so equivalent documents do not diverge solely because their feature UUIDs differ. Feature UUID, label, and suppression are not geometry content. The environment identity includes exact host API, adapter, kernel, optional source revision, modeling-tolerance policy, and built-in or exact-integrity extension provider metadata. Canonical JSON sorts object keys while preserving array order. The domain validates the output of an injected SHA-256 port, but the production worker does not yet compute or persist this hash, and no cache may be trusted until that integration is complete.
+
 ## Hangs and memory
 
 - One geometry worker per active document in alpha.

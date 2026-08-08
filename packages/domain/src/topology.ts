@@ -78,10 +78,9 @@ export const topologyIntentSchema = z
     path: ["expectedDirection"],
   })
 
-export const topoRefSchema = z
+export const topoRefContentSchema = z
   .object({
     schemaVersion: z.literal(0),
-    featureId: featureIdSchema,
     kind: topologyKindSchema,
     semanticRole: semanticRoleSchema.optional(),
     lineageToken: lineageTokenSchema.optional(),
@@ -93,6 +92,10 @@ export const topoRefSchema = z
     message: "TopoRef kind must match its signature kind.",
     path: ["signature", "kind"],
   })
+
+export const topoRefSchema = topoRefContentSchema
+  .safeExtend({ featureId: featureIdSchema })
+  .strict()
 
 export const topologyCandidateSchema = z
   .object({

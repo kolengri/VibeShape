@@ -15,6 +15,7 @@ export const domainDiagnosticCodeSchema = z.enum([
   "invalid-feature-graph",
   "feature-type-unavailable",
   "invalid-feature-parameters",
+  "invalid-feature-content-parameters",
   "invalid-feature-dependency-count",
   "invalid-feature-reference-count",
 ])

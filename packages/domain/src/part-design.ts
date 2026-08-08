@@ -54,6 +54,29 @@ export const cylinderFeatureType = featureTypeDescriptorSchema.parse({
 })
 
 export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
-  { type: boxFeatureType.type, parametersSchema: boxFeatureParametersSchema },
-  { type: cylinderFeatureType.type, parametersSchema: cylinderFeatureParametersSchema },
+  {
+    type: boxFeatureType.type,
+    parametersSchema: boxFeatureParametersSchema,
+    contentParameters(parameters) {
+      const box = boxFeatureParametersSchema.parse(parameters)
+      return {
+        width: box.width.value,
+        depth: box.depth.value,
+        height: box.height.value,
+        centered: box.centered,
+      }
+    },
+  },
+  {
+    type: cylinderFeatureType.type,
+    parametersSchema: cylinderFeatureParametersSchema,
+    contentParameters(parameters) {
+      const cylinder = cylinderFeatureParametersSchema.parse(parameters)
+      return {
+        radius: cylinder.radius.value,
+        height: cylinder.height.value,
+        centered: cylinder.centered,
+      }
+    },
+  },
 ]

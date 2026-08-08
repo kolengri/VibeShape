@@ -1,4 +1,5 @@
 import { createFeatureGraph, type FeatureRecord } from "./feature-graph"
+import { canonicalJson } from "./canonical-json"
 
 export type FeatureCollectionDiagnostic = Readonly<{
   code: "feature-already-exists" | "feature-not-found" | "invalid-feature-graph"
@@ -71,17 +72,6 @@ export function setFeatureSuppressed(
   return feature
     ? updateFeature(features, { ...feature, suppressed })
     : collectionFailure("feature-not-found", `Feature ${featureId} does not exist in the document.`)
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined"
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
-
-  const record = value as Record<string, unknown>
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(",")}}`
 }
 
 export function featureRecordsEqual(left: FeatureRecord, right: FeatureRecord) {
