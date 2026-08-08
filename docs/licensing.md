@@ -25,6 +25,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | OpenCascade.js | LGPL-2.1 | Apply the same obligations and verify the files actually bundled |
 | Replicad | MIT | Preserve notice and license |
 | `replicad-opencascadejs` package wrapper | MIT declaration; embeds OCCT-derived WASM | Preserve the package notice and independently satisfy OCCT LGPL obligations; do not infer the embedded OCCT revision from the wrapper version |
+| RapidJSON source input | MIT for the library; the archive records additional terms for auxiliary material | Preserve the complete upstream license file; do not compile excluded auxiliary tools without a separate review |
+| FreeType source input | FreeType License selected for the controlled build | Preserve the FreeType license and attribution |
 | Replicad runtime transitives: Flatbush / FlatQueue; OpenType.js and polyfills | ISC; MIT | Include applicable notices from the exact lockfile in the generated third-party bundle |
 | SolveSpace | GPL-3.0-or-later | Publish sources, patches, and build scripts; keep the combined work GPL-compatible |
 | React | MIT | Include a third-party notice |
@@ -79,7 +81,7 @@ For a web/WASM release, VibeShape must:
 
 SPK-001 deliberately reports `opencascadeSourceRevision: null` for the published `replicad-opencascadejs@0.23.0` path because its metadata does not disclose the exact OCCT source revision used for its WASM. The isolated controlled mode instead reports OCCT revision `bb368e271e24f63078129283148ce83db6b9670a` and produces an exact source and output manifest. The published artifact remains suitable for feasibility testing only.
 
-The controlled harness under `native/occt` pins and verifies source archives for OpenCascade.js `5ff2b750`, OCCT `bb368e27`, the Replicad `0.23.0` build config, RapidJSON `v1.1.0`, and FreeType `VER-2-13-0`, plus the Emscripten image digest. It source-builds an unpatched comparison image and a destructor-policy-corrected image with 262 configured bindings. The controlled artifact has been built and regression-tested, but this does not retroactively establish the source of the published npm WASM. Release provenance remains open until the exact source bundle, patch, build report, output manifest, license texts, notices, and replacement instructions are archived with the distributed package.
+The controlled harness under `native/occt` pins and verifies source archives for OpenCascade.js `5ff2b750`, OCCT `bb368e27`, the Replicad `0.23.0` build config, RapidJSON `v1.1.0`, and FreeType `VER-2-13-0`, plus the Emscripten image digest. It source-builds an unpatched comparison image and a destructor-policy-corrected image with 262 configured bindings. `bun run occt:bundle:compliance` now creates a verified corresponding-source archive containing those exact source inputs, the recorded patch, build recipe and evidence, controlled outputs and hashes, applicable license texts and notices, and replacement instructions. Its payload inventory covers 38 files and 88,067,680 bytes; verification includes the manifest and checksum file. This closes the controlled candidate's technical bundle gate, but it does not retroactively establish the source of the published npm WASM, replace a complete application SBOM, or remove the legal review required before public distribution.
 
 ## SolveSpace Reuse
 
