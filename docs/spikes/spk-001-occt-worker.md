@@ -1,6 +1,6 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
-- Status: **Rework — source build, history API, memory, and controlled-performance gates passed**
+- Status: **Rework — all technical gates except independent STEP validation passed**
 - Reviewed: 2026-08-08
 - Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
@@ -8,14 +8,15 @@
 
 The controlled OCCT path is viable for browser-based exact modeling, transient operation-history capture, tessellation, STEP round-trip, binary STL export, deterministic native ownership, bounded repeated execution, and the declared local performance budget inside a Web Worker.
 
-Four earlier blockers are closed:
+Five earlier blockers are closed:
 
 1. The project now builds the pinned OpenCascade.js and OCCT revisions from verified source archives, applies a reviewed generator correction, and compares an unpatched source build with the immutable registry baseline before accepting the patched artifact.
 2. Boolean and fillet builders expose the documented modified, generated, and deleted relations needed as inputs to the SPK-003 stable-reference experiment. The worker captures aggregate evidence after boolean result simplification without persisting transient OCCT identities.
 3. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 448 bytes across four full batches after warmup.
 4. Twenty cold workers on the declared Apple M1 baseline reach a 173.0 ms initialization p95 and 270.3 ms complete-fixture p95. No main-thread long task was observed, and both peak WASM capacity and live native allocation remain below their executable ceilings.
+5. A verified local corresponding-source bundle preserves the exact source archives, reviewed modification, build recipe, evidence, output files and hashes, license texts, notices, and replacement instructions for the controlled candidate.
 
-The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is independent STEP validation and the release compliance bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
+The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. Independent STEP validation is the remaining interoperability stop/go gate. The production-facade comparison and extended target-browser cases remain promotion work rather than missing evidence for source reproducibility, memory, history, performance, or the technical release bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
@@ -228,11 +229,29 @@ The initialization range was 164.8–174.2 ms. Complete fixture samples ranged f
 
 This result closes the SPK-001 controlled worker budget on the declared machine. It does not claim universal device performance, production PWA cold-network loading, viewport performance, or feature-corpus rebuild performance; those receive separate baselines when their product paths exist.
 
+## Corresponding-source bundle evidence
+
+`bun run occt:bundle:compliance` assembles a local archive from the already staged controlled build and rejects any environment where `CI` is set. `bun run occt:verify:compliance` independently validates its strict Zod manifest, complete file inventory, payload sizes and hashes, checksum file, and exact pinned source provenance.
+
+The verified bundle contains:
+
+- all five checksum-verified source archives that underpin the build and its configuration;
+- the Docker build context, 262-binding allowlist, generator, controlled configuration, and VibeShape build scripts;
+- the exact OpenCascade.js destructor patch and the corrected file it produces;
+- build, source-baseline, and builder-context evidence;
+- the paired controlled package and the raw JavaScript, WebAssembly, and TypeScript declaration outputs;
+- OCCT, OpenCascade.js, Replicad build-configuration, RapidJSON, FreeType, and VibeShape license texts;
+- third-party notices, replacement instructions, `manifest.json`, and `SHA256SUMS`.
+
+The current payload inventory covers **38 files** and **88,067,680 bytes**; the verifier covers **40 files** after including `manifest.json` and `SHA256SUMS`. The outer uncompressed tar is not claimed to be byte-reproducible; the manifest and checksums define the verified payload contract. The generator also applies the recorded patch to the pinned upstream `bindings.py` in a temporary directory and requires the result to match the controlled builder input, preventing a decorative or drifting modification record.
+
+This closes the SPK-001 technical release-bundle gate. It does not establish provenance for the separate published `replicad-opencascadejs@0.23.0` feasibility artifact, replace the complete VibeShape release notice/SBOM, or constitute legal advice. A public binary or WASM release still requires the repository release checklist and formal legal review.
+
 ## Browser and CI policy
 
 The fast fixture passes in Chromium, Firefox, and WebKit. The extended allocator matrix is Chromium-only because it consumes a locally staged controlled package and is intended for targeted native evidence, not every pull request.
 
-Heavy OCCT image builds and extended memory matrices are local-first. Stable performance evidence is strictly local-only: its runner and dedicated Playwright config reject CI. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for this workload. Generated sources, images, packages, reports, and Playwright JSON remain under `.artifacts` and are not committed.
+Heavy OCCT image builds, extended memory matrices, stable performance evidence, and corresponding-source bundle generation are local-only. The performance runner, dedicated Playwright config, and compliance generator reject `CI`. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for these workloads. Generated sources, images, packages, bundles, reports, and Playwright JSON remain under `.artifacts` and are not committed.
 
 ## Verification ownership
 
@@ -251,6 +270,7 @@ Executable evidence is owned by:
 - `scripts/build-occt-source-builder.test.ts` for paired output-contract comparison;
 - `scripts/run-occt-memory-evidence.test.ts` for the local matrix contract;
 - `scripts/run-occt-performance-evidence.test.ts` for the local-only controlled performance contract;
+- `scripts/occt-compliance-bundle.test.ts` for strict manifest paths, duplicate rejection, and the local-only generation contract;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, geometry, exchange, plateau, restart, and disposal behavior.
 - `tests/performance/occt-performance.spec.ts` for p95 worker initialization, complete-fixture latency, main-thread long tasks, peak WASM capacity, and peak live allocation.
 
@@ -259,6 +279,5 @@ Executable evidence is owned by:
 - Open the exported STEP fixture independently in FreeCAD or another implementation.
 - Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features, including the durable history records required by SPK-003.
 - Repeat the required extended format and lifecycle cases across target browsers where practical.
-- Archive the exact source bundle, patch, build recipe, output manifest, license texts, notices, and replacement instructions for release.
 
 Until those items pass, ADR-0001 remains **Accepted for spike** rather than accepted for production.

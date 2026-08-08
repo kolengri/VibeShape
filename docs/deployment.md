@@ -63,6 +63,8 @@ A release MAY include:
 - SBOM and OCCT/SolveSpace source bundles;
 - Windows, macOS, and Linux instructions.
 
+Heavy OCCT source builds and corresponding-source bundle generation run on reviewed local hardware, not ordinary GitHub pull-request or push workflows. A release consumes the locally generated archive only after `bun run occt:verify:compliance` passes and records its manifest and checksums with the release evidence.
+
 The launcher does not access projects and does not expose a backend API without a separate requirement. Browser launch and auto-update are packaging details, not CAD architecture.
 
 ## Acceptance criteria

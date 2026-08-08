@@ -2,9 +2,9 @@
 
 ## Status
 
-This directory owns the reproducible local builder and memory-evidence harness for the SPK-001 controlled geometry candidate. The artifact remains quarantined under `.artifacts` and is selected only by Vite's `controlled-occt` mode; the normal application dependency graph still uses the locked published package.
+This directory owns the reproducible local builder, controlled evidence harnesses, and corresponding-source bundle contract for the SPK-001 geometry candidate. The artifact remains quarantined under `.artifacts` and is selected only by Vite's `controlled-occt` mode; the normal application dependency graph still uses the locked published package.
 
-The source-reproduction and allocator-plateau blockers are closed. Production promotion still requires operation-history coverage, independent STEP validation, declared performance budgets, and the release compliance bundle described in [SPK-001](../../docs/spikes/spk-001-occt-worker.md).
+The source-reproduction, operation-history, allocator-plateau, controlled-performance, and technical release-bundle blockers are closed. Production promotion still requires independent STEP validation and the production-facade decision described in [SPK-001](../../docs/spikes/spk-001-occt-worker.md). A public release also requires the repository-wide release checklist and legal review.
 
 ## Pinned inputs
 
@@ -46,6 +46,21 @@ Run both stages when the builder inputs changed:
 bun run occt:evidence
 ```
 
+Run the controlled local Chromium performance budget against the staged package:
+
+```bash
+bun run occt:evidence:performance
+```
+
+Create and verify the corresponding-source archive from the staged build evidence:
+
+```bash
+bun run occt:bundle:compliance
+bun run occt:verify:compliance
+```
+
+The generator rejects any environment where `CI` is set. It writes the bundle, archive, and report under `.artifacts/occt-build/compliance`; none are committed.
+
 Set `VIBESHAPE_DOCKER_BIN` when the Docker-compatible executable is not named `docker`, for example:
 
 ```bash
@@ -80,21 +95,21 @@ The worker keeps Replicad behind the geometry adapter but owns critical OCCT lif
 - STEP import clears reader-owned shapes, and STEP export resets the writer model;
 - topology counting avoids Replicad iterators that retain raw explorer wrappers.
 
-The controlled matrix runs five full batches and 1,000 lifecycle operations per batch across Replicad-facing, direct Embind, and native probes. After the first full-fixture warmup, the measured post-disposal allocator moved from 481,872 to 482,304 bytes across four further batches: 432 bytes of retained drift. Every 1,000-operation lifecycle block retained zero bytes. The executable ceilings are 64 KiB post-warmup drift and 8 KiB per lifecycle block.
+The controlled matrix runs five full batches and 1,000 lifecycle operations per batch across Replicad-facing, direct Embind, and native probes. After the first full-fixture warmup, the measured post-disposal allocator moved from 481,864 to 482,312 bytes across four further batches: 448 bytes of retained drift. Every 1,000-operation lifecycle block retained zero bytes. The executable ceilings are 64 KiB post-warmup drift and 8 KiB per lifecycle block.
 
 `heapCapacityBytes` remains a high-water mark and is not treated as live native allocation. The controlled build exposes `mallinfo()` arena, allocated, and free bytes through `VibeShapeAllocatorStats`, plus native lifecycle and allocator-purge controls through `VibeShapeOcctDiagnostics`.
 
 ## CI policy
 
-Heavy OCCT image builds and extended Playwright evidence are local-first because they are expensive. `.github/workflows/controlled-occt.yml` is manual-only and must not be added to pull-request or push triggers without a recorded CI-budget decision. Normal pull requests run the fast repository verification workflow; generated OCCT packages and evidence are never committed.
+Heavy OCCT image builds, allocator matrices, stable performance evidence, and corresponding-source bundle generation are local-only because they are expensive. `.github/workflows/controlled-occt.yml` is manual-only and must not be added to pull-request or push triggers without a recorded CI-budget decision. Normal pull requests run the fast repository verification workflow; generated OCCT packages, evidence, and bundles are never committed.
 
 ## Promotion gate
 
 Before the controlled package becomes the normal worker dependency:
 
-1. verify operation history required by stable topology references;
-2. open exported STEP independently in a second implementation;
-3. record cold startup, long-task, p95 operation, and peak-memory budgets on declared hardware;
-4. repeat the required cross-browser and recovery matrix;
-5. archive exact source inputs, patch, build report, output hashes, license texts, notices, and replacement instructions;
-6. update `OPENCASCADE_SOURCE_REVISION` only when the controlled artifact is the package actually loaded by the production worker.
+1. open exported STEP independently in a second implementation;
+2. compare the controlled direct boundary with Replicad for the production feature surface;
+3. repeat the required extended format and lifecycle cases across target browsers where practical;
+4. update `OPENCASCADE_SOURCE_REVISION` only when the controlled artifact is the package actually loaded by the production worker.
+
+The local technical bundle already preserves the five checksum-verified source archives, exact modification, build recipe, evidence, output files and hashes, license texts, notices, and replacement instructions. Its payload inventory covers 38 files and 88,067,680 bytes; the verifier covers 40 files after including `manifest.json` and `SHA256SUMS`. This is engineering evidence, not a substitute for legal review or the complete application release notice/SBOM.

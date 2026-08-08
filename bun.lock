@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "@vibeshape/root",
+      "dependencies": {
+        "zod": "catalog:",
+      },
       "devDependencies": {
         "@biomejs/biome": "2.5.7",
         "@playwright/test": "1.62.1",
