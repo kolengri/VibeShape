@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { instrumentReplicadBuildConfig } from "./occt-build-config"
+import { CONTROLLED_OCCT_SOURCE_REVISION } from "../packages/geometry-worker/src/build-info"
+import { instrumentReplicadBuildConfig, OCCT_BUILD_INPUTS } from "./occt-build-config"
 
 const minimalUpstreamConfig = `mainBuild:
   name: replicad_single.js
@@ -11,6 +12,10 @@ additionalCppCode: |
 `
 
 describe("controlled OCCT build config", () => {
+  it("keeps runtime provenance aligned with the pinned OCCT input", () => {
+    expect(CONTROLLED_OCCT_SOURCE_REVISION).toBe(OCCT_BUILD_INPUTS.sources.occt.revision)
+  })
+
   it("adds allocator instrumentation without changing unrelated bindings", () => {
     const result = instrumentReplicadBuildConfig(minimalUpstreamConfig)
 

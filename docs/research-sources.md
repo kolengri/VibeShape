@@ -26,7 +26,7 @@ Context7 was used for library and protocol documentation. Searches for `OpenCasc
 | [Emscripten debugging guidance](https://emscripten.org/docs/porting/Debugging.html) | `mallinfo()` support for current allocation evidence |
 | [Emscripten settings reference](https://emscripten.org/docs/tools_reference/settings_reference.html) | `ALLOW_MEMORY_GROWTH`, heap overgrowth, allocator choices, and the distinction between linear-memory capacity and live allocations |
 
-**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. SPK-001 confirms that Replicad accelerates the required browser operations, but it remains behind an adapter because of incomplete published-artifact provenance, allocator-observability, binding, and topology-history risks. The controlled-build inputs and allocator binding are now prepared, not yet accepted. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Conclusion:** OCCT is the only verified primary candidate for exact B-Rep modeling and STEP exchange. SPK-001 confirms that Replicad accelerates the required browser operations and that the controlled allocator-instrumented candidate builds from recorded sources. It remains behind an adapter because the builder image is not yet source-reproduced, retained allocation has no proven plateau, and topology-history coverage remains open. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ## Viewport
 

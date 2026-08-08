@@ -2,25 +2,25 @@
 
 - Status: **Rework**
 - Reviewed: 2026-08-08
-- Adapter build: `spike-2`
+- Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
 ## Decision
 
 The Replicad path is functionally viable for browser-based exact modeling, tessellation, STEP round-trip, and binary STL export inside a Web Worker. It is **not yet accepted as the production geometry adapter**.
 
-Two release-critical gates remain open:
+Two production gates remain open:
 
-1. The published `replicad-opencascadejs` package does not identify the exact OCCT source revision used to build its WASM artifact. VibeShape therefore cannot yet reproduce the artifact or satisfy its planned corresponding-source release process.
-2. The stress harness proves wrapper cleanup but cannot prove allocator cleanup. Across five consecutive 1,000-operation batches, the Emscripten heap capacity grew from 20,185,088 bytes to 260,243,456 bytes. Emscripten does not shrink its linear memory, and the published binding does not expose live allocator bytes, so this result cannot distinguish a retained high-water mark from a native leak.
+1. The controlled candidate identifies and verifies the exact OCCT source revision, but the pinned upstream builder image has not yet been rebuilt from archived sources and compared. Registry-image reproducibility is engineering evidence, not the final corresponding-source release process.
+2. Allocator instrumentation confirms retained live allocation rather than only linear-memory capacity. Across five consecutive 1,000-operation batches, allocated bytes at the same post-disposal stage increased by approximately 100 MB. The sequence does not establish a plateau and remains a production blocker.
 
-Continue SPK-001 by executing and validating the prepared project-controlled OpenCascade.js build, then run its allocator instrumentation against the same fixture. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
+The controlled candidate successfully builds, loads through the existing adapter boundary, executes modeling and exchange operations, emits allocator evidence, and resets to its cold allocator baseline after a hard worker restart. Continue SPK-001 by isolating the retained allocation by operation and reproducing the builder image from archived sources. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
 
 The rework now has two additional pieces of executable evidence:
 
 - protocol v2 captures ordered Emscripten heap checkpoints after every modeling, tessellation, exchange, lifecycle, and final shape-disposal stage and accepts allocator metrics only from a complete validated binding;
 - the browser harness terminates the first worker, initializes a fresh worker, rebuilds the same invariant fixture, and disposes it successfully in Chromium, Firefox, and WebKit.
 
-The controlled-build harness pins and verifies the OpenCascade.js, OCCT, and Replicad source archives plus the builder image digest and derives the allocator-instrumented build config deterministically. Docker is unavailable on the current development host, so no controlled WASM output is claimed yet.
+The controlled-build harness pins and verifies the OpenCascade.js, OCCT, and Replicad source archives plus the builder image digest and derives the allocator-instrumented build config deterministically. The GitHub evidence workflow executed that build and its extended browser fixture successfully on `linux/amd64` without mutating `node_modules` or the production dependency lock.
 
 ## Implemented boundary
 
@@ -90,7 +90,15 @@ Prepared controlled-build inputs:
 | Replicad build config | `19fb8212e0bb12a07a7a49f96950f8903903d469` | GitHub archive SHA-256 `83a9fd99e39b77d7128270e08764cafd334117fbd0d083792b3a49aaa181787f` |
 | OpenCascade.js builder image | `linux/amd64` | Registry digest `sha256:3069f4c2e3ab62bb82d81843bad2c0f8552ee92373208f8f655ef9bf71c0524d` |
 
-`bun run occt:prepare` downloaded and verified all three archives and generated the instrumented config successfully. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must later be rebuilt from archived sources and compared.
+The executed candidate produced:
+
+| Output | Bytes | SHA-256 |
+|---|---:|---|
+| `vibeshape_occt.js` | 135,503 | `d28f69b40b60f3881ccd3a996664a1732527a34cc154e2511dbfa02cd5c5081c` |
+| `vibeshape_occt.wasm` | 10,852,193 | `80abcb3bedd81774301ddef11a595309c54a7d331052f6362ef3600ca3a2fea4` |
+| `vibeshape_occt.d.ts` | 410,529 | `42bef32d3bd5ea439ff0495499cb0265b8df08b0e8fe576856cb20c1e34aef0f` |
+
+Two clean workflow runs produced the same three output hashes. The generated config SHA-256 is `675641b6faedb60d8b9533bfb3bfa49137069bd539ca0261d26c2f08601f7496`. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must later be rebuilt from archived sources and compared.
 
 The npm package declares `replicad-opencascadejs` as MIT. That declaration covers the package wrapper and does not erase the LGPL obligations of the embedded OCCT-derived WASM. The runtime reports `opencascadeSourceRevision: null` deliberately; a guessed value would be false provenance.
 
@@ -104,7 +112,15 @@ Measured from `replicad_single.wasm` with the exact locked package:
 | gzip level 9 | 4,535,371 | 4.33 |
 | Brotli quality 11 | 3,382,379 | 3.23 |
 
-These numbers cover the WASM file only. They do not include the Replicad JavaScript, application code, HTTP headers, cache behavior, or source-compliance artifacts. A production custom build must repeat this measurement from a clean reproducible build.
+The controlled candidate measures:
+
+| Encoding | Bytes | MiB |
+|---|---:|---:|
+| Raw | 10,852,193 | 10.35 |
+| gzip level 9 | 4,565,318 | 4.35 |
+| Brotli quality 11 | 3,393,856 | 3.24 |
+
+These numbers cover the WASM file only. They do not include the Replicad JavaScript, application code, HTTP headers, cache behavior, or source-compliance artifacts. A source-built release image must repeat this measurement from a clean build.
 
 ## Functional result
 
@@ -176,13 +192,28 @@ This sample locates the first capacity growth in tessellation and confirms that 
 
 After terminating the first worker, the fresh worker returned to the 16,777,216-byte baseline, rebuilt the same valid solid with matching volume, ran a one-iteration ownership check, and disposed to zero owned shapes. This validates the hard restart path at the spike level; production document restoration still depends on committed snapshot work from the persistence phase.
 
+### Controlled allocator evidence
+
+The allocator-instrumented candidate reports `mallinfo()` arena, allocated, and free bytes at every existing memory checkpoint. The green extended Chromium workflow produced:
+
+| Batch | Allocated at initialization | Allocated after shape disposal |
+|---:|---:|---:|
+| 1 | 128,360 | 128,895,280 |
+| 2 | 37,885,208 | 154,171,880 |
+| 3 | 56,633,672 | 179,303,752 |
+| 4 | 80,035,952 | 204,388,472 |
+| 5 | 102,407,216 | 228,994,488 |
+
+Allocated bytes at the same post-disposal stage drifted by 100,099,208 bytes from batch 1 to batch 5. The executable evidence gate caps this known rework state at 134,217,728 bytes so future changes cannot silently worsen it. That ceiling is a regression guardrail, **not** the production acceptance criterion.
+
+After terminating the stressed worker, the replacement worker returned to 16,777,216 bytes of linear-memory capacity and 128,360 allocated bytes, exactly matching the cold allocator checkpoint. Hard restart is therefore a verified memory-release mechanism while in-worker retention remains unresolved.
+
 Required follow-up:
 
-- expose `mallinfo2` or equivalent allocated/live byte metrics in a controlled binding;
-- record peak and steady-state bytes separately from linear-memory capacity;
 - isolate primitive, boolean, fillet, mesh, STEP writer, and STEP reader loops to locate growth;
 - repeat batches until a numeric plateau is established or a leak is fixed;
-- test worker termination and document recovery as the hard memory-release path;
+- record peak and steady-state bytes separately from linear-memory capacity;
+- validate document recovery on top of the verified hard memory-release path;
 - define an accepted steady-state and per-document budget through benchmark evidence.
 
 ## Verification
@@ -193,15 +224,15 @@ The executable evidence is owned by:
 - `packages/geometry-worker/src/runtime.test.ts` for invalid input, initialization, transfer lists, cancellation, and stale generations;
 - `packages/geometry-worker/src/memory-profile.test.ts` for missing, complete, malformed, and invalid allocator bindings;
 - `scripts/occt-build-config.test.ts` for deterministic config instrumentation and upstream-anchor drift;
+- `scripts/occt-build-artifacts.test.ts` for output validation and isolated package staging;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, modeling, exchange, invariant, progress, lifetime, and disposal behavior.
 
-Playwright attaches a compact JSON evidence record to the HTML report for each browser run. Failure artifacts remain under `.artifacts/playwright` and are not committed.
+Playwright attaches a compact JSON evidence record to the HTML report for each browser run. The controlled workflow also writes `geometry-worker-evidence.json` beside the build report and archives both reports, exact sources, generated outputs, and browser diagnostics for seven days. Generated evidence is not committed.
 
 ## Remaining stop/go work
 
-- Execute the prepared controlled OpenCascade.js build on a Docker-capable host and verify its generated report.
 - Rebuild the pinned builder image from archived sources, compare it with the registry-pinned build, and publish the final build instructions.
-- Add allocator-level memory instrumentation and close the unexplained-growth result.
+- Isolate and fix or explain the measured allocator retention, then establish a production plateau threshold.
 - Compare the controlled direct binding with Replicad on API coverage, size, speed, and maintainability.
 - Verify operation history needed by SPK-003.
 - Open exported STEP independently in FreeCAD or another reader.

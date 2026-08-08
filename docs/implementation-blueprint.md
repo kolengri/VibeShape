@@ -24,7 +24,7 @@ With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can re
 
 ## SPK-001 — OCCT/Replicad worker
 
-**Current result:** **Rework.** The protocol-v2 worker, exact modeling scenario, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, and Chromium/Firefox/WebKit matrix are implemented. A checksum-verified controlled-build harness is prepared, but it has not produced a replacement WASM because Docker is unavailable on the current host. The 5,000-operation Chromium stress run still has unexplained WASM linear-memory growth, and the published custom WASM still does not disclose the exact OCCT source revision. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Current result:** **Rework.** The protocol-v2 worker, exact modeling scenario, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, and Chromium/Firefox/WebKit matrix are implemented. The controlled workflow builds a checksum-verified candidate from recorded sources and reports live allocator metrics. A 5,000-operation Chromium run still retains approximately 100 MB across equivalent post-disposal checkpoints, while hard worker restart returns to the cold allocator baseline. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Question
 
@@ -62,7 +62,7 @@ Can the browser provide the required exact CAD API, STEP support, and operation 
 
 Proceed only when STEP, boolean, fillet, validation, and history are available; the main thread stays responsive; and repeated runs show no unexplained unbounded growth. Otherwise, reduce bindings or replace the adapter before building feature UI.
 
-The functional operations and hard restart pass, and the controlled inputs are prepared. History, an executed reproducible OCCT build, allocator-level plateau evidence, independent STEP validation, and controlled responsiveness measurements remain open. Do not promote the spike adapter into production feature work yet.
+The functional operations, controlled candidate build, allocator instrumentation, and hard restart pass. History, a source-rebuilt builder image, allocator-level plateau evidence, independent STEP validation, and controlled responsiveness measurements remain open. Do not promote the spike adapter into production feature work yet.
 
 ## SPK-002 — sketch solver
 

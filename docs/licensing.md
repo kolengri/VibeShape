@@ -77,9 +77,9 @@ For a web/WASM release, VibeShape must:
 6. Document compliance with the Open CASCADE exception.
 7. Never rely only on a link to the upstream `master` branch.
 
-SPK-001 deliberately reports `opencascadeSourceRevision: null`: the published `replicad-opencascadejs@0.23.0` metadata pins the wrapper package but does not disclose the exact OCCT source revision used for its WASM. That artifact is suitable for feasibility testing only. A public release is blocked until VibeShape owns a reproducible build from a recorded OCCT revision or receives equivalent complete corresponding-source evidence.
+SPK-001 deliberately reports `opencascadeSourceRevision: null` for the published `replicad-opencascadejs@0.23.0` path because its metadata does not disclose the exact OCCT source revision used for its WASM. The isolated controlled mode instead reports OCCT revision `bb368e271e24f63078129283148ce83db6b9670a` and produces an exact source and output manifest. The published artifact remains suitable for feasibility testing only.
 
-The rework harness under `native/occt` now pins and verifies source archives for OpenCascade.js `5ff2b750`, OCCT `bb368e27`, and the Replicad `0.23.0` build config, along with an immutable builder image digest. These archives improve traceability and corresponding-source preparation, but they do not retroactively establish the source of the published npm WASM. The controlled artifact must be built, regression-tested, and accompanied by a source-built builder before release provenance is considered closed.
+The rework harness under `native/occt` pins and verifies source archives for OpenCascade.js `5ff2b750`, OCCT `bb368e27`, and the Replicad `0.23.0` build config, along with an immutable builder image digest. The controlled artifact has been built and regression-tested, but this does not retroactively establish the source of the published npm WASM. The builder image must also be reproduced from archived sources, with license texts, patches, replacement instructions, and the exact manifest archived before release provenance is considered closed.
 
 ## SolveSpace Reuse
 

@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test"
 
+const controlledOcctMode = process.env.VIBESHAPE_CONTROLLED_OCCT === "1"
+
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: ".artifacts/playwright/test-results",
@@ -32,7 +34,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run --cwd apps/web dev:e2e",
+    command: controlledOcctMode
+      ? "bun run --cwd apps/web dev:e2e -- --mode controlled-occt"
+      : "bun run --cwd apps/web dev:e2e",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
   },
