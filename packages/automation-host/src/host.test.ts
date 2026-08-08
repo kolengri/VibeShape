@@ -1,13 +1,20 @@
 import { createQueryDispatcher, documentCoreQueryHandlers } from "@vibeshape/automation-api/queries"
-import { coreCommandHandlers, createCommandDispatcher } from "@vibeshape/domain/command-dispatcher"
+import {
+  createCommandDispatcher,
+  createCoreCommandHandlers,
+} from "@vibeshape/domain/command-dispatcher"
 import { applyDocumentCommand, commandActorSchema } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { commitDocumentDraft, type DraftCommit } from "@vibeshape/domain/drafts"
+import { createFeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
 import {
   createModuleRegistry,
   documentCoreModule,
   featureCoreModule,
+  partDesignModule,
 } from "@vibeshape/domain/modules"
+import { boxFeatureType, partDesignFeatureTypeHandlers } from "@vibeshape/domain/part-design"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it } from "vitest"
 import { type AutomationDocumentPort, type AutomationHost, createAutomationHost } from "./host"
 
@@ -62,13 +69,28 @@ function createdSnapshot(name = "Enclosure") {
 }
 
 function dispatchers() {
-  const registryResult = createModuleRegistry([documentCoreModule, featureCoreModule])
+  const registryResult = createModuleRegistry([
+    documentCoreModule,
+    featureCoreModule,
+    partDesignModule,
+  ])
 
   if (!registryResult.ok) {
     throw new Error(registryResult.diagnostic.message)
   }
 
-  const commandResult = createCommandDispatcher(registryResult.registry, coreCommandHandlers)
+  const featureTypes = createFeatureTypeRegistry(
+    registryResult.registry,
+    partDesignFeatureTypeHandlers,
+  )
+  if (!featureTypes.ok) {
+    throw new Error(featureTypes.diagnostic.message)
+  }
+
+  const commandResult = createCommandDispatcher(
+    registryResult.registry,
+    createCoreCommandHandlers(featureTypes.registry),
+  )
   const queryResult = createQueryDispatcher(registryResult.registry, documentCoreQueryHandlers)
 
   if (!commandResult.ok) {
@@ -251,13 +273,13 @@ describe("automation draft host", () => {
           feature: {
             schemaVersion: 0,
             id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
-            type: {
-              moduleId: "org.vibeshape.core.part-design",
-              moduleVersion: "0.1.0",
-              typeId: "org.vibeshape.feature.test",
-              schemaVersion: 1,
+            type: boxFeatureType.type,
+            parameters: {
+              width: createLengthQuantity(20),
+              depth: createLengthQuantity(30),
+              height: createLengthQuantity(1, "in"),
+              centered: true,
             },
-            parameters: { length: 10 },
             dependencies: [],
             references: [],
             suppressed: false,

@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest"
 import {
-  coreCommandHandlers,
+  createCoreCommandHandlers,
   createCommandDispatcher,
   documentCoreCommandHandlers,
   type TrustedCommandHandler,
 } from "./command-dispatcher"
+import { applyDocumentCommand } from "./commands"
+import { createFeatureTypeRegistry } from "./feature-type-registry"
 import { draftIdSchema, moduleIdSchema } from "./identifiers"
-import { createModuleRegistry, documentCoreModule, featureCoreModule } from "./modules"
+import {
+  createModuleRegistry,
+  documentCoreModule,
+  featureCoreModule,
+  partDesignModule,
+} from "./modules"
+import { boxFeatureType, partDesignFeatureTypeHandlers } from "./part-design"
+import { createLengthQuantity } from "./units"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const draftId = "0195b5ac-b216-7a2c-bc33-67a36a7f21ac"
@@ -50,6 +59,46 @@ function commandDispatcher() {
   return result.dispatcher
 }
 
+function featureComposition() {
+  const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
+
+  if (!modules.ok) throw new Error(modules.diagnostic.message)
+
+  const featureTypes = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
+  if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
+
+  return { modules: modules.registry, featureTypes: featureTypes.registry }
+}
+
+function featureCommandDispatcher() {
+  const composition = featureComposition()
+
+  const dispatcher = createCommandDispatcher(
+    composition.modules,
+    createCoreCommandHandlers(composition.featureTypes),
+  )
+  if (!dispatcher.ok) throw new Error(dispatcher.diagnostic.message)
+  return dispatcher.dispatcher
+}
+
+function boxFeature(parameters: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+    type: boxFeatureType.type,
+    parameters: {
+      width: createLengthQuantity(20),
+      depth: createLengthQuantity(30),
+      height: createLengthQuantity(1, "in"),
+      centered: true,
+      ...parameters,
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  }
+}
+
 describe("trusted command dispatcher", () => {
   it("routes first-party commands through registered handlers", () => {
     const dispatcher = commandDispatcher()
@@ -89,17 +138,8 @@ describe("trusted command dispatcher", () => {
   })
 
   it("routes feature commands only when the feature module and handler set are composed", () => {
-    const registry = createModuleRegistry([documentCoreModule, featureCoreModule])
-
-    expect(registry.ok).toBe(true)
-    if (!registry.ok) return
-
-    const dispatcher = createCommandDispatcher(registry.registry, coreCommandHandlers)
-
-    expect(dispatcher.ok).toBe(true)
-    if (!dispatcher.ok) return
-
-    const created = dispatcher.dispatcher.dispatch(
+    const dispatcher = featureCommandDispatcher()
+    const created = dispatcher.dispatch(
       null,
       command(
         "org.vibeshape.document.create",
@@ -112,7 +152,7 @@ describe("trusted command dispatcher", () => {
     expect(created.ok).toBe(true)
     if (!created.ok) return
 
-    const added = dispatcher.dispatcher.dispatch(created.snapshot, {
+    const added = dispatcher.dispatch(created.snapshot, {
       kind: "org.vibeshape.feature.add",
       schemaVersion: 1,
       commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
@@ -120,29 +160,156 @@ describe("trusted command dispatcher", () => {
       baseRevision: 1,
       issuedAt: "2026-08-08T12:01:00Z",
       actor: userActor,
-      payload: {
-        feature: {
-          schemaVersion: 0,
-          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
-          type: {
-            moduleId: "org.vibeshape.core.part-design",
-            moduleVersion: "0.1.0",
-            typeId: "org.vibeshape.feature.test",
-            schemaVersion: 1,
-          },
-          parameters: { length: 10 },
-          dependencies: [],
-          references: [],
-          suppressed: false,
-        },
-      },
+      payload: { feature: boxFeature() },
     })
 
     expect(added).toMatchObject({
       ok: true,
-      snapshot: { revision: 2, features: [{ parameters: { length: 10 } }] },
+      snapshot: {
+        revision: 2,
+        features: [{ type: boxFeatureType.type, parameters: { height: { value: 25.4 } } }],
+      },
       event: { type: "org.vibeshape.feature.added" },
     })
+  })
+
+  it("rejects unavailable and invalid feature types before creating an event", () => {
+    const dispatcher = featureCommandDispatcher()
+    const created = dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const base = {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: { feature: boxFeature() },
+    }
+
+    expect(
+      dispatcher.dispatch(created.snapshot, {
+        ...base,
+        payload: {
+          feature: {
+            ...boxFeature(),
+            type: {
+              moduleId: "org.example.features",
+              moduleVersion: "1.0.0",
+              typeId: "org.example.feature.unknown",
+              schemaVersion: 1,
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "feature-type-unavailable" } })
+    expect(
+      dispatcher.dispatch(created.snapshot, {
+        ...base,
+        payload: { feature: boxFeature({ width: createLengthQuantity(0) }) },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-parameters", issues: [{ path: "parameters.width" }] },
+    })
+    expect(created.snapshot).toMatchObject({ revision: 1, features: [] })
+  })
+
+  it("validates updates but permits suppression of a preserved unavailable feature", () => {
+    const dispatcher = featureCommandDispatcher()
+    const created = dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const added = dispatcher.dispatch(created.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: { feature: boxFeature() },
+    })
+
+    expect(added.ok).toBe(true)
+    if (!added.ok) return
+
+    expect(
+      dispatcher.dispatch(added.snapshot, {
+        kind: "org.vibeshape.feature.update",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b216-7a2c-bc33-67a36a7f21ac",
+        documentId,
+        baseRevision: 2,
+        issuedAt: "2026-08-08T12:02:00Z",
+        actor: userActor,
+        payload: { feature: boxFeature({ height: createLengthQuantity(0) }) },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-parameters" } })
+    expect(added.snapshot).toMatchObject({ revision: 2, features: [{ suppressed: false }] })
+
+    const preserved = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b217-7a2c-8c33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: {
+        feature: {
+          ...boxFeature(),
+          type: {
+            moduleId: "org.example.features",
+            moduleVersion: "1.0.0",
+            typeId: "org.example.feature.preserved",
+            schemaVersion: 1,
+          },
+          parameters: { opaque: true },
+        },
+      },
+    })
+
+    expect(preserved.ok).toBe(true)
+    if (!preserved.ok) return
+
+    expect(
+      dispatcher.dispatch(preserved.snapshot, {
+        kind: "org.vibeshape.feature.set-suppressed",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b218-7a2c-8c33-67a36a7f21ac",
+        documentId,
+        baseRevision: 2,
+        issuedAt: "2026-08-08T12:02:00Z",
+        actor: userActor,
+        payload: {
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          suppressed: true,
+        },
+      }),
+    ).toMatchObject({ ok: true, snapshot: { revision: 3, features: [{ suppressed: true }] } })
   })
 
   it.each([null, {}, { kind: "invalid", schemaVersion: 1 }])(
@@ -262,5 +429,23 @@ describe("trusted command dispatcher", () => {
       ok: false,
       diagnostic: { code: "command-handler-version-mismatch" },
     })
+  })
+
+  it("rejects feature handlers bound to a different feature type composition", () => {
+    const incomplete = createModuleRegistry([documentCoreModule, featureCoreModule])
+    const composition = featureComposition()
+
+    expect(incomplete.ok).toBe(true)
+    if (incomplete.ok) {
+      expect(
+        createCommandDispatcher(
+          incomplete.registry,
+          createCoreCommandHandlers(composition.featureTypes),
+        ),
+      ).toMatchObject({
+        ok: false,
+        diagnostic: { code: "command-handler-feature-types-mismatch" },
+      })
+    }
   })
 })
