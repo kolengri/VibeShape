@@ -113,7 +113,8 @@ describe("owned OCCT fillet adapter", () => {
     const rawShape = createDeletable()
     const wrappedShape = { wrapped: createDeletable() }
     const rawEdge = createDeletable()
-    const edge = createDeletable()
+    const edge = { ...createDeletable(), HashCode: vi.fn(() => 91) }
+    const sourceEdge = { ...createDeletable(), geomType: "LINE", hashCode: 91 }
     const rawVertex = createDeletable()
     const vertex = createDeletable()
     const point = { ...createDeletable(), Z: vi.fn(() => 20) }
@@ -158,7 +159,7 @@ describe("owned OCCT fillet adapter", () => {
 
     const result = operations.filletEdgesAtZ(
       opencascade,
-      { wrapped: createDeletable() } as never,
+      { edges: [sourceEdge], wrapped: createDeletable() } as never,
       1.5,
       20,
     )
@@ -169,6 +170,7 @@ describe("owned OCCT fillet adapter", () => {
     expect(rawShape.delete).toHaveBeenCalledOnce()
     expect(rawEdge.delete).toHaveBeenCalledOnce()
     expect(edge.delete).toHaveBeenCalledOnce()
+    expect(sourceEdge.delete).toHaveBeenCalledOnce()
     expect(rawVertex.delete).toHaveBeenCalledOnce()
     expect(vertex.delete).toHaveBeenCalledOnce()
     expect(point.delete).toHaveBeenCalledOnce()

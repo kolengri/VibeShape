@@ -7,6 +7,7 @@ import {
   type GeometryWorkerResponse,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
+  type TopologySpikeParameters,
 } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
 import { describe, expect, it } from "vitest"
@@ -53,6 +54,7 @@ function createKernelResult(): KernelSpikeEngineResult {
         faces: createHistoryStats(),
       },
     },
+    topologyCandidates: [],
     mesh: {
       positions: new Float32Array([0, 0, 0]),
       normals: new Float32Array([0, 0, 1]),
@@ -133,6 +135,16 @@ class FakeEngine implements GeometryKernelEngine {
     return createKernelResult()
   }
 
+  async runTopologySpike(_parameters: TopologySpikeParameters) {
+    this.runCount += 1
+    const result = createKernelResult()
+    return {
+      engine: result.engine,
+      shape: result.shape,
+      topologyCandidates: result.topologyCandidates,
+    }
+  }
+
   getHealth() {
     return { initialized: this.initialized, ownedShapeCount: 0, wasmHeapBytes: 1 }
   }
@@ -161,6 +173,21 @@ function createRunRequest(requestId: string, generation = 1): GeometryWorkerRequ
     ...createEnvelope(requestId, generation),
     type: "runKernelSpike",
     parameters: createKernelSpikeParameters(),
+  }
+}
+
+function createTopologyRunRequest(requestId: string): GeometryWorkerRequest {
+  return {
+    ...createEnvelope(requestId),
+    type: "runTopologySpike",
+    parameters: {
+      boxSize: [60, 40, 20],
+      holeCount: 2,
+      holeRadius: 6,
+      holeSpacing: 10,
+      holeCenter: [0, 0],
+      filletRadius: 1.5,
+    },
   }
 }
 
@@ -221,6 +248,16 @@ describe("GeometryWorkerRuntime", () => {
     ])
     expect(transfers.at(-1)).toHaveLength(5)
     expect(transfers.at(-1)?.every((transfer) => transfer instanceof ArrayBuffer)).toBe(true)
+  })
+
+  it("runs the topology corpus command without transferable native payloads", async () => {
+    const { messages, runtime, transfers } = createHarness()
+
+    await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
+    await runtime.handle(createTopologyRunRequest("topology"))
+
+    expect(messages.at(-1)).toMatchObject({ type: "topologySpikeCompleted" })
+    expect(transfers.at(-1)).toHaveLength(0)
   })
 
   it("does not run work that was cancelled before dispatch", async () => {

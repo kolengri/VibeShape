@@ -3,6 +3,9 @@ import type {
   GeometryProgressStage,
   KernelSpikeEngineResult,
   KernelSpikeParameters,
+  TopologyCandidate,
+  TopologySpikeEngineResult,
+  TopologySpikeParameters,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
 import { type Shape3D, setOC } from "replicad"
@@ -30,9 +33,17 @@ import {
   createOcctCylinder,
   cutOcctShapes,
   cutOcctShapesWithHistory,
+  cutOcctShapesWithLineage,
   filletOcctEdgesAtZWithHistory,
+  filletOcctEdgesAtZWithLineage,
 } from "./occt-shapes"
 import { OwnedShapeRegistry } from "./shape-registry"
+import {
+  captureReplicadTopologyCandidates,
+  captureReplicadTopologySnapshot,
+  type TopologyCandidateContext,
+  type TopologyCaptureSnapshot,
+} from "./topology-signatures"
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
 
@@ -248,6 +259,158 @@ function tessellate(
   return { positions, normals, indices, triangleFaceIds }
 }
 
+function nearlyEqual(left: number, right: number, tolerance = 1e-6) {
+  return Math.abs(left - right) <= tolerance
+}
+
+function firstMatchingRole(rules: Array<readonly [matches: boolean, role: string]>) {
+  return rules.find(([matches]) => matches)?.[1]
+}
+
+function cylinderSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: KernelSpikeParameters,
+) {
+  const { centroid, direction } = context.signature
+  if (!direction) return undefined
+  const [x, y] = centroid
+  const [normalX, normalY, normalZ] = direction
+  const [holeX, holeY] = parameters.cylinderOrigin
+  return firstMatchingRole([
+    [nearlyEqual(x, holeX) && nearlyEqual(y, holeY) && Math.abs(normalZ) < 1e-6, "hole.wall"],
+    [normalX < -0.5, "top-fillet.surface.x-min"],
+    [normalX > 0.5, "top-fillet.surface.x-max"],
+    [normalY < -0.5, "top-fillet.surface.y-min"],
+    [normalY > 0.5, "top-fillet.surface.y-max"],
+  ])
+}
+
+function planeSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: Pick<KernelSpikeParameters, "boxSize">,
+) {
+  const { centroid, direction } = context.signature
+  if (!direction) return undefined
+  const [length, width, height] = parameters.boxSize
+  const [x, y, z] = centroid
+  const [normalX, normalY, normalZ] = direction
+  return firstMatchingRole([
+    [Math.abs(normalZ) > 0.999 && nearlyEqual(z, 0), "base-extrude.cap.start"],
+    [Math.abs(normalZ) > 0.999 && nearlyEqual(z, height), "base-extrude.cap.end"],
+    [Math.abs(normalX) > 0.999 && nearlyEqual(x, -length / 2), "base-extrude.side.x-min"],
+    [Math.abs(normalX) > 0.999 && nearlyEqual(x, length / 2), "base-extrude.side.x-max"],
+    [Math.abs(normalY) > 0.999 && nearlyEqual(y, -width / 2), "base-extrude.side.y-min"],
+    [Math.abs(normalY) > 0.999 && nearlyEqual(y, width / 2), "base-extrude.side.y-max"],
+  ])
+}
+
+interface TopologyHolePosition {
+  role: "negative" | "center" | "positive"
+  origin: [number, number, number]
+}
+
+function createTopologyHolePositions(parameters: TopologySpikeParameters): TopologyHolePosition[] {
+  const [centerX, centerY] = parameters.holeCenter
+  const z = -5
+  if (parameters.holeCount === 0) return []
+  if (parameters.holeCount === 1) return [{ role: "center", origin: [centerX, centerY, z] }]
+  const positions: TopologyHolePosition[] = [
+    { role: "negative", origin: [centerX - parameters.holeSpacing, centerY, z] },
+    { role: "positive", origin: [centerX + parameters.holeSpacing, centerY, z] },
+  ]
+  return parameters.holeCount === 3
+    ? [...positions, { role: "center", origin: [centerX, centerY, z] }]
+    : positions
+}
+
+function outerFilletSemanticRole(direction: readonly number[]) {
+  const [normalX, normalY] = direction
+  return firstMatchingRole([
+    [(normalX as number) < -0.5, "top-fillet.surface.x-min"],
+    [(normalX as number) > 0.5, "top-fillet.surface.x-max"],
+    [(normalY as number) < -0.5, "top-fillet.surface.y-min"],
+    [(normalY as number) > 0.5, "top-fillet.surface.y-max"],
+  ])
+}
+
+function topologySpikeSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: TopologySpikeParameters,
+  holes: TopologyHolePosition[],
+) {
+  if (context.kind !== "face") return undefined
+  if (context.signature.geometryClass === "PLANE") {
+    return planeSemanticRole(context, parameters)
+  }
+  if (context.signature.geometryClass !== "CYLINDRE" || !context.signature.direction) {
+    return undefined
+  }
+  const [x, y] = context.signature.centroid
+  const [, , normalZ] = context.signature.direction
+  const hole = holes.find(({ origin }) => nearlyEqual(x, origin[0]) && nearlyEqual(y, origin[1]))
+  if (hole && Math.abs(normalZ) < 1e-6) {
+    return `pattern.hole.${hole.role}.wall`
+  }
+  return outerFilletSemanticRole(context.signature.direction)
+}
+
+function outputLineageToken(semanticRole: string) {
+  return `output:${semanticRole}`
+}
+
+function createOutputLineage(
+  snapshot: TopologyCaptureSnapshot,
+  semanticRole: (context: TopologyCandidateContext) => string | undefined,
+) {
+  const lineage = new Map<number, string[]>()
+  for (const candidate of snapshot.candidates) {
+    const role = semanticRole(candidate)
+    const shapeKey = snapshot.transientShapeKeys.get(candidate.candidateId)
+    if (role && shapeKey !== undefined) lineage.set(shapeKey, [outputLineageToken(role)])
+  }
+  return lineage
+}
+
+function mergeOutputLineage(...sources: Array<ReadonlyMap<number, readonly string[]>>) {
+  const merged = new Map<number, string[]>()
+  for (const source of sources) {
+    for (const [shapeKey, tokens] of source) {
+      merged.set(shapeKey, [...new Set([...(merged.get(shapeKey) ?? []), ...tokens])].sort())
+    }
+  }
+  return merged
+}
+
+function annotateTopologySnapshot(
+  snapshot: TopologyCaptureSnapshot,
+  lineage: ReadonlyMap<number, readonly string[]>,
+  semanticRole: (context: TopologyCandidateContext) => string | undefined,
+): TopologyCandidate[] {
+  return snapshot.candidates.map((candidate) => {
+    const shapeKey = snapshot.transientShapeKeys.get(candidate.candidateId)
+    const role = semanticRole(candidate)
+    return {
+      ...candidate,
+      lineageTokens: shapeKey === undefined ? [] : [...(lineage.get(shapeKey) ?? [])],
+      ...(role ? { semanticRole: role } : {}),
+    }
+  })
+}
+
+function kernelFixtureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: KernelSpikeParameters,
+) {
+  if (context.kind !== "face") return undefined
+  if (context.signature.geometryClass === "CYLINDRE") {
+    return cylinderSemanticRole(context, parameters)
+  }
+  if (context.signature.geometryClass === "PLANE") {
+    return planeSemanticRole(context, parameters)
+  }
+  return undefined
+}
+
 export interface GeometryKernelEngine {
   initialize(): Promise<GeometryEngineMetadata>
   isInitialized(): boolean
@@ -255,6 +418,7 @@ export interface GeometryKernelEngine {
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
   ): Promise<KernelSpikeEngineResult>
+  runTopologySpike(parameters: TopologySpikeParameters): Promise<TopologySpikeEngineResult>
   getHealth(): {
     initialized: boolean
     ownedShapeCount: number
@@ -382,6 +546,10 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       const filletMs = elapsed(stageStartedAt)
       memoryProfile.capture("fillet-completed")
 
+      const topologyCandidates = captureReplicadTopologyCandidates(finalShape, {
+        semanticRole: (context) => kernelFixtureSemanticRole(context, parameters),
+      })
+
       reportProgress("validation", 0.4)
       stageStartedAt = performance.now()
       const shape = measureShape(opencascade, finalShape)
@@ -433,6 +601,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           booleanCut: booleanCut.history,
           fillet: fillet.history,
         },
+        topologyCandidates,
         mesh,
         exchange: {
           stepBytes: stepBytes.byteLength,
@@ -459,6 +628,76 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     } finally {
       this.#ownedShapes.disposeAll()
       memoryProfile.capture("shapes-disposed")
+    }
+  }
+
+  async runTopologySpike(parameters: TopologySpikeParameters) {
+    const engine = await this.initialize()
+    const opencascade = this.#opencascade
+    if (!opencascade) {
+      throw new Error("OpenCascade did not initialize.")
+    }
+
+    const holes = createTopologyHolePositions(parameters)
+    let currentShape = this.#ownedShapes.own(createOcctBox(opencascade, parameters.boxSize))
+    let currentLineage = createOutputLineage(
+      captureReplicadTopologySnapshot(currentShape),
+      (context) => planeSemanticRole(context, parameters),
+    )
+    try {
+      for (const hole of holes) {
+        const tool = this.#ownedShapes.own(
+          createOcctCylinder(
+            opencascade,
+            parameters.holeRadius,
+            parameters.boxSize[2] + 10,
+            hole.origin,
+          ),
+        )
+        const toolLineage = createOutputLineage(captureReplicadTopologySnapshot(tool), (context) =>
+          context.kind === "face" && context.signature.geometryClass === "CYLINDRE"
+            ? `pattern.hole.${hole.role}.wall`
+            : undefined,
+        )
+        const cut = cutOcctShapesWithLineage(
+          opencascade,
+          currentShape,
+          tool,
+          mergeOutputLineage(currentLineage, toolLineage),
+        )
+        const cutShape = this.#ownedShapes.own(cut.shape)
+        this.#ownedShapes.dispose(tool)
+        this.#ownedShapes.dispose(currentShape)
+        currentShape = cutShape
+        currentLineage = cut.lineage
+      }
+
+      if (parameters.filletRadius !== null) {
+        const fillet = filletOcctEdgesAtZWithLineage(
+          opencascade,
+          currentShape,
+          parameters.filletRadius,
+          parameters.boxSize[2],
+          currentLineage,
+        )
+        const filleted = this.#ownedShapes.own(fillet.shape)
+        this.#ownedShapes.dispose(currentShape)
+        currentShape = filleted
+        currentLineage = fillet.lineage
+      }
+
+      const shape = measureShape(opencascade, currentShape)
+      if (!shape.valid || shape.solidCount !== 1 || shape.volume <= 0) {
+        throw new Error("The topology spike result is not one valid positive-volume solid.")
+      }
+      const topologyCandidates = annotateTopologySnapshot(
+        captureReplicadTopologySnapshot(currentShape),
+        currentLineage,
+        (context) => topologySpikeSemanticRole(context, parameters, holes),
+      )
+      return { engine, shape, topologyCandidates }
+    } finally {
+      this.#ownedShapes.disposeAll()
     }
   }
 

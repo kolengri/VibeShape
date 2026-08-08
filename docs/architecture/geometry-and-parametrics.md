@@ -110,19 +110,23 @@ A reference contains:
 - user-intent hints such as near point, expected normal/axis, and selection context;
 - latest confidence and repair history.
 
+The implemented schema is `TopoRef` version `0`. It validates finite normalized signatures with Zod and carries one authoritative semantic role or lineage token when available. Candidate IDs are evaluation-local diagnostics only. OCCT `HashCode` values may join native history to candidates inside one worker evaluation, but MUST NOT cross the worker boundary or enter a saved document.
+
 A face signature MAY include surface type, normalized analytical parameters, area, centroid, normal or axis, bounding box, loop count, and neighboring edge signatures. An edge signature may include curve type, length, endpoints, center or axis, and adjacent face roles. Values are quantized according to the tolerance policy.
 
 ### Resolution algorithm
 
-1. Exact semantic or history match.
-2. Persistent lineage match from the immediate operation.
-3. Candidate filtering by kind, surface, and adjacency.
-4. Weighted geometry score against the previous signature and intent point.
-5. If one candidate passes the threshold and margin, return `resolved`.
+1. Filter candidates by topology kind.
+2. Resolve an exact semantic role. A missing or duplicated authoritative role returns `missing` or `ambiguous`; it never falls through to a similar shape.
+3. Resolve an exact immediate lineage token. A missing token returns `missing`; multiple descendants are ranked only within that lineage set.
+4. When the reference has no authoritative role or lineage, filter by geometry class and score measure, centroid or intent point, direction, bounds, boundary count, and adjacency.
+5. If one candidate passes the versioned score threshold and confidence margin, return `resolved`.
 6. If candidates are close, return `ambiguous`; never evaluate downstream features silently.
-7. If no candidate exists, return `missing` and identify the first broken feature.
+7. If no compatible candidate exists or the best score exceeds the threshold, return `missing` and identify the first broken feature.
 
 Thresholds and weights are versioned. A user repair stores a new intent hint and event without rewriting old history.
+
+SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` ambiguity margin. Its weights are measure `0.20`, centroid or near-point intent `0.25`, direction `0.20`, bounds `0.15`, boundary count `0.10`, and adjacency `0.10`. These values pass the bounded spike corpus; changing them requires new corpus evidence, not UI tuning.
 
 ### Robust-modeling rules
 

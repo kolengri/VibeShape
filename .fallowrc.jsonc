@@ -1,7 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
   // Vite and Playwright load these files through secondary CLI/HTML entry points.
-  "entry": ["apps/web/src/spikes/geometry-worker.ts", "playwright.performance.config.ts"],
+  "entry": [
+    "apps/web/src/spikes/geometry-worker.ts",
+    "apps/web/src/spikes/topology.ts",
+    "playwright.performance.config.ts",
+    "playwright.topology.config.ts"
+  ],
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },

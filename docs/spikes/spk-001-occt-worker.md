@@ -17,7 +17,7 @@ Six earlier blockers are closed:
 5. A verified local corresponding-source bundle preserves the exact source archives, reviewed modification, build recipe, evidence, output files and hashes, license texts, notices, and replacement instructions for the controlled candidate.
 6. A controlled browser export is transferred as raw STEP bytes and imported by headless FreeCAD 1.1.3 as one valid solid. Its volume and bounds match the producer within executable tolerances.
 
-SPK-001 passes its Phase 0 stop/go gate. The controlled artifact remains quarantined rather than becoming the production dependency automatically. Production-facade comparison, extended target-browser and format cases, and release legal review remain promotion work rather than unresolved spike evidence. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
+SPK-001 passes its Phase 0 stop/go gate. The controlled artifact remains quarantined rather than becoming the production dependency automatically. Production-facade comparison, extended target-browser and format cases, and release legal review remain promotion work rather than unresolved spike evidence. SPK-003 subsequently used this history seam to pass its stable-reference algorithm gate. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
@@ -25,7 +25,7 @@ The spike provides:
 
 - a strict Zod protocol with protocol version, request ID, document ID, revision, and generation;
 - runtime validation on both sides of the worker boundary;
-- aggregate transient boolean and fillet history statistics in protocol v4;
+- aggregate transient boolean and fillet history statistics, preserved in current protocol v5;
 - sequential dispatch, logical cancellation, and stale-generation rejection;
 - transferable positions, normals, indices, triangle-to-face IDs, and exported STEP bytes;
 - progress and structured failure diagnostics;
@@ -66,7 +66,7 @@ The worker performs:
 9. repeated lifecycle operations and deterministic disposal;
 10. final cleanup, worker restart, invariant rebuild, and health reporting.
 
-The fixture does not solve stable topological naming. SPK-003 still owns semantic topology references, geometric signatures, relation selection, and ambiguity handling.
+The SPK-001 fixture alone does not solve stable topological naming. SPK-003 adds semantic topology references, geometric signatures, durable relation tokens, and ambiguity handling on top of this seam.
 
 ## Pinned inputs and provenance
 
@@ -153,7 +153,7 @@ This single functional sample is not used for the performance decision. The cont
 
 ## Operation-history evidence
 
-Protocol v4 reports aggregate history statistics by source topology type and transfers the generated STEP file without copying it through JSON evidence. This proves that the required OCCT relation APIs are available through the pinned bindings and can be queried across the worker boundary; it intentionally does not expose native handles or treat transient topology hashes as persistent identity.
+Protocol v5 preserves the aggregate history statistics introduced by the original v4 spike and transfers the generated STEP file without copying it through JSON evidence. This proves that the required OCCT relation APIs are available through the pinned bindings and can be queried across the worker boundary; it intentionally does not expose native handles or treat transient topology hashes as persistent identity. SPK-003 adds durable semantic lineage tokens separately.
 
 The boolean adapter enables history collection, builds the cut, calls `SimplifyResult`, and only then reads the merged `Modified`, `Generated`, and `IsDeleted` relations for source vertices, edges, faces, and solids. The fillet adapter follows the narrower OCCT contract: it reads `Generated` for source vertices and edges, then `Modified` and `IsDeleted` for source faces.
 

@@ -36,7 +36,10 @@ function fallbackEnvelope(value: unknown): GeometryRequestEnvelope {
 }
 
 function errorMessage(error: unknown) {
-  return isError(error) ? error.message : "Unknown geometry worker failure."
+  if (isError(error)) return error.message
+  if (isString(error)) return error
+  if (isAnyObject(error) && isString(error.message)) return error.message
+  return `Geometry worker failure: ${String(error)}`
 }
 
 function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
@@ -123,7 +126,7 @@ export class GeometryWorkerRuntime {
   }
 
   #trackGeneration(request: GeometryWorkerRequest) {
-    if (request.type !== "runKernelSpike") {
+    if (request.type !== "runKernelSpike" && request.type !== "runTopologySpike") {
       return
     }
 
@@ -156,6 +159,11 @@ export class GeometryWorkerRuntime {
       this.#latestGenerations.delete(request.documentId)
       this.#clearDocumentCancellations(request.documentId)
       this.#post({ ...this.#envelope(request), type: "documentDisposed", ownedShapeCount })
+      return
+    }
+
+    if (request.type === "runTopologySpike") {
+      await this.#runTopologySpike(request)
       return
     }
 
@@ -227,6 +235,49 @@ export class GeometryWorkerRuntime {
         "geometry-operation-failed",
         errorMessage(error),
         currentStage,
+        false,
+      )
+    }
+  }
+
+  async #runTopologySpike(request: Extract<GeometryWorkerRequest, { type: "runTopologySpike" }>) {
+    if (!this.engine.isInitialized()) {
+      this.#postFailure(
+        this.#envelope(request),
+        "engine-not-initialized",
+        "Initialize the geometry engine before running topology operations.",
+        null,
+        true,
+      )
+      return
+    }
+    if (this.#cancelledRequests.delete(request.requestId)) {
+      this.#postCancelled(request, "cancelled")
+      return
+    }
+    if (this.#isStale(request)) {
+      this.#postCancelled(request, "stale-generation")
+      return
+    }
+
+    this.#activeDocuments.add(request.documentId)
+    try {
+      const result = await this.engine.runTopologySpike(request.parameters)
+      if (this.#cancelledRequests.delete(request.requestId)) {
+        this.#postCancelled(request, "cancelled")
+        return
+      }
+      if (this.#isStale(request)) {
+        this.#postCancelled(request, "stale-generation")
+        return
+      }
+      this.#post({ ...this.#envelope(request), type: "topologySpikeCompleted", ...result })
+    } catch (error) {
+      this.#postFailure(
+        this.#envelope(request),
+        "geometry-operation-failed",
+        errorMessage(error),
+        null,
         false,
       )
     }

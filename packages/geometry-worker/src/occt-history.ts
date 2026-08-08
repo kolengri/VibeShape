@@ -28,6 +28,8 @@ export interface OcctFilletHistory {
   faces: OcctHistoryStats
 }
 
+export type OcctFaceLineage = Map<number, string[]>
+
 type HistoryRelation = "modified" | "generated" | "deleted"
 type HistoryBuilder = Pick<BRepBuilderAPI_MakeShape, "Modified" | "Generated" | "IsDeleted">
 
@@ -48,6 +50,102 @@ function readRelationCount(list: TopTools_ListOfShape) {
   } finally {
     list.delete()
   }
+}
+
+function readRelationHashes(list: TopTools_ListOfShape) {
+  const hashes: number[] = []
+  try {
+    while (list.Size() > 0) {
+      const shape = list.First_2()
+      try {
+        hashes.push(shape.HashCode(2_147_483_647))
+      } finally {
+        shape.delete()
+        list.RemoveFirst()
+      }
+    }
+    return hashes
+  } finally {
+    list.delete()
+  }
+}
+
+function addLineageTokens(lineage: OcctFaceLineage, hash: number, tokens: readonly string[]) {
+  const merged = new Set(lineage.get(hash) ?? [])
+  for (const token of tokens) merged.add(token)
+  lineage.set(hash, [...merged].sort())
+}
+
+function relationDescendants(
+  builder: HistoryBuilder,
+  source: TopoDS_Shape,
+  includeGenerated: boolean,
+) {
+  const modified = readRelationHashes(builder.Modified(source))
+  const generated = includeGenerated ? readRelationHashes(builder.Generated(source)) : []
+  if (modified.length + generated.length > 0) return [...modified, ...generated]
+  return builder.IsDeleted(source) ? [] : [source.HashCode(2_147_483_647)]
+}
+
+function propagateFaceLineage(
+  builder: HistoryBuilder,
+  source: TopoDS_Shape,
+  sourceLineage: ReadonlyMap<number, readonly string[]>,
+  includeGenerated: boolean,
+  lineage: OcctFaceLineage,
+  seen: Set<number>,
+) {
+  const sourceHash = source.HashCode(2_147_483_647)
+  if (seen.has(sourceHash)) return
+  seen.add(sourceHash)
+  const tokens = sourceLineage.get(sourceHash)
+  if (!tokens || tokens.length === 0) return
+  for (const descendantHash of relationDescendants(builder, source, includeGenerated)) {
+    addLineageTokens(lineage, descendantHash, tokens)
+  }
+}
+
+function captureSourceFaceLineage(
+  opencascade: OpenCascadeInstance,
+  builder: HistoryBuilder,
+  source: TopoDS_Shape,
+  sourceLineage: ReadonlyMap<number, readonly string[]>,
+  includeGenerated: boolean,
+  lineage: OcctFaceLineage,
+) {
+  const faceType = opencascade.TopAbs_ShapeEnum.TopAbs_FACE as TopAbs_ShapeEnum
+  const shapeType = opencascade.TopAbs_ShapeEnum.TopAbs_SHAPE as TopAbs_ShapeEnum
+  const explorer = new opencascade.TopExp_Explorer_2(source, faceType, shapeType)
+  const seen = new Set<number>()
+  try {
+    while (explorer.More()) {
+      const current = explorer.Current()
+      try {
+        propagateFaceLineage(builder, current, sourceLineage, includeGenerated, lineage, seen)
+      } finally {
+        current.delete()
+        explorer.Next()
+      }
+    }
+  } finally {
+    explorer.delete()
+  }
+}
+
+export function captureOcctFaceLineage(
+  opencascade: OpenCascadeInstance,
+  builder: HistoryBuilder,
+  sources: TopoDS_Shape[],
+  sourceLineage: ReadonlyMap<number, readonly string[]>,
+  includeGenerated: boolean,
+) {
+  const lineage: OcctFaceLineage = new Map()
+
+  for (const source of sources) {
+    captureSourceFaceLineage(opencascade, builder, source, sourceLineage, includeGenerated, lineage)
+  }
+
+  return lineage
 }
 
 function captureSourceHistory(

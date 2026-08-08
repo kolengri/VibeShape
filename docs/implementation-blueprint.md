@@ -24,7 +24,7 @@ With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can re
 
 ## SPK-001 — OCCT/Replicad worker
 
-**Current result:** **Pass — Phase 0 stop/go gate cleared.** The protocol-v4 worker, exact modeling scenario, transient boolean and fillet history evidence, transferable tessellation and STEP bytes, internal STEP round-trip, independent-application FreeCAD import, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, local Chromium performance budget, Chromium/Firefox/WebKit functional matrix, and verified corresponding-source bundle are implemented. The controlled package is built locally from verified OpenCascade.js and OCCT archives with the reviewed destructor correction. Purpose-owned OCCT adapters eliminate `FinalizationRegistry`-dependent lifetimes in the critical path. Every 1,000-operation lifecycle block retains zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. FreeCAD 1.1.3 imports the exact browser output as one valid solid with matching volume and bounds. Stable topology resolution remains SPK-003 work. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Current result:** **Pass — Phase 0 stop/go gate cleared.** The protocol-v5 worker, exact modeling scenario, transient boolean and fillet history evidence, transferable tessellation and STEP bytes, internal STEP round-trip, independent-application FreeCAD import, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, local Chromium performance budget, Chromium/Firefox/WebKit functional matrix, and verified corresponding-source bundle are implemented. The controlled package is built locally from verified OpenCascade.js and OCCT archives with the reviewed destructor correction. Purpose-owned OCCT adapters eliminate `FinalizationRegistry`-dependent lifetimes in the critical path. Every 1,000-operation lifecycle block retains zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. FreeCAD 1.1.3 imports the exact browser output as one valid solid with matching volume and bounds. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Question
 
@@ -97,6 +97,8 @@ Flat records and typed arrays in; typed solution, residual, status, and conflict
 - stop/go result and fallback estimate.
 
 ## SPK-003 — TopoRef
+
+**Result: Pass.** The strict `TopoRef` schema, semantic and OCCT face-lineage anchors, versioned signature policy, and local 12-scenario Chromium corpus distinguish `resolved`, `ambiguous`, and `missing` with zero false confident matches. The runner rejects `CI` and stores its report under `.artifacts`. Production feature-DAG integration, repair events, persistence, edge lineage, and broader property-based models remain follow-up implementation. See [SPK-003 evidence](spikes/spk-003-toporef.md).
 
 ### Question
 

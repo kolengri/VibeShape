@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import {
-  GEOMETRY_PROTOCOL_VERSION,
   GEOMETRY_MEMORY_STAGES,
+  GEOMETRY_PROTOCOL_VERSION,
   type GeometryLifecycleOperation,
   type GeometryWorkerResponse,
   geometryLifecycleOperationSchema,
@@ -178,6 +178,46 @@ function expectOperationHistory(result: KernelResponse) {
   expect(result.history.fillet.faces.modifiedRelationCount).toBeGreaterThan(0)
 }
 
+function expectTopologyCandidates(result: KernelResponse) {
+  expect(result.topologyCandidates.filter((candidate) => candidate.kind === "face")).toHaveLength(
+    result.shape.faceCount,
+  )
+  expect(result.topologyCandidates.filter((candidate) => candidate.kind === "edge")).toHaveLength(
+    result.shape.edgeCount,
+  )
+  const annotatedCandidates = result.topologyCandidates.flatMap((candidate) =>
+    candidate.semanticRole ? [candidate] : [],
+  )
+  const semanticRoles = annotatedCandidates.map((candidate) => candidate.semanticRole as string)
+  expect(
+    new Set(semanticRoles).size,
+    `Semantic topology roles must be unique: ${JSON.stringify(
+      annotatedCandidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        role: candidate.semanticRole,
+        geometryClass: candidate.signature.geometryClass,
+        centroid: candidate.signature.centroid,
+        direction: candidate.signature.direction,
+      })),
+    )}`,
+  ).toBe(semanticRoles.length)
+  expect(semanticRoles).toEqual(
+    expect.arrayContaining([
+      "base-extrude.cap.start",
+      "base-extrude.cap.end",
+      "base-extrude.side.x-min",
+      "base-extrude.side.x-max",
+      "base-extrude.side.y-min",
+      "base-extrude.side.y-max",
+      "hole.wall",
+      "top-fillet.surface.x-min",
+      "top-fillet.surface.x-max",
+      "top-fillet.surface.y-min",
+      "top-fillet.surface.y-max",
+    ]),
+  )
+}
+
 function expectGeometryResult(
   result: KernelResponse,
   expectedEngine: ReturnType<typeof createExpectedEngine>,
@@ -213,6 +253,7 @@ function expectGeometryResult(
     kernelSpikeExpectedInvariants.maximumRelativeStepVolumeError,
   )
   expectOperationHistory(result)
+  expectTopologyCandidates(result)
 }
 
 function expectLifecycleEvidence(
