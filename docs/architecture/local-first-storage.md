@@ -23,13 +23,15 @@ Proposed tables:
 - `cacheIndex`: content hash to OPFS path, size, last access, and engine build;
 - `migrations`: applied storage migrations.
 
+SPK-005 implements the first six active stores: `projects`, `snapshots`, `events`, `recovery`, `leases`, and `cacheIndex`. Imports, settings, and explicit migration history remain production additions. See [SPK-005 evidence](../spikes/spk-005-local-first.md).
+
 ## Commit protocol
 
 A user command becomes committed only after:
 
 1. Domain validation.
 2. Successful geometry rebuild, or explicit storage of an error-state feature when the UX permits it.
-3. One IndexedDB transaction records the event, new head revision, and recovery marker.
+3. One IndexedDB transaction records the event, snapshot, new head revision, recovery marker, and writer-lease check.
 4. The transaction is confirmed.
 5. The UI swaps to the new committed state.
 
@@ -94,6 +96,8 @@ Alpha allows one writer per document:
 - stale leases expire;
 - takeover creates a snapshot before writing.
 
+SPK-005 enforces lease owner, epoch, and expiry inside the same transaction as every existing-document commit and clean close. The first creation commit is lease-free because no project exists yet. A former owner cannot commit or remove the recovery marker after takeover.
+
 True multi-writer merge is not simulated and remains P2.
 
 ## Service worker and updates
@@ -105,6 +109,8 @@ True multi-writer merge is not simulated and remains P2.
 - Before reload, save a snapshot or recovery export.
 - Rolling back the application shell never rolls back storage schema automatically.
 - Migrations are forward-safe; destructive migrations are backup-first.
+
+SPK-005 proves cached-shell offline reopen with a spike-only service worker and records the dirty-document activation decision. A real two-build waiting-worker upgrade remains an installed production release gate; the spike service worker is not the product PWA implementation.
 
 ## Backup policy
 
@@ -122,7 +128,9 @@ v1 includes:
 |---|---|
 | Chromium desktop | Full baseline, including picker where available |
 | Firefox desktop | Core plus OPFS/IndexedDB, with fallback save when picker is unavailable |
-| Safari 17+ desktop | Core after real memory and OPFS testing, with fallback save |
+| Safari 17+ desktop | Semantic IndexedDB core with fallback save; OPFS is optional until real Safari testing proves it operational |
 | Mobile browsers | Best-effort view/export; authoring is not a release gate |
 
 Compatibility is defined by automated and manual test matrices, never by user-agent-only branches.
+
+The recorded Playwright WebKit 26.5 runtime exposes `getDirectory()` but fails to open the OPFS root. Capability probing therefore invokes the API and reports a cache-disabled degraded state rather than relying on method presence.

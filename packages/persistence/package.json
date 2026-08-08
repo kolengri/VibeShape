@@ -2,7 +2,7 @@
   "name": "@vibeshape/persistence",
   "version": "0.0.0",
   "private": true,
-  "description": "IndexedDB, OPFS, migration, journal, and recovery adapters.",
+  "description": "Transactional IndexedDB history, recovery, writer leases, and disposable OPFS cache adapters.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
@@ -10,6 +10,12 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vibeshape/domain": "workspace:*",
+    "dexie": "catalog:",
+    "is-what": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"

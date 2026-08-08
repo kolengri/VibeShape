@@ -82,8 +82,13 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 ## Local-First Web Platform
 
+Context7 resolved Dexie to `/dexie/dexie.js`. The SPK-005 transaction and error contracts were cross-checked against the current Dexie 4.4.4 documentation before implementation.
+
 | Source | Evidence |
 |---|---|
+| [Dexie transactions](https://dexie.org/docs/Dexie/Dexie.transaction()) | Explicit multi-table read/write transactions, atomic rollback, and transaction-zone constraints |
+| [Dexie versioned stores](https://dexie.org/docs/Version/Version.stores()) | IndexedDB schema declaration and versioned upgrade boundary |
+| [Dexie error names](https://dexie.org/docs/DexieErrors/DexieErrors) | Named IndexedDB failure classes including quota and abort conditions |
 | [MDN: Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) | OPFS, synchronous worker access, quotas, and deletion when site data is cleared |
 | [MDN: showSaveFilePicker](https://developer.mozilla.org/en-US/docs/Web/API/Window/showSaveFilePicker) | User-visible file save as a progressive API requiring permission and a secure context, with a required fallback |
 | [MDN: storage quotas and eviction](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) | Best-effort and persistent storage plus eviction behavior |
@@ -91,7 +96,7 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 | [web.dev: service workers](https://web.dev/learn/pwa/service-workers) | Offline caching, request interception, and lifecycle |
 | [web.dev: PWA installation](https://web.dev/learn/pwa/installation) | Manifest and installability differences across browsers and operating systems |
 
-**Conclusion:** OPFS and IndexedDB are suitable for the internal working set but are not a guaranteed backup. Native `.vshape` files and fallback upload/download flows are mandatory.
+**Conclusion:** SPK-005 selects explicit Dexie multi-store transactions for semantic history and keeps OPFS outside semantic atomicity. The local Chromium, Firefox, and WebKit matrix proves forced-page recovery, checksum replay, bounded loss reporting, writer takeover, quota rollback, and cached-shell offline reopen. The recorded WebKit runtime cannot open the exposed OPFS root, which confirms that capability invocation and a cache-disabled degraded mode are required. OPFS and IndexedDB remain origin-local working storage rather than a guaranteed backup; native `.vshape` files and fallback upload/download flows are mandatory.
 
 ## Extension Platforms and Browser Isolation
 

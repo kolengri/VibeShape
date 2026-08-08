@@ -2,10 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
   // Vite and Playwright load these files through secondary CLI/HTML entry points.
   "entry": [
+    "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
+    "apps/web/src/spikes/persistence.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
     "playwright.formats.config.ts",
+    "playwright.persistence.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts"
   ],

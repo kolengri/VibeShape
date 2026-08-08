@@ -50,11 +50,15 @@ OPFS and IndexedDB are tied to the browser origin and its storage policy. Users 
 
 **Rule:** internal autosave is not called a backup. The UI must distinguish between "saved locally in this browser" and "exported as a file."
 
+**SPK-005 evidence:** strict Dexie transactions preserve two semantic revisions across forced page termination and cached-shell offline reopen in Chromium, Firefox, and WebKit. Checksum corruption falls back from the latest snapshot to event replay and then to the preceding complete revision with an explicit one-revision loss count. Stale writes, synthetic quota failure after a transaction write, expired-lease takeover, and former-writer commits all fail without partial semantic records. R4 remains critical because users can still clear origin data and `.vshape` backup is not implemented.
+
 ### Cross-Browser Support
 
 File System Access and PWA installation support vary. Safari and Firefox may impose different memory and worker constraints.
 
 **Rule:** a native file picker is an enhancement; upload and download are the baseline. Chromium is not the only test target.
+
+The recorded Playwright WebKit runtime exposes `getDirectory()` but cannot open its OPFS root. SPK-005 treats this as an unavailable disposable cache while keeping IndexedDB recovery and download fallback operational. Real Safari, installed-PWA updates, and platform-managed offline behavior remain release checks.
 
 ### 3MF interoperability
 

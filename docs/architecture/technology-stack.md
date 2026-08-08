@@ -219,6 +219,8 @@ A marketing site may live separately and does not define the CAD architecture.
 
 The domain document is an object snapshot and event journal, not an analytical relational database. Dexie provides sufficient transactions and indexes; OPFS stores large B-Rep and mesh caches.
 
+SPK-005 selects Dexie 4.4.4 for the schema-v0 adapter and proves multi-store rollback, checksum recovery, and lease enforcement in Chromium, Firefox, and WebKit. OPFS remains a capability-probed disposable cache: the semantic repository stays operational when an exposed implementation cannot open its root. See [SPK-005 evidence](../spikes/spk-005-local-first.md).
+
 SQLite WASM supports OPFS but introduces another WASM runtime, worker/VFS configuration, and browser-specific trade-offs. Add it only after a measured bottleneck or a genuine SQL/FTS requirement appears.
 
 ## Sketch solver
