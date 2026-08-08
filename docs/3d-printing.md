@@ -107,6 +107,8 @@ The writer must:
 
 Do not promise portability of slicer profiles between vendors; metadata and extensions differ.
 
+SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md). Materials, colors, vendor settings, hostile import, and production export orchestration remain outside the current writer profile.
+
 ## STL
 
 - Export binary STL by default.

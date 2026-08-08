@@ -6,10 +6,15 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./three-mf": "./src/three-mf.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "fflate": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"

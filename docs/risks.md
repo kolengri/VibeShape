@@ -9,7 +9,7 @@
 | R3 | The sketch solver becomes unstable at production scale or reports complex conflicts poorly | Medium | Critical | Accepted flat ABI, P0 corpus, perturbation and lifecycle evidence, scale budgets, branch-continuation tests, and explicit fallback order |
 | R4 | Browser storage is cleared or exhausted | Medium | Critical | `.vshape` export, persistent-storage request, quota UI, journal and snapshots, and bulk backup |
 | R5 | Imported CAD or ZIP data crashes the application or exhausts resources | High | High | Limits, worker isolation, fuzzing, timeouts, and recovery paths |
-| R6 | The 3MF writer produces formally valid files that slicers cannot use | Medium | High | Specification and conformance checks plus smoke tests in two independent slicers |
+| R6 | The 3MF writer produces formally valid files that slicers cannot use | Low | High | Accepted strict Core writer plus local invariant checks in two independent slicer families; retain release corpus |
 | R7 | Scope expands toward a complete Onshape replacement | High | Critical | Fixed alpha workflow, explicit non-goals, and roadmap gates |
 | R8 | A WASM distribution violates LGPL or GPL obligations | Medium | Critical | Source archives, patches, builds, notices, a release gate, and legal review |
 | R9 | Geometry results change after dependency updates | High | High | Exact version pins, engine build ID in files and caches, and corpus tests before upgrades |
@@ -55,6 +55,12 @@ OPFS and IndexedDB are tied to the browser origin and its storage policy. Users 
 File System Access and PWA installation support vary. Safari and Firefox may impose different memory and worker constraints.
 
 **Rule:** a native file picker is an enhancement; upload and download are the baseline. Chromium is not the only test target.
+
+### 3MF interoperability
+
+**SPK-004 evidence:** the project-owned Core writer produces byte-identical millimeter archives, validates reference order, transforms, manifold edges, per-component positive volume, XML text, thumbnail signatures, and explicit resource budgets, then passes a local installed-slicer gate. PrusaSlicer and the Orca/Bambu family independently report 24 manifold facets and a total volume of `1,608 mm³` for the component fixture. The gate rejects CI and is not present in GitHub Actions.
+
+R6 is reduced but remains tracked for production OCCT tessellation integration, hostile import, larger real-world corpora, future material/color profiles, and dependency upgrades.
 
 ### Performance Cliffs
 

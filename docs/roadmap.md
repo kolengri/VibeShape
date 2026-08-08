@@ -8,13 +8,15 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 ## Phase 0 — spikes and measurements (2–4 weeks)
 
-The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, and test-model packages contain isolated SPK-001 through SPK-003 experiment code; these boundaries are not yet a production feature evaluator. Storage and format package entry points remain empty until their corresponding evidence exists.
+The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, test-model, and format packages contain isolated SPK-001 through SPK-004 experiment code; these boundaries are not yet a production feature evaluator. The persistence package remains empty until its owning evidence exists.
 
 SPK-001 now passes its Phase 0 stop/go gate with executable evidence. The project source-builds the pinned builder with the reviewed destructor correction, verifies transient boolean and fillet history relations, reaches a 448-byte post-warmup allocator drift with zero retained bytes in every 1,000-operation lifecycle block, passes its local controlled Chromium performance budgets on the declared Apple M1 baseline, creates a verified corresponding-source bundle, and validates the browser-exported STEP fixture through headless FreeCAD. The controlled package remains quarantined until the production facade and extended corpus are reviewed. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 SPK-002 also passes its solver-selection gate. The pinned SolveSpace v3.2 subset exposes no native pointers, covers all P0 primitives through a Zod-validated typed-array ABI, distinguishes constraint states with conflict handles, completes 1,600 perturbation solves and 1,000 lifecycle cycles without post-corpus heap growth, runs in a Chromium module worker, and builds byte-identically after pinning the compilation epoch. Production sketch records and the worker protocol remain Phase 2 implementation work. See [SPK-002 evidence](spikes/spk-002-sketch-solver.md).
 
 SPK-003 passes its stable-reference algorithm gate. Strict domain schemas, semantic output roles, composed OCCT face lineage, and a versioned conservative signature score produce explicit `resolved`, `ambiguous`, and `missing` outcomes. The 12-scenario local Chromium corpus records 136 semantic resolutions, 22 history resolutions, 10 expected missing outcomes, a symmetric ambiguity, and zero false confident matches. Transient OCCT hashes remain evaluation-local and never enter the protocol or document contract. Production DAG integration and repair persistence remain Phase 3 work. See [SPK-003 evidence](spikes/spk-003-toporef.md).
+
+SPK-004 passes its minimal 3MF interoperability gate. A deterministic project-owned Core writer validates mesh orientation and manifoldness, references, transforms, XML text, thumbnails, and resource budgets before producing the archive. The local-only gate verifies byte identity, OPC parts, well-formed XML, and matching 24-facet, `1,608 mm³` manifold geometry through PrusaSlicer and the Orca/Bambu family. Production tessellation and export UX remain Phase 1 work. See [SPK-004 evidence](spikes/spk-004-3mf.md).
 
 ### Deliverables
 

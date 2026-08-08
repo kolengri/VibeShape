@@ -3,7 +3,9 @@
   // Vite and Playwright load these files through secondary CLI/HTML entry points.
   "entry": [
     "apps/web/src/spikes/geometry-worker.ts",
+    "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
+    "playwright.formats.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts"
   ],

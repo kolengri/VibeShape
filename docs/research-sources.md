@@ -4,7 +4,7 @@
 
 Reviewed on **2026-08-08**. Official documentation, specifications, and upstream repositories were prioritized. Exact npm package versions were checked against the registry on 2026-08-07.
 
-Context7 was used for library and protocol documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/freecad/freecad`, `/mrdoob/three.js`, `/oven-sh/bun`, and `/modelcontextprotocol/modelcontextprotocol`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
+Context7 was used for library and protocol documentation. Searches for `OpenCascade.js` and `opencascade.js` did not produce an exact package match and returned unrelated results, so those results were excluded under the exact-match rule. Context7 confirmed `/freecad/freecad`, `/mrdoob/three.js`, `/oven-sh/bun`, `/101arrowz/fflate`, and `/modelcontextprotocol/modelcontextprotocol`; information about OCCT and OpenCascade.js came from official documentation and upstream repositories.
 
 ## CAD Kernel and Browser Binding
 
@@ -70,14 +70,15 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 |---|---|
 | [3MF specification suite](https://3mf.io/spec/) | 3MF, ISO/IEC 25422:2025, Core and extension specifications, and royalty-free terms |
 | [3MF overview](https://3mf.io/) | ZIP/XML container, units, and full-fidelity manufacturing exchange |
-| [3MF Core source](https://github.com/3MFConsortium/spec_core/blob/master/3MF%20Core%20Specification.md) | Package structure, resources, metadata, and units |
+| [3MF Core source](https://github.com/3MFConsortium/spec_core/blob/master/3MF%20Core%20Specification.md) | Core revision 1.4.0 package structure, resources, metadata, units, mesh rules, and transforms |
 | [3MF samples and conformance](https://github.com/3MFConsortium/3mf-samples) | Implementation guidance, sample files, and conformance tests |
 | [lib3mf 2.5.0 documentation](https://lib3mf.readthedocs.io/en/master/index.html) | Official reader, writer, and validation library plus listed bindings, including Node.js |
+| [fflate upstream](https://github.com/101arrowz/fflate) | MIT-licensed browser-compatible ZIP implementation with synchronous archive APIs and per-file options used by the Core writer |
 | [PrusaSlicer upstream](https://github.com/prusa3d/PrusaSlicer) | libslic3r and CLI scope plus AGPL-3.0 license |
 | [CuraEngine upstream](https://github.com/Ultimaker/CuraEngine) | Standalone C++ G-code engine under AGPL-3.0 |
 | [Manifold upstream](https://github.com/elalish/manifold) | Robust manifold triangle-mesh library with JavaScript, TypeScript, and WASM bindings; it is a mesh engine, not a B-Rep or STEP replacement |
 
-**Conclusion:** 3MF is the primary print-exchange format; a complete slicer is a later, separate track. A mesh kernel may supplement analysis and repair but does not replace OCCT.
+**Conclusion:** 3MF is the primary print-exchange format; a complete slicer is a later, separate track. SPK-004 selects a project-owned Core writer with `fflate` and verifies its deterministic fixture through PrusaSlicer plus the Orca/Bambu family. A mesh kernel may supplement analysis and repair but does not replace OCCT.
 
 ## Local-First Web Platform
 
@@ -189,6 +190,7 @@ Results from `npm view <package> version license` on 2026-08-07, with `is-what` 
 - Dexie 4.4.4, Apache-2.0
 - Zod 4.4.3, MIT
 - `is-what` 5.5.0, MIT; ESM, `sideEffects: false`, bundled TypeScript declarations, and no runtime dependencies
+- fflate 0.8.3, MIT; browser ESM, `sideEffects: false`, bundled TypeScript declarations, and no runtime dependencies
 - Tailwind CSS 4.3.3, MIT
 - `@tailwindcss/vite` 4.3.3, MIT
 - shadcn CLI 4.16.2, MIT
