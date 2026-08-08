@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
 import {
+  coreCommandHandlers,
   createCommandDispatcher,
   documentCoreCommandHandlers,
   type TrustedCommandHandler,
 } from "./command-dispatcher"
 import { draftIdSchema, moduleIdSchema } from "./identifiers"
-import { createModuleRegistry, documentCoreModule } from "./modules"
+import { createModuleRegistry, documentCoreModule, featureCoreModule } from "./modules"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const draftId = "0195b5ac-b216-7a2c-bc33-67a36a7f21ac"
@@ -85,6 +86,63 @@ describe("trusted command dispatcher", () => {
       expect(renamed.snapshot.name).toBe("Enclosure v2")
       expect(renamed.snapshot.revision).toBe(2)
     }
+  })
+
+  it("routes feature commands only when the feature module and handler set are composed", () => {
+    const registry = createModuleRegistry([documentCoreModule, featureCoreModule])
+
+    expect(registry.ok).toBe(true)
+    if (!registry.ok) return
+
+    const dispatcher = createCommandDispatcher(registry.registry, coreCommandHandlers)
+
+    expect(dispatcher.ok).toBe(true)
+    if (!dispatcher.ok) return
+
+    const created = dispatcher.dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+
+    expect(created.ok).toBe(true)
+    if (!created.ok) return
+
+    const added = dispatcher.dispatcher.dispatch(created.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          type: {
+            moduleId: "org.vibeshape.core.part-design",
+            moduleVersion: "0.1.0",
+            typeId: "org.vibeshape.feature.test",
+            schemaVersion: 1,
+          },
+          parameters: { length: 10 },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+
+    expect(added).toMatchObject({
+      ok: true,
+      snapshot: { revision: 2, features: [{ parameters: { length: 10 } }] },
+      event: { type: "org.vibeshape.feature.added" },
+    })
   })
 
   it.each([null, {}, { kind: "invalid", schemaVersion: 1 }])(

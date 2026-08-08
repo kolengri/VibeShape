@@ -7,7 +7,12 @@ import {
 } from "./commands"
 import type { DocumentSnapshot } from "./document"
 import { technicalIdentifierSchema } from "./identifiers"
-import { type CommandDescriptor, documentCoreModule, type ModuleRegistry } from "./modules"
+import {
+  type CommandDescriptor,
+  documentCoreModule,
+  featureCoreModule,
+  type ModuleRegistry,
+} from "./modules"
 
 const commandRouteSchema = z
   .object({
@@ -220,4 +225,30 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     ownerModuleId: documentCoreModule.id,
     execute: applyDocumentCommand,
   },
+]
+
+export const featureCoreCommandHandlers: readonly TrustedCommandHandler[] = [
+  {
+    kind: "org.vibeshape.feature.add",
+    schemaVersion: 1,
+    ownerModuleId: featureCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.feature.set-suppressed",
+    schemaVersion: 1,
+    ownerModuleId: featureCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.feature.update",
+    schemaVersion: 1,
+    ownerModuleId: featureCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+]
+
+export const coreCommandHandlers: readonly TrustedCommandHandler[] = [
+  ...documentCoreCommandHandlers,
+  ...featureCoreCommandHandlers,
 ]

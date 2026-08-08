@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createModuleRegistry, documentCoreModule } from "./modules"
+import { createModuleRegistry, documentCoreModule, featureCoreModule } from "./modules"
 
 function moduleDescriptor(
   id: string,
@@ -58,6 +58,23 @@ describe("module registry", () => {
         automation: { exposure: "resource", pagination: "none" },
       })
       expect(result.registry.getQuery("org.vibeshape.unknown")).toBeUndefined()
+    }
+  })
+
+  it("registers feature mutations as a cohesive module over the document kernel", () => {
+    const result = createModuleRegistry([featureCoreModule, documentCoreModule])
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.registry.getModule(featureCoreModule.id)).toEqual(featureCoreModule)
+      expect(result.registry.getCommand("org.vibeshape.feature.add")).toMatchObject({
+        ownerModuleId: featureCoreModule.id,
+        confirmation: "review",
+        automation: { exposure: "draft", openWorld: true },
+      })
+      expect(result.registry.getCommand("org.vibeshape.feature.set-suppressed")).toMatchObject({
+        automation: { exposure: "draft", openWorld: false },
+      })
     }
   })
 

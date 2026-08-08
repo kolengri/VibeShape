@@ -111,6 +111,73 @@ describe("document drafts", () => {
     ).toMatchObject({ ok: false, diagnostic: { code: "draft-document-mismatch" } })
   })
 
+  it("keeps feature mutations isolated until the document draft commits", () => {
+    const current = applyDocumentCommand(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+
+    expect(current.ok).toBe(true)
+    if (!current.ok) return
+
+    const draft = createDocumentDraft({
+      draftId,
+      documentId,
+      actor: userActor,
+      snapshot: current.snapshot,
+    })
+
+    expect(draft.ok).toBe(true)
+    if (!draft.ok) return
+
+    const applied = applyCommandToDraft(draft.draft, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+          type: {
+            moduleId: "org.vibeshape.core.part-design",
+            moduleVersion: "0.1.0",
+            typeId: "org.vibeshape.feature.test",
+            schemaVersion: 1,
+          },
+          parameters: { length: 10 },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+
+    expect(applied).toMatchObject({
+      ok: true,
+      draft: { snapshot: { revision: 2, features: [{ id: expect.any(String) }] } },
+    })
+    expect(current.snapshot.features).toEqual([])
+    if (applied.ok) {
+      expect(commitDocumentDraft(current.snapshot, applied.draft)).toMatchObject({
+        ok: true,
+        commit: {
+          baseRevision: 1,
+          revision: 2,
+          events: [{ type: "org.vibeshape.feature.added", transactionId: draftId }],
+        },
+      })
+    }
+  })
+
   it("does not mutate a draft when a command is rejected", () => {
     const draft = emptyDraft()
     const before = { ...draft, events: [...draft.events] }

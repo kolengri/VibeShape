@@ -1,9 +1,17 @@
 import { z } from "zod"
+import {
+  domainDiagnostic as diagnostic,
+  type DomainDiagnostic,
+  requireExistingDocumentRevision,
+} from "./command-support"
 import { type DocumentSnapshot, documentNameInputSchema, documentNameSchema } from "./document"
+import { createFeatureDocumentEvent, reduceFeatureDocumentEvent } from "./feature-document-commands"
+import { featureRecordSchema } from "./feature-graph"
 import {
   commandIdSchema,
   documentIdSchema,
   draftIdSchema,
+  featureIdSchema,
   revisionSchema,
   sessionIdSchema,
   technicalIdentifierSchema,
@@ -71,9 +79,30 @@ const renameDocumentCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ name: documentNameInputSchema }).strict(),
 })
 
+const addFeatureCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.feature.add"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ feature: featureRecordSchema }).strict(),
+})
+
+const updateFeatureCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.feature.update"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ feature: featureRecordSchema }).strict(),
+})
+
+const setFeatureSuppressedCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.feature.set-suppressed"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ featureId: featureIdSchema, suppressed: z.boolean() }).strict(),
+})
+
 export const documentCommandSchema = z.discriminatedUnion("kind", [
   createDocumentCommandSchema,
   renameDocumentCommandSchema,
+  addFeatureCommandSchema,
+  updateFeatureCommandSchema,
+  setFeatureSuppressedCommandSchema,
 ])
 
 const eventEnvelopeSchema = z
@@ -100,35 +129,38 @@ const documentRenamedEventSchema = eventEnvelopeSchema.extend({
   name: documentNameSchema,
 })
 
+const featureAddedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.feature.added"),
+  feature: featureRecordSchema,
+})
+
+const featureUpdatedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.feature.updated"),
+  previousFeature: featureRecordSchema,
+  feature: featureRecordSchema,
+})
+
+const featureSuppressionChangedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.feature.suppression-changed"),
+  featureId: featureIdSchema,
+  previousSuppressed: z.boolean(),
+  suppressed: z.boolean(),
+})
+
 export const documentEventSchema = z.discriminatedUnion("type", [
   documentCreatedEventSchema,
   documentRenamedEventSchema,
+  featureAddedEventSchema,
+  featureUpdatedEventSchema,
+  featureSuppressionChangedEventSchema,
 ])
 
-export const domainDiagnosticCodeSchema = z.enum([
-  "invalid-command",
-  "invalid-event",
-  "document-already-exists",
-  "document-not-found",
-  "document-id-mismatch",
-  "stale-revision",
-  "revision-exhausted",
-  "command-no-op",
-])
-
-const domainDiagnosticSchema = z
-  .object({
-    code: domainDiagnosticCodeSchema,
-    message: z.string().min(1),
-    retryable: z.boolean(),
-    issues: z.array(z.object({ path: z.string(), message: z.string().min(1) }).strict()).max(8),
-  })
-  .strict()
+export { domainDiagnosticCodeSchema } from "./command-support"
+export type { DomainDiagnostic } from "./command-support"
 
 export type CommandActor = Readonly<z.infer<typeof commandActorSchema>>
 export type DocumentCommand = Readonly<z.infer<typeof documentCommandSchema>>
 export type DocumentEvent = Readonly<z.infer<typeof documentEventSchema>>
-export type DomainDiagnostic = Readonly<z.infer<typeof domainDiagnosticSchema>>
 
 type DocumentCreatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.created" }>
 type DocumentRenamedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.renamed" }>
@@ -170,14 +202,6 @@ export function commandActorsEqual(left: CommandActor, right: CommandActor) {
   }
 }
 
-function diagnostic(
-  code: z.infer<typeof domainDiagnosticCodeSchema>,
-  message: string,
-  retryable = false,
-): DomainDiagnostic {
-  return { code, message, retryable, issues: [] }
-}
-
 function invalidInputDiagnostic(
   code: "invalid-command" | "invalid-event",
   error: z.ZodError,
@@ -194,10 +218,6 @@ function invalidInputDiagnostic(
       message: issue.message,
     })),
   }
-}
-
-function requireNextRevision(baseRevision: number, revision: number) {
-  return revision === baseRevision + 1
 }
 
 function reduceCreatedEvent(
@@ -229,6 +249,7 @@ function reduceCreatedEvent(
       id: event.documentId,
       revision: event.revision,
       name: event.name,
+      features: [],
       createdAt: event.issuedAt,
       updatedAt: event.issuedAt,
     },
@@ -239,42 +260,16 @@ function reduceRenamedEvent(
   snapshot: DocumentSnapshot | null,
   event: DocumentRenamedEvent,
 ): DocumentEventResult {
-  if (!snapshot) {
-    return {
-      ok: false,
-      diagnostic: diagnostic("document-not-found", "The document does not exist."),
-    }
-  }
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    event.documentId,
+    event.baseRevision,
+    event.revision,
+  )
 
-  if (snapshot.id !== event.documentId) {
-    return {
-      ok: false,
-      diagnostic: diagnostic("document-id-mismatch", "The event targets a different document."),
-    }
-  }
+  if (!current.ok) return current
 
-  if (event.baseRevision === Number.MAX_SAFE_INTEGER) {
-    return {
-      ok: false,
-      diagnostic: diagnostic("revision-exhausted", "The document revision cannot advance safely."),
-    }
-  }
-
-  if (
-    snapshot.revision !== event.baseRevision ||
-    !requireNextRevision(event.baseRevision, event.revision)
-  ) {
-    return {
-      ok: false,
-      diagnostic: diagnostic(
-        "stale-revision",
-        "The event does not extend the current document revision.",
-        true,
-      ),
-    }
-  }
-
-  if (snapshot.name !== event.previousName) {
+  if (current.snapshot.name !== event.previousName) {
     return {
       ok: false,
       diagnostic: diagnostic(
@@ -287,7 +282,7 @@ function reduceRenamedEvent(
   return {
     ok: true,
     snapshot: {
-      ...snapshot,
+      ...current.snapshot,
       revision: event.revision,
       name: event.name,
       updatedAt: event.issuedAt,
@@ -299,9 +294,18 @@ function reduceParsedEvent(
   snapshot: DocumentSnapshot | null,
   event: DocumentEvent,
 ): DocumentEventResult {
-  return event.type === "org.vibeshape.document.created"
-    ? reduceCreatedEvent(snapshot, event)
-    : reduceRenamedEvent(snapshot, event)
+  switch (event.type) {
+    case "org.vibeshape.document.created":
+      return reduceCreatedEvent(snapshot, event)
+    case "org.vibeshape.document.renamed":
+      return reduceRenamedEvent(snapshot, event)
+    case "org.vibeshape.feature.added":
+      return reduceFeatureDocumentEvent(snapshot, event)
+    case "org.vibeshape.feature.updated":
+      return reduceFeatureDocumentEvent(snapshot, event)
+    case "org.vibeshape.feature.suppression-changed":
+      return reduceFeatureDocumentEvent(snapshot, event)
+  }
 }
 
 function createDocumentCreatedEvent(
@@ -336,23 +340,15 @@ function createDocumentRenamedEvent(
   command: Extract<DocumentCommand, { kind: "org.vibeshape.document.rename" }>,
   transactionId: z.infer<typeof draftIdSchema> | null,
 ): DocumentEvent | DomainDiagnostic {
-  if (!snapshot) {
-    return diagnostic("document-not-found", "The document does not exist.")
-  }
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    command.documentId,
+    command.baseRevision,
+  )
 
-  if (snapshot.id !== command.documentId) {
-    return diagnostic("document-id-mismatch", "The command targets a different document.")
-  }
+  if (!current.ok) return current.diagnostic
 
-  if (snapshot.revision !== command.baseRevision) {
-    return diagnostic("stale-revision", "The command base revision is stale.", true)
-  }
-
-  if (command.baseRevision === Number.MAX_SAFE_INTEGER) {
-    return diagnostic("revision-exhausted", "The document revision cannot advance safely.")
-  }
-
-  if (snapshot.name === command.payload.name) {
+  if (current.snapshot.name === command.payload.name) {
     return diagnostic("command-no-op", "The document already has the requested name.")
   }
 
@@ -366,7 +362,7 @@ function createDocumentRenamedEvent(
     revision: command.baseRevision + 1,
     issuedAt: command.issuedAt,
     actor: command.actor,
-    previousName: snapshot.name,
+    previousName: current.snapshot.name,
     name: command.payload.name,
   }
 }
@@ -376,9 +372,18 @@ function createEvent(
   command: DocumentCommand,
   transactionId: z.infer<typeof draftIdSchema> | null,
 ): DocumentEvent | DomainDiagnostic {
-  return command.kind === "org.vibeshape.document.create"
-    ? createDocumentCreatedEvent(snapshot, command, transactionId)
-    : createDocumentRenamedEvent(snapshot, command, transactionId)
+  switch (command.kind) {
+    case "org.vibeshape.document.create":
+      return createDocumentCreatedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.document.rename":
+      return createDocumentRenamedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.add":
+      return createFeatureDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.update":
+      return createFeatureDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.set-suppressed":
+      return createFeatureDocumentEvent(snapshot, command, transactionId)
+  }
 }
 
 export function parseDocumentCommand(input: unknown) {
