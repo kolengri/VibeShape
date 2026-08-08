@@ -1,0 +1,22 @@
+{
+  "name": "@vibeshape/automation-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Versioned adapter-neutral query and automation contracts for VibeShape.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./queries": "./src/queries.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vibeshape/domain": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}
