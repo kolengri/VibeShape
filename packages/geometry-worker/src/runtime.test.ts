@@ -61,6 +61,7 @@ function createKernelResult(): KernelSpikeEngineResult {
     },
     exchange: {
       stepBytes: 1,
+      stepFile: new Uint8Array([1]),
       stlBytes: 84,
       importedShape: shape,
       relativeVolumeError: 0,
@@ -206,7 +207,7 @@ describe("GeometryWorkerRuntime", () => {
     })
   })
 
-  it("initializes, reports progress, and transfers mesh buffers", async () => {
+  it("initializes, reports progress, and transfers mesh and STEP buffers", async () => {
     const { messages, runtime, transfers } = createHarness()
 
     await runtime.handle({ ...createEnvelope("initialize"), type: "initializeEngine" })
@@ -218,7 +219,7 @@ describe("GeometryWorkerRuntime", () => {
       "progress",
       "kernelSpikeCompleted",
     ])
-    expect(transfers.at(-1)).toHaveLength(4)
+    expect(transfers.at(-1)).toHaveLength(5)
     expect(transfers.at(-1)?.every((transfer) => transfer instanceof ArrayBuffer)).toBe(true)
   })
 

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 3 as const
+export const GEOMETRY_PROTOCOL_VERSION = 4 as const
 
 const finiteNumberSchema = z.number().finite()
 const cadLengthSchema = finiteNumberSchema.min(0.001).max(100_000)
@@ -252,11 +252,21 @@ const memoryProfileSchema = z
 const exchangeMetricsSchema = z
   .object({
     stepBytes: nonNegativeIntegerSchema,
+    stepFile: z.instanceof(Uint8Array),
     stlBytes: nonNegativeIntegerSchema,
     importedShape: shapeMetricsSchema,
     relativeVolumeError: finiteNumberSchema.nonnegative(),
   })
   .strict()
+  .superRefine((exchange, context) => {
+    if (exchange.stepBytes !== exchange.stepFile.byteLength) {
+      context.addIssue({
+        code: "custom",
+        message: "STEP byte length does not match the transferred file.",
+        path: ["stepBytes"],
+      })
+    }
+  })
 
 const initializedResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("initialized"),

@@ -46,7 +46,7 @@ The documents use these terms:
 
 ## Decisions to confirm in Phase 0
 
-SPK-001 remains **Rework**, but its source-reproduction, transient operation-history, memory, controlled-performance, and technical release-bundle blockers are closed. The controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 173.0 ms, and complete-fixture p95 is 270.3 ms on the declared Apple M1 baseline. Independent STEP validation remains unresolved. SPK-003 still owns the stable `TopoRef` algorithm and ambiguity policy.
+SPK-001 is **Pass — Phase 0 stop/go gate cleared**. Its controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. Headless FreeCAD 1.1.3 imports the exact browser STEP output as one valid solid with matching volume and bounds. The controlled artifact remains quarantined until the production facade and extended corpus are reviewed. SPK-003 still owns the stable `TopoRef` algorithm and ambiguity policy.
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.

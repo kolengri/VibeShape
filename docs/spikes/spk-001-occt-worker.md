@@ -1,6 +1,6 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
-- Status: **Rework — all technical gates except independent STEP validation passed**
+- Status: **Pass — Phase 0 stop/go gate cleared**
 - Reviewed: 2026-08-08
 - Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
@@ -8,15 +8,16 @@
 
 The controlled OCCT path is viable for browser-based exact modeling, transient operation-history capture, tessellation, STEP round-trip, binary STL export, deterministic native ownership, bounded repeated execution, and the declared local performance budget inside a Web Worker.
 
-Five earlier blockers are closed:
+Six earlier blockers are closed:
 
 1. The project now builds the pinned OpenCascade.js and OCCT revisions from verified source archives, applies a reviewed generator correction, and compares an unpatched source build with the immutable registry baseline before accepting the patched artifact.
 2. Boolean and fillet builders expose the documented modified, generated, and deleted relations needed as inputs to the SPK-003 stable-reference experiment. The worker captures aggregate evidence after boolean result simplification without persisting transient OCCT identities.
 3. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 448 bytes across four full batches after warmup.
-4. Twenty cold workers on the declared Apple M1 baseline reach a 173.0 ms initialization p95 and 270.3 ms complete-fixture p95. No main-thread long task was observed, and both peak WASM capacity and live native allocation remain below their executable ceilings.
+4. Twenty cold workers on the declared Apple M1 baseline reach a 178.5 ms initialization p95 and 278.8 ms complete-fixture p95. No main-thread long task was observed, and both peak WASM capacity and live native allocation remain below their executable ceilings.
 5. A verified local corresponding-source bundle preserves the exact source archives, reviewed modification, build recipe, evidence, output files and hashes, license texts, notices, and replacement instructions for the controlled candidate.
+6. A controlled browser export is transferred as raw STEP bytes and imported by headless FreeCAD 1.1.3 as one valid solid. Its volume and bounds match the producer within executable tolerances.
 
-The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. Independent STEP validation is the remaining interoperability stop/go gate. The production-facade comparison and extended target-browser cases remain promotion work rather than missing evidence for source reproducibility, memory, history, performance, or the technical release bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
+SPK-001 passes its Phase 0 stop/go gate. The controlled artifact remains quarantined rather than becoming the production dependency automatically. Production-facade comparison, extended target-browser and format cases, and release legal review remain promotion work rather than unresolved spike evidence. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
@@ -24,9 +25,9 @@ The spike provides:
 
 - a strict Zod protocol with protocol version, request ID, document ID, revision, and generation;
 - runtime validation on both sides of the worker boundary;
-- aggregate transient boolean and fillet history statistics in protocol v3;
+- aggregate transient boolean and fillet history statistics in protocol v4;
 - sequential dispatch, logical cancellation, and stale-generation rejection;
-- transferable positions, normals, indices, and triangle-to-face IDs;
+- transferable positions, normals, indices, triangle-to-face IDs, and exported STEP bytes;
 - progress and structured failure diagnostics;
 - adapter-owned shape registration, health, and document disposal;
 - ordered heap-capacity and allocator checkpoints;
@@ -60,7 +61,7 @@ The worker performs:
 4. validity, volume, surface, bounds, face, edge, and solid measurement;
 5. tessellation to transferable typed arrays;
 6. STEP export and reimport;
-7. independent invariant measurement of the imported shape;
+7. invariant measurement of the OCCT-round-tripped shape;
 8. binary STL export;
 9. repeated lifecycle operations and deterministic disposal;
 10. final cleanup, worker restart, invariant rebuild, and health reporting.
@@ -152,7 +153,7 @@ This single functional sample is not used for the performance decision. The cont
 
 ## Operation-history evidence
 
-Protocol v3 reports aggregate history statistics by source topology type. This proves that the required OCCT relation APIs are available through the pinned bindings and can be queried across the worker boundary; it intentionally does not expose native handles or treat transient topology hashes as persistent identity.
+Protocol v4 reports aggregate history statistics by source topology type and transfers the generated STEP file without copying it through JSON evidence. This proves that the required OCCT relation APIs are available through the pinned bindings and can be queried across the worker boundary; it intentionally does not expose native handles or treat transient topology hashes as persistent identity.
 
 The boolean adapter enables history collection, builds the cut, calls `SimplifyResult`, and only then reads the merged `Modified`, `Generated`, and `IsDeleted` relations for source vertices, edges, faces, and solids. The fillet adapter follows the narrower OCCT contract: it reads `Generated` for source vertices and edges, then `Modified` and `IsDeleted` for source faces.
 
@@ -219,13 +220,13 @@ The measured result was:
 
 | Metric | Budget | Result |
 |---|---:|---:|
-| Worker initialization p95 | 500 ms | 173.0 ms |
-| Complete fixture p95 | 500 ms | 270.3 ms |
+| Worker initialization p95 | 500 ms | 178.5 ms |
+| Complete fixture p95 | 500 ms | 278.8 ms |
 | Main-thread longest task | 100 ms | 0 observed |
 | Peak WASM linear-memory capacity | 64 MiB | 20,185,088 bytes |
 | Peak live native allocation | 4 MiB | 921,832 bytes |
 
-The initialization range was 164.8–174.2 ms. Complete fixture samples ranged from 260.1–270.6 ms. Chromium reported support for `longtask` entries and observed none across the 10 page runs. The harness writes raw samples, exact upstream revisions, safe hardware characteristics, budgets, and summaries to `.artifacts/occt-build/geometry-worker-performance-evidence.json` before asserting the ceilings.
+The initialization range was 166.1–189.9 ms. Complete fixture samples ranged from 260.6–295.1 ms. Chromium reported support for `longtask` entries and observed none across the 10 page runs. The harness writes raw samples, exact upstream revisions, safe hardware characteristics, budgets, and summaries to `.artifacts/occt-build/geometry-worker-performance-evidence.json` before asserting the ceilings.
 
 This result closes the SPK-001 controlled worker budget on the declared machine. It does not claim universal device performance, production PWA cold-network loading, viewport performance, or feature-corpus rebuild performance; those receive separate baselines when their product paths exist.
 
@@ -247,11 +248,29 @@ The current payload inventory covers **38 files** and **88,067,680 bytes**; the 
 
 This closes the SPK-001 technical release-bundle gate. It does not establish provenance for the separate published `replicad-opencascadejs@0.23.0` feasibility artifact, replace the complete VibeShape release notice/SBOM, or constitute legal advice. A public binary or WASM release still requires the repository release checklist and formal legal review.
 
+## Independent STEP application evidence
+
+`bun run occt:evidence:step` refuses to run when `CI` is set. It starts the controlled Vite mode, executes the complete fixture in Chromium, transfers the exact generated STEP bytes from the worker, records a producer report, and invokes a locally installed headless FreeCAD command with an isolated configuration file. The Python validator imports the file through `Part.Shape.read`, hashes the exact input, measures the imported shape, and writes a strict report that is parsed with Zod before the command can pass.
+
+The local result was:
+
+| Measurement | Producer | FreeCAD 1.1.3 | Tolerance |
+|---|---:|---:|---:|
+| STEP bytes | 35,650 | 35,650 | Exact |
+| Valid solid count | 1 | 1 | Exact |
+| Volume | 43,858.197429252046 mm³ | 43,858.19742925233 mm³ | Relative error ≤ `1e-8` |
+| Bounds | `(-30.0000001, -20.0000001, -0.0000001)` to `(30.0000001, 20.0000001, 20.0000001)` mm | `(-30, -20, 0)` to `(30, 20, 20)` mm | Maximum delta ≤ `1e-5` mm |
+| Faces / edges | 12 / 25 | 12 / 25 | Informational |
+
+The measured relative volume error was `6.47e-15`, and the maximum bounds delta was approximately `1.0e-7` mm. The STEP digest is checked within each run but is not documented as a stable artifact identity because the writer includes a generation timestamp in the file header.
+
+This closes the independent-application interoperability gate: a separate installed application and import path consume the browser output successfully. FreeCAD also uses OCCT internally, so this result does **not** establish kernel-diversity interoperability. A broader AP242/AP214, units, multi-body, metadata, malformed-file, and alternative-kernel corpus remains production format work.
+
 ## Browser and CI policy
 
 The fast fixture passes in Chromium, Firefox, and WebKit. The extended allocator matrix is Chromium-only because it consumes a locally staged controlled package and is intended for targeted native evidence, not every pull request.
 
-Heavy OCCT image builds, extended memory matrices, stable performance evidence, and corresponding-source bundle generation are local-only. The performance runner, dedicated Playwright config, and compliance generator reject `CI`. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for these workloads. Generated sources, images, packages, bundles, reports, and Playwright JSON remain under `.artifacts` and are not committed.
+Heavy OCCT image builds, extended memory matrices, stable performance evidence, independent FreeCAD STEP evidence, and corresponding-source bundle generation are local-only and have no GitHub Actions workflow. Their entry points reject `CI`; pull requests cannot consume Actions minutes for these workloads, and the ordinary verification workflow does not rerun the squash-merged tree on `main`. Generated sources, images, packages, bundles, reports, and Playwright JSON remain under `.artifacts` and are not committed.
 
 ## Verification ownership
 
@@ -270,14 +289,15 @@ Executable evidence is owned by:
 - `scripts/build-occt-source-builder.test.ts` for paired output-contract comparison;
 - `scripts/run-occt-memory-evidence.test.ts` for the local matrix contract;
 - `scripts/run-occt-performance-evidence.test.ts` for the local-only controlled performance contract;
+- `scripts/step-interoperability.test.ts` for controlled producer provenance, strict report schemas, FreeCAD command resolution, and the local-only contract;
+- `scripts/verify-step-with-freecad.py` for exact input verification and independent-application shape measurement;
 - `scripts/occt-compliance-bundle.test.ts` for strict manifest paths, duplicate rejection, and the local-only generation contract;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, geometry, exchange, plateau, restart, and disposal behavior.
 - `tests/performance/occt-performance.spec.ts` for p95 worker initialization, complete-fixture latency, main-thread long tasks, peak WASM capacity, and peak live allocation.
 
-## Remaining stop/go work
+## Remaining production-promotion work
 
-- Open the exported STEP fixture independently in FreeCAD or another implementation.
 - Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features, including the durable history records required by SPK-003.
-- Repeat the required extended format and lifecycle cases across target browsers where practical.
+- Repeat the required extended format and lifecycle corpus across target browsers and independent kernels where practical.
 
-Until those items pass, ADR-0001 remains **Accepted for spike** rather than accepted for production.
+ADR-0001 remains **Accepted for spike** until the production facade is selected. The SPK-001 stop/go result itself is **Pass** and no longer blocks SPK-002, SPK-003, or SPK-004 work.
