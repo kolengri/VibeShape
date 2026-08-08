@@ -8,6 +8,7 @@ import {
 } from "./occt-build-artifacts"
 import { instrumentReplicadBuildConfig, OCCT_BUILD_INPUTS } from "./occt-build-config"
 import { prepareOcctBuilderContext } from "./occt-builder-context"
+import { assertSuccessfulOcctProcess } from "./occt-process"
 
 const repositoryRoot = resolve(import.meta.dir, "..")
 const artifactRoot = join(repositoryRoot, ".artifacts", "occt-build")
@@ -119,13 +120,7 @@ function invokeControlledBuild() {
     { stdio: "inherit" },
   )
 
-  if (result.error) {
-    throw new Error(`Controlled OCCT build failed to start: ${result.error.message}`)
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`Controlled OCCT build exited with status ${String(result.status)}.`)
-  }
+  assertSuccessfulOcctProcess(result, "Controlled OCCT build")
 }
 
 function writeBuildReport(outputs: Array<{ bytes: number; file: string; sha256: string }>) {

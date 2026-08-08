@@ -1,20 +1,21 @@
 # SPK-001 — OCCT/Replicad worker evidence
 
-- Status: **Rework — source build, history API, and memory gates passed**
+- Status: **Rework — source build, history API, memory, and controlled-performance gates passed**
 - Reviewed: 2026-08-08
 - Adapter builds: published `spike-2`; controlled evidence `spike-controlled-1`
 
 ## Decision
 
-The controlled OCCT path is viable for browser-based exact modeling, transient operation-history capture, tessellation, STEP round-trip, binary STL export, deterministic native ownership, and bounded repeated execution inside a Web Worker.
+The controlled OCCT path is viable for browser-based exact modeling, transient operation-history capture, tessellation, STEP round-trip, binary STL export, deterministic native ownership, bounded repeated execution, and the declared local performance budget inside a Web Worker.
 
-Three earlier blockers are closed:
+Four earlier blockers are closed:
 
 1. The project now builds the pinned OpenCascade.js and OCCT revisions from verified source archives, applies a reviewed generator correction, and compares an unpatched source build with the immutable registry baseline before accepting the patched artifact.
 2. Boolean and fillet builders expose the documented modified, generated, and deleted relations needed as inputs to the SPK-003 stable-reference experiment. The worker captures aggregate evidence after boolean result simplification without persisting transient OCCT identities.
 3. Allocator-instrumented evidence now reaches a measured plateau. The seven-operation matrix retains zero bytes inside every 1,000-operation lifecycle block, and post-disposal live allocation drifts by 448 bytes across four full batches after warmup.
+4. Twenty cold workers on the declared Apple M1 baseline reach a 173.0 ms initialization p95 and 270.3 ms complete-fixture p95. No main-thread long task was observed, and both peak WASM capacity and live native allocation remain below their executable ceilings.
 
-The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is independent STEP validation, declared cold-start and long-task budgets, and the release compliance bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
+The controlled artifact remains quarantined and SPK-001 remains **Rework**, not production acceptance. The remaining stop/go work is independent STEP validation and the release compliance bundle. SPK-003 still owns semantic output roles, stable `TopoRef` resolution, and ambiguity behavior. Replicad and OCCT types remain inside the geometry adapter boundary.
 
 ## Implemented boundary
 
@@ -146,7 +147,7 @@ One local controlled Chromium sample produced:
 
 Bounds remain within approximately `1e-7` of `(-30, -20, 0)` to `(30, 20, 20)`, which is expected kernel-tolerance behavior. Tests never depend on topology order, exact triangle order, or exchange-file byte equality.
 
-This is a local development sample, not a p95 benchmark. Hardware, browser process state, AMD64 emulation during the separate build, and development-server overhead affect timings.
+This single functional sample is not used for the performance decision. The controlled benchmark below owns the p95 evidence.
 
 ## Operation-history evidence
 
@@ -199,11 +200,39 @@ The first full run creates stable STEP and OCCT process caches. Tessellation tem
 
 The purge control releases no additional cached blocks and does not change the plateau. A fresh worker returns to the exact cold allocator checkpoint, validating the hard-release fallback independently of the steady-state result.
 
+## Controlled performance evidence
+
+`bun run occt:evidence:performance` uses a dedicated Chromium Playwright configuration that refuses to run when `CI` is set. It executes 10 sequential page runs and creates two fresh geometry workers per page, producing 20 raw worker samples against the locally staged controlled artifact. Every worker performs the complete primitive, boolean, fillet, validation, tessellation, STEP export/import, STL export, one-iteration lifecycle, disposal, and invariant path.
+
+The declared baseline is:
+
+| Property | Value |
+|---|---|
+| CPU | Apple M1, 8 logical cores |
+| Memory | 16 GiB |
+| OS | macOS, Darwin 25.5.0, arm64 |
+| Browser | Chromium 151.0.7922.34 |
+| Asset state | Local Vite server; warm HTTP asset cache; fresh worker and WASM instance per sample |
+
+The measured result was:
+
+| Metric | Budget | Result |
+|---|---:|---:|
+| Worker initialization p95 | 500 ms | 173.0 ms |
+| Complete fixture p95 | 500 ms | 270.3 ms |
+| Main-thread longest task | 100 ms | 0 observed |
+| Peak WASM linear-memory capacity | 64 MiB | 20,185,088 bytes |
+| Peak live native allocation | 4 MiB | 921,832 bytes |
+
+The initialization range was 164.8–174.2 ms. Complete fixture samples ranged from 260.1–270.6 ms. Chromium reported support for `longtask` entries and observed none across the 10 page runs. The harness writes raw samples, exact upstream revisions, safe hardware characteristics, budgets, and summaries to `.artifacts/occt-build/geometry-worker-performance-evidence.json` before asserting the ceilings.
+
+This result closes the SPK-001 controlled worker budget on the declared machine. It does not claim universal device performance, production PWA cold-network loading, viewport performance, or feature-corpus rebuild performance; those receive separate baselines when their product paths exist.
+
 ## Browser and CI policy
 
 The fast fixture passes in Chromium, Firefox, and WebKit. The extended allocator matrix is Chromium-only because it consumes a locally staged controlled package and is intended for targeted native evidence, not every pull request.
 
-Heavy OCCT image builds and extended memory matrices are local-first. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for this workload. Generated sources, images, packages, reports, and Playwright JSON remain under `.artifacts` and are not committed.
+Heavy OCCT image builds and extended memory matrices are local-first. Stable performance evidence is strictly local-only: its runner and dedicated Playwright config reject CI. The `Controlled OCCT evidence` GitHub workflow is manual-only; pull requests and pushes do not consume Actions minutes for this workload. Generated sources, images, packages, reports, and Playwright JSON remain under `.artifacts` and are not committed.
 
 ## Verification ownership
 
@@ -221,12 +250,13 @@ Executable evidence is owned by:
 - `scripts/occt-builder-context.test.ts` for immutable builder context creation;
 - `scripts/build-occt-source-builder.test.ts` for paired output-contract comparison;
 - `scripts/run-occt-memory-evidence.test.ts` for the local matrix contract;
+- `scripts/run-occt-performance-evidence.test.ts` for the local-only controlled performance contract;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, geometry, exchange, plateau, restart, and disposal behavior.
+- `tests/performance/occt-performance.spec.ts` for p95 worker initialization, complete-fixture latency, main-thread long tasks, peak WASM capacity, and peak live allocation.
 
 ## Remaining stop/go work
 
 - Open the exported STEP fixture independently in FreeCAD or another implementation.
-- Measure cold startup, main-thread long tasks, p95 operation latency, and peak memory on declared baseline hardware.
 - Compare the controlled direct boundary with Replicad on maintainability and the operation surface needed by production features, including the durable history records required by SPK-003.
 - Repeat the required extended format and lifecycle cases across target browsers where practical.
 - Archive the exact source bundle, patch, build recipe, output manifest, license texts, notices, and replacement instructions for release.

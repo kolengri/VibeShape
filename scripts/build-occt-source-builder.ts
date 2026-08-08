@@ -9,6 +9,7 @@ import {
   stageControlledBuildPackage,
 } from "./occt-build-artifacts"
 import { OCCT_BUILD_INPUTS } from "./occt-build-config"
+import { assertSuccessfulOcctProcess } from "./occt-process"
 
 type ControlledOutput = {
   bytes: number
@@ -30,14 +31,7 @@ const dockerCommand = process.env.VIBESHAPE_DOCKER_BIN || "docker"
 
 function runDocker(arguments_: string[]) {
   const result = spawnSync(dockerCommand, arguments_, { stdio: "inherit" })
-
-  if (result.error) {
-    throw new Error(`Docker failed to start: ${result.error.message}`)
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`Docker exited with status ${String(result.status)}.`)
-  }
+  assertSuccessfulOcctProcess(result, "Docker")
 }
 
 function buildBuilderImage(target: "unpatched-builder" | "patched-builder", image: string) {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/v3.14.0/schema.json",
-  // Vite loads this spike module through a secondary HTML entry point.
-  "entry": ["apps/web/src/spikes/geometry-worker.ts"],
+  // Vite and Playwright load these files through secondary CLI/HTML entry points.
+  "entry": ["apps/web/src/spikes/geometry-worker.ts", "playwright.performance.config.ts"],
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },
