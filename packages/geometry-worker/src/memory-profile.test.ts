@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest"
 import { createMemoryProfile, getWasmHeapBytes } from "./memory-profile"
 
+function createAllocatorStatsBinding(allocatedBytes: unknown = 64) {
+  return Object.assign(function AllocatorStats() {}, {
+    ArenaBytes: () => 96,
+    AllocatedBytes: () => allocatedBytes,
+    FreeBytes: () => 32,
+  })
+}
+
+const malformedAllocatorBindings: unknown[] = [
+  null,
+  {},
+  { ArenaBytes: () => 1 },
+  { ArenaBytes: 1, AllocatedBytes: () => 1, FreeBytes: () => 1 },
+  { ArenaBytes: () => 1, AllocatedBytes: () => 1, FreeBytes: () => 1 },
+]
+
 describe("geometry worker memory profiling", () => {
   it("reports heap capacity when the published binding has no allocator instrumentation", () => {
     const profiler = createMemoryProfile({ HEAP8: new Int8Array(64) })
@@ -22,11 +38,7 @@ describe("geometry worker memory profiling", () => {
   it("captures allocator bytes when the controlled binding exposes all metrics", () => {
     const profiler = createMemoryProfile({
       HEAP8: new Int8Array(128),
-      VibeShapeAllocatorStats: {
-        ArenaBytes: () => 96,
-        AllocatedBytes: () => 64,
-        FreeBytes: () => 32,
-      },
+      VibeShapeAllocatorStats: createAllocatorStatsBinding(),
     })
 
     profiler.capture("validation-completed")
@@ -43,33 +55,27 @@ describe("geometry worker memory profiling", () => {
     })
   })
 
-  it.each([
-    null,
-    {},
-    { ArenaBytes: () => 1 },
-    { ArenaBytes: 1, AllocatedBytes: () => 1, FreeBytes: () => 1 },
-  ])("rejects a present but malformed allocator binding: %o", (binding) => {
-    if (binding === null) {
-      expect(createMemoryProfile({ VibeShapeAllocatorStats: binding }).memory.source).toBe(
-        "heap-capacity-only",
-      )
-      return
-    }
+  it.each(malformedAllocatorBindings)(
+    "rejects a present but malformed allocator binding: %o",
+    (binding) => {
+      if (binding === null) {
+        expect(createMemoryProfile({ VibeShapeAllocatorStats: binding }).memory.source).toBe(
+          "heap-capacity-only",
+        )
+        return
+      }
 
-    expect(() => createMemoryProfile({ VibeShapeAllocatorStats: binding })).toThrow(
-      "OpenCascade allocator instrumentation binding is malformed.",
-    )
-  })
+      expect(() => createMemoryProfile({ VibeShapeAllocatorStats: binding })).toThrow(
+        "OpenCascade allocator instrumentation binding is malformed.",
+      )
+    },
+  )
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
     "rejects an invalid allocator byte count: %s",
     (allocatedBytes) => {
       const profiler = createMemoryProfile({
-        VibeShapeAllocatorStats: {
-          ArenaBytes: () => 1,
-          AllocatedBytes: () => allocatedBytes,
-          FreeBytes: () => 0,
-        },
+        VibeShapeAllocatorStats: createAllocatorStatsBinding(allocatedBytes),
       })
 
       expect(() => profiler.capture("initialized")).toThrow(

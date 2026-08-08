@@ -69,6 +69,7 @@ jobs:
           name: controlled-occt-evidence
           path: |
             .artifacts/occt-build/build-report.json
+            .artifacts/occt-build/geometry-worker-evidence.json
             .artifacts/occt-build/input/vibeshape_occt.d.ts
             .artifacts/occt-build/input/vibeshape_occt.js
             .artifacts/occt-build/input/vibeshape_occt.wasm

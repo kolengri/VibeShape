@@ -1,5 +1,5 @@
 import type { GeometryMemoryStage, KernelSpikeEngineResult } from "@vibeshape/protocol"
-import { isAnyObject, isFunction } from "is-what"
+import { isFunction } from "is-what"
 
 export type OpenCascadeMemoryModule = object & {
   HEAP8?: Int8Array
@@ -18,7 +18,7 @@ export function getWasmHeapBytes(opencascade: OpenCascadeMemoryModule | null) {
 
 function isAllocatorStatsBinding(value: unknown): value is AllocatorStatsBinding {
   return (
-    isAnyObject(value) &&
+    isFunction(value) &&
     isFunction(Reflect.get(value, "ArenaBytes")) &&
     isFunction(Reflect.get(value, "AllocatedBytes")) &&
     isFunction(Reflect.get(value, "FreeBytes"))
