@@ -26,7 +26,7 @@ const buildNameAnchor = "  name: replicad_single.js"
 const symbolAnchor = "  - symbol: GeomToolsWrapper"
 const cppAnchor = "additionalCppCode: |\n  class BRepToolsWrapper"
 
-const allocatorBinding = `  class VibeShapeAllocatorStats {
+const diagnosticBindings = `  class VibeShapeAllocatorStats {
   public:
     static double ArenaBytes() {
       return static_cast<double>(mallinfo().arena);
@@ -36,6 +36,23 @@ const allocatorBinding = `  class VibeShapeAllocatorStats {
     }
     static double FreeBytes() {
       return static_cast<double>(mallinfo().fordblks);
+    }
+  };
+
+  class VibeShapeOcctDiagnostics {
+  public:
+    static double PurgeAllocator() {
+      return static_cast<double>(Standard::Purge());
+    }
+    static double RunNativeBoxCycle() {
+      BRepPrimAPI_MakeBox maker(10.0, 10.0, 10.0);
+      const TopoDS_Solid solid = maker.Solid();
+      return solid.IsNull() ? 0.0 : 1.0;
+    }
+    static double RunNativeCylinderCycle() {
+      BRepPrimAPI_MakeCylinder maker(5.0, 10.0);
+      const TopoDS_Solid solid = maker.Solid();
+      return solid.IsNull() ? 0.0 : 1.0;
     }
   };
 
@@ -60,12 +77,12 @@ export function instrumentReplicadBuildConfig(source: string) {
   const withSymbol = replaceExactlyOnce(
     withBuildName,
     symbolAnchor,
-    `${symbolAnchor}\n  - symbol: VibeShapeAllocatorStats`,
+    `${symbolAnchor}\n  - symbol: VibeShapeAllocatorStats\n  - symbol: VibeShapeOcctDiagnostics`,
   )
 
   return replaceExactlyOnce(
     withSymbol,
     cppAnchor,
-    `additionalCppCode: |\n  #include <malloc.h>\n\n${allocatorBinding}`,
+    `additionalCppCode: |\n  #include <malloc.h>\n  #include <Standard.hxx>\n\n${diagnosticBindings}`,
   )
 }

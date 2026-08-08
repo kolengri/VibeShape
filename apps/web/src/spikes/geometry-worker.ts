@@ -3,7 +3,9 @@ import {
   createGeometryWorkerClient,
   type GeometryWorkerClient,
 } from "@vibeshape/geometry-worker/client"
+import { geometryLifecycleOperationSchema } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
+import { z } from "zod"
 
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
 type KernelResponse = Extract<TerminalResponse, { type: "kernelSpikeCompleted" }>
@@ -27,6 +29,8 @@ interface GeometrySpikeHarnessState {
   progress: string[]
   error: string | null
 }
+
+const booleanQueryParameterSchema = z.enum(["true", "false"]).transform((value) => value === "true")
 
 declare global {
   interface Window {
@@ -103,13 +107,22 @@ function assertBoundedInteger(name: string, value: number, maximum: number) {
 
 function createSpikeParameters() {
   const parameters = createKernelSpikeParameters()
+  const searchParameters = new URLSearchParams(window.location.search)
   const lifecycleIterations = readPositiveIntegerParameter(
     "lifecycleIterations",
     parameters.lifecycleIterations,
     1_000,
   )
+  const requestedOperation = searchParameters.get("lifecycleOperation")
+  const lifecycleOperation = geometryLifecycleOperationSchema.parse(
+    requestedOperation ?? parameters.lifecycleOperation,
+  )
+  const requestedPurge = searchParameters.get("purgeAfterLifecycle")
+  const purgeAfterLifecycle = requestedPurge
+    ? booleanQueryParameterSchema.parse(requestedPurge)
+    : parameters.purgeAfterLifecycle
 
-  return { ...parameters, lifecycleIterations }
+  return { ...parameters, lifecycleIterations, lifecycleOperation, purgeAfterLifecycle }
 }
 
 async function initializeEngine(client: GeometryWorkerClient) {

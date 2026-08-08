@@ -8,6 +8,8 @@ export function createKernelSpikeParameters() {
     meshTolerance: 0.05,
     angularTolerance: 0.1,
     lifecycleIterations: 3,
+    lifecycleOperation: "boolean-cut" as const,
+    purgeAfterLifecycle: false,
   }
 }
 

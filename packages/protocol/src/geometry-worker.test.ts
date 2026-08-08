@@ -24,6 +24,8 @@ const validParameters = {
   meshTolerance: 0.05,
   angularTolerance: 0.1,
   lifecycleIterations: 3,
+  lifecycleOperation: "boolean-cut",
+  purgeAfterLifecycle: false,
 } as const
 
 describe("geometry worker protocol", () => {
@@ -35,6 +37,27 @@ describe("geometry worker protocol", () => {
     })
 
     expect(parsed.type).toBe("runKernelSpike")
+  })
+
+  it("defaults an omitted lifecycle operation to the existing boolean-cut fixture", () => {
+    const {
+      lifecycleOperation: _operation,
+      purgeAfterLifecycle: _purge,
+      ...legacyParameters
+    } = validParameters
+    const parsed = kernelSpikeParametersSchema.parse(legacyParameters)
+
+    expect(parsed.lifecycleOperation).toBe("boolean-cut")
+    expect(parsed.purgeAfterLifecycle).toBe(false)
+  })
+
+  it("rejects an unsupported lifecycle operation", () => {
+    expect(
+      kernelSpikeParametersSchema.safeParse({
+        ...validParameters,
+        lifecycleOperation: "fillet",
+      }).success,
+    ).toBe(false)
   })
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
@@ -129,12 +152,14 @@ describe("geometry worker protocol", () => {
         relativeVolumeError: 0,
       },
       lifecycle: {
+        operation: "boolean-cut",
         iterations: 1,
         ownedShapesBefore: 0,
         ownedShapesAfter: 0,
         wasmHeapBytesBefore: 1,
         wasmHeapBytesAfter: 1,
         wasmHeapGrowthBytes: 0,
+        allocatorPurge: { requested: false, releasedBlocks: 0 },
       },
       memory: {
         source: "heap-capacity-only",

@@ -15,7 +15,7 @@ function createFixture() {
   )
   writeFileSync(
     join(directory, "vibeshape_occt.d.ts"),
-    "export interface VibeShapeAllocatorStats {}\n",
+    "export interface VibeShapeAllocatorStats {}\nexport interface VibeShapeOcctDiagnostics { PurgeAllocator(): number; RunNativeBoxCycle(): number; RunNativeCylinderCycle(): number }\n",
   )
   writeFileSync(join(directory, "vibeshape_occt.wasm"), Buffer.from([0x00, 0x61, 0x73, 0x6d]))
   return directory
@@ -35,7 +35,7 @@ describe(requireControlledBuildOutputs.name, () => {
     expect(result.outputs.map(({ bytes, file }) => ({ bytes, file }))).toEqual([
       { bytes: 57, file: "vibeshape_occt.js" },
       { bytes: 4, file: "vibeshape_occt.wasm" },
-      { bytes: 44, file: "vibeshape_occt.d.ts" },
+      { bytes: 178, file: "vibeshape_occt.d.ts" },
     ])
     expect(result.outputs.every((output) => output.sha256.length === 64)).toBe(true)
   })
