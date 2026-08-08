@@ -231,6 +231,8 @@ The spike must:
 - test conflict diagnostics, degeneracies, and memory;
 - document source changes and the build pipeline.
 
+SPK-002 passed these gates with SolveSpace v3.2 revision `27b6a080c8b669421bd4d444650c3b8eddec5687`, pinned Eigen and mimalloc sources, Emscripten 6.0.6, and the flat typed-array boundary selected in ADR-0014. The successful output is a 14,889-byte ES module plus 251,544-byte WASM. It remains a worker-owned, source-built artifact; the experimental upstream web UI and stateful Embind API are not product dependencies. Heavy builds and evidence are local-only.
+
 If the spike fails, alternatives are:
 
 1. Adapt another license-compatible FOSS nonlinear solver.

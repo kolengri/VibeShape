@@ -96,6 +96,8 @@ Only the solver files that are needed may be reused, and only while retaining co
 
 Do not describe SolveSpace as a library with a permissive API. Its repository is licensed under GPL-3.0-or-later, and the official web build is explicitly described as experimental.
 
+SPK-002 pins the complete SolveSpace v3.2 source archive at `27b6a080c8b669421bd4d444650c3b8eddec5687`, Eigen at `3147391d946bb4b6c68edd901f2add6ac1f31f8c`, mimalloc at `f81bf1b31af819a31195e08f9546dc80f8931587`, the VibeShape patch and ABI wrapper, and the exact Emscripten image. `bun run solvespace:bundle:compliance` creates a local corresponding-source archive containing those sources, modifications, build recipe, evidence, and upstream license texts. This technical bundle must accompany any reviewed distribution of the generated solver and does not replace a complete application SBOM or release legal review.
+
 ## Documentation and Contributions
 
 Contributions are accepted under GPL-3.0-or-later by default. `CONTRIBUTING.md` must state the inbound-equals-outbound policy. A Developer Certificate of Origin using `Signed-off-by` is preferable to a heavyweight contributor license agreement until dual licensing becomes a real requirement.

@@ -6,7 +6,7 @@
 |---|---|---:|---:|---|
 | R1 | Topological naming creates silently incorrect references | High | Critical | Semantic history, geometric signatures, ambiguity UI, and a fixture matrix before feature expansion |
 | R2 | OCCT WASM is too large, slow, or prone to memory leaks | High | High | Custom bindings, a worker boundary, memory harnesses, caching, and a Phase 0 go/no-go gate |
-| R3 | The sketch solver is unstable or reports conflicts poorly | High | Critical | Isolated spike, solver corpus, limited constraint set, and an explicit fallback decision |
+| R3 | The sketch solver becomes unstable at production scale or reports complex conflicts poorly | Medium | Critical | Accepted flat ABI, P0 corpus, perturbation and lifecycle evidence, scale budgets, branch-continuation tests, and explicit fallback order |
 | R4 | Browser storage is cleared or exhausted | Medium | Critical | `.vshape` export, persistent-storage request, quota UI, journal and snapshots, and bulk backup |
 | R5 | Imported CAD or ZIP data crashes the application or exhausts resources | High | High | Limits, worker isolation, fuzzing, timeouts, and recovery paths |
 | R6 | The 3MF writer produces formally valid files that slicers cannot use | Medium | High | Specification and conformance checks plus smoke tests in two independent slicers |
@@ -39,6 +39,8 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 ### Solver
 
 The complete SolveSpace web application is experimental, and extracting a solver subset may require substantial C++ work.
+
+**SPK-002 evidence:** the project source-builds the stable SolveSpace v3.2 solver subset without the web UI, validates every P0 primitive, reports fully, under-, and over-constrained states plus conflict handles, completes 1,600 perturbation solves and 1,000 lifecycle cycles with a stable post-corpus heap, runs the raw ABI in a Chromium module worker, and produces byte-identical outputs across clean builds. The selection gate is **Pass**. R3 remains tracked for complex drag branch continuity, large sketches, combined-conflict quality, browser diversity, and dependency upgrades.
 
 **Fallback order:** subset port -> another free and open-source solver -> reduced alpha constraint scope -> a custom solver as a separate project.
 

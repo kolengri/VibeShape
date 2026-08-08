@@ -1,0 +1,100 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,9 +36,8 @@ endif()
+ # NOTE TO PACKAGERS: The embedded git commit hash is critical for rapid bug triage when the builds
+ # can come from a variety of sources. If you are mirroring the sources or otherwise build when
+ # the .git directory is not present, please comment the following line:
+-include(GetGitCommitHash)
+ # and instead uncomment the following, adding the complete git hash of the checkout you are using:
+-# set(GIT_COMMIT_HASH 0000000000000000000000000000000000000000)
++set(GIT_COMMIT_HASH 27b6a080c8b669421bd4d444650c3b8eddec5687)
+ 
+ string(SUBSTRING "${GIT_COMMIT_HASH}" 0 8 solvespace_GIT_HASH)
+ project(solvespace
+diff --git a/include/slvs.h b/include/slvs.h
+index 0e58d46..4e28c8c 100644
+--- a/include/slvs.h
++++ b/include/slvs.h
+@@ -498,6 +498,7 @@ DLL double Slvs_GetParamValue(uint32_t ph);
+ DLL void Slvs_SetParamValue(uint32_t ph, double value);
+ 
+ DLL void Slvs_Solve(Slvs_System *sys, uint32_t hg);
++DLL double Slvs_MaximumResidual();
+ DLL void Slvs_MarkDragged(Slvs_Entity ptA);
+ /**
+  * Setting `bad` to a non NULL pointer enables finding of bad constraints.
+diff --git a/src/slvs/CMakeLists.txt b/src/slvs/CMakeLists.txt
+index d931f8f..35e8d3f 100644
+--- a/src/slvs/CMakeLists.txt
++++ b/src/slvs/CMakeLists.txt
+@@ -44,19 +44,24 @@ if(ENABLE_PYTHON_LIB)
+ endif()
+ 
+ if(EMSCRIPTEN)
+-    add_executable(slvs-wasm jslib.cpp)
++    add_executable(slvs-wasm vibeshape_solver_abi.cpp)
+     target_compile_features(slvs-wasm PRIVATE cxx_std_17)
+     target_link_libraries(slvs-wasm PRIVATE slvs-interface embind)
+     target_link_options(slvs-wasm PRIVATE
+         "SHELL:-s MODULARIZE=1"
+-        "SHELL:-s EXPORT_NAME=solvespace"
+-        "SHELL:-s SINGLE_FILE=1"
+-        "SHELL:-s INITIAL_MEMORY=512MB"
+-        "SHELL:-s ALLOW_MEMORY_GROWTH"
++        "SHELL:-s EXPORT_ES6=1"
++        "SHELL:-s EXPORT_NAME=createVibeShapeSketchSolver"
++        "SHELL:-s ENVIRONMENT=web,worker,node"
++        "SHELL:-s FILESYSTEM=0"
++        "SHELL:-s INITIAL_MEMORY=16MB"
++        "SHELL:-s MAXIMUM_MEMORY=64MB"
++        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+         -O3
+         -flto
+         --closure 1)
+-    set_target_properties(slvs-wasm PROPERTIES OUTPUT_NAME "slvs" SUFFIX ".js")
++    set_target_properties(slvs-wasm PROPERTIES
++        OUTPUT_NAME "vibeshape_slvs"
++        SUFFIX ".mjs")
+ endif()
+ 
+ add_library(slvs SHARED)
+diff --git a/src/slvs/lib.cpp b/src/slvs/lib.cpp
+index 56c7c24..a587344 100644
+--- a/src/slvs/lib.cpp
++++ b/src/slvs/lib.cpp
+@@ -28,6 +28,7 @@ using namespace SolveSpace;
+ 
+ static System SYS;
+ static ParamSet dragged;
++static double lastMaximumResidual = 0.0;
+ 
+ extern "C" {
+ 
+@@ -979,6 +980,11 @@ double Slvs_GetParamValue(uint32_t ph)
+     return p->val;
+ }
+ 
++double Slvs_MaximumResidual()
++{
++    return lastMaximumResidual;
++}
++
+ void Slvs_SetParamValue(uint32_t ph, double value)
+ {
+     Param* p = SK.param.FindById(hParam { ph });
+@@ -1104,6 +1110,14 @@ void Slvs_Solve(Slvs_System *ssys, uint32_t shg)
+         sp->val = SK.GetParam(hp)->val;
+     }
+ 
++    lastMaximumResidual = 0.0;
++    for(Equation &equation : SYS.eq) {
++        lastMaximumResidual = std::max(
++            lastMaximumResidual,
++            std::fabs(equation.e->Eval())
++        );
++    }
++
+     if(ssys->failed) {
+         // Copy over any the list of problematic constraints.
+         for(i = 0; i < ssys->faileds && i < bad.n; i++) {

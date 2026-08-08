@@ -15,6 +15,7 @@
 | [0011](0011-use-intl-localization-layer.md) | Accepted | `use-intl` localization for the static React application |
 | [0012](0012-capability-based-extension-platform.md) | Proposed | Capability-based, version-pinned extension profiles |
 | [0013](0013-microkernel-modules-and-mcp-automation.md) | Proposed | Microkernel feature modules and MCP over the ordinary command path |
+| [0014](0014-solvespace-flat-wasm-solver.md) | Accepted | SolveSpace v3.2 subset behind a flat worker-owned WASM ABI |
 
 Statuses:
 
