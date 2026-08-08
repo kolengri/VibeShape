@@ -149,6 +149,8 @@ Can fully local exports interoperate reliably?
 
 ## SPK-005 — local-first PWA
 
+**Result: Pass — semantic persistence and recovery gate cleared; installed-build update validation remains.** The strict Dexie schema-v0 contract atomically commits event, snapshot, head, and recovery records; existing-document commits require a live matching writer lease and epoch. The local Chromium, Firefox, and WebKit corpus proves forced-page recovery, stale and quota rollback, bounded checksum recovery, takeover, cached-shell offline reopen, and progressive OPFS and file fallbacks. The recorded WebKit runtime cannot open its exposed OPFS root and therefore demonstrates the required cache-disabled mode without losing semantic functionality. Production `.vshape`, autosave scheduling, BroadcastChannel UX, migrations, and a real two-build service-worker update remain follow-up work. See [SPK-005 evidence](spikes/spk-005-local-first.md).
+
 ### Question
 
 Are autosave, recovery, update, and fallback behavior reliable across target browsers?

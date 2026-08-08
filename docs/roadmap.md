@@ -2,13 +2,13 @@
 
 ## Recommendation
 
-The UI shell is not the first milestone. First remove four core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, and 3MF interoperability. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export. First-party feature modules and automation share the ordinary command path from the start; an MCP transport is added only when that path can support a real draft, preview, and commit scenario.
+The UI shell is not the first milestone. First remove five core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, 3MF interoperability, and local-first recovery. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export. First-party feature modules and automation share the ordinary command path from the start; an MCP transport is added only when that path can support a real draft, preview, and commit scenario.
 
 All estimates below are **approximate engineering ranges**, not calendar commitments.
 
 ## Phase 0 — spikes and measurements (2–4 weeks)
 
-The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, test-model, and format packages contain isolated SPK-001 through SPK-004 experiment code; these boundaries are not yet a production feature evaluator. The persistence package remains empty until its owning evidence exists.
+The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, test-model, format, and persistence packages contain isolated SPK-001 through SPK-005 experiment code; these boundaries are not yet a production feature evaluator or application persistence service.
 
 SPK-001 now passes its Phase 0 stop/go gate with executable evidence. The project source-builds the pinned builder with the reviewed destructor correction, verifies transient boolean and fillet history relations, reaches a 448-byte post-warmup allocator drift with zero retained bytes in every 1,000-operation lifecycle block, passes its local controlled Chromium performance budgets on the declared Apple M1 baseline, creates a verified corresponding-source bundle, and validates the browser-exported STEP fixture through headless FreeCAD. The controlled package remains quarantined until the production facade and extended corpus are reviewed. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
@@ -18,6 +18,8 @@ SPK-003 passes its stable-reference algorithm gate. Strict domain schemas, seman
 
 SPK-004 passes its minimal 3MF interoperability gate. A deterministic project-owned Core writer validates mesh orientation and manifoldness, references, transforms, XML text, thumbnails, and resource budgets before producing the archive. The local-only gate verifies byte identity, OPC parts, well-formed XML, and matching 24-facet, `1,608 mm³` manifold geometry through PrusaSlicer and the Orca/Bambu family. Production tessellation and export UX remain Phase 1 work. See [SPK-004 evidence](spikes/spk-004-3mf.md).
 
+SPK-005 passes its semantic persistence and recovery gate. Strict Dexie records atomically commit events, snapshots, project heads, recovery markers, and writer-lease checks. The local Chromium, Firefox, and WebKit matrix proves forced-page recovery, stale and quota rollback, bounded checksum recovery, lease takeover, cached-shell offline reopen, and progressive cache/file fallbacks. OPFS remains disposable and degrades cleanly when an exposed implementation is not operational. `.vshape`, autosave scheduling, backup UI, production service-worker updates, and large-project budgets remain Phase 1 work. See [SPK-005 evidence](spikes/spk-005-local-first.md).
+
 ### Deliverables
 
 - Reproducible OCCT/Replicad worker prototype.
@@ -26,6 +28,7 @@ SPK-004 passes its minimal 3MF interoperability gate. A deterministic project-ow
 - Sketch solver prototype covering required constraints.
 - `TopoRef` experiment on the model corpus.
 - Minimal 3MF writer or adapter with slicer round-trip.
+- IndexedDB journal/snapshot recovery and progressive OPFS/browser fallback matrix.
 - Browser startup and memory matrix.
 - Extension sandbox, immutable package, capability, and restricted-mode spike.
 - Reviewed ADR set and updated estimates, including the proposed extension decision.
@@ -38,6 +41,7 @@ SPK-004 passes its minimal 3MF interoperability gate. A deterministic project-ow
 - The solver distinguishes under-, fully-, and over-constrained states on the test set.
 - The `TopoRef` experiment distinguishes `resolved`, `ambiguous`, and `missing`.
 - Generated 3MF opens in at least two slicers.
+- Semantic revisions recover after page termination and offline reopen in all target browser engines; unavailable OPFS never blocks the document.
 - A baseline browser and device are defined.
 - `SPK-006` either proves a safe executable-extension path or keeps third-party execution disabled with documented rework evidence. This result gates extension releases, not the core modeling alpha.
 

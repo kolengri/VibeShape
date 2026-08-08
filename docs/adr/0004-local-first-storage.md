@@ -14,3 +14,7 @@ Store semantic snapshots and events transactionally in IndexedDB through Dexie, 
 - File System Access is a progressive enhancement.
 - The alpha uses a single-writer lease across tabs.
 - SQLite WASM is deferred until a demonstrated need exists.
+
+## Evidence
+
+[SPK-005](../spikes/spk-005-local-first.md) validates the decision with strict Dexie schema-v0 records, atomic history and recovery transactions, checksum replay, one-writer lease epochs, disposable OPFS publishing, forced-page recovery, quota rollback, and cached-shell offline reopen across Chromium, Firefox, and WebKit. The recorded WebKit runtime demonstrates the required OPFS-unavailable mode without blocking semantic recovery.

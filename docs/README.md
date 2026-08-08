@@ -9,7 +9,7 @@
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Extension architecture](architecture/extensions.md), [automation and MCP](architecture/automation-and-mcp.md), and [data model/native format](architecture/data-model-and-file-format.md).
-8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), [SPK-004 3MF evidence](spikes/spk-004-3mf.md), and [testing strategy](testing-strategy.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), [SPK-004 3MF evidence](spikes/spk-004-3mf.md), [SPK-005 local-first evidence](spikes/spk-005-local-first.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
 ## Requirement levels
@@ -55,11 +55,13 @@ SPK-003 is **Pass — stable-reference algorithm gate cleared**. Protocol v5 car
 
 SPK-004 is **Pass — minimal 3MF writer and slicer gate cleared**. The project-owned Core writer produces byte-identical millimeter archives with strict mesh, reference, transform, XML, thumbnail, and resource validation. PrusaSlicer and the Orca/Bambu family consume the local fixture and agree on 24 manifold facets and `1,608 mm³`; the evidence command rejects CI and has no GitHub Actions workflow.
 
+SPK-005 is **Pass — semantic persistence and recovery gate cleared; installed-build update validation remains**. Dexie transactions atomically persist strict event, snapshot, project-head, and recovery records; checksum replay, one-writer lease epochs, forced-page recovery, quota rollback, service-worker offline reopen, and progressive OPFS/file fallbacks pass the local Chromium, Firefox, and WebKit matrix. The recorded WebKit runtime exposes but cannot open OPFS, so derived caching degrades without blocking semantic documents. The evidence command rejects CI and has no GitHub Actions workflow.
+
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
 - Production sketch records, worker protocol, drag branch-continuation policy, and large-sketch budgets on the accepted SolveSpace boundary.
 - Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
-- Real startup, memory, rebuild, and storage budgets.
+- Real startup, memory, rebuild, and representative large-project storage budgets.
 - Extension sandbox runtime, package schema, capability contract, and cross-browser resource budgets.
 
 ## Decision-change rule
