@@ -195,7 +195,7 @@ Criteria include STEP round-trip, supported operations, WASM size and startup, m
 
 If Replicad does not expose the required history or topology data, the adapter moves to direct OCCT without changing the domain or file format.
 
-SPK-001 proved the Replicad `0.23.1` path across the required modeling and exchange operations in all three automated browser engines and built an allocator-instrumented candidate from a recorded OCCT revision. It did not accept that candidate as the production binding: the upstream builder image still needs source reproduction, operation-history coverage is open, and extended Chromium runs retain approximately 100 MB across equivalent post-disposal checkpoints. The measurements and rework decision are recorded in [SPK-001 evidence](../spikes/spk-001-occt-worker.md).
+SPK-001 proved the Replicad `0.23.1` path across the required modeling and exchange operations in all three automated browser engines and built an allocator-instrumented candidate from a recorded OCCT revision. It did not accept that candidate as the production binding: operation-isolated Chromium evidence shows allocation-neutral native C++ lifetimes but linear retention through generated bindings whose destructor policy is a no-op for OCCT classes with placement delete. The upstream builder still needs a source reproduction with the reviewed generator correction, operation-history coverage is open, and the corrected binding needs a measured plateau. The measurements and rework decision are recorded in [SPK-001 evidence](../spikes/spk-001-occt-worker.md).
 
 ## Why raw Three.js instead of React Three Fiber
 

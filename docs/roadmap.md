@@ -10,7 +10,7 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, and test-model packages now contain isolated SPK-001 experiment code; they are not production APIs. Solver, storage, and format package entry points remain empty until their corresponding evidence exists.
 
-SPK-001 now has executable functional evidence and a **Rework** result: browser modeling, exchange, the checksum-verified controlled candidate, allocator checkpoints, and hard worker restart pass. Rebuilding the builder image from archived sources and proving an allocator-level memory plateau remain blocking. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+SPK-001 now has executable functional evidence and a **Rework** result: browser modeling, exchange, the checksum-verified controlled candidate, allocator checkpoints, and hard worker restart pass. Operation-isolated evidence traces the retained allocation to OpenCascade.js no-op destructor generation rather than OCCT scoped lifetimes. Rebuilding the builder image from archived sources with the reviewed generator correction and proving an allocator-level memory plateau remain blocking. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Deliverables
 

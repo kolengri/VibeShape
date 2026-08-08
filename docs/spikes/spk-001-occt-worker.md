@@ -11,13 +11,14 @@ The Replicad path is functionally viable for browser-based exact modeling, tesse
 Two production gates remain open:
 
 1. The controlled candidate identifies and verifies the exact OCCT source revision, but the pinned upstream builder image has not yet been rebuilt from archived sources and compared. Registry-image reproducibility is engineering evidence, not the final corresponding-source release process.
-2. Allocator instrumentation confirms retained live allocation rather than only linear-memory capacity. Across five consecutive 1,000-operation batches, allocated bytes at the same post-disposal stage increased by approximately 100 MB. The sequence does not establish a plateau and remains a production blocker.
+2. Allocator instrumentation confirms retained live allocation rather than only linear-memory capacity. Operation-isolated evidence localizes the growth to the generated Embind destructor policy: native C++ scoped primitive cycles retain zero bytes, while equivalent direct binding cycles retain allocation linearly. The binding generator deliberately replaces destruction with a no-op for OCCT classes that declare placement delete. The production blocker is now a specific source-build patch and plateau verification rather than an unexplained OCCT allocator problem.
 
-The controlled candidate successfully builds, loads through the existing adapter boundary, executes modeling and exchange operations, emits allocator evidence, and resets to its cold allocator baseline after a hard worker restart. Continue SPK-001 by isolating the retained allocation by operation and reproducing the builder image from archived sources. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
+The controlled candidate successfully builds, loads through the existing adapter boundary, executes modeling and exchange operations, emits allocator evidence, and resets to its cold allocator baseline after a hard worker restart. Continue SPK-001 by rebuilding the builder image from archived sources with a reviewed destructor-generator patch, then repeat the same evidence matrix. Do not spread Replicad types outside the adapter or begin topology-dependent production features yet.
 
 The rework now has two additional pieces of executable evidence:
 
 - protocol v2 captures ordered Emscripten heap checkpoints after every modeling, tessellation, exchange, lifecycle, and final shape-disposal stage and accepts allocator metrics only from a complete validated binding;
+- protocol v2 selects Replicad, direct Embind, and native C++ scoped lifecycle operations and records whether `Standard::Purge()` was requested and how many blocks it released;
 - the browser harness terminates the first worker, initializes a fresh worker, rebuilds the same invariant fixture, and disposes it successfully in Chromium, Firefox, and WebKit.
 
 The controlled-build harness pins and verifies the OpenCascade.js, OCCT, and Replicad source archives plus the builder image digest and derives the allocator-instrumented build config deterministically. The GitHub evidence workflow executed that build and its extended browser fixture successfully on `linux/amd64` without mutating `node_modules` or the production dependency lock.
@@ -38,6 +39,7 @@ The spike adds:
 - deterministic Vitest protocol/runtime coverage and Playwright browser coverage.
 - stage-isolated heap-capacity evidence with nullable allocator-level metrics;
 - hard worker restart, engine reinitialization, invariant rebuild, and disposal evidence;
+- controlled native C++ lifecycle probes and allocator-purge controls;
 - a source-checksum and controlled-build preparation harness under `native/occt`.
 
 The protocol is spike-specific. Production document commands such as preview, commit, rebuild, import, and export remain future schema work.
@@ -95,10 +97,10 @@ The executed candidate produced:
 | Output | Bytes | SHA-256 |
 |---|---:|---|
 | `vibeshape_occt.js` | 135,503 | `d28f69b40b60f3881ccd3a996664a1732527a34cc154e2511dbfa02cd5c5081c` |
-| `vibeshape_occt.wasm` | 10,852,193 | `80abcb3bedd81774301ddef11a595309c54a7d331052f6362ef3600ca3a2fea4` |
-| `vibeshape_occt.d.ts` | 410,529 | `42bef32d3bd5ea439ff0495499cb0265b8df08b0e8fe576856cb20c1e34aef0f` |
+| `vibeshape_occt.wasm` | 10,852,832 | `a6878af17b88a59e97243929ad89bca44fbb43884297077aa5941a42c88b15fd` |
+| `vibeshape_occt.d.ts` | 410,813 | `fa6eb436aad62f5c85f3a1a8e3ce67b3a4202e9a08b7a482db00aae0b6a79152` |
 
-Two clean workflow runs produced the same three output hashes. The generated config SHA-256 is `675641b6faedb60d8b9533bfb3bfa49137069bd539ca0261d26c2f08601f7496`. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must later be rebuilt from archived sources and compared.
+The earlier allocator-only candidate produced identical hashes in two clean workflow runs. The operation-isolation candidate above was then built cleanly from generated config SHA-256 `35151667e11e5705bd9ab52da10bf2220dff063c7ce3b532af94963bc023bc93`. The image is immutable, but relying on the registry image alone is not the final release reproducibility standard; the image must be rebuilt from archived sources with the destructor patch and compared.
 
 The npm package declares `replicad-opencascadejs` as MIT. That declaration covers the package wrapper and does not erase the LGPL obligations of the embedded OCCT-derived WASM. The runtime reports `opencascadeSourceRevision: null` deliberately; a guessed value would be false provenance.
 
@@ -112,7 +114,7 @@ Measured from `replicad_single.wasm` with the exact locked package:
 | gzip level 9 | 4,535,371 | 4.33 |
 | Brotli quality 11 | 3,382,379 | 3.23 |
 
-The controlled candidate measures:
+The allocator-only controlled candidate measured:
 
 | Encoding | Bytes | MiB |
 |---|---:|---:|
@@ -208,9 +210,36 @@ Allocated bytes at the same post-disposal stage drifted by 100,099,208 bytes fro
 
 After terminating the stressed worker, the replacement worker returned to 16,777,216 bytes of linear-memory capacity and 128,360 allocated bytes, exactly matching the cold allocator checkpoint. Hard restart is therefore a verified memory-release mechanism while in-worker retention remains unresolved.
 
+### Operation-isolation evidence
+
+The controlled workflow repeated five 1,000-iteration batches for Replicad operations, direct generated bindings, and native C++ scoped operations. The lifecycle delta compares `stl-exported` immediately before the isolated loop with `lifecycle-completed` immediately after it, so unrelated full-fixture work does not contaminate the result.
+
+| Lifecycle operation | Ownership boundary | Allocated-byte delta per 1,000 iterations |
+|---|---|---:|
+| Native box | Entire maker and solid lifetime inside C++ | `0` in all five batches |
+| Native cylinder | Entire maker and solid lifetime inside C++ | `0` in all five batches |
+| Direct Embind box | JS constructs and calls `.delete()` on maker and solid | approximately 9.62 MB |
+| Direct Embind cylinder | JS constructs and calls `.delete()` on maker and solid | approximately 3.04 MB |
+| Replicad box | Replicad wrappers over Embind | approximately 10.73 MB |
+| Replicad cylinder | Replicad wrappers over Embind | approximately 7.88 MB |
+| Replicad boolean cut | Replicad wrappers over Embind | 126.45–126.85 MB |
+
+The purge control repeated all four direct/native scenarios with `Standard::Purge()` after each lifecycle block. Every call released zero blocks, and the direct-binding deltas were unchanged. This matches the pinned OCCT source: its default `Standard_MMgrRaw` delegates to `malloc`/`free`, while `Purge()` has no cached free-list work.
+
+The pinned OpenCascade.js generator supplies the missing causal link. In `src/bindings.py`, it specializes `emscripten::internal::raw_destructor<T>` to a no-op whenever a class declares a two-argument placement `operator delete`. OCCT's `DEFINE_STANDARD_ALLOC` declares both a normal one-argument delete and that placement delete. Consequently, generated `.delete()` calls invalidate their JS handles but skip the native destructor for affected public-destructor OCCT classes. Native scoped cycles avoid that generated policy and return exactly to their pre-loop allocation.
+
+The smallest justified remediation is:
+
+1. rebuild the pinned OpenCascade.js builder from the archived OpenCascade.js and OCCT sources;
+2. patch the generator so placement delete alone does not suppress a publicly destructible class, with generator fixtures for public, non-public, ordinary, and placement delete combinations;
+3. rebuild the controlled binding and require direct Embind primitive loops to return to zero retained lifecycle delta before measuring a production plateau;
+4. rerun Replicad boolean, tessellation, STEP writer/reader, hard-restart, browser, and geometry invariants;
+5. archive the reviewed patch, exact sources, build recipe, output manifest, license texts, and replacement instructions.
+
 Required follow-up:
 
-- isolate primitive, boolean, fillet, mesh, STEP writer, and STEP reader loops to locate growth;
+- source-build and validate the destructor-generator correction;
+- isolate fillet, mesh, STEP writer, and STEP reader loops after the primitive leak is removed;
 - repeat batches until a numeric plateau is established or a leak is fixed;
 - record peak and steady-state bytes separately from linear-memory capacity;
 - validate document recovery on top of the verified hard memory-release path;
@@ -223,16 +252,17 @@ The executable evidence is owned by:
 - `packages/protocol/src/geometry-worker.test.ts` for schema and structured-clone payload validation;
 - `packages/geometry-worker/src/runtime.test.ts` for invalid input, initialization, transfer lists, cancellation, and stale generations;
 - `packages/geometry-worker/src/memory-profile.test.ts` for missing, complete, malformed, and invalid allocator bindings;
+- `packages/geometry-worker/src/occt-diagnostics.test.ts` for controlled binding validation, native lifecycle dispatch, and purge results;
 - `scripts/occt-build-config.test.ts` for deterministic config instrumentation and upstream-anchor drift;
 - `scripts/occt-build-artifacts.test.ts` for output validation and isolated package staging;
 - `tests/e2e/geometry-worker.spec.ts` for real worker, WASM, modeling, exchange, invariant, progress, lifetime, and disposal behavior.
 
-Playwright attaches a compact JSON evidence record to the HTML report for each browser run. The controlled workflow also writes `geometry-worker-evidence.json` beside the build report and archives both reports, exact sources, generated outputs, and browser diagnostics for seven days. Generated evidence is not committed.
+Playwright attaches a compact JSON evidence record to the HTML report for each browser run. The controlled workflow also writes one operation- and purge-qualified `geometry-worker-evidence-*.json` file per scenario beside the build report and archives the reports, exact sources, generated outputs, and browser diagnostics for seven days. Generated evidence is not committed.
 
 ## Remaining stop/go work
 
-- Rebuild the pinned builder image from archived sources, compare it with the registry-pinned build, and publish the final build instructions.
-- Isolate and fix or explain the measured allocator retention, then establish a production plateau threshold.
+- Rebuild the pinned builder image from archived sources with the reviewed destructor-generator patch, then publish the final build instructions and comparison.
+- Prove the corrected binding's allocator plateau and establish a production threshold.
 - Compare the controlled direct binding with Replicad on API coverage, size, speed, and maintainability.
 - Verify operation history needed by SPK-003.
 - Open exported STEP independently in FreeCAD or another reader.

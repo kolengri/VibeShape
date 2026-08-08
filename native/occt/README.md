@@ -2,7 +2,7 @@
 
 ## Status
 
-This is a **rework harness**, not the production geometry dependency. It prepares exact source archives, derives Replicad's reviewed binding list, adds allocator instrumentation, and can invoke one immutable OpenCascade.js builder image. It does not automatically replace the locked `replicad-opencascadejs` artifact.
+This is a **rework harness**, not the production geometry dependency. It prepares exact source archives, derives Replicad's reviewed binding list, adds allocator and lifecycle instrumentation, and can invoke one immutable OpenCascade.js builder image. It does not automatically replace the locked `replicad-opencascadejs` artifact.
 
 The first successful build must still pass the complete SPK-001 geometry, exchange, browser, memory, and license gates before promotion. The upstream builder image is pinned by digest, but a later release build must also reproduce that image from archived sources rather than rely only on a registry artifact.
 
@@ -31,6 +31,7 @@ The generated config:
 - preserves the binding list used by `replicad-opencascadejs@0.23.0`;
 - renames the artifact to `vibeshape_occt`;
 - exposes `mallinfo()` arena, allocated, and free bytes through `VibeShapeAllocatorStats`;
+- exposes native C++ scoped box/cylinder cycles and `Standard::Purge()` through `VibeShapeOcctDiagnostics`;
 - fails when the reviewed upstream anchors change instead of applying an ambiguous patch.
 
 ## Build
@@ -66,3 +67,5 @@ The worker protocol now reports ordered memory snapshots from initialization thr
 - `heapCapacityBytes` — Emscripten linear-memory capacity, which does not shrink.
 
 This distinction is required before interpreting retained linear-memory capacity as a native leak.
+
+The operation-isolation matrix demonstrates that native C++ scoped box and cylinder cycles return to their exact pre-loop live allocation, while equivalent generated-binding calls retain allocation linearly. The pinned OpenCascade.js generator replaces `raw_destructor<T>` with a no-op when it detects placement delete; OCCT's `DEFINE_STANDARD_ALLOC` declares placement delete alongside a usable ordinary delete. The next controlled build must reproduce the builder image from the archived sources with a reviewed generator correction. It must not promote the current registry-built artifact or hide the problem behind worker restart alone.
