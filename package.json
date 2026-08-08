@@ -57,6 +57,7 @@
     "occt:evidence": "bun run occt:build:source && bun run occt:evidence:memory",
     "occt:evidence:memory": "bun run scripts/run-occt-memory-evidence.ts",
     "occt:evidence:performance": "bun run scripts/run-occt-performance-evidence.ts",
+    "occt:evidence:step": "bun run scripts/run-step-interoperability-evidence.ts",
     "occt:bundle:compliance": "bun run scripts/create-occt-compliance-bundle.ts",
     "occt:verify:compliance": "bun run scripts/verify-occt-compliance-bundle.ts",
     "fallow": "fallow",

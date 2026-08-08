@@ -24,7 +24,7 @@ With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can re
 
 ## SPK-001 — OCCT/Replicad worker
 
-**Current result:** **Rework — all technical gates except independent STEP validation passed.** The protocol-v3 worker, exact modeling scenario, transient boolean and fillet history evidence, transferable tessellation, STEP round-trip, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, local Chromium performance budget, Chromium/Firefox/WebKit functional matrix, and verified corresponding-source bundle are implemented. The controlled package is built locally from verified OpenCascade.js and OCCT archives with the reviewed destructor correction. Purpose-owned OCCT adapters eliminate `FinalizationRegistry`-dependent lifetimes in the critical path. Every 1,000-operation lifecycle block retains zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 173.0 ms, and complete-fixture p95 is 270.3 ms on the declared Apple M1 baseline. Independent STEP validation remains required. Stable topology resolution remains SPK-003 work. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
+**Current result:** **Pass — Phase 0 stop/go gate cleared.** The protocol-v4 worker, exact modeling scenario, transient boolean and fillet history evidence, transferable tessellation and STEP bytes, internal STEP round-trip, independent-application FreeCAD import, STL export, deterministic wrapper ownership, stage memory checkpoints, hard worker restart, local Chromium performance budget, Chromium/Firefox/WebKit functional matrix, and verified corresponding-source bundle are implemented. The controlled package is built locally from verified OpenCascade.js and OCCT archives with the reviewed destructor correction. Purpose-owned OCCT adapters eliminate `FinalizationRegistry`-dependent lifetimes in the critical path. Every 1,000-operation lifecycle block retains zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. FreeCAD 1.1.3 imports the exact browser output as one valid solid with matching volume and bounds. Stable topology resolution remains SPK-003 work. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
 ### Question
 
@@ -62,7 +62,7 @@ Can the browser provide the required exact CAD API, STEP support, and operation 
 
 Proceed only when STEP, boolean, fillet, validation, and history are available; the main thread stays responsive; and repeated runs show no unexplained unbounded growth. Otherwise, reduce bindings or replace the adapter before building feature UI.
 
-The functional operations, source-built destructor correction, transient history API, allocator plateau, operation isolation, hard restart, controlled responsiveness measurements, and technical release bundle pass. Independent STEP validation and the production-facade comparison remain open. Do not promote the spike adapter into production feature work yet.
+The functional operations, source-built destructor correction, transient history API, allocator plateau, operation isolation, hard restart, controlled responsiveness measurements, independent-application STEP import, and technical release bundle pass. The production-facade comparison and extended format corpus remain promotion work. Do not promote the spike adapter into production feature work automatically.
 
 ## SPK-002 — sketch solver
 

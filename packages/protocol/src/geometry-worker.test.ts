@@ -161,6 +161,7 @@ describe("geometry worker protocol", () => {
       },
       exchange: {
         stepBytes: 1,
+        stepFile: new Uint8Array([1]),
         stlBytes: 84,
         importedShape: {
           valid: true,
@@ -206,5 +207,19 @@ describe("geometry worker protocol", () => {
     })
 
     expect(response.type).toBe("kernelSpikeCompleted")
+
+    if (response.type !== "kernelSpikeCompleted") {
+      throw new Error("Expected the kernel spike response fixture.")
+    }
+
+    expect(response.exchange.stepFile).toBeInstanceOf(Uint8Array)
+    expect(response.exchange.stepBytes).toBe(response.exchange.stepFile.byteLength)
+
+    expect(
+      geometryWorkerResponseSchema.safeParse({
+        ...response,
+        exchange: { ...response.exchange, stepBytes: response.exchange.stepBytes + 1 },
+      }).success,
+    ).toBe(false)
   })
 })

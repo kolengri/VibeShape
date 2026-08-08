@@ -436,6 +436,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         mesh,
         exchange: {
           stepBytes: stepBytes.byteLength,
+          stepFile: stepBytes,
           stlBytes,
           importedShape: importedShapeMetrics,
           relativeVolumeError: relativeError(shape.volume, importedShapeMetrics.volume),

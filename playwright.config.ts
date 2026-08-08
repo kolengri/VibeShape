@@ -38,6 +38,6 @@ export default defineConfig({
       ? "bun run --cwd apps/web dev:e2e -- --mode controlled-occt"
       : "bun run --cwd apps/web dev:e2e",
     url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !controlledOcctMode,
   },
 })

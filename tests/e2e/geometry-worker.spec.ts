@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
 import {
+  GEOMETRY_PROTOCOL_VERSION,
   GEOMETRY_MEMORY_STAGES,
   type GeometryLifecycleOperation,
   type GeometryWorkerResponse,
@@ -201,6 +203,8 @@ function expectGeometryResult(
   expect(result.mesh.triangleFaceIds.length).toBe(result.mesh.indices.length / 3)
   expect(Math.max(...result.mesh.indices)).toBeLessThan(result.mesh.positions.length / 3)
   expect(result.exchange.stepBytes).toBeGreaterThan(kernelSpikeExpectedInvariants.minimumStepBytes)
+  expect(result.exchange.stepFile).toBeInstanceOf(Uint8Array)
+  expect(result.exchange.stepFile.byteLength).toBe(result.exchange.stepBytes)
   expect(result.exchange.stlBytes).toBeGreaterThanOrEqual(
     kernelSpikeExpectedInvariants.minimumBinaryStlBytes,
   )
@@ -331,7 +335,7 @@ function createEvidence(
       vertexCount: result.mesh.positions.length / 3,
       triangleCount: result.mesh.indices.length / 3,
     },
-    exchange: result.exchange,
+    exchange: createExchangeEvidence(result),
     lifecycle: spike.results.map((batch) => batch.lifecycle),
     memory: spike.results.map((batch) => batch.memory),
     timings: result.timings,
@@ -344,7 +348,7 @@ function createEvidence(
       result: {
         engine: restart.result.engine,
         shape: restart.result.shape,
-        exchange: restart.result.exchange,
+        exchange: createExchangeEvidence(restart.result),
         lifecycle: restart.result.lifecycle,
         memory: restart.result.memory,
         timings: restart.result.timings,
@@ -352,6 +356,36 @@ function createEvidence(
       disposal: restart.disposal,
     },
   }
+}
+
+function createExchangeEvidence(result: KernelResponse) {
+  return {
+    stepBytes: result.exchange.stepBytes,
+    stlBytes: result.exchange.stlBytes,
+    importedShape: result.exchange.importedShape,
+    relativeVolumeError: result.exchange.relativeVolumeError,
+  }
+}
+
+function writeStepInteroperabilityFixture(result: KernelResponse) {
+  const directory = ".artifacts/occt-build/step-interoperability"
+  const stepFile = "vibeshape-kernel-fixture.step"
+  const stepPath = `${directory}/${stepFile}`
+  const producerReport = {
+    schemaVersion: 1,
+    protocolVersion: GEOMETRY_PROTOCOL_VERSION,
+    producer: result.engine,
+    shape: result.shape,
+    step: {
+      file: stepFile,
+      bytes: result.exchange.stepFile.byteLength,
+      sha256: createHash("sha256").update(result.exchange.stepFile).digest("hex"),
+    },
+  }
+
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(stepPath, result.exchange.stepFile)
+  writeFileSync(`${directory}/producer-report.json`, `${JSON.stringify(producerReport, null, 2)}\n`)
 }
 
 const defaultParameters = createKernelSpikeParameters()
@@ -370,6 +404,7 @@ const purgeAfterLifecycle = readBooleanEnvironment(
   "VIBESHAPE_GEOMETRY_PURGE_AFTER_LIFECYCLE",
   defaultParameters.purgeAfterLifecycle,
 )
+const stepInteroperabilityMode = readBooleanEnvironment("VIBESHAPE_STEP_INTEROPERABILITY", false)
 
 for (const lifecycleOperation of lifecycleOperations) {
   const scenarioName = `${lifecycleOperation}${purgeAfterLifecycle ? ", allocator purge" : ""}`
@@ -394,6 +429,11 @@ for (const lifecycleOperation of lifecycleOperations) {
 
     const expectedEngine = createExpectedEngine()
     expectGeometryResult(result, expectedEngine)
+
+    if (stepInteroperabilityMode) {
+      writeStepInteroperabilityFixture(result)
+    }
+
     expectLifecycleEvidence(
       spike,
       result,

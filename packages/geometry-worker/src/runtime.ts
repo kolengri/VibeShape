@@ -49,6 +49,7 @@ function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
     response.mesh.normals.buffer,
     response.mesh.indices.buffer,
     response.mesh.triangleFaceIds.buffer,
+    response.exchange.stepFile.buffer,
   ].filter((buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer)
 }
 

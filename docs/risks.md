@@ -34,7 +34,7 @@ A complete OCCT binding may be too large, while manual lifetime management for C
 
 **Fallback:** reduce the binding surface, lazy-load the data-exchange module, cache the compiled module, and remove simultaneous document execution.
 
-**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit. The controlled candidate is source-built from checksum-verified archives with the reviewed OpenCascade.js destructor correction. Purpose-owned OCCT adapters expose transient boolean and fillet history, retain zero bytes in every 1,000-operation lifecycle block, and reach 448 bytes of post-warmup live-allocation drift across four further complete batches. The declared Apple M1 baseline passes initialization, complete-fixture p95, main-thread long-task, peak WASM capacity, and peak live native-allocation budgets. Its verified corresponding-source bundle closes the technical release-bundle gate. R2 is reduced but remains open for independent STEP validation; the spike result remains **Rework**.
+**SPK-001 evidence:** required operations and hard worker restart pass in Chromium, Firefox, and WebKit. The controlled candidate is source-built from checksum-verified archives with the reviewed OpenCascade.js destructor correction. Purpose-owned OCCT adapters expose transient boolean and fillet history, retain zero bytes in every 1,000-operation lifecycle block, and reach 448 bytes of post-warmup live-allocation drift across four further complete batches. The declared Apple M1 baseline passes initialization, complete-fixture p95, main-thread long-task, peak WASM capacity, and peak live native-allocation budgets. Its verified corresponding-source bundle closes the technical release-bundle gate, and headless FreeCAD imports the exact browser STEP output as one valid solid with matching volume and bounds. The Phase 0 stop/go result is **Pass**. R2 is substantially reduced but remains tracked for the production facade, broader device and format corpora, and dependency upgrades.
 
 ### Solver
 
@@ -70,7 +70,7 @@ Assemblies, drawings, collaboration, and slicing are each comparable to an indep
 
 GPL reduces uncertainty around solver integration but limits proprietary reuse. The OCCT LGPL still requires replaceability and a source offer even when the application itself is GPL-licensed.
 
-**Gate:** the release process verifies a locally generated compliance artifact before publication. Heavy source builds and bundle generation do not run on ordinary pull-request or push workflows; the release record preserves the verified manifest and checksums.
+**Gate:** the release process verifies a locally generated compliance artifact before publication. Heavy source builds and bundle generation have no GitHub Actions workflow; the release record preserves the verified manifest and checksums.
 
 ### Extension trust and reproducibility
 
