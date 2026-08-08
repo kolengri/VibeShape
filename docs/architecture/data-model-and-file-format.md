@@ -88,6 +88,9 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - safe non-negative revision preconditions, explicit stale-revision diagnostics, and revision-exhaustion rejection;
 - actor-bound disposable drafts whose commands share one transaction ID and commit only against the original base revision;
 - first-party `org.vibeshape.core.document` and `org.vibeshape.core.features` module descriptors plus deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
+- canonical quantity schema v0 for length, angle, and scalar parameters, with millimeter/radian storage, normalized finite values, exact source-unit consistency, and optional normalized expression text;
+- a first-party `org.vibeshape.core.part-design` module that contributes exact versioned box and cylinder feature descriptors with bounded positive length parameters;
+- a trusted feature-type registry that requires descriptor-handler parity, validates dependency/reference cardinality and parameter schemas, contains normalizer exceptions and non-JSON outputs, and reports unavailable types without rewriting their records;
 - an executable trusted-command dispatcher that requires exactly one handler per descriptor and validates command route, owner, and schema-version parity before execution;
 - strict feature schema v0 records with stable type ownership, bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and presentation order;
 - deterministic feature-graph construction with duplicate, missing-dependency, self-reference, undeclared-reference, and cycle rejection;
@@ -95,16 +98,18 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.
 
-The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. The generic feature commands preserve presentation order and unknown schema-valid feature records, but they are trusted kernel seams rather than a public extension or MCP tool surface; module-specific eligibility, parameter migration, and confirmation policy remain required. This slice does not yet compute authoritative content hashes, integrate OCCT results, persist evaluation results, implement autosave, feature deletion, undo/redo, units, geometry preview, extension execution, or the `.vshape` codec. Its schemas remain internal contracts until their Phase 1 persistence and geometry integration gates stabilize them.
+The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. The generic feature commands preserve presentation order and unknown schema-valid feature records, but they are trusted kernel seams rather than a public extension or MCP tool surface. The registry now proves module-specific parameter validation, but command eligibility, parameter migration, and confirmation policy are not yet connected to it. This slice does not yet compute authoritative content hashes, integrate OCCT results, persist evaluation results, implement autosave, feature deletion, undo/redo, expression evaluation, display-unit preferences, geometry preview, extension execution, or the `.vshape` codec. Its schemas remain internal contracts until their Phase 1 persistence and geometry integration gates stabilize them.
 
 ## Units and expressions
 
-A numeric parameter stores:
+A quantity schema v0 now stores:
 
-- canonical dimension vector such as length, angle, or dimensionless, with millimeters as the CAD length basis;
-- normalized numeric value;
-- optional original expression string;
-- separate display-unit preference.
+- one explicit `length`, `angle`, or `scalar` dimension;
+- a finite normalized numeric value in millimeters, radians, or scalar identity;
+- a strict source numeric value and input-unit enum, checked against the canonical value;
+- optional normalized expression text as metadata only.
+
+Length input metadata currently accepts `um`, `mm`, `cm`, `m`, `in`, and `ft`; angle input metadata accepts `rad` and `deg`. Constructors normalize negative zero so semantic JSON remains stable. Box and cylinder schemas require positive dimensions no greater than `1,000,000 mm`. General dimension vectors, expression parsing and dependency tracking, document display-unit preferences, localized input, and tolerance-aware UI stepping remain future contracts.
 
 JSON never depends on locale. The native decimal separator is always `.`. The UI may accept localized input but normalizes it before commit.
 

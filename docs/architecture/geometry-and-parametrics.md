@@ -28,6 +28,8 @@ Parametrics cannot be reconstructed from a mesh, and a visually correct mesh is 
 - UI code never compares geometry with `===` or an arbitrary epsilon.
 - Imported units are converted explicitly and recorded in the import report.
 
+The implemented quantity schema v0 covers the first required dimensions without introducing a general expression engine. Length source values in `um`, `mm`, `cm`, `m`, `in`, or `ft` normalize to millimeters; `deg` and `rad` normalize to radians; scalar values retain unit `1`. Every record carries strict source metadata that must recompute to the canonical finite value, and negative zero is normalized before serialization. Optional expression text is retained metadata only and is not evaluated. The initial box and cylinder parameter schemas consume these quantities and bound positive primitive dimensions to `1,000,000 mm`; document display preferences and tolerance-aware UI stepping remain separate concerns.
+
 Initial tolerance goals, subject to spike validation:
 
 | Parameter | Initial value | Purpose |

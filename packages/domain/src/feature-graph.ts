@@ -34,7 +34,7 @@ export const featureTypeSchema = z
   })
   .strict()
 
-const featureParametersSchema = z
+export const featureParametersSchema = z
   .record(z.string().min(1).max(128), z.json())
   .refine(
     (parameters) => Object.keys(parameters).length <= MAX_PARAMETERS,
@@ -151,6 +151,7 @@ export const featureEvaluationRecordSchema = z.discriminatedUnion("status", [
 ])
 
 export type FeatureRecord = Readonly<z.infer<typeof featureRecordSchema>>
+export type FeatureParameters = Readonly<z.infer<typeof featureParametersSchema>>
 export type FeatureDiagnostic = Readonly<z.infer<typeof featureDiagnosticSchema>>
 export type FeatureEvaluationOutcome = Readonly<z.infer<typeof featureEvaluationOutcomeSchema>>
 export type FeatureEvaluationRecord = Readonly<z.infer<typeof featureEvaluationRecordSchema>>
