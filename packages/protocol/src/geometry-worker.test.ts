@@ -17,6 +17,39 @@ const validEnvelope = {
   generation: 1,
 } as const
 
+const featureContentEnvironment = {
+  schemaVersion: 0,
+  hostApiVersion: "0.1.0",
+  geometry: {
+    adapterId: "org.vibeshape.geometry.replicad",
+    adapterVersion: "spike-2",
+    kernelId: "org.opencascade.occt",
+    kernelVersion: "0.23.0",
+    kernelSourceRevision: null,
+  },
+  modelingTolerancePolicyVersion: 1,
+  provider: { kind: "built-in" },
+} as const
+
+const boxFeatureType = {
+  moduleId: "org.vibeshape.core.part-design",
+  moduleVersion: "0.1.0",
+  typeId: "org.vibeshape.feature.part-design.box",
+  schemaVersion: 1,
+} as const
+
+const boxContent = {
+  schemaVersion: 0,
+  feature: {
+    schemaVersion: 0,
+    type: boxFeatureType,
+    parameters: { width: 20, depth: 30, height: 25.4, centered: true },
+    inputs: [],
+    references: [],
+  },
+  environment: featureContentEnvironment,
+} as const
+
 const validParameters = {
   boxSize: [60, 40, 20],
   cylinderRadius: 8,
@@ -48,6 +81,51 @@ describe("geometry worker protocol", () => {
     })
 
     expect(parsed.type).toBe("runKernelSpike")
+  })
+
+  it("accepts bounded canonical feature evaluation requests", () => {
+    const request = {
+      ...validEnvelope,
+      type: "evaluateFeature",
+      featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
+      content: boxContent,
+      contentHash: "a".repeat(64),
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    }
+
+    expect(geometryWorkerRequestSchema.safeParse(request).success).toBe(true)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        mesh: { ...request.mesh, chordTolerance: 0.000_1 },
+      }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({ ...request, contentHash: "invalid" }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        content: {
+          ...request.content,
+          feature: { ...request.content.feature, inputs: ["a".repeat(64)] },
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        content: {
+          ...request.content,
+          feature: {
+            ...request.content.feature,
+            parameters: Object.fromEntries(
+              Array.from({ length: 17 }, (_, index) => [`parameter-${index}`, index]),
+            ),
+          },
+        },
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts bounded topology parameters and rejects invalid pattern geometry", () => {
@@ -169,6 +247,7 @@ describe("geometry worker protocol", () => {
         opencascadeSourceRevision: null,
         wasmBytes: 1,
         initializedInMs: 1,
+        featureContentEnvironment,
       },
       shape: {
         valid: true,

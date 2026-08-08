@@ -125,6 +125,14 @@ export type FeatureContentHashResult =
 
 export type FeatureContentHasher = (canonicalPayload: string) => unknown | Promise<unknown>
 
+export function serializeFeatureContentEnvironment(input: unknown) {
+  return canonicalJson(featureContentEnvironmentSchema.parse(input))
+}
+
+export function serializeFeatureContentIdentity(input: unknown) {
+  return canonicalJson(featureContentIdentitySchema.parse(input))
+}
+
 function diagnostic(
   code: FeatureContentIdentityDiagnostic["code"],
   message: string,
@@ -251,7 +259,7 @@ export function createFeatureContentIdentity(
     environment: environment.data,
   })
 
-  return { ok: true, identity, canonicalPayload: canonicalJson(identity) }
+  return { ok: true, identity, canonicalPayload: serializeFeatureContentIdentity(identity) }
 }
 
 export async function computeFeatureContentHash(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { OwnedShapeRegistry } from "./shape-registry"
+import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
 
 class TrackedShape {
   deleteCount = 0
@@ -49,6 +49,71 @@ describe("OwnedShapeRegistry", () => {
     registry.own(new TrackedShape("broken", [], true))
 
     expect(() => registry.disposeAll()).toThrow("Failed to delete broken.")
+    expect(registry.size).toBe(1)
+  })
+})
+
+describe("DocumentFeatureShapeRegistry", () => {
+  it("reuses exact feature content and replaces only the edited feature", () => {
+    const deletionOrder: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const first = new TrackedShape("first", deletionOrder)
+    const replacement = new TrackedShape("replacement", deletionOrder)
+    const independent = new TrackedShape("independent", deletionOrder)
+
+    registry.replace("document-a", "feature-a", "a".repeat(64), first)
+    registry.replace("document-a", "feature-b", "b".repeat(64), independent)
+    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBe(first)
+    expect(registry.get("document-a", "feature-a", "c".repeat(64))).toBeUndefined()
+
+    registry.replace("document-a", "feature-a", "c".repeat(64), replacement)
+
+    expect(first.deleteCount).toBe(1)
+    expect(independent.deleteCount).toBe(0)
+    expect(registry.size).toBe(2)
+    expect(registry.get("document-a", "feature-a", "c".repeat(64))).toBe(replacement)
+  })
+
+  it("disposes one document without touching another document", () => {
+    const deletionOrder: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const first = new TrackedShape("first", deletionOrder)
+    const second = new TrackedShape("second", deletionOrder)
+
+    registry.replace("document-a", "feature-a", "a".repeat(64), first)
+    registry.replace("document-b", "feature-b", "b".repeat(64), second)
+
+    expect(registry.disposeDocument("document-a")).toBe(1)
+    expect(first.deleteCount).toBe(1)
+    expect(second.deleteCount).toBe(0)
+    expect(registry.get("document-b", "feature-b", "b".repeat(64))).toBe(second)
+  })
+
+  it("keeps failed document disposal visible for recovery", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    registry.replace(
+      "document-a",
+      "feature-a",
+      "a".repeat(64),
+      new TrackedShape("broken", [], true),
+    )
+
+    expect(() => registry.disposeDocument("document-a")).toThrow("Failed to delete broken.")
+    expect(registry.size).toBe(1)
+  })
+
+  it("keeps the previous feature entry when replacement disposal fails", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const previous = new TrackedShape("previous", [], true)
+    const replacement = new TrackedShape("replacement", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), previous)
+
+    expect(() => registry.replace("document-a", "feature-a", "b".repeat(64), replacement)).toThrow(
+      "Failed to delete previous.",
+    )
+    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBe(previous)
+    expect(registry.get("document-a", "feature-a", "b".repeat(64))).toBeUndefined()
+    expect(replacement.deleteCount).toBe(0)
     expect(registry.size).toBe(1)
   })
 })

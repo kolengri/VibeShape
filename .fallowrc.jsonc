@@ -6,6 +6,7 @@
     "apps/web/src/spikes/geometry-worker.ts",
     "apps/web/src/spikes/extension-sandbox.ts",
     "apps/web/src/spikes/persistence.ts",
+    "apps/web/src/spikes/primitive-features.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
     "playwright.formats.config.ts",
@@ -17,7 +18,12 @@
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },
-  "ignorePatterns": ["**/__generated__/**", "**/generated/**"],
+  "ignorePatterns": [
+    "**/__generated__/**",
+    "**/generated/**",
+    // Vite resolves secondary HTML entry scripts; their TypeScript files are explicit entries above.
+    "apps/web/spikes/*.html"
+  ],
   "duplicates": {
     // Pair-only similarity is often incidental. Gate widespread copy-paste.
     "minOccurrences": 3,

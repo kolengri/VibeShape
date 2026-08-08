@@ -412,10 +412,11 @@ function writeStepInteroperabilityFixture(result: KernelResponse) {
   const directory = ".artifacts/occt-build/step-interoperability"
   const stepFile = "vibeshape-kernel-fixture.step"
   const stepPath = `${directory}/${stepFile}`
+  const { featureContentEnvironment: _featureContentEnvironment, ...producer } = result.engine
   const producerReport = {
     schemaVersion: 1,
     protocolVersion: GEOMETRY_PROTOCOL_VERSION,
-    producer: result.engine,
+    producer,
     shape: result.shape,
     step: {
       file: stepFile,
