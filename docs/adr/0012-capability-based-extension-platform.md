@@ -1,7 +1,9 @@
 # ADR-0012: Capability-Based Extension Platform
 
-- Status: **Proposed**
+- Status: **Accepted with reduced scope**
 - Date: 2026-08-07
+- Accepted: 2026-08-08
+- Evidence: [SPK-006](../spikes/spk-006-extension-sandbox.md)
 
 ## Context
 
@@ -13,19 +15,19 @@ Onshape provides two useful references: deterministic, version-linked FeatureScr
 
 ## Decision
 
-Adopt a versioned, capability-based extension platform with three execution profiles:
+Adopt a versioned, capability-based extension platform with separate execution profiles:
 
-1. **Parametric feature modules** define deterministic feature types. They receive immutable typed inputs and a host-owned modeling API. They have no network, clock, randomness, DOM, file, clipboard, storage, or direct kernel access.
-2. **Workspace extensions** contribute commands, panels, property editors, reports, and analysis views. Their code runs outside the application main realm and communicates only through a versioned, runtime-validated host protocol. Every privileged operation requires a declared and user-granted capability.
-3. **Compute and codec modules** may use WebAssembly in a dedicated worker for bounded algorithms or file formats. They receive only declared host imports and never receive OCCT handles. Native or kernel-level modules are not supported by the browser build.
+1. **Parametric feature modules** define deterministic feature types. The accepted runtime candidate is WebAssembly in a terminable worker, with no imports until a reviewed deterministic modeling ABI exists. Feature modules have no network, clock, randomness, DOM, file, clipboard, storage, or direct kernel access.
+2. **Workspace and UI extensions** may declare commands, panels, property editors, reports, and analysis views. Custom UI uses an opaque-origin iframe and a dedicated, runtime-validated `MessagePort`. Arbitrary third-party JavaScript workspace controllers are not accepted because a same-origin worker retains ambient network, clock, randomness, IndexedDB, and Cache Storage authority.
+3. **Compute and codec modules** may use WebAssembly in a dedicated worker for bounded algorithms or file formats. They receive only explicitly reviewed host imports and never receive OCCT handles. Native or kernel-level modules are not supported by the browser build.
 
 Extension packages are immutable and content-addressed. A document records the exact extension ID, version, API version, and integrity hash required by each custom feature. Updates are explicit and reversible; the runtime never silently substitutes the latest compatible-looking version.
 
 The portable `.vshape` format may record requirements and preserve parameters or cached previews, but it never auto-installs or executes embedded extension code. Missing extensions open in a degraded, non-destructive mode that preserves the original document and identifies the unavailable features.
 
-Executable extension packages remain disabled until a dedicated sandbox spike proves isolation, termination, resource budgets, package validation, permissions, upgrade/rollback, and cross-browser behavior. The first implementation therefore reserves extension metadata and registry seams without publishing an SDK or adding empty workspace packages.
+SPK-006 accepts the package, exact lock, capability, restricted-mode, opaque iframe, and no-import WebAssembly seams. It rejects the dedicated JavaScript worker as a sufficient sandbox and does not establish a portable hard memory ceiling or production modeling ABI. Executable third-party packages therefore remain disabled in the product until those production gates pass. The private `@vibeshape/extension-spike` evidence package is not a public API or SDK compatibility promise.
 
-The complete proposed contract is defined in [Extension architecture](../architecture/extensions.md).
+The complete target contract and remaining gates are defined in [Extension architecture](../architecture/extensions.md).
 
 ## Consequences
 
@@ -34,10 +36,11 @@ The complete proposed contract is defined in [Extension architecture](../archite
 - Rebuild and cache identity include the exact extension artifact, improving reproducibility and offline behavior.
 - The application needs an extension registry, package store, permission store, lifecycle host, and stable contribution-point schemas.
 - Feature modules cannot call arbitrary JavaScript packages or web APIs; functionality must be exposed deliberately through a versioned host API.
+- Same-origin JavaScript workers are not available to untrusted workspace packages under this decision.
 - UI extensions cannot mount React components in the application tree or access application stores directly.
 - Networked integrations are workspace extensions, never parametric feature modules, and are optional rather than part of the local-first core.
 - Package signing can improve publisher identity, but integrity pinning and sandboxing remain required because signatures do not make code safe.
-- Public SDK and marketplace work is deferred until the core command, feature, migration, and sandbox contracts pass their gates.
+- Public SDK and marketplace work is deferred until the core command, feature, migration, production memory, and document-recovery contracts pass their gates.
 
 ## Rejected alternatives
 

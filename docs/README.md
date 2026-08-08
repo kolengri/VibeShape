@@ -9,7 +9,7 @@
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Extension architecture](architecture/extensions.md), [automation and MCP](architecture/automation-and-mcp.md), and [data model/native format](architecture/data-model-and-file-format.md).
-8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), [SPK-004 3MF evidence](spikes/spk-004-3mf.md), [SPK-005 local-first evidence](spikes/spk-005-local-first.md), and [testing strategy](testing-strategy.md).
+8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), [SPK-004 3MF evidence](spikes/spk-004-3mf.md), [SPK-005 local-first evidence](spikes/spk-005-local-first.md), [SPK-006 extension evidence](spikes/spk-006-extension-sandbox.md), and [testing strategy](testing-strategy.md).
 9. [Deployment](deployment.md), [ADRs](adr/README.md), [risks](risks.md), [licensing](licensing.md), and [research sources](research-sources.md).
 
 ## Requirement levels
@@ -35,13 +35,11 @@ The documents use these terms:
 - Form controls are uncontrolled-first primitives with separate TanStack Form adapters.
 - Product copy uses typed ICU catalogs through the local-first `@vibeshape/i18n` layer.
 - Topology-reference failures are never repaired silently; ambiguity is visible to the user.
+- Extension packages and document locks use exact integrity; the accepted executable candidate is no-import WebAssembly with opaque-origin iframe UI, not arbitrary workspace JavaScript.
 - English is the canonical language for documentation and code comments.
 
 ## Proposed decisions
 
-- Third-party extensibility uses separate deterministic feature, capability-based workspace, and bounded compute profiles.
-- Extension artifacts are immutable and exact-version/integrity pinned; `.vshape` records requirements but never executes embedded code.
-- A public extension API remains blocked on `SPK-006` isolation, termination, permissions, compatibility, and recovery evidence.
 - Product functionality follows a microkernel plus cohesive first-party module model; modularity does not make trusted kernel services installable extensions.
 - MCP is a local external adapter over bounded resources and the ordinary draft/command path, not a privileged document mutation API.
 
@@ -57,12 +55,14 @@ SPK-004 is **Pass — minimal 3MF writer and slicer gate cleared**. The project-
 
 SPK-005 is **Pass — semantic persistence and recovery gate cleared; installed-build update validation remains**. Dexie transactions atomically persist strict event, snapshot, project-head, and recovery records; checksum replay, one-writer lease epochs, forced-page recovery, quota rollback, service-worker offline reopen, and progressive OPFS/file fallbacks pass the local Chromium, Firefox, and WebKit matrix. The recorded WebKit runtime exposes but cannot open OPFS, so derived caching degrades without blocking semantic documents. The evidence command rejects CI and has no GitHub Actions workflow.
 
+SPK-006 is **Proceed with reduced scope**. Strict immutable packages, exact locks, deterministic no-import WebAssembly, deny/grant/revoke policy, opaque-origin iframe UI, resource termination, and restricted states pass locally in Chromium, Firefox, and WebKit. Arbitrary same-origin workspace JavaScript is rejected because the worker retains ambient browser authority. A public SDK and product execution remain blocked on the production modeling ABI, memory policy, document integration, update/rollback, and recovery gates.
+
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
 - Production sketch records, worker protocol, drag branch-continuation policy, and large-sketch budgets on the accepted SolveSpace boundary.
 - Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
 - Real startup, memory, rebuild, and representative large-project storage budgets.
-- Extension sandbox runtime, package schema, capability contract, and cross-browser resource budgets.
+- Production extension modeling ABI, portable memory policy, document integration, package governance, and recovery rebuilds on the accepted reduced-scope seams.
 
 ## Decision-change rule
 

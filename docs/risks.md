@@ -14,7 +14,7 @@
 | R8 | A WASM distribution violates LGPL or GPL obligations | Medium | Critical | Source archives, patches, builds, notices, a release gate, and legal review |
 | R9 | Geometry results change after dependency updates | High | High | Exact version pins, engine build ID in files and caches, and corpus tests before upgrades |
 | R10 | Mesh generation, picking, or rendering blocks the main thread | Medium | High | Geometry worker, transferable arrays, levels of detail, and profiling |
-| R11 | A third-party extension exfiltrates data, blocks the UI, corrupts a project, or retains revoked authority | High | Critical | No execution before `SPK-006`; separate profiles, least-privilege capabilities, isolated hosts, strict CSP, budgets, termination, and restricted mode |
+| R11 | A third-party extension exfiltrates data, blocks the UI, corrupts a project, or retains revoked authority | High | Critical | SPK-006 reduced-scope boundary, no arbitrary workspace JavaScript, least-privilege capabilities, strict CSP, budgets, termination, restricted mode, and production gates before execution |
 | R12 | An unavailable or silently updated extension makes a document irreproducible | High | Critical | Exact version and integrity lock, offline artifact retention, explicit updates, payload preservation, invariant preview, and rollback |
 | R13 | An AI client bypasses document invariants, commits stale or unintended geometry, or exposes private local context through MCP | High | Critical | Local opt-in pairing, bounded resources, explicit schema-backed tools, disposable drafts, host confirmation, revision preconditions, cancellation, provenance, and no generic execution tool |
 
@@ -88,7 +88,9 @@ GPL reduces uncertainty around solver integration but limits proprietary reuse. 
 
 Browser workers improve responsiveness but are not, by themselves, a security boundary for untrusted same-origin JavaScript. UI iframes, WebAssembly modules, package signatures, and catalog review also solve only parts of the problem.
 
-**Rule:** third-party executable packages stay disabled until `SPK-006` proves the combined runtime, capability, message, resource, and recovery model across the supported browsers. Opening a project never grants trust or retrieves code.
+**SPK-006 evidence:** immutable exact-integrity packages, no-import WebAssembly features, opaque iframe UI, capability revocation, host termination, and restricted states pass in Chromium, Firefox, and WebKit. Dedicated JavaScript workers expose ambient browser authority and are rejected for untrusted workspace controllers. A portable hard memory quota and production document recovery rebuild are not proven.
+
+**Rule:** third-party executable packages stay disabled until the accepted reduced-scope seams gain a deterministic modeling ABI, portable memory policy, production transactions, persisted update/rollback, and non-destructive recovery. Opening a project never grants trust or retrieves code.
 
 **Reproducibility rule:** document and feature identity include the exact extension artifact. A different artifact with the same package name and version is rejected, and updates occur through an explicit disposable rebuild plus rollback path.
 

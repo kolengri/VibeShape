@@ -4,10 +4,12 @@
   "entry": [
     "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
+    "apps/web/src/spikes/extension-sandbox.ts",
     "apps/web/src/spikes/persistence.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
     "playwright.formats.config.ts",
+    "playwright.extension.config.ts",
     "playwright.persistence.config.ts",
     "playwright.performance.config.ts",
     "playwright.topology.config.ts"
@@ -26,6 +28,7 @@
       { "name": "web", "patterns": ["apps/web/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
+      { "name": "extension-spike", "patterns": ["packages/extension-spike/**"] },
       {
         "name": "automation-api",
         "patterns": ["packages/automation-api/**"]

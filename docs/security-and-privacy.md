@@ -48,12 +48,12 @@ A worker is not a security sandbox against compromised same-origin code. XSS rem
 
 ## Extension isolation
 
-The target extension platform is specified in [Extension architecture](architecture/extensions.md) and remains gated by `SPK-006`. Until that spike is accepted, the production application does not execute third-party code.
+The target extension platform is specified in [Extension architecture](architecture/extensions.md). SPK-006 accepts only immutable packages, no-import WebAssembly features, deny-by-default capabilities, restricted states, and opaque-origin iframe UI. The production application still does not execute third-party code because the modeling ABI, portable memory policy, document transaction, update/rollback, and recovery gates remain open.
 
 - Native projects never embed auto-executable JavaScript, WebAssembly, HTML, or remote loaders.
 - Opening a project never installs, enables, grants, updates, or downloads an extension.
 - Parametric feature modules receive no network, clock, randomness, DOM, storage, file, clipboard, or raw-kernel authority.
-- Workspace extension code runs outside the application main realm and can act only through runtime-validated, capability-checked messages.
+- Arbitrary same-origin workspace JavaScript is disabled; a dedicated worker still has ambient network, clock, randomness, IndexedDB, and Cache Storage authority.
 - Custom UI uses an opaque-origin sandboxed iframe with extension-specific CSP; it cannot mount into the application DOM.
 - CPU-bound extension code runs in a terminable worker or stricter runtime with time, memory, message, output-size, and restart budgets.
 - Every package is structurally validated, content-addressed, and integrity-checked before installation.
@@ -64,6 +64,8 @@ The target extension platform is specified in [Extension architecture](architect
 Extension packages use the same archive defenses as native files and additionally reject undeclared executable entries, incompatible API versions, invalid entry points, and checksum mismatches. Exact network origins and reasons are declared in the manifest and shown before a grant. Wildcards are prohibited in the initial capability model.
 
 An extension failure is contained to its host. It cannot commit a partial domain command or geometry result, and revocation terminates active hosts. Diagnostics identify the extension ID, version, integrity digest, entry point, capability, and resource limit without including document content by default.
+
+The current memory-growth fixture is terminated after exceeding its message budget. This is containment evidence, not a browser-independent hard memory quota; production executable support must close that gap explicitly.
 
 ## Automation and MCP isolation
 

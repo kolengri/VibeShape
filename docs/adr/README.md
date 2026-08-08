@@ -13,7 +13,7 @@
 | [0009](0009-tailwind-shadcn-ui.md) | Accepted | Tailwind CSS v4 with shadcn/ui and Radix |
 | [0010](0010-uncontrolled-form-primitives-and-tanstack-form.md) | Accepted | Uncontrolled-first form primitives with TanStack Form adapters |
 | [0011](0011-use-intl-localization-layer.md) | Accepted | `use-intl` localization for the static React application |
-| [0012](0012-capability-based-extension-platform.md) | Proposed | Capability-based, version-pinned extension profiles |
+| [0012](0012-capability-based-extension-platform.md) | Accepted with reduced scope | Capability-based, version-pinned extension profiles; no arbitrary workspace JavaScript |
 | [0013](0013-microkernel-modules-and-mcp-automation.md) | Proposed | Microkernel feature modules and MCP over the ordinary command path |
 | [0014](0014-solvespace-flat-wasm-solver.md) | Accepted | SolveSpace v3.2 subset behind a flat worker-owned WASM ABI |
 
@@ -22,6 +22,7 @@ Statuses:
 - `Proposed` — under discussion
 - `Accepted for spike` — direction selected, while the concrete implementation depends on a measurable spike
 - `Accepted` — binding project decision
+- `Accepted with reduced scope` — binding only for the explicitly accepted subset; named gates remain closed
 - `Superseded` — replaced by a newer ADR
 - `Rejected` — considered and not adopted
 
