@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-Create six short-lived spike branches or packages. The checked-in monorepo is a minimal tooling, package-boundary, and UI-shell scaffold; do not fill its engine-specific or extension packages with production adapters until the stop/go review. Spike code may be discarded; fixtures, benchmark harnesses, build scripts, and conclusions remain.
+SPK-001 through SPK-006 now have recorded decisions. Preserve their fixtures, benchmark harnesses, build scripts, and conclusions while promoting only the accepted boundaries into vertical slices. Spike adapters remain quarantined until each named production gate passes.
 
 ## Dependencies
 
@@ -20,7 +20,7 @@ flowchart LR
     G --> F["Phase 1 foundation"]
 ```
 
-With a team, SPK-001, SPK-002, and SPK-005 can run in parallel. `SPK-006` can research packaging and UI isolation early, but its deterministic feature and recovery cases depend on the TopoRef and local-first contracts. One developer should use this order: 001 → 002 → 003 → 004 → 005 → 006.
+The diagram records the completed dependency order. Production work now follows the accepted boundaries: geometry and persistence vertical slices first, followed by document-integrated extension recovery before any executable SDK work.
 
 ## SPK-001 — OCCT/Replicad worker
 
@@ -176,6 +176,8 @@ Are autosave, recovery, update, and fallback behavior reliable across target bro
 
 ## SPK-006 — extension sandbox and package model
 
+**Current result:** **Proceed with reduced scope.** The local package corpus and Chromium, Firefox, and WebKit matrix accept immutable exact-integrity artifacts, two-version coexistence, deterministic no-import WebAssembly, loop and output containment, capability revocation, opaque-origin iframe UI, and non-destructive restricted states. A dedicated JavaScript worker exposes ambient network, clock, randomness, IndexedDB, and Cache Storage in every engine and is rejected for arbitrary untrusted workspace code. The private evidence package is not a public SDK. See [SPK-006 evidence](spikes/spk-006-extension-sandbox.md) and [ADR-0012](adr/0012-capability-based-extension-platform.md).
+
 ### Question
 
 Can VibeShape execute locally installed third-party feature, workspace, and compute extensions without ambient authority, non-deterministic rebuilds, main-thread stalls, or unrecoverable project dependencies?
@@ -214,7 +216,7 @@ Can VibeShape execute locally installed third-party feature, workspace, and comp
 
 ### Stop/go
 
-Do not publish `extension-api`, accept third-party executable packages, or promise SDK compatibility until isolation, termination, deterministic replay, exact-version retention, permission revocation, and non-destructive missing-extension recovery pass in all target browsers.
+Do not publish `extension-api`, accept third-party executable packages, or promise SDK compatibility until the accepted runtime gains a deterministic modeling ABI, a portable memory policy, production transaction and document integration, persisted update/rollback, uninstall preservation, and non-destructive recovery/rebuild evidence.
 
 The extension spike does not block the core alpha workflow while third-party execution remains deferred. It becomes a release gate for any build that enables executable extensions.
 
@@ -259,7 +261,7 @@ The first local MCP bridge is an integration spike after `E02`, `E03`, `E06`, an
 
 ### Foundation scaffold status
 
-The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, GitHub Actions, Vitest, Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. License/SBOM generation and feature-specific browser scenarios remain open.
+The repository already provides the non-engine portion of `E01`: Bun workspaces and catalogs, exact Bun and dependency pins, `bun.lock`, environment-specific TypeScript configs, Biome, Fallow, skill validation, frozen-install and security-audit commands, one fast GitHub Actions job, local Playwright E2E coverage across Chromium, Firefox, and WebKit, Vite, typed ICU localization, Tailwind v4, shared shadcn/Radix routing, semantic UI tokens, and a static shell. Production build and browser matrices are local merge gates to conserve Actions minutes. License/SBOM generation and feature-specific browser scenarios remain open.
 
 `E02` and `E10` now share executable foundation slices: UUIDv7 domain identities, document create and rename commands, strict actor and event schemas, deterministic replay, revision-safe disposable drafts, a validated first-party document module with command and query metadata, and trusted dispatchers that enforce descriptor-handler parity. `@vibeshape/automation-api` supplies strict lifecycle schemas and the bounded `org.vibeshape.document.summary` schema version 1 read model. `@vibeshape/automation-host` adds host-generated owner-bound drafts, serialized operations, inactivity and count limits, bounded preview, idempotent discard, and atomic commit-port coordination. This does not complete either epic: units, feature DAGs, geometry validation, durable persistence, undo/redo, cancellation, idempotent command replay, session pairing and revocation, and confirmation remain open. These slices prove adapter-neutral query and command paths and do not justify an MCP workspace or SDK dependency yet.
 

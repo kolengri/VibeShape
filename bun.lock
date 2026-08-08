@@ -34,6 +34,7 @@
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
         "@vibeshape/domain": "workspace:*",
+        "@vibeshape/extension-spike": "workspace:*",
         "@vibeshape/formats": "workspace:*",
         "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/persistence": "workspace:*",
@@ -72,6 +73,19 @@
       "name": "@vibeshape/domain",
       "version": "0.0.0",
       "dependencies": {
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
+      },
+    },
+    "packages/extension-spike": {
+      "name": "@vibeshape/extension-spike",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/domain": "workspace:*",
+        "fflate": "catalog:",
+        "is-what": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -662,6 +676,8 @@
     "@vibeshape/automation-host": ["@vibeshape/automation-host@workspace:packages/automation-host"],
 
     "@vibeshape/domain": ["@vibeshape/domain@workspace:packages/domain"],
+
+    "@vibeshape/extension-spike": ["@vibeshape/extension-spike@workspace:packages/extension-spike"],
 
     "@vibeshape/formats": ["@vibeshape/formats@workspace:packages/formats"],
 

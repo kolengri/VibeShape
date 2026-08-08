@@ -26,11 +26,11 @@
 | Tests | Vitest through Bun, plus Playwright | Vite-native unit/contract tests and real browser flows |
 | Format and lint | Biome | One deterministic formatter, linter, import organizer, and scoped checker for TypeScript, TSX, JSON, CSS, and HTML |
 | Code intelligence | Fallow | Changed-code risk, cleanup evidence, duplication, complexity, dependency hygiene, styling drift, and architecture boundaries |
-| CI | GitHub Actions | Typecheck, tests, format conformance, Fallow audit, and Playwright E2E across Chromium, Firefox, and WebKit |
+| CI | GitHub Actions | One fast PR job for frozen install, static checks, unit tests, critical audit, and Fallow; production build and browser matrices stay local |
 
 ## Reviewed package-version snapshot
 
-Verified against the npm registry on **2026-08-07**, with `is-what` reviewed on **2026-08-08**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
+Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate` usage reviewed on **2026-08-08**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
 
 | Package | Version | License |
 |---|---:|---|
@@ -138,7 +138,7 @@ The quality gates are complementary:
 
 Fallow is installed as an exact root development dependency. Root scripts expose `fallow`, `fallow:audit`, and a score-oriented health command. `.fallowrc.jsonc` is version-pinned, discovers `apps/*` and `packages/*`, gates stale or reasonless suppressions, ignores generated trees, and encodes only durable package rules initially: `domain` and shared `ui` cannot import other internal packages. More boundary rules are added only after package contracts are accepted. The first full-repository run reported no dead code, duplication, architecture violations, or threshold failures after the shell and validator were decomposed.
 
-Pull requests use `fallow audit` with the new-only gate and full Git history so inherited debt remains visible without blocking unrelated work. The GitHub Action and CLI are pinned to the same reviewed release; CI disables analysis cache for correctness across force-updated PR heads. PR comments require explicit least-privilege workflow permissions and are never a substitute for local output. Fallow's optional runtime product, telemetry, MCP server, and automatic fixes are not foundation requirements; automatic cleanup always begins with a dry run.
+Pull requests use the pinned CLI `fallow audit` with the new-only gate and full Git history so inherited debt remains visible without blocking unrelated work. CI disables analysis cache for correctness across force-updated PR heads. The audit shares the single fast job instead of installing the repository in a second Fallow App job. Fallow's optional runtime product, telemetry, MCP server, PR comments, and automatic fixes are not foundation requirements; automatic cleanup always begins with a dry run.
 
 The Phase 1 root manifest adds this contract:
 
@@ -155,28 +155,15 @@ The Phase 1 root manifest adds this contract:
 }
 ```
 
-The pull-request workflow checks out full history and uses the reviewed action commit, annotated with its release:
+The pull-request workflow checks out full history and uses the exact lockfile version:
 
 ```yaml
-permissions:
-  contents: read
-  id-token: write
-  pull-requests: write
-  checks: write
-
 steps:
   - name: Fallow audit
-    uses: fallow-rs/fallow@3cf8074a0e2e91c895c0a4224ba1c3bec4630d65 # v3.14.0
-    with:
-      version: "3.14.0"
-      command: audit
-      gate: new-only
-      comment: true
-      review-comments: true
-      no-cache: true
+    run: bun run fallow:audit -- --no-cache
 ```
 
-`id-token: write` is required only for branded Fallow App feedback; without it, the action can fall back to the workflow token. If PR comments or reviews are disabled, remove the corresponding write permissions. SARIF upload is a separate opt-in and requires GitHub Code Scanning availability plus `security-events: write`; it is not enabled by default for VibeShape.
+The workflow needs only `contents: read`. Full production builds, Playwright browser matrices, native source builds, and spike evidence run locally before merge and never upload generated artifacts to Actions.
 
 ## Why OCCT instead of mesh CSG
 

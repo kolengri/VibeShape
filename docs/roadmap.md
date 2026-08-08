@@ -8,7 +8,7 @@ All estimates below are **approximate engineering ranges**, not calendar commitm
 
 ## Phase 0 — spikes and measurements (2–4 weeks)
 
-The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, test-model, format, and persistence packages contain isolated SPK-001 through SPK-005 experiment code; these boundaries are not yet a production feature evaluator or application persistence service.
+The repository foundation scaffold is already available for implementing and measuring these spikes. The protocol, geometry-worker, domain, sketch-solver, test-model, format, persistence, and extension-spike packages contain isolated SPK-001 through SPK-006 experiment code; these boundaries are not yet a production feature evaluator, application persistence service, or public extension API.
 
 SPK-001 now passes its Phase 0 stop/go gate with executable evidence. The project source-builds the pinned builder with the reviewed destructor correction, verifies transient boolean and fillet history relations, reaches a 448-byte post-warmup allocator drift with zero retained bytes in every 1,000-operation lifecycle block, passes its local controlled Chromium performance budgets on the declared Apple M1 baseline, creates a verified corresponding-source bundle, and validates the browser-exported STEP fixture through headless FreeCAD. The controlled package remains quarantined until the production facade and extended corpus are reviewed. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
@@ -20,6 +20,8 @@ SPK-004 passes its minimal 3MF interoperability gate. A deterministic project-ow
 
 SPK-005 passes its semantic persistence and recovery gate. Strict Dexie records atomically commit events, snapshots, project heads, recovery markers, and writer-lease checks. The local Chromium, Firefox, and WebKit matrix proves forced-page recovery, stale and quota rollback, bounded checksum recovery, lease takeover, cached-shell offline reopen, and progressive cache/file fallbacks. OPFS remains disposable and degrades cleanly when an exposed implementation is not operational. `.vshape`, autosave scheduling, backup UI, production service-worker updates, and large-project budgets remain Phase 1 work. See [SPK-005 evidence](spikes/spk-005-local-first.md).
 
+SPK-006 records **Proceed with reduced scope**. Immutable exact-integrity packages, no-import WebAssembly features, deny/grant/revoke capabilities, opaque-origin iframe UI, restricted states, and hostile resource fixtures pass locally in Chromium, Firefox, and WebKit. The same matrix rejects arbitrary workspace JavaScript because a dedicated same-origin worker retains ambient network, clock, randomness, IndexedDB, and Cache Storage access. Third-party execution and the public SDK remain disabled pending a deterministic modeling ABI, portable memory policy, and production document, update, rollback, and recovery integration. See [SPK-006 evidence](spikes/spk-006-extension-sandbox.md).
+
 ### Deliverables
 
 - Reproducible OCCT/Replicad worker prototype.
@@ -30,8 +32,8 @@ SPK-005 passes its semantic persistence and recovery gate. Strict Dexie records 
 - Minimal 3MF writer or adapter with slicer round-trip.
 - IndexedDB journal/snapshot recovery and progressive OPFS/browser fallback matrix.
 - Browser startup and memory matrix.
-- Extension sandbox, immutable package, capability, and restricted-mode spike.
-- Reviewed ADR set and updated estimates, including the proposed extension decision.
+- Measured extension sandbox, immutable package, capability, and restricted-mode spike with a reduced-scope decision.
+- Reviewed ADR set and updated estimates, including the accepted reduced extension decision.
 
 ### Exit criteria
 
@@ -43,7 +45,7 @@ SPK-005 passes its semantic persistence and recovery gate. Strict Dexie records 
 - Generated 3MF opens in at least two slicers.
 - Semantic revisions recover after page termination and offline reopen in all target browser engines; unavailable OPFS never blocks the document.
 - A baseline browser and device are defined.
-- `SPK-006` either proves a safe executable-extension path or keeps third-party execution disabled with documented rework evidence. This result gates extension releases, not the core modeling alpha.
+- `SPK-006` accepts only the narrow no-import WebAssembly and opaque iframe seams; arbitrary workspace JavaScript and product execution stay disabled. Remaining production gates affect extension releases, not the core modeling alpha.
 
 ## Phase 1 — foundation vertical slice (3–5 weeks)
 
@@ -159,7 +161,7 @@ Bracket and enclosure export to 3MF and STEP, open in PrusaSlicer and Cura/Orca,
 | Drawings | Stable projected topology and dimensions |
 | Branch and merge | Formal command-conflict model |
 | Optional sync/collaboration | Privacy/security ADR and merge semantics |
-| Extension SDK and local/self-hosted catalogs | Accepted `SPK-006`, stable commands, features, migrations, permissions, and package governance |
+| Extension SDK and local/self-hosted catalogs | SPK-006 production follow-ups: modeling ABI, portable memory policy, document recovery, stable commands/features/migrations, permissions, and package governance |
 | Local MCP automation bridge | Stable query and command schemas, disposable drafts, preview/commit policy, actor provenance, and an accepted local pairing/security spike |
 | Integrated slicing | Separate licensing, performance, and safety spike |
 | Higher-level AI features | Accepted MCP or equivalent automation boundary, deterministic command API, preview, sandbox, and no hidden uploads |

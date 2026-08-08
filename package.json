@@ -69,6 +69,7 @@
     "topology:evidence": "bun run scripts/run-topology-evidence.ts",
     "formats:evidence:3mf": "bun run scripts/run-three-mf-evidence.ts",
     "persistence:evidence": "bun run scripts/run-persistence-evidence.ts",
+    "extension:evidence": "bun run scripts/run-extension-evidence.ts",
     "fallow": "fallow",
     "fallow:audit": "fallow audit",
     "fallow:health": "fallow health --score",

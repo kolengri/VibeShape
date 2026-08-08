@@ -164,7 +164,7 @@ STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to
 
 ## Modules, extensions, and automation
 
-The microkernel, extension, and automation boundaries are designed during Phase 0. Executable third-party support remains post-alpha until the sandbox gate passes, and MCP is not published until one real draft/preview/commit scenario passes its local pairing and real-client gate.
+The microkernel, extension, and automation boundaries are designed during Phase 0. SPK-006 accepts only a reduced extension sandbox boundary; executable third-party support remains post-alpha until the production modeling, memory, document, and recovery gates pass. MCP is not published until one real draft/preview/commit scenario passes its local pairing and real-client gate.
 
 | Capability | Priority | Completion condition |
 |---|---:|---|
@@ -173,8 +173,8 @@ The microkernel, extension, and automation boundaries are designed during Phase 
 | Automation-ready query and command contracts | P0 | Bounded revisioned views, machine-readable schemas, drafts, previews, revision preconditions, cancellation, and actor provenance pass domain tests |
 | Preserve extension locks and unknown feature payloads | P0 | `.vshape` can open, inspect, and re-export safely without executing or installing code |
 | Restricted-mode document open | P1 | Missing or disabled extensions preserve the document and visibly block affected DAG nodes |
-| Deterministic parametric feature modules | P2 | `SPK-006` accepted; exact version/integrity replay and resource budgets pass |
-| Capability-based workspace extensions | P2 | Isolated host, sandboxed UI, permission review, revocation, and recovery pass |
+| Deterministic parametric feature modules | P2 | Accepted no-import WebAssembly seam gains a modeling ABI, hard memory policy, exact document locks, and recovery rebuild |
+| Capability-based workspace extensions | P2 | Declarative and opaque iframe contributions pass; any executable controller requires a stronger isolation design |
 | Compute and codec modules | P2 | Dedicated worker/WASM host passes hostile-input and termination tests |
 | Local or self-hosted package catalogs | P2 | Immutable package retrieval, integrity verification, and offline retention pass |
 | Official public marketplace | P2 | Publisher governance, review, signing, revocation, abuse, and update policy exist |
@@ -195,7 +195,7 @@ See [Extension architecture](../architecture/extensions.md), [Automation and MCP
 
 ## Explicitly deferred
 
-- Executable third-party extensions and a public marketplace until `SPK-006` and the stable command/feature contracts pass.
+- Executable third-party extensions and a public marketplace until the SPK-006 production follow-ups and stable command/feature contracts pass.
 - Real-time multi-user editing.
 - Direct G-code delivery to printers.
 - Generative or AI CAD before a deterministic command API, draft/preview boundary, local pairing gate, and sandbox exist.

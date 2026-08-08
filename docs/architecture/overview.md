@@ -218,7 +218,7 @@ A matching hash MAY reuse B-Rep and tessellation caches. Every cache is untruste
 
 The architecture follows a microkernel boundary. Trusted kernel services own transactions, revisions, history, feature scheduling, persistence and geometry ports, capability policy, recovery, and audit provenance. Product functionality such as sketching, part design, exchange, and print analysis is organized as cohesive first-party modules with explicit registries. [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines this boundary.
 
-The executable third-party extension platform is outside alpha, but the foundation must remain extension-ready. [ADR-0012](../adr/0012-capability-based-extension-platform.md) proposes separate profiles for deterministic parametric feature modules, capability-based workspace extensions, and bounded compute or codec modules.
+The executable third-party extension platform is outside alpha, but the foundation must remain extension-ready. [ADR-0012](../adr/0012-capability-based-extension-platform.md) accepts reduced-scope profiles for deterministic no-import WebAssembly feature modules, opaque-origin iframe UI, and bounded compute modules while rejecting arbitrary same-origin workspace JavaScript.
 
 Durable constraints apply before the SDK exists:
 
@@ -232,6 +232,6 @@ Durable constraints apply before the SDK exists:
 - command descriptors reserve machine-readable schemas, ownership, eligibility, side-effect annotations, preview behavior, revision preconditions, cancellation, and diagnostics;
 - bounded revision-tagged query views back accessibility, diagnostics, tests, and later MCP resources without exposing internal object graphs; the initial document-summary view proves this contract.
 
-No empty extension workspace is added yet. `SPK-006` must first prove the sandbox, package validation, resource limits, permissions, cross-browser lifecycle, and recovery behavior. See [Extension architecture](extensions.md) for the target design and explicit gate.
+The private `@vibeshape/extension-spike` package records SPK-006 evidence without creating a public API. Product execution remains disabled until the accepted seams gain a modeling ABI, portable memory policy, production document transactions, persisted update/rollback, and recovery rebuild coverage. See [Extension architecture](extensions.md) and [SPK-006 evidence](../spikes/spk-006-extension-sandbox.md).
 
 The initial AI automation path is a local MCP bridge over those same query and command contracts. The bridge never owns document state or bypasses draft, preview, confirmation, commit, undo, and persistence behavior. See [Automation and MCP architecture](automation-and-mcp.md).

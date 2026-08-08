@@ -4,7 +4,7 @@
 
 VibeShape should use a **microkernel with modular first-party features and separate deterministic and interactive third-party extension profiles**, not one general-purpose plugin runtime. Parametric regeneration must stay reproducible and offline; UI and external integrations need explicit capabilities and stronger isolation.
 
-This document describes the target contract proposed by [ADR-0012](../adr/0012-capability-based-extension-platform.md). [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines which functionality remains in the trusted kernel, how first-party modules reuse the contribution model, and how external automation reaches commands. This is not yet an implemented public API. `SPK-006` must accept the sandbox and package model before any SDK compatibility promise is made.
+This document describes the target contract accepted with reduced scope by [ADR-0012](../adr/0012-capability-based-extension-platform.md). [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md) defines which functionality remains in the trusted kernel, how first-party modules reuse the contribution model, and how external automation reaches commands. [SPK-006](../spikes/spk-006-extension-sandbox.md) accepts immutable packages, exact locks, capabilities, restricted mode, opaque iframe UI, and a narrow no-import WebAssembly feature candidate. It rejects arbitrary same-origin workspace JavaScript and does not publish a public API.
 
 ## Goals and non-goals
 
@@ -31,9 +31,9 @@ The first platform does not provide:
 
 | Profile | Primary uses | Execution environment | Available authority | Determinism |
 |---|---|---|---|---|
-| Parametric feature module | Custom feature types, procedural geometry, computed properties | Restricted compute host, selected by `SPK-006` | Immutable feature inputs and host-owned modeling/query functions | Required |
-| Workspace extension | Commands, panels, property editors, reports, analysis views | Isolated host plus opaque-origin sandboxed iframe for custom UI | Explicit document/UI/file/network capabilities | Not required, but mutations use deterministic commands |
-| Compute or codec module | Mesh analysis, format codecs, bounded algorithms | Dedicated worker, preferably WebAssembly with explicit imports | Typed buffers and narrowly scoped callbacks | Required when its output enters semantic state |
+| Parametric feature module | Custom feature types, procedural geometry, computed properties | Terminable no-import WebAssembly worker candidate; production modeling ABI pending | Immutable scalar spike input; future host-owned modeling/query functions | Required |
+| Workspace extension | Commands, panels, property editors, reports, analysis views | Declarative contributions and opaque-origin iframe UI; arbitrary JavaScript controller disabled | Explicit host-mediated UI capabilities only in the accepted subset | Not required, but mutations use deterministic commands |
+| Compute or codec module | Mesh analysis, format codecs, bounded algorithms | Dedicated WebAssembly worker; imports require separate review | Typed buffers and narrowly scoped callbacks | Required when its output enters semantic state |
 
 One package may contain more than one profile, but each entry point has its own capability set, lifecycle, and resource budget. Privileges never flow from a workspace entry point into a feature entry point.
 
@@ -63,7 +63,7 @@ First-party modules and third-party extensions share contribution semantics wher
 
 Built-in code does not receive a second private document mutation path. UI and modules request the same domain commands used by extensions and automation. Trusted performance-sensitive evaluators may access internal host ports that are never promised to third parties, but they still cannot bypass transactions, revisions, geometry ownership, or persistence invariants.
 
-The initial domain implementation keeps serializable descriptors and trusted executable handlers as distinct registrations. Startup composition requires one handler for every command descriptor and rejects duplicates, orphaned handlers, owner mismatch, and schema-version mismatch. This is a first-party runtime invariant, not a public extension execution API: third-party handlers still require the `SPK-006` proxy, isolation, capability, lifecycle, and recovery evidence.
+The initial domain implementation keeps serializable descriptors and trusted executable handlers as distinct registrations. Startup composition requires one handler for every command descriptor and rejects duplicates, orphaned handlers, owner mismatch, and schema-version mismatch. This is a first-party runtime invariant, not a public extension execution API: third-party handlers still require production isolation, capability, lifecycle, transaction, and recovery integration on the accepted SPK-006 seams.
 
 Modularity does not require one Bun workspace or distributable package per feature. Closely related features can live in one module family until dependency, execution, ownership, testing, or publication evidence justifies extraction. Module dependencies are explicit, acyclic, and unable to change evaluation semantics through registration order.
 
@@ -133,7 +133,7 @@ Required manifest concepts:
 }
 ```
 
-The example is illustrative, not a frozen schema. The artifact's canonical archive digest is computed outside the archive and stored in the installation record and document lock, avoiding a self-referential package digest. An optional signature signs the manifest plus its file-digest table and excludes the signature envelope itself. `SPK-006` owns the exact canonicalization, field names, and validation fixtures.
+The example is illustrative, not a frozen schema. SPK-006 implements a smaller strict manifest-v1 candidate with one flat capability list, explicit entry points, exact file digests, and a required `LICENSE`; it remains private evidence rather than a public `.vsext` contract. The artifact's SHA-256 digest is computed over the exact archive outside the archive and stored in the installation record and document lock, avoiding a self-referential package digest. The candidate ECDSA P-256 envelope signs the exact manifest bytes; signature identity never bypasses validation or sandboxing.
 
 Package validation occurs before installation and includes:
 
@@ -194,7 +194,7 @@ flowchart LR
     end
 
     subgraph WorkspaceHost["Workspace extension host"]
-        WORKSPACE["Extension controller"]
+        WORKSPACE["Workspace controller (not accepted)"]
         FRAME["Opaque-origin sandboxed UI iframe"]
     end
 
@@ -212,8 +212,8 @@ flowchart LR
     UI --> COMMANDS
     COMMANDS --> HOST
     HOST --> POLICY
-    HOST <-->|"validated protocol"| WORKSPACE
-    WORKSPACE <-->|"validated messages"| FRAME
+    HOST -.->|"future reviewed protocol"| WORKSPACE
+    HOST <-->|"validated MessagePort"| FRAME
     EVALUATOR <-->|"deterministic feature protocol"| FEATURE
     FEATURE --> MODELAPI
     MODELAPI --> ENGINE
@@ -222,7 +222,7 @@ flowchart LR
     POLICY <--> GRANTS
 ```
 
-The diagram is logical. The feature host may initially be composed inside the geometry worker or placed in a nested worker, depending on `SPK-006` results. In either case, extension code never receives an OCCT object. It emits typed modeling operations or calls a narrow host facade whose ownership and cleanup remain inside VibeShape.
+The diagram is logical. SPK-006 places the no-import feature fixture in a dedicated terminable worker, but production placement relative to the geometry worker remains open until a high-level modeling ABI exists. The dashed workspace-controller path is not accepted: a same-origin JavaScript worker exposes ambient browser authority. In every future placement, extension code never receives an OCCT object. It emits typed modeling operations or calls a narrow host facade whose ownership and cleanup remain inside VibeShape.
 
 ### Parametric feature contract
 
@@ -243,13 +243,13 @@ It returns:
 - optional derived preview data that does not become semantic truth;
 - resource-accounting data for diagnostics.
 
-The host rejects feature modules that attempt undeclared imports. Time, randomness, locale, user preferences, network, storage, DOM, and mutable global state are not feature inputs. Locale-specific text is resolved by the application from extension catalogs after evaluation.
+The host rejects feature modules that attempt undeclared imports. The SPK-006 candidate permits no imports at all and exactly one scalar `evaluate` export; modeling and query imports require a follow-up ABI and threat review. Time, randomness, locale, user preferences, network, storage, DOM, and mutable global state are not feature inputs. Locale-specific text is resolved by the application from extension catalogs after evaluation.
 
 Feature evaluation is sequential within a document, budgeted, and abortable by terminating its execution container. A timeout is a typed feature failure; it never commits partial geometry.
 
 ### Workspace and UI contract
 
-Workspace extensions register declarative contribution points before activation. Activation is lazy and event-driven, such as a contributed command invocation, panel opening, supported document type, or explicit enable action. Wildcard startup activation is prohibited in the first SDK.
+The accepted subset registers declarative contributions without running a general-purpose workspace controller. If a future isolated controller is accepted, activation is lazy and event-driven, such as a contributed command invocation, panel opening, supported document type, or explicit enable action. Wildcard startup activation remains prohibited.
 
 Custom UI runs in an iframe without `allow-same-origin`, navigation, downloads, popups, forms, or top-level access unless a later capability explicitly proves the need. The frame receives an extension-specific CSP and communicates through a dedicated `MessagePort`. The coordinator validates message schema, session nonce, sequence, extension ID, capability, size, and lifecycle state. The frame never receives authentication tokens, file handles, domain objects, or application store references.
 
@@ -257,7 +257,7 @@ The host owns all application mutations. A UI extension can request a registered
 
 ### Compute and codec contract
 
-Compute modules use typed buffers and explicit host imports. WebAssembly is preferred for CPU-bound portable code because it has no system calls beyond host-provided imports, but it is not sufficient by itself: the worker still needs time, memory, output-size, and message budgets plus termination and restart.
+Compute modules use typed buffers and reviewed host imports. WebAssembly is preferred for CPU-bound portable code because it has no system calls beyond host-provided imports, but it is not sufficient by itself: the worker still needs time, memory, output-size, and message budgets plus termination and restart. SPK-006 proves termination, message, and output containment but does not establish a portable hard per-worker memory ceiling.
 
 Codecs run on copied or transferred input, stage output, and never write files directly. A codec cannot mutate the current document on parse failure. Exact B-Rep codecs that need kernel access remain trusted built-in adapters until a safe high-level exchange contract is proven.
 
@@ -332,19 +332,16 @@ Extension identifiers, manifest fields, diagnostic codes, capability names, and 
 
 Extension messages have an isolated namespace derived from the package ID. They cannot override application or other extension messages. Host-owned security, permission, save, and recovery copy always comes from `@vibeshape/i18n` so an extension cannot misrepresent a host decision.
 
-## Developer experience and planned packages
+## Developer experience and package promotion
 
-After `SPK-006` is accepted, the likely package boundaries are:
+SPK-006 uses one private evidence package:
 
 ```text
 packages/
-  extension-api/          # serializable public contracts and manifest schemas
-  extension-host/         # lifecycle, capability membrane, budgets, and diagnostics
-  extension-packaging/    # .vsext validation, integrity, catalogs, and signatures
-  extension-testkit/      # deterministic host, fixtures, permission and failure tests
+  extension-spike/        # non-public package, runtime, panel, policy, and hostile fixtures
 ```
 
-These packages are intentionally not scaffolded yet. Their names and boundaries may change based on the sandbox spike. The public API should expose explicit package subpaths, generated API documentation, compatibility fixtures, and a CLI run through Bun for pack, inspect, sign, and test operations.
+This package deliberately combines concerns so no evidence-only boundary becomes a compatibility promise. Production evidence may later justify `extension-api`, `extension-host`, `extension-packaging`, and `extension-testkit`, but their names and boundaries are not reserved. A public API must expose explicit package subpaths, generated API documentation, compatibility fixtures, and a Bun CLI for pack, inspect, sign, and test operations.
 
 First-party module descriptors and the adapter-neutral automation surface are designed before this public SDK. MCP is not an extension entry point: it translates protocol resources and tools into the same bounded query, draft, and command contracts. Extension-contributed commands require a separate host-controlled automation approval before they can appear through MCP. See [Automation and MCP architecture](automation-and-mcp.md).
 
@@ -358,7 +355,7 @@ An extension release must pass:
 - localization parity and accessibility checks;
 - license and third-party notice validation.
 
-## `SPK-006` acceptance gate
+## `SPK-006` result and remaining gate
 
 The spike must compare at least two restricted compute approaches and prove the UI iframe design in Chromium, Firefox, and WebKit. It must answer:
 
@@ -371,4 +368,6 @@ The spike must compare at least two restricted compute approaches and prove the 
 7. Can missing, incompatible, timed-out, and failed extensions preserve and recover the document without silent geometry substitution?
 8. What API and package versioning policy can be supported across at least two host versions?
 
-The result is one of **Proceed**, **Proceed with reduced scope**, **Rework**, or **Stop**. Only an accepted result may introduce the public `extension-api` package or claim third-party code support.
+The recorded result is **Proceed with reduced scope**. The package, lock, capability, restricted-mode, opaque iframe, termination, and no-import WebAssembly candidates pass in Chromium, Firefox, and WebKit. Arbitrary workspace JavaScript is rejected because the dedicated worker retains ambient authority. The memory-growth fixture is contained through termination after its message budget, but no browser-independent hard memory quota is proven.
+
+This result does not authorize a public `extension-api` package or product claim of executable third-party support. Those remain gated on a deterministic modeling ABI, production document and transaction integration, portable memory policy, update/rollback persistence, uninstall preservation, localization and accessibility conformance, hostile iframe navigation coverage, package governance, and an end-to-end recovery rebuild.

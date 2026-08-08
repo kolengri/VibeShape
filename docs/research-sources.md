@@ -114,8 +114,9 @@ Context7 resolved Dexie to `/dexie/dexie.js`. The SPK-005 transaction and error 
 | [MDN Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy) | CSP constrains script, connection, frame, worker, and other resource sources but must be applied to each relevant execution context |
 | [WebAssembly security](https://webassembly.org/docs/security/) | WebAssembly provides fault isolation but remains subject to its embedding and host APIs |
 | [WebAssembly portability](https://webassembly.org/docs/portability/) | WebAssembly defines imports rather than system calls, allowing the host to control which external functions exist |
+| [`fflate` repository](https://github.com/101arrowz/fflate) | Small synchronous and streaming ZIP/DEFLATE implementation; SPK-006 preflights the central directory before using filtered extraction |
 
-**Conclusion:** VibeShape should copy Onshape's deterministic, version-linked feature principle, not its mandatory cloud application topology. The safer browser design combines immutable artifact locks, separate execution profiles, capability-scoped host APIs, opaque-origin UI, runtime message validation, termination budgets, and restricted-mode recovery. No single worker, iframe, WebAssembly module, signature, or CSP rule is a complete extension sandbox.
+**Conclusion:** VibeShape should copy Onshape's deterministic, version-linked feature principle, not its mandatory cloud application topology. SPK-006 confirms that the safer browser design combines immutable artifact locks, separate execution profiles, capability-scoped host APIs, opaque-origin UI, runtime message validation, termination budgets, and restricted-mode recovery. It also confirms that a same-origin JavaScript worker retains ambient authority. No single worker, iframe, WebAssembly module, signature, or CSP rule is a complete extension sandbox.
 
 ## Model Context Protocol
 

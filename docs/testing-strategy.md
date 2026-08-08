@@ -119,6 +119,12 @@ SPK-004 implements the 3MF writer baseline with strict Zod input and report sche
 
 SPK-005 implements this boundary through `bun run persistence:evidence`. The runner and `playwright.persistence.config.ts` reject truthy `CI`, exercise Chromium, Firefox, and WebKit serially, and write reports only under `.artifacts/persistence-spike`. The recorded WebKit runtime keeps semantic IndexedDB recovery operational while reporting OPFS unavailable. No GitHub Actions workflow invokes the persistence evidence command. See [SPK-005 evidence](spikes/spk-005-local-first.md).
 
+## Extension sandbox evidence
+
+SPK-006 implements a private package and hostile browser harness through `bun run extension:evidence`. The command rejects truthy `CI`, runs package tests with Vitest, then exercises Chromium, Firefox, and WebKit serially through `playwright.extension.config.ts`. Reports stay under `.artifacts/extension-spike`, and no GitHub Actions workflow invokes the command.
+
+The accepted evidence covers pre-extraction ZIP limits, path and symlink rejection, strict manifests, exact checksums and archive integrity, publisher identity, exact-version coexistence, no-import WebAssembly, JavaScript-worker ambient-authority probing, loop termination, message and output budgets, capability revocation, restricted states, and opaque-origin iframe messaging. The result is reduced scope because arbitrary same-origin workspace JavaScript is rejected and a portable hard memory ceiling is not proven. See [SPK-006 evidence](spikes/spk-006-extension-sandbox.md).
+
 ## Memory and leak tests
 
 - Repeat one operation and undo 1,000 times.
@@ -155,7 +161,7 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 
 ## Browser matrix
 
-- Chromium, Firefox, and WebKit automation: the current E2E suite on every PR.
+- Chromium, Firefox, and WebKit automation: required locally before merge; excluded from automatic PR jobs to preserve the Actions budget.
 - Manual Safari: release smoke coverage for platform integration that WebKit automation cannot prove.
 - Dedicated installed-build offline/service-worker test.
 - Cross-origin isolation mode only when enabled.
@@ -168,8 +174,8 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 - Install missing local engines with `bunx playwright install chromium firefox webkit`.
 - Tests use role, label, and other user-facing locators with web-first assertions. Fixed sleeps and selectors coupled to styling or implementation details are prohibited.
 - The automatic runtime-health fixture fails the owning test on browser console errors or uncaught page exceptions.
-- Failure diagnostics are written under `.artifacts/playwright`; CI attempts to retain the HTML report, screenshot, video, and first-retry trace for 14 days without letting an exhausted artifact quota mask the E2E result.
-- CI runs one isolated browser project per matrix job after the workspace verification gate. Each project owns its Vite server lifecycle and report artifact.
+- Failure diagnostics are written locally under `.artifacts/playwright` and are not uploaded automatically.
+- Automatic PR CI runs no Playwright project. The merge operator records the local all-engine result in the pull request.
 
 ## Monorepo and toolchain checks
 
@@ -183,9 +189,15 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 - I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
+The automatic pull-request workflow is one Linux job: frozen install, skill validation, format, lint, typecheck, unit tests, critical dependency audit, and uncached Fallow audit. Production build, all Playwright suites, native builds, and spike evidence are local merge gates. The workflow does not run again on `main`.
+
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed Testing Library component tests. The domain suite exercises UUIDv7 and namespace boundaries, command normalization, malformed inputs, deterministic events and replay, stale and exhausted revisions, actor provenance, immutable failure behavior, actor- and document-bound drafts, atomic commit, module ownership, duplication, dependency, cycle, and ordering rules, plus trusted handler completeness, uniqueness, owner/version parity, route validation, failure propagation through the command dispatcher, and fail-closed topology resolution. Playwright runs the shell and SPK-001 OCCT worker contracts against a real Vite server in Chromium, Firefox, and WebKit, while pull-request GitHub Actions repeat frozen installation, formatting, linting, typechecking, tests, build, critical vulnerability audit, browser E2E, and Fallow changed-code analysis. A superseding commit cancels the older run for the same pull request, and the identical squash-merged tree is not run again on `main`. Heavy controlled OCCT source builds, allocator matrices, stable performance measurements, FreeCAD STEP validation, corresponding-source bundle generation, the SPK-003 topology matrix, SPK-004 installed-slicer evidence, and the SPK-005 cross-browser persistence corpus are local-only, have no GitHub Actions workflow, and reject CI at their entry points. `bun run occt:evidence` builds the pinned source candidate, validates its paired output contract, and runs allocator-instrumented operation and purge matrices at 5 × 1,000 iterations. The shell suite covers localization metadata, semantic landmarks, keyboard order, compact layout, runtime errors, and local-only startup. The SPK-001 suite covers worker protocol validation, logical cancellation, stale generations, transient boolean and fillet history relations, transferable tessellation and STEP bytes, exact modeling invariants, internal STEP round-trip, independent-application FreeCAD import, binary STL export, owned-wrapper disposal, ordered memory checkpoints, deterministic critical OCCT temporaries, a 64 KiB post-warmup drift ceiling, an 8 KiB lifecycle-growth ceiling, hard worker restart, fresh-engine invariant rebuild, local p95 initialization and scenario budgets, main-thread long-task observation, peak WASM capacity, peak live native allocation, strict compliance-manifest validation, corresponding-source provenance, checksum verification, and disposal. SPK-003 adds strict TopoRef schemas, semantic and composed OCCT face-lineage anchors, conservative signature fallback, expected suppression failures, restoration, and symmetric ambiguity. SPK-004 adds deterministic 3MF archives, fail-closed mesh/reference/transform schemas, OPC/XML checks, and independent slicer-family geometry invariants. SPK-005 adds strict transactional records, checksum replay, bounded recovery loss, writer-lease takeover, OPFS fallback, forced-page recovery, quota rollback, and cached-shell offline reopen. The current evidence does not yet prove hostile format import, broad real-world format corpora, document-integrated topology repair and persistence, production CAD workflows, real two-build service-worker upgrades, `.vshape` round-trip, or installed-build offline release gates.
+The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed component tests. The automatic pull-request workflow performs a frozen install, skill validation, formatting, linting, typechecking, unit tests, critical dependency audit, and uncached Fallow audit in one job. A superseding commit cancels the older run, and the squash-merged tree is not run again on `main`.
+
+Production Vite build, the Chromium/Firefox/WebKit shell and OCCT E2E suite, controlled native builds, memory and performance evidence, FreeCAD STEP validation, compliance bundles, topology, slicer, persistence, and extension corpora are local pre-merge gates. Generated evidence stays under `.artifacts`. Heavy entry points reject a truthy `CI` environment and have no GitHub Actions workflow.
+
+The current executable evidence covers the foundation shell; SPK-001 worker ownership, operations, memory, performance, exchange, and restart; SPK-003 semantic and composed topology resolution; SPK-004 deterministic 3MF and slicer invariants; SPK-005 transactional recovery and offline fallback; and the reduced-scope SPK-006 package and isolation boundary. It does not yet prove broad hostile import corpora, document-integrated topology repair, production CAD workflows, a real two-build service-worker update, `.vshape` round-trip, installed-build release behavior, or production extension execution.
 
 Extended OCCT lifecycle runs are parameterized without slowing the normal PR matrix:
 
@@ -231,7 +243,7 @@ Manual alpha review includes keyboard-only completion of all non-spatial parts o
 
 ## Extension conformance and isolation
 
-Executable extension tests remain part of `SPK-006` until [ADR-0012](adr/0012-capability-based-extension-platform.md) is accepted. Any later extension-enabled release must cover:
+SPK-006 accepts only the immutable package, no-import WebAssembly, capability, restricted-mode, and opaque iframe candidates under [ADR-0012](adr/0012-capability-based-extension-platform.md). Any later extension-enabled release must extend that evidence to cover:
 
 - deterministic replay of parametric feature modules across fresh hosts;
 - absence of network, time, randomness, DOM, storage, file, clipboard, undeclared imports, and raw-kernel access in the feature profile;

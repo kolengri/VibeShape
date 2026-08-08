@@ -1,0 +1,25 @@
+{
+  "name": "@vibeshape/extension-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Non-public SPK-006 package, sandbox, capability, and restricted-mode evidence contracts.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vibeshape/domain": "workspace:*",
+    "fflate": "catalog:",
+    "is-what": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}
