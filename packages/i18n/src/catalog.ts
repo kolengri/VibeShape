@@ -1,3 +1,4 @@
+import { isString } from "is-what"
 import type { AbstractIntlMessages } from "use-intl"
 
 type UnionToIntersection<Union> = (Union extends unknown ? (value: Union) => void : never) extends (
@@ -25,7 +26,7 @@ function flattenMessages(
 ): Record<string, string> {
   for (const [key, value] of Object.entries(messages)) {
     const messageKey = parentKey ? `${parentKey}.${key}` : key
-    if (typeof value === "string") {
+    if (isString(value)) {
       flattened[messageKey] = value
     } else {
       flattenMessages(value, messageKey, flattened)

@@ -1,4 +1,5 @@
 import { createFormHook, createFormHookContexts, type ValidationError } from "@tanstack/react-form"
+import { isAnyObject, isError, isString } from "is-what"
 
 import { Button, type ButtonProps } from "#components/button"
 import { TextField, type TextFieldProps } from "#components/text-field"
@@ -12,17 +13,17 @@ export type TanStackTextFieldProps = Omit<
 >
 
 function validationMessage(error: ValidationError | undefined): string | undefined {
-  if (typeof error === "string") {
+  if (isString(error)) {
     return error
   }
 
-  if (error instanceof Error) {
+  if (isError(error)) {
     return error.message
   }
 
-  if (typeof error === "object" && error !== null) {
+  if (isAnyObject(error)) {
     const message = Reflect.get(error, "message")
-    return typeof message === "string" ? message : undefined
+    return isString(message) ? message : undefined
   }
 
   return undefined

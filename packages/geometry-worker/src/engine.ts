@@ -4,6 +4,7 @@ import type {
   KernelSpikeEngineResult,
   KernelSpikeParameters,
 } from "@vibeshape/protocol"
+import { isAnyObject } from "is-what"
 import {
   drawCircle,
   importSTEP,
@@ -48,7 +49,7 @@ function initializeOpenCascadeWithOptions(
 }
 
 function isTopAbsShapeEnum(value: unknown): value is TopAbs_ShapeEnum {
-  return typeof value === "object" && value !== null
+  return isAnyObject(value)
 }
 
 function readTopAbsShapeEnum(opencascade: OpenCascadeInstance, member: keyof TopAbs_ShapeEnum) {

@@ -1,3 +1,5 @@
+import { isString } from "is-what"
+
 export const DEFAULT_LOCALE_STORAGE_KEY = "vibeshape-locale"
 
 const rtlLanguages = new Set(["ar", "ckb", "dv", "fa", "he", "ps", "sd", "ug", "ur", "yi"])
@@ -17,7 +19,7 @@ export function findAvailableLocale<const Locale extends string>(
   ...candidates: readonly unknown[]
 ): Locale | undefined {
   for (const candidate of candidates) {
-    if (typeof candidate !== "string") {
+    if (!isString(candidate)) {
       continue
     }
 

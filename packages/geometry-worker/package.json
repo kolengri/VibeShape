@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@vibeshape/protocol": "workspace:*",
+    "is-what": "catalog:",
     "replicad": "catalog:",
     "replicad-opencascadejs": "catalog:"
   },

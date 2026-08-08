@@ -8,14 +8,11 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
 } from "@vibeshape/protocol"
+import { isAnyObject, isError, isInteger, isString } from "is-what"
 import type { GeometryKernelEngine } from "./engine"
 
 export interface GeometryWorkerEndpoint {
   postMessage(message: GeometryWorkerResponse, transfer?: Transferable[]): void
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function readNonNegativeInteger(value: unknown) {
@@ -23,11 +20,11 @@ function readNonNegativeInteger(value: unknown) {
 }
 
 function readIdentifier(value: unknown, fallback: string) {
-  return typeof value === "string" && value.trim().length > 0 ? value.slice(0, 128) : fallback
+  return isString(value) && value.trim().length > 0 ? value.slice(0, 128) : fallback
 }
 
 function fallbackEnvelope(value: unknown): GeometryRequestEnvelope {
-  const record = isRecord(value) ? value : {}
+  const record = isAnyObject(value) ? value : {}
 
   return {
     protocolVersion: GEOMETRY_PROTOCOL_VERSION,
@@ -39,7 +36,7 @@ function fallbackEnvelope(value: unknown): GeometryRequestEnvelope {
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown geometry worker failure."
+  return isError(error) ? error.message : "Unknown geometry worker failure."
 }
 
 function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
@@ -99,8 +96,8 @@ export class GeometryWorkerRuntime {
 
     const envelope = fallbackEnvelope(input)
     const unsupportedVersion =
-      isRecord(input) &&
-      typeof input.protocolVersion === "number" &&
+      isAnyObject(input) &&
+      isInteger(input.protocolVersion) &&
       input.protocolVersion !== GEOMETRY_PROTOCOL_VERSION
 
     this.#postFailure(

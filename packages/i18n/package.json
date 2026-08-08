@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "is-what": "catalog:",
     "use-intl": "catalog:"
   },
   "devDependencies": {

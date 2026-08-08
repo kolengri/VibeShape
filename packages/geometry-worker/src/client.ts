@@ -8,6 +8,7 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
 } from "@vibeshape/protocol"
+import { isError } from "is-what"
 import GeometryWorkerConstructor from "./worker-entry?worker"
 
 interface WorkerLike {
@@ -165,7 +166,7 @@ export class GeometryWorkerClient {
     clearTimeout(pending.timeoutId)
     this.#pending.delete(requestId)
 
-    if (outcome instanceof Error) {
+    if (isError(outcome)) {
       pending.reject(outcome)
     } else {
       pending.resolve(outcome)

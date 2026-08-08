@@ -69,6 +69,27 @@ describe("Button", () => {
     await waitFor(() => expect(button.disabled).toBe(false))
   })
 
+  it("tracks plain PromiseLike results without requiring a native Promise", async () => {
+    const user = userEvent.setup()
+    let settle: () => void = () => undefined
+    const thenable = {
+      // biome-ignore lint/suspicious/noThenProperty: This fixture verifies the documented PromiseLike contract.
+      then(resolve: () => void) {
+        settle = resolve
+      },
+    }
+
+    render(<Button onClick={() => thenable}>Generate preview</Button>)
+    const button = screen.getByRole("button", { name: "Generate preview" }) as HTMLButtonElement
+
+    await user.click(button)
+    expect(button.disabled).toBe(true)
+
+    settle()
+
+    await waitFor(() => expect(button.disabled).toBe(false))
+  })
+
   it("uses accessible disabled semantics for a slotted child", async () => {
     const user = userEvent.setup()
     const onClick = vi.fn()

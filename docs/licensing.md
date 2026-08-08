@@ -35,6 +35,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Zustand | MIT | Include a third-party notice |
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
+| is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |
 | Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |
 | Tailwind CSS / Vite plugin | MIT | Include a third-party notice |
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
