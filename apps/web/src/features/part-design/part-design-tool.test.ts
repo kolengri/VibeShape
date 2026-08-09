@@ -1,5 +1,6 @@
 import {
   boxFeatureType,
+  booleanFeatureType,
   createLengthQuantity,
   cylinderFeatureType,
   featureIdSchema,
@@ -8,7 +9,10 @@ import {
 import { describe, expect, it } from "vitest"
 import {
   activeFeatureId,
-  activePrimitiveCommand,
+  activePartDesignCommand,
+  booleanInputFeatures,
+  editPartDesignTool,
+  isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
 } from "./part-design-tool"
@@ -33,6 +37,7 @@ const box = featureRecordSchema.parse({
 
 const cylinder = featureRecordSchema.parse({
   ...box,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2702"),
   type: cylinderFeatureType.type,
   parameters: {
     radius: createLengthQuantity(10),
@@ -42,19 +47,55 @@ const cylinder = featureRecordSchema.parse({
   label: "Cylinder 1",
 })
 
+const boolean = featureRecordSchema.parse({
+  ...box,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2703"),
+  type: booleanFeatureType.type,
+  parameters: { operation: "subtract" },
+  dependencies: [box.id, cylinder.id],
+  label: "Subtract 1",
+})
+
+const dependentBoolean = featureRecordSchema.parse({
+  ...boolean,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2704"),
+  dependencies: [boolean.id, cylinder.id],
+  label: "Subtract 2",
+})
+
 describe("part-design tool routing", () => {
   it("matches feature types by their full contribution identity", () => {
     expect(isBoxFeature(box)).toBe(true)
     expect(isCylinderFeature(box)).toBe(false)
     expect(isBoxFeature(cylinder)).toBe(false)
     expect(isCylinderFeature(cylinder)).toBe(true)
+    expect(isBooleanFeature(boolean)).toBe(true)
   })
 
   it("derives the active command and optional edit feature identity", () => {
-    expect(activePrimitiveCommand({ kind: "create-box" })).toBe("box")
-    expect(activePrimitiveCommand({ kind: "edit-cylinder", featureId })).toBe("cylinder")
+    expect(activePartDesignCommand({ kind: "create-box" })).toBe("box")
+    expect(activePartDesignCommand({ kind: "edit-cylinder", featureId })).toBe("cylinder")
+    expect(activePartDesignCommand({ kind: "create-subtract" })).toBe("subtract")
     expect(activeFeatureId({ kind: "edit-cylinder", featureId })).toBe(featureId)
     expect(activeFeatureId({ kind: "create-cylinder" })).toBeNull()
-    expect(activePrimitiveCommand(null)).toBeNull()
+    expect(activePartDesignCommand(null)).toBeNull()
+    expect(editPartDesignTool(boolean)).toEqual({
+      kind: "edit-subtract",
+      featureId: boolean.id,
+    })
+    expect(editPartDesignTool(undefined)).toBeNull()
+  })
+
+  it("excludes the edited Boolean and all of its dependents from input candidates", () => {
+    expect(booleanInputFeatures([box, cylinder, boolean, dependentBoolean])).toEqual([
+      box,
+      cylinder,
+      boolean,
+      dependentBoolean,
+    ])
+    expect(booleanInputFeatures([box, cylinder, boolean, dependentBoolean], boolean.id)).toEqual([
+      box,
+      cylinder,
+    ])
   })
 })

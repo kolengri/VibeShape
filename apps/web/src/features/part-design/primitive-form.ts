@@ -37,7 +37,7 @@ export function parsePrimitiveLengthExpression(
     : { ok: false as const, message: copy.invalidRange }
 }
 
-export function primitiveSubmissionMessage(
+export function featureSubmissionMessage(
   result: FeatureMutationResult,
   copy: Readonly<{ staleRevision: string; saveFailed: string }>,
 ) {

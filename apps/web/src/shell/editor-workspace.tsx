@@ -16,6 +16,7 @@ export function EditorWorkspace({
   onCloseTool,
   onCreateBox,
   onCreateCylinder,
+  onCreateSubtract,
   onEditFeature,
   onSelectionChange,
   onWorkspaceChange,
@@ -27,6 +28,7 @@ export function EditorWorkspace({
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSubtract: () => void
   onEditFeature: (featureId: FeatureId) => void
   onSelectionChange: (selection: ViewerSelection | null) => void
   onWorkspaceChange: (workspace: "model" | "variables") => void
@@ -58,6 +60,7 @@ export function EditorWorkspace({
         onCloseTool={onCloseTool}
         onCreateBox={onCreateBox}
         onCreateCylinder={onCreateCylinder}
+        onCreateSubtract={onCreateSubtract}
       />
     </div>
   )
