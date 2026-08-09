@@ -39,11 +39,15 @@ test.describe("Box parameters", () => {
       .toBe(true)
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The geometry canvas has no measurable bounds.")
-    await viewport.locator("canvas").click({
-      position: { x: canvasBounds.width / 2, y: canvasBounds.height / 2 },
-    })
     const statusBar = page.locator("footer[role='status']")
-    await expect(statusBar).toContainText(/Selection: Box 1 · Face \d+/)
+    await expect
+      .poll(async () => {
+        await viewport.locator("canvas").click({
+          position: { x: canvasBounds.width / 2, y: canvasBounds.height / 2 },
+        })
+        return statusBar.textContent()
+      })
+      .toMatch(/Selection: Box 1 · Face \d+/)
     await viewport.getByRole("button", { name: "Clear selection" }).click()
     await expect(statusBar).toContainText("Selection: None")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -63,5 +67,29 @@ test.describe("Box parameters", () => {
     const reopenedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(reopenedEditForm.getByRole("textbox", { name: "Width" })).toHaveValue("#width")
     await expect(reopenedEditForm.getByRole("textbox", { name: "Depth" })).toHaveValue("28 mm")
+
+    await reopenedEditForm.getByRole("button", { name: "Cancel" }).click()
+    await page.getByRole("treeitem", { name: "Variables" }).click()
+    const committedName = page.getByRole("textbox", { name: "Variable name" })
+    await expect(committedName).toBeDisabled()
+    await page.getByRole("button", { name: "Rename", exact: true }).click()
+    await expect(committedName).toBeFocused()
+    await committedName.fill("span")
+    await page.getByRole("button", { name: "Rename variable" }).dblclick()
+    await expect(committedName).toHaveValue("span")
+    await expect(committedName).toBeDisabled()
+
+    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    const renamedEditForm = page.getByRole("form", { name: "Edit box" })
+    await expect(renamedEditForm.getByRole("textbox", { name: "Width" })).toHaveValue("#span")
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("span")
+    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await expect(
+      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+    ).toHaveValue("#span")
   })
 })

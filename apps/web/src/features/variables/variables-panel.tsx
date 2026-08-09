@@ -4,6 +4,7 @@ import {
   applyVariableTable,
   createBrowserVariableId,
   type DocumentControllerState,
+  renameVariable,
 } from "../../document/document-controller"
 import { referencedFeatureVariableNames, VariablesForm } from "./variables-form"
 
@@ -59,6 +60,9 @@ function ReadyVariablesPanel({
     empty: t("table.empty"),
     add: t("actions.add"),
     remove: t("actions.remove"),
+    rename: t("actions.rename"),
+    confirmRename: t("actions.confirmRename"),
+    cancelRename: t("actions.cancelRename"),
     nameInput: t("fields.name"),
     expressionInput: t("fields.expression"),
     valid: t("states.valid"),
@@ -72,6 +76,9 @@ function ReadyVariablesPanel({
     removeInUse: t("messages.removeInUse"),
     invalidName: t("messages.invalidName"),
     invalidExpression: t("messages.invalidExpression"),
+    renameNoChange: t("messages.renameNoChange"),
+    renameConflict: t("messages.renameConflict"),
+    renameFailed: t("messages.renameFailed"),
   }
 
   return (
@@ -92,6 +99,7 @@ function ReadyVariablesPanel({
           disabled={report.mode === "read-only"}
           protectedVariableNames={protectedNames}
           onApply={applyVariableTable}
+          onRename={renameVariable}
         />
       </div>
     </section>

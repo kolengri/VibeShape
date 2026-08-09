@@ -4,6 +4,8 @@ import {
   evaluateExpression,
   evaluateVariableDefinitions,
   resolveQuantityExpression,
+  rewriteParameterVariableReferences,
+  rewriteVariableReferencesInExpression,
   variableDefinitionsSchema,
 } from "./variables"
 
@@ -130,5 +132,53 @@ describe("document variables", () => {
       ok: false,
       diagnostic: { code: "expression-dimension-mismatch" },
     })
+  })
+
+  it("rewrites only exact variable tokens while preserving expression formatting", () => {
+    expect(
+      rewriteVariableReferencesInExpression(
+        "#width + #width_extra + (#width / 2)",
+        "width",
+        "span",
+      ),
+    ).toBe("#span + #width_extra + (#span / 2)")
+    expect(rewriteVariableReferencesInExpression("#width", "width", "width")).toBe("#width")
+    expect(rewriteVariableReferencesInExpression("not an expression", "width", "span")).toBe(
+      "not an expression",
+    )
+  })
+
+  it("rewrites quantity sources in nested parameters without changing arbitrary strings", () => {
+    const parameters = {
+      dimensions: [
+        createLengthQuantity(20, "mm", "#width"),
+        { offset: createLengthQuantity(10, "mm", "#width / 2") },
+      ],
+      metadata: "#width",
+    }
+
+    expect(rewriteParameterVariableReferences(parameters, "width", "span")).toEqual({
+      ok: true,
+      value: {
+        dimensions: [
+          createLengthQuantity(20, "mm", "#span"),
+          { offset: createLengthQuantity(10, "mm", "#span / 2") },
+        ],
+        metadata: "#width",
+      },
+    })
+    expect(parameters.dimensions[0]).toEqual(createLengthQuantity(20, "mm", "#width"))
+  })
+
+  it("rejects a refactor that would exceed the quantity expression limit", () => {
+    const expression = `#a${"+1".repeat(126)}`
+    expect(expression).toHaveLength(254)
+    expect(
+      rewriteParameterVariableReferences(
+        createLengthQuantity(1, "mm", expression),
+        "a",
+        "longName",
+      ),
+    ).toMatchObject({ ok: false })
   })
 })

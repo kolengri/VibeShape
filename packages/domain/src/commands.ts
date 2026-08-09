@@ -1,7 +1,7 @@
 import { z } from "zod"
 import {
-  domainDiagnostic as diagnostic,
   type DomainDiagnostic,
+  domainDiagnostic as diagnostic,
   requireExistingDocumentRevision,
 } from "./command-support"
 import { type DocumentSnapshot, documentNameInputSchema, documentNameSchema } from "./document"
@@ -26,6 +26,7 @@ import {
   variableDefinitionSchema,
   variableDefinitionsSchema,
   variableExpressionSchema,
+  variableNameSchema,
 } from "./variables"
 
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -103,6 +104,12 @@ const setVariableExpressionCommandSchema = commandEnvelopeSchema.extend({
     .strict(),
 })
 
+const renameVariableCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.variable.rename"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ variableId: variableIdSchema, name: variableNameSchema }).strict(),
+})
+
 const removeVariableCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.variable.remove"),
   schemaVersion: z.literal(1),
@@ -138,6 +145,7 @@ export const documentCommandSchema = z.discriminatedUnion("kind", [
   renameDocumentCommandSchema,
   addVariableCommandSchema,
   setVariableExpressionCommandSchema,
+  renameVariableCommandSchema,
   removeVariableCommandSchema,
   replaceVariableTableCommandSchema,
   addFeatureCommandSchema,
@@ -181,6 +189,13 @@ const variableExpressionChangedEventSchema = eventEnvelopeSchema.extend({
   expression: variableExpressionSchema,
 })
 
+const variableRenamedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.variable.renamed"),
+  variableId: variableIdSchema,
+  previousName: variableNameSchema,
+  name: variableNameSchema,
+})
+
 const variableRemovedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.variable.removed"),
   variable: variableDefinitionSchema,
@@ -215,6 +230,7 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   documentRenamedEventSchema,
   variableAddedEventSchema,
   variableExpressionChangedEventSchema,
+  variableRenamedEventSchema,
   variableRemovedEventSchema,
   variableTableReplacedEventSchema,
   featureAddedEventSchema,
@@ -222,8 +238,8 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   featureSuppressionChangedEventSchema,
 ])
 
-export { domainDiagnosticCodeSchema } from "./command-support"
 export type { DomainDiagnostic } from "./command-support"
+export { domainDiagnosticCodeSchema } from "./command-support"
 
 export type CommandActor = Readonly<z.infer<typeof commandActorSchema>>
 export type DocumentCommand = Readonly<z.infer<typeof documentCommandSchema>>
@@ -235,6 +251,7 @@ type VariableCommand = Extract<
     kind:
       | "org.vibeshape.variable.add"
       | "org.vibeshape.variable.remove"
+      | "org.vibeshape.variable.rename"
       | "org.vibeshape.variable.replace-table"
       | "org.vibeshape.variable.set-expression"
   }
@@ -246,6 +263,7 @@ type VariableEvent = Extract<
       | "org.vibeshape.variable.added"
       | "org.vibeshape.variable.expression-changed"
       | "org.vibeshape.variable.removed"
+      | "org.vibeshape.variable.renamed"
       | "org.vibeshape.variable.table-replaced"
   }
 >
@@ -253,6 +271,7 @@ type VariableEvent = Extract<
 const variableCommandKinds = new Set<DocumentCommand["kind"]>([
   "org.vibeshape.variable.add",
   "org.vibeshape.variable.remove",
+  "org.vibeshape.variable.rename",
   "org.vibeshape.variable.replace-table",
   "org.vibeshape.variable.set-expression",
 ])
@@ -260,6 +279,7 @@ const variableEventTypes = new Set<DocumentEvent["type"]>([
   "org.vibeshape.variable.added",
   "org.vibeshape.variable.expression-changed",
   "org.vibeshape.variable.removed",
+  "org.vibeshape.variable.renamed",
   "org.vibeshape.variable.table-replaced",
 ])
 

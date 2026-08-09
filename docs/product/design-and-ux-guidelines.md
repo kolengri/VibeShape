@@ -271,7 +271,7 @@ The table has these columns:
 
 | Column | Contract |
 |---|---|
-| Name | Shows the authored ASCII name with a persistent visual `#` prefix; schema v0 names are fixed after creation until atomic rename/refactor exists. |
+| Name | Shows the authored ASCII name with a persistent visual `#` prefix. A committed name is read-only until the user starts the explicit atomic Rename action. |
 | Expression | Preserves raw text while editing and commits only after table-level syntax, reference, cycle, dimensional, and range validation. |
 | Result | Read-only resolved value in the current display unit, with the canonical dimension available to assistive technology. |
 | Status | Uses text and iconography for valid, invalid, missing-reference, cycle, or affected-feature state; color is supplementary. |

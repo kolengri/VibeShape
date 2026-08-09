@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
+import { boxFeatureType } from "./part-design"
 import { createLengthQuantity } from "./units"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -7,11 +8,13 @@ const variableIds = {
   width: "0195b5ac-b220-7a2c-8c33-67a36a7f21ac",
   depth: "0195b5ac-b221-7a2c-8c33-67a36a7f21ac",
 } as const
+const featureId = "0195b5ac-b222-7a2c-8c33-67a36a7f21ac"
 const commandIds = [
   "0195b5ac-b230-7a2c-8c33-67a36a7f21ac",
   "0195b5ac-b231-7a2c-8c33-67a36a7f21ac",
   "0195b5ac-b232-7a2c-8c33-67a36a7f21ac",
   "0195b5ac-b233-7a2c-8c33-67a36a7f21ac",
+  "0195b5ac-b234-7a2c-8c33-67a36a7f21ac",
 ] as const
 const actor = { type: "user", userId: "org.vibeshape.user.alice" } as const
 
@@ -114,6 +117,110 @@ describe("variable document commands", () => {
         payload: { variableId: variableIds.width, expression: "20 mm" },
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "command-no-op" } })
+  })
+
+  it("renames by stable ID and atomically refactors variable and feature quantity sources", () => {
+    const created = createDocument()
+    const width = addVariable(created.snapshot, variableIds.width, "width", "20 mm", 1)
+    if (!width.ok) throw new Error(width.diagnostic.message)
+    const depth = addVariable(width.snapshot, variableIds.depth, "depth", "#width / 2", 2)
+    if (!depth.ok) throw new Error(depth.diagnostic.message)
+    const addedFeature = applyDocumentCommand(depth.snapshot, {
+      ...envelope("org.vibeshape.feature.add", 3, 3),
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: featureId,
+          type: boxFeatureType.type,
+          parameters: {
+            width: createLengthQuantity(20, "mm", "#width"),
+            depth: createLengthQuantity(10, "mm", "#width / 2"),
+            height: createLengthQuantity(5, "mm", "5 mm"),
+            centered: false,
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+          label: "Box 1",
+        },
+      },
+    })
+    if (!addedFeature.ok) throw new Error(addedFeature.diagnostic.message)
+
+    const renamed = applyDocumentCommand(addedFeature.snapshot, {
+      ...envelope("org.vibeshape.variable.rename", 4, 4),
+      payload: { variableId: variableIds.width, name: "span" },
+    })
+
+    expect(renamed).toMatchObject({
+      ok: true,
+      snapshot: {
+        revision: 5,
+        variables: [
+          { id: variableIds.width, name: "span", expression: "20 mm" },
+          { id: variableIds.depth, name: "depth", expression: "#span / 2" },
+        ],
+        features: [
+          {
+            id: featureId,
+            parameters: {
+              width: { source: { expression: "#span" } },
+              depth: { source: { expression: "#span / 2" } },
+              height: { source: { expression: "5 mm" } },
+            },
+          },
+        ],
+      },
+      event: {
+        type: "org.vibeshape.variable.renamed",
+        variableId: variableIds.width,
+        previousName: "width",
+        name: "span",
+      },
+    })
+    if (!renamed.ok) return
+    expect(
+      replayDocumentEvents([
+        created.event,
+        width.event,
+        depth.event,
+        addedFeature.event,
+        renamed.event,
+      ]),
+    ).toEqual({ ok: true, snapshot: renamed.snapshot })
+    expect(
+      reduceDocumentEvent(addedFeature.snapshot, { ...renamed.event, previousName: "other" }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
+  it("rejects rename conflicts, missing variables, and no-op names", () => {
+    const created = createDocument()
+    const width = addVariable(created.snapshot, variableIds.width, "width", "20 mm", 1)
+    if (!width.ok) throw new Error(width.diagnostic.message)
+    const depth = addVariable(width.snapshot, variableIds.depth, "depth", "10 mm", 2)
+    if (!depth.ok) throw new Error(depth.diagnostic.message)
+
+    expect(
+      applyDocumentCommand(depth.snapshot, {
+        ...envelope("org.vibeshape.variable.rename", 3, 3),
+        payload: { variableId: variableIds.width, name: "depth" },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "variable-name-conflict" } })
+    expect(
+      applyDocumentCommand(depth.snapshot, {
+        ...envelope("org.vibeshape.variable.rename", 3, 3),
+        payload: { variableId: variableIds.width, name: "width" },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "command-no-op" } })
+    expect(
+      applyDocumentCommand(depth.snapshot, {
+        ...envelope("org.vibeshape.variable.rename", 3, 3),
+        payload: {
+          variableId: "0195b5ac-b229-7a2c-8c33-67a36a7f21ac",
+          name: "missing",
+        },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "variable-not-found" } })
   })
 
   it("prevents deletion while another variable depends on the target", () => {

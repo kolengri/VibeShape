@@ -156,6 +156,19 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       },
     },
     {
+      kind: "org.vibeshape.variable.rename",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: true,
+      },
+    },
+    {
       kind: "org.vibeshape.variable.remove",
       schemaVersion: 1,
       ownerModuleId: "org.vibeshape.core.document",

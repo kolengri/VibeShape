@@ -14,14 +14,15 @@ import {
   documentCoreModule,
   documentIdSchema,
   draftIdSchema,
-  featureIdSchema,
-  featureCoreModule,
   type FeatureRecord,
+  featureCoreModule,
+  featureIdSchema,
   generateUuidV7,
   partDesignFeatureTypeHandlers,
   partDesignModule,
   sessionIdSchema,
   type VariableDefinition,
+  type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
 import {
@@ -273,11 +274,11 @@ export async function applyVariableTable(
   return { ok: true }
 }
 
-async function commitFeatureMutation(
-  kind: "org.vibeshape.feature.add" | "org.vibeshape.feature.update",
-  baseRevision: number,
-  feature: FeatureRecord,
-): Promise<FeatureMutationResult> {
+async function commitDocumentCommand(
+  createCommand: (
+    documentId: ReturnType<typeof documentIdSchema.parse>,
+  ) => Parameters<NonNullable<typeof session>["commit"]>[0],
+): Promise<ApplyVariableTableResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
       ok: false,
@@ -290,16 +291,7 @@ async function commitFeatureMutation(
     }
   }
   publish({ ...state, saveStatus: "saving", diagnostic: null })
-  const result = await session.commit({
-    kind,
-    schemaVersion: 1,
-    commandId: browserUuidV7(),
-    documentId: session.snapshot.id,
-    baseRevision,
-    issuedAt: new Date().toISOString(),
-    actor: { type: "user", userId: null },
-    payload: { feature },
-  })
+  const result = await session.commit(createCommand(session.snapshot.id))
   if (!result.ok) {
     publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
     return result
@@ -313,12 +305,42 @@ async function commitFeatureMutation(
   return { ok: true }
 }
 
+async function commitFeatureMutation(
+  kind: "org.vibeshape.feature.add" | "org.vibeshape.feature.update",
+  baseRevision: number,
+  feature: FeatureRecord,
+): Promise<FeatureMutationResult> {
+  return commitDocumentCommand((documentId) => ({
+    kind,
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { feature },
+  }))
+}
+
 export function addFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.add", baseRevision, feature)
 }
 
 export function updateFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
+}
+
+export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.variable.rename",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { variableId, name },
+  }))
 }
 
 export function useDocumentController(defaultDocumentName: string) {

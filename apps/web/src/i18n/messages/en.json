@@ -76,7 +76,7 @@
           "description": "Variables make repeated dimensions configurable from one table.",
           "reference": "Reference a value with #name in a supported parameter.",
           "units": "Length and angle literals require a supported unit; scalars do not.",
-          "names": "A variable name is fixed after the table is applied."
+          "names": "Rename a committed variable explicitly to refactor every supported reference atomically."
         }
       },
       "viewport": {
@@ -113,6 +113,9 @@
       "actions": {
         "add": "Add variable",
         "remove": "Remove",
+        "rename": "Rename",
+        "confirmRename": "Rename variable",
+        "cancelRename": "Cancel",
         "apply": "Apply variables"
       },
       "states": {
@@ -127,7 +130,10 @@
         "applyFailed": "The variable table could not be applied. Your edits are preserved.",
         "removeInUse": "This variable is still referenced by another variable or feature.",
         "invalidName": "Use a name that starts with a letter or underscore and contains only letters, digits, or underscores.",
-        "invalidExpression": "Enter a valid expression with supported numbers, units, and #variable references."
+        "invalidExpression": "Enter a valid expression with supported numbers, units, and #variable references.",
+        "renameNoChange": "Enter a different name for this variable.",
+        "renameConflict": "That variable name is already in use.",
+        "renameFailed": "The variable could not be renamed. Your input is preserved."
       }
     }
   }
