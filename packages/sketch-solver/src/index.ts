@@ -25,6 +25,12 @@ export {
   solveSketchRecord,
 } from "./production"
 export {
+  createSketchProfileSelector,
+  resolveSketchProfileSelector,
+  type SketchProfileResolution,
+  selectedProfileLoops,
+} from "./profile-selector"
+export {
   DEFAULT_PROFILE_TOLERANCE_MM,
   detectSketchProfiles,
   MAX_PROFILE_CURVES,

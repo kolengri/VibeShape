@@ -20,6 +20,7 @@
     "./modules": "./src/modules.ts",
     "./part-design": "./src/part-design.ts",
     "./sketch": "./src/sketch.ts",
+    "./sketch-profile-selector": "./src/sketch-profile-selector.ts",
     "./topology": "./src/topology.ts",
     "./units": "./src/units.ts",
     "./variables": "./src/variables.ts"

@@ -26,9 +26,9 @@ The initial schema-version-0 extractor:
 
 Document protocol version 5 carries the result through an independent strict Zod schema. The protocol rejects non-finite values, invalid bounds, forward parent references, broken loop references, unknown fields, and oversized arrays.
 
-`loopIndex` and `profileIndex` are response-local ordering aids. They MUST NOT be stored as persistent model references. A future sketch-driven feature stores a versioned profile selector based on the owning sketch and stable boundary intent, then resolves that selector against the latest result.
+`loopIndex` and `profileIndex` are response-local ordering aids. They MUST NOT be stored as persistent model references. Domain selector schema v0 instead stores the owning stable `SketchId`, one canonical sorted outer-boundary entity-ID set, and canonical sorted hole-boundary entity-ID sets. The pure resolver matches those sets against the latest result and returns `resolved`, `missing`, or `ambiguous`; it never falls back to a transient index. A future sketch-driven feature persists this selector as its profile intent.
 
-The initial extractor deliberately does not split curves at interior intersections. Every affected curve is excluded and receives an `intersecting-entities` diagnostic. Interior splitting, selector persistence, OCCT wire/face construction, and interactive fill are separate increments with their own invariant tests.
+The initial extractor deliberately does not split curves at interior intersections. Every affected curve is excluded and receives an `intersecting-entities` diagnostic. Interior splitting, feature integration of the selector, OCCT wire/face construction, and interactive fill are separate increments with their own invariant tests.
 
 ## Consequences
 
@@ -36,7 +36,7 @@ The initial extractor deliberately does not split curves at interior intersectio
 - Worker replacement and entity-array reordering produce the same profile result for the same stable solved geometry.
 - A malformed or ambiguous sketch cannot block the worker or become an authoritative feature input.
 - Shapes that rely on crossing entities remain unsupported until the arrangement splitter is implemented.
-- Profile indices are intentionally disposable; sketch-driven features require a stable selector contract before extrusion is persisted.
+- Profile indices are intentionally disposable; the stable boundary selector is ready for a sketch-driven feature to persist before extrusion is evaluated.
 
 ## Rejected alternatives
 

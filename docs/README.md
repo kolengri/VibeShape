@@ -59,7 +59,7 @@ SPK-006 is **Proceed with reduced scope**. Strict immutable packages, exact lock
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
-- Interior-intersection splitting, stable profile selectors, conflict interaction, and sketch-mode UI on the completed production records, worker protocol, stable-ID continuation, deterministic profiles, and initial 1,000-point SolveSpace budget.
+- Interior-intersection splitting, stable-selector feature integration, conflict interaction, and sketch-mode UI on the completed production records, worker protocol, stable-ID continuation, deterministic profiles, and initial 1,000-point SolveSpace budget.
 - Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
 - Real startup, memory, rebuild, and representative large-project storage budgets.
 - Production extension modeling ABI, portable memory policy, document integration, package governance, and recovery rebuilds on the accepted reduced-scope seams.
