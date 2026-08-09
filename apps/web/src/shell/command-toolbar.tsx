@@ -1,8 +1,18 @@
 import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
+import type { DocumentControllerState } from "../document/document-controller"
 
-export function CommandToolbar() {
+export function CommandToolbar({
+  activeTool,
+  controller,
+  onCreateBox,
+}: {
+  activeTool: "box" | null
+  controller: DocumentControllerState
+  onCreateBox: () => void
+}) {
   const t = useTranslations("app.shell.commandToolbar")
+  const canCreate = controller.status === "ready" && controller.report?.mode === "read-write"
 
   return (
     <nav
@@ -25,6 +35,16 @@ export function CommandToolbar() {
       </Button>
       <Button type="button" size="sm" variant="ghost">
         {t("extrude")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canCreate}
+        aria-pressed={activeTool === "box"}
+        onClick={onCreateBox}
+      >
+        {t("box")}
       </Button>
     </nav>
   )

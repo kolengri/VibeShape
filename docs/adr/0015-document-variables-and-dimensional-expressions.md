@@ -39,4 +39,5 @@ Document protocol version 2 carries the bounded authored variable table to the d
 - Formatting-only expression edits can advance the semantic document revision without invalidating geometry.
 - Feature-module handlers own parameter resolution, so unavailable extension payloads are preserved rather than guessed.
 - The product UI keeps raw incomplete rows in an uncontrolled table contract, integrates the same DOM through TanStack Form, and commits the exact validated table through one ordinary replacement command.
+- The first feature-authoring integration retains Box expressions such as `20 mm` or `#width`, validates their resolved dimension and range adjacent to the owning field, and persists the authored source through the ordinary feature-add command.
 - A future atomic rename/refactor command, richer grammar, explicit reorder UI, display-unit preferences, and extension ABI support remain follow-up work.

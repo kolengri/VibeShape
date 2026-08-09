@@ -14,7 +14,9 @@ import {
   documentCoreModule,
   documentIdSchema,
   draftIdSchema,
+  featureIdSchema,
   featureCoreModule,
+  type FeatureRecord,
   generateUuidV7,
   partDesignFeatureTypeHandlers,
   partDesignModule,
@@ -48,6 +50,8 @@ export type DocumentControllerState = Readonly<{
 export type ApplyVariableTableResult =
   | { ok: true }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type AddFeatureResult = ApplyVariableTableResult
 
 let state: DocumentControllerState = {
   status: "idle",
@@ -212,6 +216,10 @@ export function createBrowserVariableId() {
   return variableIdSchema.parse(browserUuidV7())
 }
 
+export function createBrowserFeatureId() {
+  return featureIdSchema.parse(browserUuidV7())
+}
+
 function subscribeDocumentController(listener: () => void) {
   listeners.add(listener)
   return () => listeners.delete(listener)
@@ -251,6 +259,45 @@ export async function applyVariableTable(
         payload: { variables },
       },
     ],
+  })
+  if (!result.ok) {
+    publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+    return result
+  }
+  publish({
+    ...state,
+    report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+    saveStatus: "saved",
+    diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+  })
+  return { ok: true }
+}
+
+export async function addFeature(
+  baseRevision: number,
+  feature: FeatureRecord,
+): Promise<AddFeatureResult> {
+  if (!session || state.status !== "ready" || !state.report) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "session-closed",
+        message: "The local document session is unavailable.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await session.commit({
+    kind: "org.vibeshape.feature.add",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId: session.snapshot.id,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { feature },
   })
   if (!result.ok) {
     publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
