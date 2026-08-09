@@ -9,6 +9,7 @@ import {
   createFeatureGraph,
   evaluateFeatureGraph,
   type FeatureDiagnostic,
+  type FeatureEvaluationContext,
   type FeatureEvaluationRecord,
   type FeatureGraph,
   type FeatureGraphEvaluation,
@@ -18,6 +19,7 @@ import {
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
 import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
+import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
   type FeatureContentIdentity,
   type FeatureEvaluationDependency,
@@ -141,6 +143,12 @@ export type FeatureRebuildInput = Readonly<{
   evaluateGeometry: FeatureGeometryEvaluationPort
   onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
 }>
+
+type CoordinatedFeatureRebuildInput = FeatureRebuildInput &
+  Readonly<{
+    forcedDirtyFeatureIds?: readonly FeatureId[]
+    preflightFailures?: ReadonlyMap<FeatureId, FeatureDiagnostic>
+  }>
 
 export type DocumentFeatureRebuildDiagnostic = Readonly<{
   code: "invalid-document-snapshot"
@@ -349,17 +357,47 @@ function detectChangedFeatureIds(graph: FeatureGraph, previousFeatures: readonly
     .map((feature) => feature.id)
 }
 
-export async function rebuildFeatureGraph(
-  input: FeatureRebuildInput,
-): Promise<FeatureRebuildResult> {
+type PreparedFeatureRebuild = Readonly<{
+  identity: z.infer<typeof rebuildIdentitySchema>
+  environment: FeatureContentEnvironment
+  mesh: FeatureMeshPolicy
+  previous: NonNullable<ReturnType<typeof indexPreviousState>>
+}>
+
+type FeatureRebuildFailure = Readonly<{
+  ok: false
+  result: Extract<FeatureRebuildResult, { ok: false }>
+}>
+
+type FeatureRebuildPreparation =
+  | { ok: true; prepared: PreparedFeatureRebuild }
+  | FeatureRebuildFailure
+
+type RebuildIdentity = z.infer<typeof rebuildIdentitySchema>
+
+type PreparedRebuildPolicies = Readonly<{
+  environment: FeatureContentEnvironment
+  mesh: FeatureMeshPolicy
+}>
+
+function rebuildFailure(
+  code: FeatureRebuildDiagnostic["code"],
+  message: string,
+): Extract<FeatureRebuildResult, { ok: false }> {
+  return { ok: false, diagnostic: { code, message } }
+}
+
+function prepareRebuildIdentity(
+  input: CoordinatedFeatureRebuildInput,
+): { ok: true; identity: RebuildIdentity } | FeatureRebuildFailure {
   const identity = parseRebuildIdentity(input)
   if (!identity.success) {
     return {
       ok: false,
-      diagnostic: {
-        code: "invalid-rebuild-identity",
-        message: "The rebuild document, revision, or generation identity is invalid.",
-      },
+      result: rebuildFailure(
+        "invalid-rebuild-identity",
+        "The rebuild document, revision, or generation identity is invalid.",
+      ),
     }
   }
   if (
@@ -368,155 +406,191 @@ export async function rebuildFeatureGraph(
   ) {
     return {
       ok: false,
-      diagnostic: {
-        code: "previous-document-mismatch",
-        message: "Previous rebuild state belongs to a different document.",
-      },
+      result: rebuildFailure(
+        "previous-document-mismatch",
+        "Previous rebuild state belongs to a different document.",
+      ),
     }
   }
   if (input.previous && input.previous.revision > identity.data.revision) {
     return {
       ok: false,
-      diagnostic: {
-        code: "future-previous-revision",
-        message: "Previous rebuild state cannot come from a future document revision.",
-      },
+      result: rebuildFailure(
+        "future-previous-revision",
+        "Previous rebuild state cannot come from a future document revision.",
+      ),
     }
   }
+  return { ok: true, identity: identity.data }
+}
+
+function prepareRebuildPolicies(
+  input: CoordinatedFeatureRebuildInput,
+): { ok: true; policies: PreparedRebuildPolicies } | FeatureRebuildFailure {
   const environment = featureContentEnvironmentSchema.safeParse(input.environment)
   if (!environment.success) {
     return {
       ok: false,
-      diagnostic: {
-        code: "invalid-feature-content-environment",
-        message: "The feature content environment is invalid.",
-      },
+      result: rebuildFailure(
+        "invalid-feature-content-environment",
+        "The feature content environment is invalid.",
+      ),
     }
   }
   const mesh = featureMeshPolicySchema.safeParse(input.mesh)
   if (!mesh.success) {
     return {
       ok: false,
-      diagnostic: {
-        code: "invalid-feature-mesh-policy",
-        message: "The feature mesh policy is invalid.",
-      },
+      result: rebuildFailure("invalid-feature-mesh-policy", "The feature mesh policy is invalid."),
     }
   }
+  return { ok: true, policies: { environment: environment.data, mesh: mesh.data } }
+}
+
+function prepareFeatureRebuild(input: CoordinatedFeatureRebuildInput): FeatureRebuildPreparation {
+  const identity = prepareRebuildIdentity(input)
+  if (!identity.ok) return identity
+  const policies = prepareRebuildPolicies(input)
+  if (!policies.ok) return policies
   const previous = indexPreviousState(
     input.graph,
     input.previous,
-    environment.data,
-    mesh.data,
-    identity.data.generation,
+    policies.policies.environment,
+    policies.policies.mesh,
+    identity.identity.generation,
   )
   if (!previous) {
     return {
       ok: false,
-      diagnostic: {
-        code: "invalid-previous-feature-state",
-        message:
-          "Previous rebuild state must be valid, unique, and pair every successful result with matching geometry.",
-      },
+      result: rebuildFailure(
+        "invalid-previous-feature-state",
+        "Previous rebuild state must be valid, unique, and pair every successful result with matching geometry.",
+      ),
     }
   }
+  return {
+    ok: true,
+    prepared: {
+      identity: identity.identity,
+      environment: policies.policies.environment,
+      mesh: policies.policies.mesh,
+      previous,
+    },
+  }
+}
 
-  const changedFeatureIds = previous.reusable
+async function evaluateScheduledFeature(
+  input: CoordinatedFeatureRebuildInput,
+  prepared: PreparedFeatureRebuild,
+  context: FeatureEvaluationContext,
+) {
+  const preflightFailure = input.preflightFailures?.get(context.feature.id)
+  if (preflightFailure) return failed(preflightFailure.code, preflightFailure.values)
+  const dependencies = successfulDependencies(context.dependencies)
+  const content = await computeFeatureContentHash(
+    input.registry,
+    {
+      feature: context.feature,
+      dependencies,
+      environment: prepared.environment,
+    },
+    input.hash,
+  )
+  if (!content.ok) {
+    return failed("org.vibeshape.feature.content-identity-failed", {
+      reason: content.diagnostic.code,
+    })
+  }
+  const wireContent = featureContentIdentitySchema.safeParse(content.identity)
+  if (!wireContent.success) return failed("org.vibeshape.feature.worker-contract-rejected")
+
+  let output: unknown
+  try {
+    const request: FeatureGeometryEvaluationRequest = {
+      documentId: prepared.identity.documentId,
+      revision: prepared.identity.revision,
+      generation: prepared.identity.generation,
+      featureId: context.feature.id,
+      content: wireContent.data,
+      contentHash: content.contentHash,
+      dependencies,
+      mesh: prepared.mesh,
+      ...(input.onProgress
+        ? {
+            onProgress: (stage, fraction) =>
+              input.onProgress?.(context.feature.id, stage, fraction),
+          }
+        : {}),
+    }
+    output = await input.evaluateGeometry(request)
+  } catch {
+    return failed("org.vibeshape.feature.geometry-evaluation-failed", {
+      reason: "worker-request-failed",
+    })
+  }
+  const parsed = geometryEvaluationPortResultSchema.safeParse(output)
+  if (!parsed.success) {
+    return failed("org.vibeshape.feature.geometry-evaluation-failed", {
+      reason: "unexpected-worker-response",
+    })
+  }
+  if (!parsed.data.ok) {
+    return failed("org.vibeshape.feature.geometry-evaluation-failed", {
+      reason: parsed.data.diagnosticCode,
+    })
+  }
+  if (
+    serializeFeatureContentEnvironment(parsed.data.geometry.engine.featureContentEnvironment) !==
+    serializeFeatureContentEnvironment(prepared.environment)
+  ) {
+    return failed("org.vibeshape.feature.worker-contract-rejected", {
+      reason: "feature-content-environment-mismatch",
+    })
+  }
+  prepared.previous.geometryById.set(context.feature.id, {
+    featureId: context.feature.id,
+    contentHash: content.contentHash,
+    meshPolicy: prepared.mesh,
+    geometry: parsed.data.geometry,
+  })
+  return { status: "succeeded", contentHash: content.contentHash } as const
+}
+
+async function runFeatureRebuild(
+  input: CoordinatedFeatureRebuildInput,
+): Promise<FeatureRebuildResult> {
+  const preparation = prepareFeatureRebuild(input)
+  if (!preparation.ok) return preparation.result
+  const { identity, environment, mesh, previous } = preparation.prepared
+
+  const detectedChangedFeatureIds = previous.reusable
     ? detectChangedFeatureIds(input.graph, previous.features)
     : input.graph.features.map((feature) => feature.id)
+  const changedFeatureIds = [
+    ...new Set([...detectedChangedFeatureIds, ...(input.forcedDirtyFeatureIds ?? [])]),
+  ]
   const evaluation = await evaluateFeatureGraph(input.graph, {
     changedFeatureIds,
     previousResults: previous.records,
-    async evaluate(context) {
-      const dependencies = successfulDependencies(context.dependencies)
-      const content = await computeFeatureContentHash(
-        input.registry,
-        {
-          feature: context.feature,
-          dependencies,
-          environment: environment.data,
-        },
-        input.hash,
-      )
-      if (!content.ok) {
-        return failed("org.vibeshape.feature.content-identity-failed", {
-          reason: content.diagnostic.code,
-        })
-      }
-
-      const wireContent = featureContentIdentitySchema.safeParse(content.identity)
-      if (!wireContent.success) {
-        return failed("org.vibeshape.feature.worker-contract-rejected")
-      }
-
-      let output: unknown
-      try {
-        const request: FeatureGeometryEvaluationRequest = {
-          documentId: identity.data.documentId,
-          revision: identity.data.revision,
-          generation: identity.data.generation,
-          featureId: context.feature.id,
-          content: wireContent.data,
-          contentHash: content.contentHash,
-          dependencies,
-          mesh: mesh.data,
-          ...(input.onProgress
-            ? {
-                onProgress: (stage, fraction) =>
-                  input.onProgress?.(context.feature.id, stage, fraction),
-              }
-            : {}),
-        }
-        output = await input.evaluateGeometry(request)
-      } catch {
-        return failed("org.vibeshape.feature.geometry-evaluation-failed", {
-          reason: "worker-request-failed",
-        })
-      }
-
-      const parsed = geometryEvaluationPortResultSchema.safeParse(output)
-      if (!parsed.success) {
-        return failed("org.vibeshape.feature.geometry-evaluation-failed", {
-          reason: "unexpected-worker-response",
-        })
-      }
-      if (!parsed.data.ok) {
-        return failed("org.vibeshape.feature.geometry-evaluation-failed", {
-          reason: parsed.data.diagnosticCode,
-        })
-      }
-      if (
-        serializeFeatureContentEnvironment(
-          parsed.data.geometry.engine.featureContentEnvironment,
-        ) !== serializeFeatureContentEnvironment(environment.data)
-      ) {
-        return failed("org.vibeshape.feature.worker-contract-rejected", {
-          reason: "feature-content-environment-mismatch",
-        })
-      }
-
-      previous.geometryById.set(context.feature.id, {
-        featureId: context.feature.id,
-        contentHash: content.contentHash,
-        meshPolicy: mesh.data,
-        geometry: parsed.data.geometry,
-      })
-      return { status: "succeeded", contentHash: content.contentHash }
-    },
+    evaluate: (context) => evaluateScheduledFeature(input, preparation.prepared, context),
   })
   if (!evaluation.ok) return evaluation
 
   return {
     ok: true,
-    documentId: identity.data.documentId,
-    revision: identity.data.revision,
-    generation: identity.data.generation,
+    documentId: identity.documentId,
+    revision: identity.revision,
+    generation: identity.generation,
     features: input.graph.features,
     evaluation: evaluation.evaluation,
     geometry: presentGeometry(input.graph, evaluation.evaluation, previous.geometryById),
-    environment: environment.data,
-    mesh: mesh.data,
+    environment,
+    mesh,
   }
+}
+
+export function rebuildFeatureGraph(input: FeatureRebuildInput): Promise<FeatureRebuildResult> {
+  return runFeatureRebuild(input)
 }
 
 export async function rebuildDocumentFeatures(
@@ -532,7 +606,32 @@ export async function rebuildDocumentFeatures(
       },
     }
   }
-  const graph = createFeatureGraph(document.data.features)
+  const variables = evaluateVariableDefinitions(document.data.variables)
+  if (!variables.ok) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-document-snapshot",
+        message: variables.diagnostic.message,
+      },
+    }
+  }
+  const preflightFailures = new Map<FeatureId, FeatureDiagnostic>()
+  const resolvedFeatures = document.data.features.map((feature) => {
+    const resolved = input.registry.resolveFeatureParameters(feature, variables.valuesByName)
+    if (resolved.ok) return resolved.feature
+    preflightFailures.set(feature.id, {
+      code: "org.vibeshape.feature.parameter-expression-failed",
+      values: {
+        reason: resolved.diagnostic.reason,
+        ...(resolved.diagnostic.issues[0]?.path
+          ? { path: resolved.diagnostic.issues[0].path }
+          : {}),
+      },
+    })
+    return feature
+  })
+  const graph = createFeatureGraph(resolvedFeatures)
   if (!graph.ok) {
     return {
       ok: false,
@@ -543,7 +642,7 @@ export async function rebuildDocumentFeatures(
     }
   }
 
-  return rebuildFeatureGraph({
+  return runFeatureRebuild({
     documentId: document.data.id,
     revision: document.data.revision,
     generation: input.generation,
@@ -553,6 +652,8 @@ export async function rebuildDocumentFeatures(
     mesh: input.mesh,
     hash: input.hash,
     evaluateGeometry: input.evaluateGeometry,
+    forcedDirtyFeatureIds: [...preflightFailures.keys()],
+    preflightFailures,
     ...(input.previous ? { previous: input.previous } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
   })

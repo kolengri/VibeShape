@@ -263,6 +263,30 @@ Placeholder text is an example, never the only label or required instruction.
 - Constraints and feature parameters MUST state whether zero and negative values are meaningful.
 - Validation must not destroy a previously valid committed value.
 
+### Variables Table
+
+Document variables use a dedicated panel reachable from the model tree and command palette. The initial composition is a semantic table, not an ARIA grid: each editable cell contains an ordinary labeled form control, each row has an accessible name, and native `Tab` order remains predictable until spreadsheet-style keyboard behavior is implemented completely.
+
+The table has these columns:
+
+| Column | Contract |
+|---|---|
+| Name | Shows the authored ASCII name with a persistent visual `#` prefix; schema v0 names are fixed after creation until atomic rename/refactor exists. |
+| Expression | Preserves raw text while editing and commits only after table-level syntax, reference, cycle, dimensional, and range validation. |
+| Result | Read-only resolved value in the current display unit, with the canonical dimension available to assistive technology. |
+| Status | Uses text and iconography for valid, invalid, missing-reference, cycle, or affected-feature state; color is supplementary. |
+| Actions | Contains specifically labeled row actions such as `Remove variable`; busy and double-activation behavior follows the shared Button contract. |
+
+- `Add variable` creates an uncontrolled editing row and focuses its name field; it does not change the committed document until Apply succeeds.
+- The uncontrolled table component owns raw incomplete input. Its TanStack Form integration supplies validation, dirty state, submission, and command construction without replacing the primitive's DOM contract.
+- A committed expression may reference any row with `#name`; row order is presentation only and never changes evaluation semantics.
+- Errors stay adjacent to the owning row and the panel exposes an error summary that moves focus to the first invalid control.
+- Apply validates the exact visible table and emits ordinary variable commands against the displayed base revision. Stale revisions preserve the editing buffer and offer rebase or discard rather than silently overwriting newer work.
+- Removing a referenced variable is unavailable and names the dependent variable or feature parameter. The application never converts a broken reference into a numeric fallback.
+- A formatting-only edit may advance the document revision while reusing geometry when the resolved value is unchanged; the UI reports a successful semantic save without implying that geometry rebuilt.
+- Result cells use tabular numerals; authored expressions use the expression typography token. Long expressions truncate visually only when the complete source remains available on focus and to assistive technology.
+- Table virtualization is deferred. If later required, it must retain form state, focus, row error ownership, and accessible row/column position.
+
 ### Parameter Panel
 
 - Required parameters appear first in modeling order.

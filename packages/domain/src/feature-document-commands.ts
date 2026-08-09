@@ -20,9 +20,14 @@ import {
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import type { draftIdSchema } from "./identifiers"
 
-type FeatureCommand = Exclude<
+type FeatureCommand = Extract<
   DocumentCommand,
-  { kind: "org.vibeshape.document.create" | "org.vibeshape.document.rename" }
+  {
+    kind:
+      | "org.vibeshape.feature.add"
+      | "org.vibeshape.feature.update"
+      | "org.vibeshape.feature.set-suppressed"
+  }
 >
 type FeatureAddedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.added" }>
 type FeatureUpdatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.updated" }>

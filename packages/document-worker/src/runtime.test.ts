@@ -142,6 +142,7 @@ function geometry() {
 
 class FakeEngine implements GeometryKernelEngine {
   readonly evaluatedFeatureIds: FeatureId[] = []
+  readonly evaluatedInputs: FeatureEvaluationInput[] = []
   initialized = false
   disposedDocuments: string[] = []
 
@@ -163,6 +164,7 @@ class FakeEngine implements GeometryKernelEngine {
     reportProgress: (stage: GeometryProgressStage, fraction: number) => void,
   ): Promise<FeatureEvaluationResult> {
     this.evaluatedFeatureIds.push(featureIdSchema.parse(input.featureId))
+    this.evaluatedInputs.push(input)
     reportProgress("feature-validation", 0.1)
     reportProgress("feature-evaluation", 0.35)
     reportProgress("feature-tessellation", 0.7)
@@ -269,6 +271,39 @@ describe("DocumentWorkerRuntime", () => {
     expect(
       transfers.filter((transfer) => transfer.length > 0).map((transfer) => transfer.length),
     ).toEqual([12, 12, 12])
+  })
+
+  it("evaluates document variables before incremental geometry scheduling", async () => {
+    const { engine, messages, runtime } = createHarness()
+    const variableId = "0195b5ac-b240-7a2c-8c33-67a36a7f21ac"
+    const authoredBox: FeatureRecord = {
+      ...box(),
+      parameters: {
+        ...box().parameters,
+        width: createLengthQuantity(20, "mm", "#width"),
+      },
+    }
+    const rebuildRequest = (requestId: string, revision: number, expression: string) => ({
+      ...request(requestId, { revision }),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary, revision),
+        variables: [{ schemaVersion: 0, id: variableId, name: "width", expression }],
+        features: [authoredBox],
+      }),
+    })
+
+    await runtime.handle(rebuildRequest("variable-initial", 1, "20 mm"))
+    await runtime.handle(rebuildRequest("variable-changed", 2, "24 mm"))
+    await runtime.handle(rebuildRequest("variable-equivalent", 3, "12 * 2 mm"))
+
+    expect(engine.evaluatedInputs).toHaveLength(2)
+    expect(engine.evaluatedInputs.map(({ content }) => content.feature.parameters)).toEqual([
+      { width: 20, depth: 30, height: 40, centered: false },
+      { width: 24, depth: 30, height: 40, centered: false },
+    ])
+    expect(rebuilt(messages, "variable-equivalent").evaluation.reusedFeatureIds).toEqual([
+      featureIds.box,
+    ])
   })
 
   it("isolates document state and disposes native ownership", async () => {

@@ -1,12 +1,14 @@
 import { z } from "zod"
 import {
   applyDocumentCommand,
+  type DocumentCommand,
   type DocumentCommandOptions,
   type DocumentCommandResult,
   type DomainDiagnostic,
   parseDocumentCommand,
 } from "./commands"
 import type { DocumentSnapshot } from "./document"
+import type { FeatureRecord } from "./feature-graph"
 import { featureTypeKey } from "./feature-type-contracts"
 import type { FeatureTypeRegistry, FeatureValidationDiagnostic } from "./feature-type-registry"
 import { technicalIdentifierSchema } from "./identifiers"
@@ -16,6 +18,7 @@ import {
   featureCoreModule,
   type ModuleRegistry,
 } from "./modules"
+import { evaluateVariableDefinitions } from "./variables"
 
 const commandRouteSchema = z
   .object({
@@ -246,9 +249,39 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     ownerModuleId: documentCoreModule.id,
     execute: applyDocumentCommand,
   },
+  {
+    kind: "org.vibeshape.variable.add",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.variable.set-expression",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.variable.remove",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
 ]
 
-function featureValidationResult(diagnostic: FeatureValidationDiagnostic): DocumentCommandResult {
+type FeatureCommand = Extract<
+  DocumentCommand,
+  {
+    kind:
+      | "org.vibeshape.feature.add"
+      | "org.vibeshape.feature.set-suppressed"
+      | "org.vibeshape.feature.update"
+  }
+>
+
+function featureValidationResult(
+  diagnostic: FeatureValidationDiagnostic,
+): Extract<DocumentCommandResult, { ok: false }> {
   return {
     ok: false,
     diagnostic: {
@@ -260,6 +293,64 @@ function featureValidationResult(diagnostic: FeatureValidationDiagnostic): Docum
   }
 }
 
+function isFeatureCommand(command: DocumentCommand): command is FeatureCommand {
+  switch (command.kind) {
+    case "org.vibeshape.feature.add":
+    case "org.vibeshape.feature.set-suppressed":
+    case "org.vibeshape.feature.update":
+      return true
+    default:
+      return false
+  }
+}
+
+function wrongHandlerResult(): Extract<DocumentCommandResult, { ok: false }> {
+  return {
+    ok: false,
+    diagnostic: {
+      code: "invalid-command",
+      message: "The feature handler received a document command.",
+      retryable: false,
+      issues: [],
+    },
+  }
+}
+
+function prepareFeature(
+  featureTypes: FeatureTypeRegistry,
+  snapshot: DocumentSnapshot | null,
+  feature: FeatureRecord,
+): { ok: true; feature: FeatureRecord } | Extract<DocumentCommandResult, { ok: false }> {
+  const variables = evaluateVariableDefinitions(snapshot?.variables ?? [])
+  if (!variables.ok) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-variable-expression",
+        message: variables.diagnostic.message,
+        retryable: false,
+        issues: [],
+      },
+    }
+  }
+  const resolved = featureTypes.resolveFeatureParameters(feature, variables.valuesByName)
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-expression",
+        message: resolved.diagnostic.message,
+        retryable: false,
+        issues: resolved.diagnostic.issues.slice(0, 8),
+      },
+    }
+  }
+  const validated = featureTypes.validateFeature(resolved.feature)
+  return validated.ok
+    ? { ok: true, feature: validated.feature }
+    : featureValidationResult(validated.diagnostic)
+}
+
 function executeFeatureCommand(
   featureTypes: FeatureTypeRegistry,
   snapshot: DocumentSnapshot | null,
@@ -269,20 +360,7 @@ function executeFeatureCommand(
   const parsed = parseDocumentCommand(input)
 
   if (!parsed.ok) return parsed
-  if (
-    parsed.command.kind === "org.vibeshape.document.create" ||
-    parsed.command.kind === "org.vibeshape.document.rename"
-  ) {
-    return {
-      ok: false,
-      diagnostic: {
-        code: "invalid-command",
-        message: "The feature handler received a document command.",
-        retryable: false,
-        issues: [],
-      },
-    }
-  }
+  if (!isFeatureCommand(parsed.command)) return wrongHandlerResult()
   if (parsed.command.kind === "org.vibeshape.feature.set-suppressed") {
     return applyDocumentCommand(snapshot, parsed.command, options)
   }
@@ -290,12 +368,12 @@ function executeFeatureCommand(
   const preflight = applyDocumentCommand(snapshot, parsed.command, options)
   if (!preflight.ok) return preflight
 
-  const validated = featureTypes.validateFeature(parsed.command.payload.feature)
-  if (!validated.ok) return featureValidationResult(validated.diagnostic)
+  const prepared = prepareFeature(featureTypes, snapshot, parsed.command.payload.feature)
+  if (!prepared.ok) return prepared
 
   return applyDocumentCommand(
     snapshot,
-    { ...parsed.command, payload: { feature: validated.feature } },
+    { ...parsed.command, payload: { feature: prepared.feature } },
     options,
   )
 }

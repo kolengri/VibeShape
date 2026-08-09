@@ -2,6 +2,11 @@ import { z } from "zod"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { lengthQuantitySchema } from "./units"
+import {
+  type EvaluatedVariable,
+  type ExpressionValue,
+  resolveQuantityExpression,
+} from "./variables"
 
 const MAX_PRIMITIVE_LENGTH_MM = 1_000_000
 
@@ -52,6 +57,82 @@ export const booleanFeatureParametersSchema = z
 
 export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
 
+type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
+
+function expressionFailure(path: string, message: string, code: string) {
+  return {
+    ok: false,
+    diagnostic: {
+      code,
+      message: "A part-design parameter expression is invalid.",
+      issues: [{ path, message }],
+    },
+  } as const
+}
+
+function resolveLengthParameter(
+  path: string,
+  quantity: z.infer<typeof lengthQuantitySchema>,
+  variables: VariableValues,
+) {
+  const resolved = resolveQuantityExpression(quantity, variables)
+  if (!resolved.ok) {
+    return expressionFailure(path, resolved.diagnostic.message, resolved.diagnostic.code)
+  }
+  const length = lengthQuantitySchema.safeParse(resolved.quantity)
+  return length.success
+    ? ({ ok: true, quantity: length.data } as const)
+    : expressionFailure(path, "The expression did not resolve to a length.", "dimension-mismatch")
+}
+
+function resolveBoxParameters(parameters: unknown, variables: VariableValues) {
+  const parsed = z
+    .object({
+      width: lengthQuantitySchema,
+      depth: lengthQuantitySchema,
+      height: lengthQuantitySchema,
+      centered: z.boolean(),
+    })
+    .strict()
+    .safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const width = resolveLengthParameter("width", parsed.data.width, variables)
+  if (!width.ok) return width
+  const depth = resolveLengthParameter("depth", parsed.data.depth, variables)
+  if (!depth.ok) return depth
+  const height = resolveLengthParameter("height", parsed.data.height, variables)
+  if (!height.ok) return height
+  return {
+    ok: true,
+    parameters: {
+      width: width.quantity,
+      depth: depth.quantity,
+      height: height.quantity,
+      centered: parsed.data.centered,
+    },
+  } as const
+}
+
+function resolveCylinderParameters(parameters: unknown, variables: VariableValues) {
+  const parsed = z
+    .object({ radius: lengthQuantitySchema, height: lengthQuantitySchema, centered: z.boolean() })
+    .strict()
+    .safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const radius = resolveLengthParameter("radius", parsed.data.radius, variables)
+  if (!radius.ok) return radius
+  const height = resolveLengthParameter("height", parsed.data.height, variables)
+  if (!height.ok) return height
+  return {
+    ok: true,
+    parameters: {
+      radius: radius.quantity,
+      height: height.quantity,
+      centered: parsed.data.centered,
+    },
+  } as const
+}
+
 export const boxFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -95,6 +176,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   {
     type: boxFeatureType.type,
     parametersSchema: boxFeatureParametersSchema,
+    resolveParameters: resolveBoxParameters,
     contentParameters(parameters) {
       const box = boxFeatureParametersSchema.parse(parameters)
       return boxFeatureContentParametersSchema.parse({
@@ -108,6 +190,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
   {
     type: cylinderFeatureType.type,
     parametersSchema: cylinderFeatureParametersSchema,
+    resolveParameters: resolveCylinderParameters,
     contentParameters(parameters) {
       const cylinder = cylinderFeatureParametersSchema.parse(parameters)
       return cylinderFeatureContentParametersSchema.parse({

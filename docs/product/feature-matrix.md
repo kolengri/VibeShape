@@ -103,6 +103,8 @@ P1 includes:
 
 Arbitrary JavaScript is prohibited in documents. Native files must not be executable.
 
+The implemented foundation is intentionally narrower: document variables have stable UUIDv7 identity, case-sensitive ASCII names, arbitrary DAG dependencies, `#name` references, unit literals, unary signs, `+ - * /`, parentheses, dimensional checking, cycle detection, revisioned add/update/remove commands, persistence acceptance, and document-worker recovery. Box and cylinder quantities resolve through trusted feature handlers, and geometry reuse compares resolved values. Exponentiation, functions, compound dimensions, atomic rename/refactor, localized authoring, and the product variables table remain P1 completion work. See [ADR-0015](../adr/0015-document-variables-and-dimensional-expressions.md).
+
 ## Bodies, parts, and assemblies
 
 | Capability | Priority |

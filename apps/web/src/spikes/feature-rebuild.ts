@@ -35,6 +35,7 @@ interface FeatureRebuildHarnessState {
   reused: RebuildSummary | null
   recovered: RebuildSummary | null
   changed: RebuildSummary | null
+  equivalent: RebuildSummary | null
   generation: number
   requestFeatureIds: string[]
   progress: string[]
@@ -61,6 +62,7 @@ const state: FeatureRebuildHarnessState = {
   reused: null,
   recovered: null,
   changed: null,
+  equivalent: null,
   generation: 1,
   requestFeatureIds: [],
   progress: [],
@@ -77,7 +79,7 @@ function statusElement() {
   return element
 }
 
-function documentSnapshot(cylinderHeight: number, revision: number) {
+function documentSnapshot(cylinderHeightExpression: string, revision: number) {
   const box: FeatureRecord = {
     schemaVersion: 0,
     id: featureIds.box,
@@ -98,7 +100,7 @@ function documentSnapshot(cylinderHeight: number, revision: number) {
     type: cylinderFeatureType.type,
     parameters: {
       radius: createLengthQuantity(5),
-      height: createLengthQuantity(cylinderHeight),
+      height: createLengthQuantity(60, "mm", "#cutHeight"),
       centered: true,
     },
     dependencies: [],
@@ -119,6 +121,14 @@ function documentSnapshot(cylinderHeight: number, revision: number) {
     id: documentId,
     revision,
     name: "Feature rebuild harness",
+    variables: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+        name: "cutHeight",
+        expression: cylinderHeightExpression,
+      },
+    ],
     features: [boolean, cylinder, box],
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
@@ -144,7 +154,7 @@ async function run() {
   const session = createDocumentWorkerSession(documentId)
   const status = statusElement()
   try {
-    const initialDocument = documentSnapshot(60, 1)
+    const initialDocument = documentSnapshot("60 mm", 1)
     const progressOptions = {
       onProgress(progress: { featureId: string; stage: string }) {
         state.progress.push(`${progress.featureId}:${progress.stage}`)
@@ -174,8 +184,11 @@ async function run() {
     state.recovered = summary(recoveredResult)
     state.generation = session.generation
 
-    const changedResult = await rebuild(documentSnapshot(20, 2))
+    const changedResult = await rebuild(documentSnapshot("20 mm", 2))
     state.changed = summary(changedResult)
+
+    const equivalentResult = await rebuild(documentSnapshot("10 * 2 mm", 3))
+    state.equivalent = summary(equivalentResult)
 
     state.health = await session.health()
     state.disposal = await session.dispose()

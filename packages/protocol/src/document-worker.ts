@@ -6,14 +6,16 @@ import {
   sha256Schema,
 } from "./geometry-worker"
 
-export const DOCUMENT_PROTOCOL_VERSION = 1 as const
+export const DOCUMENT_PROTOCOL_VERSION = 2 as const
 
 const MAX_FEATURES = 100_000
+const MAX_VARIABLES = 4_096
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const reverseDnsPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$/
 const semverPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const featureIdSchema = z.string().regex(uuidV7Pattern)
+const variableIdSchema = z.string().regex(uuidV7Pattern)
 export const documentWorkerDocumentIdSchema = z.string().regex(uuidV7Pattern)
 const revisionSchema = z.number().int().nonnegative().safe()
 const identifierSchema = z.string().trim().min(1).max(128)
@@ -24,6 +26,23 @@ const featureTypeSchema = z
     moduleVersion: z.string().regex(semverPattern),
     typeId: technicalIdentifierSchema,
     schemaVersion: z.number().int().positive().safe(),
+  })
+  .strict()
+
+const documentVariableSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: variableIdSchema,
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+    expression: z
+      .string()
+      .min(1)
+      .max(256)
+      .refine((expression) => expression.trim() === expression),
   })
   .strict()
 
@@ -51,6 +70,7 @@ export const documentRebuildSnapshotSchema = z
     id: documentWorkerDocumentIdSchema,
     revision: revisionSchema,
     name: z.string().min(1).max(120),
+    variables: z.array(documentVariableSchema).max(MAX_VARIABLES).default([]),
     features: z.array(documentFeatureSchema).max(MAX_FEATURES),
     createdAt: z.iso.datetime({ offset: true }),
     updatedAt: z.iso.datetime({ offset: true }),
