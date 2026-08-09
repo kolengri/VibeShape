@@ -25,7 +25,7 @@ Async Button handlers use a single-flight pending state and suppress duplicate p
 - TanStack Form becomes a browser-shipped dependency of the shared UI integration.
 - New field families must implement the base primitive before their TanStack adapter.
 - Feature-specific parsing, command dispatch, persistence, and diagnostics remain outside `packages/ui`.
-- CAD-specific compositions follow the same boundary in `apps/web`: the base Box parameter panel accepts ordinary field nodes, while its TanStack Form adapter owns raw expressions, validation, asynchronous submission, and feature construction.
+- CAD-specific compositions follow the same boundary in `apps/web`: the base Box parameter panel accepts ordinary field nodes, while its TanStack Form adapter owns raw expressions, validation, asynchronous submission, and feature construction. The same adapter has explicit create and edit modes; edit initializes from authored quantity source expressions and constructs a full replacement record without changing feature identity or untouched fields.
 
 ## Rejected Alternatives
 

@@ -1,17 +1,20 @@
 import { Button } from "@vibeshape/ui/components/button"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useTranslations } from "@vibeshape/i18n"
 import type { FeatureRecord } from "@vibeshape/domain"
 import type { DocumentControllerState } from "../document/document-controller"
 
 function FeatureTreeItems({
+  activeFeatureId,
   features,
   groupLabel,
   onActivate,
   unnamedFeature,
 }: {
+  activeFeatureId: FeatureRecord["id"] | null
   features: readonly FeatureRecord[]
   groupLabel: string
-  onActivate: () => void
+  onActivate: (featureId: FeatureRecord["id"]) => void
   unnamedFeature: string
 }) {
   if (features.length === 0) return null
@@ -24,9 +27,14 @@ function FeatureTreeItems({
           type="button"
           variant="ghost"
           size="xs"
-          className="w-full justify-start pl-6 font-normal"
+          className={cn(
+            "w-full justify-start pl-6 font-normal",
+            feature.id === activeFeatureId &&
+              "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+          )}
           role="treeitem"
-          onClick={onActivate}
+          aria-selected={feature.id === activeFeatureId}
+          onClick={() => onActivate(feature.id)}
         >
           {feature.label ?? unnamedFeature}
         </Button>
@@ -65,12 +73,16 @@ function ModelTreeRootItem({
 }
 
 export function ModelTree({
+  activeFeatureId,
   activeWorkspace,
   controller,
+  onFeatureActivate,
   onWorkspaceChange,
 }: {
+  activeFeatureId: FeatureRecord["id"] | null
   activeWorkspace: "model" | "variables"
   controller: DocumentControllerState
+  onFeatureActivate: (featureId: FeatureRecord["id"]) => void
   onWorkspaceChange: (workspace: "model" | "variables") => void
 }) {
   const t = useTranslations("app.shell.modelTree")
@@ -103,10 +115,11 @@ export function ModelTree({
           onWorkspaceChange={onWorkspaceChange}
         />
         <FeatureTreeItems
+          activeFeatureId={activeFeatureId}
           features={features}
           groupLabel={t("items.features")}
           unnamedFeature={t("unnamedFeature")}
-          onActivate={() => onWorkspaceChange("model")}
+          onActivate={onFeatureActivate}
         />
         <ModelTreeRootItem
           targetWorkspace="model"

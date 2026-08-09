@@ -2,9 +2,15 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { featureIdSchema, variableIdSchema } from "@vibeshape/domain"
+import {
+  boxFeatureType,
+  createLengthQuantity,
+  featureIdSchema,
+  featureRecordSchema,
+  variableIdSchema,
+} from "@vibeshape/domain"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { BoxForm } from "./box-form"
+import { BoxForm, type BoxFormMode } from "./box-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601")
@@ -20,15 +26,31 @@ const copy = {
   height: "Height",
   centered: "Center on the origin",
   expressionDescription: "Enter a length or #variable.",
-  create: "Create box",
+  submit: "Create box",
   cancel: "Cancel",
   invalidExpression: "Enter a valid expression.",
   invalidDimension: "Expression must resolve to a length.",
   invalidRange: "Enter a positive supported length.",
   validationSummary: "Fix the highlighted dimensions.",
   staleRevision: "The document changed.",
-  createFailed: "The box could not be created.",
+  saveFailed: "The box could not be created.",
 } as const
+
+const existingFeature = featureRecordSchema.parse({
+  schemaVersion: 0,
+  id: featureId,
+  type: boxFeatureType.type,
+  parameters: {
+    width: createLengthQuantity(24, "mm", "#width"),
+    depth: createLengthQuantity(2, "cm", "2 cm"),
+    height: createLengthQuantity(20),
+    centered: true,
+  },
+  dependencies: [],
+  references: [],
+  suppressed: false,
+  label: "Box 1",
+})
 
 function deferred() {
   let resolve: () => void = () => undefined
@@ -38,20 +60,31 @@ function deferred() {
   return { promise, resolve }
 }
 
-function renderForm(onCreate = vi.fn(async () => ({ ok: true as const })), onCreated = vi.fn()) {
+function renderForm(
+  onSave = vi.fn(async () => ({ ok: true as const })),
+  onSaved = vi.fn(),
+  mode: BoxFormMode = {
+    kind: "create",
+    createFeatureId: () => featureId,
+    featureLabel: "Box 1",
+  },
+) {
+  const formCopy =
+    mode.kind === "edit"
+      ? { ...copy, title: "Edit box", submit: "Update box", saveFailed: "Update failed." }
+      : copy
   render(
     <BoxForm
       baseRevision={2}
       variables={variables}
-      copy={copy}
-      createFeatureId={() => featureId}
-      featureLabel="Box 1"
+      copy={formCopy}
+      mode={mode}
       onCancel={vi.fn()}
-      onCreate={onCreate}
-      onCreated={onCreated}
+      onSave={onSave}
+      onSaved={onSaved}
     />,
   )
-  return { onCreate, onCreated }
+  return { copy: formCopy, onSave, onSaved }
 }
 
 afterEach(cleanup)
@@ -60,20 +93,20 @@ describe("BoxForm", () => {
   it("resolves a document variable and guards asynchronous double submission", async () => {
     const user = userEvent.setup()
     const submission = deferred()
-    const onCreate = vi.fn(async () => {
+    const onSave = vi.fn(async () => {
       await submission.promise
       return { ok: true as const }
     })
-    const { onCreated } = renderForm(onCreate)
+    const { onSaved } = renderForm(onSave)
 
     const width = screen.getByRole("textbox", { name: copy.width })
     await user.clear(width)
     await user.type(width, "#width")
-    const create = screen.getByRole("button", { name: copy.create })
+    const create = screen.getByRole("button", { name: copy.submit })
     await user.dblClick(create)
 
-    expect(onCreate).toHaveBeenCalledTimes(1)
-    expect(onCreate).toHaveBeenCalledWith(
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith(
       2,
       expect.objectContaining({
         id: featureId,
@@ -89,17 +122,17 @@ describe("BoxForm", () => {
     expect(create.getAttribute("aria-busy")).toBe("true")
 
     submission.resolve()
-    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
   })
 
   it("preserves invalid raw input and focuses its adjacent error", async () => {
     const user = userEvent.setup()
-    const { onCreate } = renderForm()
+    const { onSave } = renderForm()
     const width = screen.getByRole("textbox", { name: copy.width })
 
     await user.clear(width)
     await user.type(width, "#missing")
-    await user.click(screen.getByRole("button", { name: copy.create }))
+    await user.click(screen.getByRole("button", { name: copy.submit }))
 
     expect((await screen.findByText(copy.invalidExpression)).textContent).toBe(
       copy.invalidExpression,
@@ -107,6 +140,49 @@ describe("BoxForm", () => {
     expect(screen.getByText(copy.validationSummary).textContent).toBe(copy.validationSummary)
     expect((width as HTMLInputElement).value).toBe("#missing")
     expect(document.activeElement).toBe(width)
-    expect(onCreate).not.toHaveBeenCalled()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("restores source expressions and updates the existing feature identity", async () => {
+    const user = userEvent.setup()
+    const mode = { kind: "edit", feature: existingFeature } as const
+    const { copy: editCopy, onSave, onSaved } = renderForm(undefined, undefined, mode)
+
+    expect((screen.getByRole("textbox", { name: copy.width }) as HTMLInputElement).value).toBe(
+      "#width",
+    )
+    expect((screen.getByRole("textbox", { name: copy.depth }) as HTMLInputElement).value).toBe(
+      "2 cm",
+    )
+    expect((screen.getByRole("textbox", { name: copy.height }) as HTMLInputElement).value).toBe(
+      "20 mm",
+    )
+    expect(
+      (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
+    ).toBe(true)
+
+    const depth = screen.getByRole("textbox", { name: copy.depth })
+    await user.clear(depth)
+    await user.type(depth, "28 mm")
+    await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        id: existingFeature.id,
+        label: existingFeature.label,
+        parameters: expect.objectContaining({
+          width: expect.objectContaining({
+            source: expect.objectContaining({ expression: "#width" }),
+          }),
+          depth: expect.objectContaining({
+            value: 28,
+            source: expect.objectContaining({ expression: "28 mm" }),
+          }),
+        }),
+      }),
+    )
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
   })
 })

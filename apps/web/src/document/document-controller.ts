@@ -51,7 +51,7 @@ export type ApplyVariableTableResult =
   | { ok: true }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
-export type AddFeatureResult = ApplyVariableTableResult
+export type FeatureMutationResult = ApplyVariableTableResult
 
 let state: DocumentControllerState = {
   status: "idle",
@@ -273,10 +273,11 @@ export async function applyVariableTable(
   return { ok: true }
 }
 
-export async function addFeature(
+async function commitFeatureMutation(
+  kind: "org.vibeshape.feature.add" | "org.vibeshape.feature.update",
   baseRevision: number,
   feature: FeatureRecord,
-): Promise<AddFeatureResult> {
+): Promise<FeatureMutationResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
       ok: false,
@@ -290,7 +291,7 @@ export async function addFeature(
   }
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await session.commit({
-    kind: "org.vibeshape.feature.add",
+    kind,
     schemaVersion: 1,
     commandId: browserUuidV7(),
     documentId: session.snapshot.id,
@@ -310,6 +311,14 @@ export async function addFeature(
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
   })
   return { ok: true }
+}
+
+export function addFeature(baseRevision: number, feature: FeatureRecord) {
+  return commitFeatureMutation("org.vibeshape.feature.add", baseRevision, feature)
+}
+
+export function updateFeature(baseRevision: number, feature: FeatureRecord) {
+  return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
 }
 
 export function useDocumentController(defaultDocumentName: string) {

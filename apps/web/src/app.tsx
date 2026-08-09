@@ -2,13 +2,14 @@ import { ApplicationBar } from "./shell/application-bar"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
+import { type ActiveBoxTool, isBoxFeature } from "./features/box/box-tool"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 
 export function App() {
   const t = useTranslations("app.shell.applicationBar")
   const controller = useDocumentController(t("untitledProject"))
   const [workspace, setWorkspace] = useState<"model" | "variables">("model")
-  const [activeTool, setActiveTool] = useState<"box" | null>(null)
+  const [activeTool, setActiveTool] = useState<ActiveBoxTool | null>(null)
   const [selection, setSelection] = useState<ViewerSelection | null>(null)
 
   const changeWorkspace = (nextWorkspace: "model" | "variables") => {
@@ -23,11 +24,11 @@ export function App() {
     <main className="cad-shell bg-background text-[13px] text-foreground">
       <ApplicationBar controller={controller} />
       <CommandToolbar
-        activeTool={activeTool}
+        boxActive={activeTool !== null}
         controller={controller}
         onCreateBox={() => {
           setWorkspace("model")
-          setActiveTool("box")
+          setActiveTool({ kind: "create-box" })
         }}
       />
       <EditorWorkspace
@@ -35,7 +36,13 @@ export function App() {
         controller={controller}
         workspace={workspace}
         onCloseTool={() => setActiveTool(null)}
-        onCreateBox={() => setActiveTool("box")}
+        onCreateBox={() => setActiveTool({ kind: "create-box" })}
+        onEditFeature={(featureId) => {
+          const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
+          if (!feature || !isBoxFeature(feature)) return
+          setWorkspace("model")
+          setActiveTool({ kind: "edit-box", featureId })
+        }}
         onSelectionChange={setSelection}
         onWorkspaceChange={changeWorkspace}
         selection={selection}
