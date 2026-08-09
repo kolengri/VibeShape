@@ -6,6 +6,7 @@ import {
   type FeatureEvaluationRecord,
   type FeatureRecord,
   featureRecordSchema,
+  serializeFeatureRecord,
 } from "./feature-graph"
 import { topologySignatureSchema, topoRefSchema } from "./topology"
 
@@ -129,6 +130,15 @@ describe("feature graph", () => {
         feature(featureIds.b, [featureIds.a], { references: [reference] }),
       ]),
     ).toMatchObject({ ok: true })
+  })
+
+  it("serializes equivalent feature records independently of object key order", () => {
+    const record = feature(featureIds.a, [], {
+      parameters: { width: 20, centered: false },
+    })
+    const reordered = { ...record, parameters: { centered: false, width: 20 } }
+
+    expect(serializeFeatureRecord(record)).toBe(serializeFeatureRecord(reordered))
   })
 })
 

@@ -23,6 +23,7 @@ import { describe, expect, it, vi } from "vitest"
 import {
   type FeatureGeometryEvaluationPort,
   type FeatureGeometryEvaluationRequest,
+  rebuildDocumentFeatures,
   rebuildFeatureGraph,
 } from "./feature-rebuild"
 
@@ -31,6 +32,11 @@ const featureIds = {
   cylinder: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
   boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
   independent: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104"),
+} as const
+
+const documentIds = {
+  primary: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+  other: "0195b5ac-b213-7f2c-9c33-67a36a7f21ad",
 } as const
 
 const environment: FeatureContentEnvironment = {
@@ -106,6 +112,18 @@ function graph(features: readonly FeatureRecord[]): FeatureGraph {
   return created.graph
 }
 
+function documentSnapshot(features: readonly FeatureRecord[], revision = 1) {
+  return {
+    schemaVersion: 0,
+    id: documentIds.primary,
+    revision,
+    name: "Rebuild test",
+    features,
+    createdAt: "2026-08-09T00:00:00.000Z",
+    updatedAt: "2026-08-09T00:00:00.000Z",
+  } as const
+}
+
 function geometry(contentEnvironment: FeatureContentEnvironment = environment) {
   return featureEvaluationEngineResultSchema.parse({
     engine: {
@@ -174,7 +192,6 @@ function rebuildInput(
     registry: registry(),
     environment,
     mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
-    changedFeatureIds: [],
     hash,
     evaluateGeometry,
   } as const
@@ -254,7 +271,7 @@ describe("feature rebuild coordination", () => {
     const changedRequests: FeatureGeometryEvaluationRequest[] = []
     const changed = await rebuildFeatureGraph({
       ...rebuildInput(changedGraph, hash, successfulPort(changedRequests)),
-      changedFeatureIds: [featureIds.cylinder],
+      revision: 2,
       previous: initial,
     })
     expect(changed.ok).toBe(true)
@@ -305,6 +322,29 @@ describe("feature rebuild coordination", () => {
     expect(reducedRequests).toEqual([])
     expect(reduced.evaluation.reusedFeatureIds).toEqual([featureIds.box])
     expect(reduced.geometry.map(({ featureId }) => featureId)).toEqual([featureIds.box])
+  })
+
+  it("reuses geometry when only presentation metadata changes", async () => {
+    const hash = contentHasher()
+    const initialGraph = graph([{ ...box(featureIds.box), label: "Initial label" }])
+    const initial = await rebuildFeatureGraph(rebuildInput(initialGraph, hash, successfulPort([])))
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const renamed = await rebuildFeatureGraph({
+      ...rebuildInput(
+        graph([{ ...box(featureIds.box), label: "Renamed feature" }]),
+        hash,
+        successfulPort(requests),
+      ),
+      revision: 2,
+      previous: initial,
+    })
+    expect(renamed.ok).toBe(true)
+    if (!renamed.ok) return
+    expect(requests).toEqual([])
+    expect(renamed.evaluation.reusedFeatureIds).toEqual([featureIds.box])
   })
 
   it("contains geometry failures, blocks descendants, and continues independent branches", async () => {
@@ -470,5 +510,95 @@ describe("feature rebuild coordination", () => {
       },
     ])
     expect(result.geometry).toEqual([])
+  })
+
+  it("builds the feature graph from a committed document snapshot", async () => {
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildDocumentFeatures({
+      document: documentSnapshot([boolean(), cylinder(), box(featureIds.box)], 7),
+      generation: 3,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry: successfulPort(requests),
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result).toMatchObject({
+      documentId: documentIds.primary,
+      revision: 7,
+      generation: 3,
+    })
+    expect(requests.map(({ featureId }) => featureId)).toEqual([
+      featureIds.cylinder,
+      featureIds.box,
+      featureIds.boolean,
+    ])
+  })
+
+  it("rejects invalid documents and invalid committed feature graphs before evaluation", async () => {
+    const evaluateGeometry = vi.fn<FeatureGeometryEvaluationPort>()
+    const common = {
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry,
+    } as const
+
+    await expect(rebuildDocumentFeatures({ ...common, document: {} })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-document-snapshot" },
+    })
+    await expect(
+      rebuildDocumentFeatures({ ...common, document: documentSnapshot([boolean()]) }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-document-snapshot" },
+    })
+    expect(evaluateGeometry).not.toHaveBeenCalled()
+  })
+
+  it("binds previous state to its document and revision and rebuilds after generation change", async () => {
+    const featureGraph = graph([box(featureIds.box)])
+    const hash = contentHasher()
+    const initial = await rebuildFeatureGraph(rebuildInput(featureGraph, hash, successfulPort([])))
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+
+    await expect(
+      rebuildFeatureGraph({
+        ...rebuildInput(featureGraph, hash, successfulPort([])),
+        documentId: documentIds.other,
+        previous: initial,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "previous-document-mismatch" },
+    })
+    await expect(
+      rebuildFeatureGraph({
+        ...rebuildInput(featureGraph, hash, successfulPort([])),
+        revision: 0,
+        previous: initial,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "future-previous-revision" },
+    })
+
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const restarted = await rebuildFeatureGraph({
+      ...rebuildInput(featureGraph, hash, successfulPort(requests)),
+      generation: 2,
+      previous: initial,
+    })
+    expect(restarted.ok).toBe(true)
+    if (!restarted.ok) return
+    expect(requests.map(({ featureId }) => featureId)).toEqual([featureIds.box])
+    expect(restarted.evaluation.reusedFeatureIds).toEqual([])
   })
 })

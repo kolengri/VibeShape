@@ -1,3 +1,4 @@
+import { documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
   computeFeatureContentHash,
   type FeatureContentEnvironment,
@@ -5,15 +6,18 @@ import {
   sha256Schema,
 } from "@vibeshape/domain/feature-content-identity"
 import {
+  createFeatureGraph,
   evaluateFeatureGraph,
   type FeatureDiagnostic,
   type FeatureEvaluationRecord,
   type FeatureGraph,
   type FeatureGraphEvaluation,
+  type FeatureRecord,
   featureEvaluationRecordSchema,
+  serializeFeatureRecord,
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
-import { type FeatureId, featureIdSchema } from "@vibeshape/domain/identifiers"
+import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import {
   type FeatureContentIdentity,
   type FeatureEvaluationDependency,
@@ -34,6 +38,18 @@ const coordinatorDiagnosticCodeSchema = z.enum([
   "worker-request-failed",
   "unexpected-worker-response",
 ])
+
+const rebuildIdentitySchema = z
+  .object({
+    documentId: z
+      .string()
+      .min(1)
+      .max(128)
+      .refine((value) => value.trim() === value, "Document IDs must be normalized."),
+    revision: revisionSchema,
+    generation: revisionSchema,
+  })
+  .strict()
 
 const geometryEvaluationPortResultSchema = z.discriminatedUnion("ok", [
   z
@@ -87,6 +103,9 @@ export type FeatureGeometryEvaluationPort = (
 export type FeatureRebuildDiagnostic = Readonly<{
   code:
     | "invalid-previous-feature-state"
+    | "invalid-rebuild-identity"
+    | "previous-document-mismatch"
+    | "future-previous-revision"
     | "invalid-feature-content-environment"
     | "invalid-feature-mesh-policy"
     | "invalid-dirty-feature"
@@ -95,6 +114,10 @@ export type FeatureRebuildDiagnostic = Readonly<{
 }>
 
 export type FeatureRebuildState = Readonly<{
+  documentId: string
+  revision: number
+  generation: number
+  features: readonly FeatureRecord[]
   evaluation: FeatureGraphEvaluation
   geometry: readonly FeatureGeometryRecord[]
   environment: FeatureContentEnvironment
@@ -104,6 +127,41 @@ export type FeatureRebuildState = Readonly<{
 export type FeatureRebuildResult =
   | ({ ok: true } & FeatureRebuildState)
   | { ok: false; diagnostic: FeatureRebuildDiagnostic }
+
+export type FeatureRebuildInput = Readonly<{
+  documentId: string
+  revision: number
+  generation: number
+  graph: FeatureGraph
+  registry: FeatureTypeRegistry
+  environment: FeatureContentEnvironment
+  mesh: FeatureMeshPolicy
+  previous?: FeatureRebuildState
+  hash: FeatureContentHasher
+  evaluateGeometry: FeatureGeometryEvaluationPort
+  onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
+}>
+
+export type DocumentFeatureRebuildDiagnostic = Readonly<{
+  code: "invalid-document-snapshot"
+  message: string
+}>
+
+export type DocumentFeatureRebuildResult =
+  | FeatureRebuildResult
+  | { ok: false; diagnostic: DocumentFeatureRebuildDiagnostic }
+
+export type DocumentFeatureRebuildInput = Readonly<{
+  document: unknown
+  generation: number
+  registry: FeatureTypeRegistry
+  environment: FeatureContentEnvironment
+  mesh: FeatureMeshPolicy
+  previous?: FeatureRebuildState
+  hash: FeatureContentHasher
+  evaluateGeometry: FeatureGeometryEvaluationPort
+  onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
+}>
 
 function failed(code: string, values: FeatureDiagnostic["values"] = {}) {
   return { status: "failed", diagnostics: [{ code, values }] } as const
@@ -125,13 +183,46 @@ function sameMeshPolicy(left: FeatureMeshPolicy, right: FeatureMeshPolicy) {
   )
 }
 
+function parseRebuildIdentity(input: {
+  documentId: unknown
+  revision: unknown
+  generation: unknown
+}) {
+  return rebuildIdentitySchema.safeParse({
+    documentId: input.documentId,
+    revision: input.revision,
+    generation: input.generation,
+  })
+}
+
 function parsePreviousState(previous: FeatureRebuildState) {
+  const identity = parseRebuildIdentity(previous)
   const environment = featureContentEnvironmentSchema.safeParse(previous.environment)
   const mesh = featureMeshPolicySchema.safeParse(previous.mesh)
   const recordsById = previousResultsById(previous.evaluation.records)
-  return environment.success && mesh.success && recordsById
-    ? { environment: environment.data, mesh: mesh.data, recordsById }
-    : null
+  const featureGraph = createFeatureGraph(previous.features)
+  if (
+    !identity.success ||
+    !environment.success ||
+    !mesh.success ||
+    !recordsById ||
+    !featureGraph.ok
+  ) {
+    return null
+  }
+  if (
+    recordsById.size !== featureGraph.graph.features.length ||
+    featureGraph.graph.features.some((feature) => !recordsById.has(feature.id))
+  ) {
+    return null
+  }
+  return {
+    identity: identity.data,
+    environment: environment.data,
+    mesh: mesh.data,
+    recordsById,
+    featureGraph: featureGraph.graph,
+  }
 }
 
 function geometryMatchesPreviousResult(
@@ -155,11 +246,18 @@ function indexSnapshotGeometry(
   recordsById: ReadonlyMap<FeatureId, FeatureEvaluationRecord>,
   environment: FeatureContentEnvironment,
   mesh: FeatureMeshPolicy,
+  sourceGraph: FeatureGraph,
 ) {
   const geometryById = new Map<FeatureId, FeatureGeometryRecord>()
   for (const input of inputs) {
     const parsed = featureGeometryRecordSchema.safeParse(input)
-    if (!parsed.success || geometryById.has(parsed.data.featureId)) return null
+    if (
+      !parsed.success ||
+      !sourceGraph.getFeature(parsed.data.featureId) ||
+      geometryById.has(parsed.data.featureId)
+    ) {
+      return null
+    }
     if (!geometryMatchesPreviousResult(parsed.data, recordsById, environment, mesh)) return null
     geometryById.set(parsed.data.featureId, parsed.data)
   }
@@ -174,11 +272,13 @@ function indexPreviousState(
   previous: FeatureRebuildState | undefined,
   environment: FeatureContentEnvironment,
   mesh: FeatureMeshPolicy,
+  generation: number,
 ) {
   if (!previous) {
     return {
       records: [] as readonly FeatureEvaluationRecord[],
       geometryById: new Map<FeatureId, FeatureGeometryRecord>(),
+      features: [] as readonly FeatureRecord[],
       reusable: true,
     }
   }
@@ -190,6 +290,7 @@ function indexPreviousState(
     parsed.recordsById,
     parsed.environment,
     parsed.mesh,
+    parsed.featureGraph,
   )
   if (!allGeometryById) return null
 
@@ -203,9 +304,12 @@ function indexPreviousState(
   return {
     records,
     geometryById,
+    features: parsed.featureGraph.features,
     reusable:
       serializeFeatureContentEnvironment(parsed.environment) ===
-        serializeFeatureContentEnvironment(environment) && sameMeshPolicy(parsed.mesh, mesh),
+        serializeFeatureContentEnvironment(environment) &&
+      sameMeshPolicy(parsed.mesh, mesh) &&
+      parsed.identity.generation === generation,
   }
 }
 
@@ -231,20 +335,54 @@ function presentGeometry(
   })
 }
 
-export async function rebuildFeatureGraph(input: {
-  documentId: string
-  revision: number
-  generation: number
-  graph: FeatureGraph
-  registry: FeatureTypeRegistry
-  environment: FeatureContentEnvironment
-  mesh: FeatureMeshPolicy
-  changedFeatureIds: readonly unknown[]
-  previous?: FeatureRebuildState
-  hash: FeatureContentHasher
-  evaluateGeometry: FeatureGeometryEvaluationPort
-  onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
-}): Promise<FeatureRebuildResult> {
+function schedulingFingerprint(feature: FeatureRecord) {
+  const { label: _label, ...evaluationInput } = feature
+  return serializeFeatureRecord(evaluationInput)
+}
+
+function detectChangedFeatureIds(graph: FeatureGraph, previousFeatures: readonly FeatureRecord[]) {
+  const previousById = new Map(
+    previousFeatures.map((feature) => [feature.id, schedulingFingerprint(feature)]),
+  )
+  return graph.features
+    .filter((feature) => previousById.get(feature.id) !== schedulingFingerprint(feature))
+    .map((feature) => feature.id)
+}
+
+export async function rebuildFeatureGraph(
+  input: FeatureRebuildInput,
+): Promise<FeatureRebuildResult> {
+  const identity = parseRebuildIdentity(input)
+  if (!identity.success) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-rebuild-identity",
+        message: "The rebuild document, revision, or generation identity is invalid.",
+      },
+    }
+  }
+  if (
+    input.previous?.documentId !== undefined &&
+    input.previous.documentId !== identity.data.documentId
+  ) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "previous-document-mismatch",
+        message: "Previous rebuild state belongs to a different document.",
+      },
+    }
+  }
+  if (input.previous && input.previous.revision > identity.data.revision) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "future-previous-revision",
+        message: "Previous rebuild state cannot come from a future document revision.",
+      },
+    }
+  }
   const environment = featureContentEnvironmentSchema.safeParse(input.environment)
   if (!environment.success) {
     return {
@@ -265,7 +403,13 @@ export async function rebuildFeatureGraph(input: {
       },
     }
   }
-  const previous = indexPreviousState(input.graph, input.previous, environment.data, mesh.data)
+  const previous = indexPreviousState(
+    input.graph,
+    input.previous,
+    environment.data,
+    mesh.data,
+    identity.data.generation,
+  )
   if (!previous) {
     return {
       ok: false,
@@ -278,7 +422,7 @@ export async function rebuildFeatureGraph(input: {
   }
 
   const changedFeatureIds = previous.reusable
-    ? input.changedFeatureIds
+    ? detectChangedFeatureIds(input.graph, previous.features)
     : input.graph.features.map((feature) => feature.id)
   const evaluation = await evaluateFeatureGraph(input.graph, {
     changedFeatureIds,
@@ -308,9 +452,9 @@ export async function rebuildFeatureGraph(input: {
       let output: unknown
       try {
         const request: FeatureGeometryEvaluationRequest = {
-          documentId: input.documentId,
-          revision: input.revision,
-          generation: input.generation,
+          documentId: identity.data.documentId,
+          revision: identity.data.revision,
+          generation: identity.data.generation,
           featureId: context.feature.id,
           content: wireContent.data,
           contentHash: content.contentHash,
@@ -364,9 +508,52 @@ export async function rebuildFeatureGraph(input: {
 
   return {
     ok: true,
+    documentId: identity.data.documentId,
+    revision: identity.data.revision,
+    generation: identity.data.generation,
+    features: input.graph.features,
     evaluation: evaluation.evaluation,
     geometry: presentGeometry(input.graph, evaluation.evaluation, previous.geometryById),
     environment: environment.data,
     mesh: mesh.data,
   }
+}
+
+export async function rebuildDocumentFeatures(
+  input: DocumentFeatureRebuildInput,
+): Promise<DocumentFeatureRebuildResult> {
+  const document = documentSnapshotSchema.safeParse(input.document)
+  if (!document.success) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-document-snapshot",
+        message: "The committed document snapshot is invalid.",
+      },
+    }
+  }
+  const graph = createFeatureGraph(document.data.features)
+  if (!graph.ok) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-document-snapshot",
+        message: graph.diagnostic.message,
+      },
+    }
+  }
+
+  return rebuildFeatureGraph({
+    documentId: document.data.id,
+    revision: document.data.revision,
+    generation: input.generation,
+    graph: graph.graph,
+    registry: input.registry,
+    environment: input.environment,
+    mesh: input.mesh,
+    hash: input.hash,
+    evaluateGeometry: input.evaluateGeometry,
+    ...(input.previous ? { previous: input.previous } : {}),
+    ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+  })
 }

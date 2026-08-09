@@ -1,18 +1,16 @@
 import {
+  type DocumentFeatureRebuildResult,
   type FeatureGeometryEvaluationPort,
-  type FeatureRebuildResult,
-  rebuildFeatureGraph,
+  rebuildDocumentFeatures,
 } from "@vibeshape/application/feature-rebuild"
 import {
   booleanFeatureType,
   boxFeatureType,
-  createFeatureGraph,
   createFeatureTypeRegistry,
   createLengthQuantity,
   createModuleRegistry,
   cylinderFeatureType,
   documentCoreModule,
-  type FeatureGraph,
   type FeatureId,
   type FeatureRecord,
   featureCoreModule,
@@ -27,7 +25,7 @@ import {
 } from "@vibeshape/geometry-worker/client"
 import { createGeometryFeatureEvaluationPort } from "../geometry/feature-evaluation-port"
 
-type SuccessfulRebuild = Extract<FeatureRebuildResult, { ok: true }>
+type SuccessfulRebuild = Extract<DocumentFeatureRebuildResult, { ok: true }>
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
 type HealthResponse = Extract<TerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<TerminalResponse, { type: "documentDisposed" }>
@@ -107,7 +105,7 @@ function featureRegistry() {
   return featureTypes.registry
 }
 
-function featureGraph(cylinderHeight: number): FeatureGraph {
+function documentSnapshot(cylinderHeight: number, revision: number) {
   const box: FeatureRecord = {
     schemaVersion: 0,
     id: featureIds.box,
@@ -144,9 +142,15 @@ function featureGraph(cylinderHeight: number): FeatureGraph {
     references: [],
     suppressed: false,
   }
-  const created = createFeatureGraph([boolean, cylinder, box])
-  if (!created.ok) throw new Error(created.diagnostic.message)
-  return created.graph
+  return {
+    schemaVersion: 0,
+    id: documentId,
+    revision,
+    name: "Feature rebuild harness",
+    features: [boolean, cylinder, box],
+    createdAt: "2026-08-09T00:00:00.000Z",
+    updatedAt: "2026-08-09T00:00:00.000Z",
+  } as const
 }
 
 async function sha256(canonicalPayload: string) {
@@ -161,7 +165,7 @@ function observedPort(port: FeatureGeometryEvaluationPort): FeatureGeometryEvalu
   }
 }
 
-function summary(result: FeatureRebuildResult) {
+function summary(result: DocumentFeatureRebuildResult) {
   if (!result.ok) throw new Error(`${result.diagnostic.code}: ${result.diagnostic.message}`)
   return {
     records: result.evaluation.records,
@@ -189,14 +193,12 @@ async function run() {
       "initialized",
     )
     const evaluateGeometry = observedPort(createGeometryFeatureEvaluationPort(client))
-    const initialGraph = featureGraph(60)
+    const initialDocument = documentSnapshot(60, 1)
     const common = {
-      documentId,
       generation,
       registry: featureRegistry(),
       environment: initialized.engine.featureContentEnvironment,
       mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
-      changedFeatureIds: [],
       hash: sha256,
       evaluateGeometry,
       onProgress(featureId: FeatureId, stage: string) {
@@ -204,23 +206,23 @@ async function run() {
       },
     } as const
 
-    const initialResult = await rebuildFeatureGraph({ ...common, revision: 1, graph: initialGraph })
+    const initialResult = await rebuildDocumentFeatures({
+      ...common,
+      document: initialDocument,
+    })
     state.initial = summary(initialResult)
     if (!initialResult.ok) throw new Error(initialResult.diagnostic.message)
 
-    const reusedResult = await rebuildFeatureGraph({
+    const reusedResult = await rebuildDocumentFeatures({
       ...common,
-      revision: 1,
-      graph: initialGraph,
+      document: initialDocument,
       previous: initialResult,
     })
     state.reused = summary(reusedResult)
 
-    const changedResult = await rebuildFeatureGraph({
+    const changedResult = await rebuildDocumentFeatures({
       ...common,
-      revision: 2,
-      graph: featureGraph(20),
-      changedFeatureIds: [featureIds.cylinder],
+      document: documentSnapshot(20, 2),
       previous: initialResult,
     })
     state.changed = summary(changedResult)

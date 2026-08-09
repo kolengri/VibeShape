@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import {
   type FeatureId,
   featureIdSchema,
@@ -202,6 +203,10 @@ export type FeatureGraphEvaluation = Readonly<{
 export type FeatureGraphEvaluationResult =
   | { ok: true; evaluation: FeatureGraphEvaluation }
   | { ok: false; diagnostic: FeatureEvaluationDiagnostic }
+
+export function serializeFeatureRecord(input: unknown) {
+  return canonicalJson(featureRecordSchema.parse(input))
+}
 
 function graphDiagnostic(
   code: FeatureGraphDiagnostic["code"],
