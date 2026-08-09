@@ -71,10 +71,17 @@
       { "from": "domain", "allow": [] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },
-      // The document worker composes application policy with the native geometry adapter.
+      // The document worker composes application policy, native geometry, and approved file formats.
       {
         "from": "document-worker",
-        "allow": ["application", "domain", "geometry-worker", "protocol", "sketch-solver"]
+        "allow": [
+          "application",
+          "domain",
+          "formats",
+          "geometry-worker",
+          "protocol",
+          "sketch-solver"
+        ]
       },
       // Serializable automation contracts may depend only on the pure domain model.
       { "from": "automation-api", "allow": ["domain"] },

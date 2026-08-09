@@ -107,7 +107,9 @@ The writer must:
 
 Do not promise portability of slicer profiles between vendors; metadata and extensions differ.
 
-SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md). Materials, colors, vendor settings, hostile import, and production export orchestration remain outside the current writer profile.
+SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md).
+
+The Phase 1 product dialog now exports each successful terminal exact B-Rep as a separate 3MF mesh object. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, validates the resulting manifold mesh through the Core writer, preserves feature labels as object names, and emits millimeter build items. Materials, colors, vendor settings, placement controls, configurable profiles, progress, cancellation, persistent reports, and hostile 3MF import remain outside the current product slice.
 
 ## STL
 

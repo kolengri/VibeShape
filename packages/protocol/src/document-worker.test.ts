@@ -265,14 +265,14 @@ describe("document worker protocol", () => {
     ).toMatchObject({ type: "failure", diagnostic: { retryable: false } })
   })
 
-  it("validates non-empty STEP and STL export transfers", () => {
+  it("validates non-empty 3MF, STEP, and STL export transfers", () => {
     expect(
       documentWorkerRequestSchema.parse({
         ...envelope(),
         type: "exportDocument",
-        format: "step",
+        format: "3mf",
       }),
-    ).toMatchObject({ type: "exportDocument", format: "step" })
+    ).toMatchObject({ type: "exportDocument", format: "3mf" })
     expect(
       documentWorkerResponseSchema.parse({
         ...envelope(),

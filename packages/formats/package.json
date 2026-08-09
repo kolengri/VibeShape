@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./three-mf": "./src/three-mf.ts",
+    "./three-mf-meshes": "./src/three-mf-meshes.ts",
     "./vshape": "./src/vshape.ts"
   },
   "scripts": {

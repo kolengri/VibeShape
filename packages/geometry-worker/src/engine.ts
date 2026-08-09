@@ -96,7 +96,7 @@ export type FeatureEvaluationResult =
 export type DocumentGeometryExportInput = Readonly<{
   documentId: string
   features: readonly FeatureEvaluationDependency[]
-  format: GeometryExportFormat
+  format: Exclude<GeometryExportFormat, "3mf">
 }>
 
 export type DocumentGeometryExportResult = Readonly<{
@@ -104,9 +104,24 @@ export type DocumentGeometryExportResult = Readonly<{
   bodyCount: number
 }>
 
+export type DocumentPrintMeshExportInput = Readonly<{
+  documentId: string
+  features: readonly FeatureEvaluationDependency[]
+}>
+
+export type DocumentPrintMeshExportResult = Readonly<{
+  meshes: readonly Readonly<{
+    featureId: string
+    vertices: readonly number[]
+    triangles: readonly number[]
+  }>[]
+}>
+
 type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
 
 const MAX_FEATURE_WORKSPACE_LENGTH_MM = 100_000
+const PRINT_MESH_CHORD_TOLERANCE_MM = 0.02
+const PRINT_MESH_ANGULAR_TOLERANCE_RAD = 0.1
 const BOX_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.box#1"
 const CYLINDER_FEATURE_TYPE_KEY =
@@ -941,6 +956,7 @@ export interface GeometryKernelEngine {
     reportProgress: ProgressReporter,
   ): Promise<FeatureEvaluationResult>
   exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
+  exportPrintMeshes(input: DocumentPrintMeshExportInput): Promise<DocumentPrintMeshExportResult>
   runKernelSpike(
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
@@ -1127,6 +1143,34 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
       return { file, bodyCount: sourceShapes.length }
     } finally {
       compound?.delete()
+    }
+  }
+
+  async exportPrintMeshes(
+    input: DocumentPrintMeshExportInput,
+  ): Promise<DocumentPrintMeshExportResult> {
+    const opencascade = this.#opencascade
+    if (!opencascade) throw new Error("OpenCascade did not initialize.")
+    if (input.features.length === 0) throw new Error("No exportable feature bodies were provided.")
+    const sourceShapes = this.#featureShapes.resolve(input.documentId, input.features)
+    if (!sourceShapes)
+      throw new Error("One or more exact feature bodies are unavailable for export.")
+    return {
+      meshes: sourceShapes.map((shape, index) => {
+        try {
+          const mesh = meshOcctShape(opencascade, shape, {
+            tolerance: PRINT_MESH_CHORD_TOLERANCE_MM,
+            angularTolerance: PRINT_MESH_ANGULAR_TOLERANCE_RAD,
+          })
+          return {
+            featureId: input.features[index]?.featureId ?? "unknown-feature",
+            vertices: mesh.vertices,
+            triangles: mesh.triangles,
+          }
+        } finally {
+          opencascade.BRepTools.Clean(shape.wrapped, true)
+        }
+      }),
     }
   }
 

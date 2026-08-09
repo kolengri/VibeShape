@@ -244,7 +244,7 @@ export const featureMeshPolicySchema = z
   })
   .strict()
 
-export const geometryExportFormatSchema = z.enum(["step", "stl"])
+export const geometryExportFormatSchema = z.enum(["3mf", "step", "stl"])
 
 function isNormalized(vector: readonly number[]) {
   return Math.abs(Math.hypot(...vector) - 1) <= 1e-6

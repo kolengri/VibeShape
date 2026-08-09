@@ -1,6 +1,7 @@
 import type { GeometryExportFormat } from "@vibeshape/protocol"
 
 const mediaTypes: Record<GeometryExportFormat, string> = {
+  "3mf": "model/3mf",
   step: "model/step",
   stl: "model/stl",
 }

@@ -61,7 +61,7 @@ SPK-006 is **Proceed with reduced scope**. Strict immutable packages, exact lock
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
 - Interior-intersection splitting, general profile-picking interaction, conflict interaction, and free-form sketch UI beyond the completed rectangle-to-new-body-extrusion slice.
-- Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
+- Configurable 3MF print profiles, placement, progress, cancellation, persistent reports, and release slicer UX around the implemented production export path.
 - Real startup, memory, rebuild, and representative large-project storage budgets.
 - Production extension modeling ABI, portable memory policy, document integration, package governance, and recovery rebuilds on the accepted reduced-scope seams.
 

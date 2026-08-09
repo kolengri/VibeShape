@@ -151,6 +151,8 @@ A printability warning is a heuristic, not a guarantee of a successful print.
 
 STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to-B-Rep conversion is not promised.
 
+The implemented export dialog downloads successful terminal bodies as deterministic multi-object 3MF with fixed print tessellation, exact B-Rep STEP, or binary STL. Configurable print profiles, placement, reports, and release slicer UX remain later P0 work.
+
 ## Undo, redo, and history
 
 - P0: undo/redo at user-command granularity, not per pointer event.

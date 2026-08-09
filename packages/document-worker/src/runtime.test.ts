@@ -179,6 +179,8 @@ class FakeEngine implements GeometryKernelEngine {
     retainedFeatures: readonly { featureId: string; contentHash: string }[]
   }> = []
   exportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
+  printMeshExportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
+  printMeshFeatureIdOverride: string | null = null
 
   async initialize() {
     this.initialized = true
@@ -211,6 +213,26 @@ class FakeEngine implements GeometryKernelEngine {
     return {
       file: input.format === "step" ? new Uint8Array([1, 2, 3]) : new Uint8Array([4, 5]),
       bodyCount: input.features.length,
+    }
+  }
+
+  async exportPrintMeshes(input: Parameters<GeometryKernelEngine["exportPrintMeshes"]>[0]) {
+    this.printMeshExportedFeatures.push([...input.features])
+    return {
+      meshes: input.features.map(({ featureId }) => ({
+        featureId: this.printMeshFeatureIdOverride ?? featureId,
+        vertices: [
+          0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1,
+          1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
+          1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1,
+          0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1,
+        ],
+        triangles: Array.from({ length: 12 }, (_, index) => [
+          index * 3,
+          index * 3 + 1,
+          index * 3 + 2,
+        ]).flat(),
+      })),
     }
   }
 
@@ -476,6 +498,64 @@ describe("DocumentWorkerRuntime", () => {
     const exportedTransfer = transfers.at(-1)?.[0]
     if (!(exportedTransfer instanceof ArrayBuffer)) throw new Error("Expected export transfer.")
     expect(exportedTransfer.byteLength).toBe(3)
+  })
+
+  it("writes a 3MF archive from print meshes with matching terminal body identities", async () => {
+    const { engine, messages, runtime, transfers } = createHarness()
+    await runtime.handle(request("rebuild-for-3mf-export"))
+    const rebuild = rebuilt(messages, "rebuild-for-3mf-export")
+    const terminalRecord = rebuild.evaluation.records.find(
+      ({ featureId }) => featureId === featureIds.boolean,
+    )
+    expect(terminalRecord?.status).toBe("succeeded")
+    if (terminalRecord?.status !== "succeeded") throw new Error("Expected successful Boolean.")
+
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "export-3mf",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "3mf",
+    })
+
+    expect(engine.printMeshExportedFeatures).toEqual([
+      [{ featureId: featureIds.boolean, contentHash: terminalRecord.contentHash }],
+    ])
+    expect(messages.at(-1)).toMatchObject({
+      type: "documentExported",
+      format: "3mf",
+      bodyCount: 1,
+    })
+    const response = messages.at(-1)
+    if (response?.type !== "documentExported") throw new Error("Expected 3MF export response.")
+    expect([...response.file.slice(0, 2)]).toEqual([80, 75])
+    expect(transfers.at(-1)).toEqual([expect.any(ArrayBuffer)])
+  })
+
+  it("rejects print meshes whose identities do not match terminal bodies", async () => {
+    const { engine, messages, runtime } = createHarness()
+    engine.printMeshFeatureIdOverride = featureIds.box
+    await runtime.handle(request("rebuild-for-mismatched-3mf-export"))
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "export-mismatched-3mf",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "3mf",
+    })
+
+    expect(messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: {
+        code: "export-failed",
+        message: "Print mesh export returned mismatched feature bodies.",
+        retryable: true,
+      },
+    })
   })
 
   it("solves the exact rebuilt sketch through the production flat ABI boundary", async () => {

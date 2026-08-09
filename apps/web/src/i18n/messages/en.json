@@ -79,6 +79,11 @@
       "close": "Close",
       "noBodies": "Create a valid solid body before exporting.",
       "error": "The model could not be exported. Your saved document is unchanged.",
+      "threeMf": {
+        "title": "3MF",
+        "description": "Validated millimeter meshes for modern 3D-printing slicers.",
+        "action": "Export 3MF"
+      },
       "step": {
         "title": "STEP",
         "description": "Exact B-Rep geometry for exchange with other CAD systems.",
@@ -90,8 +95,10 @@
         "action": "Export STL"
       },
       "status": {
+        "exportingThreeMf": "Exporting 3MF…",
         "exportingStep": "Exporting STEP…",
         "exportingStl": "Exporting STL…",
+        "exportedThreeMf": "3MF download started",
         "exportedStep": "STEP download started",
         "exportedStl": "STL download started",
         "failed": "Export failed"

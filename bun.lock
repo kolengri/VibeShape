@@ -93,6 +93,7 @@
       "dependencies": {
         "@vibeshape/application": "workspace:*",
         "@vibeshape/domain": "workspace:*",
+        "@vibeshape/formats": "workspace:*",
         "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/protocol": "workspace:*",
         "@vibeshape/sketch-solver": "workspace:*",

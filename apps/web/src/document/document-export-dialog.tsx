@@ -17,6 +17,13 @@ import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
 
 const formatCopy = {
+  "3mf": {
+    title: "threeMf.title",
+    description: "threeMf.description",
+    action: "threeMf.action",
+    pending: "status.exportingThreeMf",
+    succeeded: "status.exportedThreeMf",
+  },
   step: {
     title: "step.title",
     description: "step.description",
@@ -140,7 +147,13 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ExportFormatCard
+              format="3mf"
+              disabled={actionDisabled}
+              loading={activity.pendingFormat === "3mf"}
+              onExport={runExport}
+            />
             <ExportFormatCard
               format="step"
               disabled={actionDisabled}

@@ -15,6 +15,7 @@ describe("document export download", () => {
     )
     expect(createDocumentExportFilename("  Корпус принтера  ", "stl")).toBe("Корпус принтера.stl")
     expect(createDocumentExportFilename("...", "step")).toBe("Untitled project.step")
+    expect(createDocumentExportFilename("Bracket", "3mf")).toBe("Bracket.3mf")
   })
 
   it("downloads owned bytes with the matching media type and revokes the URL", () => {
@@ -40,5 +41,22 @@ describe("document export download", () => {
     expect(click).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:vibeshape-export")
     expect(document.querySelector("a")).toBeNull()
+  })
+
+  it("uses the 3MF media type", () => {
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:vibeshape-3mf")
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: vi.fn() },
+    })
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined)
+
+    downloadDocumentExport({
+      documentName: "Bracket",
+      format: "3mf",
+      file: new Uint8Array([80, 75, 3, 4]),
+    })
+
+    expect(createObjectURL.mock.calls[0]?.[0].type).toBe("model/3mf")
   })
 })
