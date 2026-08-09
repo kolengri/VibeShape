@@ -27,6 +27,17 @@ export const projectRecordSchema = z
   })
   .strict()
 
+export const localProjectSummarySchema = z
+  .object({
+    documentId: documentIdSchema,
+    name: z.string().min(1).max(120),
+    headRevision: revisionSchema,
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+    lastExternalBackupAt: timestampSchema.nullable(),
+  })
+  .strict()
+
 export const snapshotRecordSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -148,6 +159,7 @@ export const persistenceDiagnosticSchema = z
   .strict()
 
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
+export type LocalProjectSummary = z.infer<typeof localProjectSummarySchema>
 export type SnapshotRecord = z.infer<typeof snapshotRecordSchema>
 export type EventRecord = z.infer<typeof eventRecordSchema>
 export type RecoveryRecord = z.infer<typeof recoveryRecordSchema>

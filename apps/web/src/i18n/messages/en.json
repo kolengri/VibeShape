@@ -2,10 +2,25 @@
   "app": {
     "projectFile": {
       "trigger": "Project…",
-      "title": "Project file",
-      "description": "Work is saved automatically in this browser. Use a .vshape file for a portable external backup.",
-      "closeLabel": "Close project file dialog",
+      "title": "Projects",
+      "description": "Create or open a browser-saved project. Use a .vshape file for a portable external backup.",
+      "closeLabel": "Close projects dialog",
       "close": "Close",
+      "library": {
+        "title": "Local projects",
+        "description": "Projects stored only in this browser profile.",
+        "newProject": "New project",
+        "listLabel": "Local projects",
+        "current": "Current",
+        "revision": "Revision {revision}",
+        "updated": "Updated",
+        "open": "Open",
+        "openLabel": "Open {name}, revision {revision}",
+        "empty": "No local projects are available yet.",
+        "loading": "Loading local projects…",
+        "loadFailed": "Local projects could not be loaded. The current project remains open.",
+        "retry": "Retry"
+      },
       "backup": {
         "title": "External backup",
         "description": "Download the document history, variable table, formulas, and model features without derived geometry.",
@@ -21,13 +36,16 @@
         "backingUp": "Preparing project backup…",
         "downloaded": ".vshape download started",
         "opening": "Verifying project file…",
-        "switching": "Opening imported project…"
+        "creating": "Creating a new local project…",
+        "switching": "Opening local project…"
       },
       "errors": {
         "backupFailed": "The project backup could not be created. Your browser-saved document is unchanged.",
         "openFailed": "This file is not a valid or supported VibeShape project.",
         "tooLarge": "This project exceeds the current 32 MiB archive limit.",
-        "alreadyExists": "This exact project already exists in this browser. Existing projects are never overwritten during import."
+        "alreadyExists": "This exact project already exists in this browser. Open it from Local projects; imports never overwrite an existing project.",
+        "switchFailed": "This local project could not be opened. The current project remains unchanged.",
+        "newFailed": "A new local project could not be created. The current project remains unchanged."
       }
     },
     "export": {

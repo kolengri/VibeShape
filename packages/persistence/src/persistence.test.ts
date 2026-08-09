@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
+import { describe, expect, it } from "vitest"
 import {
   decideUpdateActivation,
   selectSaveAsMethod,
@@ -9,6 +9,7 @@ import { classifyPersistenceError } from "./diagnostics"
 import { sha256Text } from "./hash"
 import {
   cacheIndexRecordSchema,
+  localProjectSummarySchema,
   persistenceCommitInputSchema,
   projectRecordSchema,
 } from "./schemas"
@@ -64,6 +65,30 @@ describe("persistence contracts", () => {
         byteLength: 1,
         engineBuildId: "org.vibeshape.occt",
         lastAccessedAt: timestamp,
+      }).success,
+    ).toBe(false)
+  })
+
+  it("exposes only bounded semantic metadata in local project summaries", () => {
+    expect(
+      localProjectSummarySchema.safeParse({
+        documentId,
+        name: "Bracket",
+        headRevision: 3,
+        createdAt: timestamp,
+        updatedAt: "2026-08-08T00:03:00Z",
+        lastExternalBackupAt: null,
+      }),
+    ).toMatchObject({ success: true })
+    expect(
+      localProjectSummarySchema.safeParse({
+        documentId,
+        name: "Bracket",
+        headRevision: 3,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        lastExternalBackupAt: null,
+        snapshot: { forbidden: true },
       }).success,
     ).toBe(false)
   })
