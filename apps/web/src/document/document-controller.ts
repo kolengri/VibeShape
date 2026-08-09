@@ -83,6 +83,8 @@ export type ProjectSwitchResult =
   | { ok: true }
   | { ok: false; diagnostic: { code: string; message: string } }
 
+export type ProjectDeleteResult = ProjectSwitchResult
+
 let state: DocumentControllerState = {
   status: "idle",
   report: null,
@@ -512,6 +514,34 @@ export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
   session = null
   window.location.reload()
   return { ok: true }
+}
+
+export async function deleteLocalProject(
+  documentIdInput: unknown,
+  expectedHeadRevision: number,
+): Promise<ProjectDeleteResult> {
+  if (!session || !activeRepository || state.status !== "ready") {
+    return unavailableProjectFileResult()
+  }
+  const documentId = documentIdSchema.safeParse(documentIdInput)
+  if (!documentId.success) {
+    return {
+      ok: false,
+      diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
+    }
+  }
+  if (session.snapshot.id === documentId.data) {
+    return {
+      ok: false,
+      diagnostic: { code: "invalid-input", message: "The active project cannot be deleted." },
+    }
+  }
+  const deleted = await activeRepository.deleteProject({
+    documentId: documentId.data,
+    expectedHeadRevision,
+    nowMs: Date.now(),
+  })
+  return deleted.ok ? { ok: true } : { ok: false, diagnostic: deleted.diagnostic }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

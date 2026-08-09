@@ -19,6 +19,7 @@ const controller = {
 const controllerMocks = vi.hoisted(() => ({
   activateLocalProject: vi.fn(),
   createNewLocalProject: vi.fn(),
+  deleteLocalProject: vi.fn(),
   exportActiveProjectBackup: vi.fn(),
   importProjectBackup: vi.fn(),
   listLocalProjects: vi.fn(),
@@ -44,6 +45,7 @@ function renderDialog() {
 beforeEach(() => {
   controllerMocks.activateLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.createNewLocalProject.mockResolvedValue({ ok: true })
+  controllerMocks.deleteLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.listLocalProjects.mockResolvedValue({
     ok: true,
     projects: [
@@ -118,6 +120,52 @@ describe("DocumentProjectDialog", () => {
     expect(open.getAttribute("aria-busy")).toBe("true")
     finish?.({ ok: true })
     await waitFor(() => expect(open.getAttribute("aria-busy")).not.toBe("true"))
+  })
+
+  it("confirms inactive project deletion and guards the destructive request", async () => {
+    const user = userEvent.setup()
+    let finish: ((value: unknown) => void) | undefined
+    controllerMocks.deleteLocalProject.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const currentDelete = await screen.findByRole("button", {
+      name: "Delete Bracket, revision 3",
+    })
+    expect((currentDelete as HTMLButtonElement).disabled).toBe(true)
+    await user.click(screen.getByRole("button", { name: "Delete Fixture, revision 2" }))
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep project" }))
+    const confirm = screen.getByRole("button", { name: "Delete project" })
+
+    await user.dblClick(confirm)
+
+    expect(controllerMocks.deleteLocalProject).toHaveBeenCalledOnce()
+    expect(controllerMocks.deleteLocalProject).toHaveBeenCalledWith(otherDocumentId, 2)
+    expect(confirm.getAttribute("aria-busy")).toBe("true")
+    expect(screen.getByRole("alertdialog")).toBeTruthy()
+    finish?.({ ok: true })
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    expect(controllerMocks.listLocalProjects).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps project deletion context visible after a storage conflict", async () => {
+    const user = userEvent.setup()
+    controllerMocks.deleteLocalProject.mockResolvedValue({
+      ok: false,
+      diagnostic: { code: "lease-held", message: "Project open elsewhere." },
+    })
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    await user.click(await screen.findByRole("button", { name: "Delete Fixture, revision 2" }))
+    await user.click(screen.getByRole("button", { name: "Delete project" }))
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "This project could not be deleted.",
+    )
+    expect(screen.getByRole("alertdialog")).toBeTruthy()
   })
 
   it("keeps an import collision visible and allows the same file to be chosen again", async () => {

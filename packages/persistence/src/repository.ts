@@ -29,6 +29,7 @@ import {
   persistenceCommitInputSchema,
   persistenceDraftCommitInputSchema,
   portableProjectImportSchema,
+  projectDeleteInputSchema,
   projectRecordSchema,
   type RecoveryRecord,
   recoveryRecordSchema,
@@ -75,6 +76,12 @@ export interface PortableProjectImportReport {
   revision: number
   eventChecksums: readonly string[]
   snapshotChecksum: string
+}
+
+export interface ProjectDeleteReport {
+  documentId: DocumentId
+  deletedEventCount: number
+  deletedSnapshotCount: number
 }
 
 const MAX_LOCAL_PROJECTS = 4_096
@@ -751,6 +758,60 @@ export class LocalDocumentRepository {
           revision: input.data.snapshot.revision,
           eventChecksums: records.events.map(({ checksum }) => checksum),
           snapshotChecksum: records.snapshot.checksum,
+        },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async deleteProject(inputValue: unknown): Promise<PersistenceResult<ProjectDeleteReport>> {
+    const input = projectDeleteInputSchema.safeParse(inputValue)
+    if (!input.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The project deletion input is invalid.",
+        ),
+      }
+    }
+    try {
+      let deletedEventCount = 0
+      let deletedSnapshotCount = 0
+      await semanticWriteTransaction(this.database, async () => {
+        const project = await requireStoredProject(this.database, input.data.documentId)
+        if (project.headRevision !== input.data.expectedHeadRevision) {
+          throw persistenceInvariantError(
+            "stale-revision",
+            "The project changed before it could be deleted.",
+          )
+        }
+        const lease = await this.database.leases.get(input.data.documentId)
+        if (lease && lease.expiresAt > input.data.nowMs) {
+          throw persistenceInvariantError(
+            "lease-held",
+            "The project is open for writing in another browser tab.",
+          )
+        }
+        deletedEventCount = await this.database.events
+          .where("documentId")
+          .equals(input.data.documentId)
+          .delete()
+        deletedSnapshotCount = await this.database.snapshots
+          .where("documentId")
+          .equals(input.data.documentId)
+          .delete()
+        await this.database.recovery.delete(input.data.documentId)
+        await this.database.leases.delete(input.data.documentId)
+        await this.database.projects.delete(input.data.documentId)
+      })
+      return {
+        ok: true,
+        value: {
+          documentId: input.data.documentId,
+          deletedEventCount,
+          deletedSnapshotCount,
         },
       }
     } catch (error) {

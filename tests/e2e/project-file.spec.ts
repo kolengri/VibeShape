@@ -127,5 +127,24 @@ test.describe("native project file", () => {
     await reopenedProjectNavigation
 
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
+
+    await page.getByRole("button", { name: "Project…" }).click()
+    const reopenedDialog = page.getByRole("dialog", { name: "Projects" })
+    const inactiveProject = reopenedDialog.getByRole("listitem").filter({
+      hasText: "Revision 1",
+    })
+    await expect(inactiveProject).toHaveCount(1)
+    await inactiveProject.getByRole("button", { name: /Delete .*revision 1/ }).click()
+    const confirmation = page.getByRole("alertdialog")
+    await expect(confirmation).toContainText("Exported .vshape files are not deleted.")
+    await confirmation.getByRole("button", { name: "Delete project" }).dblclick()
+    await expect(inactiveProject).toHaveCount(0)
+
+    await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Project…" }).click()
+    await expect(page.getByRole("dialog", { name: "Projects" }).getByRole("listitem")).toHaveCount(
+      1,
+    )
   })
 })
