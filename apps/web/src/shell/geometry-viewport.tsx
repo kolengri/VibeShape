@@ -1,5 +1,5 @@
-import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
@@ -213,6 +213,12 @@ export function GeometryViewport({
     meshes,
     onSelectionChange,
   )
+
+  useEffect(() => {
+    if (selection && !meshes.some(({ featureId }) => featureId === selection.featureId)) {
+      onSelectionChange(null)
+    }
+  }, [meshes, onSelectionChange, selection])
 
   const message = viewportMessage(controller, rendererFailed, meshes.length, {
     loading: t("loading"),

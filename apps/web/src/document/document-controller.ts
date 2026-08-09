@@ -341,6 +341,19 @@ export function updateFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
 }
 
+export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.feature.remove",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { featureId },
+  }))
+}
+
 export async function exportActiveDocument(
   format: GeometryExportFormat,
 ): Promise<ActiveDocumentExportResult> {

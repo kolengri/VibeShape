@@ -171,6 +171,24 @@ describe("trusted command dispatcher", () => {
       },
       event: { type: "org.vibeshape.feature.added" },
     })
+    if (!added.ok) return
+
+    expect(
+      dispatcher.dispatch(added.snapshot, {
+        kind: "org.vibeshape.feature.remove",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b216-7a2c-bc33-67a36a7f21ac",
+        documentId,
+        baseRevision: 2,
+        issuedAt: "2026-08-08T12:02:00Z",
+        actor: userActor,
+        payload: { featureId: boxFeature().id },
+      }),
+    ).toMatchObject({
+      ok: true,
+      snapshot: { revision: 3, features: [] },
+      event: { type: "org.vibeshape.feature.removed" },
+    })
   })
 
   it("resolves feature expressions from committed document variables before storing the event", () => {

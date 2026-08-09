@@ -19,6 +19,7 @@ export const domainDiagnosticCodeSchema = z.enum([
   "invalid-feature-expression",
   "feature-already-exists",
   "feature-not-found",
+  "feature-in-use",
   "invalid-feature-graph",
   "feature-type-unavailable",
   "invalid-feature-parameters",
@@ -102,7 +103,11 @@ export function requireExistingDocumentRevision(
 
 export function featureMutationDiagnostic(
   input: Readonly<{
-    code: "feature-already-exists" | "feature-not-found" | "invalid-feature-graph"
+    code:
+      | "feature-already-exists"
+      | "feature-not-found"
+      | "feature-in-use"
+      | "invalid-feature-graph"
     message: string
     issues: readonly { path: string; message: string }[]
   }>,

@@ -286,6 +286,7 @@ type FeatureCommand = Extract<
   {
     kind:
       | "org.vibeshape.feature.add"
+      | "org.vibeshape.feature.remove"
       | "org.vibeshape.feature.set-suppressed"
       | "org.vibeshape.feature.update"
   }
@@ -308,6 +309,7 @@ function featureValidationResult(
 function isFeatureCommand(command: DocumentCommand): command is FeatureCommand {
   switch (command.kind) {
     case "org.vibeshape.feature.add":
+    case "org.vibeshape.feature.remove":
     case "org.vibeshape.feature.set-suppressed":
     case "org.vibeshape.feature.update":
       return true
@@ -373,7 +375,10 @@ function executeFeatureCommand(
 
   if (!parsed.ok) return parsed
   if (!isFeatureCommand(parsed.command)) return wrongHandlerResult()
-  if (parsed.command.kind === "org.vibeshape.feature.set-suppressed") {
+  if (
+    parsed.command.kind === "org.vibeshape.feature.remove" ||
+    parsed.command.kind === "org.vibeshape.feature.set-suppressed"
+  ) {
     return applyDocumentCommand(snapshot, parsed.command, options)
   }
 
@@ -400,6 +405,13 @@ export function createFeatureCoreCommandHandlers(
   return [
     {
       kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      ownerModuleId: featureCoreModule.id,
+      featureTypeKeys,
+      execute,
+    },
+    {
+      kind: "org.vibeshape.feature.remove",
       schemaVersion: 1,
       ownerModuleId: featureCoreModule.id,
       featureTypeKeys,

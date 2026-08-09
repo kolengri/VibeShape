@@ -15,6 +15,8 @@ const commandIds = [
   "0195b5ac-b214-7a2c-8c33-67a36a7f2103",
   "0195b5ac-b214-7a2c-8c33-67a36a7f2104",
   "0195b5ac-b214-7a2c-8c33-67a36a7f2105",
+  "0195b5ac-b214-7a2c-8c33-67a36a7f2106",
+  "0195b5ac-b214-7a2c-8c33-67a36a7f2107",
 ] as const
 const actor = { type: "user", userId: "org.vibeshape.user.alice" } as const
 
@@ -60,6 +62,7 @@ function featureCommand(
   kind:
     | "org.vibeshape.feature.add"
     | "org.vibeshape.feature.update"
+    | "org.vibeshape.feature.remove"
     | "org.vibeshape.feature.set-suppressed",
   baseRevision: number,
   payload: Record<string, unknown>,
@@ -87,7 +90,7 @@ function applyFeatureCommand(
 }
 
 describe("feature document commands", () => {
-  it("adds, updates, suppresses, and replays feature state by document revision", () => {
+  it("adds, updates, suppresses, removes, and replays feature state by document revision", () => {
     const created = createDocument()
     const root = feature(featureIds.root)
     const addedRoot = applyFeatureCommand(
@@ -114,14 +117,15 @@ describe("feature document commands", () => {
         suppressed: true,
       }),
     )
+    const removed = applyFeatureCommand(
+      suppressed.snapshot,
+      featureCommand("org.vibeshape.feature.remove", 5, {
+        featureId: featureIds.dependent,
+      }),
+    )
 
-    expect(suppressed.snapshot).toMatchObject({ revision: 5 })
-    expect(suppressed.snapshot.features.map(({ id }) => id)).toEqual([
-      featureIds.root,
-      featureIds.dependent,
-    ])
-    expect(suppressed.snapshot.features[0]).toEqual(updatedRoot)
-    expect(suppressed.snapshot.features[1]?.suppressed).toBe(true)
+    expect(removed.snapshot).toMatchObject({ revision: 6 })
+    expect(removed.snapshot.features).toEqual([updatedRoot])
     expect(updated.event).toMatchObject({
       type: "org.vibeshape.feature.updated",
       previousFeature: root,
@@ -132,6 +136,10 @@ describe("feature document commands", () => {
       previousSuppressed: false,
       suppressed: true,
     })
+    expect(removed.event).toMatchObject({
+      type: "org.vibeshape.feature.removed",
+      feature: { ...dependent, suppressed: true },
+    })
     expect(
       replayDocumentEvents([
         created.event,
@@ -139,8 +147,9 @@ describe("feature document commands", () => {
         addedDependent.event,
         updated.event,
         suppressed.event,
+        removed.event,
       ]),
-    ).toEqual({ ok: true, snapshot: suppressed.snapshot })
+    ).toEqual({ ok: true, snapshot: removed.snapshot })
   })
 
   it("rejects duplicate, missing, cyclic, and no-op mutations without partial state", () => {
@@ -169,6 +178,28 @@ describe("feature document commands", () => {
         featureCommand("org.vibeshape.feature.add", 1, { feature: dependent }),
       ),
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-graph" } })
+    expect(
+      applyDocumentCommand(
+        addedDependent.snapshot,
+        featureCommand("org.vibeshape.feature.remove", 3, {
+          featureId: featureIds.root,
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "feature-in-use",
+        issues: [{ path: "features.1.dependencies" }],
+      },
+    })
+    expect(
+      applyDocumentCommand(
+        addedDependent.snapshot,
+        featureCommand("org.vibeshape.feature.remove", 3, {
+          featureId: featureIds.missing,
+        }),
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "feature-not-found" } })
     expect(
       applyDocumentCommand(
         addedDependent.snapshot,
@@ -224,6 +255,20 @@ describe("feature document commands", () => {
       reduceDocumentEvent(added.snapshot, {
         ...updated.event,
         feature: feature(featureIds.dependent),
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+
+    const removed = applyFeatureCommand(
+      updated.snapshot,
+      featureCommand("org.vibeshape.feature.remove", 3, { featureId: featureIds.root }),
+    )
+    if (removed.event.type !== "org.vibeshape.feature.removed") {
+      throw new Error("The remove fixture must emit a feature removed event.")
+    }
+    expect(
+      reduceDocumentEvent(updated.snapshot, {
+        ...removed.event,
+        feature: { ...root, parameters: { length: 999 } },
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
   })

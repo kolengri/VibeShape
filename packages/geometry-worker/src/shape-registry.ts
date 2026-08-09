@@ -89,6 +89,36 @@ export class DocumentFeatureShapeRegistry<Shape extends DeletableShape = AnyShap
     this.#documents.set(documentId, features)
   }
 
+  synchronize(
+    documentId: string,
+    retainedFeatures: readonly { featureId: string; contentHash: string }[],
+  ) {
+    const features = this.#documents.get(documentId)
+    if (!features) return this.#size
+
+    const retainedHashes = new Map(
+      retainedFeatures.map(({ featureId, contentHash }) => [featureId, contentHash]),
+    )
+    let firstError: unknown
+    for (const [featureId, entry] of [...features].reverse()) {
+      if (retainedHashes.get(featureId) === entry.contentHash) continue
+
+      try {
+        entry.shape.delete()
+        features.delete(featureId)
+        this.#size -= 1
+      } catch (error) {
+        firstError ??= error
+      }
+    }
+
+    if (features.size === 0) {
+      this.#documents.delete(documentId)
+    }
+    if (firstError) throw firstError
+    return this.#size
+  }
+
   disposeDocument(documentId: string) {
     const features = this.#documents.get(documentId)
     if (!features) return this.#size

@@ -49,6 +49,8 @@ stateDiagram-v2
 
 The Box create/edit slice implements idle → validate → persisted commit with preserved field errors and asynchronous single-flight submission. Activating a Box in the feature tree opens the same task-panel form with its authored source expressions, not only resolved millimeter values. Update preserves the feature identity and untouched record fields, closes only after the semantic revision is saved, and lets the ordinary worker rebuild replace the viewport mesh. Interactive geometry preview and `Escape` command routing remain required before this slice satisfies the complete modeling-command state machine.
 
+Feature removal is available from an active edit task. A feature with direct dependents keeps the destructive action disabled and names the downstream features that must be removed first; the initial implementation never guesses a cascade. A removable leaf opens the shared accessible `AlertDialog`, names the feature, warns that undo is not implemented, blocks repeated activation while the asynchronous commit is pending, remains open with a persistent error after failure, and closes only after semantic persistence and rebuild succeed. Successful removal closes the edit task, clears an invalid viewport selection, updates terminal geometry, and survives reload.
+
 ## Flow 1: create a printable part
 
 1. Create a project and choose a printer profile or no profile.

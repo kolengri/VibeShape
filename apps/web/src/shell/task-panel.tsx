@@ -5,6 +5,7 @@ import {
   addFeature,
   createBrowserFeatureId,
   type DocumentControllerState,
+  removeFeature,
   updateFeature,
 } from "../document/document-controller"
 import {
@@ -14,6 +15,7 @@ import {
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
+import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
 import {
   type ActivePartDesignTool,
   booleanInputFeatures,
@@ -155,6 +157,50 @@ function featureTaskContext(
     : { key: `create:${revision}`, onSave: addFeature }
 }
 
+function EditFeatureDeleteAction({
+  mode,
+  onDeleted,
+  report,
+}: {
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode
+  onDeleted: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const t = useTranslations("app.shell.taskPanel.featureDelete")
+  const modelTreeT = useTranslations("app.shell.modelTree")
+  if (mode.kind !== "edit") return null
+
+  const feature = mode.feature
+  const dependentFeatures = report.snapshot.features.filter(({ dependencies }) =>
+    dependencies.includes(feature.id),
+  )
+  const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
+  const dependentLabels = dependentFeatures
+    .map(({ label }) => label ?? modelTreeT("unnamedFeature"))
+    .join(", ")
+
+  return (
+    <FeatureDeleteAction
+      baseRevision={report.snapshot.revision}
+      copy={{
+        action: t("action"),
+        title: t("title", { feature: featureLabel }),
+        description: t("description"),
+        confirm: t("confirm"),
+        cancel: t("cancel"),
+        failed: t("failed"),
+        inUse: t("inUse", { features: dependentLabels }),
+        readOnly: t("readOnly"),
+      }}
+      dependentFeatures={dependentFeatures}
+      disabled={report.mode === "read-only"}
+      feature={feature}
+      onDeleted={onDeleted}
+      onRemove={removeFeature}
+    />
+  )
+}
+
 function BoxTaskPanel({
   mode,
   onCloseTool,
@@ -182,6 +228,7 @@ function BoxTaskPanel({
         onSave={task.onSave}
         onSaved={onCloseTool}
       />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
   )
 }
@@ -213,6 +260,7 @@ function CylinderTaskPanel({
         onSave={task.onSave}
         onSaved={onCloseTool}
       />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
   )
 }
@@ -246,6 +294,7 @@ function BooleanTaskPanel({
         onSave={task.onSave}
         onSaved={onCloseTool}
       />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
   )
 }

@@ -145,6 +145,14 @@ function terminalExportFeatures(state: FeatureRebuildState) {
   })
 }
 
+function retainedFeatureContent(state: FeatureRebuildState) {
+  return state.evaluation.records.flatMap((record) =>
+    record.status === "succeeded"
+      ? [{ featureId: record.featureId, contentHash: record.contentHash }]
+      : [],
+  )
+}
+
 function topLevelFailure(result: Extract<DocumentFeatureRebuildResult, { ok: false }>) {
   const code = documentWorkerDiagnosticCodeSchema.safeParse(result.diagnostic.code)
   return {
@@ -311,6 +319,7 @@ export class DocumentWorkerRuntime {
       return
     }
 
+    this.engine.synchronizeDocumentFeatures(request.documentId, retainedFeatureContent(result))
     this.#states.set(request.documentId, result)
     this.#post({
       ...requestEnvelope(request),

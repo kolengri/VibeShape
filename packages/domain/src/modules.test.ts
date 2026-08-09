@@ -83,6 +83,10 @@ describe("module registry", () => {
         confirmation: "review",
         automation: { exposure: "draft", openWorld: true },
       })
+      expect(result.registry.getCommand("org.vibeshape.feature.remove")).toMatchObject({
+        confirmation: "destructive",
+        automation: { exposure: "draft", destructive: true, openWorld: false },
+      })
       expect(result.registry.getCommand("org.vibeshape.feature.set-suppressed")).toMatchObject({
         automation: { exposure: "draft", openWorld: false },
       })
