@@ -13,18 +13,48 @@ const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 class FakeWorker {
   readonly posted: DocumentWorkerRequest[] = []
   terminated = false
-  #listener: ((event: MessageEvent<unknown>) => void) | null = null
+  #errorListener: ((event: ErrorEvent) => void) | null = null
+  #messageErrorListener: ((event: MessageEvent<unknown>) => void) | null = null
+  #messageListener: ((event: MessageEvent<unknown>) => void) | null = null
 
   postMessage(message: DocumentWorkerRequest) {
     this.posted.push(message)
   }
 
-  addEventListener(_type: "message", listener: (event: MessageEvent<unknown>) => void) {
-    this.#listener = listener
+  addEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  addEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  addEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
+  addEventListener(
+    type: "message" | "error" | "messageerror",
+    listener: ((event: MessageEvent<unknown>) => void) | ((event: ErrorEvent) => void),
+  ) {
+    if (type === "error") {
+      this.#errorListener = listener as (event: ErrorEvent) => void
+      return
+    }
+    if (type === "messageerror") {
+      this.#messageErrorListener = listener as (event: MessageEvent<unknown>) => void
+      return
+    }
+    this.#messageListener = listener as (event: MessageEvent<unknown>) => void
   }
 
-  removeEventListener(_type: "message", listener: (event: MessageEvent<unknown>) => void) {
-    if (this.#listener === listener) this.#listener = null
+  removeEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  removeEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  removeEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
+  removeEventListener(
+    type: "message" | "error" | "messageerror",
+    listener: ((event: MessageEvent<unknown>) => void) | ((event: ErrorEvent) => void),
+  ) {
+    if (type === "error") {
+      if (this.#errorListener === listener) this.#errorListener = null
+      return
+    }
+    if (type === "messageerror") {
+      if (this.#messageErrorListener === listener) this.#messageErrorListener = null
+      return
+    }
+    if (this.#messageListener === listener) this.#messageListener = null
   }
 
   terminate() {
@@ -32,7 +62,15 @@ class FakeWorker {
   }
 
   emit(message: DocumentWorkerResponse | unknown) {
-    this.#listener?.({ data: message } as MessageEvent<unknown>)
+    this.#messageListener?.({ data: message } as MessageEvent<unknown>)
+  }
+
+  emitError(message: string) {
+    this.#errorListener?.({ message } as ErrorEvent)
+  }
+
+  emitMessageError() {
+    this.#messageErrorListener?.({ data: null } as MessageEvent<unknown>)
   }
 }
 
@@ -208,5 +246,45 @@ describe("DocumentWorkerClient", () => {
 
     await expect(first).rejects.toThrow("invalid response")
     await expect(second).rejects.toThrow("invalid response")
+  })
+
+  it("rejects pending work immediately when the worker crashes", async () => {
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const pending = client.request(healthRequest())
+
+    worker.emitError("OCCT worker crashed.")
+
+    await expect(pending).rejects.toMatchObject({
+      code: "worker-error",
+      message: "OCCT worker crashed.",
+    })
+    await expect(client.request(healthRequest("after-crash"))).rejects.toMatchObject({
+      code: "worker-terminated",
+    })
+    client.terminate()
+    expect(worker.terminated).toBe(true)
+  })
+
+  it("rejects pending work after a structured-clone message failure", async () => {
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const pending = client.request(healthRequest())
+
+    worker.emitMessageError()
+
+    await expect(pending).rejects.toMatchObject({ code: "message-error" })
+  })
+
+  it("classifies request timeouts for session recovery", async () => {
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    try {
+      await expect(client.request(healthRequest(), { timeoutMs: 5 })).rejects.toMatchObject({
+        code: "request-timeout",
+      })
+    } finally {
+      client.terminate()
+    }
   })
 })

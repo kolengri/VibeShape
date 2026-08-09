@@ -60,6 +60,12 @@ At startup:
 
 A corrupted event never destroys the preceding snapshot. A diagnostic bundle may include versions, hashes, and command kinds, but excludes geometry and project names without consent.
 
+### Document-worker recovery handoff
+
+`@vibeshape/document-worker` provides in-process recovery for an active document. Its session retains the latest successfully rebuilt semantic snapshot and mesh policy, replaces a failed worker, increments generation, and rebuilds every native result. It never treats retained meshes or B-Rep state as recovery input.
+
+That memory is intentionally not durable. After a page reload, browser crash, or full application restart, the persistence layer must first complete checksum verification and event replay, then pass the recovered committed `DocumentSnapshot` to a new document-worker session. The session does not write IndexedDB, and the persistence package does not import worker or OCCT code. This handoff is the next product-integration gate.
+
 ## Persistent storage
 
 After the first saved project, the UI MAY call `navigator.storage.persist()` from a user gesture. Denial does not block work; the application explains that the browser may evict best-effort storage.

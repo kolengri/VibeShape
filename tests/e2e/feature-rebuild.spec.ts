@@ -18,7 +18,9 @@ interface FeatureRebuildHarnessState {
   state: "running" | "passed" | "failed"
   initial: RebuildSummary | null
   reused: RebuildSummary | null
+  recovered: RebuildSummary | null
   changed: RebuildSummary | null
+  generation: number
   requestFeatureIds: FeatureId[]
   progress: string[]
   health: { ownedShapeCount: number; activeDocuments: number } | null
@@ -45,7 +47,7 @@ function geometryById(summary: RebuildSummary, featureId: string) {
   return geometry
 }
 
-test("coordinates dependency-aware geometry rebuild and clean-result reuse", async ({ page }) => {
+test("coordinates dependency-aware rebuild, recovery, and clean-result reuse", async ({ page }) => {
   await page.goto("/spikes/feature-rebuild.html")
 
   const status = page.getByRole("status")
@@ -58,6 +60,7 @@ test("coordinates dependency-aware geometry rebuild and clean-result reuse", asy
   expect(state.error).toBeNull()
   const initial = requireSummary(state.initial)
   const reused = requireSummary(state.reused)
+  const recovered = requireSummary(state.recovered)
   const changed = requireSummary(state.changed)
 
   expect(initial.evaluatedFeatureIds).toEqual([
@@ -80,6 +83,15 @@ test("coordinates dependency-aware geometry rebuild and clean-result reuse", asy
   expect(reused.reusedFeatureIds).toEqual([featureIds.cylinder, featureIds.box, featureIds.boolean])
   expect(reused.geometry).toEqual(initial.geometry)
 
+  expect(recovered.evaluatedFeatureIds).toEqual([
+    featureIds.cylinder,
+    featureIds.box,
+    featureIds.boolean,
+  ])
+  expect(recovered.reusedFeatureIds).toEqual([])
+  expect(recovered.geometry).toEqual(initial.geometry)
+  expect(state.generation).toBe(2)
+
   expect(changed.evaluatedFeatureIds).toEqual([featureIds.cylinder, featureIds.boolean])
   expect(changed.reusedFeatureIds).toEqual([featureIds.box])
   expect(geometryById(changed, featureIds.box)).toEqual(geometryById(initial, featureIds.box))
@@ -99,9 +111,12 @@ test("coordinates dependency-aware geometry rebuild and clean-result reuse", asy
     featureIds.box,
     featureIds.boolean,
     featureIds.cylinder,
+    featureIds.box,
+    featureIds.boolean,
+    featureIds.cylinder,
     featureIds.boolean,
   ])
-  expect(state.progress).toHaveLength(5 * 4)
+  expect(state.progress).toHaveLength(8 * 4)
   expect(state.health).toMatchObject({
     initialized: true,
     ownedShapeCount: 3,

@@ -10,7 +10,11 @@ import {
 export interface DocumentWorkerLike {
   postMessage(message: DocumentWorkerRequest): void
   addEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  addEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  addEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
   removeEventListener(type: "message", listener: (event: MessageEvent<unknown>) => void): void
+  removeEventListener(type: "error", listener: (event: ErrorEvent) => void): void
+  removeEventListener(type: "messageerror", listener: (event: MessageEvent<unknown>) => void): void
   terminate(): void
 }
 
@@ -25,6 +29,22 @@ type PendingRequest = {
   reject: (error: Error) => void
   onProgress?: (progress: ProgressResponse) => void
   timeoutId: ReturnType<typeof setTimeout>
+}
+
+export type DocumentWorkerClientErrorCode =
+  | "duplicate-request"
+  | "request-timeout"
+  | "worker-terminated"
+  | "worker-error"
+  | "message-error"
+  | "invalid-response"
+  | "mismatched-response-envelope"
+  | "mismatched-response-type"
+  | "worker-failure"
+
+export type DocumentWorkerRequestOptions = {
+  timeoutMs?: number
+  onProgress?: (progress: ProgressResponse) => void
 }
 
 export function createDocumentRequestEnvelope(
@@ -44,6 +64,7 @@ export function createDocumentRequestEnvelope(
 export class DocumentWorkerRequestError extends Error {
   constructor(
     message: string,
+    readonly code: DocumentWorkerClientErrorCode,
     readonly response?: DocumentWorkerTerminalResponse,
   ) {
     super(message)
@@ -54,31 +75,58 @@ export class DocumentWorkerRequestError extends Error {
 export class DocumentWorkerClient {
   readonly #pending = new Map<string, PendingRequest>()
   readonly #handleMessage = (event: MessageEvent<unknown>) => this.#onMessage(event.data)
+  readonly #handleError = (event: ErrorEvent) => {
+    this.#available = false
+    this.#rejectAll(
+      new DocumentWorkerRequestError(
+        event.message || "Document worker execution failed.",
+        "worker-error",
+      ),
+    )
+  }
+  readonly #handleMessageError = () => {
+    this.#available = false
+    this.#rejectAll(
+      new DocumentWorkerRequestError(
+        "Document worker could not deserialize a message.",
+        "message-error",
+      ),
+    )
+  }
+  #available = true
+  #terminated = false
 
   constructor(private readonly worker: DocumentWorkerLike) {
     this.worker.addEventListener("message", this.#handleMessage)
+    this.worker.addEventListener("error", this.#handleError)
+    this.worker.addEventListener("messageerror", this.#handleMessageError)
   }
 
-  request(
-    input: DocumentWorkerRequest,
-    options: {
-      timeoutMs?: number
-      onProgress?: (progress: ProgressResponse) => void
-    } = {},
-  ) {
+  request(input: DocumentWorkerRequest, options: DocumentWorkerRequestOptions = {}) {
     const request = documentWorkerRequestSchema.parse(input)
     const timeoutMs = options.timeoutMs ?? 120_000
+    if (!this.#available) {
+      return Promise.reject(
+        new DocumentWorkerRequestError("Document worker is unavailable.", "worker-terminated"),
+      )
+    }
     if (this.#pending.has(request.requestId)) {
       return Promise.reject(
         new DocumentWorkerRequestError(
           `Document request ID is already pending: ${request.requestId}.`,
+          "duplicate-request",
         ),
       )
     }
     return new Promise<DocumentWorkerTerminalResponse>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.#pending.delete(request.requestId)
-        reject(new DocumentWorkerRequestError(`Document request timed out after ${timeoutMs} ms.`))
+        reject(
+          new DocumentWorkerRequestError(
+            `Document request timed out after ${timeoutMs} ms.`,
+            "request-timeout",
+          ),
+        )
       }, timeoutMs)
       this.#pending.set(request.requestId, {
         documentId: request.documentId,
@@ -95,16 +143,27 @@ export class DocumentWorkerClient {
   }
 
   terminate() {
+    if (this.#terminated) return
+    this.#terminated = true
+    this.#available = false
     this.worker.removeEventListener("message", this.#handleMessage)
+    this.worker.removeEventListener("error", this.#handleError)
+    this.worker.removeEventListener("messageerror", this.#handleMessageError)
     this.worker.terminate()
-    this.#rejectAll(new DocumentWorkerRequestError("Document worker terminated."))
+    this.#rejectAll(
+      new DocumentWorkerRequestError("Document worker terminated.", "worker-terminated"),
+    )
   }
 
   #onMessage(input: unknown) {
     const parsed = documentWorkerResponseSchema.safeParse(input)
     if (!parsed.success) {
+      this.#available = false
       this.#rejectAll(
-        new DocumentWorkerRequestError("Document worker returned an invalid response."),
+        new DocumentWorkerRequestError(
+          "Document worker returned an invalid response.",
+          "invalid-response",
+        ),
       )
       return
     }
@@ -121,7 +180,10 @@ export class DocumentWorkerClient {
     ) {
       this.#reject(
         response.requestId,
-        new DocumentWorkerRequestError("Document worker returned a mismatched response envelope."),
+        new DocumentWorkerRequestError(
+          "Document worker returned a mismatched response envelope.",
+          "mismatched-response-envelope",
+        ),
       )
       return
     }
@@ -129,7 +191,10 @@ export class DocumentWorkerClient {
       if (pending.requestType !== "rebuildDocument") {
         this.#reject(
           response.requestId,
-          new DocumentWorkerRequestError("Document worker returned a mismatched response type."),
+          new DocumentWorkerRequestError(
+            "Document worker returned a mismatched response type.",
+            "mismatched-response-type",
+          ),
         )
         return
       }
@@ -139,7 +204,10 @@ export class DocumentWorkerClient {
     if (!this.#matchesRequestType(pending.requestType, response.type)) {
       this.#reject(
         response.requestId,
-        new DocumentWorkerRequestError("Document worker returned a mismatched response type."),
+        new DocumentWorkerRequestError(
+          "Document worker returned a mismatched response type.",
+          "mismatched-response-type",
+        ),
       )
       return
     }
@@ -164,7 +232,9 @@ export class DocumentWorkerClient {
     clearTimeout(pending.timeoutId)
     this.#pending.delete(requestId)
     if (response.type === "failure") {
-      pending.reject(new DocumentWorkerRequestError(response.diagnostic.message, response))
+      pending.reject(
+        new DocumentWorkerRequestError(response.diagnostic.message, "worker-failure", response),
+      )
       return
     }
     pending.resolve(response)

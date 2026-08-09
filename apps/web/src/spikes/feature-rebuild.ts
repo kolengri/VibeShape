@@ -1,8 +1,9 @@
 import {
-  createDocumentRequestEnvelope,
-  createDocumentWorkerClient,
-  type DocumentWorkerClient,
-} from "@vibeshape/document-worker/client"
+  createDocumentWorkerSession,
+  type DocumentWorkerDisposalResponse,
+  type DocumentWorkerHealthResponse,
+  type DocumentWorkerRebuildResponse,
+} from "@vibeshape/document-worker/session"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -13,10 +14,7 @@ import {
 } from "@vibeshape/domain"
 import { documentRebuildSnapshotSchema } from "@vibeshape/protocol"
 
-type TerminalResponse = Awaited<ReturnType<DocumentWorkerClient["request"]>>
-type SuccessfulRebuild = Extract<TerminalResponse, { type: "documentRebuilt" }>
-type HealthResponse = Extract<TerminalResponse, { type: "health" }>
-type DisposalResponse = Extract<TerminalResponse, { type: "documentDisposed" }>
+type SuccessfulRebuild = DocumentWorkerRebuildResponse
 
 type RebuildSummary = {
   records: SuccessfulRebuild["evaluation"]["records"]
@@ -35,11 +33,13 @@ interface FeatureRebuildHarnessState {
   state: "running" | "passed" | "failed"
   initial: RebuildSummary | null
   reused: RebuildSummary | null
+  recovered: RebuildSummary | null
   changed: RebuildSummary | null
+  generation: number
   requestFeatureIds: string[]
   progress: string[]
-  health: HealthResponse | null
-  disposal: DisposalResponse | null
+  health: DocumentWorkerHealthResponse | null
+  disposal: DocumentWorkerDisposalResponse | null
   error: string | null
 }
 
@@ -55,13 +55,13 @@ const featureIds = {
   cylinder: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
   boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
 } as const
-const generation = 1
-
 const state: FeatureRebuildHarnessState = {
   state: "running",
   initial: null,
   reused: null,
+  recovered: null,
   changed: null,
+  generation: 1,
   requestFeatureIds: [],
   progress: [],
   health: null,
@@ -75,14 +75,6 @@ function statusElement() {
   const element = document.querySelector<HTMLElement>("#status")
   if (!element) throw new Error("The feature rebuild status element is missing.")
   return element
-}
-
-function expectResponse<Type extends TerminalResponse["type"]>(
-  response: TerminalResponse,
-  type: Type,
-): Extract<TerminalResponse, { type: Type }> {
-  if (response.type !== type) throw new Error(`Expected ${type}, received ${response.type}.`)
-  return response as Extract<TerminalResponse, { type: Type }>
 }
 
 function documentSnapshot(cylinderHeight: number, revision: number) {
@@ -149,28 +141,26 @@ function summary(result: SuccessfulRebuild) {
 }
 
 async function run() {
-  const client = createDocumentWorkerClient()
+  const session = createDocumentWorkerSession(documentId)
   const status = statusElement()
   try {
     const initialDocument = documentSnapshot(60, 1)
+    const progressOptions = {
+      onProgress(progress: { featureId: string; stage: string }) {
+        state.progress.push(`${progress.featureId}:${progress.stage}`)
+        if (progress.stage === "feature-validation") {
+          state.requestFeatureIds.push(progress.featureId)
+        }
+      },
+    }
     const rebuild = async (document: ReturnType<typeof documentSnapshot>) => {
-      const response = await client.request(
+      return session.rebuild(
         {
-          ...createDocumentRequestEnvelope(documentId, generation, document.revision),
-          type: "rebuildDocument",
           document,
           mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
         },
-        {
-          onProgress(progress) {
-            state.progress.push(`${progress.featureId}:${progress.stage}`)
-            if (progress.stage === "feature-validation") {
-              state.requestFeatureIds.push(progress.featureId)
-            }
-          },
-        },
+        progressOptions,
       )
-      return expectResponse(response, "documentRebuilt")
     }
 
     const initialResult = await rebuild(initialDocument)
@@ -179,23 +169,16 @@ async function run() {
     const reusedResult = await rebuild(initialDocument)
     state.reused = summary(reusedResult)
 
+    const recoveredResult = await session.restartAndRecover(progressOptions)
+    if (!recoveredResult) throw new Error("Document worker recovery snapshot is missing.")
+    state.recovered = summary(recoveredResult)
+    state.generation = session.generation
+
     const changedResult = await rebuild(documentSnapshot(20, 2))
     state.changed = summary(changedResult)
 
-    state.health = expectResponse(
-      await client.request({
-        ...createDocumentRequestEnvelope(documentId, generation, 2),
-        type: "healthCheck",
-      }),
-      "health",
-    )
-    state.disposal = expectResponse(
-      await client.request({
-        ...createDocumentRequestEnvelope(documentId, generation, 2),
-        type: "disposeDocument",
-      }),
-      "documentDisposed",
-    )
+    state.health = await session.health()
+    state.disposal = await session.dispose()
     state.state = "passed"
     status.dataset.state = "passed"
     status.textContent = "Feature rebuild coordination passed."
@@ -205,7 +188,7 @@ async function run() {
     status.dataset.state = "failed"
     status.textContent = state.error
   } finally {
-    client.terminate()
+    session.terminate()
   }
 }
 
