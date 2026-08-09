@@ -17,13 +17,21 @@ import {
   activateLocalProject,
   createNewLocalProject,
   type DocumentControllerState,
+  deleteLocalProject,
   exportActiveProjectBackup,
   importProjectBackup,
   listLocalProjects,
 } from "./document-controller"
 import { downloadProjectBackup } from "./document-project-file"
+import { ProjectDeleteAction } from "./project-delete-action"
 
-type ProjectActivity = "idle" | "backing-up" | "creating" | "opening-file" | "switching"
+type ProjectActivity =
+  | "idle"
+  | "backing-up"
+  | "creating"
+  | "deleting"
+  | "opening-file"
+  | "switching"
 
 type ProjectLibraryState =
   | { status: "loading"; projects: readonly LocalProjectSummary[] }
@@ -73,14 +81,23 @@ function LocalProjectList({
   activeDocumentId,
   disabled,
   onCreate,
+  onDelete,
+  onDeleted,
   onOpen,
+  onPendingDeleteChange,
   projects,
   switchingDocumentId,
 }: {
   activeDocumentId: string | undefined
   disabled: boolean
   onCreate: () => unknown
+  onDelete: (
+    documentId: string,
+    expectedHeadRevision: number,
+  ) => ReturnType<typeof deleteLocalProject>
+  onDeleted: () => void
   onOpen: (documentId: string) => unknown
+  onPendingDeleteChange: (pending: boolean) => void
   projects: readonly LocalProjectSummary[]
   switchingDocumentId: string | null
 }) {
@@ -137,21 +154,34 @@ function LocalProjectList({
                       {formatter.dateTime(new Date(project.updatedAt), "shortTime")}
                     </time>
                   </p>
+                  {isCurrent ? (
+                    <p className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</p>
+                  ) : null}
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled || isCurrent}
-                  isLoading={switchingDocumentId === project.documentId}
-                  aria-label={t("openLabel", {
-                    name: project.name,
-                    revision: project.headRevision,
-                  })}
-                  onClick={() => onOpen(project.documentId)}
-                >
-                  {t("open")}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled || isCurrent}
+                    isLoading={switchingDocumentId === project.documentId}
+                    aria-label={t("openLabel", {
+                      name: project.name,
+                      revision: project.headRevision,
+                    })}
+                    onClick={() => onOpen(project.documentId)}
+                  >
+                    {t("open")}
+                  </Button>
+                  <ProjectDeleteAction
+                    disabled={disabled}
+                    isCurrent={isCurrent}
+                    onDelete={onDelete}
+                    onDeleted={onDeleted}
+                    onPendingChange={onPendingDeleteChange}
+                    project={project}
+                  />
+                </div>
               </li>
             )
           })}
@@ -308,7 +338,10 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
               activeDocumentId={controller.report?.snapshot.id}
               disabled={disabled}
               onCreate={createProject}
+              onDelete={deleteLocalProject}
+              onDeleted={() => void loadProjects()}
               onOpen={openProject}
+              onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
               projects={library.projects}
               switchingDocumentId={switchingDocumentId}
             />

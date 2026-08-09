@@ -11,6 +11,7 @@ import {
   cacheIndexRecordSchema,
   localProjectSummarySchema,
   persistenceCommitInputSchema,
+  projectDeleteInputSchema,
   projectRecordSchema,
 } from "./schemas"
 
@@ -89,6 +90,23 @@ describe("persistence contracts", () => {
         updatedAt: timestamp,
         lastExternalBackupAt: null,
         snapshot: { forbidden: true },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("requires an exact project revision and bounded clock for deletion", () => {
+    expect(
+      projectDeleteInputSchema.safeParse({
+        documentId,
+        expectedHeadRevision: 3,
+        nowMs: 1_786_176_000_000,
+      }).success,
+    ).toBe(true)
+    expect(
+      projectDeleteInputSchema.safeParse({
+        documentId,
+        expectedHeadRevision: -1,
+        nowMs: 1_786_176_000_000,
       }).success,
     ).toBe(false)
   })

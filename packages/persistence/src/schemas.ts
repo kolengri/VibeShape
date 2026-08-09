@@ -136,6 +136,14 @@ export const portableProjectImportSchema = z
   })
   .strict()
 
+export const projectDeleteInputSchema = z
+  .object({
+    documentId: documentIdSchema,
+    expectedHeadRevision: revisionSchema,
+    nowMs: z.number().int().nonnegative().safe(),
+  })
+  .strict()
+
 export const persistenceDiagnosticCodeSchema = z.enum([
   "invalid-input",
   "document-already-exists",
@@ -168,5 +176,6 @@ export type CacheIndexRecord = z.infer<typeof cacheIndexRecordSchema>
 export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema>
 export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
 export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
+export type ProjectDeleteInput = z.input<typeof projectDeleteInputSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>

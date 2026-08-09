@@ -19,7 +19,17 @@
         "empty": "No local projects are available yet.",
         "loading": "Loading local projects…",
         "loadFailed": "Local projects could not be loaded. The current project remains open.",
-        "retry": "Retry"
+        "retry": "Retry",
+        "delete": {
+          "action": "Delete",
+          "actionLabel": "Delete {name}, revision {revision}",
+          "currentBlocked": "Open another project before deleting this one.",
+          "title": "Delete {name}?",
+          "description": "Permanently remove revision {revision} and its full history from this browser. Exported .vshape files are not deleted.",
+          "confirm": "Delete project",
+          "cancel": "Keep project",
+          "failed": "This project could not be deleted. It may have changed or be open in another tab; reload the list and try again."
+        }
       },
       "backup": {
         "title": "External backup",
