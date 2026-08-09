@@ -569,12 +569,12 @@ export function VariablesForm({
   )
 }
 
-export function referencedFeatureVariableNames(
+export function referencedModelVariableNames(
   variables: readonly VariableDefinition[],
-  featureParameters: readonly unknown[],
+  modelParameters: readonly unknown[],
 ) {
   const names = new Set(variables.map(({ name }) => name))
   return new Set(
-    featureParameters.flatMap(parameterVariableReferences).filter((name) => names.has(name)),
+    modelParameters.flatMap(parameterVariableReferences).filter((name) => names.has(name)),
   )
 }

@@ -6,7 +6,7 @@ import {
   type DocumentControllerState,
   renameVariable,
 } from "../../document/document-controller"
-import { referencedFeatureVariableNames, VariablesForm } from "./variables-form"
+import { referencedModelVariableNames, VariablesForm } from "./variables-form"
 
 type VariablesPanelProps = { controller: DocumentControllerState }
 
@@ -46,10 +46,10 @@ function ReadyVariablesPanel({
 }) {
   const t = useTranslations("app.variables")
   const snapshot = report.snapshot
-  const protectedNames = referencedFeatureVariableNames(
-    snapshot.variables,
-    snapshot.features.map(({ parameters }) => parameters),
-  )
+  const protectedNames = referencedModelVariableNames(snapshot.variables, [
+    ...snapshot.features.map(({ parameters }) => parameters),
+    ...snapshot.sketches.map(({ constraints }) => constraints),
+  ])
   const copy = {
     caption: t("table.caption"),
     name: t("table.name"),

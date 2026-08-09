@@ -13,6 +13,7 @@ import type {
 import type { DocumentSnapshot } from "./document"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import type { draftIdSchema } from "./identifiers"
+import { type SketchRecord, sketchRecordSchema } from "./sketch"
 import {
   parameterVariableReferences,
   rewriteParameterVariableReferences,
@@ -66,11 +67,16 @@ type VariableMutationResult =
       ok: true
       variables: readonly VariableDefinition[]
       features?: readonly FeatureRecord[]
+      sketches?: readonly SketchRecord[]
     }
   | { ok: false; diagnostic: DomainDiagnostic }
 
 type FeatureRefactorResult =
   | { ok: true; feature: FeatureRecord }
+  | { ok: false; diagnostic: DomainDiagnostic }
+
+type SketchRefactorResult =
+  | { ok: true; sketch: SketchRecord }
   | { ok: false; diagnostic: DomainDiagnostic }
 
 type RenameTargetResult =
@@ -205,6 +211,48 @@ function refactorFeatures(
   return { ok: true, features: rewritten }
 }
 
+function sketchRefactorFailure(invalidEvent: boolean, message: string): SketchRefactorResult {
+  return {
+    ok: false,
+    diagnostic: domainDiagnostic(
+      invalidEvent ? "invalid-event" : "invalid-variable-expression",
+      invalidEvent ? "The variable event does not match the current document." : message,
+    ),
+  }
+}
+
+function refactorSketch(
+  sketch: SketchRecord,
+  previousName: string,
+  name: string,
+  invalidEvent: boolean,
+): SketchRefactorResult {
+  const constraints = rewriteParameterVariableReferences(sketch.constraints, previousName, name)
+  if (!constraints.ok) return sketchRefactorFailure(invalidEvent, constraints.message)
+  const parsed = sketchRecordSchema.safeParse({ ...sketch, constraints: constraints.value })
+  return parsed.success
+    ? { ok: true, sketch: parsed.data }
+    : sketchRefactorFailure(
+        invalidEvent,
+        "A sketch dimension could not retain the renamed variable reference.",
+      )
+}
+
+function refactorSketches(
+  sketches: readonly SketchRecord[],
+  previousName: string,
+  name: string,
+  invalidEvent: boolean,
+): { ok: true; sketches: readonly SketchRecord[] } | { ok: false; diagnostic: DomainDiagnostic } {
+  const rewritten: SketchRecord[] = []
+  for (const sketch of sketches) {
+    const result = refactorSketch(sketch, previousName, name, invalidEvent)
+    if (!result.ok) return result
+    rewritten.push(result.sketch)
+  }
+  return { ok: true, sketches: rewritten }
+}
+
 function renameTargetFailure(
   invalidEvent: boolean,
   code: "variable-not-found" | "command-no-op" | "variable-name-conflict",
@@ -284,9 +332,16 @@ function renameVariable(
   )
   if (!variables.ok) return variables
   const features = refactorFeatures(current.features, target.variable.name, name, invalidEvent)
-  return features.ok
-    ? { ok: true, variables: variables.variables, features: features.features }
-    : features
+  if (!features.ok) return features
+  const sketches = refactorSketches(current.sketches, target.variable.name, name, invalidEvent)
+  return sketches.ok
+    ? {
+        ok: true,
+        variables: variables.variables,
+        features: features.features,
+        sketches: sketches.sketches,
+      }
+    : sketches
 }
 
 function variablesEqual(left: VariableDefinition, right: VariableDefinition) {
@@ -312,10 +367,22 @@ function removalFailure(
   }
 }
 
-function featureReferencesVariable(featureParameters: readonly unknown[], variableName: string) {
-  return featureParameters.some((parameters) =>
-    parameterVariableReferences(parameters).includes(variableName),
-  )
+function variableReferenceOwner(current: DocumentSnapshot, variableName: string) {
+  if (
+    current.features.some(({ parameters }) =>
+      parameterVariableReferences(parameters).includes(variableName),
+    )
+  ) {
+    return "feature parameter" as const
+  }
+  if (
+    current.sketches.some(({ constraints }) =>
+      parameterVariableReferences(constraints).includes(variableName),
+    )
+  ) {
+    return "sketch dimension" as const
+  }
+  return null
 }
 
 function dependencyRemovalFailure(
@@ -339,12 +406,11 @@ function dependencyRemovalFailure(
 }
 
 function removeVariable(
-  variables: readonly VariableDefinition[],
+  current: DocumentSnapshot,
   variable: VariableDefinition,
-  featureParameters: readonly unknown[],
   invalidEvent = false,
 ): VariableMutationResult {
-  const existing = variables.find(({ id }) => id === variable.id)
+  const existing = current.variables.find(({ id }) => id === variable.id)
   if (!existing || !variablesEqual(existing, variable)) {
     return removalFailure(
       invalidEvent,
@@ -352,15 +418,16 @@ function removeVariable(
       `Variable ${variable.id} does not exist.`,
     )
   }
-  if (featureReferencesVariable(featureParameters, variable.name)) {
+  const referenceOwner = variableReferenceOwner(current, variable.name)
+  if (referenceOwner) {
     return removalFailure(
       invalidEvent,
       "variable-in-use",
-      `Variable #${variable.name} is referenced by a feature parameter.`,
+      `Variable #${variable.name} is referenced by a ${referenceOwner}.`,
     )
   }
   const parsed = variableDefinitionsSchema.safeParse(
-    variables.filter(({ id }) => id !== variable.id),
+    current.variables.filter(({ id }) => id !== variable.id),
   )
   if (parsed.success) return { ok: true, variables: parsed.data }
   return dependencyRemovalFailure(variable, parsed.error, invalidEvent)
@@ -388,7 +455,7 @@ function immutableVariableNameFailure(
   return null
 }
 
-function removedFeatureReference(
+function removedModelReference(
   current: DocumentSnapshot,
   variables: readonly VariableDefinition[],
 ) {
@@ -397,7 +464,13 @@ function removedFeatureReference(
     const removedReference = parameterVariableReferences(feature.parameters).find(
       (name) => !names.has(name),
     )
-    if (removedReference) return removedReference
+    if (removedReference) return { name: removedReference, owner: "feature parameter" as const }
+  }
+  for (const sketch of current.sketches) {
+    const removedReference = parameterVariableReferences(sketch.constraints).find(
+      (name) => !names.has(name),
+    )
+    if (removedReference) return { name: removedReference, owner: "sketch dimension" as const }
   }
   return null
 }
@@ -434,12 +507,12 @@ function replaceVariableTable(
 ): VariableMutationResult {
   const immutableName = immutableVariableNameFailure(current.variables, variables, invalidEvent)
   if (immutableName) return immutableName
-  const removedReference = removedFeatureReference(current, variables)
+  const removedReference = removedModelReference(current, variables)
   if (removedReference) {
     return removalFailure(
       invalidEvent,
       "variable-in-use",
-      `Variable #${removedReference} is referenced by a feature parameter.`,
+      `Variable #${removedReference.name} is referenced by a ${removedReference.owner}.`,
     )
   }
   const parsed = parseMutation(variables, invalidEvent)
@@ -462,6 +535,7 @@ function snapshotAfterMutation(
           revision: event.revision,
           variables: mutation.variables,
           features: mutation.features ?? current.features,
+          sketches: mutation.sketches ?? current.sketches,
           updatedAt: event.issuedAt,
         },
       }
@@ -529,12 +603,7 @@ function reduceRemovedEvent(
     ? snapshotAfterMutation(
         current.snapshot,
         event,
-        removeVariable(
-          current.snapshot.variables,
-          event.variable,
-          current.snapshot.features.map(({ parameters }) => parameters),
-          true,
-        ),
+        removeVariable(current.snapshot, event.variable, true),
       )
     : current
 }
@@ -702,11 +771,7 @@ function createRemovedEvent(
 ): DocumentEvent | DomainDiagnostic {
   const current = requireCommandVariable(snapshot, command)
   if (!current.ok) return current.diagnostic
-  const mutation = removeVariable(
-    current.snapshot.variables,
-    current.variable,
-    current.snapshot.features.map(({ parameters }) => parameters),
-  )
+  const mutation = removeVariable(current.snapshot, current.variable)
   return mutation.ok
     ? {
         ...eventEnvelope(command, transactionId),

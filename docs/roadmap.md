@@ -72,7 +72,7 @@ Create a variable-driven box and cylinder feature, perform a boolean, restart of
 
 ## Phase 2 — sketcher vertical slice (6–10 weeks)
 
-The non-visual production boundary is complete for endpoint-connected geometry: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v5 solving and profile results, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, deterministic outer/hole/island extraction, stable boundary selectors, worker recovery, and the initial 1,000-point browser budget. The remaining phase is the interaction-to-feature slice plus general intersection splitting below.
+The production boundary and first interaction slice are complete for rectangle profiles: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v5 solving and profile results, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, deterministic outer/hole/island extraction, stable boundary selectors, worker recovery, the initial 1,000-point browser budget, and accessible rectangle create/edit with exact solved profile feedback. The remaining phase is free-form entity interaction, selector-backed features, conflict editing, and general intersection splitting below.
 
 ### Scope
 
@@ -84,7 +84,7 @@ The non-visual production boundary is complete for endpoint-connected geometry: 
 - Extrude, pocket, and revolve.
 - Command-level undo/redo.
 - Unit-aware inputs.
-- Extend the implemented expression-capable Box create/edit pattern to sketch dimensions and additional feature types, including variable-reference insertion rather than manual typing alone.
+- Extend the implemented expression-capable rectangle create/edit pattern to free-form sketch dimensions and additional feature types, including variable-reference insertion rather than manual typing alone.
 
 ### Demo
 

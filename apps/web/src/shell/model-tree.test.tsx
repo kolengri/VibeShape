@@ -47,9 +47,11 @@ describe("ModelTree", () => {
       <I18nProvider i18n={i18n} initialLocale="en">
         <ModelTree
           activeFeatureId={featureId}
+          activeSketchId={null}
           activeWorkspace="model"
           controller={controller}
           onFeatureActivate={onFeatureActivate}
+          onSketchActivate={vi.fn()}
           onWorkspaceChange={vi.fn()}
         />
       </I18nProvider>,

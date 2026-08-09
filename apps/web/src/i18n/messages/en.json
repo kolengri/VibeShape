@@ -127,7 +127,8 @@
         },
         "projectFeatures": "Project features",
         "title": "Model tree",
-        "unnamedFeature": "Unnamed feature"
+        "unnamedFeature": "Unnamed feature",
+        "unnamedSketch": "Unnamed sketch"
       },
       "statusBar": {
         "filter": "Filter: {filter}",
@@ -226,6 +227,40 @@
           "createFailed": "The subtraction could not be created. Your input choices are preserved.",
           "updateFailed": "The subtraction could not be updated. Your input choices are preserved."
         },
+        "sketch": {
+          "taskAriaLabel": "Sketch task panel",
+          "workspaceTitle": "Sketch workspace",
+          "workspaceDescription": "Create a constrained profile on an origin plane. Saved sketches are solved locally and remain driven by document variables.",
+          "savedDescription": "Saved on the {plane} origin plane. The drawing and profile measurements come from the local sketch solver.",
+          "title": "Create rectangle sketch",
+          "description": "Create a closed rectangular profile with fixed origin, horizontal and vertical constraints, and two driving dimensions.",
+          "editTitle": "Edit rectangle sketch",
+          "editDescription": "Update the support plane or driving expressions while preserving sketch, entity, and constraint identities.",
+          "dimensions": "Sketch definition",
+          "plane": "Support plane",
+          "planeDescription": "Choose one of the document origin planes.",
+          "planeXy": "XY plane",
+          "planeXz": "XZ plane",
+          "planeYz": "YZ plane",
+          "width": "Width",
+          "height": "Height",
+          "expressionDescription": "Enter a positive length such as 40 mm or a variable expression such as #width.",
+          "create": "Create sketch",
+          "update": "Update sketch",
+          "edit": "Edit sketch",
+          "cancel": "Cancel",
+          "sketchLabel": "Sketch {number}",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
+          "validationSummary": "Fix the highlighted dimensions before creating the sketch.",
+          "updateValidationSummary": "Fix the highlighted dimensions before updating the sketch.",
+          "staleRevision": "The document changed while this sketch was being edited. Review the current sketch and try again.",
+          "createFailed": "The sketch could not be created. Your parameter values are preserved.",
+          "updateFailed": "The sketch could not be updated. Your parameter values are preserved.",
+          "unsupportedTitle": "Sketch editing unavailable",
+          "unsupportedDescription": "This first editor can update rectangular sketches created by VibeShape. Other sketch geometry remains preserved."
+        },
         "variables": {
           "title": "Using variables",
           "description": "Variables make repeated dimensions configurable from one table.",
@@ -245,6 +280,24 @@
         "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
         "title": "3D viewport",
         "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
+      }
+    },
+    "sketch": {
+      "viewport": {
+        "ariaLabel": "2D sketch workspace",
+        "empty": "Create a rectangle sketch or choose a saved sketch in the model tree.",
+        "preview": "Unsaved preview",
+        "previewDrawing": "Unsaved rectangular sketch preview",
+        "solvedDrawing": "Solved sketch geometry",
+        "solving": "Solving the saved sketch locally…",
+        "solveFailed": "The saved sketch could not be solved. Its semantic definition remains available.",
+        "fullyConstrained": "Fully constrained",
+        "underConstrained": "Under-constrained",
+        "overConstrained": "Over-constrained",
+        "failed": "Solve failed",
+        "degreesOfFreedom": "Degrees of freedom: {count}",
+        "profile": "Profile: {area} mm² · {perimeter} mm perimeter",
+        "orientation": "{plane} · millimeters"
       }
     },
     "variables": {

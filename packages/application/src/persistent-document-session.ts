@@ -7,6 +7,7 @@ import {
   documentIdSchema,
   draftIdSchema,
   type SessionId,
+  type SketchId,
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
 import {
@@ -46,6 +47,7 @@ const draftCommitInputSchema = z
 
 type DocumentRebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
 type DocumentExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
+type SketchSolveResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
 
 export type SessionPortDiagnostic = Readonly<{
   code: string
@@ -125,6 +127,7 @@ export type DocumentRebuildPort = Readonly<{
     mesh: FeatureMeshPolicy
   }) => Promise<DocumentRebuildResponse>
   exportDocument: (format: GeometryExportFormat) => Promise<DocumentExportResponse>
+  solveSketch: (input: { sketchId: SketchId }) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
 }>
@@ -146,6 +149,7 @@ export type PersistentDocumentSessionDiagnosticCode =
   | "write-access-unavailable"
   | "rebuild-failed"
   | "export-failed"
+  | "sketch-solve-failed"
   | "session-closed"
   | "close-failed"
 
@@ -162,6 +166,10 @@ export type DocumentRebuildOutcome =
 
 export type PersistentDocumentExportResult =
   | { ok: true; response: DocumentExportResponse }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type PersistentSketchSolveResult =
+  | { ok: true; response: SketchSolveResponse }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type PersistentDocumentSessionReport = Readonly<{
@@ -375,6 +383,10 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#exportDocument(format))
   }
 
+  solveSketch(sketchId: SketchId): Promise<PersistentSketchSolveResult> {
+    return this.#enqueue(() => this.#solveSketch(sketchId))
+  }
+
   close(): Promise<SessionPortResult<void>> {
     return this.#enqueue(() => this.#close())
   }
@@ -517,6 +529,27 @@ export class PersistentDocumentSession {
         diagnostic: diagnostic(
           "export-failed",
           "The current document geometry could not be exported.",
+          true,
+        ),
+      }
+    }
+  }
+
+  async #solveSketch(sketchId: SketchId): Promise<PersistentSketchSolveResult> {
+    if (this.#closed) {
+      return {
+        ok: false,
+        diagnostic: diagnostic("session-closed", "The document session is closed."),
+      }
+    }
+    try {
+      return { ok: true, response: await this.#rebuildPort.solveSketch({ sketchId }) }
+    } catch {
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "sketch-solve-failed",
+          "The current sketch could not be solved.",
           true,
         ),
       }

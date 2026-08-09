@@ -50,7 +50,3 @@ export function featureSubmissionMessage(
   }
   return copy.saveFailed
 }
-
-export function invalidAttribute(error: string | undefined) {
-  return error ? (true as const) : undefined
-}

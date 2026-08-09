@@ -2,6 +2,7 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { DocumentControllerState } from "../document/document-controller"
 import { booleanInputFeatures } from "../features/part-design/part-design-tool"
+import type { EditorWorkspaceName } from "./workspace"
 
 type PartDesignCommand = "box" | "cylinder" | "subtract"
 
@@ -23,13 +24,19 @@ export function CommandToolbar({
   controller,
   onCreateBox,
   onCreateCylinder,
+  onCreateSketch,
   onCreateSubtract,
+  onWorkspaceChange,
+  workspace,
 }: {
   activeCommand: PartDesignCommand | null
   controller: DocumentControllerState
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSketch: () => void
   onCreateSubtract: () => void
+  onWorkspaceChange: (workspace: EditorWorkspaceName) => void
+  workspace: EditorWorkspaceName
 }) {
   const t = useTranslations("app.shell.commandToolbar")
   const canCreate = canCreateFeature(controller)
@@ -41,17 +48,35 @@ export function CommandToolbar({
       className="flex items-center gap-1 border-b bg-toolbar px-2"
       role="toolbar"
     >
-      <Button type="button" size="sm" variant="secondary" aria-pressed="true">
+      <Button
+        type="button"
+        size="sm"
+        variant={workspace === "model" ? "secondary" : "ghost"}
+        aria-pressed={workspace === "model"}
+        onClick={() => onWorkspaceChange("model")}
+      >
         {t("model")}
       </Button>
-      <Button type="button" size="sm" variant="ghost">
+      <Button
+        type="button"
+        size="sm"
+        variant={workspace === "sketch" ? "secondary" : "ghost"}
+        aria-pressed={workspace === "sketch"}
+        onClick={() => onWorkspaceChange("sketch")}
+      >
         {t("sketch")}
       </Button>
       <Button type="button" size="sm" variant="ghost">
         {t("print")}
       </Button>
       <span className="mx-1 h-5 border-l" aria-hidden="true" />
-      <Button type="button" size="sm" variant="ghost">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canCreate}
+        onClick={onCreateSketch}
+      >
         {t("createSketch")}
       </Button>
       <Button type="button" size="sm" variant="ghost">

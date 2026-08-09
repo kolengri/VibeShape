@@ -4,6 +4,7 @@ import {
   type PersistentDocumentSession,
   type PersistentDocumentSessionDiagnostic,
   type PersistentDocumentSessionReport,
+  type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
@@ -21,7 +22,14 @@ import {
   generateUuidV7,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  type SketchConstraintId,
+  type SketchEntityId,
+  type SketchId,
+  type SketchRecord,
   sessionIdSchema,
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
   type VariableDefinition,
   type VariableId,
   variableIdSchema,
@@ -57,6 +65,8 @@ export type ApplyVariableTableResult =
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type FeatureMutationResult = ApplyVariableTableResult
+export type SketchMutationResult = ApplyVariableTableResult
+export type ActiveSketchSolveResult = PersistentSketchSolveResult
 
 export type ActiveDocumentExportResult =
   | {
@@ -276,6 +286,18 @@ export function createBrowserFeatureId() {
   return featureIdSchema.parse(browserUuidV7())
 }
 
+export function createBrowserSketchId(): SketchId {
+  return sketchIdSchema.parse(browserUuidV7())
+}
+
+export function createBrowserSketchEntityId(): SketchEntityId {
+  return sketchEntityIdSchema.parse(browserUuidV7())
+}
+
+export function createBrowserSketchConstraintId(): SketchConstraintId {
+  return sketchConstraintIdSchema.parse(browserUuidV7())
+}
+
 function subscribeDocumentController(listener: () => void) {
   listeners.add(listener)
   return () => listeners.delete(listener)
@@ -396,6 +418,63 @@ export function removeFeature(baseRevision: number, featureId: FeatureRecord["id
     actor: { type: "user", userId: null },
     payload: { featureId },
   }))
+}
+
+function commitSketchMutation(
+  kind: "org.vibeshape.sketch.add" | "org.vibeshape.sketch.update",
+  baseRevision: number,
+  sketch: SketchRecord,
+): Promise<SketchMutationResult> {
+  return commitDocumentCommand((documentId) => ({
+    kind,
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { sketch },
+  }))
+}
+
+export function addSketch(baseRevision: number, sketch: SketchRecord) {
+  return commitSketchMutation("org.vibeshape.sketch.add", baseRevision, sketch)
+}
+
+export function updateSketch(baseRevision: number, sketch: SketchRecord) {
+  return commitSketchMutation("org.vibeshape.sketch.update", baseRevision, sketch)
+}
+
+export async function solveActiveSketch(
+  baseRevision: number,
+  sketchId: SketchId,
+): Promise<ActiveSketchSolveResult> {
+  if (!session || state.status !== "ready" || !state.report) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "session-closed",
+        message: "The local document session is unavailable.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  if (
+    state.report.snapshot.revision !== baseRevision ||
+    !state.report.snapshot.sketches.some(({ id }) => id === sketchId)
+  ) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "sketch-solve-failed",
+        message: "The sketch changed before it could be solved.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    }
+  }
+  return session.solveSketch(sketchId)
 }
 
 export async function exportActiveDocument(

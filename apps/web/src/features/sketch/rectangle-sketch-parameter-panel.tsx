@@ -1,28 +1,27 @@
 import type { ReactNode } from "react"
-import { ParameterPanel, type ParameterPanelCopy } from "./parameter-panel"
+import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 
-export type PrimitiveParameterPanelCopy = ParameterPanelCopy &
+export type RectangleSketchParameterPanelCopy = ParameterPanelCopy &
   Readonly<{
     dimensions: string
-    centered: string
   }>
 
-export function PrimitiveParameterPanel({
-  centeredField,
+export function RectangleSketchParameterPanel({
   copy,
   disabled = false,
   fields,
   footerAction,
   message,
   onCancel,
+  planeField,
 }: {
-  centeredField: ReactNode
-  copy: PrimitiveParameterPanelCopy
+  copy: RectangleSketchParameterPanelCopy
   disabled?: boolean
   fields: ReactNode
   footerAction: ReactNode
   message?: ReactNode
   onCancel: () => void
+  planeField: ReactNode
 }) {
   return (
     <ParameterPanel
@@ -33,8 +32,8 @@ export function PrimitiveParameterPanel({
       message={message}
       onCancel={onCancel}
     >
+      {planeField}
       {fields}
-      <div className="pt-1">{centeredField}</div>
     </ParameterPanel>
   )
 }
