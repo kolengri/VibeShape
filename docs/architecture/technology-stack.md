@@ -216,7 +216,7 @@ SQLite WASM supports OPFS but introduces another WASM runtime, worker/VFS config
 
 SolveSpace is GPL-3.0-or-later and has a browser build that the project describes as experimental. The full web port cannot be embedded without validation.
 
-The spike must:
+The selection gate required the spike to:
 
 - expose a minimal solver ABI;
 - build deterministic standalone WASM;
@@ -224,7 +224,7 @@ The spike must:
 - test conflict diagnostics, degeneracies, and memory;
 - document source changes and the build pipeline.
 
-SPK-002 passed these gates with SolveSpace v3.2 revision `27b6a080c8b669421bd4d444650c3b8eddec5687`, pinned Eigen and mimalloc sources, Emscripten 6.0.6, and the flat typed-array boundary selected in ADR-0014. The successful output is a 14,889-byte ES module plus 251,544-byte WASM. It remains a worker-owned, source-built artifact; the experimental upstream web UI and stateful Embind API are not product dependencies. Heavy builds and evidence are local-only.
+SPK-002 passed these gates with SolveSpace v3.2 revision `27b6a080c8b669421bd4d444650c3b8eddec5687`, pinned Eigen and mimalloc sources, Emscripten 6.0.6, and the flat typed-array boundary selected in ADR-0014. The successful output is a 14,889-byte ES module plus 251,544-byte WASM. The exact reviewed pair is now a worker-owned production browser asset behind `@vibeshape/sketch-solver`; its complete corresponding-source bundle is versioned under `third_party/solvespace`. `bun run solvespace:verify:runtime` fails if the module, WASM, or source bundle differs from its recorded SHA-256. The production compiler maps strict domain sketch records, evaluated variable dimensions, stable-ID continuation, and drag targets to the private flat ABI. The experimental upstream web UI and stateful Embind API are not product dependencies. Source builds, extended native evidence, and compliance-bundle generation remain local-only.
 
 If the spike fails, alternatives are:
 

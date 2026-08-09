@@ -6,12 +6,14 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@vibeshape/domain": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

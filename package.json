@@ -68,6 +68,7 @@
     "solvespace:build": "bun run scripts/prepare-solvespace-build.ts --build",
     "solvespace:evidence": "bun run scripts/run-solvespace-evidence.ts && bun run scripts/run-solvespace-browser-evidence.ts",
     "solvespace:bundle:compliance": "bun run scripts/create-solvespace-compliance-bundle.ts",
+    "solvespace:verify:runtime": "bun run scripts/verify-sketch-solver-runtime.ts",
     "topology:evidence": "bun run scripts/run-topology-evidence.ts",
     "formats:evidence:3mf": "bun run scripts/run-three-mf-evidence.ts",
     "persistence:evidence": "bun run scripts/run-persistence-evidence.ts",
@@ -77,7 +78,7 @@
     "fallow:health": "fallow health --score",
     "audit": "bun audit --audit-level=critical",
     "shadcn:add": "shadcn add --cwd apps/web",
-    "check": "bun run skills:validate && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
+    "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "fflate": "catalog:",

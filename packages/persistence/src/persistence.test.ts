@@ -310,6 +310,65 @@ describe("persistence contracts", () => {
     })
   })
 
+  it("accepts a replayable sketch revision through the ordinary commit envelope", () => {
+    const created = applyDocumentCommand(null, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId,
+      documentId,
+      baseRevision: 0,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+      payload: { name: "Sketch bracket" },
+    })
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21d0"
+    const pointId = "0195b5ac-b220-7a2c-8c33-67a36a7f21d1"
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21d2",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T00:01:00Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        sketch: {
+          schemaVersion: 0,
+          id: sketchId,
+          label: "Base profile",
+          plane: "xy",
+          entities: [
+            {
+              schemaVersion: 0,
+              id: pointId,
+              type: "point",
+              x: 0,
+              y: 0,
+              construction: false,
+            },
+          ],
+          constraints: [],
+        },
+      },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+
+    expect(
+      persistenceCommitInputSchema.safeParse({
+        sessionId,
+        lease: { epoch: 1, nowMs: 0 },
+        storedAt: added.snapshot.updatedAt,
+        baseSnapshot: created.snapshot,
+        event: added.event,
+        snapshot: added.snapshot,
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { snapshot: { sketches: [{ id: sketchId, label: "Base profile" }] } },
+    })
+  })
+
   it("defers updates for dirty documents and keeps file picking progressive", () => {
     expect(decideUpdateActivation(1)).toBe("defer")
     expect(decideUpdateActivation(0)).toBe("activate")

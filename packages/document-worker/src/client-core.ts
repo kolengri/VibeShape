@@ -31,6 +31,17 @@ type PendingRequest = {
   timeoutId: ReturnType<typeof setTimeout>
 }
 
+const terminalResponseTypeByRequest = {
+  rebuildDocument: "documentRebuilt",
+  solveSketch: "sketchSolved",
+  exportDocument: "documentExported",
+  disposeDocument: "documentDisposed",
+  healthCheck: "health",
+} as const satisfies Record<
+  DocumentWorkerRequest["type"],
+  Exclude<DocumentWorkerTerminalResponse["type"], "failure">
+>
+
 export type DocumentWorkerClientErrorCode =
   | "duplicate-request"
   | "request-timeout"
@@ -218,13 +229,7 @@ export class DocumentWorkerClient {
     requestType: DocumentWorkerRequest["type"],
     responseType: DocumentWorkerTerminalResponse["type"],
   ) {
-    return (
-      responseType === "failure" ||
-      (requestType === "rebuildDocument" && responseType === "documentRebuilt") ||
-      (requestType === "exportDocument" && responseType === "documentExported") ||
-      (requestType === "disposeDocument" && responseType === "documentDisposed") ||
-      (requestType === "healthCheck" && responseType === "health")
-    )
+    return responseType === "failure" || terminalResponseTypeByRequest[requestType] === responseType
   }
 
   #finish(requestId: string, response: DocumentWorkerTerminalResponse) {

@@ -24,11 +24,30 @@ import {
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
 } from "@vibeshape/protocol"
+import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 
 export interface DocumentWorkerEndpoint {
   postMessage(message: DocumentWorkerResponse, transfer?: Transferable[]): void
 }
+
+export type SketchSolvePort = (
+  input: SketchCompilationInput,
+) => SolveSketchRecordResult | Promise<SolveSketchRecordResult>
+
+type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
+type SketchContextResult =
+  | {
+      ok: true
+      sketch: SketchCompilationInput["sketch"]
+      variables: SketchCompilationInput["variables"]
+    }
+  | {
+      ok: false
+      code: DocumentWorkerDiagnosticCode
+      message: string
+      retryable: boolean
+    }
 
 function createBuiltInFeatureRegistry() {
   const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
@@ -163,6 +182,10 @@ function topLevelFailure(result: Extract<DocumentFeatureRebuildResult, { ok: fal
 
 export class DocumentWorkerRuntime {
   readonly #states = new Map<string, FeatureRebuildState>()
+  readonly #documents = new Map<
+    string,
+    Extract<DocumentWorkerRequest, { type: "rebuildDocument" }>["document"]
+  >()
   readonly #latestGenerations = new Map<string, number>()
   #operationQueue: Promise<void> = Promise.resolve()
 
@@ -170,6 +193,7 @@ export class DocumentWorkerRuntime {
     private readonly engine: GeometryKernelEngine,
     private readonly endpoint: DocumentWorkerEndpoint,
     private readonly registry: FeatureTypeRegistry = createBuiltInFeatureRegistry(),
+    private readonly solveSketch: SketchSolvePort | null = null,
   ) {}
 
   async handle(input: unknown) {
@@ -222,8 +246,13 @@ export class DocumentWorkerRuntime {
         await this.#exportDocument(request)
         return
       }
+      if (request.type === "solveSketch") {
+        await this.#solveSketch(request)
+        return
+      }
       const ownedShapeCount = this.engine.disposeDocument(request.documentId)
       this.#states.delete(request.documentId)
+      this.#documents.delete(request.documentId)
       this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
     } catch (error) {
       this.#postFailure(request, "internal-error", errorMessage(error), false)
@@ -268,6 +297,83 @@ export class DocumentWorkerRuntime {
       })
     } catch (error) {
       this.#postFailure(request, "export-failed", errorMessage(error), true)
+    }
+  }
+
+  #sketchContext(request: SolveSketchRequest): SketchContextResult {
+    const state = this.#states.get(request.documentId)
+    const document = this.#documents.get(request.documentId)
+    if (
+      !state ||
+      !document ||
+      state.revision !== request.revision ||
+      state.generation !== request.generation
+    ) {
+      return {
+        ok: false,
+        code: "sketch-state-unavailable",
+        message: "The requested document revision does not have current sketch state.",
+        retryable: true,
+      }
+    }
+    const sketch = document.sketches.find((candidate) => candidate.id === request.sketchId)
+    if (!sketch) {
+      return {
+        ok: false,
+        code: "sketch-not-found",
+        message: "The requested sketch does not exist.",
+        retryable: false,
+      }
+    }
+    return { ok: true, sketch, variables: document.variables }
+  }
+
+  #postSketchResult(request: SolveSketchRequest, result: SolveSketchRecordResult) {
+    if (!result.ok) {
+      this.#postFailure(request, "sketch-solve-invalid", result.diagnostic.message, false)
+      return
+    }
+    if (
+      result.solution.sketchId !== request.sketchId ||
+      result.solution.sourceRevision !== request.revision
+    ) {
+      this.#postFailure(
+        request,
+        "sketch-solve-failed",
+        "The sketch solver returned a mismatched solution identity.",
+        true,
+      )
+      return
+    }
+    this.#post({ ...requestEnvelope(request), type: "sketchSolved", solution: result.solution })
+  }
+
+  async #solveSketch(request: SolveSketchRequest) {
+    const context = this.#sketchContext(request)
+    if (!context.ok) {
+      this.#postFailure(request, context.code, context.message, context.retryable)
+      return
+    }
+    if (!this.solveSketch) {
+      this.#postFailure(
+        request,
+        "sketch-solver-unavailable",
+        "The production sketch solver is not available in this build.",
+        false,
+      )
+      return
+    }
+    try {
+      const result = await this.solveSketch({
+        revision: request.revision,
+        sketch: context.sketch,
+        variables: context.variables,
+        continuation: request.continuation,
+        draggedPoints: request.draggedPoints,
+      })
+      this.#postSketchResult(request, result)
+    } catch (error) {
+      this.#postFailure(request, "sketch-solve-failed", errorMessage(error), true)
     }
   }
 
@@ -321,6 +427,7 @@ export class DocumentWorkerRuntime {
 
     this.engine.synchronizeDocumentFeatures(request.documentId, retainedFeatureContent(result))
     this.#states.set(request.documentId, result)
+    this.#documents.set(request.documentId, request.document)
     this.#post({
       ...requestEnvelope(request),
       type: "documentRebuilt",
@@ -364,9 +471,12 @@ export class DocumentWorkerRuntime {
 export function createDocumentWorkerRuntime(
   engine: GeometryKernelEngine,
   endpoint: DocumentWorkerEndpoint,
-  registry?: FeatureTypeRegistry,
+  options: Readonly<{ registry?: FeatureTypeRegistry; solveSketch?: SketchSolvePort }> = {},
 ) {
-  return registry
-    ? new DocumentWorkerRuntime(engine, endpoint, registry)
-    : new DocumentWorkerRuntime(engine, endpoint)
+  return new DocumentWorkerRuntime(
+    engine,
+    endpoint,
+    options.registry ?? createBuiltInFeatureRegistry(),
+    options.solveSketch ?? null,
+  )
 }

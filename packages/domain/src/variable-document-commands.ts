@@ -1,5 +1,9 @@
 import type { z } from "zod"
-import { domainDiagnostic, requireExistingDocumentRevision } from "./command-support"
+import {
+  domainDiagnostic,
+  requireExistingDocumentRevision,
+  zodDiagnosticIssues,
+} from "./command-support"
 import type {
   DocumentCommand,
   DocumentEvent,
@@ -80,10 +84,7 @@ function invalidVariableExpression(error: z.ZodError, invalidEvent = false): Dom
       ? "The variable event does not match the current document."
       : "The variable table contains an invalid expression or dependency.",
     retryable: false,
-    issues: error.issues.slice(0, 8).map((issue) => ({
-      path: issue.path.map(String).join("."),
-      message: issue.message,
-    })),
+    issues: zodDiagnosticIssues(error),
   }
 }
 

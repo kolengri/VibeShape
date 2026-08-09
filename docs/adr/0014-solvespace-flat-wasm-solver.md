@@ -22,7 +22,7 @@ Use the required SolveSpace v3.2 solver sources as a narrow, source-built WebAss
 - The VibeShape adapter maps native statuses to `fully-constrained`, `under-constrained`, `over-constrained`, or `failed` and never removes a conflicting constraint automatically.
 - Source revisions, archives, hashes, patch, wrapper, toolchain image, build environment, evidence, licenses, and corresponding source remain reproducible and publishable together.
 - Heavy source builds and evidence are local-only. They must not be added to pull-request, push, scheduled, or manually dispatched GitHub Actions without a separate CI-budget decision.
-- Generated native outputs remain quarantined until the production sketch worker and release packaging consume an exact reviewed build.
+- Production code may consume only the exact reviewed module and WASM hashes through the worker-owned adapter; ordinary repository checks verify those files before bundling.
 - Production sketch records must enforce semantic compatibility between constraint and entity kinds; the flat ABI only guarantees structural validation and native containment.
 
 ## Consequences
@@ -31,7 +31,7 @@ Use the required SolveSpace v3.2 solver sources as a narrow, source-built WebAss
 - Horizontal and vertical dimensions use projected point distance against immutable sketch-axis entities. Concentric constraints use coincident center points. Radius input is represented through the native diameter equation.
 - The repository carries GPL-3.0-or-later obligations for the adapted solver subset and must publish corresponding source and notices with distributed binaries.
 - Solver upgrades require rerunning the entire evidence corpus, refreshing source and output hashes, reviewing the patch, and updating this decision through a new ADR when behavior or the boundary changes.
-- SPK-002 proves solver viability, not the production sketch data model, profile detection, constraint UX, or branch-continuation policy. Those remain implementation work.
+- SPK-002 proves solver viability. Production sketch schema v0, protocol v4, the initial stable-ID continuation policy, variable dimensions, and worker recovery now implement the non-visual boundary. Profile detection, constraint UX, and sketch-driven features remain separate product work.
 
 ## Rejected alternatives
 

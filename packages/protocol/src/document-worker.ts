@@ -6,10 +6,18 @@ import {
   geometryProgressStageSchema,
   sha256Schema,
 } from "./geometry-worker"
+import {
+  sketchDragTargetWireSchema,
+  sketchSolveContinuationWireSchema,
+  sketchWireIdSchema,
+  sketchWireRecordSchema,
+  solvedSketchWireSchema,
+} from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 3 as const
+export const DOCUMENT_PROTOCOL_VERSION = 4 as const
 
 const MAX_FEATURES = 100_000
+const MAX_SKETCHES = 256
 const MAX_VARIABLES = 4_096
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const reverseDnsPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$/
@@ -72,6 +80,7 @@ export const documentRebuildSnapshotSchema = z
     revision: revisionSchema,
     name: z.string().min(1).max(120),
     variables: z.array(documentVariableSchema).max(MAX_VARIABLES).default([]),
+    sketches: z.array(sketchWireRecordSchema).max(MAX_SKETCHES).default([]),
     features: z.array(documentFeatureSchema).max(MAX_FEATURES),
     createdAt: z.iso.datetime({ offset: true }),
     updatedAt: z.iso.datetime({ offset: true }),
@@ -123,8 +132,16 @@ const exportDocumentRequestSchema = requestEnvelopeSchema.extend({
   format: geometryExportFormatSchema,
 })
 
+const solveSketchRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("solveSketch"),
+  sketchId: sketchWireIdSchema,
+  continuation: sketchSolveContinuationWireSchema.nullable().default(null),
+  draggedPoints: z.array(sketchDragTargetWireSchema).max(128).default([]),
+})
+
 export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   rebuildDocumentRequestSchema,
+  solveSketchRequestSchema,
   exportDocumentRequestSchema,
   disposeDocumentRequestSchema,
   healthCheckRequestSchema,
@@ -270,6 +287,11 @@ const documentExportedResponseSchema = responseEnvelopeSchema
     }
   })
 
+const sketchSolvedResponseSchema = responseEnvelopeSchema.extend({
+  type: z.literal("sketchSolved"),
+  solution: solvedSketchWireSchema,
+})
+
 export const documentWorkerDiagnosticCodeSchema = z.enum([
   "invalid-request",
   "unsupported-protocol-version",
@@ -287,6 +309,11 @@ export const documentWorkerDiagnosticCodeSchema = z.enum([
   "export-state-unavailable",
   "no-exportable-bodies",
   "export-failed",
+  "sketch-state-unavailable",
+  "sketch-not-found",
+  "sketch-solver-unavailable",
+  "sketch-solve-invalid",
+  "sketch-solve-failed",
   "internal-error",
 ])
 
@@ -304,6 +331,7 @@ const failureResponseSchema = responseEnvelopeSchema.extend({
 export const documentWorkerResponseSchema = z.discriminatedUnion("type", [
   progressResponseSchema,
   documentRebuiltResponseSchema,
+  sketchSolvedResponseSchema,
   documentExportedResponseSchema,
   documentDisposedResponseSchema,
   healthResponseSchema,

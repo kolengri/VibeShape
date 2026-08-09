@@ -9,6 +9,7 @@
     "apps/web/src/spikes/persistence.ts",
     "apps/web/src/spikes/persisted-rebuild.ts",
     "apps/web/src/spikes/primitive-features.ts",
+    "apps/web/src/spikes/sketch-worker.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
     "playwright.formats.config.ts",
@@ -23,6 +24,8 @@
   "ignorePatterns": [
     "**/__generated__/**",
     "**/generated/**",
+    // Exact source-built SolveSpace outputs are verified by SHA-256 before analysis and bundling.
+    "packages/sketch-solver/runtime/**",
     // Vite resolves secondary HTML entry scripts; their TypeScript files are explicit entries above.
     "apps/web/spikes/*.html"
   ],
@@ -71,7 +74,7 @@
       // The document worker composes application policy with the native geometry adapter.
       {
         "from": "document-worker",
-        "allow": ["application", "domain", "geometry-worker", "protocol"]
+        "allow": ["application", "domain", "geometry-worker", "protocol", "sketch-solver"]
       },
       // Serializable automation contracts may depend only on the pure domain model.
       { "from": "automation-api", "allow": ["domain"] },
@@ -88,6 +91,8 @@
       { "from": "protocol", "allow": [] },
       // The geometry worker depends on contracts, never on UI or persistence.
       { "from": "geometry-worker", "allow": ["protocol", "test-models"] },
+      // The sketch solver compiles pure domain records into the private native ABI.
+      { "from": "sketch-solver", "allow": ["domain"] },
       // Fixture packages contain data and invariants, not runtime adapters.
       { "from": "test-models", "allow": [] }
     ]

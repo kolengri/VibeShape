@@ -18,11 +18,18 @@ type RebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "document
 type HealthResponse = Extract<DocumentWorkerTerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentDisposed" }>
 type ExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
+type SketchResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
+type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
 
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
   mesh: unknown
 }>
+
+export type DocumentWorkerSolveSketchInput = Readonly<
+  Pick<SolveSketchRequest, "sketchId"> &
+    Partial<Pick<SolveSketchRequest, "continuation" | "draggedPoints">>
+>
 
 export interface DocumentWorkerClientPort {
   request(
@@ -98,6 +105,10 @@ export class DocumentWorkerSession {
 
   exportDocument(format: GeometryExportFormat, options: DocumentWorkerRequestOptions = {}) {
     return this.#enqueue(() => this.#exportWithRecovery(format, options))
+  }
+
+  solveSketch(input: DocumentWorkerSolveSketchInput, options: DocumentWorkerRequestOptions = {}) {
+    return this.#enqueue(() => this.#solveSketchWithRecovery(input, options))
   }
 
   restartAndRecover(options: DocumentWorkerRequestOptions = {}) {
@@ -181,6 +192,58 @@ export class DocumentWorkerSession {
       await this.#rebuildOnce(this.#lastSuccessfulSnapshot, options)
       return this.#exportOnce(format, options)
     }
+  }
+
+  async #solveSketchWithRecovery(
+    input: DocumentWorkerSolveSketchInput,
+    options: DocumentWorkerRequestOptions,
+  ) {
+    this.#assertOpen()
+    if (!this.#lastSuccessfulSnapshot) {
+      throw new DocumentWorkerRequestError(
+        "Sketch solving requires a successfully rebuilt snapshot.",
+        "mismatched-response-type",
+      )
+    }
+    try {
+      return await this.#solveSketchOnce(input, options)
+    } catch (error) {
+      if (!this.#retryRecoverableFailure || !isRecoverableFailure(error)) throw error
+      this.#replaceClient()
+      await this.#rebuildOnce(this.#lastSuccessfulSnapshot, options)
+      return this.#solveSketchOnce(input, options)
+    }
+  }
+
+  async #solveSketchOnce(
+    input: DocumentWorkerSolveSketchInput,
+    options: DocumentWorkerRequestOptions,
+  ): Promise<SketchResponse> {
+    const revision = this.#lastSuccessfulSnapshot?.document.revision
+    if (revision === undefined) {
+      throw new DocumentWorkerRequestError(
+        "Sketch solving requires a successfully rebuilt snapshot.",
+        "mismatched-response-type",
+      )
+    }
+    const request = documentWorkerRequestSchema.parse({
+      ...this.#envelope(revision),
+      type: "solveSketch",
+      sketchId: input.sketchId,
+      continuation: input.continuation ?? null,
+      draggedPoints: input.draggedPoints ?? [],
+    })
+    if (request.type !== "solveSketch") {
+      throw new TypeError("Document worker sketch request validation returned an invalid type.")
+    }
+    const response = await this.#client.request(request, options)
+    if (response.type !== "sketchSolved") {
+      throw new DocumentWorkerRequestError(
+        `Expected a sketch response, received ${response.type}.`,
+        "mismatched-response-type",
+      )
+    }
+    return response
   }
 
   async #exportOnce(
@@ -274,3 +337,4 @@ export type DocumentWorkerRebuildResponse = RebuildResponse
 export type DocumentWorkerHealthResponse = HealthResponse
 export type DocumentWorkerDisposalResponse = DisposalResponse
 export type DocumentWorkerExportResponse = ExportResponse
+export type DocumentWorkerSketchResponse = SketchResponse

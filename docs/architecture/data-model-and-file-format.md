@@ -37,6 +37,7 @@ Document
   name, description, units, coordinateSystem
   extensionLocks[]
   variables[]
+  sketches[]
   features[]
   bodiesMetadata[]
   imports[]
@@ -44,7 +45,7 @@ Document
   applicationMetadata
 ```
 
-`features[]` uses a stable presentation order, while every feature retains explicit inputs. Opening a file constructs the DAG and rejects missing IDs and cycles.
+`sketches[]` uses stable UUIDv7 identities and stores analytical origin-plane entities plus constraints independently of disposable solved state. `features[]` uses a stable presentation order, while every feature retains explicit inputs. Opening a file validates sketch reference compatibility, constructs the feature DAG, and rejects missing IDs and cycles.
 
 A built-in feature stores a stable first-party module ID, module version, contributed feature-type ID, and feature schema version. A custom feature additionally stores:
 
@@ -92,6 +93,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - first-party `org.vibeshape.core.document` and `org.vibeshape.core.features` module descriptors plus deterministic registry validation for ownership, uniqueness, dependencies, and cycles;
 - canonical quantity schema v0 for length, angle, and scalar parameters, with millimeter/radian storage, normalized finite values, exact source-unit consistency, and optional authored expression text;
 - bounded document-variable schema v0 with stable UUIDv7 identity, ASCII names, dimensional arithmetic, unit literals, arbitrary DAG dependencies, cycle detection, and typed command rejection;
+- bounded sketch schema v0 with stable sketch/entity/constraint identities, analytical point/line/circle/arc records, construction flags, origin planes, every P0 constraint family, Quantity-backed dimensions, semantic reference validation, and revisioned add/update/remove replay;
 - a first-party `org.vibeshape.core.part-design` module that contributes exact versioned box, cylinder, and ordered two-input Boolean/Subtract feature descriptors with bounded parameters;
 - a trusted feature-type registry that requires descriptor-handler parity, resolves owned parameter expressions, validates dependency/reference cardinality and parameter schemas, contains normalizer exceptions and non-JSON outputs, and reports unavailable types without rewriting their records;
 - an executable trusted-command dispatcher that requires exactly one handler per descriptor and validates command route, owner, and schema-version parity before execution;
@@ -129,7 +131,7 @@ project.vshape
   journal/events.jsonl
 ```
 
-`document.json` is canonical JSON for the current `DocumentSnapshot`. It retains stable variable IDs, authored variable formulas, feature parameter source expressions such as `#width`, and every other semantic feature field. `journal/events.jsonl` contains the complete canonical event history, one strict event per line with a final newline. The writer uses deterministic DEFLATE ZIP output with a fixed ZIP timestamp. Snapshots, embedded imports, caches, previews, reports, extension locks, and license attachments remain planned versioned additions; a v0 reader rejects every extra entry rather than guessing whether it is authoritative.
+`document.json` is canonical JSON for the current `DocumentSnapshot`. It retains stable variable IDs, authored variable formulas, analytical sketch records, sketch dimension sources such as `#width`, feature parameter source expressions, and every other semantic feature field. `journal/events.jsonl` contains the complete canonical event history, one strict event per line with a final newline. The writer uses deterministic DEFLATE ZIP output with a fixed ZIP timestamp. Periodic snapshot entries, embedded imports, caches, previews, reports, extension locks, and license attachments remain planned versioned additions; a v0 reader rejects every extra entry rather than guessing whether it is authoritative.
 
 ### `manifest.json`
 

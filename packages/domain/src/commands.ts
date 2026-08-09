@@ -3,6 +3,7 @@ import {
   type DomainDiagnostic,
   domainDiagnostic as diagnostic,
   requireExistingDocumentRevision,
+  zodDiagnosticIssues,
 } from "./command-support"
 import { type DocumentSnapshot, documentNameInputSchema, documentNameSchema } from "./document"
 import { createFeatureDocumentEvent, reduceFeatureDocumentEvent } from "./feature-document-commands"
@@ -14,10 +15,13 @@ import {
   featureIdSchema,
   revisionSchema,
   sessionIdSchema,
+  sketchIdSchema,
   technicalIdentifierSchema,
   timestampSchema,
   variableIdSchema,
 } from "./identifiers"
+import { sketchRecordSchema } from "./sketch"
+import { createSketchDocumentEvent, reduceSketchDocumentEvent } from "./sketch-document-commands"
 import {
   createVariableDocumentEvent,
   reduceVariableDocumentEvent,
@@ -122,6 +126,24 @@ const replaceVariableTableCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ variables: variableDefinitionsSchema }).strict(),
 })
 
+const addSketchCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.sketch.add"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ sketch: sketchRecordSchema }).strict(),
+})
+
+const updateSketchCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.sketch.update"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ sketch: sketchRecordSchema }).strict(),
+})
+
+const removeSketchCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.sketch.remove"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ sketchId: sketchIdSchema }).strict(),
+})
+
 const addFeatureCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.feature.add"),
   schemaVersion: z.literal(1),
@@ -154,6 +176,9 @@ export const documentCommandSchema = z.discriminatedUnion("kind", [
   renameVariableCommandSchema,
   removeVariableCommandSchema,
   replaceVariableTableCommandSchema,
+  addSketchCommandSchema,
+  updateSketchCommandSchema,
+  removeSketchCommandSchema,
   addFeatureCommandSchema,
   updateFeatureCommandSchema,
   removeFeatureCommandSchema,
@@ -214,6 +239,22 @@ const variableTableReplacedEventSchema = eventEnvelopeSchema.extend({
   variables: variableDefinitionsSchema,
 })
 
+const sketchAddedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.sketch.added"),
+  sketch: sketchRecordSchema,
+})
+
+const sketchUpdatedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.sketch.updated"),
+  previousSketch: sketchRecordSchema,
+  sketch: sketchRecordSchema,
+})
+
+const sketchRemovedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.sketch.removed"),
+  sketch: sketchRecordSchema,
+})
+
 const featureAddedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.added"),
   feature: featureRecordSchema,
@@ -245,6 +286,9 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   variableRenamedEventSchema,
   variableRemovedEventSchema,
   variableTableReplacedEventSchema,
+  sketchAddedEventSchema,
+  sketchUpdatedEventSchema,
+  sketchRemovedEventSchema,
   featureAddedEventSchema,
   featureUpdatedEventSchema,
   featureRemovedEventSchema,
@@ -281,6 +325,22 @@ type VariableEvent = Extract<
   }
 >
 
+type SketchCommand = Extract<
+  DocumentCommand,
+  {
+    kind: "org.vibeshape.sketch.add" | "org.vibeshape.sketch.update" | "org.vibeshape.sketch.remove"
+  }
+>
+type SketchEvent = Extract<
+  DocumentEvent,
+  {
+    type:
+      | "org.vibeshape.sketch.added"
+      | "org.vibeshape.sketch.updated"
+      | "org.vibeshape.sketch.removed"
+  }
+>
+
 const variableCommandKinds = new Set<DocumentCommand["kind"]>([
   "org.vibeshape.variable.add",
   "org.vibeshape.variable.remove",
@@ -295,6 +355,16 @@ const variableEventTypes = new Set<DocumentEvent["type"]>([
   "org.vibeshape.variable.renamed",
   "org.vibeshape.variable.table-replaced",
 ])
+const sketchCommandKinds = new Set<DocumentCommand["kind"]>([
+  "org.vibeshape.sketch.add",
+  "org.vibeshape.sketch.update",
+  "org.vibeshape.sketch.remove",
+])
+const sketchEventTypes = new Set<DocumentEvent["type"]>([
+  "org.vibeshape.sketch.added",
+  "org.vibeshape.sketch.updated",
+  "org.vibeshape.sketch.removed",
+])
 
 function isVariableCommand(command: DocumentCommand): command is VariableCommand {
   return variableCommandKinds.has(command.kind)
@@ -302,6 +372,14 @@ function isVariableCommand(command: DocumentCommand): command is VariableCommand
 
 function isVariableEvent(event: DocumentEvent): event is VariableEvent {
   return variableEventTypes.has(event.type)
+}
+
+function isSketchCommand(command: DocumentCommand): command is SketchCommand {
+  return sketchCommandKinds.has(command.kind)
+}
+
+function isSketchEvent(event: DocumentEvent): event is SketchEvent {
+  return sketchEventTypes.has(event.type)
 }
 
 type DocumentCreatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.created" }>
@@ -355,10 +433,7 @@ function invalidInputDiagnostic(
         ? "The document command is invalid."
         : "The document event is invalid.",
     retryable: false,
-    issues: error.issues.slice(0, 8).map((issue) => ({
-      path: issue.path.map(String).join("."),
-      message: issue.message,
-    })),
+    issues: zodDiagnosticIssues(error),
   }
 }
 
@@ -392,6 +467,7 @@ function reduceCreatedEvent(
       revision: event.revision,
       name: event.name,
       variables: [],
+      sketches: [],
       features: [],
       createdAt: event.issuedAt,
       updatedAt: event.issuedAt,
@@ -438,6 +514,7 @@ function reduceParsedEvent(
   event: DocumentEvent,
 ): DocumentEventResult {
   if (isVariableEvent(event)) return reduceVariableDocumentEvent(snapshot, event)
+  if (isSketchEvent(event)) return reduceSketchDocumentEvent(snapshot, event)
 
   switch (event.type) {
     case "org.vibeshape.document.created":
@@ -521,6 +598,9 @@ function createEvent(
 ): DocumentEvent | DomainDiagnostic {
   if (isVariableCommand(command)) {
     return createVariableDocumentEvent(snapshot, command, transactionId)
+  }
+  if (isSketchCommand(command)) {
+    return createSketchDocumentEvent(snapshot, command, transactionId)
   }
 
   switch (command.kind) {

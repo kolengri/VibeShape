@@ -12,6 +12,8 @@ import {
 } from "./session-core"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
+const sketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3202"
 
 function document(revision: number) {
   return {
@@ -25,6 +27,25 @@ function document(revision: number) {
         id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
         name: "width",
         expression: "24 mm",
+      },
+    ],
+    sketches: [
+      {
+        schemaVersion: 0,
+        id: sketchId,
+        label: "Session profile",
+        plane: "xy",
+        entities: [
+          {
+            schemaVersion: 0,
+            id: sketchPointId,
+            type: "point",
+            x: 0,
+            y: 0,
+            construction: false,
+          },
+        ],
+        constraints: [],
       },
     ],
     features: [],
@@ -76,6 +97,34 @@ function successfulResponse(request: DocumentWorkerRequest): DocumentWorkerTermi
       format: request.format,
       file: new Uint8Array([1, 2, 3]),
       bodyCount: 1,
+    }
+  }
+  if (request.type === "solveSketch") {
+    const point = request.draggedPoints[0] ?? { entityId: sketchPointId, x: 0, y: 0 }
+    return {
+      ...envelope(request),
+      type: "sketchSolved",
+      solution: {
+        schemaVersion: 0,
+        sketchId: request.sketchId,
+        sourceRevision: request.revision,
+        status: "under-constrained",
+        degreesOfFreedom: 2,
+        maximumResidual: 1e-10,
+        points: [point],
+        circles: [],
+        failedConstraintIds: [],
+        heapCapacityBytes: 16 * 1024 * 1024,
+        solverBuild: {
+          schemaVersion: 0,
+          solver: "SolveSpace",
+          solverVersion: "3.2",
+          sourceRevision: "27b6a080c8b669421bd4d444650c3b8eddec5687",
+          abiVersion: 1,
+          moduleSha256: "60c8714fbd5d94a50bdfcde7bd1658cfb2a180ad44be124997905ece7be545c7",
+          wasmSha256: "c9e3e35084b3812e9eae7bdff8fd3290394918c88ba38504e58a9a9d4a2bd978",
+        },
+      },
     }
   }
   return { ...envelope(request), type: "documentDisposed", ownedShapeCount: 0 }
@@ -286,6 +335,52 @@ describe("DocumentWorkerSession", () => {
       "rebuildDocument",
       "exportDocument",
     ])
+  })
+
+  it("solves the exact rebuilt revision with stable drag and continuation records", async () => {
+    const { clients, session } = createHarness()
+    await session.rebuild({ document: document(4), mesh })
+
+    const response = await session.solveSketch({
+      sketchId,
+      continuation: {
+        schemaVersion: 0,
+        sketchId,
+        sourceRevision: 3,
+        points: [{ entityId: sketchPointId, x: 1, y: 2 }],
+        circles: [],
+      },
+      draggedPoints: [{ entityId: sketchPointId, x: 10, y: 20 }],
+    })
+
+    expect(response).toMatchObject({
+      type: "sketchSolved",
+      revision: 4,
+      solution: {
+        sketchId,
+        sourceRevision: 4,
+        points: [{ entityId: sketchPointId, x: 10, y: 20 }],
+      },
+    })
+    expect(clients[0]?.requests.map(({ type }) => type)).toEqual(["rebuildDocument", "solveSketch"])
+  })
+
+  it("rebuilds committed state before retrying a sketch solve after worker failure", async () => {
+    const crashingSolve: RequestHandler = async (request) => {
+      if (request.type === "solveSketch") {
+        throw new DocumentWorkerRequestError("Sketch worker crashed.", "worker-error")
+      }
+      return successfulResponse(request)
+    }
+    const { clients, session } = createHarness([crashingSolve])
+    await session.rebuild({ document: document(3), mesh })
+
+    await expect(session.solveSketch({ sketchId })).resolves.toMatchObject({
+      type: "sketchSolved",
+      revision: 3,
+      generation: 2,
+    })
+    expect(clients[1]?.requests.map(({ type }) => type)).toEqual(["rebuildDocument", "solveSketch"])
   })
 
   it("can restart without a recovery snapshot and closes deterministically", async () => {

@@ -95,6 +95,7 @@
         "@vibeshape/domain": "workspace:*",
         "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/protocol": "workspace:*",
+        "@vibeshape/sketch-solver": "workspace:*",
         "is-what": "catalog:",
       },
       "devDependencies": {
@@ -208,6 +209,7 @@
       "name": "@vibeshape/sketch-solver",
       "version": "0.0.0",
       "dependencies": {
+        "@vibeshape/domain": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
