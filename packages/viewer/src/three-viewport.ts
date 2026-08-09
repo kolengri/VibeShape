@@ -6,15 +6,20 @@ import {
   BufferGeometry,
   Color,
   DirectionalLight,
+  DoubleSide,
   EdgesGeometry,
   Group,
   LineBasicMaterial,
   LineSegments,
+  MOUSE,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   OrthographicCamera,
+  Raycaster,
   Scene,
   Sphere,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from "three"
@@ -41,7 +46,18 @@ export type OrthographicFrustum = Readonly<{
 export type GeometryViewport = Readonly<{
   setMeshes: (meshes: readonly ViewerMesh[]) => void
   fit: () => void
+  clearSelection: () => void
   dispose: () => void
+}>
+
+export type ViewerSelection = Readonly<{
+  featureId: string
+  faceId: number
+  faceOrdinal: number
+}>
+
+export type GeometryViewportOptions = Readonly<{
+  onSelectionChange?: (selection: ViewerSelection | null) => void
 }>
 
 export function orthographicFrustum(viewHeight: number, aspect: number): OrthographicFrustum {
@@ -64,6 +80,62 @@ export function createViewerGeometry(mesh: ViewerMesh) {
   return geometry
 }
 
+export function viewerFaceOrdinal(mesh: ViewerMesh, faceId: number) {
+  const seen = new Set<number>()
+  for (const candidate of mesh.triangleFaceIds) {
+    if (seen.has(candidate)) continue
+    seen.add(candidate)
+    if (candidate === faceId) return seen.size
+  }
+  return null
+}
+
+export function createFaceHighlightGeometry(mesh: ViewerMesh, faceId: number) {
+  const triangleCount = mesh.triangleFaceIds.reduce(
+    (count, candidate) => count + Number(candidate === faceId),
+    0,
+  )
+  if (triangleCount === 0) return null
+  const positions = new Float32Array(triangleCount * 9)
+  const normals = new Float32Array(triangleCount * 9)
+  let targetOffset = 0
+  for (let triangle = 0; triangle < mesh.triangleFaceIds.length; triangle += 1) {
+    if (mesh.triangleFaceIds[triangle] !== faceId) continue
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertexIndex = mesh.indices[triangle * 3 + corner]
+      if (vertexIndex === undefined) return null
+      const sourceOffset = vertexIndex * 3
+      const x = mesh.positions[sourceOffset]
+      const y = mesh.positions[sourceOffset + 1]
+      const z = mesh.positions[sourceOffset + 2]
+      const normalX = mesh.normals[sourceOffset]
+      const normalY = mesh.normals[sourceOffset + 1]
+      const normalZ = mesh.normals[sourceOffset + 2]
+      if (
+        x === undefined ||
+        y === undefined ||
+        z === undefined ||
+        normalX === undefined ||
+        normalY === undefined ||
+        normalZ === undefined
+      ) {
+        return null
+      }
+      positions[targetOffset] = x
+      positions[targetOffset + 1] = y
+      positions[targetOffset + 2] = z
+      normals[targetOffset] = normalX
+      normals[targetOffset + 1] = normalY
+      normals[targetOffset + 2] = normalZ
+      targetOffset += 3
+    }
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute("position", new BufferAttribute(positions, 3))
+  geometry.setAttribute("normal", new BufferAttribute(normals, 3))
+  return geometry
+}
+
 function setCameraFrustum(camera: OrthographicCamera, viewHeight: number, aspect: number) {
   const frustum = orthographicFrustum(viewHeight, aspect)
   camera.left = frustum.left
@@ -80,6 +152,10 @@ function disposeModelGroup(group: Group) {
   }
 }
 
+function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
+  return left?.featureId === right?.featureId && left?.faceId === right?.faceId
+}
+
 class ThreeGeometryViewport implements GeometryViewport {
   readonly #canvas: HTMLCanvasElement
   readonly #renderer: WebGLRenderer
@@ -87,18 +163,47 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #camera = new OrthographicCamera(-50, 50, 50, -50, 0.01, 10_000)
   readonly #controls: OrbitControls
   readonly #modelGroup = new Group()
+  readonly #preselectionGroup = new Group()
+  readonly #selectionGroup = new Group()
+  readonly #raycaster = new Raycaster()
+  readonly #pointer = new Vector2()
+  readonly #meshSources = new Map<string, ViewerMesh>()
+  readonly #surfaceMeshes: Mesh[] = []
   readonly #surfaceMaterial = new MeshStandardMaterial({
     color: new Color("#9aaec1"),
     roughness: 0.72,
     metalness: 0.04,
   })
   readonly #edgeMaterial = new LineBasicMaterial({ color: new Color("#263746") })
+  readonly #preselectionMaterial = new MeshBasicMaterial({
+    color: new Color("#65a9ee"),
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    side: DoubleSide,
+  })
+  readonly #selectionMaterial = new MeshBasicMaterial({
+    color: new Color("#f59e0b"),
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    side: DoubleSide,
+  })
   readonly #resizeObserver: ResizeObserver
+  readonly #onSelectionChange: (selection: ViewerSelection | null) => void
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
+  #pointerDown: Readonly<{ x: number; y: number }> | null = null
+  #preselection: ViewerSelection | null = null
+  #selection: ViewerSelection | null = null
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    this.#onSelectionChange = options.onSelectionChange ?? (() => undefined)
     const context = canvas.getContext("webgl2", {
       alpha: true,
       antialias: true,
@@ -111,6 +216,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setClearAlpha(0)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.#scene.add(this.#modelGroup)
+    this.#scene.add(this.#preselectionGroup)
+    this.#scene.add(this.#selectionGroup)
     this.#scene.add(new AmbientLight(0xffffff, 1.6))
     const keyLight = new DirectionalLight(0xffffff, 2.8)
     keyLight.position.set(3, -4, 6)
@@ -123,9 +230,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#camera.position.set(80, -80, 65)
     this.#controls = new OrbitControls(this.#camera, canvas)
     this.#controls.enableDamping = false
+    this.#controls.mouseButtons.LEFT = null
+    this.#controls.mouseButtons.MIDDLE = MOUSE.ROTATE
+    this.#controls.mouseButtons.RIGHT = MOUSE.PAN
     this.#controls.target.set(0, 0, 0)
     this.#controls.addEventListener("change", this.#render)
     this.#controls.update()
+    canvas.addEventListener("pointerdown", this.#onPointerDown)
+    canvas.addEventListener("pointermove", this.#onPointerMove)
+    canvas.addEventListener("pointerup", this.#onPointerUp)
+    canvas.addEventListener("pointerleave", this.#onPointerLeave)
 
     this.#resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0]
@@ -137,11 +251,17 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setMeshes(meshes: readonly ViewerMesh[]) {
     if (this.#disposed) return
+    this.clearSelection()
+    this.#setPreselection(null)
     disposeModelGroup(this.#modelGroup)
+    this.#surfaceMeshes.length = 0
+    this.#meshSources.clear()
     for (const source of meshes) {
+      this.#meshSources.set(source.featureId, source)
       const geometry = createViewerGeometry(source)
       const surface = new Mesh(geometry, this.#surfaceMaterial)
       surface.name = source.featureId
+      this.#surfaceMeshes.push(surface)
       this.#modelGroup.add(surface)
       const edges = new LineSegments(new EdgesGeometry(geometry, 28), this.#edgeMaterial)
       edges.name = `${source.featureId}:edges`
@@ -178,15 +298,31 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  clearSelection() {
+    if (!this.#selection) return
+    this.#selection = null
+    disposeModelGroup(this.#selectionGroup)
+    this.#onSelectionChange(null)
+    this.#render()
+  }
+
   dispose() {
     if (this.#disposed) return
     this.#disposed = true
     this.#resizeObserver.disconnect()
+    this.#canvas.removeEventListener("pointerdown", this.#onPointerDown)
+    this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
+    this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
+    this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
     this.#controls.removeEventListener("change", this.#render)
     this.#controls.dispose()
     disposeModelGroup(this.#modelGroup)
+    disposeModelGroup(this.#preselectionGroup)
+    disposeModelGroup(this.#selectionGroup)
     this.#surfaceMaterial.dispose()
     this.#edgeMaterial.dispose()
+    this.#preselectionMaterial.dispose()
+    this.#selectionMaterial.dispose()
     this.#renderer.dispose()
   }
 
@@ -203,11 +339,81 @@ class ThreeGeometryViewport implements GeometryViewport {
     setCameraFrustum(this.#camera, this.#viewHeight, resolvedAspect)
   }
 
+  #pick(event: PointerEvent): ViewerSelection | null {
+    const bounds = this.#canvas.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return null
+    this.#pointer.set(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    )
+    this.#raycaster.setFromCamera(this.#pointer, this.#camera)
+    const intersection = this.#raycaster.intersectObjects(this.#surfaceMeshes, false)[0]
+    if (!intersection || intersection.faceIndex === undefined || intersection.faceIndex === null) {
+      return null
+    }
+    const source = this.#meshSources.get(intersection.object.name)
+    const faceId = source?.triangleFaceIds[intersection.faceIndex]
+    if (!source || faceId === undefined) return null
+    const faceOrdinal = viewerFaceOrdinal(source, faceId)
+    return faceOrdinal === null ? null : { featureId: source.featureId, faceId, faceOrdinal }
+  }
+
+  #setPreselection(selection: ViewerSelection | null) {
+    const visibleSelection = sameSelection(selection, this.#selection) ? null : selection
+    if (sameSelection(visibleSelection, this.#preselection)) return
+    this.#preselection = visibleSelection
+    this.#replaceHighlight(this.#preselectionGroup, this.#preselectionMaterial, visibleSelection)
+  }
+
+  #setSelection(selection: ViewerSelection | null) {
+    if (sameSelection(selection, this.#selection)) return
+    this.#selection = selection
+    this.#replaceHighlight(this.#selectionGroup, this.#selectionMaterial, selection)
+    if (sameSelection(this.#preselection, selection)) this.#setPreselection(null)
+    this.#onSelectionChange(selection)
+  }
+
+  #replaceHighlight(group: Group, material: MeshBasicMaterial, selection: ViewerSelection | null) {
+    disposeModelGroup(group)
+    if (selection) {
+      const source = this.#meshSources.get(selection.featureId)
+      const geometry = source ? createFaceHighlightGeometry(source, selection.faceId) : null
+      if (geometry) group.add(new Mesh(geometry, material))
+    }
+    this.#render()
+  }
+
+  #onPointerDown = (event: PointerEvent) => {
+    if (event.isPrimary && event.button === 0) {
+      this.#pointerDown = { x: event.clientX, y: event.clientY }
+    }
+  }
+
+  #onPointerMove = (event: PointerEvent) => {
+    if (event.isPrimary) this.#setPreselection(this.#pick(event))
+  }
+
+  #onPointerUp = (event: PointerEvent) => {
+    const start = this.#pointerDown
+    this.#pointerDown = null
+    if (!event.isPrimary || event.button !== 0 || !start) return
+    const movement = Math.hypot(event.clientX - start.x, event.clientY - start.y)
+    if (movement <= 3) this.#setSelection(this.#pick(event))
+  }
+
+  #onPointerLeave = () => {
+    this.#pointerDown = null
+    this.#setPreselection(null)
+  }
+
   #render = () => {
     if (!this.#disposed) this.#renderer.render(this.#scene, this.#camera)
   }
 }
 
-export function createGeometryViewport(canvas: HTMLCanvasElement): GeometryViewport {
-  return new ThreeGeometryViewport(canvas)
+export function createGeometryViewport(
+  canvas: HTMLCanvasElement,
+  options: GeometryViewportOptions = {},
+): GeometryViewport {
+  return new ThreeGeometryViewport(canvas, options)
 }

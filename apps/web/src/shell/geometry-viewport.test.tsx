@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import type { GeometryViewport as GeometryViewportPort } from "@vibeshape/viewer"
+import type { GeometryViewport as GeometryViewportPort, ViewerSelection } from "@vibeshape/viewer"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
@@ -32,19 +32,29 @@ function readyController(
   } as unknown as DocumentControllerState
 }
 
-function renderViewport(controller: DocumentControllerState) {
+function renderViewport(
+  controller: DocumentControllerState,
+  selection: ViewerSelection | null = null,
+) {
   const port: GeometryViewportPort = {
     setMeshes: vi.fn(),
     fit: vi.fn(),
+    clearSelection: vi.fn(),
     dispose: vi.fn(),
   }
+  const onSelectionChange = vi.fn()
   const createViewport = vi.fn(() => port)
   const result = render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <GeometryViewport controller={controller} createViewport={createViewport} />
+      <GeometryViewport
+        controller={controller}
+        createViewport={createViewport}
+        selection={selection}
+        onSelectionChange={onSelectionChange}
+      />
     </I18nProvider>,
   )
-  return { ...result, createViewport, port }
+  return { ...result, createViewport, onSelectionChange, port }
 }
 
 afterEach(cleanup)
@@ -55,9 +65,16 @@ describe("GeometryViewport", () => {
       [{ id: boxId, dependencies: [] }],
       [{ featureId: boxId, geometry: { mesh } }],
     )
-    const { createViewport, port, unmount } = renderViewport(controller)
+    const selection = { featureId: boxId, faceId: 7, faceOrdinal: 2 }
+    const { createViewport, onSelectionChange, port, unmount } = renderViewport(
+      controller,
+      selection,
+    )
 
     await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    expect(createViewport).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), {
+      onSelectionChange,
+    })
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
     expect(
       screen
@@ -67,6 +84,8 @@ describe("GeometryViewport", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))
     expect(port.fit).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }))
+    expect(port.clearSelection).toHaveBeenCalledOnce()
 
     unmount()
     expect(port.dispose).toHaveBeenCalledOnce()
@@ -100,10 +119,16 @@ describe("GeometryViewport", () => {
     const createViewport = vi.fn(async () => {
       throw new Error("WebGL2 is unavailable.")
     })
+    const onSelectionChange = vi.fn()
 
     render(
       <I18nProvider i18n={i18n} initialLocale="en">
-        <GeometryViewport controller={controller} createViewport={createViewport} />
+        <GeometryViewport
+          controller={controller}
+          createViewport={createViewport}
+          selection={null}
+          onSelectionChange={onSelectionChange}
+        />
       </I18nProvider>,
     )
 

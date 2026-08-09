@@ -32,9 +32,13 @@
         "unnamedFeature": "Unnamed feature"
       },
       "statusBar": {
+        "filter": "Filter: {filter}",
         "ready": "Ready",
-        "selection": "Selection: {filter}",
+        "selection": "Selection: {selection}",
         "selectionAny": "Any",
+        "selectionFace": "{feature} · Face {face}",
+        "selectionNone": "None",
+        "unnamedFeature": "Unnamed feature",
         "units": "Units: {unit}"
       },
       "taskPanel": {
@@ -72,6 +76,7 @@
       },
       "viewport": {
         "ariaLabel": "3D viewport",
+        "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",
         "fit": "Fit view",
         "loadFailed": "The local document could not be opened.",
