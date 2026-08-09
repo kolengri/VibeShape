@@ -10,7 +10,7 @@ Use a small project-owned 3MF Core writer in `@vibeshape/formats`, with `fflate`
 
 This keeps the semantic export contract, resource policy, XML output, and diagnostics under VibeShape ownership. It avoids adding a native or Node-oriented lib3mf binding to the browser path for the initial Core-only profile. Revisit lib3mf or another adapter if future extensions make the project-owned surface materially larger or harder to validate.
 
-SPK-004 clears the minimal 3MF Phase 0 gate. SPK-001 already covers browser-generated STEP and binary STL for the same early format track. Production tessellation orchestration, export UI, broad format corpora, and hostile import handling remain later work.
+SPK-004 clears the minimal 3MF Phase 0 gate. SPK-001 already covers browser-generated STEP and binary STL for the same early format track. The accepted writer has since been promoted into the Phase 1 product path with exact-body print tessellation and export UI. Configurable profiles, reports, placement, broad format corpora, and hostile import handling remain later work.
 
 ## Implemented contract
 

@@ -13,6 +13,7 @@ import {
   partDesignFeatureTypeHandlers,
   partDesignModule,
 } from "@vibeshape/domain"
+import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
 import {
   DOCUMENT_PROTOCOL_VERSION,
@@ -23,6 +24,7 @@ import {
   documentWorkerDocumentIdSchema,
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
+  type FeatureEvaluationDependency,
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
@@ -37,6 +39,10 @@ export type SketchSolvePort = (
 ) => SolveSketchRecordResult | Promise<SolveSketchRecordResult>
 
 type SolveSketchRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
+type RebuildDocumentSnapshot = Extract<
+  DocumentWorkerRequest,
+  { type: "rebuildDocument" }
+>["document"]
 type SketchContextResult =
   | {
       ok: true
@@ -136,6 +142,30 @@ function transferablesFor(response: DocumentWorkerResponse) {
     geometry.mesh.indices.buffer as ArrayBuffer,
     geometry.mesh.triangleFaceIds.buffer as ArrayBuffer,
   ])
+}
+
+async function exportThreeMfDocument(
+  engine: GeometryKernelEngine,
+  document: RebuildDocumentSnapshot,
+  features: readonly FeatureEvaluationDependency[],
+) {
+  const result = await engine.exportPrintMeshes({ documentId: document.id, features })
+  if (
+    result.meshes.length !== features.length ||
+    result.meshes.some((mesh, index) => mesh.featureId !== features[index]?.featureId)
+  ) {
+    throw new Error("Print mesh export returned mismatched feature bodies.")
+  }
+  const labels = new Map(document.features.map(({ id, label }) => [id, label]))
+  const exported = writeThreeMfMeshes({
+    title: document.name,
+    meshes: result.meshes.map((mesh, index) => ({
+      name: labels.get(mesh.featureId) ?? `Body ${index + 1}`,
+      vertices: [...mesh.vertices],
+      triangles: [...mesh.triangles],
+    })),
+  })
+  return { file: exported.bytes, bodyCount: result.meshes.length }
 }
 
 function terminalExportFeatures(state: FeatureRebuildState) {
@@ -262,7 +292,13 @@ export class DocumentWorkerRuntime {
 
   async #exportDocument(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
     const state = this.#states.get(request.documentId)
-    if (!state || state.revision !== request.revision || state.generation !== request.generation) {
+    const document = this.#documents.get(request.documentId)
+    if (
+      !state ||
+      !document ||
+      state.revision !== request.revision ||
+      state.generation !== request.generation
+    ) {
       this.#postFailure(
         request,
         "export-state-unavailable",
@@ -284,11 +320,14 @@ export class DocumentWorkerRuntime {
     }
 
     try {
-      const exported = await this.engine.exportDocument({
-        documentId: request.documentId,
-        features,
-        format: request.format,
-      })
+      const exported =
+        request.format === "3mf"
+          ? await exportThreeMfDocument(this.engine, document, features)
+          : await this.engine.exportDocument({
+              documentId: request.documentId,
+              features,
+              format: request.format,
+            })
       this.#post({
         ...requestEnvelope(request),
         type: "documentExported",

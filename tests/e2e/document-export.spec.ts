@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises"
+import { unzipSync } from "fflate"
 import { expect, test } from "./fixtures"
 
 test.describe("document export", () => {
-  test("downloads exact STEP and binary STL from rebuilt terminal bodies", async ({ page }) => {
+  test("downloads 3MF, exact STEP, and binary STL from rebuilt terminal bodies", async ({
+    page,
+  }) => {
     await page.goto("/")
     await page.getByRole("button", { name: "Export…" }).click()
     const dialog = page.getByRole("dialog", { name: "Export model" })
@@ -24,6 +27,19 @@ test.describe("document export", () => {
       .getByRole("button", { name: "Create cylinder" })
       .click()
     await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Export…" }).click()
+    const threeMfDownloadPromise = page.waitForEvent("download")
+    await dialog.getByRole("button", { name: "Export 3MF" }).click()
+    const threeMfDownload = await threeMfDownloadPromise
+    expect(threeMfDownload.suggestedFilename()).toBe("Untitled project.3mf")
+    const threeMfPath = await threeMfDownload.path()
+    if (!threeMfPath) throw new Error("Playwright did not retain the 3MF download.")
+    const threeMfArchive = unzipSync(new Uint8Array(await readFile(threeMfPath)))
+    const model = new TextDecoder().decode(threeMfArchive["3D/3dmodel.model"])
+    expect(model).toContain('<model unit="millimeter"')
+    expect(model.match(/<object /g)).toHaveLength(2)
+    await expect(page.getByText("3MF download started", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Export…" }).click()
     const stepDownloadPromise = page.waitForEvent("download")
