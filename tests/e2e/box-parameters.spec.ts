@@ -22,9 +22,25 @@ test.describe("Box parameters", () => {
     await boxForm.getByRole("button", { name: "Create box" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(viewport.getByRole("button", { name: "Fit view" })).toBeVisible()
+    await expect
+      .poll(() =>
+        viewport.locator("canvas").evaluate((canvas) => {
+          const element = canvas as unknown as {
+            width: number
+            height: number
+            getContext: (type: "webgl2") => unknown
+          }
+          return element.width > 0 && element.height > 0 && element.getContext("webgl2") !== null
+        }),
+      )
+      .toBe(true)
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
   })
 })

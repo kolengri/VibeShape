@@ -192,6 +192,8 @@ React owns the interface shell, but the CAD viewport has a long-lived scene grap
 
 WebGL2 is the baseline. WebGPU is promising but not an alpha requirement. Official Three.js examples cover WebGPU, GPU picking, clipping, and OffscreenCanvas; each becomes a separate adapter or measured spike.
 
+The implemented `@vibeshape/viewer` adapter pins Three.js `0.185.1`, loads as a separate dynamic chunk only after authoritative geometry exists, then requires a WebGL2 context. It constructs `BufferGeometry` directly from worker-owned typed arrays, keeps triangle-to-face IDs as non-authoritative picking metadata, and renders on OrbitControls changes or explicit data/size updates rather than running an idle animation loop. Its orthographic camera is Z-up and fits the combined terminal-feature bounds. Replacing a model disposes its surface and edge geometries; unmount additionally disposes controls, shared materials, and the renderer.
+
 ## Why Vite instead of Next.js
 
 - The CAD workspace does not need SSR or SEO routes.

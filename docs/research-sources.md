@@ -41,6 +41,11 @@ Context7 was used for library and protocol documentation. Searches for `OpenCasc
 
 Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and cross-checked against official source examples:
 
+- [Custom BufferGeometry manual](https://github.com/mrdoob/three.js/blob/dev/manual/pages/custom-buffergeometry.html) — direct typed-array `BufferAttribute` construction
+- [Voxel geometry manual](https://github.com/mrdoob/three.js/blob/dev/manual/pages/voxel-geometry.html) — positions, normals, and indexed `BufferGeometry`
+- [glTF fit-camera example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_gltf.html) — bounds, target, distance, and projection updates
+- [Orthographic camera example](https://github.com/mrdoob/three.js/blob/dev/examples/css3d_orthographic.html) — resize-aware frustum updates
+- [On-demand rendering manual](https://github.com/mrdoob/three.js/blob/dev/manual/pages/rendering-on-demand.html) — OrbitControls change-driven rendering without an idle loop
 - [WebGPU performance example](https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_performance.html) — `WebGPURenderer` and `compileAsync`
 - [Clipping example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_clipping.html) — local and global clipping planes
 - [GPU picking example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_interactive_cubes_gpu.html) — offscreen picking target
