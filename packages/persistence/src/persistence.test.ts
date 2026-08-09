@@ -14,6 +14,7 @@ import {
   portableProjectCopySchema,
   projectDeleteInputSchema,
   projectRecordSchema,
+  projectThumbnailRecordSchema,
 } from "./schemas"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
@@ -71,7 +72,7 @@ describe("persistence contracts", () => {
     ).toBe(false)
   })
 
-  it("exposes only bounded semantic metadata in local project summaries", () => {
+  it("exposes only bounded project-list data in local summaries", () => {
     expect(
       localProjectSummarySchema.safeParse({
         documentId,
@@ -80,6 +81,7 @@ describe("persistence contracts", () => {
         createdAt: timestamp,
         updatedAt: "2026-08-08T00:03:00Z",
         lastExternalBackupAt: null,
+        thumbnail: null,
       }),
     ).toMatchObject({ success: true })
     expect(
@@ -90,7 +92,34 @@ describe("persistence contracts", () => {
         createdAt: timestamp,
         updatedAt: timestamp,
         lastExternalBackupAt: null,
+        thumbnail: null,
         snapshot: { forbidden: true },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts only bounded renderer-owned SVG project thumbnails", () => {
+    const safeSvg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" role="img"><g stroke="#263746" stroke-width="0.75" stroke-linejoin="round"><polygon points="12.00,148.00 228.00,148.00 120.00,12.00" fill="rgb(120 140 160)"/></g></svg>',
+    )
+    expect(
+      projectThumbnailRecordSchema.safeParse({
+        schemaVersion: 0,
+        documentId,
+        revision: 3,
+        mediaType: "image/svg+xml",
+        bytes: safeSvg,
+        generatedAt: timestamp,
+      }).success,
+    ).toBe(true)
+    expect(
+      projectThumbnailRecordSchema.safeParse({
+        schemaVersion: 0,
+        documentId,
+        revision: 3,
+        mediaType: "image/svg+xml",
+        bytes: new TextEncoder().encode('<svg><image href="https://example.com/tracker"/></svg>'),
+        generatedAt: timestamp,
       }).success,
     ).toBe(false)
   })

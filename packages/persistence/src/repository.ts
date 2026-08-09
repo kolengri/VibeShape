@@ -32,6 +32,9 @@ import {
   portableProjectImportSchema,
   projectDeleteInputSchema,
   projectRecordSchema,
+  projectThumbnailCopyInputSchema,
+  projectThumbnailRecordSchema,
+  projectThumbnailWriteInputSchema,
   type RecoveryRecord,
   recoveryRecordSchema,
   type SnapshotRecord,
@@ -83,9 +86,20 @@ export interface ProjectDeleteReport {
   documentId: DocumentId
   deletedEventCount: number
   deletedSnapshotCount: number
+  deletedThumbnailCount: number
 }
 
 const MAX_LOCAL_PROJECTS = 4_096
+const MAX_LOCAL_PROJECT_THUMBNAIL_BYTES = 16 * 1024 * 1024
+
+export interface ProjectThumbnailWriteReport {
+  documentId: DocumentId
+  revision: number
+}
+
+export interface ProjectThumbnailCopyReport {
+  status: "copied" | "unavailable"
+}
 
 async function serializeRecord(value: unknown) {
   const payload = canonicalJson(value)
@@ -567,6 +581,34 @@ function portableProjectWriteReport(
   }
 }
 
+async function currentProjectThumbnails(
+  database: VibeShapeDatabase,
+  projects: readonly ProjectRecord[],
+) {
+  try {
+    const records = await database.projectThumbnails.limit(MAX_LOCAL_PROJECTS + 1).toArray()
+    if (records.length > MAX_LOCAL_PROJECTS) return new Map<string, null>()
+    const projectsById = new Map(projects.map((project) => [project.documentId, project]))
+    const thumbnails = new Map<string, z.output<typeof projectThumbnailRecordSchema>>()
+    let totalBytes = 0
+
+    for (const record of records) {
+      const thumbnail = projectThumbnailRecordSchema.safeParse(record)
+      if (!thumbnail.success) return new Map<string, null>()
+      const project = projectsById.get(thumbnail.data.documentId)
+      if (!project || thumbnail.data.revision !== project.headRevision) continue
+      totalBytes += thumbnail.data.bytes.byteLength
+      if (totalBytes > MAX_LOCAL_PROJECT_THUMBNAIL_BYTES) return new Map<string, null>()
+      thumbnails.set(thumbnail.data.documentId, thumbnail.data)
+    }
+
+    return thumbnails
+  } catch {
+    // Derived previews fail open so semantic project access remains available.
+    return new Map<string, null>()
+  }
+}
+
 export class LocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
@@ -587,21 +629,34 @@ export class LocalDocumentRepository {
             "The local project index contains an invalid record.",
           )
         }
+        return project.data
+      })
+      const thumbnails = await currentProjectThumbnails(this.database, projects)
+      const summaries = projects.map((project) => {
+        const thumbnail = thumbnails.get(project.documentId)
         return localProjectSummarySchema.parse({
-          documentId: project.data.documentId,
-          name: project.data.name,
-          headRevision: project.data.headRevision,
-          createdAt: project.data.createdAt,
-          updatedAt: project.data.updatedAt,
-          lastExternalBackupAt: project.data.lastExternalBackupAt,
+          documentId: project.documentId,
+          name: project.name,
+          headRevision: project.headRevision,
+          createdAt: project.createdAt,
+          updatedAt: project.updatedAt,
+          lastExternalBackupAt: project.lastExternalBackupAt,
+          thumbnail: thumbnail
+            ? {
+                revision: thumbnail.revision,
+                mediaType: thumbnail.mediaType,
+                bytes: thumbnail.bytes,
+                generatedAt: thumbnail.generatedAt,
+              }
+            : null,
         })
       })
-      projects.sort(
+      summaries.sort(
         (left, right) =>
           right.updatedAt.localeCompare(left.updatedAt) ||
           left.documentId.localeCompare(right.documentId),
       )
-      return { ok: true, value: projects }
+      return { ok: true, value: summaries }
     } catch (error) {
       return { ok: false, diagnostic: classifyPersistenceError(error) }
     }
@@ -833,6 +888,99 @@ export class LocalDocumentRepository {
     }
   }
 
+  async writeProjectThumbnail(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<ProjectThumbnailWriteReport>> {
+    const input = projectThumbnailWriteInputSchema.safeParse(inputValue)
+    if (!input.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The project thumbnail write is invalid.",
+        ),
+      }
+    }
+    try {
+      await this.database.transaction(
+        "rw",
+        this.database.projects,
+        this.database.projectThumbnails,
+        async () => {
+          const project = await requireStoredProject(this.database, input.data.documentId)
+          if (project.headRevision !== input.data.revision) {
+            throw persistenceInvariantError(
+              "stale-revision",
+              "The project changed before its thumbnail could be stored.",
+            )
+          }
+          await this.database.projectThumbnails.put(
+            projectThumbnailRecordSchema.parse({ schemaVersion: 0, ...input.data }),
+          )
+        },
+      )
+      return {
+        ok: true,
+        value: { documentId: input.data.documentId, revision: input.data.revision },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async copyProjectThumbnail(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<ProjectThumbnailCopyReport>> {
+    const input = projectThumbnailCopyInputSchema.safeParse(inputValue)
+    if (!input.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The project thumbnail copy is invalid.",
+        ),
+      }
+    }
+    try {
+      let status: ProjectThumbnailCopyReport["status"] = "unavailable"
+      await this.database.transaction(
+        "rw",
+        this.database.projects,
+        this.database.projectThumbnails,
+        async () => {
+          const source = await requireStoredProject(this.database, input.data.sourceDocumentId)
+          const target = await requireStoredProject(this.database, input.data.targetDocumentId)
+          if (
+            source.headRevision !== input.data.sourceRevision ||
+            target.headRevision !== input.data.targetRevision
+          ) {
+            throw persistenceInvariantError(
+              "stale-revision",
+              "A project changed before its thumbnail could be copied.",
+            )
+          }
+          const sourceThumbnail = projectThumbnailRecordSchema.safeParse(
+            await this.database.projectThumbnails.get(input.data.sourceDocumentId),
+          )
+          if (!sourceThumbnail.success || sourceThumbnail.data.revision !== source.headRevision) {
+            return
+          }
+          await this.database.projectThumbnails.put({
+            ...sourceThumbnail.data,
+            documentId: target.documentId,
+            revision: target.headRevision,
+            generatedAt: input.data.generatedAt,
+            bytes: Uint8Array.from(sourceThumbnail.data.bytes),
+          })
+          status = "copied"
+        },
+      )
+      return { ok: true, value: { status } }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
   async deleteProject(inputValue: unknown): Promise<PersistenceResult<ProjectDeleteReport>> {
     const input = projectDeleteInputSchema.safeParse(inputValue)
     if (!input.success) {
@@ -847,39 +995,55 @@ export class LocalDocumentRepository {
     try {
       let deletedEventCount = 0
       let deletedSnapshotCount = 0
-      await semanticWriteTransaction(this.database, async () => {
-        const project = await requireStoredProject(this.database, input.data.documentId)
-        if (project.headRevision !== input.data.expectedHeadRevision) {
-          throw persistenceInvariantError(
-            "stale-revision",
-            "The project changed before it could be deleted.",
-          )
-        }
-        const lease = await this.database.leases.get(input.data.documentId)
-        if (lease && lease.expiresAt > input.data.nowMs) {
-          throw persistenceInvariantError(
-            "lease-held",
-            "The project is open for writing in another browser tab.",
-          )
-        }
-        deletedEventCount = await this.database.events
-          .where("documentId")
-          .equals(input.data.documentId)
-          .delete()
-        deletedSnapshotCount = await this.database.snapshots
-          .where("documentId")
-          .equals(input.data.documentId)
-          .delete()
-        await this.database.recovery.delete(input.data.documentId)
-        await this.database.leases.delete(input.data.documentId)
-        await this.database.projects.delete(input.data.documentId)
-      })
+      let deletedThumbnailCount = 0
+      await this.database.transaction(
+        "rw",
+        [
+          this.database.projects,
+          this.database.events,
+          this.database.snapshots,
+          this.database.recovery,
+          this.database.leases,
+          this.database.projectThumbnails,
+        ],
+        async () => {
+          const project = await requireStoredProject(this.database, input.data.documentId)
+          if (project.headRevision !== input.data.expectedHeadRevision) {
+            throw persistenceInvariantError(
+              "stale-revision",
+              "The project changed before it could be deleted.",
+            )
+          }
+          const lease = await this.database.leases.get(input.data.documentId)
+          if (lease && lease.expiresAt > input.data.nowMs) {
+            throw persistenceInvariantError(
+              "lease-held",
+              "The project is open for writing in another browser tab.",
+            )
+          }
+          deletedEventCount = await this.database.events
+            .where("documentId")
+            .equals(input.data.documentId)
+            .delete()
+          deletedSnapshotCount = await this.database.snapshots
+            .where("documentId")
+            .equals(input.data.documentId)
+            .delete()
+          const thumbnail = await this.database.projectThumbnails.get(input.data.documentId)
+          await this.database.projectThumbnails.delete(input.data.documentId)
+          deletedThumbnailCount = thumbnail ? 1 : 0
+          await this.database.recovery.delete(input.data.documentId)
+          await this.database.leases.delete(input.data.documentId)
+          await this.database.projects.delete(input.data.documentId)
+        },
+      )
       return {
         ok: true,
         value: {
           documentId: input.data.documentId,
           deletedEventCount,
           deletedSnapshotCount,
+          deletedThumbnailCount,
         },
       }
     } catch (error) {

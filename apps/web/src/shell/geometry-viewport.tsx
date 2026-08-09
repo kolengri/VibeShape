@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { renderProjectThumbnail } from "@vibeshape/viewer/project-thumbnail"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
@@ -15,7 +16,10 @@ import {
   useRef,
   useState,
 } from "react"
-import type { DocumentControllerState } from "../document/document-controller"
+import {
+  type DocumentControllerState,
+  saveActiveProjectThumbnail,
+} from "../document/document-controller"
 
 type ViewportFactory = (
   canvas: HTMLCanvasElement,
@@ -136,6 +140,26 @@ function useViewportRenderer(
   return { canvasRef, rendererFailed, viewportRef }
 }
 
+function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
+  const attemptedRevisionRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const snapshot = controller.report?.snapshot
+    if (controller.status !== "ready" || !snapshot || meshes.length === 0) return
+    const revisionKey = `${snapshot.id}:${snapshot.revision}`
+    if (attemptedRevisionRef.current === revisionKey) return
+    attemptedRevisionRef.current = revisionKey
+    try {
+      const thumbnail = renderProjectThumbnail(meshes)
+      if (thumbnail) {
+        void saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
+      }
+    } catch {
+      // A derived preview must never block the authoritative geometry viewport.
+    }
+  }, [controller.report?.snapshot, controller.status, meshes])
+}
+
 function ViewportMessage({
   message,
   title,
@@ -213,6 +237,7 @@ export function GeometryViewport({
     meshes,
     onSelectionChange,
   )
+  useProjectThumbnail(controller, meshes)
 
   useEffect(() => {
     if (selection && !meshes.some(({ featureId }) => featureId === selection.featureId)) {
