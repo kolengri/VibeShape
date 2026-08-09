@@ -145,6 +145,10 @@ class FakeEngine implements GeometryKernelEngine {
   readonly evaluatedInputs: FeatureEvaluationInput[] = []
   initialized = false
   disposedDocuments: string[] = []
+  synchronizedFeatures: Array<{
+    documentId: string
+    retainedFeatures: readonly { featureId: string; contentHash: string }[]
+  }> = []
   exportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
 
   async initialize() {
@@ -191,6 +195,14 @@ class FakeEngine implements GeometryKernelEngine {
 
   getHealth() {
     return { initialized: this.initialized, ownedShapeCount: 3, wasmHeapBytes: 1 }
+  }
+
+  synchronizeDocumentFeatures(
+    documentId: string,
+    retainedFeatures: readonly { featureId: string; contentHash: string }[],
+  ) {
+    this.synchronizedFeatures.push({ documentId, retainedFeatures })
+    return retainedFeatures.length
   }
 
   disposeDocument(documentId: string) {
@@ -280,6 +292,35 @@ describe("DocumentWorkerRuntime", () => {
     expect(
       transfers.filter((transfer) => transfer.length > 0).map((transfer) => transfer.length),
     ).toEqual([12, 12, 12])
+    expect(engine.synchronizedFeatures.at(-1)).toMatchObject({
+      documentId: documentIds.primary,
+      retainedFeatures: expect.arrayContaining([
+        expect.objectContaining({ featureId: featureIds.box }),
+        expect.objectContaining({ featureId: featureIds.cylinder }),
+        expect.objectContaining({ featureId: featureIds.boolean }),
+      ]),
+    })
+  })
+
+  it("releases native feature content removed from the rebuilt document", async () => {
+    const { engine, runtime } = createHarness()
+    await runtime.handle(request("before-remove"))
+    await runtime.handle({
+      ...request("after-remove", { revision: 2, generation: 2 }),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary, 2),
+        features: [box(), cylinder()],
+      }),
+    })
+
+    expect(engine.synchronizedFeatures.at(-1)).toMatchObject({
+      documentId: documentIds.primary,
+      retainedFeatures: expect.arrayContaining([
+        expect.objectContaining({ featureId: featureIds.box }),
+        expect.objectContaining({ featureId: featureIds.cylinder }),
+      ]),
+    })
+    expect(engine.synchronizedFeatures.at(-1)?.retainedFeatures).toHaveLength(2)
   })
 
   it("evaluates document variables before incremental geometry scheduling", async () => {

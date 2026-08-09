@@ -82,6 +82,7 @@ The foundation includes:
 
 - `Button` with double-click suppression, Promise-like single-flight loading, native or slotted disabled semantics, and external `isLoading` support;
 - `Spinner` with standalone status semantics and decorative use inside named controls;
+- source-owned `Dialog` and `AlertDialog` compositions; destructive product flows use a controlled AlertDialog that can remain open across asynchronous failure;
 - native `Input` plus native `NativeSelect`, with state-agnostic `TextField` and `NativeSelectField` compositions that own labels, descriptions, and stable validation relationships;
 - shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
 - a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;

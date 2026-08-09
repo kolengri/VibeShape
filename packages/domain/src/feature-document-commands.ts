@@ -1,19 +1,20 @@
 import type { z } from "zod"
+import {
+  domainDiagnostic,
+  featureMutationDiagnostic,
+  requireExistingDocumentRevision,
+} from "./command-support"
 import type {
   DocumentCommand,
   DocumentEvent,
   DocumentEventResult,
   DomainDiagnostic,
 } from "./commands"
-import {
-  domainDiagnostic,
-  featureMutationDiagnostic,
-  requireExistingDocumentRevision,
-} from "./command-support"
 import type { DocumentSnapshot } from "./document"
 import {
   addFeature,
   featureRecordsEqual,
+  removeFeature,
   setFeatureSuppressed,
   updateFeature,
 } from "./feature-collection"
@@ -26,16 +27,22 @@ type FeatureCommand = Extract<
     kind:
       | "org.vibeshape.feature.add"
       | "org.vibeshape.feature.update"
+      | "org.vibeshape.feature.remove"
       | "org.vibeshape.feature.set-suppressed"
   }
 >
 type FeatureAddedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.added" }>
 type FeatureUpdatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.updated" }>
+type FeatureRemovedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.removed" }>
 type FeatureSuppressionChangedEvent = Extract<
   DocumentEvent,
   { type: "org.vibeshape.feature.suppression-changed" }
 >
-type FeatureEvent = FeatureAddedEvent | FeatureUpdatedEvent | FeatureSuppressionChangedEvent
+type FeatureEvent =
+  | FeatureAddedEvent
+  | FeatureUpdatedEvent
+  | FeatureRemovedEvent
+  | FeatureSuppressionChangedEvent
 type TransactionId = z.infer<typeof draftIdSchema> | null
 
 function reduceAddedEvent(
@@ -112,6 +119,45 @@ function reduceUpdatedEvent(
     : { ok: false, diagnostic: featureMutationDiagnostic(mutation.diagnostic, true) }
 }
 
+function reduceRemovedEvent(
+  snapshot: DocumentSnapshot | null,
+  event: FeatureRemovedEvent,
+): DocumentEventResult {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    event.documentId,
+    event.baseRevision,
+    event.revision,
+  )
+
+  if (!current.ok) return current
+
+  const feature = current.snapshot.features.find((candidate) => candidate.id === event.feature.id)
+  if (!feature || !featureRecordsEqual(feature, event.feature)) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "The feature removal event does not match the current document.",
+      ),
+    }
+  }
+
+  const mutation = removeFeature(current.snapshot.features, event.feature.id)
+
+  return mutation.ok
+    ? {
+        ok: true,
+        snapshot: {
+          ...current.snapshot,
+          revision: event.revision,
+          features: mutation.features,
+          updatedAt: event.issuedAt,
+        },
+      }
+    : { ok: false, diagnostic: featureMutationDiagnostic(mutation.diagnostic, true) }
+}
+
 function reduceSuppressionChangedEvent(
   snapshot: DocumentSnapshot | null,
   event: FeatureSuppressionChangedEvent,
@@ -168,6 +214,8 @@ export function reduceFeatureDocumentEvent(
       return reduceAddedEvent(snapshot, event)
     case "org.vibeshape.feature.updated":
       return reduceUpdatedEvent(snapshot, event)
+    case "org.vibeshape.feature.removed":
+      return reduceRemovedEvent(snapshot, event)
     case "org.vibeshape.feature.suppression-changed":
       return reduceSuppressionChangedEvent(snapshot, event)
   }
@@ -248,6 +296,40 @@ function createUpdatedEvent(
     : featureMutationDiagnostic(mutation.diagnostic)
 }
 
+function createRemovedEvent(
+  snapshot: DocumentSnapshot | null,
+  command: Extract<FeatureCommand, { kind: "org.vibeshape.feature.remove" }>,
+  transactionId: TransactionId,
+): DocumentEvent | DomainDiagnostic {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    command.documentId,
+    command.baseRevision,
+  )
+
+  if (!current.ok) return current.diagnostic
+
+  const feature = current.snapshot.features.find(
+    (candidate) => candidate.id === command.payload.featureId,
+  )
+  if (!feature) {
+    return domainDiagnostic(
+      "feature-not-found",
+      `Feature ${command.payload.featureId} does not exist in the document.`,
+    )
+  }
+
+  const mutation = removeFeature(current.snapshot.features, command.payload.featureId)
+
+  return mutation.ok
+    ? {
+        ...eventEnvelope(command, transactionId),
+        type: "org.vibeshape.feature.removed",
+        feature: featureRecordSchema.parse(feature),
+      }
+    : featureMutationDiagnostic(mutation.diagnostic)
+}
+
 function createSuppressionChangedEvent(
   snapshot: DocumentSnapshot | null,
   command: Extract<FeatureCommand, { kind: "org.vibeshape.feature.set-suppressed" }>,
@@ -304,6 +386,8 @@ export function createFeatureDocumentEvent(
       return createAddedEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.update":
       return createUpdatedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.remove":
+      return createRemovedEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.set-suppressed":
       return createSuppressionChangedEvent(snapshot, command, transactionId)
   }

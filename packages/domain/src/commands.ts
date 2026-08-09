@@ -134,6 +134,12 @@ const updateFeatureCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ feature: featureRecordSchema }).strict(),
 })
 
+const removeFeatureCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.feature.remove"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ featureId: featureIdSchema }).strict(),
+})
+
 const setFeatureSuppressedCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.feature.set-suppressed"),
   schemaVersion: z.literal(1),
@@ -150,6 +156,7 @@ export const documentCommandSchema = z.discriminatedUnion("kind", [
   replaceVariableTableCommandSchema,
   addFeatureCommandSchema,
   updateFeatureCommandSchema,
+  removeFeatureCommandSchema,
   setFeatureSuppressedCommandSchema,
 ])
 
@@ -218,6 +225,11 @@ const featureUpdatedEventSchema = eventEnvelopeSchema.extend({
   feature: featureRecordSchema,
 })
 
+const featureRemovedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.feature.removed"),
+  feature: featureRecordSchema,
+})
+
 const featureSuppressionChangedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.suppression-changed"),
   featureId: featureIdSchema,
@@ -235,6 +247,7 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   variableTableReplacedEventSchema,
   featureAddedEventSchema,
   featureUpdatedEventSchema,
+  featureRemovedEventSchema,
   featureSuppressionChangedEventSchema,
 ])
 
@@ -435,6 +448,8 @@ function reduceParsedEvent(
       return reduceFeatureDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.updated":
       return reduceFeatureDocumentEvent(snapshot, event)
+    case "org.vibeshape.feature.removed":
+      return reduceFeatureDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.suppression-changed":
       return reduceFeatureDocumentEvent(snapshot, event)
   }
@@ -516,6 +531,8 @@ function createEvent(
     case "org.vibeshape.feature.add":
       return createFeatureDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.update":
+      return createFeatureDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.remove":
       return createFeatureDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.set-suppressed":
       return createFeatureDocumentEvent(snapshot, command, transactionId)

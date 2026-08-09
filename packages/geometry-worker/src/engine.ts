@@ -762,6 +762,10 @@ export interface GeometryKernelEngine {
     ownedShapeCount: number
     wasmHeapBytes: number
   }
+  synchronizeDocumentFeatures(
+    documentId: string,
+    retainedFeatures: readonly { featureId: string; contentHash: string }[],
+  ): number
   disposeDocument(documentId: string): number
 }
 
@@ -836,6 +840,13 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   disposeDocument(documentId: string) {
     this.#ownedShapes.disposeAll()
     return this.#featureShapes.disposeDocument(documentId)
+  }
+
+  synchronizeDocumentFeatures(
+    documentId: string,
+    retainedFeatures: readonly { featureId: string; contentHash: string }[],
+  ) {
+    return this.#featureShapes.synchronize(documentId, retainedFeatures)
   }
 
   async evaluateFeature(

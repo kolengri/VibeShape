@@ -212,6 +212,13 @@ class FakeEngine implements GeometryKernelEngine {
     return { initialized: this.initialized, ownedShapeCount: 0, wasmHeapBytes: 1 }
   }
 
+  synchronizeDocumentFeatures(
+    _documentId: string,
+    retainedFeatures: readonly { featureId: string; contentHash: string }[],
+  ) {
+    return retainedFeatures.length
+  }
+
   disposeDocument(_documentId: string) {
     if (this.disposalError) {
       throw this.disposalError

@@ -77,6 +77,16 @@
         "description": "Create configurable primitive solids, then combine them with ordered part-design operations. Geometry rebuilds locally in the browser.",
         "subtractUnavailable": "Create at least two available solids before subtracting.",
         "startModeling": "Part design",
+        "featureDelete": {
+          "action": "Delete feature",
+          "title": "Delete {feature}?",
+          "description": "This removes the feature from model history. This action cannot be undone yet.",
+          "confirm": "Delete feature",
+          "cancel": "Keep feature",
+          "failed": "The feature could not be deleted. The model history was not changed.",
+          "inUse": "Remove dependent features first: {features}.",
+          "readOnly": "Open the document with write access to delete features."
+        },
         "box": {
           "title": "Create box",
           "description": "Create a primitive solid with dimensions driven by literals or document variables.",

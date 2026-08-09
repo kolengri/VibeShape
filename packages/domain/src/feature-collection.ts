@@ -1,8 +1,8 @@
-import { createFeatureGraph, type FeatureRecord } from "./feature-graph"
 import { canonicalJson } from "./canonical-json"
+import { createFeatureGraph, type FeatureRecord } from "./feature-graph"
 
 export type FeatureCollectionDiagnostic = Readonly<{
-  code: "feature-already-exists" | "feature-not-found" | "invalid-feature-graph"
+  code: "feature-already-exists" | "feature-not-found" | "feature-in-use" | "invalid-feature-graph"
   message: string
   issues: readonly { path: string; message: string }[]
 }>
@@ -60,6 +60,40 @@ export function updateFeature(
   const next = [...features]
   next[index] = feature
   return validateFeatures(next)
+}
+
+export function removeFeature(
+  features: readonly FeatureRecord[],
+  featureId: FeatureRecord["id"],
+): FeatureCollectionResult {
+  const index = features.findIndex((candidate) => candidate.id === featureId)
+
+  if (index < 0) {
+    return collectionFailure(
+      "feature-not-found",
+      `Feature ${featureId} does not exist in the document.`,
+    )
+  }
+
+  const dependents = features.flatMap((feature, featureIndex) =>
+    feature.dependencies.includes(featureId)
+      ? [
+          {
+            path: `features.${featureIndex}.dependencies`,
+            message: `Feature ${feature.id} depends on ${featureId}.`,
+          },
+        ]
+      : [],
+  )
+  if (dependents.length > 0) {
+    return collectionFailure(
+      "feature-in-use",
+      `Feature ${featureId} cannot be removed while other features depend on it.`,
+      dependents,
+    )
+  }
+
+  return validateFeatures(features.filter((_, featureIndex) => featureIndex !== index))
 }
 
 export function setFeatureSuppressed(

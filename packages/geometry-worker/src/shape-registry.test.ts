@@ -89,6 +89,32 @@ describe("DocumentFeatureShapeRegistry", () => {
     expect(registry.get("document-b", "feature-b", "b".repeat(64))).toBe(second)
   })
 
+  it("synchronizes exact document feature content and deletes stale ownership", () => {
+    const deletionOrder: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const retained = new TrackedShape("retained", deletionOrder)
+    const changed = new TrackedShape("changed", deletionOrder)
+    const removed = new TrackedShape("removed", deletionOrder)
+    const otherDocument = new TrackedShape("other-document", deletionOrder)
+
+    registry.replace("document-a", "feature-a", "a".repeat(64), retained)
+    registry.replace("document-a", "feature-b", "b".repeat(64), changed)
+    registry.replace("document-a", "feature-c", "c".repeat(64), removed)
+    registry.replace("document-b", "feature-a", "a".repeat(64), otherDocument)
+
+    expect(
+      registry.synchronize("document-a", [
+        { featureId: "feature-a", contentHash: "a".repeat(64) },
+        { featureId: "feature-b", contentHash: "d".repeat(64) },
+      ]),
+    ).toBe(2)
+    expect(deletionOrder).toEqual(["removed", "changed"])
+    expect(retained.deleteCount).toBe(0)
+    expect(otherDocument.deleteCount).toBe(0)
+    expect(registry.get("document-a", "feature-b", "b".repeat(64))).toBeUndefined()
+    expect(registry.get("document-b", "feature-a", "a".repeat(64))).toBe(otherDocument)
+  })
+
   it("resolves ordered exact-hash dependencies within one document", () => {
     const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
     const first = new TrackedShape("first", [])

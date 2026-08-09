@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures"
 
 test.describe("Boolean subtraction", () => {
-  test("creates, edits, renders, and reopens ordered solid inputs", async ({ page }) => {
+  test("creates, edits, reopens, and safely deletes ordered solid inputs", async ({ page }) => {
     await page.goto("/")
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const subtractCommand = toolbar.getByRole("button", { name: "Subtract", exact: true })
@@ -64,5 +64,34 @@ test.describe("Boolean subtraction", () => {
     await expect(
       reopenedForm.getByRole("combobox", { name: "Tool solid" }).locator("option:checked"),
     ).toHaveText("Cylinder 2")
+
+    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await expect(page.getByRole("button", { name: "Delete feature" })).toBeDisabled()
+    await expect(page.getByText("Remove dependent features first: Subtract 1.")).toBeVisible()
+
+    await page.getByRole("treeitem", { name: "Subtract 1" }).click()
+    await page.getByRole("button", { name: "Delete feature" }).click()
+    const deleteDialog = page.getByRole("alertdialog", { name: "Delete Subtract 1?" })
+    await expect(deleteDialog).toContainText(
+      "This removes the feature from model history. This action cannot be undone yet.",
+    )
+    await deleteDialog.getByRole("button", { name: "Delete feature", exact: true }).dblclick()
+    await expect(deleteDialog).not.toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Subtract 1" })).not.toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "3")
+
+    await page.getByRole("treeitem", { name: "Cylinder 2" }).click()
+    await page.getByRole("button", { name: "Delete feature" }).click()
+    await page
+      .getByRole("alertdialog", { name: "Delete Cylinder 2?" })
+      .getByRole("button", { name: "Delete feature", exact: true })
+      .click()
+    await expect(page.getByRole("treeitem", { name: "Cylinder 2" })).not.toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+
+    await page.reload()
+    await expect(page.getByRole("treeitem", { name: "Subtract 1" })).not.toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Cylinder 2" })).not.toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
   })
 })
