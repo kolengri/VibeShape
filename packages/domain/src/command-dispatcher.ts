@@ -262,6 +262,12 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     execute: applyDocumentCommand,
   },
   {
+    kind: "org.vibeshape.variable.rename",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
     kind: "org.vibeshape.variable.remove",
     schemaVersion: 1,
     ownerModuleId: documentCoreModule.id,

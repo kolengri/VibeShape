@@ -1,14 +1,14 @@
-import { z } from "zod"
 import { isAnyObject } from "is-what"
+import { z } from "zod"
 import { variableIdSchema } from "./identifiers"
 import {
-  angleToRadians,
   type AngleQuantity,
+  angleToRadians,
   createAngleQuantity,
   createLengthQuantity,
   createScalarQuantity,
-  lengthToMillimeters,
   type LengthQuantity,
+  lengthToMillimeters,
   type Quantity,
   quantitySchema,
   type ScalarQuantity,
@@ -522,6 +522,109 @@ export function variableReferencesInExpression(expression: string) {
       tokenized.tokens.flatMap((token) => (token.type === "variable" ? [token.name] : [])),
     ),
   ]
+}
+
+export function rewriteVariableReferencesInExpression(
+  expression: string,
+  previousName: string,
+  name: string,
+) {
+  const parsedExpression = variableExpressionSchema.safeParse(expression)
+  if (!parsedExpression.success || previousName === name) return expression
+  const tokenized = tokenize(parsedExpression.data, null)
+  if (!tokenized.ok) return expression
+  const references = tokenized.tokens.filter(
+    (token) => token.type === "variable" && token.name === previousName,
+  )
+  if (references.length === 0) return expression
+  let cursor = 0
+  let rewritten = ""
+  for (const reference of references) {
+    rewritten += `${expression.slice(cursor, reference.position)}#${name}`
+    cursor = reference.position + previousName.length + 1
+  }
+  return rewritten + expression.slice(cursor)
+}
+
+type ParameterRewriteFrame = Readonly<{
+  value: unknown
+  assign: (value: unknown) => void
+}>
+
+type QuantityReferenceRewrite =
+  | { kind: "not-quantity" }
+  | { kind: "quantity"; value: unknown }
+  | { kind: "error"; message: string }
+
+function rewriteQuantityVariableReference(
+  value: unknown,
+  previousName: string,
+  name: string,
+): QuantityReferenceRewrite {
+  const quantity = quantitySchema.safeParse(value)
+  if (!quantity.success) return { kind: "not-quantity" }
+  const expression = quantity.data.source.expression
+  const rewritten = expression
+    ? rewriteVariableReferencesInExpression(expression, previousName, name)
+    : expression
+  if (rewritten === expression) return { kind: "quantity", value }
+  const nextQuantity = quantitySchema.safeParse({
+    ...quantity.data,
+    source: { ...quantity.data.source, expression: rewritten },
+  })
+  return nextQuantity.success
+    ? { kind: "quantity", value: nextQuantity.data }
+    : {
+        kind: "error",
+        message: "The renamed variable reference exceeds a quantity expression limit.",
+      }
+}
+
+function enqueueParameterChildren(frame: ParameterRewriteFrame, pending: ParameterRewriteFrame[]) {
+  if (Array.isArray(frame.value)) {
+    const array: unknown[] = new Array(frame.value.length)
+    frame.assign(array)
+    for (let index = frame.value.length - 1; index >= 0; index -= 1) {
+      pending.push({
+        value: frame.value[index],
+        assign: (value) => (array[index] = value),
+      })
+    }
+    return true
+  }
+  if (!isAnyObject(frame.value)) return false
+  const object: Record<string, unknown> = {}
+  frame.assign(object)
+  const entries = Object.entries(frame.value)
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (!entry) continue
+    const [key, value] = entry
+    pending.push({ value, assign: (nextValue) => (object[key] = nextValue) })
+  }
+  return true
+}
+
+export function rewriteParameterVariableReferences(
+  input: unknown,
+  previousName: string,
+  name: string,
+) {
+  let result: unknown
+  const pending: ParameterRewriteFrame[] = [{ value: input, assign: (value) => (result = value) }]
+  while (pending.length > 0) {
+    const frame = pending.pop()
+    if (!frame) continue
+    const quantity = rewriteQuantityVariableReference(frame.value, previousName, name)
+    if (quantity.kind === "error") return { ok: false as const, message: quantity.message }
+    if (quantity.kind === "quantity") {
+      frame.assign(quantity.value)
+      continue
+    }
+    if (enqueueParameterChildren(frame, pending)) continue
+    frame.assign(frame.value)
+  }
+  return { ok: true as const, value: result }
 }
 
 export function parameterVariableReferences(input: unknown) {

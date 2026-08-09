@@ -2,13 +2,14 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { I18nProvider } from "@vibeshape/i18n/provider"
 import { variableIdSchema } from "@vibeshape/domain"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import { VariablesForm } from "./variables-form"
 
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601")
+const secondVariableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 const copy = {
   caption: "Document variables",
   name: "Name",
@@ -19,6 +20,9 @@ const copy = {
   empty: "No variables yet.",
   add: "Add variable",
   remove: "Remove",
+  rename: "Rename",
+  confirmRename: "Rename variable",
+  cancelRename: "Cancel",
   nameInput: "Variable name",
   expressionInput: "Variable expression",
   valid: "Valid",
@@ -32,21 +36,37 @@ const copy = {
   removeInUse: "Variable in use.",
   invalidName: "Enter a valid variable name.",
   invalidExpression: "Enter a valid expression.",
+  renameNoChange: "Enter a different name.",
+  renameConflict: "Name already used.",
+  renameFailed: "Rename failed.",
 } as const
 
-function renderForm(onApply = vi.fn(async () => ({ ok: true as const }))) {
+type VariablesFormProps = Parameters<typeof VariablesForm>[0]
+type ApplyHandler = VariablesFormProps["onApply"]
+type RenameHandler = VariablesFormProps["onRename"]
+
+function renderForm({
+  onApply = vi.fn<ApplyHandler>(async () => ({ ok: true as const })),
+  onRename = vi.fn<RenameHandler>(async () => ({ ok: true as const })),
+  variables = [],
+}: {
+  onApply?: ApplyHandler
+  onRename?: RenameHandler
+  variables?: VariablesFormProps["variables"]
+} = {}) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <VariablesForm
         baseRevision={1}
         copy={copy}
-        variables={[]}
+        variables={variables}
         createVariableId={() => variableId}
         onApply={onApply}
+        onRename={onRename}
       />
     </I18nProvider>,
   )
-  return onApply
+  return { onApply, onRename }
 }
 
 afterEach(cleanup)
@@ -62,7 +82,7 @@ describe("VariablesForm", () => {
       await pending
       return { ok: true as const }
     })
-    renderForm(onApply)
+    renderForm({ onApply })
 
     await user.click(screen.getByRole("button", { name: copy.add }))
     const name = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
@@ -86,7 +106,7 @@ describe("VariablesForm", () => {
 
   it("keeps invalid draft text and shows an adjacent validation summary", async () => {
     const user = userEvent.setup()
-    const onApply = renderForm()
+    const { onApply } = renderForm()
 
     await user.click(screen.getByRole("button", { name: copy.add }))
     await user.click(screen.getByRole("button", { name: copy.apply }))
@@ -98,5 +118,87 @@ describe("VariablesForm", () => {
     const name = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
     expect(name.value).toBe("")
     expect(document.activeElement).toBe(name)
+  })
+
+  it("renames a committed variable once while locking ordinary table edits", async () => {
+    const user = userEvent.setup()
+    let resolveRename: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      resolveRename = resolve
+    })
+    const onRename = vi.fn(async () => {
+      await pending
+      return { ok: true as const }
+    })
+    renderForm({
+      onRename,
+      variables: [
+        {
+          schemaVersion: 0,
+          id: variableId,
+          name: "width",
+          expression: "20 mm",
+        },
+      ],
+    })
+
+    const name = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
+    expect(name.disabled).toBe(true)
+    await user.click(screen.getByRole("button", { name: copy.rename }))
+    expect(name.disabled).toBe(false)
+    expect(document.activeElement).toBe(name)
+    await user.clear(name)
+    await user.type(name, "temporary")
+    await user.click(screen.getByRole("button", { name: copy.cancelRename }))
+    expect(name.value).toBe("width")
+    expect(name.disabled).toBe(true)
+
+    await user.click(screen.getByRole("button", { name: copy.rename }))
+    await user.clear(name)
+    await user.type(name, "span")
+
+    const confirm = screen.getByRole("button", { name: copy.confirmRename })
+    await user.dblClick(confirm)
+
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenCalledWith(1, variableId, "span")
+    expect(confirm.getAttribute("aria-busy")).toBe("true")
+    expect((screen.getByRole("button", { name: copy.apply }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+
+    resolveRename?.()
+    await waitFor(() => expect(confirm.getAttribute("aria-busy")).toBeNull())
+  })
+
+  it("preserves a conflicting rename draft and reports the adjacent error", async () => {
+    const user = userEvent.setup()
+    const { onRename } = renderForm({
+      variables: [
+        {
+          schemaVersion: 0,
+          id: variableId,
+          name: "width",
+          expression: "20 mm",
+        },
+        {
+          schemaVersion: 0,
+          id: secondVariableId,
+          name: "depth",
+          expression: "10 mm",
+        },
+      ],
+    })
+
+    await user.click(screen.getAllByRole("button", { name: copy.rename })[0] as HTMLElement)
+    const name = screen.getAllByRole("textbox", { name: copy.nameInput })[0] as HTMLInputElement
+    await user.clear(name)
+    await user.type(name, "depth")
+    await user.click(screen.getByRole("button", { name: copy.confirmRename }))
+
+    expect(onRename).not.toHaveBeenCalled()
+    expect(name.value).toBe("depth")
+    expect(name.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getAllByText(copy.renameConflict).length).toBeGreaterThan(0)
   })
 })

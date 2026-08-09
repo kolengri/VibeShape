@@ -1,20 +1,23 @@
 import {
-  evaluateVariableDefinitions,
   type EvaluatedVariable,
+  evaluateVariableDefinitions,
   parameterVariableReferences,
   type VariableDefinition,
   type VariableId,
   variableDefinitionsSchema,
+  variableNameSchema,
   variableReferencesInExpression,
 } from "@vibeshape/domain"
 import { useFormatter } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { ApplyVariableTableResult } from "../../document/document-controller"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
 
 const MAX_VARIABLES = 4_096
+const EMPTY_VARIABLE_NAMES = new Set<string>()
 
 type VariablesFormCopy = VariablesTableCopy &
   Readonly<{
@@ -24,6 +27,10 @@ type VariablesFormCopy = VariablesTableCopy &
     invalid: string
     pending: string
     apply: string
+    remove: string
+    rename: string
+    confirmRename: string
+    cancelRename: string
     readOnly: string
     validationSummary: string
     staleRevision: string
@@ -31,6 +38,9 @@ type VariablesFormCopy = VariablesTableCopy &
     removeInUse: string
     invalidName: string
     invalidExpression: string
+    renameNoChange: string
+    renameConflict: string
+    renameFailed: string
   }>
 
 function issueMessages(
@@ -65,6 +75,86 @@ function submissionMessage(result: ApplyVariableTableResult, copy: VariablesForm
   }
   if (result.diagnostic.sourceCode === "variable-in-use") return copy.removeInUse
   return copy.applyFailed
+}
+
+function renameSubmissionMessage(result: ApplyVariableTableResult, copy: VariablesFormCopy) {
+  if (result.ok) return null
+  if (
+    result.diagnostic.sourceCode === "stale-revision" ||
+    result.diagnostic.code === "write-access-unavailable"
+  ) {
+    return copy.staleRevision
+  }
+  if (result.diagnostic.sourceCode === "variable-name-conflict") return copy.renameConflict
+  return copy.renameFailed
+}
+
+function VariableRowActions({
+  canRename,
+  copy,
+  disabled,
+  onCancelRename,
+  onConfirmRename,
+  onRemove,
+  onStartRename,
+  removeDisabled,
+  removeDisabledReason,
+  renaming,
+}: {
+  canRename: boolean
+  copy: VariablesFormCopy
+  disabled: boolean
+  onCancelRename: () => void
+  onConfirmRename: () => Promise<void>
+  onRemove: () => void
+  onStartRename: () => void
+  removeDisabled: boolean
+  removeDisabledReason?: string
+  renaming: boolean
+}) {
+  if (renaming) {
+    return (
+      <div className="flex justify-end gap-1">
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={disabled}
+          onClick={onCancelRename}
+        >
+          {copy.cancelRename}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="secondary"
+          disabled={disabled}
+          onClick={onConfirmRename}
+        >
+          {copy.confirmRename}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex justify-end gap-1">
+      {canRename ? (
+        <Button type="button" size="xs" variant="ghost" disabled={disabled} onClick={onStartRename}>
+          {copy.rename}
+        </Button>
+      ) : null}
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        disabled={disabled || removeDisabled}
+        title={removeDisabledReason}
+        onClick={onRemove}
+      >
+        {copy.remove}
+      </Button>
+    </div>
+  )
 }
 
 function draftReferencesRow(
@@ -130,13 +220,125 @@ function invalidAttribute(error: string | undefined) {
   return error ? (true as const) : undefined
 }
 
+function useVariableNameFocus(formElementRef: RefObject<HTMLFormElement | null>) {
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusedRowId) return
+    const input = formElementRef.current?.querySelector<HTMLInputElement>(
+      `[data-variable-name-id="${focusedRowId}"]`,
+    )
+    input?.focus()
+    input?.select()
+  }, [focusedRowId, formElementRef])
+  return { focusedRowId, setFocusedRowId }
+}
+
+type RenameValidation =
+  | { ok: true; name: string }
+  | { ok: false; fieldMessage?: string; message: string }
+
+function validateVariableRename(
+  variables: readonly VariableDefinition[],
+  variablesById: ReadonlyMap<VariableId, VariableDefinition>,
+  rowId: VariableId,
+  name: string,
+  copy: VariablesFormCopy,
+): RenameValidation {
+  const committed = variablesById.get(rowId)
+  if (!committed) return { ok: false, message: copy.renameFailed }
+  const parsed = variableNameSchema.safeParse(name)
+  if (!parsed.success) {
+    return { ok: false, fieldMessage: copy.invalidName, message: copy.validationSummary }
+  }
+  if (parsed.data === committed.name) {
+    return { ok: false, fieldMessage: copy.renameNoChange, message: copy.renameNoChange }
+  }
+  return variables.some((variable) => variable.id !== rowId && variable.name === parsed.data)
+    ? { ok: false, fieldMessage: copy.renameConflict, message: copy.renameConflict }
+    : { ok: true, name: parsed.data }
+}
+
+function useVariableRename({
+  baseRevision,
+  copy,
+  onRename,
+  setFocusedRowId,
+  setSubmitIssues,
+  setSubmitMessage,
+  variables,
+}: {
+  baseRevision: number
+  copy: VariablesFormCopy
+  onRename: (
+    baseRevision: number,
+    variableId: VariableId,
+    name: string,
+  ) => Promise<ApplyVariableTableResult>
+  setFocusedRowId: (rowId: string | null) => void
+  setSubmitIssues: (issues: ReadonlyMap<string, string>) => void
+  setSubmitMessage: (message: string | null) => void
+  variables: readonly VariableDefinition[]
+}) {
+  const variablesById = useMemo(
+    () => new Map(variables.map((variable) => [variable.id, variable])),
+    [variables],
+  )
+  const [rowId, setRowId] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const start = (nextRowId: VariableId) => {
+    setSubmitIssues(new Map())
+    setSubmitMessage(null)
+    setRowId(nextRowId)
+    setFocusedRowId(nextRowId)
+  }
+  const cancel = () => {
+    setSubmitIssues(new Map())
+    setSubmitMessage(null)
+    setRowId(null)
+    setFocusedRowId(null)
+  }
+  const confirm = async (variableId: VariableId, rowIndex: number, name: string) => {
+    const validated = validateVariableRename(variables, variablesById, variableId, name, copy)
+    if (!validated.ok) {
+      setSubmitIssues(
+        validated.fieldMessage
+          ? new Map([[`${rowIndex}.name`, validated.fieldMessage]])
+          : new Map(),
+      )
+      setSubmitMessage(validated.message)
+      setFocusedRowId(variableId)
+      return
+    }
+
+    setSubmitIssues(new Map())
+    setSubmitMessage(null)
+    setPending(true)
+    try {
+      const result = await onRename(baseRevision, variableId, validated.name)
+      setSubmitMessage(renameSubmissionMessage(result, copy))
+      if (result.ok) {
+        setRowId(null)
+        setFocusedRowId(null)
+      } else if (result.diagnostic.sourceCode === "variable-name-conflict") {
+        setSubmitIssues(new Map([[`${rowIndex}.name`, copy.renameConflict]]))
+      }
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return { cancel, confirm, pending, rowId, start, variablesById }
+}
+
 export function VariablesForm({
   baseRevision,
   copy,
   createVariableId,
   disabled = false,
   onApply,
-  protectedVariableNames = new Set<string>(),
+  onRename,
+  protectedVariableNames = EMPTY_VARIABLE_NAMES,
   variables,
 }: {
   baseRevision: number
@@ -147,12 +349,17 @@ export function VariablesForm({
     baseRevision: number,
     variables: readonly VariableDefinition[],
   ) => Promise<ApplyVariableTableResult>
+  onRename: (
+    baseRevision: number,
+    variableId: VariableId,
+    name: string,
+  ) => Promise<ApplyVariableTableResult>
   protectedVariableNames?: ReadonlySet<string>
   variables: readonly VariableDefinition[]
 }) {
   const formatter = useFormatter()
   const formElementRef = useRef<HTMLFormElement>(null)
-  const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
+  const { focusedRowId, setFocusedRowId } = useVariableNameFocus(formElementRef)
   const [submitIssues, setSubmitIssues] = useState<ReadonlyMap<string, string>>(new Map())
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
   const form = useAppForm({
@@ -191,6 +398,16 @@ export function VariablesForm({
     if (submitMessage) setSubmitMessage(null)
   }
 
+  const rename = useVariableRename({
+    baseRevision,
+    copy,
+    onRename,
+    setFocusedRowId,
+    setSubmitIssues,
+    setSubmitMessage,
+    variables,
+  })
+
   return (
     <Form ref={formElementRef} form={form} className="gap-3" aria-label={copy.caption}>
       {disabled ? (
@@ -226,9 +443,13 @@ export function VariablesForm({
                 <VariablesTable
                   addDisabled={rows.length >= MAX_VARIABLES}
                   copy={copy}
-                  disabled={disabled}
+                  disabled={disabled || rename.rowId !== null || rename.pending}
                   footerAction={
-                    <form.SubmitButton disabled={disabled}>{copy.apply}</form.SubmitButton>
+                    <form.SubmitButton
+                      disabled={disabled || rename.rowId !== null || rename.pending}
+                    >
+                      {copy.apply}
+                    </form.SubmitButton>
                   }
                   onAdd={() => {
                     const id = createVariableId()
@@ -248,6 +469,10 @@ export function VariablesForm({
                       !structural.success &&
                       structural.error.issues.some((issue) => issue.path[0] === index)
                     const errors = fieldErrorProps(submitIssues, index)
+                    const removal = removalProps(rows, index, protectedVariableNames, copy)
+                    const rowRenaming = rename.rowId === row.id
+                    const rowLocked = rename.rowId !== null && !rowRenaming
+                    const committed = rename.variablesById.get(row.id)
 
                     return {
                       id: row.id,
@@ -257,8 +482,14 @@ export function VariablesForm({
                             <Input
                               name={field.name}
                               value={field.state.value}
-                              disabled={disabled || row.persisted}
+                              disabled={
+                                disabled ||
+                                rename.pending ||
+                                rowLocked ||
+                                (row.persisted && !rowRenaming)
+                              }
                               autoFocus={focusedRowId === row.id}
+                              data-variable-name-id={row.id}
                               aria-label={copy.nameInput}
                               aria-describedby={`${row.id}-name-error`}
                               aria-invalid={invalidAttribute(errors.nameError)}
@@ -278,7 +509,7 @@ export function VariablesForm({
                             <Input
                               name={field.name}
                               value={field.state.value}
-                              disabled={disabled}
+                              disabled={disabled || rename.pending || rename.rowId !== null}
                               aria-label={copy.expressionInput}
                               aria-describedby={`${row.id}-expression-error`}
                               aria-invalid={invalidAttribute(errors.expressionError)}
@@ -297,11 +528,35 @@ export function VariablesForm({
                       ),
                       status: rowStatus(evaluation, hasStructuralIssue, copy),
                       ...errors,
-                      ...removalProps(rows, index, protectedVariableNames, copy),
-                      onRemove: () => {
-                        clearSubmissionErrors()
-                        arrayField.removeValue(index)
-                      },
+                      actions: (
+                        <VariableRowActions
+                          canRename={row.persisted}
+                          copy={copy}
+                          disabled={disabled || rename.pending || rowLocked}
+                          renaming={rowRenaming}
+                          removeDisabled={Boolean(removal.removeDisabled)}
+                          {...(removal.removeDisabledReason
+                            ? { removeDisabledReason: removal.removeDisabledReason }
+                            : {})}
+                          onStartRename={() => {
+                            rename.start(row.id)
+                          }}
+                          onCancelRename={() => {
+                            if (committed) {
+                              arrayField.replaceValue(index, {
+                                ...row,
+                                name: committed.name,
+                              })
+                            }
+                            rename.cancel()
+                          }}
+                          onConfirmRename={() => rename.confirm(row.id, index, row.name)}
+                          onRemove={() => {
+                            clearSubmissionErrors()
+                            arrayField.removeValue(index)
+                          }}
+                        />
+                      ),
                     }
                   })}
                 />

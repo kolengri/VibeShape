@@ -15,7 +15,6 @@ const copy: VariablesTableCopy = {
   actions: "Actions",
   empty: "No variables yet.",
   add: "Add variable",
-  remove: "Remove",
 }
 
 afterEach(cleanup)
@@ -49,7 +48,11 @@ describe("VariablesTable", () => {
             ),
             result: "2 mm",
             status: "Valid",
-            onRemove,
+            actions: (
+              <button type="button" onClick={onRemove}>
+                Remove
+              </button>
+            ),
           },
         ]}
       />,
@@ -62,7 +65,7 @@ describe("VariablesTable", () => {
     expect(name.value).toBe("thickness")
 
     await user.click(screen.getByRole("button", { name: copy.add }))
-    await user.click(screen.getByRole("button", { name: copy.remove }))
+    await user.click(screen.getByRole("button", { name: "Remove" }))
     expect(onAdd).toHaveBeenCalledOnce()
     expect(onRemove).toHaveBeenCalledOnce()
   })

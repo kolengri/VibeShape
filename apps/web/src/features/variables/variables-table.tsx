@@ -10,9 +10,7 @@ export type VariablesTableRow = Readonly<{
   status: ReactNode
   nameError?: ReactNode
   expressionError?: ReactNode
-  removeDisabled?: boolean
-  removeDisabledReason?: string
-  onRemove: () => void
+  actions: ReactNode
 }>
 
 export type VariablesTableCopy = Readonly<{
@@ -24,7 +22,6 @@ export type VariablesTableCopy = Readonly<{
   actions: string
   empty: string
   add: string
-  remove: string
 }>
 
 export function VariablesTable({
@@ -61,7 +58,7 @@ export function VariablesTable({
               <th className="w-24 px-2 py-2 font-medium" scope="col">
                 {copy.status}
               </th>
-              <th className="w-20 px-2 py-2 text-right font-medium" scope="col">
+              <th className="w-40 px-2 py-2 text-right font-medium" scope="col">
                 {copy.actions}
               </th>
             </tr>
@@ -93,18 +90,7 @@ export function VariablesTable({
                   </td>
                   <td className="px-2 py-3 text-right font-mono tabular-nums">{row.result}</td>
                   <td className="px-2 py-3">{row.status}</td>
-                  <td className="px-2 py-2 text-right">
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      disabled={disabled || row.removeDisabled}
-                      title={row.removeDisabledReason}
-                      onClick={row.onRemove}
-                    >
-                      {copy.remove}
-                    </Button>
-                  </td>
+                  <td className="px-2 py-2 text-right">{row.actions}</td>
                 </tr>
               ))
             )}
