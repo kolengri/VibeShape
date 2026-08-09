@@ -1,0 +1,23 @@
+{
+  "name": "@vibeshape/application",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Port-driven VibeShape use-case coordination across the pure domain and runtime adapters.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./feature-rebuild": "./src/feature-rebuild.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vibeshape/domain": "workspace:*",
+    "@vibeshape/protocol": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

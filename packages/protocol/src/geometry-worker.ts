@@ -642,6 +642,15 @@ const featureEvaluatedResponseSchema = responseEnvelopeSchema.extend({
     .strict(),
 })
 
+export const featureEvaluationEngineResultSchema = featureEvaluatedResponseSchema.pick({
+  engine: true,
+  shape: true,
+  topologyCandidates: true,
+  mesh: true,
+  cache: true,
+  timings: true,
+})
+
 const healthResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("health"),
   initialized: z.boolean(),
@@ -752,7 +761,4 @@ export type TopologySpikeEngineResult = Pick<
   "engine" | "shape" | "topologyCandidates"
 >
 export type FeatureEvaluatedResponse = Extract<GeometryWorkerResponse, { type: "featureEvaluated" }>
-export type FeatureEvaluationEngineResult = Pick<
-  FeatureEvaluatedResponse,
-  "engine" | "shape" | "topologyCandidates" | "mesh" | "cache" | "timings"
->
+export type FeatureEvaluationEngineResult = z.infer<typeof featureEvaluationEngineResultSchema>
