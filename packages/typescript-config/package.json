@@ -5,6 +5,7 @@
   "license": "GPL-3.0-or-later",
   "files": [
     "base.json",
+    "bun.json",
     "browser.json",
     "library.json",
     "react-library.json",
@@ -12,6 +13,7 @@
   ],
   "exports": {
     "./base.json": "./base.json",
+    "./bun.json": "./bun.json",
     "./browser.json": "./browser.json",
     "./library.json": "./library.json",
     "./react-library.json": "./react-library.json",

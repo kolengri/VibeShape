@@ -30,6 +30,7 @@ The documents use these terms:
 - Parametric history is a directed acyclic dependency graph with a linear presentation in the UI.
 - The document length unit is millimeters; calculations use `float64`.
 - 3MF is the preferred print export.
+- Installed-slicer handoff uses an explicitly paired, authenticated `127.0.0.1` bridge with an honest 3MF download fallback.
 - The monorepo is managed with Bun workspaces; Vite remains the browser bundler.
 - UI primitives live in `@vibeshape/ui` and use Tailwind CSS v4 with shadcn/ui/Radix.
 - Form controls are uncontrolled-first primitives with separate TanStack Form adapters.

@@ -108,7 +108,7 @@ The foundation adopts these proven monorepo patterns:
 
 - one root Biome configuration with Git integration, recommended rules, import organization, and Tailwind v4 directive parsing;
 - root scripts for `format`, `format:check`, and `lint`, with path-scoped Biome checks during iteration;
-- a private `@vibeshape/typescript-config` workspace with separate `base`, `browser`, `worker`, and `react-library` configurations;
+- a private `@vibeshape/typescript-config` workspace with separate `base`, `browser`, `worker`, `bun`, and `react-library` configurations;
 - `strict`, `noUncheckedIndexedAccess`, `isolatedModules`, bundler resolution, and forced casing consistency in the base TypeScript contract;
 - browser configs that include DOM types without Node or Bun globals;
 - worker configs that include Web Worker types without exposing DOM window APIs;

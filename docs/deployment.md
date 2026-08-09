@@ -23,6 +23,7 @@ A Tauri or Electron wrapper is unnecessary for v1. A later wrapper MAY package t
 - Revalidation or no-cache for entry HTML and service-worker control files.
 - SPA fallback only for UI routes, never for assets and file formats.
 - Content Security Policy and security headers.
+- Deployments that expose the optional desktop slicer handoff add only `http://127.0.0.1:43113` to `connect-src`; deployments without that integration omit it.
 - Byte ranges only when a measured large-asset strategy needs them.
 - Brotli or gzip for JS/WASM without recompressing ZIP/3MF.
 - No runtime CDN dependencies.
