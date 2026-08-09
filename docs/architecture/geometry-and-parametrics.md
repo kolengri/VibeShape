@@ -97,7 +97,7 @@ After every valid solve, the implemented pure topology builder:
 5. Computes analytical area and perimeter, then determines outer, hole, and island nesting.
 6. Returns strict protocol-v5 derived data or bounded diagnostics for invalid values, budget overflow, degenerate entities, duplicates, intersections, and open chains.
 
-One extraction accepts at most 2,000 non-construction curves and 2,000 diagnostics. Output loop and profile indices are transient response ordering, never persistent model identity. The first real-browser fixture solves a `#width` by `#height` rectangle and returns one `360 mm²`, `84 mm` profile through the production document worker. Interior-intersection splitting, a stable boundary-based profile selector, preview fills, and OCCT wire/face construction remain the next increments. See [ADR-0018](../adr/0018-deterministic-sketch-profile-extraction.md).
+One extraction accepts at most 2,000 non-construction curves and 2,000 diagnostics. Output loop and profile indices are transient response ordering, never persistent model identity. Domain selector schema v0 stores the stable owning sketch plus canonical outer and hole boundary entity-ID sets. Its pure resolver survives transient index reordering and fails closed with `missing` or `ambiguous` when the selected boundary no longer resolves uniquely. The first real-browser fixture solves a `#width` by `#height` rectangle and returns one `360 mm²`, `84 mm` profile through the production document worker. Interior-intersection splitting, selector integration into sketch-driven features, preview fills, and OCCT wire/face construction remain the next increments. See [ADR-0018](../adr/0018-deterministic-sketch-profile-extraction.md).
 
 ## Topological naming problem
 
