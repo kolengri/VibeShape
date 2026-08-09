@@ -538,6 +538,114 @@ describe("feature rebuild coordination", () => {
     ])
   })
 
+  it("rebuilds expression-bound geometry only when a document variable changes its value", async () => {
+    const hash = contentHasher()
+    const authoredBox: FeatureRecord = {
+      ...box(featureIds.box),
+      parameters: {
+        ...box(featureIds.box).parameters,
+        width: createLengthQuantity(20, "mm", "#width"),
+      },
+    }
+    const variable = {
+      schemaVersion: 0 as const,
+      id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+      name: "width",
+      expression: "20 mm",
+    }
+    const initialRequests: FeatureGeometryEvaluationRequest[] = []
+    const initial = await rebuildDocumentFeatures({
+      document: { ...documentSnapshot([authoredBox]), variables: [variable] },
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(initialRequests),
+    })
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+    expect(initialRequests[0]?.content.feature.parameters).toMatchObject({ width: 20 })
+
+    const changedRequests: FeatureGeometryEvaluationRequest[] = []
+    const changed = await rebuildDocumentFeatures({
+      document: {
+        ...documentSnapshot([authoredBox], 2),
+        variables: [{ ...variable, expression: "24 mm" }],
+      },
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(changedRequests),
+      previous: initial,
+    })
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    expect(changedRequests).toHaveLength(1)
+    expect(changedRequests[0]?.content.feature.parameters).toMatchObject({ width: 24 })
+
+    const equivalentRequests: FeatureGeometryEvaluationRequest[] = []
+    const equivalent = await rebuildDocumentFeatures({
+      document: {
+        ...documentSnapshot([authoredBox], 3),
+        variables: [{ ...variable, expression: "12 * 2 mm" }],
+      },
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(equivalentRequests),
+      previous: changed,
+    })
+    expect(equivalent.ok).toBe(true)
+    if (equivalent.ok) {
+      expect(equivalentRequests).toHaveLength(0)
+      expect(equivalent.evaluation.reusedFeatureIds).toEqual([featureIds.box])
+    }
+  })
+
+  it("contains a feature parameter expression failure without invoking geometry", async () => {
+    const authoredBox: FeatureRecord = {
+      ...box(featureIds.box),
+      parameters: {
+        ...box(featureIds.box).parameters,
+        width: createLengthQuantity(20, "mm", "#missing"),
+      },
+    }
+    const evaluateGeometry = vi.fn<FeatureGeometryEvaluationPort>()
+    const result = await rebuildDocumentFeatures({
+      document: documentSnapshot([authoredBox]),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      evaluation: {
+        records: [
+          {
+            status: "failed",
+            diagnostics: [
+              {
+                code: "org.vibeshape.feature.parameter-expression-failed",
+                values: { reason: "unknown-variable", path: "parameters.width" },
+              },
+            ],
+          },
+        ],
+      },
+      geometry: [],
+    })
+    expect(evaluateGeometry).not.toHaveBeenCalled()
+  })
+
   it("rejects invalid documents and invalid committed feature graphs before evaluation", async () => {
     const evaluateGeometry = vi.fn<FeatureGeometryEvaluationPort>()
     const common = {

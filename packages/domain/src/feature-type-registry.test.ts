@@ -18,6 +18,7 @@ import {
   partDesignFeatureTypeHandlers,
 } from "./part-design"
 import { createLengthQuantity } from "./units"
+import { evaluateVariableDefinitions } from "./variables"
 
 const featureIds = {
   box: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101"),
@@ -100,6 +101,67 @@ describe("feature type registry", () => {
         cylinderFeatureType.type.typeId,
       ])
     }
+  })
+
+  it("resolves registered quantity expressions without rewriting their authored source", () => {
+    const result = registry()
+    const variables = evaluateVariableDefinitions([
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+        name: "width",
+        expression: "24 mm",
+      },
+    ])
+    expect(result.ok).toBe(true)
+    expect(variables.ok).toBe(true)
+    if (!result.ok || !variables.ok) return
+
+    const authored = feature({
+      ...boxParameters(),
+      width: createLengthQuantity(20, "mm", "#width"),
+      depth: createLengthQuantity(10, "mm", "#width / 2"),
+    })
+    const resolved = result.registry.resolveFeatureParameters(authored, variables.valuesByName)
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      feature: {
+        parameters: {
+          width: { value: 24, source: { value: 24, expression: "#width" } },
+          depth: { value: 12, source: { value: 12, expression: "#width / 2" } },
+        },
+      },
+    })
+    expect(authored.parameters).toMatchObject({ width: { value: 20 }, depth: { value: 10 } })
+  })
+
+  it("returns bounded diagnostics for missing or dimensionally invalid parameter variables", () => {
+    const result = registry()
+    const variables = evaluateVariableDefinitions([])
+    if (!result.ok || !variables.ok) throw new Error("Expected a valid registry fixture.")
+
+    expect(
+      result.registry.resolveFeatureParameters(
+        feature({ ...boxParameters(), width: createLengthQuantity(20, "mm", "#missing") }),
+        variables.valuesByName,
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-expression",
+        issues: [{ path: "parameters.width", message: expect.stringContaining("#missing") }],
+      },
+    })
+    expect(
+      result.registry.resolveFeatureParameters(
+        feature({ ...boxParameters(), width: createLengthQuantity(20, "mm", "2") }),
+        variables.valuesByName,
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { issues: [{ path: "parameters.width" }] },
+    })
   })
 
   it("rejects invalid parameter values and primitive dependency cardinality", () => {

@@ -4,7 +4,7 @@
 
 VibeShape should expose AI automation through a **local MCP adapter over the ordinary document command and query contracts**. MCP is an integration boundary, not a second CAD engine, extension runtime, persistence layer, or privileged scripting API.
 
-This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral foundation now proves command and query descriptors, actor provenance, deterministic event replay, one strict bounded document-summary view, and an owner-bound multi-command draft lifecycle. The query dispatcher fails closed on handler drift and stale requested revisions. The host generates draft IDs, validates authenticated actor context separately from payloads, serializes operations, enforces inactivity and count limits, returns bounded previews through the query dispatcher, and delegates revision-safe persistence to an atomic compare-and-commit port. Geometry validation, durable persistence integration, confirmation UI, automation-session pairing and expiry, undo/redo integration, cancellation, and transport remain required before an MCP server is scaffolded.
+This document describes the target proposed by [ADR-0013](../adr/0013-microkernel-modules-and-mcp-automation.md). It is not yet an implemented server contract. The adapter-neutral foundation now proves command and query descriptors, actor provenance, deterministic event replay, a strict bounded document-summary view, a cursor-paginated evaluated-variable view, and an owner-bound multi-command draft lifecycle. The query dispatcher fails closed on handler drift and stale requested revisions. The host generates draft IDs, validates authenticated actor context separately from payloads, serializes operations, enforces inactivity and count limits, returns bounded previews through the query dispatcher, and delegates revision-safe persistence to an atomic compare-and-commit port. Geometry validation, durable persistence integration, confirmation UI, automation-session pairing and expiry, undo/redo integration, cancellation, and transport remain required before an MCP server is scaffolded.
 
 ## Goals and non-goals
 
@@ -32,7 +32,7 @@ The first integration does not provide:
 
 UI controls, first-party modules, third-party extensions, tests, and MCP all request the same domain commands. Adapters may shape presentation and transport, but they cannot bypass eligibility, normalization, revision, geometry, or persistence rules.
 
-The current trusted dispatchers and automation host implement the first executable portions of this path. Serializable module, command, query, feature-type, and lifecycle contracts remain separate from function-valued first-party handlers and injected storage ports. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, owner or schema-version metadata drifts, or feature handlers use a different feature-type descriptor set. Dispatch validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation to the owning handler. Registry-bound feature add/update handlers run pure document preflight, reject unavailable or invalid types, normalize parameters, and only then create the final event. The host wraps that path with owner, document, revision, duplicate-command-ID, expiry, and resource-limit checks. The command path reduces an isolated draft; the query path returns only its versioned bounded view; commit crosses one atomic port. A unit-aware box fixture traverses this exact path. Geometry eligibility, durable persistence, confirmation, and third-party runtime proxies remain open.
+The current trusted dispatchers and automation host implement the first executable portions of this path. Serializable module, command, query, feature-type, and lifecycle contracts remain separate from function-valued first-party handlers and injected storage ports. Composition fails closed when a descriptor is missing a handler, a handler lacks a descriptor, registration is duplicated, owner or schema-version metadata drifts, or feature handlers use a different feature-type descriptor set. Dispatch validates the route, resolves the registered descriptor, verifies the requested schema version, and delegates strict payload validation to the owning handler. Variable mutations use the document module's ordinary draft-exposed commands. Registry-bound feature add/update handlers run pure document preflight, resolve authored expressions against the committed variable table, reject unavailable or invalid types, normalize parameters, and only then create the final event. The host wraps that path with owner, document, revision, duplicate-command-ID, expiry, and resource-limit checks. The command path reduces an isolated draft; the query path returns only its versioned bounded view; commit crosses one atomic port. A unit-aware box fixture traverses this exact path. Geometry eligibility, durable persistence, confirmation, and third-party runtime proxies remain open.
 
 ```mermaid
 flowchart LR
@@ -98,7 +98,7 @@ Candidate first-party module families are:
 
 These are logical identities, not a commitment to one Bun workspace per module. Package extraction follows demonstrated dependency, execution, ownership, or publication needs.
 
-The current registry starts with `org.vibeshape.core.document`. Its `org.vibeshape.document.create` and `org.vibeshape.document.rename` commands are the conformance fixture for one-command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. This minimal descriptor is expected to grow only when a real consumer proves each additional field.
+The current registry starts with `org.vibeshape.core.document`. Its document create/rename and variable add/expression-update/remove commands are the conformance fixtures for command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. The same module owns exact-revision document-summary and cursor-paginated variable-list queries.
 
 ## MCP primitives
 
@@ -111,6 +111,7 @@ Resources are read-only, bounded, serializable views. Candidate URI templates in
 ```text
 vibeshape://session
 vibeshape://documents/{documentId}/summary
+vibeshape://documents/{documentId}/variables
 vibeshape://documents/{documentId}/feature-tree
 vibeshape://documents/{documentId}/selection
 vibeshape://documents/{documentId}/diagnostics
@@ -120,7 +121,7 @@ vibeshape://documents/{documentId}/drafts/{draftId}/preview
 
 Every document resource includes `documentId`, `revision`, schema version, truncation or pagination state, and whether values are semantic state or derived evidence. Large meshes, B-Rep payloads, arbitrary extension HTML, secrets, file handles, and hidden application state are not resources.
 
-The first implemented view is `org.vibeshape.document.summary` schema version 1 in `@vibeshape/automation-api`. It requires an exact document revision and returns semantic name and timestamp fields with `truncated: false`. It exposes no event log, actor data, mutable object graph, storage identity, file path, or geometry payload. URI mapping remains a future adapter responsibility.
+`@vibeshape/automation-api` implements two semantic views. `org.vibeshape.document.summary` schema version 1 requires an exact document revision and returns name and timestamp fields with `truncated: false`. `org.vibeshape.variable.list` schema version 1 requires the same revision, accepts a bounded cursor and limit, and returns authored definitions, canonical evaluated dimension/value/unit triples, dependency names, and a next cursor. Neither view exposes an event log, actor data, mutable object graph, storage identity, file path, or geometry payload. URI mapping remains a future adapter responsibility.
 
 Resource subscriptions may announce that a view changed, but a client must reread and validate the new revision. Notifications are never a delta mutation protocol.
 

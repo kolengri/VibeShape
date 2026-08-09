@@ -129,6 +129,45 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
         openWorld: false,
       },
     },
+    {
+      kind: "org.vibeshape.variable.add",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
+      kind: "org.vibeshape.variable.set-expression",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
+      kind: "org.vibeshape.variable.remove",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "destructive",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: true,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
   ],
   queries: [
     {
@@ -139,6 +178,16 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       automation: {
         exposure: "resource",
         pagination: "none",
+      },
+    },
+    {
+      kind: "org.vibeshape.variable.list",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "semantic",
+      automation: {
+        exposure: "resource",
+        pagination: "cursor",
       },
     },
   ],

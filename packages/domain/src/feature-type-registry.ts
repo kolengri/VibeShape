@@ -12,12 +12,40 @@ import {
   featureTypeSchema,
 } from "./feature-graph"
 import type { ModuleRegistry } from "./modules"
+import type { EvaluatedVariable, ExpressionValue } from "./variables"
+
+export type FeatureParameterResolution =
+  | { ok: true; parameters: unknown }
+  | {
+      ok: false
+      diagnostic: Readonly<{
+        code: string
+        message: string
+        issues: readonly { path: string; message: string }[]
+      }>
+    }
 
 export type TrustedFeatureTypeHandler = Readonly<{
   type: FeatureTypeIdentity
   parametersSchema: z.ZodType
   contentParameters: (parameters: FeatureParameters) => unknown
+  resolveParameters?: (
+    parameters: FeatureParameters,
+    variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
+  ) => FeatureParameterResolution
 }>
+
+export type FeatureParameterResolutionResult =
+  | { ok: true; feature: FeatureRecord }
+  | {
+      ok: false
+      diagnostic: Readonly<{
+        code: "invalid-feature-expression"
+        reason: string
+        message: string
+        issues: readonly { path: string; message: string }[]
+      }>
+    }
 
 export type FeatureTypeRegistryDiagnostic = Readonly<{
   code:
@@ -53,6 +81,10 @@ export type FeatureTypeRegistry = Readonly<{
   descriptors: readonly FeatureTypeDescriptor[]
   getDescriptor: (type: FeatureTypeIdentity) => FeatureTypeDescriptor | undefined
   validateFeature: (input: unknown) => FeatureValidationResult
+  resolveFeatureParameters: (
+    input: unknown,
+    variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
+  ) => FeatureParameterResolutionResult
 }>
 
 export type FeatureTypeRegistryResult =
@@ -250,6 +282,68 @@ function validateRegisteredFeature(
     : contentParameters
 }
 
+function resolveFeatureParameters(
+  handlersByKey: ReadonlyMap<string, TrustedFeatureTypeHandler>,
+  input: unknown,
+  variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
+): FeatureParameterResolutionResult {
+  const feature = featureRecordSchema.safeParse(input)
+  if (!feature.success) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-expression",
+        reason: "invalid-feature-record",
+        message: "The feature record cannot be resolved.",
+        issues: zodIssues(feature.error),
+      },
+    }
+  }
+  const handler = handlersByKey.get(featureTypeKey(feature.data.type))
+  if (!handler?.resolveParameters) return { ok: true, feature: feature.data }
+
+  let resolved: FeatureParameterResolution
+  try {
+    resolved = handler.resolveParameters(feature.data.parameters, variables)
+  } catch {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-expression",
+        reason: "resolver-failed",
+        message: "The trusted feature expression resolver failed.",
+        issues: [],
+      },
+    }
+  }
+  if (!resolved.ok) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-expression",
+        reason: resolved.diagnostic.code,
+        message: resolved.diagnostic.message,
+        issues: resolved.diagnostic.issues.slice(0, 8).map((issue) => ({
+          path: ["parameters", issue.path].filter(Boolean).join("."),
+          message: issue.message,
+        })),
+      },
+    }
+  }
+  const parameters = featureParametersSchema.safeParse(resolved.parameters)
+  return parameters.success
+    ? { ok: true, feature: { ...feature.data, parameters: parameters.data } }
+    : {
+        ok: false,
+        diagnostic: {
+          code: "invalid-feature-expression",
+          reason: "invalid-resolved-parameters",
+          message: "The feature expression resolver returned invalid parameters.",
+          issues: zodIssues(parameters.error, "parameters"),
+        },
+      }
+}
+
 export function createFeatureTypeRegistry(
   moduleRegistry: ModuleRegistry,
   handlers: readonly TrustedFeatureTypeHandler[],
@@ -264,6 +358,8 @@ export function createFeatureTypeRegistry(
           getDescriptor: (type) => moduleRegistry.getFeatureType(type),
           validateFeature: (input) =>
             validateRegisteredFeature(moduleRegistry, indexed.handlersByKey, input),
+          resolveFeatureParameters: (input, variables) =>
+            resolveFeatureParameters(indexed.handlersByKey, input, variables),
         },
       }
     : indexed

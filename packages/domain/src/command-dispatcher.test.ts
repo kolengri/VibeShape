@@ -173,6 +173,81 @@ describe("trusted command dispatcher", () => {
     })
   })
 
+  it("resolves feature expressions from committed document variables before storing the event", () => {
+    const dispatcher = featureCommandDispatcher()
+    const created = dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Enclosure",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const variable = dispatcher.dispatch(created.snapshot, {
+      kind: "org.vibeshape.variable.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b260-7a2c-8c33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: {
+        variable: {
+          schemaVersion: 0,
+          id: "0195b5ac-b261-7a2c-8c33-67a36a7f21ac",
+          name: "width",
+          expression: "24 mm",
+        },
+      },
+    })
+    if (!variable.ok) throw new Error(variable.diagnostic.message)
+
+    const added = dispatcher.dispatch(variable.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b262-7a2c-8c33-67a36a7f21ac",
+      documentId,
+      baseRevision: 2,
+      issuedAt: "2026-08-08T12:02:00Z",
+      actor: userActor,
+      payload: {
+        feature: boxFeature({ width: createLengthQuantity(1, "cm", "#width") }),
+      },
+    })
+
+    expect(added).toMatchObject({
+      ok: true,
+      snapshot: {
+        features: [
+          {
+            parameters: {
+              width: {
+                value: 24,
+                source: { value: 2.4, unit: "cm", expression: "#width" },
+              },
+            },
+          },
+        ],
+      },
+    })
+    expect(
+      dispatcher.dispatch(variable.snapshot, {
+        kind: "org.vibeshape.feature.add",
+        schemaVersion: 1,
+        commandId: "0195b5ac-b263-7a2c-8c33-67a36a7f21ac",
+        documentId,
+        baseRevision: 2,
+        issuedAt: "2026-08-08T12:02:00Z",
+        actor: userActor,
+        payload: {
+          feature: boxFeature({ width: createLengthQuantity(1, "cm", "#missing") }),
+        },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-feature-expression" } })
+  })
+
   it("rejects unavailable and invalid feature types before creating an event", () => {
     const dispatcher = featureCommandDispatcher()
     const created = dispatcher.dispatch(

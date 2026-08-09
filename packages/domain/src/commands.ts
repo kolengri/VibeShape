@@ -16,7 +16,13 @@ import {
   sessionIdSchema,
   technicalIdentifierSchema,
   timestampSchema,
+  variableIdSchema,
 } from "./identifiers"
+import {
+  createVariableDocumentEvent,
+  reduceVariableDocumentEvent,
+} from "./variable-document-commands"
+import { variableDefinitionSchema, variableExpressionSchema } from "./variables"
 
 const sha256Pattern = /^[0-9a-f]{64}$/
 
@@ -79,6 +85,26 @@ const renameDocumentCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ name: documentNameInputSchema }).strict(),
 })
 
+const addVariableCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.variable.add"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ variable: variableDefinitionSchema }).strict(),
+})
+
+const setVariableExpressionCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.variable.set-expression"),
+  schemaVersion: z.literal(1),
+  payload: z
+    .object({ variableId: variableIdSchema, expression: variableExpressionSchema })
+    .strict(),
+})
+
+const removeVariableCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.variable.remove"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ variableId: variableIdSchema }).strict(),
+})
+
 const addFeatureCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.feature.add"),
   schemaVersion: z.literal(1),
@@ -100,6 +126,9 @@ const setFeatureSuppressedCommandSchema = commandEnvelopeSchema.extend({
 export const documentCommandSchema = z.discriminatedUnion("kind", [
   createDocumentCommandSchema,
   renameDocumentCommandSchema,
+  addVariableCommandSchema,
+  setVariableExpressionCommandSchema,
+  removeVariableCommandSchema,
   addFeatureCommandSchema,
   updateFeatureCommandSchema,
   setFeatureSuppressedCommandSchema,
@@ -129,6 +158,23 @@ const documentRenamedEventSchema = eventEnvelopeSchema.extend({
   name: documentNameSchema,
 })
 
+const variableAddedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.variable.added"),
+  variable: variableDefinitionSchema,
+})
+
+const variableExpressionChangedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.variable.expression-changed"),
+  variableId: variableIdSchema,
+  previousExpression: variableExpressionSchema,
+  expression: variableExpressionSchema,
+})
+
+const variableRemovedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.variable.removed"),
+  variable: variableDefinitionSchema,
+})
+
 const featureAddedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.added"),
   feature: featureRecordSchema,
@@ -150,6 +196,9 @@ const featureSuppressionChangedEventSchema = eventEnvelopeSchema.extend({
 export const documentEventSchema = z.discriminatedUnion("type", [
   documentCreatedEventSchema,
   documentRenamedEventSchema,
+  variableAddedEventSchema,
+  variableExpressionChangedEventSchema,
+  variableRemovedEventSchema,
   featureAddedEventSchema,
   featureUpdatedEventSchema,
   featureSuppressionChangedEventSchema,
@@ -249,6 +298,7 @@ function reduceCreatedEvent(
       id: event.documentId,
       revision: event.revision,
       name: event.name,
+      variables: [],
       features: [],
       createdAt: event.issuedAt,
       updatedAt: event.issuedAt,
@@ -299,6 +349,12 @@ function reduceParsedEvent(
       return reduceCreatedEvent(snapshot, event)
     case "org.vibeshape.document.renamed":
       return reduceRenamedEvent(snapshot, event)
+    case "org.vibeshape.variable.added":
+      return reduceVariableDocumentEvent(snapshot, event)
+    case "org.vibeshape.variable.expression-changed":
+      return reduceVariableDocumentEvent(snapshot, event)
+    case "org.vibeshape.variable.removed":
+      return reduceVariableDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.added":
       return reduceFeatureDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.updated":
@@ -377,6 +433,12 @@ function createEvent(
       return createDocumentCreatedEvent(snapshot, command, transactionId)
     case "org.vibeshape.document.rename":
       return createDocumentRenamedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.variable.add":
+      return createVariableDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.variable.set-expression":
+      return createVariableDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.variable.remove":
+      return createVariableDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.add":
       return createFeatureDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.update":

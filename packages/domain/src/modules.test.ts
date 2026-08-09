@@ -63,6 +63,11 @@ describe("module registry", () => {
         classification: "semantic",
         automation: { exposure: "resource", pagination: "none" },
       })
+      expect(result.registry.getQuery("org.vibeshape.variable.list")).toMatchObject({
+        ownerModuleId: "org.vibeshape.core.document",
+        classification: "semantic",
+        automation: { exposure: "resource", pagination: "cursor" },
+      })
       expect(result.registry.getQuery("org.vibeshape.unknown")).toBeUndefined()
     }
   })

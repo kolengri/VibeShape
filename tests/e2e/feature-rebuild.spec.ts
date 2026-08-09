@@ -20,6 +20,7 @@ interface FeatureRebuildHarnessState {
   reused: RebuildSummary | null
   recovered: RebuildSummary | null
   changed: RebuildSummary | null
+  equivalent: RebuildSummary | null
   generation: number
   requestFeatureIds: FeatureId[]
   progress: string[]
@@ -62,6 +63,7 @@ test("coordinates dependency-aware rebuild, recovery, and clean-result reuse", a
   const reused = requireSummary(state.reused)
   const recovered = requireSummary(state.recovered)
   const changed = requireSummary(state.changed)
+  const equivalent = requireSummary(state.equivalent)
 
   expect(initial.evaluatedFeatureIds).toEqual([
     featureIds.cylinder,
@@ -105,6 +107,14 @@ test("coordinates dependency-aware rebuild, recovery, and clean-result reuse", a
     20 * 30 * 25.4 - Math.PI * 5 ** 2 * 10,
     5,
   )
+
+  expect(equivalent.evaluatedFeatureIds).toEqual([])
+  expect(equivalent.reusedFeatureIds).toEqual([
+    featureIds.cylinder,
+    featureIds.box,
+    featureIds.boolean,
+  ])
+  expect(equivalent.geometry).toEqual(changed.geometry)
 
   expect(state.requestFeatureIds).toEqual([
     featureIds.cylinder,

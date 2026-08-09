@@ -156,6 +156,52 @@ describe("persistence contracts", () => {
     ).toBe(true)
   })
 
+  it("accepts a replayable variable revision through the ordinary commit envelope", () => {
+    const created = applyDocumentCommand(null, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId,
+      documentId,
+      baseRevision: 0,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+      payload: { name: "Configurable bracket" },
+    })
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.variable.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21bf",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T00:01:00Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        variable: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f21cf",
+          name: "wall",
+          expression: "2.4 mm",
+        },
+      },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+
+    expect(
+      persistenceCommitInputSchema.safeParse({
+        sessionId,
+        lease: { epoch: 1, nowMs: 0 },
+        storedAt: added.snapshot.updatedAt,
+        baseSnapshot: created.snapshot,
+        event: added.event,
+        snapshot: added.snapshot,
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { snapshot: { variables: [{ name: "wall", expression: "2.4 mm" }] } },
+    })
+  })
+
   it("defers updates for dirty documents and keeps file picking progressive", () => {
     expect(decideUpdateActivation(1)).toBe("defer")
     expect(decideUpdateActivation(0)).toBe("activate")

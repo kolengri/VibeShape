@@ -98,6 +98,24 @@ describe("document worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts bounded authored variables and rejects invalid table identifiers", () => {
+    const variable = {
+      schemaVersion: 0,
+      id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+      name: "wall_thickness",
+      expression: "2.4 mm",
+    }
+    expect(
+      documentRebuildSnapshotSchema.parse({ ...document(), variables: [variable] }),
+    ).toMatchObject({ variables: [variable] })
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        variables: [{ ...variable, name: "wall thickness" }],
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts progress and terminal failure responses", () => {
     expect(
       documentWorkerResponseSchema.parse({

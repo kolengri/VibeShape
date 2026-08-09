@@ -19,6 +19,14 @@ function document(revision: number) {
     id: documentId,
     revision,
     name: "Session recovery test",
+    variables: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+        name: "width",
+        expression: "24 mm",
+      },
+    ],
     features: [],
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
@@ -118,7 +126,7 @@ describe("DocumentWorkerSession", () => {
     })
     expect(clients[1]?.requests[0]).toMatchObject({
       type: "rebuildDocument",
-      document: { revision: 3 },
+      document: { revision: 3, variables: [{ name: "width", expression: "24 mm" }] },
       generation: 8,
     })
     expect(recovered).toMatchObject({ type: "documentRebuilt", generation: 8 })

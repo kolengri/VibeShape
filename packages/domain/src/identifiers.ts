@@ -14,6 +14,7 @@ export const documentIdSchema = createUuidV7Schema("DocumentId")
 export const draftIdSchema = createUuidV7Schema("DraftId")
 export const featureIdSchema = createUuidV7Schema("FeatureId")
 export const sessionIdSchema = createUuidV7Schema("SessionId")
+export const variableIdSchema = createUuidV7Schema("VariableId")
 
 export const technicalIdentifierSchema = z
   .string()
@@ -35,3 +36,4 @@ export type DraftId = z.infer<typeof draftIdSchema>
 export type FeatureId = z.infer<typeof featureIdSchema>
 export type ModuleId = z.infer<typeof moduleIdSchema>
 export type SessionId = z.infer<typeof sessionIdSchema>
+export type VariableId = z.infer<typeof variableIdSchema>

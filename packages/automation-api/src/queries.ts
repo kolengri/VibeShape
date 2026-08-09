@@ -10,6 +10,7 @@ import {
   type ModuleRegistry,
   type QueryDescriptor,
 } from "@vibeshape/domain/modules"
+import { evaluateVariableDefinitions, variableDefinitionSchema } from "@vibeshape/domain/variables"
 import { z } from "zod"
 
 const queryRouteSchema = z
@@ -46,8 +47,56 @@ export const documentSummaryViewSchema = z
   })
   .strict()
 
+export const variableListQuerySchema = z
+  .object({
+    kind: z.literal("org.vibeshape.variable.list"),
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    cursor: z.string().regex(/^\d+$/).nullable().default(null),
+    limit: z.number().int().min(1).max(200).default(100),
+  })
+  .strict()
+
+const variableValueSchema = z
+  .object({
+    dimension: z.enum(["length", "angle", "scalar"]),
+    value: z.number().finite(),
+    unit: z.enum(["mm", "rad", "1"]),
+  })
+  .strict()
+
+export const variableListViewSchema = z
+  .object({
+    kind: z.literal("org.vibeshape.variable.list"),
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    classification: z.literal("semantic"),
+    nextCursor: z.string().regex(/^\d+$/).nullable(),
+    data: z
+      .object({
+        variables: z
+          .array(
+            z
+              .object({
+                definition: variableDefinitionSchema,
+                result: variableValueSchema,
+                dependencies: z.array(z.string().min(1).max(64)).max(4_096),
+              })
+              .strict(),
+          )
+          .max(200),
+      })
+      .strict(),
+  })
+  .strict()
+
 export type DocumentSummaryQuery = Readonly<z.infer<typeof documentSummaryQuerySchema>>
 export type DocumentSummaryView = Readonly<z.infer<typeof documentSummaryViewSchema>>
+export type VariableListQuery = Readonly<z.infer<typeof variableListQuerySchema>>
+export type VariableListView = Readonly<z.infer<typeof variableListViewSchema>>
+export type AutomationQueryView = DocumentSummaryView | VariableListView
 
 export type QueryIssue = Readonly<{
   path: string
@@ -76,7 +125,7 @@ export type QueryDiagnostic = Readonly<{
 }>
 
 export type QueryResult =
-  | { ok: true; view: DocumentSummaryView }
+  | { ok: true; view: AutomationQueryView }
   | { ok: false; diagnostic: QueryDiagnostic }
 
 export type TrustedQueryHandler = Readonly<{
@@ -170,6 +219,106 @@ export function queryDocumentSummary(
         createdAt: snapshot.createdAt,
         updatedAt: snapshot.updatedAt,
       },
+    }),
+  }
+}
+
+function canonicalUnit(dimension: "length" | "angle" | "scalar") {
+  switch (dimension) {
+    case "length":
+      return "mm" as const
+    case "angle":
+      return "rad" as const
+    case "scalar":
+      return "1" as const
+  }
+}
+
+export function queryDocumentVariables(
+  snapshot: DocumentSnapshot | null,
+  input: unknown,
+): QueryResult {
+  const parsed = variableListQuerySchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic(
+        "invalid-query",
+        "The document variable query is invalid.",
+        false,
+        zodIssues(parsed.error),
+      ),
+    }
+  }
+  if (!snapshot) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic("document-not-found", "The requested document was not found."),
+    }
+  }
+  if (snapshot.id !== parsed.data.documentId) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic(
+        "document-id-mismatch",
+        "The query document does not match the supplied snapshot.",
+      ),
+    }
+  }
+  if (snapshot.revision !== parsed.data.revision) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic(
+        "stale-query-revision",
+        `Document revision ${parsed.data.revision} is no longer current.`,
+        true,
+      ),
+    }
+  }
+  const evaluated = evaluateVariableDefinitions(snapshot.variables)
+  if (!evaluated.ok) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic("invalid-query", "The committed variable table is invalid."),
+    }
+  }
+  const cursor = parsed.data.cursor === null ? 0 : Number(parsed.data.cursor)
+  if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > snapshot.variables.length) {
+    return {
+      ok: false,
+      diagnostic: queryDiagnostic("invalid-query", "The document variable cursor is invalid."),
+    }
+  }
+  const definitions = snapshot.variables.slice(cursor, cursor + parsed.data.limit)
+  const nextIndex = cursor + definitions.length
+  const variables = []
+  for (const definition of definitions) {
+    const variable = evaluated.valuesById.get(definition.id)
+    if (!variable) {
+      return {
+        ok: false,
+        diagnostic: queryDiagnostic("invalid-query", "The committed variable table is invalid."),
+      }
+    }
+    variables.push({
+      definition,
+      result: {
+        ...variable.value,
+        unit: canonicalUnit(variable.value.dimension),
+      },
+      dependencies: variable.dependencies,
+    })
+  }
+  return {
+    ok: true,
+    view: variableListViewSchema.parse({
+      kind: parsed.data.kind,
+      schemaVersion: parsed.data.schemaVersion,
+      documentId: snapshot.id,
+      revision: snapshot.revision,
+      classification: "semantic",
+      nextCursor: nextIndex < snapshot.variables.length ? String(nextIndex) : null,
+      data: { variables },
     }),
   }
 }
@@ -315,5 +464,11 @@ export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
     schemaVersion: 1,
     ownerModuleId: documentCoreModule.id,
     execute: queryDocumentSummary,
+  },
+  {
+    kind: "org.vibeshape.variable.list",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryDocumentVariables,
   },
 ]

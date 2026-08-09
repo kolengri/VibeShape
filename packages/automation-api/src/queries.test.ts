@@ -6,6 +6,7 @@ import {
   createQueryDispatcher,
   documentCoreQueryHandlers,
   documentSummaryViewSchema,
+  queryDocumentVariables,
   queryDocumentSummary,
   type TrustedQueryHandler,
 } from "./queries"
@@ -20,6 +21,24 @@ const snapshot = documentSnapshotSchema.parse({
   name: "Printer enclosure",
   createdAt: "2026-08-08T12:00:00Z",
   updatedAt: "2026-08-08T12:05:00Z",
+})
+
+const variableSnapshot = documentSnapshotSchema.parse({
+  ...snapshot,
+  variables: [
+    {
+      schemaVersion: 0,
+      id: "0195b5ac-b240-7a2c-8c33-67a36a7f21ac",
+      name: "width",
+      expression: "24 mm",
+    },
+    {
+      schemaVersion: 0,
+      id: "0195b5ac-b241-7a2c-8c33-67a36a7f21ac",
+      name: "depth",
+      expression: "#width / 2",
+    },
+  ],
 })
 
 function query(overrides: Record<string, unknown> = {}) {
@@ -113,6 +132,82 @@ describe("document summary query", () => {
       ok: false,
       diagnostic: { code: "stale-query-revision", retryable: true },
     })
+  })
+})
+
+describe("document variable query", () => {
+  it("returns revision-bound evaluated variables through cursor pagination", () => {
+    const first = queryDocumentVariables(variableSnapshot, {
+      kind: "org.vibeshape.variable.list",
+      schemaVersion: 1,
+      documentId,
+      revision: 2,
+      cursor: null,
+      limit: 1,
+    })
+    expect(first).toMatchObject({
+      ok: true,
+      view: {
+        kind: "org.vibeshape.variable.list",
+        revision: 2,
+        nextCursor: "1",
+        data: {
+          variables: [
+            {
+              definition: { name: "width", expression: "24 mm" },
+              result: { dimension: "length", value: 24, unit: "mm" },
+              dependencies: [],
+            },
+          ],
+        },
+      },
+    })
+    const second = queryDispatcher().dispatch(variableSnapshot, {
+      kind: "org.vibeshape.variable.list",
+      schemaVersion: 1,
+      documentId,
+      revision: 2,
+      cursor: "1",
+      limit: 1,
+    })
+    expect(second).toMatchObject({
+      ok: true,
+      view: {
+        nextCursor: null,
+        data: {
+          variables: [
+            {
+              definition: { name: "depth", expression: "#width / 2" },
+              result: { dimension: "length", value: 12, unit: "mm" },
+              dependencies: ["width"],
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  it("rejects stale revisions and invalid cursors", () => {
+    expect(
+      queryDocumentVariables(variableSnapshot, {
+        kind: "org.vibeshape.variable.list",
+        schemaVersion: 1,
+        documentId,
+        revision: 1,
+        cursor: null,
+        limit: 100,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "stale-query-revision", retryable: true } })
+    expect(
+      queryDocumentVariables(variableSnapshot, {
+        kind: "org.vibeshape.variable.list",
+        schemaVersion: 1,
+        documentId,
+        revision: 2,
+        cursor: "3",
+        limit: 100,
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-query" } })
   })
 })
 

@@ -19,7 +19,8 @@
     "./modules": "./src/modules.ts",
     "./part-design": "./src/part-design.ts",
     "./topology": "./src/topology.ts",
-    "./units": "./src/units.ts"
+    "./units": "./src/units.ts",
+    "./variables": "./src/variables.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

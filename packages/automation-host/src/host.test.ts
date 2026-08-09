@@ -300,6 +300,81 @@ describe("automation draft host", () => {
     })
   })
 
+  it("uses the ordinary draft path to configure a feature from a document variable", async () => {
+    const store = documentStore(createdSnapshot())
+    const host = automationHost(store.port)
+    await host.createDraft(actor, createRequest(1))
+
+    expect(
+      await host.applyCommand(
+        actor,
+        applyRequest({
+          kind: "org.vibeshape.variable.add",
+          schemaVersion: 1,
+          commandId: "0195b5ac-b270-7a2c-8c33-67a36a7f21ac",
+          documentId,
+          baseRevision: 1,
+          issuedAt: "2026-08-08T12:00:01Z",
+          actor,
+          payload: {
+            variable: {
+              schemaVersion: 0,
+              id: "0195b5ac-b271-7a2c-8c33-67a36a7f21ac",
+              name: "width",
+              expression: "24 mm",
+            },
+          },
+        }),
+      ),
+    ).toMatchObject({ ok: true, value: { revision: 2, commandCount: 1 } })
+
+    expect(
+      await host.applyCommand(
+        actor,
+        applyRequest({
+          kind: "org.vibeshape.feature.add",
+          schemaVersion: 1,
+          commandId: "0195b5ac-b272-7a2c-8c33-67a36a7f21ac",
+          documentId,
+          baseRevision: 2,
+          issuedAt: "2026-08-08T12:00:02Z",
+          actor,
+          payload: {
+            feature: {
+              schemaVersion: 0,
+              id: "0195b5ac-b273-7a2c-8c33-67a36a7f21ac",
+              type: boxFeatureType.type,
+              parameters: {
+                width: createLengthQuantity(10, "mm", "#width"),
+                depth: createLengthQuantity(30),
+                height: createLengthQuantity(40),
+                centered: false,
+              },
+              dependencies: [],
+              references: [],
+              suppressed: false,
+            },
+          },
+        }),
+      ),
+    ).toMatchObject({ ok: true, value: { revision: 3, commandCount: 2 } })
+
+    expect(await host.commitDraft(actor, operationRequest())).toMatchObject({
+      ok: true,
+      value: { baseRevision: 1, revision: 3, commandCount: 2 },
+    })
+    expect(store.snapshot()).toMatchObject({
+      variables: [{ name: "width", expression: "24 mm" }],
+      features: [
+        {
+          parameters: {
+            width: { value: 24, source: { value: 24, expression: "#width" } },
+          },
+        },
+      ],
+    })
+  })
+
   it("serializes concurrent commands so draft revisions cannot overwrite each other", async () => {
     const host = automationHost(documentStore(createdSnapshot()).port)
     await host.createDraft(actor, createRequest(1))
