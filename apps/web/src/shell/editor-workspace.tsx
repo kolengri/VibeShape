@@ -1,20 +1,25 @@
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import { GeometryViewport } from "./geometry-viewport"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 
 export function EditorWorkspace({
   activeTool,
   controller,
   onCloseTool,
   onCreateBox,
+  onSelectionChange,
   onWorkspaceChange,
+  selection,
   workspace,
 }: {
   activeTool: "box" | null
   controller: DocumentControllerState
   onCloseTool: () => void
   onCreateBox: () => void
+  onSelectionChange: (selection: ViewerSelection | null) => void
   onWorkspaceChange: (workspace: "model" | "variables") => void
+  selection: ViewerSelection | null
   workspace: "model" | "variables"
 }) {
   return (
@@ -27,7 +32,11 @@ export function EditorWorkspace({
       {workspace === "variables" ? (
         <VariablesPanel controller={controller} />
       ) : (
-        <GeometryViewport controller={controller} />
+        <GeometryViewport
+          controller={controller}
+          selection={selection}
+          onSelectionChange={onSelectionChange}
+        />
       )}
       <TaskPanel
         activeTool={activeTool}

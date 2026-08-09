@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest"
-import { createViewerGeometry, orthographicFrustum, type ViewerMesh } from "./three-viewport"
+import {
+  createFaceHighlightGeometry,
+  createViewerGeometry,
+  orthographicFrustum,
+  type ViewerMesh,
+  viewerFaceOrdinal,
+} from "./three-viewport"
 
 const mesh: ViewerMesh = {
   featureId: "box",
@@ -39,5 +45,26 @@ describe("Three viewport geometry", () => {
       top: 50,
       bottom: -50,
     })
+  })
+
+  it("extracts the exact selected face triangles and derives a friendly ordinal", () => {
+    const selectableMesh: ViewerMesh = {
+      featureId: "box",
+      positions: new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0, 2, 3, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2, 2, 1, 3]),
+      triangleFaceIds: new Uint32Array([7, 9]),
+    }
+
+    expect(viewerFaceOrdinal(selectableMesh, 7)).toBe(1)
+    expect(viewerFaceOrdinal(selectableMesh, 9)).toBe(2)
+    expect(viewerFaceOrdinal(selectableMesh, 11)).toBeNull()
+
+    const highlight = createFaceHighlightGeometry(selectableMesh, 9)
+    expect(Array.from(highlight?.getAttribute("position").array ?? [])).toEqual([
+      0, 3, 0, 2, 0, 0, 2, 3, 0,
+    ])
+    expect(createFaceHighlightGeometry(selectableMesh, 11)).toBeNull()
+    highlight?.dispose()
   })
 })

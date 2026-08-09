@@ -37,6 +37,15 @@ test.describe("Box parameters", () => {
         }),
       )
       .toBe(true)
+    const canvasBounds = await viewport.locator("canvas").boundingBox()
+    if (!canvasBounds) throw new Error("The geometry canvas has no measurable bounds.")
+    await viewport.locator("canvas").click({
+      position: { x: canvasBounds.width / 2, y: canvasBounds.height / 2 },
+    })
+    const statusBar = page.locator("footer[role='status']")
+    await expect(statusBar).toContainText(/Selection: Box 1 · Face \d+/)
+    await viewport.getByRole("button", { name: "Clear selection" }).click()
+    await expect(statusBar).toContainText("Selection: None")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.reload()

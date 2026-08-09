@@ -46,13 +46,16 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 - [glTF fit-camera example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_gltf.html) — bounds, target, distance, and projection updates
 - [Orthographic camera example](https://github.com/mrdoob/three.js/blob/dev/examples/css3d_orthographic.html) — resize-aware frustum updates
 - [On-demand rendering manual](https://github.com/mrdoob/three.js/blob/dev/manual/pages/rendering-on-demand.html) — OrbitControls change-driven rendering without an idle loop
+- [Terrain raycasting example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_geometry_terrain_raycast.html) — normalized pointer coordinates and CPU `Raycaster` intersection
+- [Three.js `Mesh` source](https://github.com/mrdoob/three.js/blob/dev/src/objects/Mesh.js) — indexed triangle intersection and `faceIndex` behavior
+- [OrbitControls documentation](https://threejs.org/docs/#examples/en/controls/OrbitControls) — mouse-button remapping and change events
 - [WebGPU performance example](https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_performance.html) — `WebGPURenderer` and `compileAsync`
 - [Clipping example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_clipping.html) — local and global clipping planes
 - [GPU picking example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_interactive_cubes_gpu.html) — offscreen picking target
 - [OffscreenCanvas worker example](https://github.com/mrdoob/three.js/blob/dev/examples/webgl_worker_offscreencanvas.html) — worker rendering and browser caveats
 - [Three.js upstream](https://github.com/mrdoob/three.js) — MIT-licensed WebGL and WebGPU renderer
 
-**Conclusion:** WebGL2 is the baseline; GPU picking and clipping are available. WebGPU and OffscreenCanvas remain optional adapters pending profiling.
+**Conclusion:** WebGL2 is the baseline. The first selection slice uses CPU raycasting and maps an indexed `faceIndex` through worker-provided triangle metadata before extracting an exact disposable face overlay. GPU picking remains available for later measured scale requirements, while clipping, WebGPU, and OffscreenCanvas remain optional adapters pending profiling.
 
 ## Sketch Solver and Parametric Stability
 
