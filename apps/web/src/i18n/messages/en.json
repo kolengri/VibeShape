@@ -17,7 +17,8 @@
         "extrude": "Extrude",
         "model": "Model",
         "print": "Print",
-        "sketch": "Sketch"
+        "sketch": "Sketch",
+        "subtract": "Subtract"
       },
       "modelTree": {
         "ariaLabel": "Model tree",
@@ -46,8 +47,10 @@
         "ariaLabel": "Task panel",
         "createBox": "Create box",
         "createCylinder": "Create cylinder",
+        "createSubtract": "Subtract solids",
         "createSketch": "Create sketch",
-        "description": "Create primitive solids from length values or document variables. Geometry rebuilds locally in the browser.",
+        "description": "Create configurable primitive solids, then combine them with ordered part-design operations. Geometry rebuilds locally in the browser.",
+        "subtractUnavailable": "Create at least two available solids before subtracting.",
         "startModeling": "Part design",
         "box": {
           "title": "Create box",
@@ -95,6 +98,27 @@
           "staleRevision": "The document changed while this cylinder was being edited. Review the current model and try again.",
           "createFailed": "The cylinder could not be created. Your parameter values are preserved.",
           "updateFailed": "The cylinder could not be updated. Your parameter values are preserved."
+        },
+        "boolean": {
+          "title": "Subtract solids",
+          "description": "Remove the tool solid from the target solid. Input order changes the result.",
+          "editTitle": "Edit subtraction",
+          "editDescription": "Change the ordered inputs while preserving this feature's identity and label.",
+          "inputs": "Ordered inputs",
+          "target": "Target solid",
+          "tool": "Tool solid",
+          "targetDescription": "The solid that remains after subtraction.",
+          "toolDescription": "The solid removed from the target.",
+          "create": "Subtract",
+          "update": "Update subtraction",
+          "cancel": "Cancel",
+          "featureLabel": "Subtract {number}",
+          "missingInput": "Choose an available solid.",
+          "sameInput": "Choose a different solid for the tool.",
+          "validationSummary": "Choose two different available solids in target-then-tool order.",
+          "staleRevision": "The document changed while this subtraction was being edited. Review the current model and try again.",
+          "createFailed": "The subtraction could not be created. Your input choices are preserved.",
+          "updateFailed": "The subtraction could not be updated. Your input choices are preserved."
         },
         "variables": {
           "title": "Using variables",

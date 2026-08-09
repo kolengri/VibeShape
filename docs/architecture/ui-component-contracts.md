@@ -82,7 +82,7 @@ The foundation includes:
 
 - `Button` with double-click suppression, Promise-like single-flight loading, native or slotted disabled semantics, and external `isLoading` support;
 - `Spinner` with standalone status semantics and decorative use inside named controls;
-- native `Input` and state-agnostic `TextField` with label, description, and stable validation relationships;
+- native `Input` plus native `NativeSelect`, with state-agnostic `TextField` and `NativeSelectField` compositions that own labels, descriptions, and stable validation relationships;
 - shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
-- a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, and `SubmitButton` adapters;
+- a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;
 - Vitest and Testing Library coverage for the base and integrated layers.

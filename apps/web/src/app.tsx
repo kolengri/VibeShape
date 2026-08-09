@@ -4,9 +4,8 @@ import { useState } from "react"
 import { useDocumentController } from "./document/document-controller"
 import {
   type ActivePartDesignTool,
-  activePrimitiveCommand,
-  isBoxFeature,
-  isCylinderFeature,
+  activePartDesignCommand,
+  editPartDesignTool,
 } from "./features/part-design/part-design-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { CommandToolbar } from "./shell/command-toolbar"
@@ -32,7 +31,7 @@ export function App() {
     <main className="cad-shell bg-background text-[13px] text-foreground">
       <ApplicationBar controller={controller} />
       <CommandToolbar
-        activeCommand={activePrimitiveCommand(activeTool)}
+        activeCommand={activePartDesignCommand(activeTool)}
         controller={controller}
         onCreateBox={() => {
           setWorkspace("model")
@@ -42,6 +41,10 @@ export function App() {
           setWorkspace("model")
           setActiveTool({ kind: "create-cylinder" })
         }}
+        onCreateSubtract={() => {
+          setWorkspace("model")
+          setActiveTool({ kind: "create-subtract" })
+        }}
       />
       <EditorWorkspace
         activeTool={activeTool}
@@ -50,12 +53,13 @@ export function App() {
         onCloseTool={() => setActiveTool(null)}
         onCreateBox={() => setActiveTool({ kind: "create-box" })}
         onCreateCylinder={() => setActiveTool({ kind: "create-cylinder" })}
+        onCreateSubtract={() => setActiveTool({ kind: "create-subtract" })}
         onEditFeature={(featureId) => {
           const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
-          if (!feature) return
+          const editTool = editPartDesignTool(feature)
+          if (!editTool) return
           setWorkspace("model")
-          if (isBoxFeature(feature)) setActiveTool({ kind: "edit-box", featureId })
-          if (isCylinderFeature(feature)) setActiveTool({ kind: "edit-cylinder", featureId })
+          setActiveTool(editTool)
         }}
         onSelectionChange={setSelection}
         onWorkspaceChange={changeWorkspace}

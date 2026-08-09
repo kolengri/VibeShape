@@ -5,9 +5,11 @@ import type * as React from "react"
 import { cn } from "#lib/cn"
 import { SubmitButton } from "./components/submit-button"
 import { fieldContext, formContext } from "./context"
+import { TanStackNativeSelectField } from "./fields/native-select-field"
 import { TanStackTextField } from "./fields/text-field"
 
 const fieldComponents = {
+  NativeSelectField: TanStackNativeSelectField,
   TextField: TanStackTextField,
 }
 

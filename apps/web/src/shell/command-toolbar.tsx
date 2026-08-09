@@ -1,20 +1,39 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { DocumentControllerState } from "../document/document-controller"
+import { booleanInputFeatures } from "../features/part-design/part-design-tool"
+
+type PartDesignCommand = "box" | "cylinder" | "subtract"
+
+function canCreateFeature(controller: DocumentControllerState) {
+  return controller.status === "ready" && controller.report?.mode === "read-write"
+}
+
+function canSubtractFeatures(controller: DocumentControllerState) {
+  if (!canCreateFeature(controller)) return false
+  return booleanInputFeatures(controller.report?.snapshot.features ?? []).length >= 2
+}
+
+function commandIsActive(activeCommand: PartDesignCommand | null, command: PartDesignCommand) {
+  return activeCommand === command
+}
 
 export function CommandToolbar({
   activeCommand,
   controller,
   onCreateBox,
   onCreateCylinder,
+  onCreateSubtract,
 }: {
-  activeCommand: "box" | "cylinder" | null
+  activeCommand: PartDesignCommand | null
   controller: DocumentControllerState
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSubtract: () => void
 }) {
   const t = useTranslations("app.shell.commandToolbar")
-  const canCreate = controller.status === "ready" && controller.report?.mode === "read-write"
+  const canCreate = canCreateFeature(controller)
+  const canSubtract = canSubtractFeatures(controller)
 
   return (
     <nav
@@ -43,7 +62,7 @@ export function CommandToolbar({
         size="sm"
         variant="ghost"
         disabled={!canCreate}
-        aria-pressed={activeCommand === "box"}
+        aria-pressed={commandIsActive(activeCommand, "box")}
         onClick={onCreateBox}
       >
         {t("box")}
@@ -53,10 +72,20 @@ export function CommandToolbar({
         size="sm"
         variant="ghost"
         disabled={!canCreate}
-        aria-pressed={activeCommand === "cylinder"}
+        aria-pressed={commandIsActive(activeCommand, "cylinder")}
         onClick={onCreateCylinder}
       >
         {t("cylinder")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canSubtract}
+        aria-pressed={commandIsActive(activeCommand, "subtract")}
+        onClick={onCreateSubtract}
+      >
+        {t("subtract")}
       </Button>
     </nav>
   )

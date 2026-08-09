@@ -7,10 +7,17 @@ import {
   type DocumentControllerState,
   updateFeature,
 } from "../document/document-controller"
+import {
+  BooleanForm,
+  type BooleanFormMode,
+  type BooleanInputOption,
+} from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
 import {
   type ActivePartDesignTool,
+  booleanInputFeatures,
+  isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
 } from "../features/part-design/part-design-tool"
@@ -21,6 +28,7 @@ type TaskPanelProps = Readonly<{
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSubtract: () => void
   workspace: "model" | "variables"
 }>
 
@@ -107,7 +115,41 @@ function useCylinderFormCopy(mode: CylinderFormMode["kind"]) {
   }
 }
 
-function featureTaskContext(mode: BoxFormMode | CylinderFormMode, revision: number) {
+function useBooleanFormCopy(mode: BooleanFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel")
+  const operationCopy = {
+    create: {
+      title: t("boolean.title"),
+      description: t("boolean.description"),
+      submit: t("boolean.create"),
+      saveFailed: t("boolean.createFailed"),
+    },
+    edit: {
+      title: t("boolean.editTitle"),
+      description: t("boolean.editDescription"),
+      submit: t("boolean.update"),
+      saveFailed: t("boolean.updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
+    inputs: t("boolean.inputs"),
+    target: t("boolean.target"),
+    tool: t("boolean.tool"),
+    targetDescription: t("boolean.targetDescription"),
+    toolDescription: t("boolean.toolDescription"),
+    cancel: t("boolean.cancel"),
+    missingInput: t("boolean.missingInput"),
+    sameInput: t("boolean.sameInput"),
+    validationSummary: t("boolean.validationSummary"),
+    staleRevision: t("boolean.staleRevision"),
+  }
+}
+
+function featureTaskContext(
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode,
+  revision: number,
+) {
   return mode.kind === "edit"
     ? { key: `edit:${mode.feature.id}:${revision}`, onSave: updateFeature }
     : { key: `create:${revision}`, onSave: addFeature }
@@ -175,6 +217,39 @@ function CylinderTaskPanel({
   )
 }
 
+function BooleanTaskPanel({
+  mode,
+  onCloseTool,
+  options,
+  report,
+}: {
+  mode: BooleanFormMode
+  onCloseTool: () => void
+  options: readonly BooleanInputOption[]
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const booleanCopy = useBooleanFormCopy(mode.kind)
+  const task = featureTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
+
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <BooleanForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        copy={booleanCopy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        options={options}
+        onCancel={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+    </aside>
+  )
+}
+
 function boxFormMode(
   activeTool: Extract<ActivePartDesignTool, { kind: "create-box" | "edit-box" }>,
   report: NonNullable<DocumentControllerState["report"]>,
@@ -199,14 +274,41 @@ function cylinderFormMode(
   return feature && isCylinderFeature(feature) ? { kind: "edit", feature } : null
 }
 
+function booleanFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-subtract" | "edit-subtract" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): BooleanFormMode | null {
+  if (activeTool.kind === "create-subtract") {
+    return { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel }
+  }
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isBooleanFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function booleanOptions(
+  report: NonNullable<DocumentControllerState["report"]>,
+  editingFeatureId: Extract<BooleanFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
+  unnamedFeature: string,
+) {
+  return booleanInputFeatures(report.snapshot.features, editingFeatureId).map((feature) => ({
+    id: feature.id,
+    label: feature.label ?? unnamedFeature,
+  }))
+}
+
 function StartTaskPanel({
   canCreate,
+  canSubtract,
   onCreateBox,
   onCreateCylinder,
+  onCreateSubtract,
 }: {
   canCreate: boolean
+  canSubtract: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateSubtract: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
 
@@ -226,12 +328,29 @@ function StartTaskPanel({
       >
         {t("createCylinder")}
       </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-2 w-full"
+        disabled={!canSubtract}
+        onClick={onCreateSubtract}
+      >
+        {t("createSubtract")}
+      </Button>
+      {!canSubtract ? (
+        <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("subtractUnavailable")}</p>
+      ) : null}
     </aside>
   )
 }
 
 function canCreateFeature(controller: DocumentControllerState) {
   return controller.status === "ready" && controller.report?.mode === "read-write"
+}
+
+function canCreateSubtract(controller: DocumentControllerState) {
+  if (!canCreateFeature(controller)) return false
+  return booleanInputFeatures(controller.report?.snapshot.features ?? []).length >= 2
 }
 
 function ActiveBoxTaskPanel({
@@ -268,20 +387,67 @@ function ActiveCylinderTaskPanel({
   return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
 }
 
-function ActiveTaskPanel({
+function ActiveSubtractTaskPanel({
   activeTool,
   onCloseTool,
   report,
 }: {
-  activeTool: ActivePartDesignTool
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-subtract" | "edit-subtract" }>
   onCloseTool: () => void
   report: NonNullable<DocumentControllerState["report"]>
 }) {
-  return activeTool.kind === "create-box" || activeTool.kind === "edit-box" ? (
-    <ActiveBoxTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
-  ) : (
-    <ActiveCylinderTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
+  const t = useTranslations("app.shell.taskPanel")
+  const modelTreeT = useTranslations("app.shell.modelTree")
+  const booleanCount = report.snapshot.features.filter(isBooleanFeature).length
+  const mode = booleanFormMode(
+    activeTool,
+    report,
+    t("boolean.featureLabel", { number: booleanCount + 1 }),
   )
+  if (!mode) return null
+  const options = booleanOptions(
+    report,
+    mode.kind === "edit" ? mode.feature.id : undefined,
+    modelTreeT("unnamedFeature"),
+  )
+  return (
+    <BooleanTaskPanel report={report} mode={mode} options={options} onCloseTool={onCloseTool} />
+  )
+}
+
+type ActiveTaskPanelProps = Readonly<{
+  activeTool: ActivePartDesignTool
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}>
+
+function BoxToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-box" && activeTool.kind !== "edit-box") return null
+  return <ActiveBoxTaskPanel activeTool={activeTool} {...props} />
+}
+
+function CylinderToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-cylinder" && activeTool.kind !== "edit-cylinder") return null
+  return <ActiveCylinderTaskPanel activeTool={activeTool} {...props} />
+}
+
+function SubtractToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-subtract" && activeTool.kind !== "edit-subtract") return null
+  return <ActiveSubtractTaskPanel activeTool={activeTool} {...props} />
+}
+
+const activeTaskPanelByKind = {
+  "create-box": BoxToolTaskPanel,
+  "edit-box": BoxToolTaskPanel,
+  "create-cylinder": CylinderToolTaskPanel,
+  "edit-cylinder": CylinderToolTaskPanel,
+  "create-subtract": SubtractToolTaskPanel,
+  "edit-subtract": SubtractToolTaskPanel,
+} satisfies Record<ActivePartDesignTool["kind"], (props: ActiveTaskPanelProps) => ReactNode>
+
+function ActiveTaskPanel(props: ActiveTaskPanelProps) {
+  const Panel = activeTaskPanelByKind[props.activeTool.kind]
+  return <Panel {...props} />
 }
 
 function ModelTaskPanel({
@@ -290,6 +456,7 @@ function ModelTaskPanel({
   onCloseTool,
   onCreateBox,
   onCreateCylinder,
+  onCreateSubtract,
 }: TaskPanelProps) {
   const report = controller.report
   return activeTool && report ? (
@@ -297,8 +464,10 @@ function ModelTaskPanel({
   ) : (
     <StartTaskPanel
       canCreate={canCreateFeature(controller)}
+      canSubtract={canCreateSubtract(controller)}
       onCreateBox={onCreateBox}
       onCreateCylinder={onCreateCylinder}
+      onCreateSubtract={onCreateSubtract}
     />
   )
 }

@@ -13,8 +13,8 @@ import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   invalidAttribute,
+  featureSubmissionMessage,
   parsePrimitiveLengthExpression,
-  primitiveSubmissionMessage,
   quantityExpression,
 } from "../part-design/primitive-form"
 import {
@@ -163,7 +163,7 @@ export function CylinderForm({
       setMessage(null)
       const feature = cylinderFeatureRecord(mode, parsed.parameters)
       const result = await onSave(baseRevision, feature)
-      const resultMessage = primitiveSubmissionMessage(result, copy)
+      const resultMessage = featureSubmissionMessage(result, copy)
       setMessage(resultMessage)
       if (!resultMessage) onSaved()
     },
