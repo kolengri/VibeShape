@@ -101,7 +101,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.
 
-The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. The generic reducer preserves presentation order and unknown schema-valid feature records, but it is a trusted kernel seam rather than a public extension or MCP tool surface. Registry-bound add/update handlers first run the ordinary pure reducer as a preflight, resolve expressions owned by the exact feature handler, validate and normalize the feature and its bounded semantic-content projection, and only then reduce the normalized command; a rejected expression or validation exposes no event or partial snapshot. Leaf removal is runtime-independent: it rejects any feature with direct dependents, then records the exact removed feature in a tamper-resistant replay event. Dispatcher composition rejects feature handlers whose registry descriptors differ from the active module registry. Replay never requires a runtime type handler, and suppression remains available for a preserved unavailable feature. Variable rename is also replayable without a feature runtime: it parses exact project expression tokens and rewrites only schema-valid Quantity sources nested in JSON feature parameters. Extension-specific expression encodings remain opaque until the extension contract can declare a bounded refactor contribution. Canonical feature-content identity version `0` excludes record-only identity, variable names, expression formatting, and presentation metadata; it replaces dependency UUIDs with ordered input hashes and reference slot indices and includes resolved parameters plus exact runtime, tolerance, and provider identity. The domain accepts SHA-256 only through an injected validated port, preserving its environment-neutral boundary. Protocol v7 independently parses the worker wire identity and recomputes the digest for box, cylinder, and Boolean/Subtract evaluation; it deliberately duplicates the narrow runtime schema instead of creating a forbidden domain-to-worker package dependency. Dependency UUIDs travel beside the identity only to resolve document-owned shapes, and their hashes must exactly match canonical input slots. In-memory B-Rep reuse remains disposable derived state and is not serialized; the document worker deletes entries that are absent from the exact successful feature-content set after each current rebuild. Command-specific eligibility beyond type validation, parameter migration, and confirmation policy remain open. This slice does not yet persist evaluation results or caches, implement autosave, undo/redo, the richer expression grammar, display-unit preferences, product geometry preview, extension execution, or the `.vshape` codec. Its schemas remain internal contracts until their Phase 1 persistence and geometry integration gates stabilize them.
+The feature evaluator receives a trusted injected operation and contains thrown or invalid outcomes as stable feature failures; it does not import geometry, React, persistence, or worker code. The generic reducer preserves presentation order and unknown schema-valid feature records, but it is a trusted kernel seam rather than a public extension or MCP tool surface. Registry-bound add/update handlers first run the ordinary pure reducer as a preflight, resolve expressions owned by the exact feature handler, validate and normalize the feature and its bounded semantic-content projection, and only then reduce the normalized command; a rejected expression or validation exposes no event or partial snapshot. Leaf removal is runtime-independent: it rejects any feature with direct dependents, then records the exact removed feature in a tamper-resistant replay event. Dispatcher composition rejects feature handlers whose registry descriptors differ from the active module registry. Replay never requires a runtime type handler, and suppression remains available for a preserved unavailable feature. Variable rename is also replayable without a feature runtime: it parses exact project expression tokens and rewrites only schema-valid Quantity sources nested in JSON feature parameters. Extension-specific expression encodings remain opaque until the extension contract can declare a bounded refactor contribution. Canonical feature-content identity version `0` excludes record-only identity, variable names, expression formatting, and presentation metadata; it replaces dependency UUIDs with ordered input hashes and reference slot indices and includes resolved parameters plus exact runtime, tolerance, and provider identity. The domain accepts SHA-256 only through an injected validated port, preserving its environment-neutral boundary. Protocol v7 independently parses the worker wire identity and recomputes the digest for box, cylinder, and Boolean/Subtract evaluation; it deliberately duplicates the narrow runtime schema instead of creating a forbidden domain-to-worker package dependency. Dependency UUIDs travel beside the identity only to resolve document-owned shapes, and their hashes must exactly match canonical input slots. In-memory B-Rep reuse remains disposable derived state and is not serialized; the document worker deletes entries that are absent from the exact successful feature-content set after each current rebuild. The `.vshape` v0 codec now makes that semantic boundary portable without serializing derived geometry. Command-specific eligibility beyond type validation, parameter migration, confirmation policy, caches, autosave, undo/redo, richer expressions, display-unit preferences, product geometry preview, extension execution, and native-format migrations remain open. Its schemas remain experimental contracts until their Phase 1 persistence and geometry integration gates stabilize them.
 
 ## Units and expressions
 
@@ -120,42 +120,36 @@ JSON never depends on locale. The native decimal separator is always `.`. The UI
 
 The extension identifies a ZIP container with MIME type `application/vnd.vibeshape.project+zip`.
 
+The implemented v0 archive contains exactly three entries:
+
 ```text
 project.vshape
   manifest.json
   document.json
   journal/events.jsonl
-  snapshots/<revision>.json.zst       # optional
-  imports/<source-id>/<original-name> # optional embedded source
-  cache/brep/<hash>.brep.gz           # optional, untrusted
-  cache/mesh/<hash>.bin               # optional, untrusted
-  previews/thumbnail.png              # optional
-  reports/last-print-check.json       # optional, derived
-  extensions/lock.json                # exact requirements, no executable code
-  licenses/NOTICE.txt                 # optional per-project attachments
 ```
 
-Alpha may use gzip or deflate instead of zstd to reduce dependencies. The selected compression algorithm is recorded in the manifest.
+`document.json` is canonical JSON for the current `DocumentSnapshot`. It retains stable variable IDs, authored variable formulas, feature parameter source expressions such as `#width`, and every other semantic feature field. `journal/events.jsonl` contains the complete canonical event history, one strict event per line with a final newline. The writer uses deterministic DEFLATE ZIP output with a fixed ZIP timestamp. Snapshots, embedded imports, caches, previews, reports, extension locks, and license attachments remain planned versioned additions; a v0 reader rejects every extra entry rather than guessing whether it is authoritative.
 
 ### `manifest.json`
 
 Required fields:
 
 - `format: "vshape"`;
-- `formatVersion`;
-- `minimumReaderVersion`;
-- `documentId`;
+- `schemaVersion: 0`, `formatVersion: 0`, and `minimumReaderVersion: 0`;
+- `documentId` and `documentRevision`;
 - `createdBy: { application, version, build }`;
-- `engine: { adapter, occtVersion, buildHash, tolerancePolicyVersion }`;
+- nullable `engine` metadata; v0 semantic backup does not claim an engine build when the writer cannot bind one reliably;
 - `rootDocument: "document.json"`;
-- semantic-entry `checksums`;
-- `requiredCapabilities` and a checksum for `extensions/lock.json` when present;
+- `eventJournal: "journal/events.jsonl"` and `compression: "deflate"`;
+- two `semanticEntries` with path, media type, byte count, and lowercase SHA-256;
+- `requiredCapabilities` and nullable `extensionsLockChecksum` reserved for later versions;
 - `createdAt` and `exportedAt`;
-- `units` and `coordinateSystem`.
+- `units: "millimeter"` and `coordinateSystem: "right-handed-z-up"`.
 
 ### Authoritative data
 
-`document.json` plus journals and snapshots are authoritative. `cache/` and `reports/` MAY be deleted without project loss. Readers must open a project without cache and must not trust B-Rep, mesh, topology mapping, version, or checksum blindly.
+`document.json` and the full journal are jointly authoritative in v0. A reader verifies both SHA-256 digests, strictly parses every schema, replays the journal from `null`, and requires its canonical result to equal the enclosed snapshot before import. The persistence adapter then inserts all events, one head snapshot, clean-close metadata, and the project head in one IndexedDB transaction. A same-ID local project is never silently overwritten. Derived B-Rep, mesh, evaluated variable values, and topology mappings are absent and rebuild locally after open.
 
 ### Extension requirements
 
@@ -219,20 +213,20 @@ Validate all counts before allocation and protect size arithmetic from overflow.
 
 ## Reader limits
 
-Initial safe defaults:
+The deliberately narrow v0 reader uses these current hard limits:
 
 | Limit | Default |
 |---|---:|
-| Compressed ZIP input | 512 MiB |
-| Total uncompressed ZIP size | 2 GiB or available quota, whichever is lower |
-| Compression ratio | Warn or block at 100:1 according to policy |
-| Entry count | 10,000 |
-| JSON depth | 100 |
+| Compressed ZIP input | 32 MiB |
+| Total uncompressed ZIP size | 64 MiB |
+| Per-entry size | 32 MiB |
+| Compression ratio | 200:1 |
+| Entry count | 16, with exactly 3 allowed by v0 |
 | Feature count | 100,000 hard limit with a much lower UX warning |
-| Single typed-array allocation | 512 MiB |
-| Filename/path | 1,024 UTF-8 bytes |
+| Event count | 100,000 |
+| Filename/path | 160 Unicode code units |
 
-Fuzzing and performance tests refine these numbers. Reject entries containing `..`, absolute paths, symlinks, or duplicate normalized paths.
+The reader rejects multi-disk archives, comments, encryption, unsupported compression, symlinks, invalid UTF-8, traversal, absolute paths, directory entries, and duplicate case-insensitive NFC paths before decompression. Fuzzing and performance tests may refine these numbers only through a versioned compatibility decision.
 
 ## Compatibility promise
 

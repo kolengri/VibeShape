@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./canonical-json": "./src/canonical-json.ts",
     "./command-dispatcher": "./src/command-dispatcher.ts",
     "./commands": "./src/commands.ts",
     "./document": "./src/document.ts",

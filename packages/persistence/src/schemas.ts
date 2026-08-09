@@ -116,6 +116,15 @@ export const persistenceDraftCommitInputSchema = z
   })
   .strict()
 
+export const portableProjectImportSchema = z
+  .object({
+    importedAt: timestampSchema,
+    exportedAt: timestampSchema,
+    snapshot: documentSnapshotSchema,
+    events: z.array(documentEventSchema).min(1).max(100_000),
+  })
+  .strict()
+
 export const persistenceDiagnosticCodeSchema = z.enum([
   "invalid-input",
   "document-already-exists",
@@ -146,5 +155,6 @@ export type LeaseRecord = z.infer<typeof leaseRecordSchema>
 export type CacheIndexRecord = z.infer<typeof cacheIndexRecordSchema>
 export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema>
 export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
+export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>

@@ -1,3 +1,4 @@
+export * from "./canonical-json"
 export * from "./command-dispatcher"
 export * from "./commands"
 export * from "./document"

@@ -122,7 +122,7 @@ The Phase 1 product smoke exporter currently downloads successful terminal solid
 
 ## STEP
 
-The same Phase 1 dialog exports those terminal exact B-Rep shapes as STEP for CAD exchange. The file contains resulting geometry, not VibeShape variables, features, or event history; `.vshape` remains the future native backup and editability format.
+The same Phase 1 dialog exports those terminal exact B-Rep shapes as STEP for CAD exchange. The file contains resulting geometry, not VibeShape variables, features, or event history. The separate implemented `.vshape` v0 Project flow is the native backup and editability format; it carries semantic parametrics and intentionally excludes derived geometry.
 
 - Preserve exact B-Rep geometry.
 - Prefer AP242 and use AP214 as a compatibility fallback after the spike.

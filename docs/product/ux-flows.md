@@ -63,6 +63,8 @@ Feature removal is available from an active edit task. A feature with direct dep
 
 The implemented Phase 1 export boundary is available from `Export…` in the application bar. It opens a modal dialog with an explicit STEP exact-exchange action and a binary STL slicer-compatibility action. Both actions remain disabled until the current rebuilt revision contains solid geometry, are single-flight while asynchronous worker work is pending, and preserve status in the application bar if the dialog closes. A successful browser download is reported separately from `Saved in this browser`; neither STEP nor STL is presented as a parametric project backup. Print checks, 3MF, placement, tolerance selection, and a persistent export report remain later work.
 
+`Project…` owns the separate native-file flow. Its External backup card downloads `.vshape` even when the model has no exportable solid because semantic history, variables, and features are the payload. Its Open project file card uses the cross-browser file-input baseline, reports verification as an asynchronous state, and switches only after atomic import succeeds. The dialog explicitly states that browser save is automatic but not an external backup. A same-ID collision remains visible and preserves the browser copy; explicit restore, copy-as-new, recent-project selection, backup reminders, and system-picker enhancement remain later work.
+
 ## Flow 2: edit an early parameter
 
 1. Double-click a feature or dimension in the tree or viewport.

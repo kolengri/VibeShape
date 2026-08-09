@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
+import { DocumentProjectDialog } from "../document/document-project-dialog"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -33,6 +34,7 @@ export function ApplicationBar({ controller }: { controller: DocumentControllerS
       <span className="ml-auto text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>
+      <DocumentProjectDialog controller={controller} />
       <DocumentExportDialog controller={controller} />
     </header>
   )
