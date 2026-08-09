@@ -28,7 +28,7 @@ Exponentiation, functions, compound dimensions such as area, persisted ASTs, loc
 
 Feature quantities retain the authored expression text and their last validated source-unit value. A trusted feature-type handler resolves its owned parameters against the current variable table before validation and rebuild. The resolved canonical value, not the variable name or expression formatting, enters feature content identity. Therefore a variable edit rebuilds only features whose resolved semantic parameters change, plus their descendants. Unknown feature payloads remain untouched unless their exact handler is available.
 
-Variable add, expression update, and removal use the ordinary revisioned command/event path. Initial commands do not rename variables. Removal is rejected while another variable or a standard quantity parameter references the name. Event replay evaluates the same project-owned grammar and never requires React, persistence, a geometry kernel, an extension runtime, or network access.
+Variable add, expression update, removal, and whole-table replacement use the ordinary revisioned command/event path. `org.vibeshape.variable.replace-table` validates the complete visible table as one revision, accepts forward references independently of presentation order, preserves existing ID-to-name bindings, and records both the previous and resulting table for deterministic replay. Initial commands do not rename variables. Removal is rejected while another variable or a standard quantity parameter references the name. Whole-table replacement may remove an internally dependent set only when the final table and every feature reference remain valid. Event replay evaluates the same project-owned grammar and never requires React, persistence, a geometry kernel, an extension runtime, or network access.
 
 Document protocol version 2 carries the bounded authored variable table to the document worker. The worker evaluates variables and resolves trusted feature parameters before canonical hashing and OCCT execution. Worker restart recovery replays the last successful semantic snapshot, including variables; native and mesh state remain disposable.
 
@@ -38,5 +38,5 @@ Document protocol version 2 carries the bounded authored variable table to the d
 - Human-readable `#name` sources remain portable while UUIDv7 preserves variable identity.
 - Formatting-only expression edits can advance the semantic document revision without invalidating geometry.
 - Feature-module handlers own parameter resolution, so unavailable extension payloads are preserved rather than guessed.
-- The UI needs an uncontrolled editing buffer and table-level validation before committing one ordinary command.
-- A future atomic rename/refactor command, richer grammar, variable reordering, display-unit preferences, and extension ABI support remain explicit follow-up work.
+- The product UI keeps raw incomplete rows in an uncontrolled table contract, integrates the same DOM through TanStack Form, and commits the exact validated table through one ordinary replacement command.
+- A future atomic rename/refactor command, richer grammar, explicit reorder UI, display-unit preferences, and extension ABI support remain follow-up work.

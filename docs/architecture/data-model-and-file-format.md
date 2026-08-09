@@ -74,9 +74,9 @@ A command contains:
 - inverse data or sufficient information for deterministic reduction;
 - no derived geometry or transport-specific prompt data.
 
-An accepted event records the resulting revision. The IndexedDB repository atomically stores the event, resulting snapshot, project head, and recovery marker with SHA-256 checksums for the serialized event and snapshot payloads.
+An accepted event records the resulting revision. The IndexedDB repository atomically stores either one event or a bounded transaction-tagged event sequence, the resulting snapshot, project head, and recovery marker with SHA-256 checksums for every serialized event and snapshot payload.
 
-The application persisted-session boundary treats the repository as semantic authority. It renews the single-writer lease, dispatches an ordinary command, commits the event and snapshot, advances the in-memory committed snapshot, and then rebuilds derived geometry. A failed persistence transaction advances neither state nor geometry. A later worker failure does not roll back the saved semantic revision; reopening or an explicit retry rebuilds from that revision. See [ADR-0016](../adr/0016-persisted-document-session-and-rebuild-sequencing.md).
+The application persisted-session boundary treats the repository as semantic authority. It renews the single-writer lease, dispatches one ordinary command or a bounded draft through the trusted registry, commits the event sequence and final snapshot, advances the in-memory committed snapshot, and then rebuilds only the saved final revision. A failed persistence transaction advances neither state nor geometry. A later worker failure does not roll back the saved semantic revision; reopening or an explicit retry rebuilds from that revision. See [ADR-0016](../adr/0016-persisted-document-session-and-rebuild-sequencing.md).
 
 The domain reducer MUST be deterministic: one snapshot plus the same commands produces the same domain state. Geometry may vary slightly between OCCT builds, so engine build metadata is recorded separately.
 

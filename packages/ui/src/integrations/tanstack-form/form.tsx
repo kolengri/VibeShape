@@ -34,19 +34,12 @@ const formVariants = cva("grid gap-4", {
   },
 })
 
-type FormApiWithProvider = AnyFormApi & {
-  AppForm: React.ComponentType<React.PropsWithChildren>
-}
-
-export type FormProps<FormApi extends FormApiWithProvider> = Omit<
-  React.ComponentProps<"form">,
-  "onSubmit"
-> &
+export type FormProps<FormApi extends AnyFormApi> = Omit<React.ComponentProps<"form">, "onSubmit"> &
   VariantProps<typeof formVariants> & {
     form: FormApi
   }
 
-function Form<FormApi extends FormApiWithProvider>({
+function Form<FormApi extends AnyFormApi>({
   children,
   className,
   form,
@@ -59,7 +52,11 @@ function Form<FormApi extends FormApiWithProvider>({
     void form.handleSubmit()
   }
 
-  const AppForm = form.AppForm
+  const AppForm = (
+    form as unknown as AnyFormApi & {
+      AppForm: React.ComponentType<React.PropsWithChildren>
+    }
+  ).AppForm
 
   return (
     <form

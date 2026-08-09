@@ -22,6 +22,7 @@ type VariableCommand = Extract<
       | "org.vibeshape.variable.add"
       | "org.vibeshape.variable.set-expression"
       | "org.vibeshape.variable.remove"
+      | "org.vibeshape.variable.replace-table"
   }
 >
 type VariableAddedEvent = Extract<DocumentEvent, { type: "org.vibeshape.variable.added" }>
@@ -30,7 +31,15 @@ type VariableExpressionChangedEvent = Extract<
   { type: "org.vibeshape.variable.expression-changed" }
 >
 type VariableRemovedEvent = Extract<DocumentEvent, { type: "org.vibeshape.variable.removed" }>
-type VariableEvent = VariableAddedEvent | VariableExpressionChangedEvent | VariableRemovedEvent
+type VariableTableReplacedEvent = Extract<
+  DocumentEvent,
+  { type: "org.vibeshape.variable.table-replaced" }
+>
+type VariableEvent =
+  | VariableAddedEvent
+  | VariableExpressionChangedEvent
+  | VariableRemovedEvent
+  | VariableTableReplacedEvent
 type TransactionId = z.infer<typeof draftIdSchema> | null
 
 type VariableMutationResult =
@@ -203,6 +212,89 @@ function removeVariable(
   return dependencyRemovalFailure(variable, parsed.error, invalidEvent)
 }
 
+function immutableVariableNameFailure(
+  current: readonly VariableDefinition[],
+  variables: readonly VariableDefinition[],
+  invalidEvent: boolean,
+): VariableMutationResult | null {
+  for (const existing of current) {
+    const replacement = variables.find(({ id }) => id === existing.id)
+    if (replacement && replacement.name !== existing.name) {
+      return {
+        ok: false,
+        diagnostic: domainDiagnostic(
+          invalidEvent ? "invalid-event" : "variable-name-immutable",
+          invalidEvent
+            ? "The variable event does not match the current document."
+            : `Variable #${existing.name} cannot be renamed.`,
+        ),
+      }
+    }
+  }
+  return null
+}
+
+function removedFeatureReference(
+  current: DocumentSnapshot,
+  variables: readonly VariableDefinition[],
+) {
+  const names = new Set(variables.map(({ name }) => name))
+  for (const feature of current.features) {
+    const removedReference = parameterVariableReferences(feature.parameters).find(
+      (name) => !names.has(name),
+    )
+    if (removedReference) return removedReference
+  }
+  return null
+}
+
+function variableTablesEqual(
+  left: readonly VariableDefinition[],
+  right: readonly VariableDefinition[],
+) {
+  return (
+    left.length === right.length &&
+    left.every((variable, index) => {
+      const existing = right[index]
+      return existing ? variablesEqual(variable, existing) : false
+    })
+  )
+}
+
+function noOpVariableTableFailure(invalidEvent: boolean): VariableMutationResult {
+  return {
+    ok: false,
+    diagnostic: domainDiagnostic(
+      invalidEvent ? "invalid-event" : "command-no-op",
+      invalidEvent
+        ? "The variable event does not match the current document."
+        : "The variable table already has the requested contents.",
+    ),
+  }
+}
+
+function replaceVariableTable(
+  current: DocumentSnapshot,
+  variables: readonly VariableDefinition[],
+  invalidEvent = false,
+): VariableMutationResult {
+  const immutableName = immutableVariableNameFailure(current.variables, variables, invalidEvent)
+  if (immutableName) return immutableName
+  const removedReference = removedFeatureReference(current, variables)
+  if (removedReference) {
+    return removalFailure(
+      invalidEvent,
+      "variable-in-use",
+      `Variable #${removedReference} is referenced by a feature parameter.`,
+    )
+  }
+  const parsed = parseMutation(variables, invalidEvent)
+  if (!parsed.ok) return parsed
+  return variableTablesEqual(parsed.variables, current.variables)
+    ? noOpVariableTableFailure(invalidEvent)
+    : parsed
+}
+
 function snapshotAfterMutation(
   current: DocumentSnapshot,
   event: VariableEvent,
@@ -292,6 +384,39 @@ function reduceRemovedEvent(
     : current
 }
 
+function reduceTableReplacedEvent(
+  snapshot: DocumentSnapshot | null,
+  event: VariableTableReplacedEvent,
+): DocumentEventResult {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    event.documentId,
+    event.baseRevision,
+    event.revision,
+  )
+  if (!current.ok) return current
+  if (
+    current.snapshot.variables.length !== event.previousVariables.length ||
+    current.snapshot.variables.some((variable, index) => {
+      const previous = event.previousVariables[index]
+      return previous ? !variablesEqual(variable, previous) : true
+    })
+  ) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "The variable event does not match the current document.",
+      ),
+    }
+  }
+  return snapshotAfterMutation(
+    current.snapshot,
+    event,
+    replaceVariableTable(current.snapshot, event.variables, true),
+  )
+}
+
 export function reduceVariableDocumentEvent(
   snapshot: DocumentSnapshot | null,
   event: VariableEvent,
@@ -303,6 +428,8 @@ export function reduceVariableDocumentEvent(
       return reduceExpressionChangedEvent(snapshot, event)
     case "org.vibeshape.variable.removed":
       return reduceRemovedEvent(snapshot, event)
+    case "org.vibeshape.variable.table-replaced":
+      return reduceTableReplacedEvent(snapshot, event)
   }
 }
 
@@ -394,6 +521,24 @@ function createRemovedEvent(
     : mutation.diagnostic
 }
 
+function createTableReplacedEvent(
+  snapshot: DocumentSnapshot | null,
+  command: Extract<VariableCommand, { kind: "org.vibeshape.variable.replace-table" }>,
+  transactionId: TransactionId,
+): DocumentEvent | DomainDiagnostic {
+  const current = requireCurrent(snapshot, command)
+  if (!current.ok) return current.diagnostic
+  const mutation = replaceVariableTable(current.snapshot, command.payload.variables)
+  return mutation.ok
+    ? {
+        ...eventEnvelope(command, transactionId),
+        type: "org.vibeshape.variable.table-replaced",
+        previousVariables: [...current.snapshot.variables],
+        variables: [...mutation.variables],
+      }
+    : mutation.diagnostic
+}
+
 export function createVariableDocumentEvent(
   snapshot: DocumentSnapshot | null,
   command: VariableCommand,
@@ -406,5 +551,7 @@ export function createVariableDocumentEvent(
       return createExpressionChangedEvent(snapshot, command, transactionId)
     case "org.vibeshape.variable.remove":
       return createRemovedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.variable.replace-table":
+      return createTableReplacedEvent(snapshot, command, transactionId)
   }
 }

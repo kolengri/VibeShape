@@ -2,6 +2,7 @@ import {
   type DocumentEvent,
   type DocumentId,
   type DocumentSnapshot,
+  commandActorsEqual,
   documentEventSchema,
   documentIdSchema,
   documentSnapshotSchema,
@@ -23,6 +24,7 @@ import {
   type PersistenceDiagnostic,
   type ProjectRecord,
   persistenceCommitInputSchema,
+  persistenceDraftCommitInputSchema,
   projectRecordSchema,
   type RecoveryRecord,
   recoveryRecordSchema,
@@ -40,6 +42,13 @@ export interface CommitReport {
   documentId: DocumentId
   revision: number
   eventChecksum: string
+  snapshotChecksum: string
+}
+
+export interface DraftCommitReport {
+  documentId: DocumentId
+  revision: number
+  eventChecksums: readonly string[]
   snapshotChecksum: string
 }
 
@@ -81,6 +90,46 @@ function validateCommitRelationship(
   requireMatchingCommitRevisions(baseSnapshot, event, snapshot)
   requireMatchingCommitDocument(baseSnapshot, event, snapshot)
   requireEventResult(baseSnapshot, event, snapshot)
+}
+
+function validateDraftCommitRelationship(
+  input: z.output<typeof persistenceDraftCommitInputSchema>,
+) {
+  let snapshot: DocumentSnapshot | null = input.baseSnapshot
+
+  for (const event of input.events) {
+    if (event.transactionId !== input.transactionId) {
+      throw persistenceInvariantError(
+        "invalid-input",
+        "Every draft event must use the supplied transaction ID.",
+      )
+    }
+    if (event.documentId !== input.snapshot.id || event.documentId !== input.baseSnapshot.id) {
+      throw persistenceInvariantError(
+        "invalid-input",
+        "Every draft event must target the supplied document.",
+      )
+    }
+    const firstEvent = input.events[0]
+    if (firstEvent && !commandActorsEqual(firstEvent.actor, event.actor)) {
+      throw persistenceInvariantError("invalid-input", "Every draft event must use the same actor.")
+    }
+    const reduced = reduceDocumentEvent(snapshot, event)
+    if (!reduced.ok) {
+      throw persistenceInvariantError(
+        "invalid-input",
+        "The draft event sequence cannot be replayed.",
+      )
+    }
+    snapshot = reduced.snapshot
+  }
+
+  if (canonicalJson(snapshot) !== canonicalJson(input.snapshot)) {
+    throw persistenceInvariantError(
+      "invalid-input",
+      "The supplied snapshot is not the draft event sequence result.",
+    )
+  }
 }
 
 function requireMatchingCommitRevisions(
@@ -182,7 +231,10 @@ function hasValidWriterLease(
 function requireCommitLease(
   current: ProjectRecord | undefined,
   lease: LeaseRecord | undefined,
-  input: z.output<typeof persistenceCommitInputSchema>,
+  input: {
+    sessionId: string
+    lease: WriterLeaseClaim | null
+  },
 ) {
   if (!current) {
     if (input.lease !== null) {
@@ -199,7 +251,11 @@ function requireCommitLease(
 }
 
 function recoveryForCommit(
-  input: z.output<typeof persistenceCommitInputSchema>,
+  input: {
+    sessionId: string
+    storedAt: string
+    snapshot: DocumentSnapshot
+  },
   current: RecoveryRecord | undefined,
 ): RecoveryRecord {
   return recoveryRecordSchema.parse({
@@ -232,6 +288,31 @@ async function storedRecords(input: z.output<typeof persistenceCommitInputSchema
       ...snapshot,
     }),
   }
+}
+
+async function storedDraftRecords(input: z.output<typeof persistenceDraftCommitInputSchema>) {
+  const events = await Promise.all(
+    input.events.map(async (event) => {
+      const serialized = await serializeRecord(event)
+      return eventRecordSchema.parse({
+        schemaVersion: 0,
+        documentId: event.documentId,
+        revision: event.revision,
+        commandId: event.commandId,
+        storedAt: input.storedAt,
+        ...serialized,
+      })
+    }),
+  )
+  const serializedSnapshot = await serializeRecord(input.snapshot)
+  const snapshot = snapshotRecordSchema.parse({
+    schemaVersion: 0,
+    documentId: input.snapshot.id,
+    revision: input.snapshot.revision,
+    storedAt: input.storedAt,
+    ...serializedSnapshot,
+  })
+  return { events, snapshot }
 }
 
 async function latestValidSnapshot(records: readonly SnapshotRecord[]) {
@@ -386,6 +467,55 @@ export class LocalDocumentRepository {
           documentId: parsed.data.snapshot.id,
           revision: parsed.data.snapshot.revision,
           eventChecksum: records.event.checksum,
+          snapshotChecksum: records.snapshot.checksum,
+        },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async commitDraft(input: unknown): Promise<PersistenceResult<DraftCommitReport>> {
+    const parsed = persistenceDraftCommitInputSchema.safeParse(input)
+    if (!parsed.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The persistence draft commit is invalid.",
+        ),
+      }
+    }
+    try {
+      validateDraftCommitRelationship(parsed.data)
+      const records = await storedDraftRecords(parsed.data)
+      await this.database.transaction(
+        "rw",
+        this.database.projects,
+        this.database.events,
+        this.database.snapshots,
+        this.database.recovery,
+        this.database.leases,
+        async () => {
+          const current = await this.database.projects.get(parsed.data.snapshot.id)
+          const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
+          const lease = await this.database.leases.get(parsed.data.snapshot.id)
+          requireExistingRevision(current, parsed.data.baseSnapshot.revision)
+          requireCommitLease(current, lease, parsed.data)
+          await this.database.events.bulkAdd(records.events)
+          await this.database.snapshots.add(records.snapshot)
+          await this.database.projects.put(
+            projectForCommit(current, parsed.data.snapshot, parsed.data.storedAt),
+          )
+          await this.database.recovery.put(recoveryForCommit(parsed.data, currentRecovery))
+        },
+      )
+      return {
+        ok: true,
+        value: {
+          documentId: parsed.data.snapshot.id,
+          revision: parsed.data.snapshot.revision,
+          eventChecksums: records.events.map((event) => event.checksum),
           snapshotChecksum: records.snapshot.checksum,
         },
       }

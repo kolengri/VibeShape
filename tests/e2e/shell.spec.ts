@@ -11,10 +11,10 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("toolbar", { name: "Model commands" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Model tree" })).toBeVisible()
     await expect(page.getByRole("tree", { name: "Project features" })).toBeVisible()
-    await expect(page.getByRole("treeitem")).toHaveCount(4)
+    await expect(page.getByRole("treeitem")).toHaveCount(5)
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
-    await expect(page.getByRole("status")).toContainText("Ready")
+    await expect(page.locator("footer[role='status']")).toContainText("Ready")
   })
 
   test("keeps primary commands in a predictable keyboard order", async ({ browserName, page }) => {

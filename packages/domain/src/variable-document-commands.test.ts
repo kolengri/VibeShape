@@ -168,6 +168,19 @@ describe("variable document commands", () => {
         message: expect.stringContaining("feature parameter"),
       },
     })
+
+    expect(
+      applyDocumentCommand(featured.snapshot, {
+        ...envelope("org.vibeshape.variable.replace-table", 3, 3),
+        payload: { variables: [] },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "variable-in-use",
+        message: expect.stringContaining("feature parameter"),
+      },
+    })
   })
 
   it("rejects tampered expression-change events", () => {
@@ -188,5 +201,67 @@ describe("variable document commands", () => {
         previousExpression: "19 mm",
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
+  it("replaces the exact table atomically regardless of visible dependency order", () => {
+    const created = createDocument()
+    const replaced = applyDocumentCommand(created.snapshot, {
+      ...envelope("org.vibeshape.variable.replace-table", 1, 1),
+      payload: {
+        variables: [
+          {
+            schemaVersion: 0,
+            id: variableIds.depth,
+            name: "depth",
+            expression: "#width / 2",
+          },
+          {
+            schemaVersion: 0,
+            id: variableIds.width,
+            name: "width",
+            expression: "20 mm",
+          },
+        ],
+      },
+    })
+
+    expect(replaced).toMatchObject({
+      ok: true,
+      snapshot: {
+        revision: 2,
+        variables: [
+          { name: "depth", expression: "#width / 2" },
+          { name: "width", expression: "20 mm" },
+        ],
+      },
+      event: { type: "org.vibeshape.variable.table-replaced", previousVariables: [] },
+    })
+    if (!replaced.ok) return
+    expect(replayDocumentEvents([created.event, replaced.event])).toEqual({
+      ok: true,
+      snapshot: replaced.snapshot,
+    })
+  })
+
+  it("keeps persisted variable names immutable across whole-table replacement", () => {
+    const created = createDocument()
+    const width = addVariable(created.snapshot, variableIds.width, "width", "20 mm", 1)
+    if (!width.ok) throw new Error(width.diagnostic.message)
+
+    expect(
+      applyDocumentCommand(width.snapshot, {
+        ...envelope("org.vibeshape.variable.replace-table", 2, 2),
+        payload: {
+          variables: [
+            {
+              schemaVersion: 0,
+              id: variableIds.width,
+              name: "renamedWidth",
+              expression: "20 mm",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "variable-name-immutable" } })
   })
 })

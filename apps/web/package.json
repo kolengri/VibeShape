@@ -19,6 +19,7 @@
   "dependencies": {
     "@vibeshape/application": "workspace:*",
     "@vibeshape/document-worker": "workspace:*",
+    "@vibeshape/domain": "workspace:*",
     "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/i18n": "workspace:*",
     "@vibeshape/persistence": "workspace:*",
@@ -30,9 +31,10 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.3",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vibeshape/domain": "workspace:*",
     "@vibeshape/extension-spike": "workspace:*",
     "@vibeshape/formats": "workspace:*",
     "@vibeshape/test-models": "workspace:*",

@@ -1,9 +1,15 @@
 import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
 
-const modelItemKeys = ["origin", "sketches", "features", "bodies"] as const
+const modelItemKeys = ["variables", "origin", "sketches", "features", "bodies"] as const
 
-export function ModelTree() {
+export function ModelTree({
+  activeWorkspace,
+  onWorkspaceChange,
+}: {
+  activeWorkspace: "model" | "variables"
+  onWorkspaceChange: (workspace: "model" | "variables") => void
+}) {
   const t = useTranslations("app.shell.modelTree")
 
   return (
@@ -18,6 +24,10 @@ export function ModelTree() {
             size="sm"
             className="w-full justify-start font-normal"
             role="treeitem"
+            aria-current={
+              itemKey === "variables" && activeWorkspace === "variables" ? "page" : undefined
+            }
+            onClick={() => onWorkspaceChange(itemKey === "variables" ? "variables" : "model")}
           >
             {t(`items.${itemKey}`)}
           </Button>
