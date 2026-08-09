@@ -7,6 +7,7 @@ import {
 } from "@vibeshape/application/persistent-document-session"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
+  copyDocumentHistory,
   createCommandDispatcher,
   createCoreCommandHandlers,
   createFeatureTypeRegistry,
@@ -84,6 +85,14 @@ export type ProjectSwitchResult =
   | { ok: false; diagnostic: { code: string; message: string } }
 
 export type ProjectDeleteResult = ProjectSwitchResult
+
+export type ProjectDuplicateResult =
+  | {
+      ok: true
+      documentId: ReturnType<typeof documentIdSchema.parse>
+      name: string
+    }
+  | { ok: false; diagnostic: { code: string; message: string } }
 
 let state: DocumentControllerState = {
   status: "idle",
@@ -542,6 +551,50 @@ export async function deleteLocalProject(
     nowMs: Date.now(),
   })
   return deleted.ok ? { ok: true } : { ok: false, diagnostic: deleted.diagnostic }
+}
+
+export async function duplicateLocalProject(
+  documentIdInput: unknown,
+  expectedHeadRevision: number,
+  name: string,
+): Promise<ProjectDuplicateResult> {
+  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+  const documentId = documentIdSchema.safeParse(documentIdInput)
+  if (!documentId.success) {
+    return {
+      ok: false,
+      diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
+    }
+  }
+  const portable = await activeRepository.exportPortableProject(documentId.data)
+  if (!portable.ok) return { ok: false, diagnostic: portable.diagnostic }
+  if (portable.value.snapshot.revision !== expectedHeadRevision) {
+    return {
+      ok: false,
+      diagnostic: { code: "stale-revision", message: "The project changed before it was copied." },
+    }
+  }
+
+  const copiedAt = new Date().toISOString()
+  const copied = copyDocumentHistory({
+    sourceSnapshot: portable.value.snapshot,
+    sourceEvents: portable.value.events,
+    documentId: documentIdSchema.parse(browserUuidV7()),
+    commandIds: Array.from({ length: portable.value.events.length + 1 }, browserUuidV7),
+    name,
+    issuedAt: copiedAt,
+    actor: { type: "user", userId: null },
+  })
+  if (!copied.ok) return { ok: false, diagnostic: copied.diagnostic }
+
+  const stored = await activeRepository.copyPortableProject({
+    snapshot: copied.snapshot,
+    events: copied.events,
+    copiedAt,
+  })
+  return stored.ok
+    ? { ok: true, documentId: stored.value.documentId, name: copied.snapshot.name }
+    : { ok: false, diagnostic: stored.diagnostic }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

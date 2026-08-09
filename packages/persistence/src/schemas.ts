@@ -127,14 +127,21 @@ export const persistenceDraftCommitInputSchema = z
   })
   .strict()
 
-export const portableProjectImportSchema = z
+const portableProjectPayloadSchema = z
   .object({
-    importedAt: timestampSchema,
-    exportedAt: timestampSchema,
     snapshot: documentSnapshotSchema,
     events: z.array(documentEventSchema).min(1).max(100_000),
   })
   .strict()
+
+export const portableProjectImportSchema = portableProjectPayloadSchema.extend({
+  importedAt: timestampSchema,
+  exportedAt: timestampSchema,
+})
+
+export const portableProjectCopySchema = portableProjectPayloadSchema.extend({
+  copiedAt: timestampSchema,
+})
 
 export const projectDeleteInputSchema = z
   .object({
@@ -176,6 +183,7 @@ export type CacheIndexRecord = z.infer<typeof cacheIndexRecordSchema>
 export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema>
 export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
 export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
+export type PortableProjectCopy = z.input<typeof portableProjectCopySchema>
 export type ProjectDeleteInput = z.input<typeof projectDeleteInputSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>

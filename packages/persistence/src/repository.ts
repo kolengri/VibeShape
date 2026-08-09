@@ -28,6 +28,7 @@ import {
   type ProjectRecord,
   persistenceCommitInputSchema,
   persistenceDraftCommitInputSchema,
+  portableProjectCopySchema,
   portableProjectImportSchema,
   projectDeleteInputSchema,
   projectRecordSchema,
@@ -336,7 +337,11 @@ async function storedDraftRecords(input: z.output<typeof persistenceDraftCommitI
   return { events, snapshot }
 }
 
-async function storedPortableRecords(input: z.output<typeof portableProjectImportSchema>) {
+async function storedPortableRecords(input: {
+  events: readonly DocumentEvent[]
+  snapshot: DocumentSnapshot
+  storedAt: string
+}) {
   const events = await Promise.all(
     input.events.map(async (event) => {
       const serialized = await serializeRecord(event)
@@ -345,7 +350,7 @@ async function storedPortableRecords(input: z.output<typeof portableProjectImpor
         documentId: event.documentId,
         revision: event.revision,
         commandId: event.commandId,
-        storedAt: input.importedAt,
+        storedAt: input.storedAt,
         ...serialized,
       })
     }),
@@ -355,7 +360,7 @@ async function storedPortableRecords(input: z.output<typeof portableProjectImpor
     schemaVersion: 0,
     documentId: input.snapshot.id,
     revision: input.snapshot.revision,
-    storedAt: input.importedAt,
+    storedAt: input.storedAt,
     ...serializedSnapshot,
   })
   return { events, snapshot }
@@ -397,6 +402,20 @@ function importedProjectRecord(input: z.output<typeof portableProjectImportSchem
     createdAt: input.snapshot.createdAt,
     updatedAt: input.importedAt,
     lastExternalBackupAt: input.exportedAt,
+  })
+}
+
+function copiedProjectRecord(input: z.output<typeof portableProjectCopySchema>): ProjectRecord {
+  return projectRecordSchema.parse({
+    schemaVersion: 0,
+    documentId: input.snapshot.id,
+    name: input.snapshot.name,
+    headRevision: input.snapshot.revision,
+    latestSnapshotRevision: input.snapshot.revision,
+    cleanCloseRevision: input.snapshot.revision,
+    createdAt: input.snapshot.createdAt,
+    updatedAt: input.copiedAt,
+    lastExternalBackupAt: null,
   })
 }
 
@@ -518,6 +537,34 @@ function semanticWriteTransaction(database: VibeShapeDatabase, operation: () => 
     database.leases,
     operation,
   )
+}
+
+async function publishPortableProject(
+  database: VibeShapeDatabase,
+  project: ProjectRecord,
+  records: Awaited<ReturnType<typeof storedPortableRecords>>,
+) {
+  await semanticWriteTransaction(database, async () => {
+    const current = await database.projects.get(project.documentId)
+    requireNewDocument(current)
+    await database.events.bulkAdd(records.events)
+    await database.snapshots.add(records.snapshot)
+    await database.projects.add(project)
+    await database.recovery.delete(project.documentId)
+    await database.leases.delete(project.documentId)
+  })
+}
+
+function portableProjectWriteReport(
+  snapshot: DocumentSnapshot,
+  records: Awaited<ReturnType<typeof storedPortableRecords>>,
+): PortableProjectImportReport {
+  return {
+    documentId: snapshot.id,
+    revision: snapshot.revision,
+    eventChecksums: records.events.map(({ checksum }) => checksum),
+    snapshotChecksum: records.snapshot.checksum,
+  }
 }
 
 export class LocalDocumentRepository {
@@ -741,24 +788,45 @@ export class LocalDocumentRepository {
     }
     try {
       validatePortableProject(input.data.snapshot, input.data.events)
-      const records = await storedPortableRecords(input.data)
-      await semanticWriteTransaction(this.database, async () => {
-        const current = await this.database.projects.get(input.data.snapshot.id)
-        requireNewDocument(current)
-        await this.database.events.bulkAdd(records.events)
-        await this.database.snapshots.add(records.snapshot)
-        await this.database.projects.add(importedProjectRecord(input.data))
-        await this.database.recovery.delete(input.data.snapshot.id)
-        await this.database.leases.delete(input.data.snapshot.id)
+      const records = await storedPortableRecords({
+        events: input.data.events,
+        snapshot: input.data.snapshot,
+        storedAt: input.data.importedAt,
       })
+      await publishPortableProject(this.database, importedProjectRecord(input.data), records)
       return {
         ok: true,
-        value: {
-          documentId: input.data.snapshot.id,
-          revision: input.data.snapshot.revision,
-          eventChecksums: records.events.map(({ checksum }) => checksum),
-          snapshotChecksum: records.snapshot.checksum,
-        },
+        value: portableProjectWriteReport(input.data.snapshot, records),
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async copyPortableProject(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = portableProjectCopySchema.safeParse(inputValue)
+    if (!input.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable project copy is invalid.",
+        ),
+      }
+    }
+    try {
+      validatePortableProject(input.data.snapshot, input.data.events)
+      const records = await storedPortableRecords({
+        events: input.data.events,
+        snapshot: input.data.snapshot,
+        storedAt: input.data.copiedAt,
+      })
+      await publishPortableProject(this.database, copiedProjectRecord(input.data), records)
+      return {
+        ok: true,
+        value: portableProjectWriteReport(input.data.snapshot, records),
       }
     } catch (error) {
       return { ok: false, diagnostic: classifyPersistenceError(error) }

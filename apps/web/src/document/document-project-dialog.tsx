@@ -18,6 +18,7 @@ import {
   createNewLocalProject,
   type DocumentControllerState,
   deleteLocalProject,
+  duplicateLocalProject,
   exportActiveProjectBackup,
   importProjectBackup,
   listLocalProjects,
@@ -30,6 +31,7 @@ type ProjectActivity =
   | "backing-up"
   | "creating"
   | "deleting"
+  | "duplicating"
   | "opening-file"
   | "switching"
 
@@ -77,12 +79,24 @@ function feedbackForImport(code: string) {
   return "errors.openFailed"
 }
 
+function localizedCopyName(sourceName: string, format: (name: string) => string) {
+  let baseName = sourceName
+  let copyName = format(baseName)
+  while (copyName.length > 120 && baseName.length > 0) {
+    baseName = baseName.slice(0, -1)
+    copyName = format(baseName)
+  }
+  return copyName
+}
+
 function LocalProjectList({
   activeDocumentId,
   disabled,
+  duplicatingDocumentId,
   onCreate,
   onDelete,
   onDeleted,
+  onDuplicate,
   onOpen,
   onPendingDeleteChange,
   projects,
@@ -90,12 +104,14 @@ function LocalProjectList({
 }: {
   activeDocumentId: string | undefined
   disabled: boolean
+  duplicatingDocumentId: string | null
   onCreate: () => unknown
   onDelete: (
     documentId: string,
     expectedHeadRevision: number,
   ) => ReturnType<typeof deleteLocalProject>
-  onDeleted: () => void
+  onDeleted: () => Promise<void>
+  onDuplicate: (project: LocalProjectSummary) => unknown
   onOpen: (documentId: string) => unknown
   onPendingDeleteChange: (pending: boolean) => void
   projects: readonly LocalProjectSummary[]
@@ -173,6 +189,20 @@ function LocalProjectList({
                   >
                     {t("open")}
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled}
+                    isLoading={duplicatingDocumentId === project.documentId}
+                    aria-label={t("duplicate.actionLabel", {
+                      name: project.name,
+                      revision: project.headRevision,
+                    })}
+                    onClick={() => onDuplicate(project)}
+                  >
+                    {t("duplicate.action")}
+                  </Button>
                   <ProjectDeleteAction
                     disabled={disabled}
                     isCurrent={isCurrent}
@@ -191,6 +221,71 @@ function LocalProjectList({
   )
 }
 
+function ProjectLibrary({
+  activeDocumentId,
+  disabled,
+  duplicatingDocumentId,
+  library,
+  onCreate,
+  onDeleted,
+  onDuplicate,
+  onOpen,
+  onPendingDeleteChange,
+  onRetry,
+  switchingDocumentId,
+}: {
+  activeDocumentId: string | undefined
+  disabled: boolean
+  duplicatingDocumentId: string | null
+  library: ProjectLibraryState
+  onCreate: () => unknown
+  onDeleted: () => Promise<void>
+  onDuplicate: (project: LocalProjectSummary) => unknown
+  onOpen: (documentId: string) => unknown
+  onPendingDeleteChange: (pending: boolean) => void
+  onRetry: () => unknown
+  switchingDocumentId: string | null
+}) {
+  const t = useTranslations("app.projectFile.library")
+
+  if (library.status === "loading") {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        {t("loading")}
+      </p>
+    )
+  }
+
+  if (library.status === "error") {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
+        <p className="text-sm text-destructive" role="alert">
+          {t("loadFailed")}
+        </p>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+          {t("retry")}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <LocalProjectList
+      activeDocumentId={activeDocumentId}
+      disabled={disabled}
+      duplicatingDocumentId={duplicatingDocumentId}
+      onCreate={onCreate}
+      onDelete={deleteLocalProject}
+      onDeleted={onDeleted}
+      onDuplicate={onDuplicate}
+      onOpen={onOpen}
+      onPendingDeleteChange={onPendingDeleteChange}
+      projects={library.projects}
+      switchingDocumentId={switchingDocumentId}
+    />
+  )
+}
+
 export function DocumentProjectDialog({ controller }: { controller: DocumentControllerState }) {
   const t = useTranslations("app.projectFile")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -199,6 +294,7 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
   const [feedback, setFeedback] = useState<ProjectFeedback | null>(null)
   const [library, setLibrary] = useState<ProjectLibraryState>({ status: "loading", projects: [] })
   const [switchingDocumentId, setSwitchingDocumentId] = useState<string | null>(null)
+  const [duplicatingDocumentId, setDuplicatingDocumentId] = useState<string | null>(null)
   const listRequestRef = useRef(0)
   const disabled = controller.status !== "ready" || activity !== "idle"
 
@@ -297,9 +393,32 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
     }
   }
 
+  const duplicateProject = async (project: LocalProjectSummary) => {
+    setActivity("duplicating")
+    setDuplicatingDocumentId(project.documentId)
+    setFeedback({ key: "status.duplicating", kind: "status" })
+    try {
+      const copyName = localizedCopyName(project.name, (name) =>
+        t("library.duplicate.copyName", { name }),
+      )
+      const result = await duplicateLocalProject(project.documentId, project.headRevision, copyName)
+      if (!result.ok) {
+        setFeedback({ key: "errors.duplicateFailed", kind: "error" })
+        return
+      }
+      await loadProjects()
+      setFeedback({ key: "status.duplicated", kind: "status" })
+    } catch {
+      setFeedback({ key: "errors.duplicateFailed", kind: "error" })
+    } finally {
+      setDuplicatingDocumentId(null)
+      setActivity("idle")
+    }
+  }
+
   return (
     <>
-      {feedback?.kind === "status" ? (
+      {feedback?.kind === "status" && !open ? (
         <span className="text-xs text-muted-foreground" role="status" aria-live="polite">
           {t(feedback.key)}
         </span>
@@ -318,34 +437,24 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
-          {library.status === "loading" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              {t("library.loading")}
+          {feedback?.kind === "status" ? (
+            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+              {t(feedback.key)}
             </p>
           ) : null}
-          {library.status === "error" ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
-              <p className="text-sm text-destructive" role="alert">
-                {t("library.loadFailed")}
-              </p>
-              <Button type="button" size="sm" variant="outline" onClick={loadProjects}>
-                {t("library.retry")}
-              </Button>
-            </div>
-          ) : null}
-          {library.status === "ready" ? (
-            <LocalProjectList
-              activeDocumentId={controller.report?.snapshot.id}
-              disabled={disabled}
-              onCreate={createProject}
-              onDelete={deleteLocalProject}
-              onDeleted={() => void loadProjects()}
-              onOpen={openProject}
-              onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
-              projects={library.projects}
-              switchingDocumentId={switchingDocumentId}
-            />
-          ) : null}
+          <ProjectLibrary
+            activeDocumentId={controller.report?.snapshot.id}
+            disabled={disabled}
+            duplicatingDocumentId={duplicatingDocumentId}
+            library={library}
+            onCreate={createProject}
+            onDeleted={loadProjects}
+            onDuplicate={duplicateProject}
+            onOpen={openProject}
+            onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
+            onRetry={loadProjects}
+            switchingDocumentId={switchingDocumentId}
+          />
           <div className="h-px bg-border" />
           <div className="grid gap-3 sm:grid-cols-2">
             <ProjectFileCard
