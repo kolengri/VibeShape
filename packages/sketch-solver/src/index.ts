@@ -25,6 +25,20 @@ export {
   solveSketchRecord,
 } from "./production"
 export {
+  DEFAULT_PROFILE_TOLERANCE_MM,
+  detectSketchProfiles,
+  MAX_PROFILE_CURVES,
+  MAX_PROFILE_DIAGNOSTIC_ENTITY_IDS,
+  MAX_PROFILE_DIAGNOSTICS,
+  type SketchProfile,
+  type SketchProfileDiagnostic,
+  type SketchProfileDiagnosticCode,
+  type SketchProfileLoop,
+  type SketchProfileLoopSegment,
+  type SketchProfileResult,
+  type SketchProfileSolution,
+} from "./profiles"
+export {
   type SketchSolveResult,
   SketchSolverSession,
   type SketchSolveStatus,

@@ -12,7 +12,7 @@ The repository foundation scaffold is already available for implementing and mea
 
 SPK-001 now passes its Phase 0 stop/go gate with executable evidence. The project source-builds the pinned builder with the reviewed destructor correction, verifies transient boolean and fillet history relations, reaches a 448-byte post-warmup allocator drift with zero retained bytes in every 1,000-operation lifecycle block, passes its local controlled Chromium performance budgets on the declared Apple M1 baseline, creates a verified corresponding-source bundle, and validates the browser-exported STEP fixture through headless FreeCAD. The controlled package remains quarantined until the production facade and extended corpus are reviewed. See [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
-SPK-002 also passes its solver-selection gate. The pinned SolveSpace v3.2 subset exposes no native pointers, covers all P0 primitives through a Zod-validated typed-array ABI, distinguishes constraint states with conflict handles, completes 1,600 perturbation solves and 1,000 lifecycle cycles without post-corpus heap growth, runs in a Chromium module worker, and builds byte-identically after pinning the compilation epoch. The reviewed output is now promoted through production sketch schema v0, ordinary revisioned commands, document protocol v4, worker recovery, stable-ID branch continuation, variable-backed dimensions, and a local browser budget for 1,000 points. See [SPK-002 evidence](spikes/spk-002-sketch-solver.md).
+SPK-002 also passes its solver-selection gate. The pinned SolveSpace v3.2 subset exposes no native pointers, covers all P0 primitives through a Zod-validated typed-array ABI, distinguishes constraint states with conflict handles, completes 1,600 perturbation solves and 1,000 lifecycle cycles without post-corpus heap growth, runs in a Chromium module worker, and builds byte-identically after pinning the compilation epoch. The reviewed output is now promoted through production sketch schema v0, ordinary revisioned commands, document protocol v5, worker recovery, stable-ID branch continuation, variable-backed dimensions, deterministic endpoint-connected profiles, and a local browser budget for 1,000 points. See [SPK-002 evidence](spikes/spk-002-sketch-solver.md) and [ADR-0018](adr/0018-deterministic-sketch-profile-extraction.md).
 
 SPK-003 passes its stable-reference algorithm gate. Strict domain schemas, semantic output roles, composed OCCT face lineage, and a versioned conservative signature score produce explicit `resolved`, `ambiguous`, and `missing` outcomes. The 12-scenario local Chromium corpus records 136 semantic resolutions, 22 history resolutions, 10 expected missing outcomes, a symmetric ambiguity, and zero false confident matches. Transient OCCT hashes remain evaluation-local and never enter the protocol or document contract. Production DAG integration and repair persistence remain Phase 3 work. See [SPK-003 evidence](spikes/spk-003-toporef.md).
 
@@ -72,7 +72,7 @@ Create a variable-driven box and cylinder feature, perform a boolean, restart of
 
 ## Phase 2 — sketcher vertical slice (6–10 weeks)
 
-The non-visual production boundary is complete: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v4 solving, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, worker recovery, and the initial 1,000-point browser budget. The remaining phase is the interaction-to-feature slice below.
+The non-visual production boundary is complete for endpoint-connected geometry: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v5 solving and profile results, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, deterministic outer/hole/island extraction, worker recovery, and the initial 1,000-point browser budget. The remaining phase is the interaction-to-feature slice plus general intersection splitting below.
 
 ### Scope
 
@@ -80,7 +80,7 @@ The non-visual production boundary is complete: origin-plane sketch records, all
 - Line, rectangle, circle, arc, and construction geometry.
 - P0 constraints and dimensions.
 - Solver diagnostics and conflict UX.
-- Profile detection.
+- Interior-intersection splitting and stable boundary-based profile selectors.
 - Extrude, pocket, and revolve.
 - Command-level undo/redo.
 - Unit-aware inputs.

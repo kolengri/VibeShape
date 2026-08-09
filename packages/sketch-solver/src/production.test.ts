@@ -193,6 +193,10 @@ describe("production sketch compilation", () => {
       y: 12,
     })
     expect(solved.solution.circles).toEqual([{ entityId: circleId, radius: 6 }])
+    expect(solved.solution.profileResult).toMatchObject({
+      profiles: [],
+      diagnostics: [{ code: "invalid-solution" }],
+    })
   })
 
   test("rejects stale identity, future continuation, incompatible targets, and dimensions", () => {

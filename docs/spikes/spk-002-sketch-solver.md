@@ -10,9 +10,9 @@ The spike clears the solver-selection gate. The generated binary is never import
 
 The non-visual promotion gate is now complete. Sketch schema v0 defines bounded origin-plane point, line, circle, and arc records, every P0 constraint family, semantic reference compatibility, and Quantity-backed dimensions. Ordinary revisioned add, update, and remove commands provide deterministic tamper-resistant replay, persistence commits accept the same events, and `.vshape` v0 preserves the analytical records and authored expressions.
 
-Document protocol v4 carries exact-revision `solveSketch` requests and strict solution records. `@vibeshape/sketch-solver` evaluates document variables, maps stable IDs to ephemeral ABI handles, restores compatible prior solutions, applies explicit drag targets last, and maps solved values and conflicts back to stable IDs. The document session rebuilds the committed snapshot before retrying one recoverable solve after worker replacement. The real-browser production harness solves a `#width`-driven fully constrained line, performs two continuation/drag solves, and solves a 1,000-point sketch in the actual generated worker WASM. `bun run solvespace:verify:runtime` independently fixes the promoted module and WASM to the reviewed hashes below.
+Document protocol v5 carries exact-revision `solveSketch` requests, strict solution records, and deterministic profile results. `@vibeshape/sketch-solver` evaluates document variables, maps stable IDs to ephemeral ABI handles, restores compatible prior solutions, applies explicit drag targets last, and maps solved values and conflicts back to stable IDs. The post-spike production extractor derives bounded endpoint-connected analytical profiles without changing the native ABI. The document session rebuilds the committed snapshot before retrying one recoverable solve after worker replacement. The real-browser production harness solves a `#width`-driven fully constrained line, derives one `#width` by `#height` rectangular profile, performs two continuation/drag solves, and solves a 1,000-point sketch in the actual generated worker WASM. `bun run solvespace:verify:runtime` independently fixes the promoted module and WASM to the reviewed hashes below.
 
-Profile detection, sketch-mode interaction, conflict repair UX, and sketch-driven solid features remain product work; they are not part of this solver spike or the completed non-visual promotion boundary.
+Profile detection was not part of this solver spike; ADR-0018 adds its endpoint-connected production boundary separately. Interior-intersection splitting, stable profile selectors, sketch-mode interaction, conflict repair UX, and sketch-driven solid features remain product work.
 
 ## Scope
 
@@ -31,7 +31,7 @@ It covers:
 - Bun and Chromium module-worker execution;
 - source and output provenance, bit reproducibility, and corresponding-source packaging.
 
-The original spike does not cover profile detection, product UI interaction, solution-branch continuity across complex drags, very large sketches beyond the initial 1,000-point product budget, or every non-P0 SolveSpace constraint. Production serialization, construction flags, ordinary commands, and the initial continuation policy were implemented after the spike and are summarized above.
+The original spike does not cover profile extraction, product UI interaction, solution-branch continuity across complex drags, very large sketches beyond the initial 1,000-point product budget, or every non-P0 SolveSpace constraint. Production serialization, construction flags, ordinary commands, the initial continuation policy, and endpoint-connected profile extraction were implemented after the spike and are summarized above.
 
 ## Reproducible inputs
 
@@ -171,4 +171,4 @@ No required P0 primitive is unsupported by the selected native subset. Deferred 
 
 **Go** with the narrow SolveSpace v3.2 WASM solver boundary selected in [ADR-0014](../adr/0014-solvespace-flat-wasm-solver.md).
 
-The production sketch domain, protocol v4, initial branch-continuation policy, variable-backed dimensions, recovery, and 1,000-point browser budget now consume this ABI. The next sketch work is profile detection and the accessible sketch interaction slice. The next independent Phase 0 uncertainty at the time of this decision was SPK-003 stable topology references; that spike has since passed separately.
+The production sketch domain, protocol v5, initial branch-continuation policy, variable-backed dimensions, recovery, deterministic endpoint-connected profiles, and 1,000-point browser budget now consume this ABI. The next sketch work is interior-intersection splitting, stable profile selectors, and the accessible sketch interaction slice. The next independent Phase 0 uncertainty at the time of this decision was SPK-003 stable topology references; that spike has since passed separately.

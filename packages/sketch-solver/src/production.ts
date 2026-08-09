@@ -25,6 +25,7 @@ import {
   SOLVESPACE_ENTITY_TYPE,
 } from "./abi"
 import { SKETCH_SOLVER_BUILD } from "./build-info"
+import { detectSketchProfiles, type SketchProfileResult } from "./profiles"
 import { solveSketchSystem } from "./solver"
 
 const coordinateSchema = z
@@ -771,6 +772,7 @@ export type SolvedSketch = Readonly<{
   points: readonly z.infer<typeof pointSolutionSchema>[]
   circles: readonly z.infer<typeof circleSolutionSchema>[]
   failedConstraintIds: readonly SketchConstraintId[]
+  profileResult: SketchProfileResult
   heapCapacityBytes: number
   solverBuild: typeof SKETCH_SOLVER_BUILD
 }>
@@ -778,6 +780,28 @@ export type SolvedSketch = Readonly<{
 export type SolveSketchRecordResult =
   | { ok: true; solution: SolvedSketch }
   | { ok: false; diagnostic: SketchCompilationDiagnostic }
+
+function profileResultForSolve(
+  status: SolvedSketch["status"],
+  sketch: SketchRecord,
+  solution: Pick<SolvedSketch, "points" | "circles">,
+): SketchProfileResult {
+  if (status === "fully-constrained" || status === "under-constrained") {
+    return detectSketchProfiles(sketch, solution)
+  }
+  return {
+    schemaVersion: 0,
+    profiles: [],
+    loops: [],
+    diagnostics: [
+      {
+        code: "invalid-solution",
+        message: "Profiles are unavailable until the sketch has a valid solver result.",
+        entityIds: [],
+      },
+    ],
+  }
+}
 
 export function solveSketchRecord(
   module: NativeSketchSolverModule,
@@ -813,6 +837,7 @@ export function solveSketchRecord(
       points,
       circles,
       failedConstraintIds,
+      profileResult: profileResultForSolve(result.status, sketch, { points, circles }),
       heapCapacityBytes: result.heapCapacityBytes,
       solverBuild: SKETCH_SOLVER_BUILD,
     },

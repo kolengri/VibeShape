@@ -213,6 +213,7 @@ describe("DocumentWorkerClient", () => {
         points: [],
         circles: [],
         failedConstraintIds: [],
+        profileResult: { schemaVersion: 0, profiles: [], loops: [], diagnostics: [] },
         heapCapacityBytes: 16 * 1024 * 1024,
         solverBuild: {
           schemaVersion: 0,

@@ -66,6 +66,8 @@ Required P0 constraints:
 
 The solver MUST report `under-constrained`, `fully-constrained`, and `over-constrained`, including the conflicting constraint set where possible. Automatically deleting constraints without confirmation is prohibited.
 
+The implemented non-visual boundary covers every listed analytical entity and P0 constraint schema, variable-backed dimensions, exact-revision worker solving, continuation and drag, conflict IDs, and deterministic endpoint-connected line/arc/circle profiles with outer, hole, and island nesting. The product sketch editor, conflict interaction, interior-intersection splitting, stable profile selectors, and sketch-driven features remain open.
+
 ## Parametric 3D features
 
 | Operation | P0 | P1 | P2 |
