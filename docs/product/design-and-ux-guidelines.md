@@ -293,6 +293,8 @@ The table has these columns:
 - Optional and advanced parameters use a labeled collapsible section.
 - Interdependent values show their relationship near the controls.
 - A selection field shows entity type, user-facing name, source feature, and missing or ambiguous state.
+- Create and edit reuse the same non-modal task-panel composition. Edit restores the authored source string, preserves stable feature identity and untouched record fields, and commits only through the ordinary update command.
+- Validation or persistence failure keeps the visible editing buffer and adjacent diagnostics. A successful save closes the task only after semantic persistence; geometry rebuild does not bypass that ordering.
 - Reset restores the command's initial value, not a hidden global default.
 - Parameter changes use a short debounce for preview but Apply always validates the exact visible values.
 - A parameter that accepts variables preserves the authored expression in the field; a resolved value may be shown alongside it but never silently replaces `#name` source text.

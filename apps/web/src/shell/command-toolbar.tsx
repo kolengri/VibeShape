@@ -3,11 +3,11 @@ import { useTranslations } from "@vibeshape/i18n"
 import type { DocumentControllerState } from "../document/document-controller"
 
 export function CommandToolbar({
-  activeTool,
+  boxActive,
   controller,
   onCreateBox,
 }: {
-  activeTool: "box" | null
+  boxActive: boolean
   controller: DocumentControllerState
   onCreateBox: () => void
 }) {
@@ -41,7 +41,7 @@ export function CommandToolbar({
         size="sm"
         variant="ghost"
         disabled={!canCreate}
-        aria-pressed={activeTool === "box"}
+        aria-pressed={boxActive}
         onClick={onCreateBox}
       >
         {t("box")}

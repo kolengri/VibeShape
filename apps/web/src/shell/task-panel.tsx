@@ -5,11 +5,13 @@ import {
   addFeature,
   createBrowserFeatureId,
   type DocumentControllerState,
+  updateFeature,
 } from "../document/document-controller"
-import { BoxForm } from "../features/box/box-form"
+import { BoxForm, type BoxFormMode } from "../features/box/box-form"
+import { type ActiveBoxTool, isBoxFeature } from "../features/box/box-tool"
 
 type TaskPanelProps = Readonly<{
-  activeTool: "box" | null
+  activeTool: ActiveBoxTool | null
   controller: DocumentControllerState
   onCloseTool: () => void
   onCreateBox: () => void
@@ -32,53 +34,87 @@ function VariablesTaskPanel() {
   )
 }
 
-function BoxTaskPanel({
-  onCloseTool,
-  report,
-}: {
-  onCloseTool: () => void
-  report: NonNullable<DocumentControllerState["report"]>
-}) {
+function useBoxFormCopy(mode: BoxFormMode["kind"]) {
   const t = useTranslations("app.shell.taskPanel")
-  const snapshot = report.snapshot
-  const boxCount = snapshot.features.filter(
-    ({ type }) => type.typeId === "org.vibeshape.feature.part-design.box",
-  ).length
-  const boxCopy = {
-    title: t("box.title"),
-    description: t("box.description"),
+  const operationCopy = {
+    create: {
+      title: t("box.title"),
+      description: t("box.description"),
+      submit: t("box.create"),
+      validationSummary: t("box.validationSummary"),
+      saveFailed: t("box.createFailed"),
+    },
+    edit: {
+      title: t("box.editTitle"),
+      description: t("box.editDescription"),
+      submit: t("box.update"),
+      validationSummary: t("box.updateValidationSummary"),
+      saveFailed: t("box.updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
     dimensions: t("box.dimensions"),
     width: t("box.width"),
     depth: t("box.depth"),
     height: t("box.height"),
     centered: t("box.centered"),
     expressionDescription: t("box.expressionDescription"),
-    create: t("box.create"),
     cancel: t("box.cancel"),
     invalidExpression: t("box.invalidExpression"),
     invalidDimension: t("box.invalidDimension"),
     invalidRange: t("box.invalidRange"),
-    validationSummary: t("box.validationSummary"),
     staleRevision: t("box.staleRevision"),
-    createFailed: t("box.createFailed"),
   }
+}
+
+function boxTaskContext(mode: BoxFormMode, revision: number) {
+  return mode.kind === "edit"
+    ? { key: `edit:${mode.feature.id}:${revision}`, onSave: updateFeature }
+    : { key: `create:${revision}`, onSave: addFeature }
+}
+
+function BoxTaskPanel({
+  mode,
+  onCloseTool,
+  report,
+}: {
+  mode: BoxFormMode
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const boxCopy = useBoxFormCopy(mode.kind)
+  const task = boxTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
 
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <BoxForm
-        key={snapshot.revision}
+        key={task.key}
         baseRevision={snapshot.revision}
         variables={snapshot.variables}
         copy={boxCopy}
-        createFeatureId={createBrowserFeatureId}
         disabled={report.mode === "read-only"}
-        featureLabel={t("box.featureLabel", { number: boxCount + 1 })}
+        mode={mode}
         onCancel={onCloseTool}
-        onCreate={addFeature}
-        onCreated={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
       />
     </aside>
   )
+}
+
+function boxFormMode(
+  activeTool: ActiveBoxTool,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): BoxFormMode | null {
+  if (activeTool.kind === "create-box") {
+    return { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel }
+  }
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isBoxFeature(feature) ? { kind: "edit", feature } : null
 }
 
 function StartTaskPanel({
@@ -106,8 +142,12 @@ function canCreateFeature(controller: DocumentControllerState) {
 }
 
 function ModelTaskPanel({ activeTool, controller, onCloseTool, onCreateBox }: TaskPanelProps) {
-  if (activeTool === "box" && controller.report) {
-    return <BoxTaskPanel report={controller.report} onCloseTool={onCloseTool} />
+  const t = useTranslations("app.shell.taskPanel")
+  const report = controller.report
+  if (activeTool && report) {
+    const boxCount = report.snapshot.features.filter(isBoxFeature).length
+    const mode = boxFormMode(activeTool, report, t("box.featureLabel", { number: boxCount + 1 }))
+    if (mode) return <BoxTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} />
   }
   return <StartTaskPanel canCreate={canCreateFeature(controller)} onCreateBox={onCreateBox} />
 }

@@ -50,6 +50,8 @@
         "box": {
           "title": "Create box",
           "description": "Create a primitive solid with dimensions driven by literals or document variables.",
+          "editTitle": "Edit box",
+          "editDescription": "Update this Box while preserving its identity, label, and variable expressions.",
           "dimensions": "Required dimensions",
           "width": "Width",
           "depth": "Depth",
@@ -57,14 +59,17 @@
           "centered": "Center on the origin",
           "expressionDescription": "Enter a positive length such as 20 mm or a variable expression such as #width.",
           "create": "Create box",
+          "update": "Update box",
           "cancel": "Cancel",
           "featureLabel": "Box {number}",
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
           "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
           "validationSummary": "Fix the highlighted dimensions before creating the box.",
+          "updateValidationSummary": "Fix the highlighted dimensions before updating the box.",
           "staleRevision": "The document changed while this box was being edited. Review the current model and try again.",
-          "createFailed": "The box could not be created. Your parameter values are preserved."
+          "createFailed": "The box could not be created. Your parameter values are preserved.",
+          "updateFailed": "The box could not be updated. Your parameter values are preserved."
         },
         "variables": {
           "title": "Using variables",

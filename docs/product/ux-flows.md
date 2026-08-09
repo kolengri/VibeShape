@@ -47,7 +47,7 @@ stateDiagram-v2
 - An error preserves parameters and the failing selection.
 - Escape always cancels the active command before the document changes.
 
-The initial Box authoring slice implements idle → validate → persisted commit with preserved field errors and asynchronous single-flight submission. Interactive geometry preview and `Escape` command routing remain required before this slice satisfies the complete modeling-command state machine.
+The Box create/edit slice implements idle → validate → persisted commit with preserved field errors and asynchronous single-flight submission. Activating a Box in the feature tree opens the same task-panel form with its authored source expressions, not only resolved millimeter values. Update preserves the feature identity and untouched record fields, closes only after the semantic revision is saved, and lets the ordinary worker rebuild replace the viewport mesh. Interactive geometry preview and `Escape` command routing remain required before this slice satisfies the complete modeling-command state machine.
 
 ## Flow 1: create a printable part
 
@@ -67,6 +67,8 @@ The initial Box authoring slice implements idle → validate → persisted commi
 4. Commit atomically on success.
 5. If a `TopoRef` is ambiguous, highlight affected downstream operations and present a bounded candidate set.
 6. Save the repaired reference as part of the command.
+
+The current Box implementation covers tree activation, raw parameter restoration, validation, atomic update, worker rebuild, and reload persistence. Debounced preview and topology-reference repair begin with later dependency-owning features.
 
 ## Flow 3: import STEP as context
 

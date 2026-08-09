@@ -7,13 +7,14 @@ import {
   featureRecordSchema,
   type FeatureId,
   type FeatureRecord,
+  type LengthQuantity,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
 import { Input } from "@vibeshape/ui/components/input"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
-import type { AddFeatureResult } from "../../document/document-controller"
+import type { FeatureMutationResult } from "../../document/document-controller"
 import { BoxParameterPanel, type BoxParameterPanelCopy } from "./box-parameter-panel"
 
 type DimensionField = "width" | "depth" | "height"
@@ -24,13 +25,13 @@ type BoxFormCopy = BoxParameterPanelCopy &
     depth: string
     height: string
     expressionDescription: string
-    create: string
+    submit: string
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
     validationSummary: string
     staleRevision: string
-    createFailed: string
+    saveFailed: string
   }>
 
 type BoxFormValues = Readonly<{
@@ -47,6 +48,50 @@ const DEFAULT_BOX_VALUES: BoxFormValues = {
   depth: "20 mm",
   height: "20 mm",
   centered: false,
+}
+
+export type BoxFormMode =
+  | Readonly<{
+      kind: "create"
+      createFeatureId: () => FeatureId
+      featureLabel: string
+    }>
+  | Readonly<{
+      kind: "edit"
+      feature: FeatureRecord
+    }>
+
+function quantityExpression(quantity: LengthQuantity) {
+  return quantity.source.expression ?? `${quantity.source.value} ${quantity.source.unit}`
+}
+
+function boxFormValuesFromFeature(feature: FeatureRecord): BoxFormValues {
+  const parameters = boxFeatureParametersSchema.parse(feature.parameters)
+  return {
+    width: quantityExpression(parameters.width),
+    depth: quantityExpression(parameters.depth),
+    height: quantityExpression(parameters.height),
+    centered: parameters.centered,
+  }
+}
+
+function boxFeatureRecord(
+  mode: BoxFormMode,
+  parameters: ReturnType<typeof boxFeatureParametersSchema.parse>,
+) {
+  if (mode.kind === "edit") {
+    return featureRecordSchema.parse({ ...mode.feature, parameters })
+  }
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: mode.createFeatureId(),
+    type: boxFeatureType.type,
+    parameters,
+    dependencies: [],
+    references: [],
+    suppressed: false,
+    label: mode.featureLabel,
+  })
 }
 
 function parseLengthExpression(
@@ -99,7 +144,7 @@ function parseBoxValues(
   }
 }
 
-function submissionMessage(result: AddFeatureResult, copy: BoxFormCopy) {
+function submissionMessage(result: FeatureMutationResult, copy: BoxFormCopy) {
   if (result.ok) return null
   if (
     result.diagnostic.sourceCode === "stale-revision" ||
@@ -107,7 +152,7 @@ function submissionMessage(result: AddFeatureResult, copy: BoxFormCopy) {
   ) {
     return copy.staleRevision
   }
-  return copy.createFailed
+  return copy.saveFailed
 }
 
 function invalidAttribute(error: string | undefined) {
@@ -117,29 +162,29 @@ function invalidAttribute(error: string | undefined) {
 export function BoxForm({
   baseRevision,
   copy,
-  createFeatureId,
   disabled = false,
-  featureLabel,
+  mode,
   onCancel,
-  onCreate,
-  onCreated,
+  onSave,
+  onSaved,
   variables,
 }: {
   baseRevision: number
   copy: BoxFormCopy
-  createFeatureId: () => FeatureId
   disabled?: boolean
-  featureLabel: string
+  mode: BoxFormMode
   onCancel: () => void
-  onCreate: (baseRevision: number, feature: FeatureRecord) => Promise<AddFeatureResult>
-  onCreated: () => void
+  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
+  onSaved: () => void
   variables: readonly VariableDefinition[]
 }) {
   const formElementRef = useRef<HTMLFormElement>(null)
   const [issues, setIssues] = useState<FieldIssues>({})
   const [message, setMessage] = useState<string | null>(null)
+  const defaultValues =
+    mode.kind === "edit" ? boxFormValuesFromFeature(mode.feature) : DEFAULT_BOX_VALUES
   const form = useAppForm({
-    defaultValues: DEFAULT_BOX_VALUES,
+    defaultValues,
     onSubmit: async ({ value }) => {
       const parsed = parseBoxValues(value, variables, copy)
       if (!parsed.ok) {
@@ -155,20 +200,11 @@ export function BoxForm({
       }
       setIssues({})
       setMessage(null)
-      const feature = featureRecordSchema.parse({
-        schemaVersion: 0,
-        id: createFeatureId(),
-        type: boxFeatureType.type,
-        parameters: parsed.parameters,
-        dependencies: [],
-        references: [],
-        suppressed: false,
-        label: featureLabel,
-      })
-      const result = await onCreate(baseRevision, feature)
+      const feature = boxFeatureRecord(mode, parsed.parameters)
+      const result = await onSave(baseRevision, feature)
       const resultMessage = submissionMessage(result, copy)
       setMessage(resultMessage)
-      if (!resultMessage) onCreated()
+      if (!resultMessage) onSaved()
     },
   })
 
@@ -244,7 +280,7 @@ export function BoxForm({
         }
         footerAction={
           <form.SubmitButton disabled={disabled} requireDirty={false} size="sm">
-            {copy.create}
+            {copy.submit}
           </form.SubmitButton>
         }
         onCancel={onCancel}
