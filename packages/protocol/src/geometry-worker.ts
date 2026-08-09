@@ -156,6 +156,8 @@ export const featureMeshPolicySchema = z
   })
   .strict()
 
+export const geometryExportFormatSchema = z.enum(["step", "stl"])
+
 function isNormalized(vector: readonly number[]) {
   return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
 }
@@ -720,6 +722,7 @@ export const geometryWorkerResponseSchema = z.discriminatedUnion("type", [
 export type KernelSpikeParameters = z.infer<typeof kernelSpikeParametersSchema>
 export type TopologySpikeParameters = z.infer<typeof topologySpikeParametersSchema>
 export type FeatureMeshPolicy = z.infer<typeof featureMeshPolicySchema>
+export type GeometryExportFormat = z.infer<typeof geometryExportFormatSchema>
 export type FeatureContentEnvironment = z.infer<typeof featureContentEnvironmentSchema>
 export type FeatureContentIdentity = z.infer<typeof featureContentIdentitySchema>
 export type FeatureEvaluationDependency = z.infer<typeof featureEvaluationDependencySchema>

@@ -138,4 +138,32 @@ describe("document worker protocol", () => {
       }),
     ).toMatchObject({ type: "failure", diagnostic: { retryable: false } })
   })
+
+  it("validates non-empty STEP and STL export transfers", () => {
+    expect(
+      documentWorkerRequestSchema.parse({
+        ...envelope(),
+        type: "exportDocument",
+        format: "step",
+      }),
+    ).toMatchObject({ type: "exportDocument", format: "step" })
+    expect(
+      documentWorkerResponseSchema.parse({
+        ...envelope(),
+        type: "documentExported",
+        format: "stl",
+        file: new Uint8Array([1, 2, 3]),
+        bodyCount: 2,
+      }),
+    ).toMatchObject({ type: "documentExported", format: "stl", bodyCount: 2 })
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...envelope(),
+        type: "documentExported",
+        format: "stl",
+        file: new Uint8Array(),
+        bodyCount: 1,
+      }).success,
+    ).toBe(false)
+  })
 })

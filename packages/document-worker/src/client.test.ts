@@ -147,6 +147,14 @@ function responseEnvelope(request: DocumentWorkerRequest) {
   }
 }
 
+function exportRequest(requestId = "export-request"): DocumentWorkerRequest {
+  return {
+    ...healthRequest(requestId),
+    type: "exportDocument",
+    format: "step",
+  }
+}
+
 describe("DocumentWorkerClient", () => {
   it("resolves a matching terminal response", async () => {
     const worker = new FakeWorker()
@@ -155,6 +163,25 @@ describe("DocumentWorkerClient", () => {
     worker.emit(healthResponse())
 
     await expect(pending).resolves.toMatchObject({ type: "health", activeDocuments: 1 })
+  })
+
+  it("resolves an exact exported file response", async () => {
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const request = exportRequest()
+    const pending = client.request(request)
+    worker.emit({
+      ...responseEnvelope(request),
+      type: "documentExported",
+      format: "step",
+      file: new Uint8Array([1, 2, 3]),
+      bodyCount: 1,
+    })
+
+    await expect(pending).resolves.toMatchObject({
+      type: "documentExported",
+      file: new Uint8Array([1, 2, 3]),
+    })
   })
 
   it("routes progress only for rebuild requests", async () => {

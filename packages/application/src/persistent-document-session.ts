@@ -13,6 +13,7 @@ import {
   type DocumentWorkerTerminalResponse,
   type FeatureMeshPolicy,
   featureMeshPolicySchema,
+  type GeometryExportFormat,
 } from "@vibeshape/protocol"
 import { z } from "zod"
 
@@ -44,6 +45,7 @@ const draftCommitInputSchema = z
   .strict()
 
 type DocumentRebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
+type DocumentExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
 
 export type SessionPortDiagnostic = Readonly<{
   code: string
@@ -122,6 +124,7 @@ export type DocumentRebuildPort = Readonly<{
     document: DocumentSnapshot
     mesh: FeatureMeshPolicy
   }) => Promise<DocumentRebuildResponse>
+  exportDocument: (format: GeometryExportFormat) => Promise<DocumentExportResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
 }>
@@ -142,6 +145,7 @@ export type PersistentDocumentSessionDiagnosticCode =
   | "persistence-failed"
   | "write-access-unavailable"
   | "rebuild-failed"
+  | "export-failed"
   | "session-closed"
   | "close-failed"
 
@@ -154,6 +158,10 @@ export type PersistentDocumentSessionDiagnostic = Readonly<{
 
 export type DocumentRebuildOutcome =
   | { ok: true; response: DocumentRebuildResponse }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type PersistentDocumentExportResult =
+  | { ok: true; response: DocumentExportResponse }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type PersistentDocumentSessionReport = Readonly<{
@@ -363,6 +371,10 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#rebuild())
   }
 
+  exportDocument(format: GeometryExportFormat): Promise<PersistentDocumentExportResult> {
+    return this.#enqueue(() => this.#exportDocument(format))
+  }
+
   close(): Promise<SessionPortResult<void>> {
     return this.#enqueue(() => this.#close())
   }
@@ -487,6 +499,27 @@ export class PersistentDocumentSession {
       }
     } catch {
       return rebuildFailure()
+    }
+  }
+
+  async #exportDocument(format: GeometryExportFormat): Promise<PersistentDocumentExportResult> {
+    if (this.#closed) {
+      return {
+        ok: false,
+        diagnostic: diagnostic("session-closed", "The document session is closed."),
+      }
+    }
+    try {
+      return { ok: true, response: await this.#rebuildPort.exportDocument(format) }
+    } catch {
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "export-failed",
+          "The current document geometry could not be exported.",
+          true,
+        ),
+      }
     }
   }
 

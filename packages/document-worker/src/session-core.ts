@@ -5,6 +5,7 @@ import {
   documentRebuildSnapshotSchema,
   documentWorkerDocumentIdSchema,
   documentWorkerRequestSchema,
+  type GeometryExportFormat,
 } from "@vibeshape/protocol"
 import {
   type DocumentWorkerClientErrorCode,
@@ -16,6 +17,7 @@ type RebuildRequest = Extract<DocumentWorkerRequest, { type: "rebuildDocument" }
 type RebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
 type HealthResponse = Extract<DocumentWorkerTerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentDisposed" }>
+type ExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
 
 export type DocumentWorkerRebuildInput = Readonly<{
   document: unknown
@@ -94,6 +96,10 @@ export class DocumentWorkerSession {
     return this.#enqueue(() => this.#rebuildWithRecovery(input, options))
   }
 
+  exportDocument(format: GeometryExportFormat, options: DocumentWorkerRequestOptions = {}) {
+    return this.#enqueue(() => this.#exportWithRecovery(format, options))
+  }
+
   restartAndRecover(options: DocumentWorkerRequestOptions = {}) {
     return this.#enqueue(async () => {
       this.#assertOpen()
@@ -159,6 +165,53 @@ export class DocumentWorkerSession {
     }
   }
 
+  async #exportWithRecovery(format: GeometryExportFormat, options: DocumentWorkerRequestOptions) {
+    this.#assertOpen()
+    if (!this.#lastSuccessfulSnapshot) {
+      throw new DocumentWorkerRequestError(
+        "Document export requires a successfully rebuilt snapshot.",
+        "mismatched-response-type",
+      )
+    }
+    try {
+      return await this.#exportOnce(format, options)
+    } catch (error) {
+      if (!this.#retryRecoverableFailure || !isRecoverableFailure(error)) throw error
+      this.#replaceClient()
+      await this.#rebuildOnce(this.#lastSuccessfulSnapshot, options)
+      return this.#exportOnce(format, options)
+    }
+  }
+
+  async #exportOnce(
+    format: GeometryExportFormat,
+    options: DocumentWorkerRequestOptions,
+  ): Promise<ExportResponse> {
+    const revision = this.#lastSuccessfulSnapshot?.document.revision
+    if (revision === undefined) {
+      throw new DocumentWorkerRequestError(
+        "Document export requires a successfully rebuilt snapshot.",
+        "mismatched-response-type",
+      )
+    }
+    const request = documentWorkerRequestSchema.parse({
+      ...this.#envelope(revision),
+      type: "exportDocument",
+      format,
+    })
+    if (request.type !== "exportDocument") {
+      throw new TypeError("Document worker export request validation returned an invalid type.")
+    }
+    const response = await this.#client.request(request, options)
+    if (response.type !== "documentExported") {
+      throw new DocumentWorkerRequestError(
+        `Expected a document export response, received ${response.type}.`,
+        "mismatched-response-type",
+      )
+    }
+    return response
+  }
+
   async #rebuildOnce(
     input: DocumentWorkerRebuildInput,
     options: DocumentWorkerRequestOptions,
@@ -220,3 +273,4 @@ export class DocumentWorkerSession {
 export type DocumentWorkerRebuildResponse = RebuildResponse
 export type DocumentWorkerHealthResponse = HealthResponse
 export type DocumentWorkerDisposalResponse = DisposalResponse
+export type DocumentWorkerExportResponse = ExportResponse

@@ -3,9 +3,11 @@ import {
   boxFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   type FeatureContentEnvironment,
+  type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
   featureContentEnvironmentSchema,
   type GeometryEngineMetadata,
+  type GeometryExportFormat,
   type GeometryProgressStage,
   type GeometryWorkerRequest,
   type KernelSpikeEngineResult,
@@ -36,6 +38,7 @@ import {
   getWasmHeapBytes,
   type OpenCascadeMemoryModule,
 } from "./memory-profile"
+import { createOcctCompound } from "./occt-compound"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
@@ -77,6 +80,17 @@ export type FeatureEvaluationResult =
         message: string
       }>
     }
+
+export type DocumentGeometryExportInput = Readonly<{
+  documentId: string
+  features: readonly FeatureEvaluationDependency[]
+  format: GeometryExportFormat
+}>
+
+export type DocumentGeometryExportResult = Readonly<{
+  file: Uint8Array
+  bodyCount: number
+}>
 
 type OpenCascadeModule = OpenCascadeInstance & OpenCascadeMemoryModule
 
@@ -737,6 +751,7 @@ export interface GeometryKernelEngine {
     input: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
   ): Promise<FeatureEvaluationResult>
+  exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
   runKernelSpike(
     parameters: KernelSpikeParameters,
     reportProgress: ProgressReporter,
@@ -887,6 +902,31 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           ? "Feature geometry evaluation failed."
           : "Feature geometry evaluation failed and temporary shape cleanup did not complete.",
       )
+    }
+  }
+
+  async exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult> {
+    const opencascade = this.#opencascade
+    if (!opencascade) throw new Error("OpenCascade did not initialize.")
+    if (input.features.length === 0) throw new Error("No exportable feature bodies were provided.")
+
+    const sourceShapes = this.#featureShapes.resolve(input.documentId, input.features)
+    if (!sourceShapes) {
+      throw new Error("One or more exact feature bodies are unavailable for export.")
+    }
+
+    const compound = sourceShapes.length > 1 ? createOcctCompound(opencascade, sourceShapes) : null
+    const exportShape = compound ?? sourceShapes[0]
+    if (!exportShape) throw new Error("No exportable feature body was resolved.")
+
+    try {
+      const file =
+        input.format === "step"
+          ? exportOcctStep(opencascade, exportShape.wrapped)
+          : new Uint8Array(await exportMeshedOcctStl(opencascade, exportShape, true).arrayBuffer())
+      return { file, bodyCount: sourceShapes.length }
+    } finally {
+      compound?.delete()
     }
   }
 

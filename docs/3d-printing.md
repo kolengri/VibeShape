@@ -111,6 +111,8 @@ SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its lo
 
 ## STL
 
+The Phase 1 product smoke exporter currently downloads successful terminal solid features from the exact rebuilt document revision as binary STL. Multiple terminal shapes are combined under one temporary OCCT compound, and bodies consumed by a successful downstream operation are omitted. This establishes a real local browser-to-slicer file path, but it does not yet provide the print-quality tolerance profile, export report, placement workflow, or slicer release matrix required by Phase 4.
+
 - Export binary STL by default.
 - Show units explicitly and record them in the export report because STL does not carry reliable unit semantics.
 - Build export from print-quality tessellation, never display LOD.
@@ -119,6 +121,8 @@ SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its lo
 - Import creates a `MeshBody`; repair does not turn it into an exact parametric solid.
 
 ## STEP
+
+The same Phase 1 dialog exports those terminal exact B-Rep shapes as STEP for CAD exchange. The file contains resulting geometry, not VibeShape variables, features, or event history; `.vshape` remains the future native backup and editability format.
 
 - Preserve exact B-Rep geometry.
 - Prefer AP242 and use AP214 as a compatibility fallback after the spike.

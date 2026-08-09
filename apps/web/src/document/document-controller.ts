@@ -31,6 +31,7 @@ import {
   releaseDocumentLease,
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
+import type { GeometryExportFormat } from "@vibeshape/protocol"
 import { useEffect, useSyncExternalStore } from "react"
 
 const DATABASE_NAME = "vibeshape-product-v0"
@@ -53,6 +54,16 @@ export type ApplyVariableTableResult =
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type FeatureMutationResult = ApplyVariableTableResult
+
+export type ActiveDocumentExportResult =
+  | {
+      ok: true
+      format: GeometryExportFormat
+      file: Uint8Array
+      bodyCount: number
+      documentName: string
+    }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 let state: DocumentControllerState = {
   status: "idle",
@@ -328,6 +339,32 @@ export function addFeature(baseRevision: number, feature: FeatureRecord) {
 
 export function updateFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
+}
+
+export async function exportActiveDocument(
+  format: GeometryExportFormat,
+): Promise<ActiveDocumentExportResult> {
+  if (!session || state.status !== "ready" || !state.report) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "session-closed",
+        message: "The local document session is unavailable.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  const result = await session.exportDocument(format)
+  return result.ok
+    ? {
+        ok: true,
+        format: result.response.format,
+        file: result.response.file,
+        bodyCount: result.response.bodyCount,
+        documentName: session.snapshot.name,
+      }
+    : result
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

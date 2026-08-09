@@ -69,6 +69,15 @@ function successfulResponse(request: DocumentWorkerRequest): DocumentWorkerTermi
       wasmHeapBytes: 1,
     }
   }
+  if (request.type === "exportDocument") {
+    return {
+      ...envelope(request),
+      type: "documentExported",
+      format: request.format,
+      file: new Uint8Array([1, 2, 3]),
+      bodyCount: 1,
+    }
+  }
   return { ...envelope(request), type: "documentDisposed", ownedShapeCount: 0 }
 }
 
@@ -233,6 +242,49 @@ describe("DocumentWorkerSession", () => {
       "rebuildDocument",
       "healthCheck",
       "disposeDocument",
+    ])
+  })
+
+  it("exports the last successfully rebuilt revision", async () => {
+    const { clients, session } = createHarness()
+    await session.rebuild({ document: document(4), mesh })
+
+    await expect(session.exportDocument("step")).resolves.toMatchObject({
+      type: "documentExported",
+      revision: 4,
+      format: "step",
+      file: new Uint8Array([1, 2, 3]),
+    })
+    expect(clients[0]?.requests.map(({ type }) => type)).toEqual([
+      "rebuildDocument",
+      "exportDocument",
+    ])
+  })
+
+  it("rebuilds the committed snapshot before retrying export after a worker crash", async () => {
+    const crashingExport: RequestHandler = async (request) => {
+      if (request.type === "exportDocument") {
+        throw new DocumentWorkerRequestError("Worker crashed.", "worker-error")
+      }
+      return successfulResponse(request)
+    }
+    const { clients, session } = createHarness([crashingExport])
+    await session.rebuild({ document: document(3), mesh })
+
+    await expect(session.exportDocument("stl")).resolves.toMatchObject({
+      type: "documentExported",
+      revision: 3,
+      generation: 2,
+      format: "stl",
+    })
+    expect(clients).toHaveLength(2)
+    expect(clients[0]?.requests.map(({ type }) => type)).toEqual([
+      "rebuildDocument",
+      "exportDocument",
+    ])
+    expect(clients[1]?.requests.map(({ type }) => type)).toEqual([
+      "rebuildDocument",
+      "exportDocument",
     ])
   })
 

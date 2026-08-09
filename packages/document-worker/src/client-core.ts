@@ -221,6 +221,7 @@ export class DocumentWorkerClient {
     return (
       responseType === "failure" ||
       (requestType === "rebuildDocument" && responseType === "documentRebuilt") ||
+      (requestType === "exportDocument" && responseType === "documentExported") ||
       (requestType === "disposeDocument" && responseType === "documentDisposed") ||
       (requestType === "healthCheck" && responseType === "health")
     )

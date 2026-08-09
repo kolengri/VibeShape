@@ -350,6 +350,7 @@ The model tree is a dedicated accessible tree, not a styled table.
 - Popovers contain short contextual controls. Long forms and multi-step tasks do not belong in popovers.
 - Tooltips supplement accessible names; they never contain required instructions, errors, or interactive content.
 - A hover-opened surface remains dismissible and does not cover the control or model entity the user must inspect.
+- The application-level `Export…` dialog names each format by purpose, blocks format actions until a valid rebuilt solid exists, and keeps pending, success, or failure status discoverable in the application bar after the modal closes.
 
 ## Feedback, Progress, and Diagnostics
 

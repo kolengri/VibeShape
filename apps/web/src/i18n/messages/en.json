@@ -1,8 +1,33 @@
 {
   "app": {
+    "export": {
+      "trigger": "Export…",
+      "title": "Export model",
+      "description": "Download the terminal solid bodies from the current rebuilt revision.",
+      "closeLabel": "Close export dialog",
+      "close": "Close",
+      "noBodies": "Create a valid solid body before exporting.",
+      "error": "The model could not be exported. Your saved document is unchanged.",
+      "step": {
+        "title": "STEP",
+        "description": "Exact B-Rep geometry for exchange with other CAD systems.",
+        "action": "Export STEP"
+      },
+      "stl": {
+        "title": "Binary STL",
+        "description": "Triangulated geometry for broad slicer compatibility.",
+        "action": "Export STL"
+      },
+      "status": {
+        "exportingStep": "Exporting STEP…",
+        "exportingStl": "Exporting STL…",
+        "exportedStep": "STEP download started",
+        "exportedStl": "STL download started",
+        "failed": "Export failed"
+      }
+    },
     "shell": {
       "applicationBar": {
-        "export": "Export…",
         "loading": "Opening local document…",
         "saveFailed": "Could not save",
         "saving": "Saving…",
