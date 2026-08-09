@@ -1,6 +1,6 @@
 import {
-  boxFeatureParametersSchema,
-  boxFeatureType,
+  cylinderFeatureParametersSchema,
+  cylinderFeatureType,
   type FeatureId,
   type FeatureRecord,
   featureRecordSchema,
@@ -22,12 +22,11 @@ import {
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
 
-type DimensionField = "width" | "depth" | "height"
+type DimensionField = "radius" | "height"
 
-type BoxFormCopy = PrimitiveParameterPanelCopy &
+type CylinderFormCopy = PrimitiveParameterPanelCopy &
   Readonly<{
-    width: string
-    depth: string
+    radius: string
     height: string
     expressionDescription: string
     submit: string
@@ -39,23 +38,21 @@ type BoxFormCopy = PrimitiveParameterPanelCopy &
     saveFailed: string
   }>
 
-type BoxFormValues = Readonly<{
-  width: string
-  depth: string
+type CylinderFormValues = Readonly<{
+  radius: string
   height: string
   centered: boolean
 }>
 
 type FieldIssues = Readonly<Partial<Record<DimensionField, string>>>
 
-const DEFAULT_BOX_VALUES: BoxFormValues = {
-  width: "20 mm",
-  depth: "20 mm",
+const DEFAULT_CYLINDER_VALUES: CylinderFormValues = {
+  radius: "10 mm",
   height: "20 mm",
   centered: false,
 }
 
-export type BoxFormMode =
+export type CylinderFormMode =
   | Readonly<{
       kind: "create"
       createFeatureId: () => FeatureId
@@ -66,19 +63,18 @@ export type BoxFormMode =
       feature: FeatureRecord
     }>
 
-function boxFormValuesFromFeature(feature: FeatureRecord): BoxFormValues {
-  const parameters = boxFeatureParametersSchema.parse(feature.parameters)
+function cylinderFormValuesFromFeature(feature: FeatureRecord): CylinderFormValues {
+  const parameters = cylinderFeatureParametersSchema.parse(feature.parameters)
   return {
-    width: quantityExpression(parameters.width),
-    depth: quantityExpression(parameters.depth),
+    radius: quantityExpression(parameters.radius),
     height: quantityExpression(parameters.height),
     centered: parameters.centered,
   }
 }
 
-function boxFeatureRecord(
-  mode: BoxFormMode,
-  parameters: ReturnType<typeof boxFeatureParametersSchema.parse>,
+function cylinderFeatureRecord(
+  mode: CylinderFormMode,
+  parameters: ReturnType<typeof cylinderFeatureParametersSchema.parse>,
 ) {
   if (mode.kind === "edit") {
     return featureRecordSchema.parse({ ...mode.feature, parameters })
@@ -86,7 +82,7 @@ function boxFeatureRecord(
   return featureRecordSchema.parse({
     schemaVersion: 0,
     id: mode.createFeatureId(),
-    type: boxFeatureType.type,
+    type: cylinderFeatureType.type,
     parameters,
     dependencies: [],
     references: [],
@@ -95,52 +91,38 @@ function boxFeatureRecord(
   })
 }
 
-function parseBoxValues(
-  values: BoxFormValues,
+function parseCylinderValues(
+  values: CylinderFormValues,
   variables: readonly VariableDefinition[],
-  copy: BoxFormCopy,
+  copy: CylinderFormCopy,
 ) {
-  const parsed = {
-    width: parsePrimitiveLengthExpression(
-      values.width,
-      variables,
-      copy,
-      (quantity) => boxFeatureParametersSchema.shape.width.safeParse(quantity).success,
-    ),
-    depth: parsePrimitiveLengthExpression(
-      values.depth,
-      variables,
-      copy,
-      (quantity) => boxFeatureParametersSchema.shape.depth.safeParse(quantity).success,
-    ),
-    height: parsePrimitiveLengthExpression(
-      values.height,
-      variables,
-      copy,
-      (quantity) => boxFeatureParametersSchema.shape.height.safeParse(quantity).success,
-    ),
-  }
+  const radius = parsePrimitiveLengthExpression(
+    values.radius,
+    variables,
+    copy,
+    (quantity) => cylinderFeatureParametersSchema.shape.radius.safeParse(quantity).success,
+  )
+  const height = parsePrimitiveLengthExpression(
+    values.height,
+    variables,
+    copy,
+    (quantity) => cylinderFeatureParametersSchema.shape.height.safeParse(quantity).success,
+  )
   const issues: Partial<Record<DimensionField, string>> = {}
-  for (const field of ["width", "depth", "height"] as const) {
-    const result = parsed[field]
-    if (!result.ok) issues[field] = result.message
-  }
-  if (Object.keys(issues).length > 0) return { ok: false as const, issues }
-  if (!parsed.width.ok || !parsed.depth.ok || !parsed.height.ok) {
-    return { ok: false as const, issues }
-  }
+  if (!radius.ok) issues.radius = radius.message
+  if (!height.ok) issues.height = height.message
+  if (!radius.ok || !height.ok) return { ok: false as const, issues }
   return {
     ok: true as const,
-    parameters: boxFeatureParametersSchema.parse({
-      width: parsed.width.quantity,
-      depth: parsed.depth.quantity,
-      height: parsed.height.quantity,
+    parameters: cylinderFeatureParametersSchema.parse({
+      radius: radius.quantity,
+      height: height.quantity,
       centered: values.centered,
     }),
   }
 }
 
-export function BoxForm({
+export function CylinderForm({
   baseRevision,
   copy,
   disabled = false,
@@ -151,9 +133,9 @@ export function BoxForm({
   variables,
 }: {
   baseRevision: number
-  copy: BoxFormCopy
+  copy: CylinderFormCopy
   disabled?: boolean
-  mode: BoxFormMode
+  mode: CylinderFormMode
   onCancel: () => void
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
@@ -163,17 +145,15 @@ export function BoxForm({
   const [issues, setIssues] = useState<FieldIssues>({})
   const [message, setMessage] = useState<string | null>(null)
   const defaultValues =
-    mode.kind === "edit" ? boxFormValuesFromFeature(mode.feature) : DEFAULT_BOX_VALUES
+    mode.kind === "edit" ? cylinderFormValuesFromFeature(mode.feature) : DEFAULT_CYLINDER_VALUES
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value }) => {
-      const parsed = parseBoxValues(value, variables, copy)
+      const parsed = parseCylinderValues(value, variables, copy)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)
-        const firstField = (["width", "depth", "height"] as const).find(
-          (field) => parsed.issues[field],
-        )
+        const firstField = (["radius", "height"] as const).find((field) => parsed.issues[field])
         if (firstField) {
           formElementRef.current?.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
         }
@@ -181,7 +161,7 @@ export function BoxForm({
       }
       setIssues({})
       setMessage(null)
-      const feature = boxFeatureRecord(mode, parsed.parameters)
+      const feature = cylinderFeatureRecord(mode, parsed.parameters)
       const result = await onSave(baseRevision, feature)
       const resultMessage = primitiveSubmissionMessage(result, copy)
       setMessage(resultMessage)
@@ -198,16 +178,16 @@ export function BoxForm({
     <form.Field name={fieldName}>
       {(field) => (
         <Field data-invalid={Boolean(issues[fieldName]) || undefined}>
-          <FieldLabel htmlFor={`box-${fieldName}`} required>
+          <FieldLabel htmlFor={`cylinder-${fieldName}`} required>
             {label}
           </FieldLabel>
           <Input
-            id={`box-${fieldName}`}
+            id={`cylinder-${fieldName}`}
             name={field.name}
             value={field.state.value}
             autoComplete="off"
             spellCheck={false}
-            aria-describedby={`box-${fieldName}-description box-${fieldName}-error`}
+            aria-describedby={`cylinder-${fieldName}-description cylinder-${fieldName}-error`}
             aria-invalid={invalidAttribute(issues[fieldName])}
             className="font-mono tabular-nums"
             onBlur={field.handleBlur}
@@ -217,12 +197,12 @@ export function BoxForm({
             }}
           />
           <p
-            id={`box-${fieldName}-description`}
+            id={`cylinder-${fieldName}-description`}
             className="text-xs leading-4 text-muted-foreground"
           >
             {copy.expressionDescription}
           </p>
-          <FieldError id={`box-${fieldName}-error`} reserveSpace>
+          <FieldError id={`cylinder-${fieldName}-error`} reserveSpace>
             {issues[fieldName]}
           </FieldError>
         </Field>
@@ -238,8 +218,7 @@ export function BoxForm({
         message={message}
         fields={
           <>
-            {dimensionField("width", copy.width)}
-            {dimensionField("depth", copy.depth)}
+            {dimensionField("radius", copy.radius)}
             {dimensionField("height", copy.height)}
           </>
         }

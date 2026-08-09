@@ -1,5 +1,5 @@
-import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
 import {
   addFeature,
@@ -8,13 +8,19 @@ import {
   updateFeature,
 } from "../document/document-controller"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
-import { type ActiveBoxTool, isBoxFeature } from "../features/box/box-tool"
+import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
+import {
+  type ActivePartDesignTool,
+  isBoxFeature,
+  isCylinderFeature,
+} from "../features/part-design/part-design-tool"
 
 type TaskPanelProps = Readonly<{
-  activeTool: ActiveBoxTool | null
+  activeTool: ActivePartDesignTool | null
   controller: DocumentControllerState
   onCloseTool: () => void
   onCreateBox: () => void
+  onCreateCylinder: () => void
   workspace: "model" | "variables"
 }>
 
@@ -68,7 +74,40 @@ function useBoxFormCopy(mode: BoxFormMode["kind"]) {
   }
 }
 
-function boxTaskContext(mode: BoxFormMode, revision: number) {
+function useCylinderFormCopy(mode: CylinderFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel")
+  const operationCopy = {
+    create: {
+      title: t("cylinder.title"),
+      description: t("cylinder.description"),
+      submit: t("cylinder.create"),
+      validationSummary: t("cylinder.validationSummary"),
+      saveFailed: t("cylinder.createFailed"),
+    },
+    edit: {
+      title: t("cylinder.editTitle"),
+      description: t("cylinder.editDescription"),
+      submit: t("cylinder.update"),
+      validationSummary: t("cylinder.updateValidationSummary"),
+      saveFailed: t("cylinder.updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
+    dimensions: t("cylinder.dimensions"),
+    radius: t("cylinder.radius"),
+    height: t("cylinder.height"),
+    centered: t("cylinder.centered"),
+    expressionDescription: t("cylinder.expressionDescription"),
+    cancel: t("cylinder.cancel"),
+    invalidExpression: t("cylinder.invalidExpression"),
+    invalidDimension: t("cylinder.invalidDimension"),
+    invalidRange: t("cylinder.invalidRange"),
+    staleRevision: t("cylinder.staleRevision"),
+  }
+}
+
+function featureTaskContext(mode: BoxFormMode | CylinderFormMode, revision: number) {
   return mode.kind === "edit"
     ? { key: `edit:${mode.feature.id}:${revision}`, onSave: updateFeature }
     : { key: `create:${revision}`, onSave: addFeature }
@@ -85,7 +124,7 @@ function BoxTaskPanel({
 }) {
   const snapshot = report.snapshot
   const boxCopy = useBoxFormCopy(mode.kind)
-  const task = boxTaskContext(mode, snapshot.revision)
+  const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
 
   return (
@@ -105,8 +144,39 @@ function BoxTaskPanel({
   )
 }
 
+function CylinderTaskPanel({
+  mode,
+  onCloseTool,
+  report,
+}: {
+  mode: CylinderFormMode
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const cylinderCopy = useCylinderFormCopy(mode.kind)
+  const task = featureTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
+
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <CylinderForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        variables={snapshot.variables}
+        copy={cylinderCopy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        onCancel={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+    </aside>
+  )
+}
+
 function boxFormMode(
-  activeTool: ActiveBoxTool,
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-box" | "edit-box" }>,
   report: NonNullable<DocumentControllerState["report"]>,
   featureLabel: string,
 ): BoxFormMode | null {
@@ -117,12 +187,26 @@ function boxFormMode(
   return feature && isBoxFeature(feature) ? { kind: "edit", feature } : null
 }
 
+function cylinderFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-cylinder" | "edit-cylinder" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): CylinderFormMode | null {
+  if (activeTool.kind === "create-cylinder") {
+    return { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel }
+  }
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isCylinderFeature(feature) ? { kind: "edit", feature } : null
+}
+
 function StartTaskPanel({
   canCreate,
   onCreateBox,
+  onCreateCylinder,
 }: {
   canCreate: boolean
   onCreateBox: () => void
+  onCreateCylinder: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
 
@@ -133,6 +217,15 @@ function StartTaskPanel({
       <Button type="button" className="mt-4 w-full" disabled={!canCreate} onClick={onCreateBox}>
         {t("createBox")}
       </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-2 w-full"
+        disabled={!canCreate}
+        onClick={onCreateCylinder}
+      >
+        {t("createCylinder")}
+      </Button>
     </aside>
   )
 }
@@ -141,15 +234,73 @@ function canCreateFeature(controller: DocumentControllerState) {
   return controller.status === "ready" && controller.report?.mode === "read-write"
 }
 
-function ModelTaskPanel({ activeTool, controller, onCloseTool, onCreateBox }: TaskPanelProps) {
+function ActiveBoxTaskPanel({
+  activeTool,
+  onCloseTool,
+  report,
+}: {
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-box" | "edit-box" }>
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
   const t = useTranslations("app.shell.taskPanel")
+  const boxCount = report.snapshot.features.filter(isBoxFeature).length
+  const mode = boxFormMode(activeTool, report, t("box.featureLabel", { number: boxCount + 1 }))
+  return mode ? <BoxTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+}
+
+function ActiveCylinderTaskPanel({
+  activeTool,
+  onCloseTool,
+  report,
+}: {
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-cylinder" | "edit-cylinder" }>
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const t = useTranslations("app.shell.taskPanel")
+  const cylinderCount = report.snapshot.features.filter(isCylinderFeature).length
+  const mode = cylinderFormMode(
+    activeTool,
+    report,
+    t("cylinder.featureLabel", { number: cylinderCount + 1 }),
+  )
+  return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+}
+
+function ActiveTaskPanel({
+  activeTool,
+  onCloseTool,
+  report,
+}: {
+  activeTool: ActivePartDesignTool
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  return activeTool.kind === "create-box" || activeTool.kind === "edit-box" ? (
+    <ActiveBoxTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
+  ) : (
+    <ActiveCylinderTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
+  )
+}
+
+function ModelTaskPanel({
+  activeTool,
+  controller,
+  onCloseTool,
+  onCreateBox,
+  onCreateCylinder,
+}: TaskPanelProps) {
   const report = controller.report
-  if (activeTool && report) {
-    const boxCount = report.snapshot.features.filter(isBoxFeature).length
-    const mode = boxFormMode(activeTool, report, t("box.featureLabel", { number: boxCount + 1 }))
-    if (mode) return <BoxTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} />
-  }
-  return <StartTaskPanel canCreate={canCreateFeature(controller)} onCreateBox={onCreateBox} />
+  return activeTool && report ? (
+    <ActiveTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
+  ) : (
+    <StartTaskPanel
+      canCreate={canCreateFeature(controller)}
+      onCreateBox={onCreateBox}
+      onCreateCylinder={onCreateCylinder}
+    />
+  )
 }
 
 const taskPanelByWorkspace = {
