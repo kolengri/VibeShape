@@ -511,12 +511,12 @@ function failureDiagnostic(code: string): FeatureDiagnostic {
   return featureDiagnosticSchema.parse({ code, values: {} })
 }
 
-function evaluateFeature(
+async function evaluateFeature(
   context: FeatureEvaluationContext,
-  evaluate: (context: FeatureEvaluationContext) => unknown,
-): FeatureEvaluationRecord {
+  evaluate: (context: FeatureEvaluationContext) => unknown | Promise<unknown>,
+): Promise<FeatureEvaluationRecord> {
   try {
-    const outcome = featureEvaluationOutcomeSchema.safeParse(evaluate(context))
+    const outcome = featureEvaluationOutcomeSchema.safeParse(await evaluate(context))
     if (!outcome.success) {
       return {
         featureId: context.feature.id,
@@ -545,12 +545,12 @@ function blockingFeatureIds(dependencies: readonly FeatureEvaluationRecord[]) {
   return [...new Set(blockers)].slice(0, MAX_BLOCKERS)
 }
 
-function evaluateGraphFeature(input: {
+async function evaluateGraphFeature(input: {
   feature: FeatureRecord
   dependencyRecords: readonly FeatureEvaluationRecord[]
   previous: FeatureEvaluationRecord | undefined
   dirty: boolean
-  evaluate: (context: FeatureEvaluationContext) => unknown
+  evaluate: (context: FeatureEvaluationContext) => unknown | Promise<unknown>
 }) {
   if (input.feature.suppressed) {
     return {
@@ -567,7 +567,7 @@ function evaluateGraphFeature(input: {
   }
   if (!input.dirty && input.previous) return { record: input.previous, action: "reused" }
   return {
-    record: evaluateFeature(
+    record: await evaluateFeature(
       {
         feature: input.feature,
         dependencies: input.dependencyRecords,
@@ -579,14 +579,14 @@ function evaluateGraphFeature(input: {
   }
 }
 
-export function evaluateFeatureGraph(
+export async function evaluateFeatureGraph(
   graph: FeatureGraph,
   input: {
     changedFeatureIds: readonly unknown[]
     previousResults?: readonly unknown[]
-    evaluate: (context: FeatureEvaluationContext) => unknown
+    evaluate: (context: FeatureEvaluationContext) => unknown | Promise<unknown>
   },
-): FeatureGraphEvaluationResult {
+): Promise<FeatureGraphEvaluationResult> {
   const previousById = indexPreviousResults(graph, input.previousResults ?? [])
   if (!previousById) {
     return evaluationDiagnostic(
@@ -610,7 +610,7 @@ export function evaluateFeatureGraph(
     const dependencyRecords = feature.dependencies.map(
       (dependencyId) => recordsById.get(dependencyId) as FeatureEvaluationRecord,
     )
-    const evaluated = evaluateGraphFeature({
+    const evaluated = await evaluateGraphFeature({
       feature,
       dependencyRecords,
       previous: previousById.get(feature.id),

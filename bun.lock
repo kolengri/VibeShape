@@ -23,7 +23,10 @@
       "name": "@vibeshape/web",
       "version": "0.0.0",
       "dependencies": {
+        "@vibeshape/application": "workspace:*",
+        "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/i18n": "workspace:*",
+        "@vibeshape/protocol": "workspace:*",
         "@vibeshape/ui": "workspace:*",
         "react": "catalog:",
         "react-dom": "catalog:",
@@ -36,15 +39,25 @@
         "@vibeshape/domain": "workspace:*",
         "@vibeshape/extension-spike": "workspace:*",
         "@vibeshape/formats": "workspace:*",
-        "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/persistence": "workspace:*",
-        "@vibeshape/protocol": "workspace:*",
         "@vibeshape/test-models": "workspace:*",
         "@vibeshape/typescript-config": "workspace:*",
         "@vitejs/plugin-react": "catalog:",
         "fflate": "catalog:",
         "tailwindcss": "catalog:",
         "vite": "catalog:",
+      },
+    },
+    "packages/application": {
+      "name": "@vibeshape/application",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/domain": "workspace:*",
+        "@vibeshape/protocol": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
       },
     },
     "packages/automation-api": {
@@ -672,6 +685,8 @@
     "@typescript/typescript-win32-arm64": ["@typescript/typescript-win32-arm64@7.0.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ=="],
 
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
+
+    "@vibeshape/application": ["@vibeshape/application@workspace:packages/application"],
 
     "@vibeshape/automation-api": ["@vibeshape/automation-api@workspace:packages/automation-api"],
 

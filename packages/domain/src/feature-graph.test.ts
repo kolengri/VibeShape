@@ -7,7 +7,7 @@ import {
   type FeatureRecord,
   featureRecordSchema,
 } from "./feature-graph"
-import { topoRefSchema, topologySignatureSchema } from "./topology"
+import { topologySignatureSchema, topoRefSchema } from "./topology"
 
 const featureIds = {
   a: "0195b5ac-b220-7a2c-8c33-67a36a7f3101",
@@ -133,14 +133,14 @@ describe("feature graph", () => {
 })
 
 describe("feature graph evaluation", () => {
-  it("evaluates uncached features in dependency order", () => {
+  it("evaluates uncached features in dependency order", async () => {
     const graph = requireGraph([
       feature(featureIds.c, [featureIds.b]),
       feature(featureIds.a),
       feature(featureIds.b, [featureIds.a]),
     ])
     const observed: string[] = []
-    const result = evaluateFeatureGraph(graph, {
+    const result = await evaluateFeatureGraph(graph, {
       changedFeatureIds: [],
       evaluate(context) {
         observed.push(context.feature.id)
@@ -160,7 +160,7 @@ describe("feature graph evaluation", () => {
     expect(result.evaluation.dirtyFeatureIds).toEqual([featureIds.a, featureIds.b, featureIds.c])
   })
 
-  it("rebuilds changed descendants while reusing independent results", () => {
+  it("rebuilds changed descendants while reusing independent results", async () => {
     const graph = requireGraph([
       feature(featureIds.a),
       feature(featureIds.b, [featureIds.a]),
@@ -170,7 +170,7 @@ describe("feature graph evaluation", () => {
       status: "succeeded" as const,
       contentHash: "9".repeat(64),
     }))
-    const result = evaluateFeatureGraph(graph, {
+    const result = await evaluateFeatureGraph(graph, {
       changedFeatureIds: [featureIds.a],
       previousResults: [
         succeeded(featureIds.a, "1"),
@@ -192,14 +192,14 @@ describe("feature graph evaluation", () => {
     )
   })
 
-  it("blocks only failed descendants and continues independent branches", () => {
+  it("blocks only failed descendants and continues independent branches", async () => {
     const graph = requireGraph([
       feature(featureIds.a),
       feature(featureIds.b, [featureIds.a]),
       feature(featureIds.c),
     ])
     const evaluated: string[] = []
-    const result = evaluateFeatureGraph(graph, {
+    const result = await evaluateFeatureGraph(graph, {
       changedFeatureIds: [],
       evaluate({ feature: current }) {
         evaluated.push(current.id)
@@ -223,7 +223,7 @@ describe("feature graph evaluation", () => {
     expect(recordById(result.evaluation.records, featureIds.c)?.status).toBe("succeeded")
   })
 
-  it("marks suppressed features and blocks their dependent branch", () => {
+  it("marks suppressed features and blocks their dependent branch", async () => {
     const graph = requireGraph([
       feature(featureIds.a, [], { suppressed: true }),
       feature(featureIds.b, [featureIds.a]),
@@ -233,7 +233,7 @@ describe("feature graph evaluation", () => {
       status: "succeeded" as const,
       contentHash: "5".repeat(64),
     }))
-    const result = evaluateFeatureGraph(graph, { changedFeatureIds: [], evaluate })
+    const result = await evaluateFeatureGraph(graph, { changedFeatureIds: [], evaluate })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -247,12 +247,15 @@ describe("feature graph evaluation", () => {
     expect(evaluate.mock.calls[0]?.[0].feature.id).toBe(featureIds.c)
   })
 
-  it("contains thrown and invalid evaluator outcomes as stable failures", () => {
+  it("contains rejected and invalid evaluator outcomes as stable failures", async () => {
     const graph = requireGraph([feature(featureIds.a), feature(featureIds.c)])
-    const result = evaluateFeatureGraph(graph, {
+    const result = await evaluateFeatureGraph(graph, {
       changedFeatureIds: [],
-      evaluate({ feature: current }) {
-        if (current.id === featureIds.a) throw new Error("native detail must not escape")
+      async evaluate({ feature: current }) {
+        if (current.id === featureIds.a) {
+          await Promise.resolve()
+          throw new Error("native detail must not escape")
+        }
         return { status: "succeeded", contentHash: "invalid" }
       },
     })
@@ -273,20 +276,23 @@ describe("feature graph evaluation", () => {
     ])
   })
 
-  it("fails closed on unknown dirty features and invalid cached results", () => {
+  it("fails closed on unknown dirty features and invalid cached results", async () => {
     const graph = requireGraph([feature(featureIds.a)])
     const evaluate = () => ({ status: "succeeded", contentHash: "6".repeat(64) })
-    expect(
+    await expect(
       evaluateFeatureGraph(graph, { changedFeatureIds: [featureIds.b], evaluate }),
-    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-dirty-feature" } })
-    expect(
+    ).resolves.toMatchObject({ ok: false, diagnostic: { code: "invalid-dirty-feature" } })
+    await expect(
       evaluateFeatureGraph(graph, {
         changedFeatureIds: [],
         previousResults: [succeeded(featureIds.b, "7")],
         evaluate,
       }),
-    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-previous-feature-result" } })
-    expect(
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-previous-feature-result" },
+    })
+    await expect(
       evaluateFeatureGraph(graph, {
         changedFeatureIds: [],
         previousResults: [
@@ -294,6 +300,9 @@ describe("feature graph evaluation", () => {
         ],
         evaluate,
       }),
-    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-previous-feature-result" } })
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-previous-feature-result" },
+    })
   })
 })
