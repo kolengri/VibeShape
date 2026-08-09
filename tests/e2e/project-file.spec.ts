@@ -1,7 +1,141 @@
 import { readFile } from "node:fs/promises"
+import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
 
+type BrowserRequest<Result> = {
+  error: unknown
+  result: Result
+  onerror: (() => void) | null
+  onsuccess: (() => void) | null
+}
+
+type BrowserObjectStore = {
+  count: () => BrowserRequest<number>
+  createIndex: (name: string, keyPath: string, options?: { unique?: boolean }) => unknown
+  put: (value: unknown) => unknown
+}
+
+type BrowserDatabase = {
+  close: () => void
+  createObjectStore: (
+    name: string,
+    options: { keyPath: string | readonly string[] },
+  ) => BrowserObjectStore
+  objectStoreNames: { contains: (name: string) => boolean }
+  transaction: (
+    storeName: string,
+    mode: "readonly",
+  ) => { objectStore: (name: string) => BrowserObjectStore }
+}
+
+type BrowserOpenRequest = BrowserRequest<BrowserDatabase> & {
+  onupgradeneeded: (() => void) | null
+}
+
+type BrowserGlobal = {
+  indexedDB: { open: (name: string, version?: number) => BrowserOpenRequest }
+}
+
+async function seedVersionOneDatabase(page: Page) {
+  await page.goto("/persistence-spike-sw.js")
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = (globalThis as unknown as BrowserGlobal).indexedDB.open(
+          "vibeshape-product-v0",
+          10,
+        )
+        request.onerror = () => reject(request.error)
+        request.onupgradeneeded = () => {
+          const database = request.result
+          const projects = database.createObjectStore("projects", { keyPath: "documentId" })
+          projects.createIndex("updatedAt", "updatedAt")
+          const snapshots = database.createObjectStore("snapshots", {
+            keyPath: ["documentId", "revision"],
+          })
+          snapshots.createIndex("documentId", "documentId")
+          snapshots.createIndex("revision", "revision")
+          const events = database.createObjectStore("events", {
+            keyPath: ["documentId", "revision"],
+          })
+          events.createIndex("documentId", "documentId")
+          events.createIndex("revision", "revision")
+          events.createIndex("commandId", "commandId", { unique: true })
+          const recovery = database.createObjectStore("recovery", { keyPath: "documentId" })
+          recovery.createIndex("updatedAt", "updatedAt")
+          const leases = database.createObjectStore("leases", { keyPath: "documentId" })
+          leases.createIndex("expiresAt", "expiresAt")
+          const cacheIndex = database.createObjectStore("cacheIndex", { keyPath: "contentHash" })
+          cacheIndex.createIndex("lastAccessedAt", "lastAccessedAt")
+          cacheIndex.createIndex("engineBuildId", "engineBuildId")
+          cacheIndex.put({
+            schemaVersion: 0,
+            contentHash: "0".repeat(64),
+            path: `cache/${"0".repeat(64)}.bin`,
+            byteLength: 1,
+            engineBuildId: "org.vibeshape.occt",
+            lastAccessedAt: "2026-08-08T00:00:00Z",
+          })
+        }
+        request.onsuccess = () => {
+          request.result.close()
+          resolve()
+        }
+      }),
+  )
+}
+
+async function projectThumbnailCount(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const request = (globalThis as unknown as BrowserGlobal).indexedDB.open(
+          "vibeshape-product-v0",
+        )
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+          const database = request.result
+          const transaction = database.transaction("projectThumbnails", "readonly")
+          const count = transaction.objectStore("projectThumbnails").count()
+          count.onerror = () => reject(count.error)
+          count.onsuccess = () => {
+            database.close()
+            resolve(count.result)
+          }
+        }
+      }),
+  )
+}
+
 test.describe("native project file", () => {
+  test("adds the preview store without replacing version-one browser data", async ({ page }) => {
+    await seedVersionOneDatabase(page)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const migration = await page.evaluate(
+      () =>
+        new Promise<{ cacheEntries: number; hasPreviewStore: boolean }>((resolve, reject) => {
+          const request = (globalThis as unknown as BrowserGlobal).indexedDB.open(
+            "vibeshape-product-v0",
+          )
+          request.onerror = () => reject(request.error)
+          request.onsuccess = () => {
+            const database = request.result
+            const hasPreviewStore = database.objectStoreNames.contains("projectThumbnails")
+            const transaction = database.transaction("cacheIndex", "readonly")
+            const count = transaction.objectStore("cacheIndex").count()
+            count.onerror = () => reject(count.error)
+            count.onsuccess = () => {
+              database.close()
+              resolve({ cacheEntries: count.result, hasPreviewStore })
+            }
+          }
+        }),
+    )
+    expect(migration).toEqual({ cacheEntries: 1, hasPreviewStore: true })
+  })
+
   test("backs up and opens a configurable model in fresh browser storage", async ({
     browser,
     page,
@@ -23,8 +157,10 @@ test.describe("native project file", () => {
     await createBox.getByRole("textbox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     await page.getByRole("button", { name: "Project…" }).click()
+    await expect(page.getByRole("img", { name: "3D preview of Untitled project" })).toBeVisible()
     const backupDownload = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })
@@ -103,6 +239,7 @@ test.describe("native project file", () => {
     await createBox.getByRole("textbox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     await page.getByRole("button", { name: "Project…" }).click()
     const createdProjectNavigation = page.waitForEvent(
@@ -140,6 +277,9 @@ test.describe("native project file", () => {
       hasText: "Untitled project copy",
     })
     await expect(copiedProject).toContainText("Revision 4")
+    await expect(
+      copiedProject.getByRole("img", { name: "3D preview of Untitled project copy" }),
+    ).toBeVisible()
     const copiedProjectNavigation = page.waitForEvent(
       "framenavigated",
       (frame) => frame === page.mainFrame(),
@@ -165,6 +305,7 @@ test.describe("native project file", () => {
     await expect(confirmation).toHaveCount(0)
     await expect(originalProject).toHaveCount(0)
     await expect(copiedDialog.getByRole("listitem")).toHaveCount(2)
+    await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

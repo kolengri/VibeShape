@@ -20,6 +20,11 @@
         "loading": "Loading local projects…",
         "loadFailed": "Local projects could not be loaded. The current project remains open.",
         "retry": "Retry",
+        "preview": {
+          "alt": "3D preview of {name}",
+          "unavailable": "Preview unavailable",
+          "unavailableLabel": "No 3D preview is available for {name}"
+        },
         "duplicate": {
           "action": "Duplicate",
           "actionLabel": "Duplicate {name}, revision {revision}",

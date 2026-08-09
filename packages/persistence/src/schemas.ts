@@ -12,6 +12,39 @@ import {
 import { z } from "zod"
 
 export const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/, "Expected a SHA-256 digest.")
+export const PROJECT_THUMBNAIL_MAX_BYTES = 128 * 1024
+
+const projectThumbnailSvgPattern =
+  /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 240 160" role="img"><g stroke="#[0-9a-f]{6}" stroke-width="[0-9.]+" stroke-linejoin="round">(?:<polygon points="[0-9]{1,3}\.[0-9]{2},[0-9]{1,3}\.[0-9]{2}(?: [0-9]{1,3}\.[0-9]{2},[0-9]{1,3}\.[0-9]{2}){2}" fill="rgb\([0-9]{1,3} [0-9]{1,3} [0-9]{1,3}\)"\/>)+<\/g><\/svg>$/
+
+function isSafeProjectThumbnailSvg(bytes: Uint8Array) {
+  try {
+    return projectThumbnailSvgPattern.test(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+  } catch {
+    return false
+  }
+}
+
+const projectThumbnailPayloadSchema = z
+  .object({
+    revision: revisionSchema,
+    mediaType: z.literal("image/svg+xml"),
+    bytes: z
+      .instanceof(Uint8Array)
+      .refine((value) => value.byteLength > 0, "Project thumbnail is empty.")
+      .refine(
+        (value) => value.byteLength <= PROJECT_THUMBNAIL_MAX_BYTES,
+        "Project thumbnail is too large.",
+      )
+      .refine(isSafeProjectThumbnailSvg, "Project thumbnail SVG is invalid."),
+    generatedAt: timestampSchema,
+  })
+  .strict()
+
+export const projectThumbnailRecordSchema = projectThumbnailPayloadSchema.extend({
+  schemaVersion: z.literal(0),
+  documentId: documentIdSchema,
+})
 
 export const projectRecordSchema = z
   .object({
@@ -35,6 +68,7 @@ export const localProjectSummarySchema = z
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
     lastExternalBackupAt: timestampSchema.nullable(),
+    thumbnail: projectThumbnailPayloadSchema.nullable(),
   })
   .strict()
 
@@ -143,6 +177,24 @@ export const portableProjectCopySchema = portableProjectPayloadSchema.extend({
   copiedAt: timestampSchema,
 })
 
+export const projectThumbnailWriteInputSchema = projectThumbnailRecordSchema.omit({
+  schemaVersion: true,
+})
+
+export const projectThumbnailCopyInputSchema = z
+  .object({
+    sourceDocumentId: documentIdSchema,
+    sourceRevision: revisionSchema,
+    targetDocumentId: documentIdSchema,
+    targetRevision: revisionSchema,
+    generatedAt: timestampSchema,
+  })
+  .strict()
+  .refine((input) => input.sourceDocumentId !== input.targetDocumentId, {
+    message: "A project thumbnail copy requires distinct documents.",
+    path: ["targetDocumentId"],
+  })
+
 export const projectDeleteInputSchema = z
   .object({
     documentId: documentIdSchema,
@@ -174,6 +226,7 @@ export const persistenceDiagnosticSchema = z
   .strict()
 
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
+export type ProjectThumbnailRecord = z.infer<typeof projectThumbnailRecordSchema>
 export type LocalProjectSummary = z.infer<typeof localProjectSummarySchema>
 export type SnapshotRecord = z.infer<typeof snapshotRecordSchema>
 export type EventRecord = z.infer<typeof eventRecordSchema>
@@ -184,6 +237,8 @@ export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema
 export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
 export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
 export type PortableProjectCopy = z.input<typeof portableProjectCopySchema>
+export type ProjectThumbnailWriteInput = z.input<typeof projectThumbnailWriteInputSchema>
+export type ProjectThumbnailCopyInput = z.input<typeof projectThumbnailCopyInputSchema>
 export type ProjectDeleteInput = z.input<typeof projectDeleteInputSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>

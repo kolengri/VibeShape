@@ -89,6 +89,40 @@ function localizedCopyName(sourceName: string, format: (name: string) => string)
   return copyName
 }
 
+function thumbnailDataUrl(thumbnail: NonNullable<LocalProjectSummary["thumbnail"]>) {
+  try {
+    const svg = new TextDecoder("utf-8", { fatal: true }).decode(thumbnail.bytes)
+    return `data:${thumbnail.mediaType};charset=utf-8,${encodeURIComponent(svg)}`
+  } catch {
+    return null
+  }
+}
+
+function ProjectPreview({ project }: { project: LocalProjectSummary }) {
+  const t = useTranslations("app.projectFile.library.preview")
+  const source = project.thumbnail ? thumbnailDataUrl(project.thumbnail) : null
+
+  return (
+    <div className="row-span-2 grid h-24 w-36 shrink-0 place-items-center overflow-hidden rounded-sm border bg-viewport-background">
+      {source ? (
+        <img
+          className="size-full object-contain"
+          src={source}
+          alt={t("alt", { name: project.name })}
+        />
+      ) : (
+        <span
+          className="px-4 text-center text-xs text-muted-foreground"
+          role="img"
+          aria-label={t("unavailableLabel", { name: project.name })}
+        >
+          {t("unavailable")}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function LocalProjectList({
   activeDocumentId,
   disabled,
@@ -150,9 +184,10 @@ function LocalProjectList({
             return (
               <li
                 key={project.documentId}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-3"
+                className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border bg-card p-3"
                 aria-current={isCurrent ? "page" : undefined}
               >
+                <ProjectPreview project={project} />
                 <div className="min-w-0 grid gap-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="truncate text-sm font-medium">{project.name}</h4>
@@ -174,7 +209,7 @@ function LocalProjectList({
                     <p className="text-xs text-muted-foreground">{t("delete.currentBlocked")}</p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <Button
                     type="button"
                     size="sm"

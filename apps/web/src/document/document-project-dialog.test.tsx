@@ -11,6 +11,9 @@ import { downloadProjectBackup } from "./document-project-file"
 
 const activeDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
 const otherDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad"
+const fixtureThumbnail = new TextEncoder().encode(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" role="img"></svg>',
+)
 const controller = {
   status: "ready",
   report: { snapshot: { id: activeDocumentId } },
@@ -62,6 +65,7 @@ beforeEach(() => {
         createdAt: "2026-08-08T00:00:00Z",
         updatedAt: "2026-08-08T00:03:00Z",
         lastExternalBackupAt: null,
+        thumbnail: null,
       },
       {
         documentId: otherDocumentId,
@@ -70,6 +74,12 @@ beforeEach(() => {
         createdAt: "2026-08-08T00:00:00Z",
         updatedAt: "2026-08-08T00:02:00Z",
         lastExternalBackupAt: null,
+        thumbnail: {
+          revision: 2,
+          mediaType: "image/svg+xml",
+          bytes: fixtureThumbnail,
+          generatedAt: "2026-08-08T00:02:00Z",
+        },
       },
     ],
   })
@@ -117,6 +127,8 @@ describe("DocumentProjectDialog", () => {
     await user.click(screen.getByRole("button", { name: "Project…" }))
     expect(await screen.findByText(/Revision 3/)).toBeTruthy()
     expect(screen.getByText("Current")).toBeTruthy()
+    expect(screen.getByRole("img", { name: "3D preview of Fixture" })).toBeTruthy()
+    expect(screen.getByRole("img", { name: "No 3D preview is available for Bracket" })).toBeTruthy()
     const open = screen.getByRole("button", { name: "Open Fixture, revision 2" })
 
     await user.dblClick(open)

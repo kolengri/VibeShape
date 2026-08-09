@@ -85,6 +85,7 @@ export type ProjectSwitchResult =
   | { ok: false; diagnostic: { code: string; message: string } }
 
 export type ProjectDeleteResult = ProjectSwitchResult
+export type ProjectThumbnailWriteResult = ProjectSwitchResult
 
 export type ProjectDuplicateResult =
   | {
@@ -473,6 +474,35 @@ export async function listLocalProjects(): Promise<LocalProjectListResult> {
     : { ok: false, diagnostic: result.diagnostic }
 }
 
+export async function saveActiveProjectThumbnail(
+  documentIdInput: unknown,
+  revision: number,
+  thumbnail: Readonly<{ mediaType: "image/svg+xml"; bytes: Uint8Array }>,
+): Promise<ProjectThumbnailWriteResult> {
+  if (!activeRepository || state.status !== "ready" || !state.report) {
+    return unavailableProjectFileResult()
+  }
+  const documentId = documentIdSchema.safeParse(documentIdInput)
+  if (
+    !documentId.success ||
+    state.report.snapshot.id !== documentId.data ||
+    state.report.snapshot.revision !== revision
+  ) {
+    return {
+      ok: false,
+      diagnostic: { code: "stale-revision", message: "The active project revision changed." },
+    }
+  }
+  const stored = await activeRepository.writeProjectThumbnail({
+    documentId: documentId.data,
+    revision,
+    mediaType: thumbnail.mediaType,
+    bytes: thumbnail.bytes,
+    generatedAt: new Date().toISOString(),
+  })
+  return stored.ok ? { ok: true } : { ok: false, diagnostic: stored.diagnostic }
+}
+
 export async function activateLocalProject(documentIdInput: unknown): Promise<ProjectSwitchResult> {
   if (!session || !activeRepository || state.status !== "ready") {
     return unavailableProjectFileResult()
@@ -592,9 +622,15 @@ export async function duplicateLocalProject(
     events: copied.events,
     copiedAt,
   })
-  return stored.ok
-    ? { ok: true, documentId: stored.value.documentId, name: copied.snapshot.name }
-    : { ok: false, diagnostic: stored.diagnostic }
+  if (!stored.ok) return { ok: false, diagnostic: stored.diagnostic }
+  await activeRepository.copyProjectThumbnail({
+    sourceDocumentId: documentId.data,
+    sourceRevision: expectedHeadRevision,
+    targetDocumentId: stored.value.documentId,
+    targetRevision: stored.value.revision,
+    generatedAt: copiedAt,
+  })
+  return { ok: true, documentId: stored.value.documentId, name: copied.snapshot.name }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {
