@@ -26,6 +26,7 @@ class MemoryRepository implements PersistentDocumentRepositoryPort {
   recoveryMarker = false
   failNextCommit = false
   commitCount = 0
+  draftCommitCount = 0
 
   async commit(input: Parameters<PersistentDocumentRepositoryPort["commit"]>[0]) {
     if (this.failNextCommit) {
@@ -35,6 +36,17 @@ class MemoryRepository implements PersistentDocumentRepositoryPort {
     this.snapshot = input.snapshot
     this.recoveryMarker = true
     this.commitCount += 1
+    return { ok: true, value: { revision: input.snapshot.revision } } as const
+  }
+
+  async commitDraft(input: Parameters<PersistentDocumentRepositoryPort["commitDraft"]>[0]) {
+    if (this.failNextCommit) {
+      this.failNextCommit = false
+      return portFailure("quota-exceeded", "Storage quota was exceeded.", true)
+    }
+    this.snapshot = input.snapshot
+    this.recoveryMarker = true
+    this.draftCommitCount += 1
     return { ok: true, value: { revision: input.snapshot.revision } } as const
   }
 
@@ -156,6 +168,23 @@ function renameCommand(baseRevision: number, suffix: string) {
   } as const
 }
 
+function addVariableCommand(
+  baseRevision: number,
+  suffix: string,
+  variable: { id: string; name: string; expression: string },
+) {
+  return {
+    kind: "org.vibeshape.variable.add",
+    schemaVersion: 1,
+    commandId: `0195b5ac-b220-7a2c-8c33-67a36a7f23${suffix}`,
+    documentId,
+    baseRevision,
+    issuedAt: `2026-08-09T00:01:0${baseRevision}Z`,
+    actor: { type: "user", userId: null },
+    payload: { variable: { schemaVersion: 0, ...variable } },
+  } as const
+}
+
 function harness() {
   const repository = new MemoryRepository()
   const leases = new MemoryLeases()
@@ -256,6 +285,96 @@ describe("persistent document session", () => {
     expect(created.session.snapshot.revision).toBe(1)
     expect(state.repository.snapshot?.revision).toBe(1)
     expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+  })
+
+  it("persists a multi-command draft atomically and rebuilds only the final revision", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+
+    const result = await created.session.commitDraft({
+      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401",
+      commands: [
+        addVariableCommand(1, "01", {
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2501",
+          name: "wall",
+          expression: "2 mm",
+        }),
+        addVariableCommand(2, "02", {
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2502",
+          name: "width",
+          expression: "#wall * 10",
+        }),
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      snapshot: {
+        revision: 3,
+        variables: [
+          { name: "wall", expression: "2 mm" },
+          { name: "width", expression: "#wall * 10" },
+        ],
+      },
+      events: [{ transactionId: "0195b5ac-b220-7a2c-8c33-67a36a7f2401" }, {}],
+      rebuild: { ok: true, response: { revision: 3 } },
+    })
+    expect(state.repository.draftCommitCount).toBe(1)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1, 3])
+  })
+
+  it("retains the base snapshot when an atomic draft persistence commit fails", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    state.repository.failNextCommit = true
+
+    const result = await created.session.commitDraft({
+      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2402",
+      commands: [
+        addVariableCommand(1, "03", {
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2503",
+          name: "wall",
+          expression: "2 mm",
+        }),
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: "persistence-failed", sourceCode: "quota-exceeded" },
+    })
+    expect(created.session.snapshot).toMatchObject({ revision: 1, variables: [] })
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+  })
+
+  it("rejects mixed-actor drafts before persistence", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const wall = addVariableCommand(1, "04", {
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f2504",
+      name: "wall",
+      expression: "2 mm",
+    })
+    const width = {
+      ...addVariableCommand(2, "05", {
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2505",
+        name: "width",
+        expression: "#wall * 10",
+      }),
+      actor: { type: "system", source: "org.vibeshape.test" },
+    } as const
+
+    await expect(
+      created.session.commitDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2403",
+        commands: [wall, width],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-draft-commit" },
+    })
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(created.session.snapshot.revision).toBe(1)
   })
 
   it("keeps a saved semantic revision when rebuilding fails and permits a retry", async () => {

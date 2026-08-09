@@ -3,6 +3,7 @@ import {
   documentEventSchema,
   documentIdSchema,
   documentSnapshotSchema,
+  draftIdSchema,
   revisionSchema,
   sessionIdSchema,
   technicalIdentifierSchema,
@@ -103,6 +104,18 @@ export const persistenceCommitInputSchema = z
   })
   .strict()
 
+export const persistenceDraftCommitInputSchema = z
+  .object({
+    sessionId: sessionIdSchema,
+    lease: writerLeaseClaimSchema,
+    storedAt: timestampSchema,
+    transactionId: draftIdSchema,
+    baseSnapshot: documentSnapshotSchema,
+    events: z.array(documentEventSchema).min(1).max(256),
+    snapshot: documentSnapshotSchema,
+  })
+  .strict()
+
 export const persistenceDiagnosticCodeSchema = z.enum([
   "invalid-input",
   "document-already-exists",
@@ -132,5 +145,6 @@ export type RecoveryRecord = z.infer<typeof recoveryRecordSchema>
 export type LeaseRecord = z.infer<typeof leaseRecordSchema>
 export type CacheIndexRecord = z.infer<typeof cacheIndexRecordSchema>
 export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema>
+export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>

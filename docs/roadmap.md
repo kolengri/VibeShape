@@ -82,7 +82,7 @@ Create a box and cylinder feature, perform a boolean, restart offline, recover t
 - Extrude, pocket, and revolve.
 - Command-level undo/redo.
 - Unit-aware inputs.
-- Variables table UI over the implemented dimensional expression and command contracts.
+- Parameter-field integration that inserts and edits references from the implemented Variables panel.
 
 ### Demo
 

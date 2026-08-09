@@ -267,6 +267,12 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     ownerModuleId: documentCoreModule.id,
     execute: applyDocumentCommand,
   },
+  {
+    kind: "org.vibeshape.variable.replace-table",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
 ]
 
 type FeatureCommand = Extract<

@@ -30,10 +30,10 @@ SPK-005 implements the first six active stores: `projects`, `snapshots`, `events
 A user command becomes committed only after:
 
 1. Domain validation.
-2. Successful geometry rebuild, or explicit storage of an error-state feature when the UX permits it.
-3. One IndexedDB transaction records the event, snapshot, new head revision, recovery marker, and writer-lease check.
-4. The transaction is confirmed.
-5. The UI swaps to the new committed state.
+2. One IndexedDB transaction records the event or bounded transaction-tagged event sequence, final snapshot, new head revision, recovery marker, and writer-lease check.
+3. The transaction is confirmed.
+4. The UI swaps to the new committed state.
+5. Derived geometry rebuilds from that saved semantic revision; infrastructure failure remains retryable and does not roll back the document.
 
 OPFS cache writes are independent of semantic atomicity. Publish a cache-index entry only after a complete write and checksum. Orphan cleanup removes unregistered temporary files.
 
@@ -64,7 +64,7 @@ A corrupted event never destroys the preceding snapshot. A diagnostic bundle may
 
 `@vibeshape/document-worker` provides in-process recovery for an active document. Its session retains the latest successfully rebuilt semantic snapshot and mesh policy, replaces a failed worker, increments generation, and rebuilds every native result. It never treats retained meshes or B-Rep state as recovery input.
 
-That memory is intentionally not durable. After a page reload, browser crash, or full application restart, the persistence layer must first complete checksum verification and event replay, then pass the recovered committed `DocumentSnapshot` to a new document-worker session. The session does not write IndexedDB, and the persistence package does not import worker or OCCT code. This handoff is the next product-integration gate.
+That memory is intentionally not durable. After a page reload, browser crash, or full application restart, the persistence layer first completes checksum verification and event replay, then passes the recovered committed `DocumentSnapshot` to a new document-worker session. The product document controller implements this handoff without letting the worker write IndexedDB or the persistence package import worker or OCCT code.
 
 ## Persistent storage
 

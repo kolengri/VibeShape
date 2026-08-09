@@ -12,6 +12,7 @@ export const domainDiagnosticCodeSchema = z.enum([
   "command-no-op",
   "variable-already-exists",
   "variable-name-conflict",
+  "variable-name-immutable",
   "variable-not-found",
   "variable-in-use",
   "invalid-variable-expression",

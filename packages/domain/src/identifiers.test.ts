@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   commandIdSchema,
+  generateUuidV7,
   moduleVersionSchema,
   technicalIdentifierSchema,
   timestampSchema,
@@ -52,5 +53,24 @@ describe("domain identifiers", () => {
     expect(timestampSchema.safeParse("2026-08-08T12:00:00Z").success).toBe(true)
     expect(timestampSchema.safeParse("2026-08-08T14:00:00+02:00").success).toBe(true)
     expect(timestampSchema.safeParse("2026-08-08T12:00:00").success).toBe(false)
+  })
+
+  it("generates lowercase UUIDv7 identifiers from explicit time and randomness", () => {
+    const identifier = generateUuidV7({
+      timestampMs: 1_735_689_600_000,
+      randomBytes: Uint8Array.from([0xff, 0x22, 0xff, 4, 5, 6, 7, 8, 9, 10]),
+    })
+
+    expect(identifier).toBe("01941f29-7c00-7f22-bf04-05060708090a")
+    expect(commandIdSchema.safeParse(identifier).success).toBe(true)
+  })
+
+  it("rejects unsafe UUIDv7 generator inputs", () => {
+    expect(() => generateUuidV7({ timestampMs: -1, randomBytes: new Uint8Array(10) })).toThrow(
+      RangeError,
+    )
+    expect(() => generateUuidV7({ timestampMs: 0, randomBytes: new Uint8Array(9) })).toThrow(
+      RangeError,
+    )
   })
 })

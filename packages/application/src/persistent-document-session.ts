@@ -1,10 +1,11 @@
 import type { CommandDispatcher } from "@vibeshape/domain/command-dispatcher"
 import type { DocumentEvent } from "@vibeshape/domain/commands"
-import { documentCommandSchema } from "@vibeshape/domain/commands"
+import { commandActorsEqual, documentCommandSchema } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
   type DocumentId,
   documentIdSchema,
+  draftIdSchema,
   type SessionId,
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
@@ -32,6 +33,13 @@ const createSessionInputSchema = z
     mesh: featureMeshPolicySchema,
     leaseDurationMs: z.number().int().min(1_000).max(60_000).default(DEFAULT_LEASE_DURATION_MS),
     command: z.unknown(),
+  })
+  .strict()
+
+const draftCommitInputSchema = z
+  .object({
+    draftId: draftIdSchema,
+    commands: z.array(z.unknown()).min(1).max(256),
   })
   .strict()
 
@@ -72,8 +80,19 @@ type PersistenceCloseInput = Readonly<{
   lease: { epoch: number; nowMs: number }
 }>
 
+type PersistenceDraftCommitInput = Readonly<{
+  sessionId: SessionId
+  lease: { epoch: number; nowMs: number }
+  storedAt: string
+  transactionId: z.infer<typeof draftIdSchema>
+  baseSnapshot: DocumentSnapshot
+  events: readonly DocumentEvent[]
+  snapshot: DocumentSnapshot
+}>
+
 export type PersistentDocumentRepositoryPort = Readonly<{
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
+  commitDraft: (input: PersistenceDraftCommitInput) => Promise<SessionPortResult<unknown>>
   recover: (documentId: DocumentId) => Promise<SessionPortResult<PersistedRecoveryReport>>
   closeCleanly: (input: PersistenceCloseInput) => Promise<SessionPortResult<unknown>>
 }>
@@ -117,6 +136,7 @@ export type PersistentDocumentSessionDependencies = Readonly<{
 
 export type PersistentDocumentSessionDiagnosticCode =
   | "invalid-session-input"
+  | "invalid-draft-commit"
   | "invalid-recovered-document"
   | "command-rejected"
   | "persistence-failed"
@@ -159,6 +179,15 @@ export type PersistentDocumentCommitResult =
       ok: true
       snapshot: DocumentSnapshot
       event: DocumentEvent
+      rebuild: DocumentRebuildOutcome
+    }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type PersistentDocumentDraftCommitResult =
+  | {
+      ok: true
+      snapshot: DocumentSnapshot
+      events: readonly DocumentEvent[]
       rebuild: DocumentRebuildOutcome
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
@@ -247,6 +276,42 @@ async function acquireWriterLease(
       } as const)
 }
 
+function dispatchDraftCommands(
+  dispatcher: Pick<CommandDispatcher, "dispatch">,
+  snapshot: DocumentSnapshot,
+  input: z.output<typeof draftCommitInputSchema>,
+):
+  | { ok: true; snapshot: DocumentSnapshot; events: readonly DocumentEvent[]; storedAt: string }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic } {
+  let draftSnapshot = snapshot
+  const events: DocumentEvent[] = []
+  for (const commandInput of input.commands) {
+    const command = dispatcher.dispatch(draftSnapshot, commandInput, {
+      transactionId: input.draftId,
+    })
+    if (!command.ok) return { ok: false, diagnostic: commandDiagnostic(command.diagnostic) }
+    const firstEvent = events[0]
+    if (firstEvent && !commandActorsEqual(firstEvent.actor, command.event.actor)) {
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "invalid-draft-commit",
+          "Every document draft command must use the same actor.",
+        ),
+      }
+    }
+    draftSnapshot = command.snapshot
+    events.push(command.event)
+  }
+  const finalEvent = events.at(-1)
+  return finalEvent
+    ? { ok: true, snapshot: draftSnapshot, events, storedAt: finalEvent.issuedAt }
+    : {
+        ok: false,
+        diagnostic: diagnostic("invalid-draft-commit", "The document draft commit is empty."),
+      }
+}
+
 export class PersistentDocumentSession {
   readonly #documentId: DocumentId
   readonly #sessionId: SessionId
@@ -288,6 +353,10 @@ export class PersistentDocumentSession {
 
   commit(input: unknown): Promise<PersistentDocumentCommitResult> {
     return this.#enqueue(() => this.#commit(input))
+  }
+
+  commitDraft(input: unknown): Promise<PersistentDocumentDraftCommitResult> {
+    return this.#enqueue(() => this.#commitDraft(input))
   }
 
   retryRebuild(): Promise<DocumentRebuildOutcome> {
@@ -332,6 +401,57 @@ export class PersistentDocumentSession {
       ok: true,
       snapshot: command.snapshot,
       event: command.event,
+      rebuild: await this.#rebuild(),
+    }
+  }
+
+  async #commitDraft(input: unknown): Promise<PersistentDocumentDraftCommitResult> {
+    if (this.#closed) {
+      return {
+        ok: false,
+        diagnostic: diagnostic("session-closed", "The document session is closed."),
+      }
+    }
+    const parsed = draftCommitInputSchema.safeParse(input)
+    if (!parsed.success) {
+      return {
+        ok: false,
+        diagnostic: diagnostic("invalid-draft-commit", "The document draft commit is invalid."),
+      }
+    }
+    const lease = await this.#renewWriteAccess()
+    if (!lease.ok) return lease
+
+    const dispatched = dispatchDraftCommands(
+      this.#dependencies.commandDispatcher,
+      this.#snapshot,
+      parsed.data,
+    )
+    if (!dispatched.ok) return dispatched
+    const persisted = await this.#dependencies.repository.commitDraft({
+      sessionId: this.#sessionId,
+      lease: { epoch: lease.lease.epoch, nowMs: lease.nowMs },
+      storedAt: dispatched.storedAt,
+      transactionId: parsed.data.draftId,
+      baseSnapshot: this.#snapshot,
+      events: dispatched.events,
+      snapshot: dispatched.snapshot,
+    })
+    if (!persisted.ok) {
+      return {
+        ok: false,
+        diagnostic: portDiagnostic(
+          "persistence-failed",
+          "The document draft was not saved.",
+          persisted.diagnostic,
+        ),
+      }
+    }
+    this.#snapshot = dispatched.snapshot
+    return {
+      ok: true,
+      snapshot: dispatched.snapshot,
+      events: dispatched.events,
       rebuild: await this.#rebuild(),
     }
   }

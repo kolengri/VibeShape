@@ -3,6 +3,9 @@
     "shell": {
       "applicationBar": {
         "export": "Export…",
+        "loading": "Opening local document…",
+        "saveFailed": "Could not save",
+        "saving": "Saving…",
         "savedInBrowser": "Saved in this browser",
         "untitledProject": "Untitled project"
       },
@@ -20,7 +23,8 @@
           "bodies": "Bodies",
           "features": "Features",
           "origin": "Origin",
-          "sketches": "Sketches"
+          "sketches": "Sketches",
+          "variables": "Variables"
         },
         "projectFeatures": "Project features",
         "title": "Model tree"
@@ -35,17 +39,58 @@
         "ariaLabel": "Task panel",
         "createSketch": "Create sketch",
         "description": "Select an origin plane, create a sketch, and preview each feature before applying it.",
-        "foundationStatus": "Foundation status",
-        "geometryEngineNotLoaded": "Geometry engine not loaded",
-        "sharedUiTokensActive": "Shared UI tokens active",
         "startModeling": "Start modeling",
-        "workspacesConfigured": "Bun workspaces configured"
+        "variables": {
+          "title": "Using variables",
+          "description": "Variables make repeated dimensions configurable from one table.",
+          "reference": "Reference a value with #name in a supported parameter.",
+          "units": "Length and angle literals require a supported unit; scalars do not.",
+          "names": "A variable name is fixed after the table is applied."
+        }
       },
       "viewport": {
         "ariaLabel": "3D viewport",
         "description": "Geometry and worker integration arrive after the Phase 0 engine spikes.",
         "orientation": "{plane} · millimeters",
         "title": "3D viewport"
+      }
+    },
+    "variables": {
+      "title": "Variables",
+      "description": "Define reusable dimensions and formulas. Reference a variable in a model parameter with #name.",
+      "loading": "Opening the local document…",
+      "loadFailed": "The local document could not be opened.",
+      "table": {
+        "caption": "Document variables",
+        "name": "Name",
+        "expression": "Expression",
+        "result": "Result",
+        "status": "Status",
+        "actions": "Actions",
+        "empty": "No variables yet. Add one to make this model configurable."
+      },
+      "fields": {
+        "name": "Variable name",
+        "expression": "Variable expression"
+      },
+      "actions": {
+        "add": "Add variable",
+        "remove": "Remove",
+        "apply": "Apply variables"
+      },
+      "states": {
+        "valid": "Valid",
+        "invalid": "Invalid",
+        "pending": "Pending"
+      },
+      "messages": {
+        "readOnly": "This document is open read-only because another tab owns write access.",
+        "validationSummary": "Fix the highlighted variable fields before applying the table.",
+        "staleRevision": "The document changed after editing began. Your edits are preserved; review them against the latest revision.",
+        "applyFailed": "The variable table could not be applied. Your edits are preserved.",
+        "removeInUse": "This variable is still referenced by another variable or feature.",
+        "invalidName": "Use a name that starts with a letter or underscore and contains only letters, digits, or underscores.",
+        "invalidExpression": "Enter a valid expression with supported numbers, units, and #variable references."
       }
     }
   }

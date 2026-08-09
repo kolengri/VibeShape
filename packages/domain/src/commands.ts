@@ -22,7 +22,11 @@ import {
   createVariableDocumentEvent,
   reduceVariableDocumentEvent,
 } from "./variable-document-commands"
-import { variableDefinitionSchema, variableExpressionSchema } from "./variables"
+import {
+  variableDefinitionSchema,
+  variableDefinitionsSchema,
+  variableExpressionSchema,
+} from "./variables"
 
 const sha256Pattern = /^[0-9a-f]{64}$/
 
@@ -105,6 +109,12 @@ const removeVariableCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ variableId: variableIdSchema }).strict(),
 })
 
+const replaceVariableTableCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.variable.replace-table"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ variables: variableDefinitionsSchema }).strict(),
+})
+
 const addFeatureCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.feature.add"),
   schemaVersion: z.literal(1),
@@ -129,6 +139,7 @@ export const documentCommandSchema = z.discriminatedUnion("kind", [
   addVariableCommandSchema,
   setVariableExpressionCommandSchema,
   removeVariableCommandSchema,
+  replaceVariableTableCommandSchema,
   addFeatureCommandSchema,
   updateFeatureCommandSchema,
   setFeatureSuppressedCommandSchema,
@@ -175,6 +186,12 @@ const variableRemovedEventSchema = eventEnvelopeSchema.extend({
   variable: variableDefinitionSchema,
 })
 
+const variableTableReplacedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.variable.table-replaced"),
+  previousVariables: variableDefinitionsSchema,
+  variables: variableDefinitionsSchema,
+})
+
 const featureAddedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.added"),
   feature: featureRecordSchema,
@@ -199,6 +216,7 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   variableAddedEventSchema,
   variableExpressionChangedEventSchema,
   variableRemovedEventSchema,
+  variableTableReplacedEventSchema,
   featureAddedEventSchema,
   featureUpdatedEventSchema,
   featureSuppressionChangedEventSchema,
@@ -210,6 +228,48 @@ export type { DomainDiagnostic } from "./command-support"
 export type CommandActor = Readonly<z.infer<typeof commandActorSchema>>
 export type DocumentCommand = Readonly<z.infer<typeof documentCommandSchema>>
 export type DocumentEvent = Readonly<z.infer<typeof documentEventSchema>>
+
+type VariableCommand = Extract<
+  DocumentCommand,
+  {
+    kind:
+      | "org.vibeshape.variable.add"
+      | "org.vibeshape.variable.remove"
+      | "org.vibeshape.variable.replace-table"
+      | "org.vibeshape.variable.set-expression"
+  }
+>
+type VariableEvent = Extract<
+  DocumentEvent,
+  {
+    type:
+      | "org.vibeshape.variable.added"
+      | "org.vibeshape.variable.expression-changed"
+      | "org.vibeshape.variable.removed"
+      | "org.vibeshape.variable.table-replaced"
+  }
+>
+
+const variableCommandKinds = new Set<DocumentCommand["kind"]>([
+  "org.vibeshape.variable.add",
+  "org.vibeshape.variable.remove",
+  "org.vibeshape.variable.replace-table",
+  "org.vibeshape.variable.set-expression",
+])
+const variableEventTypes = new Set<DocumentEvent["type"]>([
+  "org.vibeshape.variable.added",
+  "org.vibeshape.variable.expression-changed",
+  "org.vibeshape.variable.removed",
+  "org.vibeshape.variable.table-replaced",
+])
+
+function isVariableCommand(command: DocumentCommand): command is VariableCommand {
+  return variableCommandKinds.has(command.kind)
+}
+
+function isVariableEvent(event: DocumentEvent): event is VariableEvent {
+  return variableEventTypes.has(event.type)
+}
 
 type DocumentCreatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.created" }>
 type DocumentRenamedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.renamed" }>
@@ -344,17 +404,13 @@ function reduceParsedEvent(
   snapshot: DocumentSnapshot | null,
   event: DocumentEvent,
 ): DocumentEventResult {
+  if (isVariableEvent(event)) return reduceVariableDocumentEvent(snapshot, event)
+
   switch (event.type) {
     case "org.vibeshape.document.created":
       return reduceCreatedEvent(snapshot, event)
     case "org.vibeshape.document.renamed":
       return reduceRenamedEvent(snapshot, event)
-    case "org.vibeshape.variable.added":
-      return reduceVariableDocumentEvent(snapshot, event)
-    case "org.vibeshape.variable.expression-changed":
-      return reduceVariableDocumentEvent(snapshot, event)
-    case "org.vibeshape.variable.removed":
-      return reduceVariableDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.added":
       return reduceFeatureDocumentEvent(snapshot, event)
     case "org.vibeshape.feature.updated":
@@ -428,17 +484,15 @@ function createEvent(
   command: DocumentCommand,
   transactionId: z.infer<typeof draftIdSchema> | null,
 ): DocumentEvent | DomainDiagnostic {
+  if (isVariableCommand(command)) {
+    return createVariableDocumentEvent(snapshot, command, transactionId)
+  }
+
   switch (command.kind) {
     case "org.vibeshape.document.create":
       return createDocumentCreatedEvent(snapshot, command, transactionId)
     case "org.vibeshape.document.rename":
       return createDocumentRenamedEvent(snapshot, command, transactionId)
-    case "org.vibeshape.variable.add":
-      return createVariableDocumentEvent(snapshot, command, transactionId)
-    case "org.vibeshape.variable.set-expression":
-      return createVariableDocumentEvent(snapshot, command, transactionId)
-    case "org.vibeshape.variable.remove":
-      return createVariableDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.add":
       return createFeatureDocumentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.update":

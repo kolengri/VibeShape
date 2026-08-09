@@ -23,6 +23,8 @@ Every mutation is serialized and follows this order:
 4. advance the in-memory committed snapshot;
 5. rebuild derived geometry from that saved snapshot.
 
+The session also supports bounded multi-command drafts. Every command is dispatched through the trusted registry against the preceding draft snapshot and receives one shared transaction ID. The repository verifies the complete replay, then stores every event plus the final snapshot, project head, and recovery marker in one IndexedDB transaction. Only the final saved revision is rebuilt. A rejected command or failed storage transaction exposes no partial semantic revision.
+
 If command validation or persistence fails, the session does not advance and does not request a rebuild. If infrastructure-level rebuild fails after persistence, the semantic revision remains committed and the session exposes a retryable rebuild diagnostic. Feature-level modeling failures remain normal rebuild records rather than persistence failures. A later retry or reopen rebuilds from semantic state; native shapes and meshes never become authoritative.
 
 A clean close renews the lease, marks the current revision clean, removes the recovery marker, releases the lease, disposes document-owned worker state, and terminates the worker client. An interrupted page leaves the recovery marker intact. Reopening after interruption recovers and rebuilds the same committed revision; reopening after a clean close reports a clean state.

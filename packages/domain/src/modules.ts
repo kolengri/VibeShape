@@ -168,6 +168,19 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
         openWorld: false,
       },
     },
+    {
+      kind: "org.vibeshape.variable.replace-table",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "destructive",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: true,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
   ],
   queries: [
     {
