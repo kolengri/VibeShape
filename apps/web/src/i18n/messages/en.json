@@ -12,6 +12,7 @@
       "commandToolbar": {
         "ariaLabel": "Model commands",
         "box": "Box",
+        "cylinder": "Cylinder",
         "createSketch": "Create sketch",
         "extrude": "Extrude",
         "model": "Model",
@@ -44,8 +45,9 @@
       "taskPanel": {
         "ariaLabel": "Task panel",
         "createBox": "Create box",
+        "createCylinder": "Create cylinder",
         "createSketch": "Create sketch",
-        "description": "Create a primitive Box from length values or document variables. Geometry rebuilds locally in the browser.",
+        "description": "Create primitive solids from length values or document variables. Geometry rebuilds locally in the browser.",
         "startModeling": "Part design",
         "box": {
           "title": "Create box",
@@ -70,6 +72,29 @@
           "staleRevision": "The document changed while this box was being edited. Review the current model and try again.",
           "createFailed": "The box could not be created. Your parameter values are preserved.",
           "updateFailed": "The box could not be updated. Your parameter values are preserved."
+        },
+        "cylinder": {
+          "title": "Create cylinder",
+          "description": "Create a cylindrical solid with dimensions driven by literals or document variables.",
+          "editTitle": "Edit cylinder",
+          "editDescription": "Update this Cylinder while preserving its identity, label, and variable expressions.",
+          "dimensions": "Required dimensions",
+          "radius": "Radius",
+          "height": "Height",
+          "centered": "Center on the origin",
+          "expressionDescription": "Enter a positive length such as 10 mm or a variable expression such as #radius.",
+          "create": "Create cylinder",
+          "update": "Update cylinder",
+          "cancel": "Cancel",
+          "featureLabel": "Cylinder {number}",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
+          "validationSummary": "Fix the highlighted dimensions before creating the cylinder.",
+          "updateValidationSummary": "Fix the highlighted dimensions before updating the cylinder.",
+          "staleRevision": "The document changed while this cylinder was being edited. Review the current model and try again.",
+          "createFailed": "The cylinder could not be created. Your parameter values are preserved.",
+          "updateFailed": "The cylinder could not be updated. Your parameter values are preserved."
         },
         "variables": {
           "title": "Using variables",

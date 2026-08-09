@@ -1,7 +1,7 @@
 import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
 
-export type BoxParameterPanelCopy = Readonly<{
+export type PrimitiveParameterPanelCopy = Readonly<{
   title: string
   description: string
   dimensions: string
@@ -9,26 +9,22 @@ export type BoxParameterPanelCopy = Readonly<{
   cancel: string
 }>
 
-export function BoxParameterPanel({
+export function PrimitiveParameterPanel({
   centeredField,
   copy,
-  depthField,
   disabled = false,
+  fields,
   footerAction,
-  heightField,
   message,
   onCancel,
-  widthField,
 }: {
   centeredField: ReactNode
-  copy: BoxParameterPanelCopy
-  depthField: ReactNode
+  copy: PrimitiveParameterPanelCopy
   disabled?: boolean
+  fields: ReactNode
   footerAction: ReactNode
-  heightField: ReactNode
   message?: ReactNode
   onCancel: () => void
-  widthField: ReactNode
 }) {
   return (
     <div className="grid gap-4">
@@ -48,9 +44,7 @@ export function BoxParameterPanel({
         <legend className="mb-2 text-xs font-medium text-muted-foreground">
           {copy.dimensions}
         </legend>
-        {widthField}
-        {depthField}
-        {heightField}
+        {fields}
         <div className="pt-1">{centeredField}</div>
       </fieldset>
       <div className="flex items-center justify-end gap-2 border-t pt-3">

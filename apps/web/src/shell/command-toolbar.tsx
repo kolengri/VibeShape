@@ -1,15 +1,17 @@
-import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
+import { Button } from "@vibeshape/ui/components/button"
 import type { DocumentControllerState } from "../document/document-controller"
 
 export function CommandToolbar({
-  boxActive,
+  activeCommand,
   controller,
   onCreateBox,
+  onCreateCylinder,
 }: {
-  boxActive: boolean
+  activeCommand: "box" | "cylinder" | null
   controller: DocumentControllerState
   onCreateBox: () => void
+  onCreateCylinder: () => void
 }) {
   const t = useTranslations("app.shell.commandToolbar")
   const canCreate = controller.status === "ready" && controller.report?.mode === "read-write"
@@ -41,10 +43,20 @@ export function CommandToolbar({
         size="sm"
         variant="ghost"
         disabled={!canCreate}
-        aria-pressed={boxActive}
+        aria-pressed={activeCommand === "box"}
         onClick={onCreateBox}
       >
         {t("box")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canCreate}
+        aria-pressed={activeCommand === "cylinder"}
+        onClick={onCreateCylinder}
+      >
+        {t("cylinder")}
       </Button>
     </nav>
   )

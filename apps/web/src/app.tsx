@@ -1,15 +1,23 @@
+import { useTranslations } from "@vibeshape/i18n"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { useState } from "react"
+import { useDocumentController } from "./document/document-controller"
+import {
+  type ActivePartDesignTool,
+  activePrimitiveCommand,
+  isBoxFeature,
+  isCylinderFeature,
+} from "./features/part-design/part-design-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
-import { type ActiveBoxTool, isBoxFeature } from "./features/box/box-tool"
-import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 
 export function App() {
   const t = useTranslations("app.shell.applicationBar")
   const controller = useDocumentController(t("untitledProject"))
   const [workspace, setWorkspace] = useState<"model" | "variables">("model")
-  const [activeTool, setActiveTool] = useState<ActiveBoxTool | null>(null)
+  const [activeTool, setActiveTool] = useState<ActivePartDesignTool | null>(null)
   const [selection, setSelection] = useState<ViewerSelection | null>(null)
 
   const changeWorkspace = (nextWorkspace: "model" | "variables") => {
@@ -24,11 +32,15 @@ export function App() {
     <main className="cad-shell bg-background text-[13px] text-foreground">
       <ApplicationBar controller={controller} />
       <CommandToolbar
-        boxActive={activeTool !== null}
+        activeCommand={activePrimitiveCommand(activeTool)}
         controller={controller}
         onCreateBox={() => {
           setWorkspace("model")
           setActiveTool({ kind: "create-box" })
+        }}
+        onCreateCylinder={() => {
+          setWorkspace("model")
+          setActiveTool({ kind: "create-cylinder" })
         }}
       />
       <EditorWorkspace
@@ -37,11 +49,13 @@ export function App() {
         workspace={workspace}
         onCloseTool={() => setActiveTool(null)}
         onCreateBox={() => setActiveTool({ kind: "create-box" })}
+        onCreateCylinder={() => setActiveTool({ kind: "create-cylinder" })}
         onEditFeature={(featureId) => {
           const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
-          if (!feature || !isBoxFeature(feature)) return
+          if (!feature) return
           setWorkspace("model")
-          setActiveTool({ kind: "edit-box", featureId })
+          if (isBoxFeature(feature)) setActiveTool({ kind: "edit-box", featureId })
+          if (isCylinderFeature(feature)) setActiveTool({ kind: "edit-cylinder", featureId })
         }}
         onSelectionChange={setSelection}
         onWorkspaceChange={changeWorkspace}
@@ -51,6 +65,3 @@ export function App() {
     </main>
   )
 }
-import { useTranslations } from "@vibeshape/i18n"
-import { useState } from "react"
-import { useDocumentController } from "./document/document-controller"

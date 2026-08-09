@@ -1,25 +1,32 @@
+import type { FeatureId } from "@vibeshape/domain"
+import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import type { DocumentControllerState } from "../document/document-controller"
+import {
+  type ActivePartDesignTool,
+  activeFeatureId,
+} from "../features/part-design/part-design-tool"
+import { VariablesPanel } from "../features/variables/variables-panel"
+import { GeometryViewport } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
-import { GeometryViewport } from "./geometry-viewport"
-import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import type { FeatureId } from "@vibeshape/domain"
-import type { ActiveBoxTool } from "../features/box/box-tool"
 
 export function EditorWorkspace({
   activeTool,
   controller,
   onCloseTool,
   onCreateBox,
+  onCreateCylinder,
   onEditFeature,
   onSelectionChange,
   onWorkspaceChange,
   selection,
   workspace,
 }: {
-  activeTool: ActiveBoxTool | null
+  activeTool: ActivePartDesignTool | null
   controller: DocumentControllerState
   onCloseTool: () => void
   onCreateBox: () => void
+  onCreateCylinder: () => void
   onEditFeature: (featureId: FeatureId) => void
   onSelectionChange: (selection: ViewerSelection | null) => void
   onWorkspaceChange: (workspace: "model" | "variables") => void
@@ -30,7 +37,7 @@ export function EditorWorkspace({
     <div className="cad-workspace-grid min-h-0">
       <ModelTree
         activeWorkspace={workspace}
-        activeFeatureId={activeTool?.kind === "edit-box" ? activeTool.featureId : null}
+        activeFeatureId={activeFeatureId(activeTool)}
         controller={controller}
         onFeatureActivate={onEditFeature}
         onWorkspaceChange={onWorkspaceChange}
@@ -50,9 +57,8 @@ export function EditorWorkspace({
         workspace={workspace}
         onCloseTool={onCloseTool}
         onCreateBox={onCreateBox}
+        onCreateCylinder={onCreateCylinder}
       />
     </div>
   )
 }
-import type { DocumentControllerState } from "../document/document-controller"
-import { VariablesPanel } from "../features/variables/variables-panel"
