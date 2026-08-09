@@ -329,6 +329,95 @@ export const sketchSolveContinuationWireSchema = z
 
 export const sketchDragTargetWireSchema = pointSolutionSchema
 
+const profileBoundsWireSchema = z
+  .object({
+    minX: coordinateSchema,
+    minY: coordinateSchema,
+    maxX: coordinateSchema,
+    maxY: coordinateSchema,
+  })
+  .strict()
+  .refine((bounds) => bounds.minX <= bounds.maxX && bounds.minY <= bounds.maxY)
+
+const profileLoopSegmentWireSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.enum(["line", "arc", "circle"]),
+    reversed: z.boolean(),
+  })
+  .strict()
+
+const profileLoopWireSchema = z
+  .object({
+    loopIndex: revisionSchema,
+    parentLoopIndex: revisionSchema.nullable(),
+    depth: revisionSchema,
+    signedArea: z.number().finite().positive(),
+    perimeter: z.number().finite().positive(),
+    bounds: profileBoundsWireSchema,
+    sourceEntityIds: z.array(sketchEntityIdSchema).min(1).max(2_000),
+    segments: z.array(profileLoopSegmentWireSchema).min(1).max(2_000),
+  })
+  .strict()
+
+const profileWireSchema = z
+  .object({
+    profileIndex: revisionSchema,
+    outerLoopIndex: revisionSchema,
+    holeLoopIndices: z.array(revisionSchema).max(2_000),
+    area: z.number().finite().positive(),
+    perimeter: z.number().finite().positive(),
+    bounds: profileBoundsWireSchema,
+  })
+  .strict()
+
+const profileDiagnosticWireSchema = z
+  .object({
+    code: z.enum([
+      "invalid-solution",
+      "profile-budget-exceeded",
+      "degenerate-entity",
+      "duplicate-entity",
+      "intersecting-entities",
+      "open-chain",
+    ]),
+    message: z
+      .string()
+      .min(1)
+      .max(300)
+      .refine((message) => message.trim() === message),
+    entityIds: z.array(sketchEntityIdSchema).max(64),
+  })
+  .strict()
+
+export const sketchProfileResultWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    profiles: z.array(profileWireSchema).max(2_000),
+    loops: z.array(profileLoopWireSchema).max(2_000),
+    diagnostics: z.array(profileDiagnosticWireSchema).max(2_000),
+  })
+  .strict()
+  .refine(
+    (result) =>
+      result.loops.every(
+        (loop, index) =>
+          loop.loopIndex === index &&
+          (loop.parentLoopIndex === null || loop.parentLoopIndex < loop.loopIndex),
+      ),
+    { message: "Profile loop indices and parents must follow deterministic output order." },
+  )
+  .refine(
+    (result) =>
+      result.profiles.every(
+        (profile, index) =>
+          profile.profileIndex === index &&
+          profile.outerLoopIndex < result.loops.length &&
+          profile.holeLoopIndices.every((loopIndex) => loopIndex < result.loops.length),
+      ),
+    { message: "Profile indices must reference loops in the same result." },
+  )
+
 export const solvedSketchWireSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -340,6 +429,7 @@ export const solvedSketchWireSchema = z
     points: z.array(pointSolutionSchema).max(4_990),
     circles: z.array(circleSolutionSchema).max(2_495),
     failedConstraintIds: z.array(sketchConstraintIdSchema).max(10_000),
+    profileResult: sketchProfileResultWireSchema,
     heapCapacityBytes: revisionSchema,
     solverBuild: z
       .object({
@@ -356,4 +446,5 @@ export const solvedSketchWireSchema = z
   .strict()
 
 export type SketchWireRecord = z.infer<typeof sketchWireRecordSchema>
+export type SketchProfileResultWire = z.infer<typeof sketchProfileResultWireSchema>
 export type SolvedSketchWire = z.infer<typeof solvedSketchWireSchema>

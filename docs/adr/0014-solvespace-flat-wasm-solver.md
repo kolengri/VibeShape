@@ -31,7 +31,7 @@ Use the required SolveSpace v3.2 solver sources as a narrow, source-built WebAss
 - Horizontal and vertical dimensions use projected point distance against immutable sketch-axis entities. Concentric constraints use coincident center points. Radius input is represented through the native diameter equation.
 - The repository carries GPL-3.0-or-later obligations for the adapted solver subset and must publish corresponding source and notices with distributed binaries.
 - Solver upgrades require rerunning the entire evidence corpus, refreshing source and output hashes, reviewing the patch, and updating this decision through a new ADR when behavior or the boundary changes.
-- SPK-002 proves solver viability. Production sketch schema v0, protocol v4, the initial stable-ID continuation policy, variable dimensions, and worker recovery now implement the non-visual boundary. Profile detection, constraint UX, and sketch-driven features remain separate product work.
+- SPK-002 proves solver viability. Production sketch schema v0, protocol v5, the initial stable-ID continuation policy, variable dimensions, worker recovery, and the deterministic profile result selected by ADR-0018 now implement the non-visual boundary. Constraint UX, stable profile selectors, and sketch-driven features remain separate product work.
 
 ## Rejected alternatives
 

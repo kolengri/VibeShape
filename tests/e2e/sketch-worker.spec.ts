@@ -14,6 +14,13 @@ type SketchWorkerReport = {
     second: { x: number; y: number }
     status: string
   }
+  profile: {
+    status: string
+    degreesOfFreedom: number
+    profiles: Array<{ area: number; perimeter: number; holeLoopIndices: number[] }>
+    loopCount: number
+    diagnostics: unknown[]
+  }
   large: {
     pointCount: number
     status: string
@@ -27,7 +34,7 @@ type SketchWorkerReport = {
   }
 }
 
-test("production sketch worker solves, continues a drag branch, and stays within scale budgets", async ({
+test("production sketch worker solves variables and profiles within scale budgets", async ({
   page,
 }) => {
   await page.goto("/spikes/sketch-worker.html")
@@ -46,6 +53,16 @@ test("production sketch worker solves, continues a drag branch, and stays within
   expect(report.continuation.first.y).toBeCloseTo(8, 4)
   expect(report.continuation.second.x).toBeCloseTo(18, 4)
   expect(report.continuation.second.y).toBeCloseTo(14, 4)
+  expect(report.profile).toMatchObject({
+    status: "fully-constrained",
+    degreesOfFreedom: 0,
+    loopCount: 1,
+    diagnostics: [],
+  })
+  expect(report.profile.profiles).toHaveLength(1)
+  expect(report.profile.profiles[0]?.area).toBeCloseTo(360, 5)
+  expect(report.profile.profiles[0]?.perimeter).toBeCloseTo(84, 5)
+  expect(report.profile.profiles[0]?.holeLoopIndices).toEqual([])
   expect(report.large).toMatchObject({
     pointCount: 1_000,
     status: "under-constrained",

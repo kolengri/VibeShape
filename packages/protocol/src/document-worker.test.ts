@@ -5,6 +5,7 @@ import {
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
 } from "./document-worker"
+import { sketchProfileResultWireSchema } from "./sketch"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
@@ -180,6 +181,7 @@ describe("document worker protocol", () => {
           points: [{ entityId: sketchPointId, x: 10, y: 20 }],
           circles: [],
           failedConstraintIds: [],
+          profileResult: { schemaVersion: 0, profiles: [], loops: [], diagnostics: [] },
           heapCapacityBytes: 16 * 1024 * 1024,
           solverBuild: {
             schemaVersion: 0,
@@ -193,6 +195,51 @@ describe("document worker protocol", () => {
         },
       }),
     ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
+  })
+
+  it("validates bounded deterministic profile results", () => {
+    const profile = {
+      schemaVersion: 0,
+      profiles: [
+        {
+          profileIndex: 0,
+          outerLoopIndex: 0,
+          holeLoopIndices: [],
+          area: 100,
+          perimeter: 40,
+          bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+        },
+      ],
+      loops: [
+        {
+          loopIndex: 0,
+          parentLoopIndex: null,
+          depth: 0,
+          signedArea: 100,
+          perimeter: 40,
+          bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+          sourceEntityIds: [sketchPointId],
+          segments: [{ entityId: sketchPointId, type: "line", reversed: false }],
+        },
+      ],
+      diagnostics: [],
+    } as const
+
+    expect(sketchProfileResultWireSchema.parse(profile)).toMatchObject({
+      profiles: [{ area: 100 }],
+    })
+    expect(
+      sketchProfileResultWireSchema.safeParse({
+        ...profile,
+        profiles: [{ ...profile.profiles[0], outerLoopIndex: 1 }],
+      }).success,
+    ).toBe(false)
+    expect(
+      sketchProfileResultWireSchema.safeParse({
+        ...profile,
+        loops: [{ ...profile.loops[0], signedArea: Number.POSITIVE_INFINITY }],
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts progress and terminal failure responses", () => {

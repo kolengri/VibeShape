@@ -19,6 +19,7 @@
 | [0015](0015-document-variables-and-dimensional-expressions.md) | Accepted | Document variables, dimensional expression schema v0, and resolved feature identity |
 | [0016](0016-persisted-document-session-and-rebuild-sequencing.md) | Accepted | Persisted document sessions save semantic revisions before rebuilding derived geometry |
 | [0017](0017-atomic-variable-rename-and-reference-refactor.md) | Accepted | Stable-ID variable rename with atomic exact-reference refactoring |
+| [0018](0018-deterministic-sketch-profile-extraction.md) | Accepted | Deterministic bounded sketch profiles with fail-closed ambiguity handling |
 
 Statuses:
 
