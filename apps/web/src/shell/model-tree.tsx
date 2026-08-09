@@ -1,8 +1,9 @@
+import type { FeatureRecord, SketchId, SketchRecord } from "@vibeshape/domain"
+import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useTranslations } from "@vibeshape/i18n"
-import type { FeatureRecord } from "@vibeshape/domain"
 import type { DocumentControllerState } from "../document/document-controller"
+import type { EditorWorkspaceName } from "./workspace"
 
 function FeatureTreeItems({
   activeFeatureId,
@@ -43,6 +44,45 @@ function FeatureTreeItems({
   )
 }
 
+function SketchTreeItems({
+  activeSketchId,
+  groupLabel,
+  onActivate,
+  sketches,
+  unnamedSketch,
+}: {
+  activeSketchId: SketchId | null
+  groupLabel: string
+  onActivate: (sketchId: SketchId) => void
+  sketches: readonly SketchRecord[]
+  unnamedSketch: string
+}) {
+  if (sketches.length === 0) return null
+  return (
+    <fieldset className="contents">
+      <legend className="sr-only">{groupLabel}</legend>
+      {sketches.map((sketch) => (
+        <Button
+          key={sketch.id}
+          type="button"
+          variant="ghost"
+          size="xs"
+          className={cn(
+            "w-full justify-start pl-6 font-normal",
+            sketch.id === activeSketchId &&
+              "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+          )}
+          role="treeitem"
+          aria-selected={sketch.id === activeSketchId}
+          onClick={() => onActivate(sketch.id)}
+        >
+          {sketch.label || unnamedSketch}
+        </Button>
+      ))}
+    </fieldset>
+  )
+}
+
 function ModelTreeRootItem({
   current,
   expanded,
@@ -52,8 +92,8 @@ function ModelTreeRootItem({
 }: {
   current?: "page" | undefined
   expanded?: boolean
-  onWorkspaceChange: (workspace: "model" | "variables") => void
-  targetWorkspace: "model" | "variables"
+  onWorkspaceChange: (workspace: EditorWorkspaceName) => void
+  targetWorkspace: EditorWorkspaceName
   title: string
 }) {
   return (
@@ -74,19 +114,24 @@ function ModelTreeRootItem({
 
 export function ModelTree({
   activeFeatureId,
+  activeSketchId,
   activeWorkspace,
   controller,
   onFeatureActivate,
+  onSketchActivate,
   onWorkspaceChange,
 }: {
   activeFeatureId: FeatureRecord["id"] | null
-  activeWorkspace: "model" | "variables"
+  activeSketchId: SketchId | null
+  activeWorkspace: EditorWorkspaceName
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
-  onWorkspaceChange: (workspace: "model" | "variables") => void
+  onSketchActivate: (sketchId: SketchId) => void
+  onWorkspaceChange: (workspace: EditorWorkspaceName) => void
 }) {
   const t = useTranslations("app.shell.modelTree")
   const features = controller.report?.snapshot.features ?? []
+  const sketches = controller.report?.snapshot.sketches ?? []
 
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-r bg-panel p-2">
@@ -104,13 +149,22 @@ export function ModelTree({
           onWorkspaceChange={onWorkspaceChange}
         />
         <ModelTreeRootItem
-          targetWorkspace="model"
+          current={activeWorkspace === "sketch" ? "page" : undefined}
+          expanded={sketches.length > 0}
+          targetWorkspace="sketch"
           title={t("items.sketches")}
           onWorkspaceChange={onWorkspaceChange}
         />
+        <SketchTreeItems
+          activeSketchId={activeSketchId}
+          sketches={sketches}
+          groupLabel={t("items.sketches")}
+          unnamedSketch={t("unnamedSketch")}
+          onActivate={onSketchActivate}
+        />
         <ModelTreeRootItem
-          expanded={features.length > 0}
           targetWorkspace="model"
+          expanded={features.length > 0}
           title={t("items.features")}
           onWorkspaceChange={onWorkspaceChange}
         />

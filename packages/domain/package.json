@@ -19,6 +19,7 @@
     "./identifiers": "./src/identifiers.ts",
     "./modules": "./src/modules.ts",
     "./part-design": "./src/part-design.ts",
+    "./rectangle-sketch": "./src/rectangle-sketch.ts",
     "./sketch": "./src/sketch.ts",
     "./sketch-profile-selector": "./src/sketch-profile-selector.ts",
     "./topology": "./src/topology.ts",

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
+import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import { boxFeatureType } from "./part-design"
+import { createRectangleSketch } from "./rectangle-sketch"
 import { createLengthQuantity } from "./units"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
@@ -49,6 +51,29 @@ function addVariable(
   return applyDocumentCommand(snapshot, {
     ...envelope("org.vibeshape.variable.add", snapshot.revision, index),
     payload: { variable: { schemaVersion: 0, id, name, expression } },
+  })
+}
+
+function sequentialIdFactory<Value>(parse: (value: string) => Value, group: string) {
+  let index = 0
+  return () => {
+    index += 1
+    return parse(`0195b5ac-${group}-7a2c-8c33-${index.toString(16).padStart(12, "0")}`)
+  }
+}
+
+function variableDrivenSketch() {
+  return createRectangleSketch({
+    id: sketchIdSchema.parse("0195b5ac-b225-7a2c-8c33-67a36a7f21ac"),
+    label: "Variable profile",
+    plane: "xy",
+    width: createLengthQuantity(20, "mm", "#width"),
+    height: createLengthQuantity(12, "mm", "12 mm"),
+    createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b226"),
+    createConstraintId: sequentialIdFactory(
+      (value) => sketchConstraintIdSchema.parse(value),
+      "b227",
+    ),
   })
 }
 
@@ -286,6 +311,69 @@ describe("variable document commands", () => {
       diagnostic: {
         code: "variable-in-use",
         message: expect.stringContaining("feature parameter"),
+      },
+    })
+  })
+
+  it("atomically refactors sketch dimensions and protects their referenced variable", () => {
+    const created = createDocument()
+    const width = addVariable(created.snapshot, variableIds.width, "width", "20 mm", 1)
+    if (!width.ok) throw new Error(width.diagnostic.message)
+    const sketched = applyDocumentCommand(width.snapshot, {
+      ...envelope("org.vibeshape.sketch.add", 2, 2),
+      payload: { sketch: variableDrivenSketch() },
+    })
+    if (!sketched.ok) throw new Error(sketched.diagnostic.message)
+
+    const renamed = applyDocumentCommand(sketched.snapshot, {
+      ...envelope("org.vibeshape.variable.rename", 3, 3),
+      payload: { variableId: variableIds.width, name: "span" },
+    })
+    expect(renamed).toMatchObject({
+      ok: true,
+      snapshot: {
+        variables: [{ id: variableIds.width, name: "span" }],
+        sketches: [
+          {
+            constraints: expect.arrayContaining([
+              expect.objectContaining({
+                type: "horizontal-distance",
+                value: expect.objectContaining({
+                  source: expect.objectContaining({ expression: "#span" }),
+                }),
+              }),
+            ]),
+          },
+        ],
+      },
+    })
+    if (!renamed.ok) return
+    expect(
+      replayDocumentEvents([created.event, width.event, sketched.event, renamed.event]),
+    ).toEqual({ ok: true, snapshot: renamed.snapshot })
+
+    expect(
+      applyDocumentCommand(sketched.snapshot, {
+        ...envelope("org.vibeshape.variable.remove", 3, 3),
+        payload: { variableId: variableIds.width },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "variable-in-use",
+        message: expect.stringContaining("sketch dimension"),
+      },
+    })
+    expect(
+      applyDocumentCommand(sketched.snapshot, {
+        ...envelope("org.vibeshape.variable.replace-table", 3, 3),
+        payload: { variables: [] },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "variable-in-use",
+        message: expect.stringContaining("sketch dimension"),
       },
     })
   })

@@ -6,13 +6,11 @@ import {
   featureRecordSchema,
   type VariableDefinition,
 } from "@vibeshape/domain"
-import { Field, FieldError, FieldLabel } from "@vibeshape/ui/components/field"
-import { Input } from "@vibeshape/ui/components/input"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
-  invalidAttribute,
   featureSubmissionMessage,
   parsePrimitiveLengthExpression,
   quantityExpression,
@@ -177,35 +175,19 @@ export function CylinderForm({
   const dimensionField = (fieldName: DimensionField, label: string) => (
     <form.Field name={fieldName}>
       {(field) => (
-        <Field data-invalid={Boolean(issues[fieldName]) || undefined}>
-          <FieldLabel htmlFor={`cylinder-${fieldName}`} required>
-            {label}
-          </FieldLabel>
-          <Input
-            id={`cylinder-${fieldName}`}
-            name={field.name}
-            value={field.state.value}
-            autoComplete="off"
-            spellCheck={false}
-            aria-describedby={`cylinder-${fieldName}-description cylinder-${fieldName}-error`}
-            aria-invalid={invalidAttribute(issues[fieldName])}
-            className="font-mono tabular-nums"
-            onBlur={field.handleBlur}
-            onChange={(event) => {
-              clearSubmissionErrors()
-              field.handleChange(event.currentTarget.value)
-            }}
-          />
-          <p
-            id={`cylinder-${fieldName}-description`}
-            className="text-xs leading-4 text-muted-foreground"
-          >
-            {copy.expressionDescription}
-          </p>
-          <FieldError id={`cylinder-${fieldName}-error`} reserveSpace>
-            {issues[fieldName]}
-          </FieldError>
-        </Field>
+        <LengthExpressionField
+          id={`cylinder-${fieldName}`}
+          name={field.name}
+          value={field.state.value}
+          label={label}
+          description={copy.expressionDescription}
+          error={issues[fieldName]}
+          onBlur={field.handleBlur}
+          onChange={(event) => {
+            clearSubmissionErrors()
+            field.handleChange(event.currentTarget.value)
+          }}
+        />
       )}
     </form.Field>
   )

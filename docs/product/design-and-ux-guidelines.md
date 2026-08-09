@@ -282,7 +282,7 @@ The table has these columns:
 - A committed expression may reference any row with `#name`; row order is presentation only and never changes evaluation semantics.
 - Errors stay adjacent to the owning row and the panel exposes an error summary that moves focus to the first invalid control.
 - Apply validates the exact visible table and emits one ordinary `org.vibeshape.variable.replace-table` command inside a persisted draft against the displayed base revision. Stale revisions preserve the editing buffer and offer rebase or discard rather than silently overwriting newer work.
-- Removing a referenced variable is unavailable and names the dependent variable or feature parameter. The application never converts a broken reference into a numeric fallback.
+- Removing a referenced variable is unavailable and names the dependent variable, feature parameter, or sketch dimension. The application never converts a broken reference into a numeric fallback.
 - A formatting-only edit may advance the document revision while reusing geometry when the resolved value is unchanged; the UI reports a successful semantic save without implying that geometry rebuilt.
 - Result cells use tabular numerals; authored expressions use the expression typography token. Long expressions truncate visually only when the complete source remains available on focus and to assistive technology.
 - Table virtualization is deferred. If later required, it must retain form state, focus, row error ownership, and accessible row/column position.

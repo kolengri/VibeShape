@@ -86,4 +86,5 @@ The foundation includes:
 - native `Input` plus native `NativeSelect`, with state-agnostic `TextField` and `NativeSelectField` compositions that own labels, descriptions, and stable validation relationships;
 - shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
 - a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;
+- state-agnostic primitive and rectangle-sketch parameter panels with separate TanStack feature adapters that preserve raw Quantity expressions, publish preview state outside base controls, and submit through the shared single-flight action contract;
 - Vitest and Testing Library coverage for the base and integrated layers.

@@ -1,6 +1,6 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
-import type { DocumentId, SessionId } from "@vibeshape/domain/identifiers"
+import type { DocumentId, SessionId, SketchId } from "@vibeshape/domain/identifiers"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
@@ -15,6 +15,7 @@ import {
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac" as DocumentId
 const sessionA = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad" as SessionId
 const sessionB = "0195b5ac-b220-7a2c-8c33-67a36a7f21ae" as SessionId
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21af" as SketchId
 const timestamp = "2026-08-09T00:00:00Z"
 const mesh = { chordTolerance: 0.05, angularTolerance: 0.1 } as const
 
@@ -111,6 +112,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   disposed = false
   terminated = false
   exportedFormats: string[] = []
+  solvedSketchIds: string[] = []
 
   async rebuild(input: Parameters<DocumentRebuildPort["rebuild"]>[0]) {
     if (this.failNextRebuild) {
@@ -148,6 +150,40 @@ class MemoryRebuildPort implements DocumentRebuildPort {
       file: new Uint8Array([1, 2, 3]),
       bodyCount: 1,
     }
+  }
+
+  async solveSketch(input: Parameters<DocumentRebuildPort["solveSketch"]>[0]) {
+    this.solvedSketchIds.push(input.sketchId)
+    return {
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fd",
+      documentId,
+      revision: this.revisions.at(-1) ?? 0,
+      generation: 1,
+      type: "sketchSolved" as const,
+      solution: {
+        schemaVersion: 0,
+        sketchId: input.sketchId,
+        sourceRevision: this.revisions.at(-1) ?? 0,
+        status: "fully-constrained" as const,
+        degreesOfFreedom: 0,
+        maximumResidual: 0,
+        points: [],
+        circles: [],
+        failedConstraintIds: [],
+        profileResult: { schemaVersion: 0, profiles: [], loops: [], diagnostics: [] },
+        heapCapacityBytes: 0,
+        solverBuild: {
+          schemaVersion: 0,
+          solver: "SolveSpace" as const,
+          solverVersion: "3.2" as const,
+          sourceRevision: "27b6a080c8b669421bd4d444650c3b8eddec5687" as const,
+          abiVersion: 1 as const,
+          moduleSha256: "0".repeat(64),
+          wasmSha256: "0".repeat(64),
+        },
+      },
+    } as Awaited<ReturnType<DocumentRebuildPort["solveSketch"]>>
   }
 
   async dispose() {
@@ -243,6 +279,20 @@ async function createSession(
 }
 
 describe("persistent document session", () => {
+  it("solves against the same rebuilt worker session as the persisted document", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+
+    await expect(created.session.solveSketch(sketchId)).resolves.toMatchObject({
+      ok: true,
+      response: {
+        revision: 1,
+        solution: { sketchId, sourceRevision: 1, status: "fully-constrained" },
+      },
+    })
+    expect(state.rebuildPorts[0]?.solvedSketchIds).toEqual([sketchId])
+  })
+
   it("commits semantic revisions before rebuild and recovers them after an unclean reload", async () => {
     const state = harness()
     const created = await createSession(state.dependencies)
