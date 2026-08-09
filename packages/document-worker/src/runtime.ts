@@ -106,6 +106,9 @@ function cloneGeometry(record: FeatureGeometryRecord): FeatureGeometryRecord {
 }
 
 function transferablesFor(response: DocumentWorkerResponse) {
+  if (response.type === "documentExported") {
+    return [response.file.buffer as ArrayBuffer]
+  }
   if (response.type !== "documentRebuilt") return []
   return response.geometry.flatMap(({ geometry }) => [
     geometry.mesh.positions.buffer as ArrayBuffer,
@@ -113,6 +116,33 @@ function transferablesFor(response: DocumentWorkerResponse) {
     geometry.mesh.indices.buffer as ArrayBuffer,
     geometry.mesh.triangleFaceIds.buffer as ArrayBuffer,
   ])
+}
+
+function terminalExportFeatures(state: FeatureRebuildState) {
+  const successfulHashes = new Map(
+    state.evaluation.records.flatMap((record) =>
+      record.status === "succeeded" ? [[record.featureId, record.contentHash] as const] : [],
+    ),
+  )
+  const consumedFeatureIds = new Set<string>()
+  for (const feature of state.features) {
+    if (!successfulHashes.has(feature.id)) continue
+    for (const dependencyId of feature.dependencies) {
+      if (successfulHashes.has(dependencyId)) consumedFeatureIds.add(dependencyId)
+    }
+  }
+  const solidFeatureIds = new Set(
+    state.geometry.flatMap((record) =>
+      record.geometry.shape.solidCount > 0 ? [record.featureId] : [],
+    ),
+  )
+
+  return state.features.flatMap((feature) => {
+    const contentHash = successfulHashes.get(feature.id)
+    return contentHash && solidFeatureIds.has(feature.id) && !consumedFeatureIds.has(feature.id)
+      ? [{ featureId: feature.id, contentHash }]
+      : []
+  })
 }
 
 function topLevelFailure(result: Extract<DocumentFeatureRebuildResult, { ok: false }>) {
@@ -180,11 +210,56 @@ export class DocumentWorkerRuntime {
         await this.#rebuild(request)
         return
       }
+      if (request.type === "exportDocument") {
+        await this.#exportDocument(request)
+        return
+      }
       const ownedShapeCount = this.engine.disposeDocument(request.documentId)
       this.#states.delete(request.documentId)
       this.#post({ ...requestEnvelope(request), type: "documentDisposed", ownedShapeCount })
     } catch (error) {
       this.#postFailure(request, "internal-error", errorMessage(error), false)
+    }
+  }
+
+  async #exportDocument(request: Extract<DocumentWorkerRequest, { type: "exportDocument" }>) {
+    const state = this.#states.get(request.documentId)
+    if (!state || state.revision !== request.revision || state.generation !== request.generation) {
+      this.#postFailure(
+        request,
+        "export-state-unavailable",
+        "The requested document revision does not have current rebuilt geometry.",
+        true,
+      )
+      return
+    }
+
+    const features = terminalExportFeatures(state)
+    if (features.length === 0) {
+      this.#postFailure(
+        request,
+        "no-exportable-bodies",
+        "The current document does not contain a terminal solid body to export.",
+        false,
+      )
+      return
+    }
+
+    try {
+      const exported = await this.engine.exportDocument({
+        documentId: request.documentId,
+        features,
+        format: request.format,
+      })
+      this.#post({
+        ...requestEnvelope(request),
+        type: "documentExported",
+        format: request.format,
+        file: exported.file,
+        bodyCount: exported.bodyCount,
+      })
+    } catch (error) {
+      this.#postFailure(request, "export-failed", errorMessage(error), true)
     }
   }
 

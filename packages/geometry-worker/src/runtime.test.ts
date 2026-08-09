@@ -185,6 +185,10 @@ class FakeEngine implements GeometryKernelEngine {
     }
   }
 
+  async exportDocument() {
+    return { file: new Uint8Array([1]), bodyCount: 1 }
+  }
+
   async runKernelSpike(
     _parameters: KernelSpikeParameters,
     reportProgress: (stage: GeometryProgressStage, fraction: number) => void,

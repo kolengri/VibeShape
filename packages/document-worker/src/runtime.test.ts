@@ -145,6 +145,7 @@ class FakeEngine implements GeometryKernelEngine {
   readonly evaluatedInputs: FeatureEvaluationInput[] = []
   initialized = false
   disposedDocuments: string[] = []
+  exportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
 
   async initialize() {
     this.initialized = true
@@ -170,6 +171,14 @@ class FakeEngine implements GeometryKernelEngine {
     reportProgress("feature-tessellation", 0.7)
     reportProgress("complete", 1)
     return { ok: true, result: geometry() }
+  }
+
+  async exportDocument(input: Parameters<GeometryKernelEngine["exportDocument"]>[0]) {
+    this.exportedFeatures.push([...input.features])
+    return {
+      file: input.format === "step" ? new Uint8Array([1, 2, 3]) : new Uint8Array([4, 5]),
+      bodyCount: input.features.length,
+    }
   }
 
   async runKernelSpike(): Promise<never> {
@@ -333,6 +342,79 @@ describe("DocumentWorkerRuntime", () => {
     })
     expect(engine.disposedDocuments).toEqual([documentIds.primary])
     expect(messages.at(-1)).toMatchObject({ type: "documentDisposed", ownedShapeCount: 0 })
+  })
+
+  it("exports only successful terminal bodies and transfers the exact file", async () => {
+    const { engine, messages, runtime, transfers } = createHarness()
+    await runtime.handle(request("rebuild-for-export"))
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "export-step",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "step",
+    })
+
+    const booleanRecord = rebuilt(messages, "rebuild-for-export").evaluation.records.find(
+      ({ featureId }) => featureId === featureIds.boolean,
+    )
+    expect(booleanRecord?.status).toBe("succeeded")
+    if (booleanRecord?.status !== "succeeded") throw new Error("Expected successful Boolean.")
+    expect(engine.exportedFeatures).toEqual([
+      [{ featureId: featureIds.boolean, contentHash: booleanRecord.contentHash }],
+    ])
+    expect(messages.at(-1)).toMatchObject({
+      type: "documentExported",
+      format: "step",
+      file: new Uint8Array([1, 2, 3]),
+      bodyCount: 1,
+    })
+    expect(transfers.at(-1)).toEqual([expect.any(ArrayBuffer)])
+    const exportedTransfer = transfers.at(-1)?.[0]
+    if (!(exportedTransfer instanceof ArrayBuffer)) throw new Error("Expected export transfer.")
+    expect(exportedTransfer.byteLength).toBe(3)
+  })
+
+  it("rejects stale and empty export revisions without invoking the engine", async () => {
+    const { engine, messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-before-stale-export"))
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "stale-export",
+      documentId: documentIds.primary,
+      revision: 2,
+      generation: 1,
+      type: "exportDocument",
+      format: "stl",
+    })
+    await runtime.handle({
+      ...request("empty-rebuild", { documentId: documentIds.other }),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.other),
+        features: [],
+      }),
+    })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "empty-export",
+      documentId: documentIds.other,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "step",
+    })
+
+    expect(messages.find(({ requestId }) => requestId === "stale-export")).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "export-state-unavailable", retryable: true },
+    })
+    expect(messages.find(({ requestId }) => requestId === "empty-export")).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "no-exportable-bodies", retryable: false },
+    })
+    expect(engine.exportedFeatures).toEqual([])
   })
 
   it("drops queued stale generations before geometry evaluation", async () => {

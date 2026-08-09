@@ -59,6 +59,8 @@ The Box create/edit slice implements idle → validate → persisted commit with
 6. Open Print Check for units, solid validity, mesh validity, dimensions, overhang, and wall warnings.
 7. Export 3MF and optionally STEP or STL.
 
+The implemented Phase 1 export boundary is available from `Export…` in the application bar. It opens a modal dialog with an explicit STEP exact-exchange action and a binary STL slicer-compatibility action. Both actions remain disabled until the current rebuilt revision contains solid geometry, are single-flight while asynchronous worker work is pending, and preserve status in the application bar if the dialog closes. A successful browser download is reported separately from `Saved in this browser`; neither STEP nor STL is presented as a parametric project backup. Print checks, 3MF, placement, tolerance selection, and a persistent export report remain later work.
+
 ## Flow 2: edit an early parameter
 
 1. Double-click a feature or dimension in the tree or viewport.

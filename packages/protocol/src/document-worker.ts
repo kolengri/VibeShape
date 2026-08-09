@@ -2,11 +2,12 @@ import { z } from "zod"
 import {
   featureEvaluationEngineResultSchema,
   featureMeshPolicySchema,
+  geometryExportFormatSchema,
   geometryProgressStageSchema,
   sha256Schema,
 } from "./geometry-worker"
 
-export const DOCUMENT_PROTOCOL_VERSION = 2 as const
+export const DOCUMENT_PROTOCOL_VERSION = 3 as const
 
 const MAX_FEATURES = 100_000
 const MAX_VARIABLES = 4_096
@@ -117,8 +118,14 @@ const disposeDocumentRequestSchema = requestEnvelopeSchema.extend({
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({ type: z.literal("healthCheck") })
 
+const exportDocumentRequestSchema = requestEnvelopeSchema.extend({
+  type: z.literal("exportDocument"),
+  format: geometryExportFormatSchema,
+})
+
 export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   rebuildDocumentRequestSchema,
+  exportDocumentRequestSchema,
   disposeDocumentRequestSchema,
   healthCheckRequestSchema,
 ])
@@ -246,6 +253,23 @@ const healthResponseSchema = responseEnvelopeSchema.extend({
   wasmHeapBytes: revisionSchema,
 })
 
+const documentExportedResponseSchema = responseEnvelopeSchema
+  .extend({
+    type: z.literal("documentExported"),
+    format: geometryExportFormatSchema,
+    file: z.instanceof(Uint8Array),
+    bodyCount: z.number().int().positive().safe(),
+  })
+  .superRefine((response, context) => {
+    if (response.file.byteLength === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["file"],
+        message: "An exported document file must not be empty.",
+      })
+    }
+  })
+
 export const documentWorkerDiagnosticCodeSchema = z.enum([
   "invalid-request",
   "unsupported-protocol-version",
@@ -260,6 +284,9 @@ export const documentWorkerDiagnosticCodeSchema = z.enum([
   "invalid-feature-mesh-policy",
   "invalid-dirty-feature",
   "invalid-previous-feature-result",
+  "export-state-unavailable",
+  "no-exportable-bodies",
+  "export-failed",
   "internal-error",
 ])
 
@@ -277,6 +304,7 @@ const failureResponseSchema = responseEnvelopeSchema.extend({
 export const documentWorkerResponseSchema = z.discriminatedUnion("type", [
   progressResponseSchema,
   documentRebuiltResponseSchema,
+  documentExportedResponseSchema,
   documentDisposedResponseSchema,
   healthResponseSchema,
   failureResponseSchema,

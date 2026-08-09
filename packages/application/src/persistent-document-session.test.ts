@@ -1,6 +1,7 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { DocumentId, SessionId } from "@vibeshape/domain/identifiers"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
   createPersistentDocumentSession,
@@ -109,6 +110,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   failNextRebuild = false
   disposed = false
   terminated = false
+  exportedFormats: string[] = []
 
   async rebuild(input: Parameters<DocumentRebuildPort["rebuild"]>[0]) {
     if (this.failNextRebuild) {
@@ -117,7 +119,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
     }
     this.revisions.push(input.document.revision)
     return {
-      protocolVersion: 2 as const,
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
       requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21ff",
       documentId: input.document.id,
       revision: input.document.revision,
@@ -130,6 +132,21 @@ class MemoryRebuildPort implements DocumentRebuildPort {
         reusedFeatureIds: [],
       },
       geometry: [],
+    }
+  }
+
+  async exportDocument(format: Parameters<DocumentRebuildPort["exportDocument"]>[0]) {
+    this.exportedFormats.push(format)
+    return {
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fe",
+      documentId,
+      revision: this.revisions.at(-1) ?? 0,
+      generation: 1,
+      type: "documentExported" as const,
+      format,
+      file: new Uint8Array([1, 2, 3]),
+      bodyCount: 1,
     }
   }
 
@@ -395,6 +412,34 @@ describe("persistent document session", () => {
       ok: true,
       response: { revision: 2 },
     })
+  })
+
+  it("exports rebuilt geometry without requiring a writer lease", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies, sessionA)
+    const readOnly = await openPersistentDocumentSession(state.dependencies, {
+      documentId,
+      sessionId: sessionB,
+      mesh,
+    })
+    if (!readOnly.ok) throw new Error(readOnly.diagnostic.message)
+
+    await expect(readOnly.session.exportDocument("stl")).resolves.toMatchObject({
+      ok: true,
+      response: {
+        type: "documentExported",
+        format: "stl",
+        file: new Uint8Array([1, 2, 3]),
+        bodyCount: 1,
+      },
+    })
+    expect(state.rebuildPorts[1]?.exportedFormats).toEqual(["stl"])
+    await readOnly.session.close()
+    await expect(readOnly.session.exportDocument("step")).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "session-closed" },
+    })
+    await created.session.close()
   })
 
   it("opens read-only while another live writer owns the lease and retries write access later", async () => {

@@ -1,6 +1,6 @@
-import { Button } from "@vibeshape/ui/components/button"
 import { useTranslations } from "@vibeshape/i18n"
 import type { DocumentControllerState } from "../document/document-controller"
+import { DocumentExportDialog } from "../document/document-export-dialog"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -33,9 +33,7 @@ export function ApplicationBar({ controller }: { controller: DocumentControllerS
       <span className="ml-auto text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>
-      <Button type="button" size="sm" variant="outline">
-        {t("export")}
-      </Button>
+      <DocumentExportDialog controller={controller} />
     </header>
   )
 }
