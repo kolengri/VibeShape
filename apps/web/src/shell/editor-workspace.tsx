@@ -1,6 +1,6 @@
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
-import { ViewportPlaceholder } from "./viewport-placeholder"
+import { GeometryViewport } from "./geometry-viewport"
 
 export function EditorWorkspace({
   activeTool,
@@ -27,7 +27,7 @@ export function EditorWorkspace({
       {workspace === "variables" ? (
         <VariablesPanel controller={controller} />
       ) : (
-        <ViewportPlaceholder />
+        <GeometryViewport controller={controller} />
       )}
       <TaskPanel
         activeTool={activeTool}

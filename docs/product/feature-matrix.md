@@ -34,6 +34,8 @@ The implemented persistence foundation immediately saves each accepted command t
 | Exploded view | P2 | Depends on assemblies |
 | WebGPU renderer | P2 | Experimental adapter, not the baseline |
 
+The first product viewport now displays terminal authoritative meshes from a successful document rebuild through raw Three.js `0.185.1` and WebGL2. It provides shaded faces, derived feature edges, Z-up orthographic orbit/pan/zoom, automatic fit, an explicit Fit view action, responsive sizing, localized empty/failure states, and deterministic GPU disposal. Standard view presets, perspective switching, grids/origin overlays, hover preselection, body/face/edge/vertex picking, selection summaries, display-mode switching, clipping, and render-performance budgets remain open P0/P1 work.
+
 ## Sketcher
 
 | Capability | P0 | P1 | P2 |

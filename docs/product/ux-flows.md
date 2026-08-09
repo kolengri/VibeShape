@@ -24,6 +24,8 @@ In sketch mode, the right panel shows constraints and dimensions while the viewp
 
 The shell uses Tailwind CSS v4 and source-owned shadcn/Radix primitives from `@vibeshape/ui`. Toolbar, command palette, menu, and shortcut invoke the same application command. The model tree and viewport overlays remain specialized accessible CAD components rather than being forced into generic `Card` or `Table` components.
 
+The implemented viewport shows terminal authoritative meshes only after a successful document rebuild. Raw Three.js owns the canvas scene and GPU lifecycle outside React reconciliation; localized loading, empty, rebuild-failure, and WebGL2-unavailable states remain ordinary DOM overlays. The first slice supports orthographic orbit, pan, zoom, responsive fit, shaded faces, and derived feature edges. Picking, selection, standard views, and command preview overlays remain open.
+
 ## Command states
 
 Every modeling command uses the same state machine:

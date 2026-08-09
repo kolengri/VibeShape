@@ -25,6 +25,7 @@
     "@vibeshape/persistence": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
     "@vibeshape/ui": "workspace:*",
+    "@vibeshape/viewer": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "catalog:"

@@ -41,8 +41,8 @@
         "ariaLabel": "Task panel",
         "createBox": "Create box",
         "createSketch": "Create sketch",
-        "description": "Select an origin plane, create a sketch, and preview each feature before applying it.",
-        "startModeling": "Start modeling",
+        "description": "Create a primitive Box from length values or document variables. Geometry rebuilds locally in the browser.",
+        "startModeling": "Part design",
         "box": {
           "title": "Create box",
           "description": "Create a primitive solid with dimensions driven by literals or document variables.",
@@ -72,9 +72,14 @@
       },
       "viewport": {
         "ariaLabel": "3D viewport",
-        "description": "Geometry and worker integration arrive after the Phase 0 engine spikes.",
+        "empty": "Create a feature to display its rebuilt geometry.",
+        "fit": "Fit view",
+        "loadFailed": "The local document could not be opened.",
+        "loading": "Opening the local document and geometry engine…",
         "orientation": "{plane} · millimeters",
-        "title": "3D viewport"
+        "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
+        "title": "3D viewport",
+        "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
       }
     },
     "variables": {
