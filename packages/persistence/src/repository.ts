@@ -1,4 +1,5 @@
 import {
+  canonicalJson,
   type DocumentEvent,
   type DocumentId,
   type DocumentSnapshot,
@@ -23,6 +24,7 @@ import {
   type LeaseRecord,
   type PersistenceDiagnostic,
   type ProjectRecord,
+  portableProjectImportSchema,
   persistenceCommitInputSchema,
   persistenceDraftCommitInputSchema,
   projectRecordSchema,
@@ -61,8 +63,16 @@ export interface RecoveryReport {
   corruptRecords: string[]
 }
 
-function canonicalJson(value: unknown) {
-  return JSON.stringify(value)
+export interface PortableProject {
+  snapshot: DocumentSnapshot
+  events: readonly DocumentEvent[]
+}
+
+export interface PortableProjectImportReport {
+  documentId: DocumentId
+  revision: number
+  eventChecksums: readonly string[]
+  snapshotChecksum: string
 }
 
 async function serializeRecord(value: unknown) {
@@ -315,6 +325,70 @@ async function storedDraftRecords(input: z.output<typeof persistenceDraftCommitI
   return { events, snapshot }
 }
 
+async function storedPortableRecords(input: z.output<typeof portableProjectImportSchema>) {
+  const events = await Promise.all(
+    input.events.map(async (event) => {
+      const serialized = await serializeRecord(event)
+      return eventRecordSchema.parse({
+        schemaVersion: 0,
+        documentId: event.documentId,
+        revision: event.revision,
+        commandId: event.commandId,
+        storedAt: input.importedAt,
+        ...serialized,
+      })
+    }),
+  )
+  const serializedSnapshot = await serializeRecord(input.snapshot)
+  const snapshot = snapshotRecordSchema.parse({
+    schemaVersion: 0,
+    documentId: input.snapshot.id,
+    revision: input.snapshot.revision,
+    storedAt: input.importedAt,
+    ...serializedSnapshot,
+  })
+  return { events, snapshot }
+}
+
+function replayPortableEvents(events: readonly DocumentEvent[]) {
+  let snapshot: DocumentSnapshot | null = null
+  for (const event of events) {
+    const reduced = reduceDocumentEvent(snapshot, event)
+    if (!reduced.ok) {
+      throw persistenceInvariantError("corrupt-history", "The portable event history is invalid.")
+    }
+    snapshot = reduced.snapshot
+  }
+  if (!snapshot) {
+    throw persistenceInvariantError("corrupt-history", "The portable event history is empty.")
+  }
+  return snapshot
+}
+
+function validatePortableProject(snapshot: DocumentSnapshot, events: readonly DocumentEvent[]) {
+  const replayed = replayPortableEvents(events)
+  if (canonicalJson(replayed) !== canonicalJson(snapshot)) {
+    throw persistenceInvariantError(
+      "corrupt-history",
+      "The portable event history does not reproduce its document snapshot.",
+    )
+  }
+}
+
+function importedProjectRecord(input: z.output<typeof portableProjectImportSchema>): ProjectRecord {
+  return projectRecordSchema.parse({
+    schemaVersion: 0,
+    documentId: input.snapshot.id,
+    name: input.snapshot.name,
+    headRevision: input.snapshot.revision,
+    latestSnapshotRevision: input.snapshot.revision,
+    cleanCloseRevision: input.snapshot.revision,
+    createdAt: input.snapshot.createdAt,
+    updatedAt: input.importedAt,
+    lastExternalBackupAt: input.exportedAt,
+  })
+}
+
 async function latestValidSnapshot(records: readonly SnapshotRecord[]) {
   const corruptRecords: string[] = []
   for (const record of records) {
@@ -423,6 +497,18 @@ async function recoverDocumentSnapshot(database: VibeShapeDatabase, project: Pro
   return { snapshot, corruptRecords: valid.corruptRecords }
 }
 
+function semanticWriteTransaction(database: VibeShapeDatabase, operation: () => Promise<void>) {
+  return database.transaction(
+    "rw",
+    database.projects,
+    database.events,
+    database.snapshots,
+    database.recovery,
+    database.leases,
+    operation,
+  )
+}
+
 export class LocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
@@ -440,27 +526,19 @@ export class LocalDocumentRepository {
     try {
       validateCommitRelationship(parsed.data.baseSnapshot, parsed.data.event, parsed.data.snapshot)
       const records = await storedRecords(parsed.data)
-      await this.database.transaction(
-        "rw",
-        this.database.projects,
-        this.database.events,
-        this.database.snapshots,
-        this.database.recovery,
-        this.database.leases,
-        async () => {
-          const current = await this.database.projects.get(parsed.data.snapshot.id)
-          const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
-          const lease = await this.database.leases.get(parsed.data.snapshot.id)
-          requireCurrentRevision(current, parsed.data.event)
-          requireCommitLease(current, lease, parsed.data)
-          await this.database.events.add(records.event)
-          await this.database.snapshots.add(records.snapshot)
-          await this.database.projects.put(
-            projectForCommit(current, parsed.data.snapshot, parsed.data.storedAt),
-          )
-          await this.database.recovery.put(recoveryForCommit(parsed.data, currentRecovery))
-        },
-      )
+      await semanticWriteTransaction(this.database, async () => {
+        const current = await this.database.projects.get(parsed.data.snapshot.id)
+        const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
+        const lease = await this.database.leases.get(parsed.data.snapshot.id)
+        requireCurrentRevision(current, parsed.data.event)
+        requireCommitLease(current, lease, parsed.data)
+        await this.database.events.add(records.event)
+        await this.database.snapshots.add(records.snapshot)
+        await this.database.projects.put(
+          projectForCommit(current, parsed.data.snapshot, parsed.data.storedAt),
+        )
+        await this.database.recovery.put(recoveryForCommit(parsed.data, currentRecovery))
+      })
       return {
         ok: true,
         value: {
@@ -489,27 +567,19 @@ export class LocalDocumentRepository {
     try {
       validateDraftCommitRelationship(parsed.data)
       const records = await storedDraftRecords(parsed.data)
-      await this.database.transaction(
-        "rw",
-        this.database.projects,
-        this.database.events,
-        this.database.snapshots,
-        this.database.recovery,
-        this.database.leases,
-        async () => {
-          const current = await this.database.projects.get(parsed.data.snapshot.id)
-          const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
-          const lease = await this.database.leases.get(parsed.data.snapshot.id)
-          requireExistingRevision(current, parsed.data.baseSnapshot.revision)
-          requireCommitLease(current, lease, parsed.data)
-          await this.database.events.bulkAdd(records.events)
-          await this.database.snapshots.add(records.snapshot)
-          await this.database.projects.put(
-            projectForCommit(current, parsed.data.snapshot, parsed.data.storedAt),
-          )
-          await this.database.recovery.put(recoveryForCommit(parsed.data, currentRecovery))
-        },
-      )
+      await semanticWriteTransaction(this.database, async () => {
+        const current = await this.database.projects.get(parsed.data.snapshot.id)
+        const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
+        const lease = await this.database.leases.get(parsed.data.snapshot.id)
+        requireExistingRevision(current, parsed.data.baseSnapshot.revision)
+        requireCommitLease(current, lease, parsed.data)
+        await this.database.events.bulkAdd(records.events)
+        await this.database.snapshots.add(records.snapshot)
+        await this.database.projects.put(
+          projectForCommit(current, parsed.data.snapshot, parsed.data.storedAt),
+        )
+        await this.database.recovery.put(recoveryForCommit(parsed.data, currentRecovery))
+      })
       return {
         ok: true,
         value: {
@@ -550,6 +620,96 @@ export class LocalDocumentRepository {
           recoveredRevision: recovered.snapshot.revision,
           lostRevisionCount,
           corruptRecords: recovered.corruptRecords,
+        },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async exportPortableProject(
+    documentIdInput: unknown,
+  ): Promise<PersistenceResult<PortableProject>> {
+    const documentId = documentIdSchema.safeParse(documentIdInput)
+    if (!documentId.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic("invalid-input", "The document ID is invalid."),
+      }
+    }
+    try {
+      const project = await requireStoredProject(this.database, documentId.data)
+      const snapshotRecord = await this.database.snapshots.get([
+        documentId.data,
+        project.headRevision,
+      ])
+      const snapshot = snapshotRecord ? await validStoredSnapshot(snapshotRecord) : null
+      if (!snapshot) {
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The persisted project head snapshot is invalid.",
+        )
+      }
+      const eventRecords = await this.database.events
+        .where("[documentId+revision]")
+        .between([documentId.data, 1], [documentId.data, project.headRevision], true, true)
+        .sortBy("revision")
+      if (eventRecords.length !== project.headRevision) {
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The persisted project journal is incomplete.",
+        )
+      }
+      const events: DocumentEvent[] = []
+      for (const record of eventRecords) {
+        const event = await validStoredEvent(record)
+        if (!event) {
+          throw persistenceInvariantError(
+            "corrupt-history",
+            "The persisted project journal is invalid.",
+          )
+        }
+        events.push(event)
+      }
+      validatePortableProject(snapshot, events)
+      return { ok: true, value: { snapshot, events } }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async importPortableProject(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<PortableProjectImportReport>> {
+    const input = portableProjectImportSchema.safeParse(inputValue)
+    if (!input.success) {
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The portable project import is invalid.",
+        ),
+      }
+    }
+    try {
+      validatePortableProject(input.data.snapshot, input.data.events)
+      const records = await storedPortableRecords(input.data)
+      await semanticWriteTransaction(this.database, async () => {
+        const current = await this.database.projects.get(input.data.snapshot.id)
+        requireNewDocument(current)
+        await this.database.events.bulkAdd(records.events)
+        await this.database.snapshots.add(records.snapshot)
+        await this.database.projects.add(importedProjectRecord(input.data))
+        await this.database.recovery.delete(input.data.snapshot.id)
+        await this.database.leases.delete(input.data.snapshot.id)
+      })
+      return {
+        ok: true,
+        value: {
+          documentId: input.data.snapshot.id,
+          revision: input.data.snapshot.revision,
+          eventChecksums: records.events.map(({ checksum }) => checksum),
+          snapshotChecksum: records.snapshot.checksum,
         },
       }
     } catch (error) {

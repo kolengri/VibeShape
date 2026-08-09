@@ -50,7 +50,7 @@ OPFS and IndexedDB are tied to the browser origin and its storage policy. Users 
 
 **Rule:** internal autosave is not called a backup. The UI must distinguish between "saved locally in this browser" and "exported as a file."
 
-**SPK-005 evidence:** strict Dexie transactions preserve two semantic revisions across forced page termination and cached-shell offline reopen in Chromium, Firefox, and WebKit. Checksum corruption falls back from the latest snapshot to event replay and then to the preceding complete revision with an explicit one-revision loss count. Stale writes, synthetic quota failure after a transaction write, expired-lease takeover, and former-writer commits all fail without partial semantic records. R4 remains critical because users can still clear origin data and `.vshape` backup is not implemented.
+**Current evidence:** SPK-005 strict Dexie transactions preserve two semantic revisions across forced page termination and cached-shell offline reopen in Chromium, Firefox, and WebKit. Checksum corruption falls back from the latest snapshot to event replay and then to the preceding complete revision with an explicit one-revision loss count. Stale writes, synthetic quota failure after a transaction write, expired-lease takeover, and former-writer commits all fail without partial semantic records. The implemented `.vshape` v0 flow now exports a user-controlled semantic backup and imports it into fresh browser storage only after checksum and full-history replay verification. R4 remains critical because reminders, bulk backup, explicit restore, and user education are not complete and users can still clear origin data before exporting.
 
 ### Cross-Browser Support
 

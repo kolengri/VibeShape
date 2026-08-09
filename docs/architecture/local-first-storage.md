@@ -25,6 +25,8 @@ Proposed tables:
 
 SPK-005 implements the first six active stores: `projects`, `snapshots`, `events`, `recovery`, `leases`, and `cacheIndex`. Imports, settings, and explicit migration history remain production additions. See [SPK-005 evidence](../spikes/spk-005-local-first.md).
 
+The production repository now also exposes verified portable-project reads and atomic imports over those stores. Export rereads the complete revision-1-to-head journal and head snapshot, verifies stored checksums, replays the history, and refuses a corrupt or incomplete project. Import occurs only after `.vshape` validation and publishes every event, one head snapshot, clean-close metadata, and the project record in one transaction. Existing document IDs fail closed instead of being replaced.
+
 ## Commit protocol
 
 A user command becomes committed only after:
@@ -91,6 +93,8 @@ Cross-browser fallback:
 - `<input type=file>` or drag and drop for open;
 - Blob download for Save As;
 - clear messaging when automatic overwrite is unavailable.
+
+The first product Project dialog implements the fallback baseline in every browser: `Download .vshape` is distinct from STEP/STL geometry export, and `Choose .vshape` validates a bounded archive before importing it. A successful open closes the prior session, selects the imported document, reloads, and rebuilds derived geometry. The current slice deliberately omits silent same-ID restore, copy-as-new identity rewriting, directory mirroring, and persistent file handles.
 
 ## Multiple tabs
 

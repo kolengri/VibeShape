@@ -3,6 +3,7 @@ import { expect, test } from "./fixtures"
 test.describe("document variables", () => {
   test("creates, evaluates, persists, and reopens a variable table", async ({ page }) => {
     await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
 
     await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()

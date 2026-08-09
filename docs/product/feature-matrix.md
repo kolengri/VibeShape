@@ -19,7 +19,7 @@
 | Branching and merge | P2 | Only after a formal operation-conflict model exists |
 | Cloud synchronization | P2 | Separate opt-in adapter, never a core dependency |
 
-The implemented persistence foundation immediately saves each accepted command through the transactional repository, recovers an interrupted page, and rebuilds the same variable-driven model after clean reopen in Chromium, Firefox, and WebKit. This is not yet the complete autosave product: debounced editor commit policy, project-library UI, `.vshape`, backup prompts, multi-tab ownership UX, and installed-build update handling remain open.
+The implemented persistence foundation immediately saves each accepted command through the transactional repository, recovers an interrupted page, and rebuilds the same variable-driven model after clean reopen in Chromium, Firefox, and WebKit. `.vshape` v0 now downloads and opens the exact semantic snapshot plus full event journal without losing stable variable IDs, formulas, or feature parameter sources. Import verifies structure, checksums, schemas, and replay before atomic publication and never overwrites an existing document ID. This is not yet the complete persistence product: debounced editor commit policy, project-library UI, same-ID restore/copy UX, format migrations, backup prompts, bulk export, multi-tab ownership UX, and installed-build update handling remain open.
 
 ## Viewport and navigation
 

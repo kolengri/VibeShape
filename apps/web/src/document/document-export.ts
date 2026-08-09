@@ -5,7 +5,7 @@ const mediaTypes: Record<GeometryExportFormat, string> = {
   stl: "model/stl",
 }
 
-function portableStem(documentName: string) {
+export function portableDocumentStem(documentName: string) {
   const sanitized = [...documentName.trim()]
     .map((character) =>
       character.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(character) ? "-" : character,
@@ -19,7 +19,7 @@ function portableStem(documentName: string) {
 }
 
 export function createDocumentExportFilename(documentName: string, format: GeometryExportFormat) {
-  return `${portableStem(documentName)}.${format}`
+  return `${portableDocumentStem(documentName)}.${format}`
 }
 
 export function downloadDocumentExport(input: {

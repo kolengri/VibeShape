@@ -3,6 +3,7 @@ import { expect, test } from "./fixtures"
 test.describe("Box parameters", () => {
   test("creates and reopens a Box driven by a document variable", async ({ page }) => {
     await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")

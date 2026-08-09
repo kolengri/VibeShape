@@ -1,5 +1,35 @@
 {
   "app": {
+    "projectFile": {
+      "trigger": "Project…",
+      "title": "Project file",
+      "description": "Work is saved automatically in this browser. Use a .vshape file for a portable external backup.",
+      "closeLabel": "Close project file dialog",
+      "close": "Close",
+      "backup": {
+        "title": "External backup",
+        "description": "Download the document history, variable table, formulas, and model features without derived geometry.",
+        "action": "Download .vshape"
+      },
+      "open": {
+        "title": "Open project file",
+        "description": "Verify and import a .vshape project as a separate browser-stored document.",
+        "action": "Choose .vshape",
+        "inputLabel": "Choose VibeShape project file"
+      },
+      "status": {
+        "backingUp": "Preparing project backup…",
+        "downloaded": ".vshape download started",
+        "opening": "Verifying project file…",
+        "switching": "Opening imported project…"
+      },
+      "errors": {
+        "backupFailed": "The project backup could not be created. Your browser-saved document is unchanged.",
+        "openFailed": "This file is not a valid or supported VibeShape project.",
+        "tooLarge": "This project exceeds the current 32 MiB archive limit.",
+        "alreadyExists": "This exact project already exists in this browser. Existing projects are never overwritten during import."
+      }
+    },
     "export": {
       "trigger": "Export…",
       "title": "Export model",

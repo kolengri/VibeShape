@@ -25,6 +25,7 @@ import {
   type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { readVShape, writeVShape } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
   LocalDocumentRepository,
@@ -65,6 +66,14 @@ export type ActiveDocumentExportResult =
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
+export type ActiveProjectBackupResult =
+  | { ok: true; file: Uint8Array; documentName: string }
+  | { ok: false; diagnostic: { code: string; message: string } }
+
+export type ProjectImportResult =
+  | { ok: true; documentId: ReturnType<typeof documentIdSchema.parse> }
+  | { ok: false; diagnostic: { code: string; message: string } }
+
 let state: DocumentControllerState = {
   status: "idle",
   report: null,
@@ -72,6 +81,7 @@ let state: DocumentControllerState = {
   diagnostic: null,
 }
 let session: PersistentDocumentSession | null = null
+let activeRepository: LocalDocumentRepository | null = null
 let startPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
 
@@ -164,6 +174,7 @@ function createCommand(documentId: ReturnType<typeof documentIdSchema.parse>, na
 async function openOrCreate(defaultDocumentName: string) {
   const database = new VibeShapeDatabase(DATABASE_NAME)
   const repository = new LocalDocumentRepository(database)
+  activeRepository = repository
   const sessionDependencies = dependencies(database, repository)
   const sessionId = currentSessionId()
   const storedDocumentId = documentIdSchema.safeParse(
@@ -378,6 +389,57 @@ export async function exportActiveDocument(
         documentName: session.snapshot.name,
       }
     : result
+}
+
+function unavailableProjectFileResult() {
+  return {
+    ok: false as const,
+    diagnostic: {
+      code: "session-closed",
+      message: "The local document session is unavailable.",
+    },
+  }
+}
+
+export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupResult> {
+  if (!session || !activeRepository || state.status !== "ready" || !state.report) {
+    return unavailableProjectFileResult()
+  }
+  const portable = await activeRepository.exportPortableProject(session.snapshot.id)
+  if (!portable.ok) return portable
+  const archived = await writeVShape({
+    ...portable.value,
+    exportedAt: new Date().toISOString(),
+    createdBy: { application: "VibeShape", version: "0.0.0", build: null },
+    engine: null,
+  })
+  return archived.ok
+    ? { ok: true, file: archived.value, documentName: session.snapshot.name }
+    : archived
+}
+
+export async function importProjectBackup(bytes: Uint8Array): Promise<ProjectImportResult> {
+  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+  const decoded = await readVShape(bytes)
+  if (!decoded.ok) return decoded
+  const imported = await activeRepository.importPortableProject({
+    snapshot: decoded.value.snapshot,
+    events: decoded.value.events,
+    exportedAt: decoded.value.manifest.exportedAt,
+    importedAt: new Date().toISOString(),
+  })
+  return imported.ok
+    ? { ok: true, documentId: imported.value.documentId }
+    : { ok: false, diagnostic: imported.diagnostic }
+}
+
+export async function activateImportedProject(
+  documentId: ReturnType<typeof documentIdSchema.parse>,
+) {
+  await session?.close()
+  session = null
+  writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
+  window.location.reload()
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

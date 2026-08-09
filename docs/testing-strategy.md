@@ -73,15 +73,13 @@ SPK-003 implements the bounded algorithm-selection matrix through `bun run topol
 
 ### `.vshape`
 
-- round-trip every schema version;
-- forward-compatible unknown optional field;
-- unknown required capability;
-- sequential migrations;
-- missing or corrupt cache does not affect semantic open;
-- checksum corruption;
-- duplicate path, traversal, and ZIP-bomb limits;
-- truncated-journal recovery;
-- old fixture corpus in every release.
+- deterministic v0 bytes for identical semantic input and export metadata;
+- snapshot plus complete journal round-trip with stable variable IDs, formulas, and feature `#variable` sources intact;
+- snapshot/journal exact replay equality before import;
+- checksum corruption, undeclared entry, traversal, duplicate normalized path, and ZIP-bomb limits;
+- one-transaction IndexedDB publication and same-ID collision rejection;
+- real-browser download into a fresh storage context, import, worker rebuild, and authored-source restoration;
+- future versions add required-capability behavior, sequential migrations, cache independence, truncated-journal recovery, and a stable old-fixture corpus before claiming those contracts.
 
 ### STEP
 
@@ -208,7 +206,7 @@ The product Variables scenario opens the real browser document controller, creat
 
 Production Vite build, the Chromium/Firefox/WebKit shell and OCCT E2E suite, controlled native builds, memory and performance evidence, FreeCAD STEP validation, compliance bundles, topology, slicer, persistence, and extension corpora are local pre-merge gates. Generated evidence stays under `.artifacts`. Heavy entry points reject a truthy `CI` environment and have no GitHub Actions workflow.
 
-The current executable evidence covers the foundation shell; the document-worker-owned graph rebuild and STEP/STL export coordinator, in-memory worker replacement and semantic recovery, and real-browser OCCT path; the application persisted-session contract and persistence-backed page reload plus clean save/reopen rebuilds; document protocol v3 with authored variables and exact-revision export; the protocol-v7 box, cylinder, and dependency-aware Boolean/Subtract boundary; SPK-001 worker ownership, operations, memory, performance, exchange, and restart; SPK-003 semantic and composed topology resolution; SPK-004 deterministic 3MF and slicer invariants; SPK-005 transactional recovery and offline fallback; and the reduced-scope SPK-006 package and isolation boundary. It does not yet prove document-integrated topology repair, a complete production CAD workflow, a real two-build service-worker update, `.vshape` round-trip, persistent derived-cache promotion, installed-build release behavior, print-quality export profiles and reports, production 3MF integration, or production extension execution.
+The current executable evidence covers the foundation shell; the document-worker-owned graph rebuild and STEP/STL export coordinator, in-memory worker replacement and semantic recovery, and real-browser OCCT path; the application persisted-session contract and persistence-backed page reload plus clean save/reopen rebuilds; deterministic `.vshape` v0 semantic round-trip and fresh-storage browser import; document protocol v3 with authored variables and exact-revision export; the protocol-v7 box, cylinder, and dependency-aware Boolean/Subtract boundary; SPK-001 worker ownership, operations, memory, performance, exchange, and restart; SPK-003 semantic and composed topology resolution; SPK-004 deterministic 3MF and slicer invariants; SPK-005 transactional recovery and offline fallback; and the reduced-scope SPK-006 package and isolation boundary. It does not yet prove document-integrated topology repair, a complete production CAD workflow, a real two-build service-worker update, `.vshape` migrations or same-ID restore, persistent derived-cache promotion, installed-build release behavior, print-quality export profiles and reports, production 3MF integration, or production extension execution.
 
 Extended OCCT lifecycle runs are parameterized without slowing the normal PR matrix:
 
