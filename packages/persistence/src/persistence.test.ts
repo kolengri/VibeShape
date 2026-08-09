@@ -11,6 +11,7 @@ import {
   cacheIndexRecordSchema,
   localProjectSummarySchema,
   persistenceCommitInputSchema,
+  portableProjectCopySchema,
   projectDeleteInputSchema,
   projectRecordSchema,
 } from "./schemas"
@@ -107,6 +108,41 @@ describe("persistence contracts", () => {
         documentId,
         expectedHeadRevision: -1,
         nowMs: 1_786_176_000_000,
+      }).success,
+    ).toBe(false)
+  })
+
+  it("distinguishes a local semantic copy from an external backup import", () => {
+    const event = {
+      schemaVersion: 1,
+      type: "org.vibeshape.document.created",
+      commandId,
+      transactionId: null,
+      documentId,
+      baseRevision: 0,
+      revision: 1,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+      name: "Bracket copy",
+    }
+    const snapshot = {
+      schemaVersion: 0,
+      id: documentId,
+      revision: 1,
+      name: "Bracket copy",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+    expect(
+      portableProjectCopySchema.safeParse({ copiedAt: timestamp, events: [event], snapshot })
+        .success,
+    ).toBe(true)
+    expect(
+      portableProjectCopySchema.safeParse({
+        copiedAt: timestamp,
+        exportedAt: timestamp,
+        events: [event],
+        snapshot,
       }).success,
     ).toBe(false)
   })

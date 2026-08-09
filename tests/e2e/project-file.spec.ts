@@ -84,20 +84,24 @@ test.describe("native project file", () => {
     }
   })
 
-  test("creates a new local project and reopens an existing configurable project", async ({
+  test("creates, switches, duplicates, and deletes configurable local projects", async ({
     page,
   }) => {
     test.setTimeout(90_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("button", { name: "Add variable" }).click()
+    await page.getByRole("textbox", { name: "Variable name" }).fill("width")
+    await page.getByRole("textbox", { name: "Variable expression" }).fill("24 mm")
+    await page.getByRole("button", { name: "Apply variables" }).click()
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Box", exact: true })
       .click()
-    await page
-      .getByRole("form", { name: "Create box" })
-      .getByRole("button", { name: "Create box" })
-      .click()
+    const createBox = page.getByRole("form", { name: "Create box" })
+    await createBox.getByRole("textbox", { name: "Width" }).fill("#width")
+    await createBox.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
 
     await page.getByRole("button", { name: "Project…" }).click()
@@ -117,34 +121,57 @@ test.describe("native project file", () => {
 
     await page.getByRole("button", { name: "Project…" }).click()
     const dialog = page.getByRole("dialog", { name: "Projects" })
-    const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 2" })
+    const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 3" })
     await expect(previousProject).toHaveCount(1)
     const reopenedProjectNavigation = page.waitForEvent(
       "framenavigated",
       (frame) => frame === page.mainFrame(),
     )
-    await previousProject.getByRole("button", { name: /Open .*revision 2/ }).click()
+    await previousProject.getByRole("button", { name: /Open .*revision 3/ }).click()
     await reopenedProjectNavigation
 
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
 
     await page.getByRole("button", { name: "Project…" }).click()
-    const reopenedDialog = page.getByRole("dialog", { name: "Projects" })
-    const inactiveProject = reopenedDialog.getByRole("listitem").filter({
-      hasText: "Revision 1",
+    const sourceDialog = page.getByRole("dialog", { name: "Projects" })
+    const sourceProject = sourceDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
+    await sourceProject.getByRole("button", { name: /Duplicate .*revision 3/ }).click()
+    const copiedProject = sourceDialog.getByRole("listitem").filter({
+      hasText: "Untitled project copy",
     })
-    await expect(inactiveProject).toHaveCount(1)
-    await inactiveProject.getByRole("button", { name: /Delete .*revision 1/ }).click()
+    await expect(copiedProject).toContainText("Revision 4")
+    const copiedProjectNavigation = page.waitForEvent(
+      "framenavigated",
+      (frame) => frame === page.mainFrame(),
+    )
+    await copiedProject.getByRole("button", { name: /Open .*revision 4/ }).click()
+    await copiedProjectNavigation
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("width")
+    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await expect(
+      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+    ).toHaveValue("#width")
+
+    await page.getByRole("button", { name: "Project…" }).click()
+    const copiedDialog = page.getByRole("dialog", { name: "Projects" })
+    const originalProject = copiedDialog.getByRole("listitem").filter({ hasText: "Revision 3" })
+    await expect(originalProject).toHaveCount(1)
+    await originalProject.getByRole("button", { name: /Delete .*revision 3/ }).click()
     const confirmation = page.getByRole("alertdialog")
     await expect(confirmation).toContainText("Exported .vshape files are not deleted.")
     await confirmation.getByRole("button", { name: "Delete project" }).dblclick()
-    await expect(inactiveProject).toHaveCount(0)
+    await expect(confirmation).toHaveCount(0)
+    await expect(originalProject).toHaveCount(0)
+    await expect(copiedDialog.getByRole("listitem")).toHaveCount(2)
 
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByText("Untitled project copy", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Project…" }).click()
     await expect(page.getByRole("dialog", { name: "Projects" }).getByRole("listitem")).toHaveCount(
-      1,
+      2,
     )
   })
 })

@@ -25,7 +25,7 @@ export function ProjectDeleteAction({
   disabled: boolean
   isCurrent: boolean
   onDelete: (documentId: string, expectedHeadRevision: number) => Promise<ProjectDeleteResult>
-  onDeleted: () => void
+  onDeleted: () => Promise<void>
   onPendingChange: (pending: boolean) => void
   project: LocalProjectSummary
 }) {
@@ -50,8 +50,8 @@ export function ProjectDeleteAction({
         setFailed(true)
         return
       }
+      await onDeleted()
       setOpen(false)
-      onDeleted()
     } catch {
       setFailed(true)
     } finally {

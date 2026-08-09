@@ -20,6 +20,7 @@ const controllerMocks = vi.hoisted(() => ({
   activateLocalProject: vi.fn(),
   createNewLocalProject: vi.fn(),
   deleteLocalProject: vi.fn(),
+  duplicateLocalProject: vi.fn(),
   exportActiveProjectBackup: vi.fn(),
   importProjectBackup: vi.fn(),
   listLocalProjects: vi.fn(),
@@ -46,6 +47,11 @@ beforeEach(() => {
   controllerMocks.activateLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.createNewLocalProject.mockResolvedValue({ ok: true })
   controllerMocks.deleteLocalProject.mockResolvedValue({ ok: true })
+  controllerMocks.duplicateLocalProject.mockResolvedValue({
+    ok: true,
+    documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f21ae",
+    name: "Fixture copy",
+  })
   controllerMocks.listLocalProjects.mockResolvedValue({
     ok: true,
     projects: [
@@ -120,6 +126,38 @@ describe("DocumentProjectDialog", () => {
     expect(open.getAttribute("aria-busy")).toBe("true")
     finish?.({ ok: true })
     await waitFor(() => expect(open.getAttribute("aria-busy")).not.toBe("true"))
+  })
+
+  it("duplicates a semantic project with a localized bounded name as one action", async () => {
+    const user = userEvent.setup()
+    let finish: ((value: unknown) => void) | undefined
+    controllerMocks.duplicateLocalProject.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const duplicate = await screen.findByRole("button", {
+      name: "Duplicate Fixture, revision 2",
+    })
+
+    await user.dblClick(duplicate)
+
+    expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledOnce()
+    expect(controllerMocks.duplicateLocalProject).toHaveBeenCalledWith(
+      otherDocumentId,
+      2,
+      "Fixture copy",
+    )
+    expect(duplicate.getAttribute("aria-busy")).toBe("true")
+    finish?.({
+      ok: true,
+      documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f21ae",
+      name: "Fixture copy",
+    })
+    await waitFor(() => expect(controllerMocks.listLocalProjects).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole("status").textContent).toContain("Local project duplicated")
   })
 
   it("confirms inactive project deletion and guards the destructive request", async () => {

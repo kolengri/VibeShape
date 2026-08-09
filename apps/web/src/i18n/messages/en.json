@@ -20,6 +20,11 @@
         "loading": "Loading local projects…",
         "loadFailed": "Local projects could not be loaded. The current project remains open.",
         "retry": "Retry",
+        "duplicate": {
+          "action": "Duplicate",
+          "actionLabel": "Duplicate {name}, revision {revision}",
+          "copyName": "{name} copy"
+        },
         "delete": {
           "action": "Delete",
           "actionLabel": "Delete {name}, revision {revision}",
@@ -47,6 +52,8 @@
         "downloaded": ".vshape download started",
         "opening": "Verifying project file…",
         "creating": "Creating a new local project…",
+        "duplicating": "Duplicating local project…",
+        "duplicated": "Local project duplicated",
         "switching": "Opening local project…"
       },
       "errors": {
@@ -55,7 +62,8 @@
         "tooLarge": "This project exceeds the current 32 MiB archive limit.",
         "alreadyExists": "This exact project already exists in this browser. Open it from Local projects; imports never overwrite an existing project.",
         "switchFailed": "This local project could not be opened. The current project remains unchanged.",
-        "newFailed": "A new local project could not be created. The current project remains unchanged."
+        "newFailed": "A new local project could not be created. The current project remains unchanged.",
+        "duplicateFailed": "This local project could not be duplicated. Reload the project list and try again."
       }
     },
     "export": {
