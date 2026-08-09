@@ -3,23 +3,39 @@ import { TaskPanel } from "./task-panel"
 import { ViewportPlaceholder } from "./viewport-placeholder"
 
 export function EditorWorkspace({
+  activeTool,
   controller,
+  onCloseTool,
+  onCreateBox,
   onWorkspaceChange,
   workspace,
 }: {
+  activeTool: "box" | null
   controller: DocumentControllerState
+  onCloseTool: () => void
+  onCreateBox: () => void
   onWorkspaceChange: (workspace: "model" | "variables") => void
   workspace: "model" | "variables"
 }) {
   return (
     <div className="cad-workspace-grid min-h-0">
-      <ModelTree activeWorkspace={workspace} onWorkspaceChange={onWorkspaceChange} />
+      <ModelTree
+        activeWorkspace={workspace}
+        controller={controller}
+        onWorkspaceChange={onWorkspaceChange}
+      />
       {workspace === "variables" ? (
         <VariablesPanel controller={controller} />
       ) : (
         <ViewportPlaceholder />
       )}
-      <TaskPanel workspace={workspace} />
+      <TaskPanel
+        activeTool={activeTool}
+        controller={controller}
+        workspace={workspace}
+        onCloseTool={onCloseTool}
+        onCreateBox={onCreateBox}
+      />
     </div>
   )
 }

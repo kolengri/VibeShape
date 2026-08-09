@@ -295,6 +295,7 @@ The table has these columns:
 - A selection field shows entity type, user-facing name, source feature, and missing or ambiguous state.
 - Reset restores the command's initial value, not a hidden global default.
 - Parameter changes use a short debounce for preview but Apply always validates the exact visible values.
+- A parameter that accepts variables preserves the authored expression in the field; a resolved value may be shown alongside it but never silently replaces `#name` source text.
 
 ## Model Tree
 

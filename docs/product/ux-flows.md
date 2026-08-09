@@ -45,6 +45,8 @@ stateDiagram-v2
 - An error preserves parameters and the failing selection.
 - Escape always cancels the active command before the document changes.
 
+The initial Box authoring slice implements idle → validate → persisted commit with preserved field errors and asynchronous single-flight submission. Interactive geometry preview and `Escape` command routing remain required before this slice satisfies the complete modeling-command state machine.
+
 ## Flow 1: create a printable part
 
 1. Create a project and choose a printer profile or no profile.
