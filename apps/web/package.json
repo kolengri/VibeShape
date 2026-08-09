@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@vibeshape/application": "workspace:*",
+    "@vibeshape/document-worker": "workspace:*",
     "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/i18n": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
