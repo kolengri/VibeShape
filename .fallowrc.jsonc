@@ -7,6 +7,7 @@
     "apps/web/src/spikes/extension-sandbox.ts",
     "apps/web/src/spikes/feature-rebuild.ts",
     "apps/web/src/spikes/persistence.ts",
+    "apps/web/src/spikes/persisted-rebuild.ts",
     "apps/web/src/spikes/primitive-features.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",

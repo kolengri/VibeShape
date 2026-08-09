@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./feature-rebuild": "./src/feature-rebuild.ts"
+    "./feature-rebuild": "./src/feature-rebuild.ts",
+    "./persistent-document-session": "./src/persistent-document-session.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

@@ -74,7 +74,9 @@ A command contains:
 - inverse data or sufficient information for deterministic reduction;
 - no derived geometry or transport-specific prompt data.
 
-An accepted event records the resulting revision. The persistence transaction will add the authoritative content hash when the journal and snapshot store are implemented.
+An accepted event records the resulting revision. The IndexedDB repository atomically stores the event, resulting snapshot, project head, and recovery marker with SHA-256 checksums for the serialized event and snapshot payloads.
+
+The application persisted-session boundary treats the repository as semantic authority. It renews the single-writer lease, dispatches an ordinary command, commits the event and snapshot, advances the in-memory committed snapshot, and then rebuilds derived geometry. A failed persistence transaction advances neither state nor geometry. A later worker failure does not roll back the saved semantic revision; reopening or an explicit retry rebuilds from that revision. See [ADR-0016](../adr/0016-persisted-document-session-and-rebuild-sequencing.md).
 
 The domain reducer MUST be deterministic: one snapshot plus the same commands produces the same domain state. Geometry may vary slightly between OCCT builds, so engine build metadata is recorded separately.
 

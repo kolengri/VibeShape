@@ -17,9 +17,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@vibeshape/application": "workspace:*",
     "@vibeshape/document-worker": "workspace:*",
     "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/i18n": "workspace:*",
+    "@vibeshape/persistence": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "react": "catalog:",
@@ -33,7 +35,6 @@
     "@vibeshape/domain": "workspace:*",
     "@vibeshape/extension-spike": "workspace:*",
     "@vibeshape/formats": "workspace:*",
-    "@vibeshape/persistence": "workspace:*",
     "@vibeshape/test-models": "workspace:*",
     "@vibeshape/typescript-config": "workspace:*",
     "@vitejs/plugin-react": "catalog:",

@@ -19,6 +19,8 @@
 | Branching and merge | P2 | Only after a formal operation-conflict model exists |
 | Cloud synchronization | P2 | Separate opt-in adapter, never a core dependency |
 
+The implemented persistence foundation immediately saves each accepted command through the transactional repository, recovers an interrupted page, and rebuilds the same variable-driven model after clean reopen in Chromium, Firefox, and WebKit. This is not yet the complete autosave product: debounced editor commit policy, project-library UI, `.vshape`, backup prompts, multi-tab ownership UX, and installed-build update handling remain open.
+
 ## Viewport and navigation
 
 | Capability | Priority | Notes |
@@ -103,7 +105,7 @@ P1 includes:
 
 Arbitrary JavaScript is prohibited in documents. Native files must not be executable.
 
-The implemented foundation is intentionally narrower: document variables have stable UUIDv7 identity, case-sensitive ASCII names, arbitrary DAG dependencies, `#name` references, unit literals, unary signs, `+ - * /`, parentheses, dimensional checking, cycle detection, revisioned add/update/remove commands, persistence acceptance, and document-worker recovery. Box and cylinder quantities resolve through trusted feature handlers, and geometry reuse compares resolved values. Exponentiation, functions, compound dimensions, atomic rename/refactor, localized authoring, and the product variables table remain P1 completion work. See [ADR-0015](../adr/0015-document-variables-and-dimensional-expressions.md).
+The implemented foundation is intentionally narrower: document variables have stable UUIDv7 identity, case-sensitive ASCII names, arbitrary DAG dependencies, `#name` references, unit literals, unary signs, `+ - * /`, parentheses, dimensional checking, cycle detection, revisioned add/update/remove commands, persistence acceptance, interrupted-page recovery, clean save/reopen rebuild, and document-worker recovery. Box and cylinder quantities resolve through trusted feature handlers, and geometry reuse compares resolved values. Exponentiation, functions, compound dimensions, atomic rename/refactor, localized authoring, and the product variables table remain P1 completion work. See [ADR-0015](../adr/0015-document-variables-and-dimensional-expressions.md).
 
 ## Bodies, parts, and assemblies
 
