@@ -28,6 +28,7 @@ export const domainDiagnosticCodeSchema = z.enum([
   "invalid-feature-reference-count",
   "sketch-already-exists",
   "sketch-not-found",
+  "sketch-in-use",
   "invalid-sketch",
 ])
 

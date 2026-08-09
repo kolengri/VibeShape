@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
+  extrusionFeatureContentParametersSchema,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
@@ -121,11 +122,55 @@ describe("geometry worker protocol", () => {
           feature: {
             ...request.content.feature,
             parameters: Object.fromEntries(
-              Array.from({ length: 17 }, (_, index) => [`parameter-${index}`, index]),
+              Array.from({ length: 33 }, (_, index) => [`parameter-${index}`, index]),
             ),
           },
         },
       }).success,
+    ).toBe(false)
+  })
+
+  it("accepts exact selector-resolved extrusion profiles and rejects mismatched sources", () => {
+    const parameters = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      plane: "xy",
+      outer: {
+        sourceEntityIds: [
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+        ],
+        segments: [
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+            type: "line",
+            start: [0, 0],
+            end: [20, 0],
+          },
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+            type: "arc",
+            start: [20, 0],
+            middle: [25, 5],
+            end: [20, 10],
+          },
+        ],
+      },
+      holes: [],
+      distance: 12,
+      symmetric: false,
+      operation: "new",
+    } as const
+
+    expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: { ...parameters.outer, sourceEntityIds: parameters.outer.sourceEntityIds.slice(1) },
+      }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({ ...parameters, distance: Number.NaN })
+        .success,
     ).toBe(false)
   })
 

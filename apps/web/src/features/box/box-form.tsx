@@ -10,10 +10,11 @@ import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { LengthExpressionField } from "../part-design/length-expression-field"
+import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import {
-  featureSubmissionMessage,
   parsePrimitiveLengthExpression,
   quantityExpression,
+  submitFeatureMutation,
 } from "../part-design/primitive-form"
 import {
   PrimitiveParameterPanel,
@@ -179,11 +180,14 @@ export function BoxForm({
       }
       setIssues({})
       setMessage(null)
-      const feature = boxFeatureRecord(mode, parsed.parameters)
-      const result = await onSave(baseRevision, feature)
-      const resultMessage = featureSubmissionMessage(result, copy)
-      setMessage(resultMessage)
-      if (!resultMessage) onSaved()
+      await submitFeatureMutation({
+        baseRevision,
+        copy,
+        feature: boxFeatureRecord(mode, parsed.parameters),
+        onSave,
+        onSaved,
+        setMessage,
+      })
     },
   })
 
@@ -228,20 +232,11 @@ export function BoxForm({
         centeredField={
           <form.Field name="centered">
             {(field) => (
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  name={field.name}
-                  type="checkbox"
-                  checked={field.state.value}
-                  className="size-4 rounded border-input accent-primary"
-                  onBlur={field.handleBlur}
-                  onChange={(event) => {
-                    clearSubmissionErrors()
-                    field.handleChange(event.currentTarget.checked)
-                  }}
-                />
-                {copy.centered}
-              </label>
+              <TanStackBooleanParameterField
+                field={field}
+                label={copy.centered}
+                onBeforeChange={clearSubmissionErrors}
+              />
             )}
           </form.Field>
         }

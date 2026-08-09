@@ -10,6 +10,7 @@ interface FeatureEvaluationHarnessState {
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
+  extrusion: FeatureResponse | null
   boolean: FeatureResponse | null
   cachedBoolean: FeatureResponse | null
   invalidBooleanDiagnostic: string | null
@@ -62,6 +63,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   const box = requireResult(state.box)
   const cachedBox = requireResult(state.cachedBox)
   const cylinder = requireResult(state.cylinder)
+  const extrusion = requireResult(state.extrusion)
   const boolean = requireResult(state.boolean)
   const cachedBoolean = requireResult(state.cachedBoolean)
 
@@ -98,6 +100,23 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   )
   expectMesh(cylinder)
 
+  expect(extrusion.cache.brepHit).toBe(false)
+  expect(extrusion.shape.valid).toBe(true)
+  expect(extrusion.shape.solidCount).toBe(1)
+  expect(extrusion.shape.volume).toBeCloseTo(20 * 10 * 18, 5)
+  expectBounds(extrusion.shape.bounds, { min: [0, -9, 0], max: [20, 9, 10] })
+  expect(extrusion.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? [])).toEqual(
+    expect.arrayContaining([
+      "extrusion.cap.start",
+      "extrusion.cap.end",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3301",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3302",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3303",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3304",
+    ]),
+  )
+  expectMesh(extrusion)
+
   expect(boolean.cache.brepHit).toBe(false)
   expect(cachedBoolean.cache.brepHit).toBe(true)
   expect(cachedBoolean.contentHash).toBe(boolean.contentHash)
@@ -111,7 +130,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 5 }).flatMap(() => [
+    ...Array.from({ length: 6 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -125,6 +144,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 4, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 5, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

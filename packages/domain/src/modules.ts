@@ -6,7 +6,12 @@ import {
   featureTypeKey,
 } from "./feature-type-contracts"
 import { moduleIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
-import { booleanFeatureType, boxFeatureType, cylinderFeatureType } from "./part-design"
+import {
+  booleanFeatureType,
+  boxFeatureType,
+  cylinderFeatureType,
+  extrusionFeatureType,
+} from "./part-design"
 
 export const commandDescriptorSchema = z
   .object({
@@ -325,7 +330,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   dependencies: [featureCoreModule.id],
   commands: [],
   queries: [],
-  featureTypes: [booleanFeatureType, boxFeatureType, cylinderFeatureType],
+  featureTypes: [booleanFeatureType, boxFeatureType, cylinderFeatureType, extrusionFeatureType],
 })
 
 function registryFailure(

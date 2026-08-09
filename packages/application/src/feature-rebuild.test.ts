@@ -538,6 +538,121 @@ describe("feature rebuild coordination", () => {
     ])
   })
 
+  it("hashes prepared feature content and bypasses geometry for an identical prepared hash", async () => {
+    const hash = contentHasher()
+    const authoredBox = box(featureIds.box)
+    const preparedParameters = {
+      width: 31,
+      depth: 30,
+      height: 25.4,
+      centered: false,
+    }
+    const initialRequests: FeatureGeometryEvaluationRequest[] = []
+    const initial = await rebuildDocumentFeatures({
+      document: documentSnapshot([authoredBox]),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(initialRequests),
+      prepareFeatureContent: () => ({ ok: true, parameters: preparedParameters }),
+    })
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+    expect(initialRequests[0]?.content.feature.parameters).toEqual(preparedParameters)
+
+    const equivalentRequests: FeatureGeometryEvaluationRequest[] = []
+    const equivalent = await rebuildDocumentFeatures({
+      document: documentSnapshot([{ ...authoredBox, label: "Renamed Box" }], 2),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(equivalentRequests),
+      prepareFeatureContent: () => ({ ok: true, parameters: preparedParameters }),
+      previous: initial,
+    })
+    expect(equivalent.ok).toBe(true)
+    expect(equivalentRequests).toHaveLength(0)
+
+    const changedRequests: FeatureGeometryEvaluationRequest[] = []
+    const changed = await rebuildDocumentFeatures({
+      document: documentSnapshot([authoredBox], 3),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash,
+      evaluateGeometry: successfulPort(changedRequests),
+      prepareFeatureContent: () => ({
+        ok: true,
+        parameters: { ...preparedParameters, width: 32 },
+      }),
+      previous: equivalent.ok ? equivalent : initial,
+    })
+    expect(changed.ok).toBe(true)
+    expect(changedRequests[0]?.content.feature.parameters).toMatchObject({ width: 32 })
+  })
+
+  it("contains thrown and malformed feature-content preparation", async () => {
+    const evaluateGeometry = vi.fn<FeatureGeometryEvaluationPort>()
+    const common = {
+      document: documentSnapshot([box(featureIds.box)]),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry,
+    } as const
+
+    const thrown = await rebuildDocumentFeatures({
+      ...common,
+      prepareFeatureContent: () => {
+        throw new Error("private preparation detail")
+      },
+    })
+    expect(thrown).toMatchObject({
+      ok: true,
+      evaluation: {
+        records: [
+          {
+            status: "failed",
+            diagnostics: [
+              {
+                code: "org.vibeshape.feature.content-preparation-failed",
+                values: { reason: "preparation-threw" },
+              },
+            ],
+          },
+        ],
+      },
+    })
+    const malformed = await rebuildDocumentFeatures({
+      ...common,
+      prepareFeatureContent: () => ({ ok: true, parameters: [] }),
+    })
+    expect(malformed).toMatchObject({
+      ok: true,
+      evaluation: {
+        records: [
+          {
+            status: "failed",
+            diagnostics: [
+              {
+                code: "org.vibeshape.feature.content-preparation-failed",
+                values: { reason: "invalid-prepared-parameters" },
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(evaluateGeometry).not.toHaveBeenCalled()
+  })
+
   it("rebuilds expression-bound geometry only when a document variable changes its value", async () => {
     const hash = contentHasher()
     const authoredBox: FeatureRecord = {

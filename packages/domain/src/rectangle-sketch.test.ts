@@ -3,6 +3,7 @@ import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "
 import {
   createRectangleSketch,
   rectangleSketchDefinition,
+  rectangleSketchProfileSelector,
   updateRectangleSketch,
 } from "./rectangle-sketch"
 import { createLengthQuantity } from "./units"
@@ -47,6 +48,14 @@ describe("rectangular sketch template", () => {
       width: { value: 30, source: { expression: "#width" } },
       height: { value: 12, source: { expression: "#height" } },
     })
+    expect(rectangleSketchProfileSelector(sketch)).toEqual({
+      schemaVersion: 0,
+      sketchId,
+      outerBoundaryEntityIds: sketch.entities
+        .flatMap((entity) => (entity.type === "line" ? [entity.id] : []))
+        .sort(),
+      holeBoundaryEntityIds: [],
+    })
   })
 
   it("updates expressions and plane while preserving sketch and topology identity", () => {
@@ -74,6 +83,7 @@ describe("rectangular sketch template", () => {
       constraints: sketch.constraints.filter(({ type }) => type !== "fixed"),
     }
     expect(rectangleSketchDefinition(changed)).toBeNull()
+    expect(rectangleSketchProfileSelector(changed)).toBeNull()
     expect(() =>
       updateRectangleSketch(changed, {
         plane: "xy",

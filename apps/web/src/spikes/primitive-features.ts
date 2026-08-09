@@ -7,6 +7,7 @@ import {
   createModuleRegistry,
   cylinderFeatureType,
   documentCoreModule,
+  extrusionFeatureType,
   type FeatureId,
   featureCoreModule,
   featureIdSchema,
@@ -19,7 +20,10 @@ import {
   type GeometryWorkerClient,
   GeometryWorkerRequestError,
 } from "@vibeshape/geometry-worker/client"
-import { featureContentIdentitySchema } from "@vibeshape/protocol"
+import {
+  extrusionFeatureContentParametersSchema,
+  featureContentIdentitySchema,
+} from "@vibeshape/protocol"
 
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
 type FeatureResponse = Extract<TerminalResponse, { type: "featureEvaluated" }>
@@ -31,6 +35,7 @@ interface FeatureEvaluationHarnessState {
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
+  extrusion: FeatureResponse | null
   boolean: FeatureResponse | null
   cachedBoolean: FeatureResponse | null
   invalidBooleanDiagnostic: string | null
@@ -53,12 +58,21 @@ const cylinderFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7
 const booleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103")
 const identicalToolFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104")
 const missingBooleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3105")
+const extrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3106")
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
+const profileEntityIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3302",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3303",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3304",
+] as const
 const generation = 1
 const state: FeatureEvaluationHarnessState = {
   state: "running",
   box: null,
   cachedBox: null,
   cylinder: null,
+  extrusion: null,
   boolean: null,
   cachedBoolean: null,
   invalidBooleanDiagnostic: null,
@@ -68,6 +82,46 @@ const state: FeatureEvaluationHarnessState = {
   progress: [],
   error: null,
 }
+
+function extrusionFeature() {
+  return {
+    schemaVersion: 0,
+    id: extrusionFeatureId,
+    type: extrusionFeatureType.type,
+    parameters: {
+      profile: {
+        schemaVersion: 0,
+        sketchId,
+        outerBoundaryEntityIds: profileEntityIds,
+        holeBoundaryEntityIds: [],
+      },
+      distance: createLengthQuantity(18),
+      symmetric: true,
+      operation: "new",
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  }
+}
+
+const extrusionContentParameters = extrusionFeatureContentParametersSchema.parse({
+  sketchId,
+  plane: "xz",
+  outer: {
+    sourceEntityIds: profileEntityIds,
+    segments: [
+      { entityId: profileEntityIds[0], type: "line", start: [0, 0], end: [20, 0] },
+      { entityId: profileEntityIds[1], type: "line", start: [20, 0], end: [20, 10] },
+      { entityId: profileEntityIds[2], type: "line", start: [20, 10], end: [0, 10] },
+      { entityId: profileEntityIds[3], type: "line", start: [0, 10], end: [0, 0] },
+    ],
+  },
+  holes: [],
+  distance: 18,
+  symmetric: true,
+  operation: "new",
+})
 
 window.__VIBESHAPE_PRIMITIVE_FEATURES__ = state
 
@@ -191,6 +245,39 @@ async function evaluate(
   )
 }
 
+async function evaluateExtrusion(client: GeometryWorkerClient, environment: unknown) {
+  const content = await computeFeatureContentHash(
+    featureRegistry(),
+    {
+      feature: extrusionFeature(),
+      dependencies: [],
+      environment,
+      contentParameters: extrusionContentParameters,
+    },
+    sha256,
+  )
+  if (!content.ok) throw new Error(content.diagnostic.message)
+  return expectResponse(
+    await client.request(
+      {
+        ...createGeometryRequestEnvelope(documentId, generation, 1),
+        type: "evaluateFeature",
+        featureId: extrusionFeatureId,
+        content: featureContentIdentitySchema.parse(content.identity),
+        contentHash: content.contentHash,
+        dependencies: [],
+        mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      },
+      {
+        onProgress(stage) {
+          state.progress.push(stage)
+        },
+      },
+    ),
+    "featureEvaluated",
+  )
+}
+
 function featureFailureResponse(error: unknown) {
   if (!(error instanceof GeometryWorkerRequestError)) return null
   const response = error.response
@@ -229,6 +316,7 @@ async function run() {
     state.cachedBox = await evaluate(client, "box", boxFeatureId, environment)
     const cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
     state.cylinder = cylinder
+    state.extrusion = await evaluateExtrusion(client, environment)
     const booleanDependencies = [
       { featureId: boxFeatureId, contentHash: box.contentHash },
       { featureId: cylinderFeatureId, contentHash: cylinder.contentHash },

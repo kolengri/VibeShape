@@ -1,6 +1,8 @@
 import { z } from "zod"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
+import type { FeatureRecord } from "./feature-graph"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { lengthQuantitySchema } from "./units"
 import {
   type EvaluatedVariable,
@@ -56,6 +58,24 @@ export const booleanFeatureParametersSchema = z
   .strict()
 
 export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
+
+export const extrusionFeatureParametersSchema = z
+  .object({
+    profile: sketchProfileSelectorSchema,
+    distance: primitiveLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
+
+export const extrusionFeatureAuthoredContentParametersSchema = z
+  .object({
+    profile: sketchProfileSelectorSchema,
+    distance: primitiveContentLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
 
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
 
@@ -133,6 +153,25 @@ function resolveCylinderParameters(parameters: unknown, variables: VariableValue
   } as const
 }
 
+function resolveExtrusionParameters(parameters: unknown, variables: VariableValues) {
+  const parsed = z
+    .object({
+      profile: sketchProfileSelectorSchema,
+      distance: lengthQuantitySchema,
+      symmetric: z.boolean(),
+      operation: z.literal("new"),
+    })
+    .strict()
+    .safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const distance = resolveLengthParameter("distance", parsed.data.distance, variables)
+  if (!distance.ok) return distance
+  return {
+    ok: true,
+    parameters: { ...parsed.data, distance: distance.quantity },
+  } as const
+}
+
 export const boxFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -172,6 +211,34 @@ export const booleanFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 0 },
 })
 
+export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.extrusion",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 0 },
+  references: { min: 0, max: 0 },
+})
+
+export function readExtrusionFeatureParameters(feature: FeatureRecord) {
+  const type = feature.type
+  const expected = extrusionFeatureType.type
+  if (
+    type.moduleId !== expected.moduleId ||
+    type.moduleVersion !== expected.moduleVersion ||
+    type.typeId !== expected.typeId ||
+    type.schemaVersion !== expected.schemaVersion
+  ) {
+    return null
+  }
+  const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
+  return parsed.success ? parsed.data : null
+}
+
 export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
   {
     type: boxFeatureType.type,
@@ -205,6 +272,20 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     parametersSchema: booleanFeatureParametersSchema,
     contentParameters(parameters) {
       return booleanFeatureContentParametersSchema.parse(parameters)
+    },
+  },
+  {
+    type: extrusionFeatureType.type,
+    parametersSchema: extrusionFeatureParametersSchema,
+    resolveParameters: resolveExtrusionParameters,
+    contentParameters(parameters) {
+      const extrusion = extrusionFeatureParametersSchema.parse(parameters)
+      return extrusionFeatureAuthoredContentParametersSchema.parse({
+        profile: extrusion.profile,
+        distance: extrusion.distance.value,
+        symmetric: extrusion.symmetric,
+        operation: extrusion.operation,
+      })
     },
   },
 ]

@@ -5,6 +5,7 @@ import {
   type SketchRecord,
   sketchRecordSchema,
 } from "./sketch"
+import { type SketchProfileSelector, sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import type { LengthQuantity } from "./units"
 
 export type RectangleSketchDefinition = Readonly<{
@@ -220,6 +221,20 @@ export function rectangleSketchDefinition(sketch: SketchRecord): RectangleSketch
     heightConstraintId: height.id,
     plane: sketch.plane,
   }
+}
+
+export function rectangleSketchProfileSelector(sketch: SketchRecord): SketchProfileSelector | null {
+  if (!rectangleSketchDefinition(sketch)) return null
+  const outerBoundaryEntityIds = sketch.entities
+    .flatMap((entity) => (entity.type === "line" && !entity.construction ? [entity.id] : []))
+    .sort()
+  const parsed = sketchProfileSelectorSchema.safeParse({
+    schemaVersion: 0,
+    sketchId: sketch.id,
+    outerBoundaryEntityIds,
+    holeBoundaryEntityIds: [],
+  })
+  return parsed.success ? parsed.data : null
 }
 
 export function updateRectangleSketch(

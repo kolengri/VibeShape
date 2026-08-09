@@ -203,6 +203,7 @@ export function createFeatureContentIdentity(
     feature: unknown
     dependencies: readonly unknown[]
     environment: unknown
+    contentParameters?: unknown
   },
 ): FeatureContentIdentityResult {
   const validated = registry.validateFeature(input.feature)
@@ -247,12 +248,23 @@ export function createFeatureContentIdentity(
     const { featureId, ...content } = reference
     return { ...content, inputIndex: inputIndexes.get(featureId) as number }
   })
+  const contentParameters =
+    input.contentParameters === undefined
+      ? { success: true as const, data: validated.contentParameters }
+      : featureParametersSchema.safeParse(input.contentParameters)
+  if (!contentParameters.success) {
+    return diagnostic(
+      "invalid-feature-content",
+      "Prepared feature content parameters are invalid.",
+      zodIssues(contentParameters.error, "contentParameters"),
+    )
+  }
   const identity = featureContentIdentitySchema.parse({
     schemaVersion: 0,
     feature: {
       schemaVersion: validated.feature.schemaVersion,
       type: validated.feature.type,
-      parameters: validated.contentParameters,
+      parameters: contentParameters.data,
       inputs: inputs.inputs,
       references,
     },
@@ -268,6 +280,7 @@ export async function computeFeatureContentHash(
     feature: unknown
     dependencies: readonly unknown[]
     environment: unknown
+    contentParameters?: unknown
   },
   hash: FeatureContentHasher,
 ): Promise<FeatureContentHashResult> {

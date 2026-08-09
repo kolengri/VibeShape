@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 7 as const
+export const GEOMETRY_PROTOCOL_VERSION = 8 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -10,6 +10,12 @@ const semverPattern =
 const featureIdSchema = z
   .string()
   .regex(uuidV7Pattern, "Feature IDs must be lowercase UUIDv7 values.")
+const sketchIdSchema = z
+  .string()
+  .regex(uuidV7Pattern, "Sketch IDs must be lowercase UUIDv7 values.")
+const sketchEntityIdSchema = z
+  .string()
+  .regex(uuidV7Pattern, "Sketch entity IDs must be lowercase UUIDv7 values.")
 const technicalIdentifierSchema = z
   .string()
   .min(3)
@@ -48,6 +54,88 @@ export const cylinderFeatureContentParametersSchema = z
 export const booleanFeatureContentParametersSchema = z
   .object({ operation: z.literal("subtract") })
   .strict()
+
+const extrusionLineSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("line"),
+    start: vector2Schema,
+    end: vector2Schema,
+  })
+  .strict()
+
+const extrusionArcSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("arc"),
+    start: vector2Schema,
+    middle: vector2Schema,
+    end: vector2Schema,
+  })
+  .strict()
+
+const extrusionCircleSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("circle"),
+    center: vector2Schema,
+    radius: cadLengthSchema,
+  })
+  .strict()
+
+export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
+  extrusionLineSegmentSchema,
+  extrusionArcSegmentSchema,
+  extrusionCircleSegmentSchema,
+])
+
+const extrusionProfileLoopSchema = z
+  .object({
+    sourceEntityIds: z.array(sketchEntityIdSchema).min(1).max(2_000),
+    segments: z.array(extrusionProfileSegmentSchema).min(1).max(2_000),
+  })
+  .strict()
+  .superRefine((loop, context) => {
+    const sourceIds = loop.sourceEntityIds
+    if (
+      sourceIds.some((entityId, index) => index > 0 && (sourceIds[index - 1] ?? "") >= entityId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceEntityIds"],
+        message: "Extrusion profile source entity IDs must be unique and sorted.",
+      })
+    }
+    const segmentIds = [...new Set(loop.segments.map(({ entityId }) => entityId))].sort()
+    if (
+      segmentIds.length !== sourceIds.length ||
+      segmentIds.some((entityId, index) => entityId !== sourceIds[index])
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["segments"],
+        message: "Extrusion profile segments must match their source entity IDs.",
+      })
+    }
+  })
+
+export const extrusionFeatureContentParametersSchema = z
+  .object({
+    sketchId: sketchIdSchema,
+    plane: z.enum(["xy", "xz", "yz"]),
+    outer: extrusionProfileLoopSchema,
+    holes: z.array(extrusionProfileLoopSchema).max(2_000),
+    distance: cadLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
+  .refine(
+    ({ outer, holes }) =>
+      outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
+      2_000,
+    "Extrusion profiles are limited to 2,000 total segments.",
+  )
 
 const normalizedBuildVersionSchema = z
   .string()
@@ -103,12 +191,12 @@ const featureTypeSchema = z
 const featureContentParametersSchema = z
   .record(z.string().min(1).max(128), z.json())
   .refine(
-    (parameters) => Object.keys(parameters).length <= 16,
-    "Primitive content parameters are limited to 16 keys.",
+    (parameters) => Object.keys(parameters).length <= 32,
+    "Feature content parameters are limited to 32 keys.",
   )
   .refine(
-    (parameters) => JSON.stringify(parameters).length <= 64 * 1024,
-    "Primitive content parameters exceed the encoded-size limit.",
+    (parameters) => JSON.stringify(parameters).length <= 1024 * 1024,
+    "Feature content parameters exceed the encoded-size limit.",
   )
 
 export const featureContentIdentitySchema = z

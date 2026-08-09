@@ -2,6 +2,7 @@ import {
   booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
+  extrusionFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
@@ -17,7 +18,18 @@ import {
   type TopologySpikeParameters,
 } from "@vibeshape/protocol"
 import { isAnyObject } from "is-what"
-import { type Shape3D, setOC } from "replicad"
+import {
+  assembleWire,
+  cast,
+  makeCircle,
+  makeFace,
+  makeLine,
+  makeThreePointArc,
+  type Point,
+  type Shape3D,
+  setOC,
+  type Wire,
+} from "replicad"
 import initializeOpenCascade, {
   type OpenCascadeInstance,
   type TopAbs_ShapeEnum,
@@ -101,6 +113,8 @@ const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
 const BOOLEAN_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
+const EXTRUSION_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
@@ -391,6 +405,7 @@ function planeSemanticRole(
 type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParametersSchema.parse>
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
+type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
 
 function boxFeatureSemanticRole(
   context: TopologyCandidateContext,
@@ -457,6 +472,7 @@ type ParsedFeature =
   | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
+  | { kind: "extrusion"; parameters: ExtrusionContentParameters }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -518,10 +534,22 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
     : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
 }
 
+function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
+    return invalidInputCardinality("A new-body extrusion cannot declare feature dependency inputs.")
+  }
+  const parameters = extrusionFeatureContentParametersSchema.safeParse(feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
+    : featureFailure("invalid-feature-parameters", "Extrusion content parameters are invalid.")
+}
+
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
+  [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
 ])
 
 function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -558,9 +586,168 @@ function createFeatureShape(
     return createOcctCylinder(opencascade, radius, height, [0, 0, centered ? -height / 2 : 0])
   }
 
+  if (feature.kind === "extrusion") {
+    return createExtrusionShape(opencascade, feature.parameters)
+  }
+
   const [target, tool] = dependencyShapes
   if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
   return cutOcctShapes(opencascade, target, tool)
+}
+
+function extrusionPlane(parameters: ExtrusionContentParameters) {
+  switch (parameters.plane) {
+    case "xy":
+      return {
+        normal: [0, 0, 1] as [number, number, number],
+        point: ([x, y]: readonly [number, number], offset = 0): Point => [x, y, offset],
+        local: ([x, y]: readonly [number, number, number]) => [x, y] as const,
+      }
+    case "xz":
+      return {
+        normal: [0, -1, 0] as [number, number, number],
+        point: ([x, y]: readonly [number, number], offset = 0): Point => [x, -offset, y],
+        local: ([x, _y, z]: readonly [number, number, number]) => [x, z] as const,
+      }
+    case "yz":
+      return {
+        normal: [1, 0, 0] as [number, number, number],
+        point: ([x, y]: readonly [number, number], offset = 0): Point => [offset, x, y],
+        local: ([_x, y, z]: readonly [number, number, number]) => [y, z] as const,
+      }
+  }
+}
+
+function dot3(left: readonly [number, number, number], right: readonly [number, number, number]) {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+function extrusionCapRole(
+  context: TopologyCandidateContext,
+  parameters: ExtrusionContentParameters,
+) {
+  if (context.kind !== "face") return undefined
+  const plane = extrusionPlane(parameters)
+  const direction = context.signature.direction
+  if (
+    context.signature.geometryClass !== "PLANE" ||
+    !direction ||
+    Math.abs(dot3(direction, plane.normal)) <= 0.999
+  ) {
+    return undefined
+  }
+  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
+  const coordinate = dot3(context.signature.centroid, plane.normal)
+  return firstMatchingRole([
+    [nearlyEqual(coordinate, startOffset), "extrusion.cap.start"],
+    [nearlyEqual(coordinate, startOffset + parameters.distance), "extrusion.cap.end"],
+  ])
+}
+
+function extrusionLineSideRole(
+  context: TopologyCandidateContext,
+  parameters: ExtrusionContentParameters,
+) {
+  if (context.kind !== "face") return undefined
+  const segments = [parameters.outer, ...parameters.holes].flatMap(({ segments }) => segments)
+  const plane = extrusionPlane(parameters)
+  const localCentroid = plane.local(context.signature.centroid)
+  const lineMatches = segments.filter((segment) => {
+    if (segment.type !== "line") return false
+    const midpoint = [
+      (segment.start[0] + segment.end[0]) / 2,
+      (segment.start[1] + segment.end[1]) / 2,
+    ] as const
+    return Math.hypot(localCentroid[0] - midpoint[0], localCentroid[1] - midpoint[1]) <= 1e-6
+  })
+  return lineMatches.length === 1 ? `extrusion.side.${lineMatches[0]?.entityId}` : undefined
+}
+
+function extrusionRoundSideRole(
+  context: TopologyCandidateContext,
+  parameters: ExtrusionContentParameters,
+) {
+  if (context.kind !== "face" || context.signature.geometryClass !== "CYLINDRE") return undefined
+  const segments = [parameters.outer, ...parameters.holes].flatMap(({ segments }) => segments)
+  const roundSegments = segments.filter((segment) => segment.type !== "line")
+  return roundSegments.length === 1 ? `extrusion.side.${roundSegments[0]?.entityId}` : undefined
+}
+
+function extrusionFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: ExtrusionContentParameters,
+) {
+  return (
+    extrusionCapRole(context, parameters) ??
+    extrusionLineSideRole(context, parameters) ??
+    extrusionRoundSideRole(context, parameters)
+  )
+}
+
+function extrusionLoopWire(
+  parameters: ExtrusionContentParameters,
+  loop: ExtrusionContentParameters["outer"],
+  offset: number,
+  reverse: boolean,
+) {
+  const plane = extrusionPlane(parameters)
+  const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
+  const edges = orderedSegments.map((segment) => {
+    if (segment.type === "circle") {
+      const normal = reverse
+        ? (plane.normal.map((coordinate) => -coordinate) as [number, number, number])
+        : plane.normal
+      return makeCircle(segment.radius, plane.point(segment.center, offset), normal)
+    }
+    const start = reverse ? segment.end : segment.start
+    const end = reverse ? segment.start : segment.end
+    if (segment.type === "line") {
+      return makeLine(plane.point(start, offset), plane.point(end, offset))
+    }
+    return makeThreePointArc(
+      plane.point(start, offset),
+      plane.point(segment.middle, offset),
+      plane.point(end, offset),
+    )
+  })
+  try {
+    return assembleWire(edges)
+  } finally {
+    for (const edge of edges) edge.delete()
+  }
+}
+
+function createExtrusionShape(
+  opencascade: OpenCascadeInstance,
+  parameters: ExtrusionContentParameters,
+) {
+  const plane = extrusionPlane(parameters)
+  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
+  const outer = extrusionLoopWire(parameters, parameters.outer, startOffset, false)
+  const holes: Wire[] = []
+  let face: ReturnType<typeof makeFace> | null = null
+  const vector = new opencascade.gp_Vec_4(
+    plane.normal[0] * parameters.distance,
+    plane.normal[1] * parameters.distance,
+    plane.normal[2] * parameters.distance,
+  )
+  try {
+    for (const hole of parameters.holes) {
+      holes.push(extrusionLoopWire(parameters, hole, startOffset, true))
+    }
+    face = makeFace(outer, holes)
+    const builder = new opencascade.BRepPrimAPI_MakePrism_1(face.wrapped, vector, false, true)
+    try {
+      return cast(builder.Shape()).asShape3D()
+    } finally {
+      builder.delete()
+    }
+  } finally {
+    vector.delete()
+    face?.delete()
+    for (const hole of holes) hole.delete()
+    outer.delete()
+  }
 }
 
 function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
@@ -569,7 +756,9 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
     semanticRole: (context) =>
       feature.kind === "box"
         ? boxFeatureSemanticRole(context, feature.parameters)
-        : cylinderFeatureSemanticRole(context, feature.parameters),
+        : feature.kind === "cylinder"
+          ? cylinderFeatureSemanticRole(context, feature.parameters)
+          : extrusionFeatureSemanticRole(context, feature.parameters),
   })
 }
 

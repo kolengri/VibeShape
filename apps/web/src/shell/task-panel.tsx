@@ -1,4 +1,9 @@
-import { rectangleSketchDefinition, type SketchId, type SketchRecord } from "@vibeshape/domain"
+import {
+  extrusionFeatureParametersSchema,
+  rectangleSketchDefinition,
+  type SketchId,
+  type SketchRecord,
+} from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
@@ -21,6 +26,7 @@ import {
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
+import { ExtrusionForm, type ExtrusionFormMode } from "../features/extrusion/extrusion-form"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
 import {
   type ActivePartDesignTool,
@@ -28,6 +34,7 @@ import {
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
+  isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
 import {
   RectangleSketchForm,
@@ -45,6 +52,7 @@ type TaskPanelProps = Readonly<{
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateExtrusion: () => void
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
@@ -204,8 +212,41 @@ function useBooleanFormCopy(mode: BooleanFormMode["kind"]) {
   }
 }
 
+function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel.extrusion")
+  const operationCopy = {
+    create: {
+      title: t("title"),
+      description: t("description"),
+      submit: t("create"),
+      validationSummary: t("validationSummary"),
+      saveFailed: t("createFailed"),
+    },
+    edit: {
+      title: t("editTitle"),
+      description: t("editDescription"),
+      submit: t("update"),
+      validationSummary: t("updateValidationSummary"),
+      saveFailed: t("updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
+    parameters: t("parameters"),
+    profile: t("profile"),
+    distance: t("distance"),
+    symmetric: t("symmetric"),
+    expressionDescription: t("expressionDescription"),
+    cancel: t("cancel"),
+    invalidExpression: t("invalidExpression"),
+    invalidDimension: t("invalidDimension"),
+    invalidRange: t("invalidRange"),
+    staleRevision: t("staleRevision"),
+  }
+}
+
 function featureTaskContext(
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode,
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode,
   revision: number,
 ) {
   return mode.kind === "edit"
@@ -218,7 +259,7 @@ function EditFeatureDeleteAction({
   onDeleted,
   report,
 }: {
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode
   onDeleted: () => void
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -254,6 +295,45 @@ function EditFeatureDeleteAction({
       onDeleted={onDeleted}
       onRemove={removeFeature}
     />
+  )
+}
+
+function ExtrusionTaskPanel({
+  mode,
+  onCloseTool,
+  report,
+}: {
+  mode: ExtrusionFormMode
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const copy = useExtrusionFormCopy(mode.kind)
+  const task = featureTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
+  const profile =
+    mode.kind === "create"
+      ? mode.profile
+      : extrusionFeatureParametersSchema.parse(mode.feature.parameters).profile
+  const profileLabel =
+    snapshot.sketches.find(({ id }) => id === profile.sketchId)?.label ??
+    t("extrusion.missingProfile")
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <ExtrusionForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        copy={copy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        profileLabel={profileLabel}
+        variables={snapshot.variables}
+        onCancel={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
+    </aside>
   )
 }
 
@@ -391,6 +471,23 @@ function booleanFormMode(
   return feature && isBooleanFeature(feature) ? { kind: "edit", feature } : null
 }
 
+function extrusionFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): ExtrusionFormMode | null {
+  if (activeTool.kind === "create-extrusion") {
+    return {
+      kind: "create",
+      createFeatureId: createBrowserFeatureId,
+      featureLabel,
+      profile: activeTool.profile,
+    }
+  }
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isExtrusionFeature(feature) ? { kind: "edit", feature } : null
+}
+
 function booleanOptions(
   report: NonNullable<DocumentControllerState["report"]>,
   editingFeatureId: Extract<BooleanFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
@@ -492,6 +589,25 @@ function ActiveCylinderTaskPanel({
   return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
 }
 
+function ActiveExtrusionTaskPanel({
+  activeTool,
+  onCloseTool,
+  report,
+}: {
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const t = useTranslations("app.shell.taskPanel.extrusion")
+  const extrusionCount = report.snapshot.features.filter(isExtrusionFeature).length
+  const mode = extrusionFormMode(
+    activeTool,
+    report,
+    t("featureLabel", { number: extrusionCount + 1 }),
+  )
+  return mode ? <ExtrusionTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+}
+
 function ActiveSubtractTaskPanel({
   activeTool,
   onCloseTool,
@@ -536,6 +652,11 @@ function CylinderToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
   return <ActiveCylinderTaskPanel activeTool={activeTool} {...props} />
 }
 
+function ExtrusionToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-extrusion" && activeTool.kind !== "edit-extrusion") return null
+  return <ActiveExtrusionTaskPanel activeTool={activeTool} {...props} />
+}
+
 function SubtractToolTaskPanel({ activeTool, ...props }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-subtract" && activeTool.kind !== "edit-subtract") return null
   return <ActiveSubtractTaskPanel activeTool={activeTool} {...props} />
@@ -546,6 +667,8 @@ const activeTaskPanelByKind = {
   "edit-box": BoxToolTaskPanel,
   "create-cylinder": CylinderToolTaskPanel,
   "edit-cylinder": CylinderToolTaskPanel,
+  "create-extrusion": ExtrusionToolTaskPanel,
+  "edit-extrusion": ExtrusionToolTaskPanel,
   "create-subtract": SubtractToolTaskPanel,
   "edit-subtract": SubtractToolTaskPanel,
 } satisfies Record<ActivePartDesignTool["kind"], (props: ActiveTaskPanelProps) => ReactNode>
@@ -708,11 +831,13 @@ function EmptySketchTaskPanel({
 
 function SelectedSketchTaskPanel({
   canCreate,
+  onCreateExtrusion,
   onCreateSketch,
   onEditSketch,
   sketch,
 }: {
   canCreate: boolean
+  onCreateExtrusion: () => void
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   sketch: SketchRecord
@@ -739,6 +864,16 @@ function SelectedSketchTaskPanel({
         size="sm"
         variant="outline"
         className="mt-2 w-full"
+        disabled={!canCreate || !canEdit}
+        onClick={onCreateExtrusion}
+      >
+        {t("extrude")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-2 w-full"
         disabled={!canCreate}
         onClick={onCreateSketch}
       >
@@ -756,12 +891,14 @@ function SelectedSketchTaskPanel({
 function SketchStartTaskPanel({
   activeSketchId,
   canCreate,
+  onCreateExtrusion,
   onCreateSketch,
   onEditSketch,
   report,
 }: {
   activeSketchId: SketchId | null
   canCreate: boolean
+  onCreateExtrusion: () => void
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   report: DocumentControllerState["report"]
@@ -771,6 +908,7 @@ function SketchStartTaskPanel({
     <SelectedSketchTaskPanel
       canCreate={canCreate}
       sketch={sketch}
+      onCreateExtrusion={onCreateExtrusion}
       onCreateSketch={onCreateSketch}
       onEditSketch={onEditSketch}
     />
@@ -784,6 +922,7 @@ function SketchTaskPanel({
   activeSketchTool,
   controller,
   onCloseTool,
+  onCreateExtrusion,
   onCreateSketch,
   onEditSketch,
   onSketchPreview,
@@ -802,6 +941,7 @@ function SketchTaskPanel({
     <SketchStartTaskPanel
       activeSketchId={activeSketchId}
       canCreate={canCreateFeature(controller)}
+      onCreateExtrusion={onCreateExtrusion}
       report={report}
       onCreateSketch={onCreateSketch}
       onEditSketch={onEditSketch}
