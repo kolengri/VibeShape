@@ -1,0 +1,20 @@
+{
+  "name": "@vibeshape/slicer-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Opt-in loopback bridge for opening local VibeShape 3MF exports in desktop slicers.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vibeshape/slicer-handoff": "workspace:*",
+    "is-what": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

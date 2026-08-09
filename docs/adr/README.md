@@ -21,6 +21,7 @@
 | [0017](0017-atomic-variable-rename-and-reference-refactor.md) | Accepted | Stable-ID variable rename with atomic exact-reference refactoring |
 | [0018](0018-deterministic-sketch-profile-extraction.md) | Accepted | Deterministic bounded sketch profiles with fail-closed ambiguity handling |
 | [0019](0019-selector-backed-new-body-extrusion.md) | Accepted | Stable sketch-profile selectors and transient analytical content for exact new-body extrusion |
+| [0020](0020-local-slicer-handoff-bridge.md) | Accepted | Authenticated loopback bridge with remembered slicer choice and download fallback |
 
 Statuses:
 

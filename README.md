@@ -20,6 +20,8 @@ The first sketch solve lazily loads the exact reviewed SolveSpace v3.2 ES module
 
 The browser integration harness proves main-thread session → document worker → variable resolution → domain DAG → application coordinator → OCCT, plus the real generated SolveSpace WASM path. It covers selective geometry rebuild, hard worker replacement, exact-revision export, a variable-driven fully constrained sketch, a variable-driven rectangular profile, selector-backed exact extrusion, two continuation/drag solves, and a 1,000-point under-constrained sketch within the declared solve and heap budgets. Stable profile-selector schema v0 records canonical boundary entity IDs and resolves the same region after transient loop indices change while failing closed on missing or ambiguous intent. The product shell exposes the TanStack Form-backed Variables table; creates and edits persisted Boxes, Cylinders, ordered Boolean/Subtract features, fully constrained rectangle sketches on every origin plane, and variable-driven symmetric or one-sided new-body extrusions from a rectangle profile; protects dependency-owned feature and referenced-sketch deletion; downloads 3MF, STEP, STL, and deterministic `.vshape` v0 backups; renders authoritative worker meshes through raw Three.js/WebGL2; and renders saved sketch solutions plus exact profile measurements in an accessible orthographic SVG workspace. Rectangle and extrusion dimensions retain authored literals or `#variable` expressions, while edits preserve stable identities and selectors. `.vshape` round-trip tests preserve stable variable IDs, formulas, feature sources, analytical sketch records, and sketch dimension expressions. Free-form sketch tools, arbitrary profile picking, extrusion add/remove/intersect, interactive extrusion preview, conflict editing, interior-intersection splitting, body/edge/vertex selection, topology repair, undo/redo, `.vshape` migrations, configurable print profiles, and persistent export reports remain open.
 
+The export dialog also remembers an allowlisted desktop slicer and sends its generated 3MF through the explicitly paired, authenticated VibeShape Slicer Bridge on `127.0.0.1`. The source bridge starts OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura without a shell. If the bridge is unpaired, unavailable, or cannot launch the selected application, the browser downloads the same 3MF and reports the fallback instead of claiming that the slicer opened. Signed bridge installers and background startup remain release-packaging work.
+
 The local-project library now reads bounded, strict IndexedDB summaries; identifies the current project; creates, switches, and duplicates projects; and permanently deletes an explicitly confirmed inactive project in one revision- and lease-checked transaction. Successful geometry rebuilds also produce a bounded isometric SVG preview from authoritative terminal meshes. The exact-revision preview is disposable derived data in an additive IndexedDB v2 store: it cannot block semantic saves, does not enter `.vshape`, fails open to an accessible placeholder, copies separately after semantic duplication, and is removed with project deletion. Duplication verifies the source history, assigns a new document ID and globally unique command IDs, preserves document-scoped variable and feature identities plus authored expressions, appends an explicit copy-name event, and publishes the result atomically without claiming an external backup. Active-project deletion is blocked until the user switches away; richer storage-state presentation remains required before the P0 library is complete.
 
 `@vibeshape/automation-api` provides strict lifecycle schemas and a bounded revision-tagged document-summary view; `@vibeshape/automation-host` coordinates host-generated, owner-bound, expiring disposable drafts over injected document ports and ordinary query and command dispatchers. There is no MCP transport or SDK dependency yet. SPK-001 through SPK-005 clear the controlled OCCT worker, SolveSpace solver, stable topology, minimal 3MF interoperability, and semantic persistence/recovery gates. SPK-006 proceeds with reduced scope: immutable exact-integrity packages, no-import WebAssembly features, capabilities, restricted states, and opaque iframe UI pass locally in Chromium, Firefox, and WebKit, while arbitrary same-origin workspace JavaScript is rejected. Product sketch interaction, general production persistence, and extension workflows remain incomplete.
@@ -39,6 +41,7 @@ Key decisions:
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
 - primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;
+- desktop slicer handoff: an opt-in **authenticated loopback bridge** with a remembered allowlisted slicer and transparent 3MF download fallback;
 - project license: **GPL-3.0-or-later**; OCCT/OpenCascade.js are distributed under LGPL-2.1 terms and require a separate compliance process.
 
 ## Documentation map
@@ -84,6 +87,14 @@ Use the Bun version pinned in `packageManager`:
 bun install
 bun run dev
 ```
+
+For source-based desktop slicer handoff, pair the exact development origin and paste the printed token into the Export dialog:
+
+```bash
+bun run slicer:bridge -- --origin http://localhost:5173
+```
+
+See the [3D-printing workflow](docs/3d-printing.md#desktop-slicer-handoff) for pairing, executable overrides, and security boundaries.
 
 The local pre-merge verification contract is:
 

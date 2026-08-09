@@ -12,6 +12,7 @@
     "apps/web/src/spikes/sketch-worker.ts",
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
+    "apps/slicer-bridge/src/index.ts",
     "playwright.formats.config.ts",
     "playwright.extension.config.ts",
     "playwright.persistence.config.ts",
@@ -37,6 +38,7 @@
   "boundaries": {
     "zones": [
       { "name": "web", "patterns": ["apps/web/**"] },
+      { "name": "slicer-bridge", "patterns": ["apps/slicer-bridge/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
       { "name": "application", "patterns": ["packages/application/**"] },
@@ -64,11 +66,16 @@
         "patterns": ["packages/print-analysis/**"]
       },
       { "name": "ui", "patterns": ["packages/ui/**"] },
-      { "name": "test-models", "patterns": ["packages/test-models/**"] }
+      { "name": "test-models", "patterns": ["packages/test-models/**"] },
+      { "name": "slicer-handoff", "patterns": ["packages/slicer-handoff/**"] }
     ],
     "rules": [
       // Stable core rule: the domain has no internal package dependencies.
       { "from": "domain", "allow": [] },
+      // Serializable slicer handoff contracts have no application or native authority.
+      { "from": "slicer-handoff", "allow": [] },
+      // The loopback adapter depends only on its strict shared contract.
+      { "from": "slicer-bridge", "allow": ["slicer-handoff"] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },
       // The document worker composes application policy, native geometry, and approved file formats.

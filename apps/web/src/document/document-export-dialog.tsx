@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
 import { useState } from "react"
+import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
 import type { DocumentControllerState } from "./document-controller"
 import { exportActiveDocument } from "./document-controller"
 import { downloadDocumentExport } from "./document-export"
@@ -129,24 +130,48 @@ function ExportNotice({ hasGeometry, failed }: { hasGeometry: boolean; failed: b
 export function DocumentExportDialog({ controller }: { controller: DocumentControllerState }) {
   const t = useTranslations("app.export")
   const [open, setOpen] = useState(false)
+  const [slicerPending, setSlicerPending] = useState(false)
+  const [slicerStatus, setSlicerStatus] = useState<string | null>(null)
   const { activity, runExport } = useDocumentExportAction(() => setOpen(false))
   const hasGeometry = documentHasExportableGeometry(controller)
-  const actionDisabled = activity.pendingFormat !== null || !hasGeometry
+  const actionDisabled = activity.pendingFormat !== null || slicerPending || !hasGeometry
+  const changeDialogOpen = (nextOpen: boolean) => {
+    if (nextOpen) setSlicerStatus(null)
+    setOpen(nextOpen)
+  }
 
   return (
     <>
-      <ExportStatus messageKey={activity.statusKey} />
-      <Dialog open={open} onOpenChange={setOpen}>
+      {slicerStatus ? (
+        <span className="text-xs text-muted-foreground" role="status" aria-live="polite">
+          {slicerStatus}
+        </span>
+      ) : (
+        <ExportStatus messageKey={activity.statusKey} />
+      )}
+      <Dialog open={open} onOpenChange={changeDialogOpen}>
         <DialogTrigger asChild>
           <Button type="button" size="sm" variant="outline">
             {t("trigger")}
           </Button>
         </DialogTrigger>
-        <DialogContent closeLabel={t("closeLabel")}>
+        <DialogContent
+          closeLabel={t("closeLabel")}
+          className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>{t("title")}</DialogTitle>
             <DialogDescription>{t("description")}</DialogDescription>
           </DialogHeader>
+          <SlicerHandoffPanel
+            disabled={actionDisabled}
+            onBusyChange={setSlicerPending}
+            onOpened={(message) => {
+              setSlicerStatus(message)
+              setOpen(false)
+            }}
+            prepareThreeMf={() => exportActiveDocument("3mf")}
+          />
           <div className="grid gap-3 sm:grid-cols-3">
             <ExportFormatCard
               format="3mf"

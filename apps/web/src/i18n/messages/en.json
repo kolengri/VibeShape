@@ -79,6 +79,39 @@
       "close": "Close",
       "noBodies": "Create a valid solid body before exporting.",
       "error": "The model could not be exported. Your saved document is unchanged.",
+      "slicer": {
+        "title": "Open in a slicer",
+        "description": "Prepare one 3MF and open it in your preferred desktop slicer. The selected slicer is remembered in this browser.",
+        "targetLabel": "Preferred slicer",
+        "targetDescription": "VibeShape remembers this choice for the next project.",
+        "action": "Open in {slicer}",
+        "preparing": "Preparing 3MF for {slicer}…",
+        "opened": "3MF sent to {slicer}",
+        "exportFailed": "The 3MF could not be prepared. Your saved document is unchanged.",
+        "fallback": {
+          "notConfigured": "The desktop bridge is not connected. The 3MF was downloaded for {slicer} instead.",
+          "unavailable": "The desktop bridge could not be reached. The 3MF was downloaded for {slicer} instead.",
+          "invalidResponse": "The desktop bridge returned an invalid response. The 3MF was downloaded for {slicer} instead.",
+          "notInstalled": "{slicer} is not installed or configured in the desktop bridge. The 3MF was downloaded instead.",
+          "unauthorized": "The desktop bridge pairing token was rejected. The 3MF was downloaded for {slicer} instead.",
+          "rejected": "The desktop bridge could not open {slicer}. The 3MF was downloaded instead."
+        },
+        "bridge": {
+          "summary": "Desktop bridge setup",
+          "description": "Run the local VibeShape Slicer Bridge for this exact website origin, then paste its pairing token. VibeShape sends the 3MF only to 127.0.0.1 and never starts a print.",
+          "connected": "A bridge credential is saved in this browser.",
+          "disconnected": "No bridge credential is saved. Open-in-slicer will download the 3MF instead.",
+          "disconnect": "Disconnect",
+          "disconnectFailed": "The bridge credential could not be removed from this browser.",
+          "formLabel": "Desktop bridge connection",
+          "tokenLabel": "Pairing token",
+          "tokenDescription": "Paste the base64url token printed by the local bridge. It is stored only in this browser profile.",
+          "invalidToken": "Enter the complete bridge pairing token.",
+          "save": "Connect bridge",
+          "saved": "Bridge credential saved.",
+          "saveFailed": "The bridge credential could not be saved in this browser."
+        }
+      },
       "threeMf": {
         "title": "3MF",
         "description": "Validated millimeter meshes for modern 3D-printing slicers.",

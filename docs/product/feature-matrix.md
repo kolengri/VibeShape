@@ -151,7 +151,7 @@ A printability warning is a heuristic, not a guarantee of a successful print.
 
 STL import creates a `MeshBody`, not a fake exact `SolidBody`. Automatic mesh-to-B-Rep conversion is not promised.
 
-The implemented export dialog downloads successful terminal bodies as deterministic multi-object 3MF with fixed print tessellation, exact B-Rep STEP, or binary STL. Configurable print profiles, placement, reports, and release slicer UX remain later P0 work.
+The implemented export dialog downloads successful terminal bodies as deterministic multi-object 3MF with fixed print tessellation, exact B-Rep STEP, or binary STL. It can also send that 3MF to a remembered OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura choice through the explicitly paired local bridge in ADR-0020, with an honest download fallback. Signed bridge installers, configurable print profiles, placement, reports, and deeper slicer integration remain later work.
 
 ## Undo, redo, and history
 

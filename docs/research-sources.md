@@ -143,6 +143,19 @@ Context7 resolved the primary MCP specification to `/modelcontextprotocol/modelc
 
 **Conclusion:** MCP should terminate in a local adapter rather than inside domain or extension packages. Resources map to bounded revisioned views, tools map to explicit draftable commands, and protocol annotations supplement rather than replace VibeShape authorization, preview, confirmation, and audit enforcement. `stdio` is the smallest first transport; a browser pairing channel still needs explicit loopback authentication and origin defense.
 
+## Desktop slicer handoff
+
+| Source | Evidence |
+|---|---|
+| [PrusaSlicer supported-website downloader](https://help.prusa3d.com/article/opening-models-in-prusaslicer-from-supported-websites_399198) | PrusaSlicer can register a URL downloader for supported websites, but the flow retrieves a remotely addressable model and applies website allowlisting rather than accepting a browser-owned local `Blob` |
+| [Bambu Studio command-line usage](https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage) | Bambu Studio accepts model files, including 3MF, as positional command-line inputs |
+| [PrusaSlicer command-line interface](https://github.com/prusa3d/PrusaSlicer/wiki/Command-Line-Interface) | PrusaSlicer accepts a model file through its command-line interface |
+| [Snapmaker Orca quick-start guide](https://wiki.snapmaker.com/en/Snapmaker_Orca/manual/orca_qsg) | Snapmaker Orca imports 3MF project files through the desktop application |
+| [MDN Web Share API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API) | Sharing is initiated by user activation and delegated to an operating-system-selected target; the web application does not own a remembered target-application launch contract |
+| [Bun `spawn`](https://bun.sh/docs/runtime/child-process) | Array-form process arguments allow a local adapter to launch one reviewed executable without invoking a shell |
+
+**Conclusion:** browser-only one-click launch cannot reliably transfer a locally generated 3MF to a remembered arbitrary desktop slicer. The smallest local-first design is an explicitly paired loopback adapter that accepts only bounded 3MF bytes and an allowlisted slicer ID, launches without a shell, and falls back to a transparent browser download.
+
 ## Monorepo and UI Toolchain
 
 Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the current configuration and CI contract were cross-checked against the version-matched 3.14.0 package schema, CLI, GitHub Action, and npm metadata.

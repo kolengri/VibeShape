@@ -83,6 +83,18 @@ The target local AI integration is specified in [Automation and MCP architecture
 
 Connecting an independently hosted PWA, Streamable HTTP, and remote access are disabled in the initial bridge. Cross-origin local pairing requires CSP, mixed-content, CORS, Private Network Access, DNS-rebinding, and browser-matrix evidence. A later HTTP MCP transport also requires a separate deployment threat model, Origin validation, authentication, secure session handling, token audience checks, and the current MCP authorization profile.
 
+## Desktop slicer bridge
+
+The slicer bridge is a narrower local adapter specified by [ADR-0020](adr/0020-local-slicer-handoff-bridge.md). It has no document, storage, geometry-kernel, extension, MCP, printer, or generic process authority.
+
+- It binds only to `127.0.0.1:43113` and checks the exact host, port, paired origin, protocol version, bearer token, request method, path, metadata, content type, body size, and 3MF magic bytes.
+- CORS names only the paired origin. The token is stored in an owner-only local configuration file and in the explicitly connected browser profile, and is sent only in the `Authorization` header.
+- The browser cannot provide a path or command. Slicer IDs map to reviewed executable candidates or slicer-specific absolute environment overrides, and launch uses an argument array without a shell.
+- The bridge permits one active handoff, rate-limits attempts, deduplicates completed request IDs, owns and expires its temporary files, and does not return local paths.
+- The action never starts a print. Failure downloads the same 3MF and reports that fallback.
+
+An XSS in the paired application origin could read the browser-stored token and request a handoff, so the bridge does not replace CSP, dependency integrity, or application-origin review. Pairing should be rotated after suspected origin compromise. Packaged releases must preserve these controls and add signed binaries, secure update policy, and installer-specific verification.
+
 ## Import policy
 
 - Check magic bytes, not only extension or MIME type.

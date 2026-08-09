@@ -351,6 +351,8 @@ The model tree is a dedicated accessible tree, not a styled table.
 - Tooltips supplement accessible names; they never contain required instructions, errors, or interactive content.
 - A hover-opened surface remains dismissible and does not cover the control or model entity the user must inspect.
 - The application-level `Export…` dialog names each format by purpose, blocks format actions until a valid rebuilt solid exists, and keeps pending, success, or failure status discoverable in the application bar after the modal closes.
+- The preferred slicer is a device/browser preference, not document content. Save a valid selection immediately and reuse it across projects.
+- “Open in slicer,” “sent to slicer,” “downloaded,” “sliced,” and “printed” are different states. If local handoff fails, download the 3MF and say so; never claim that a slicer opened.
 
 ## Feedback, Progress, and Diagnostics
 

@@ -25,6 +25,7 @@
     "@vibeshape/i18n": "workspace:*",
     "@vibeshape/persistence": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
+    "@vibeshape/slicer-handoff": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "@vibeshape/viewer": "workspace:*",
     "react": "catalog:",

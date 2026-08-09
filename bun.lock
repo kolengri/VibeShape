@@ -19,6 +19,18 @@
         "vitest": "4.1.10",
       },
     },
+    "apps/slicer-bridge": {
+      "name": "@vibeshape/slicer-bridge",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/slicer-handoff": "workspace:*",
+        "is-what": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
+      },
+    },
     "apps/web": {
       "name": "@vibeshape/web",
       "version": "0.0.0",
@@ -31,6 +43,7 @@
         "@vibeshape/i18n": "workspace:*",
         "@vibeshape/persistence": "workspace:*",
         "@vibeshape/protocol": "workspace:*",
+        "@vibeshape/slicer-handoff": "workspace:*",
         "@vibeshape/ui": "workspace:*",
         "@vibeshape/viewer": "workspace:*",
         "react": "catalog:",
@@ -211,6 +224,16 @@
       "version": "0.0.0",
       "dependencies": {
         "@vibeshape/domain": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
+      },
+    },
+    "packages/slicer-handoff": {
+      "name": "@vibeshape/slicer-handoff",
+      "version": "0.0.0",
+      "dependencies": {
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -750,6 +773,10 @@
     "@vibeshape/protocol": ["@vibeshape/protocol@workspace:packages/protocol"],
 
     "@vibeshape/sketch-solver": ["@vibeshape/sketch-solver@workspace:packages/sketch-solver"],
+
+    "@vibeshape/slicer-bridge": ["@vibeshape/slicer-bridge@workspace:apps/slicer-bridge"],
+
+    "@vibeshape/slicer-handoff": ["@vibeshape/slicer-handoff@workspace:packages/slicer-handoff"],
 
     "@vibeshape/test-models": ["@vibeshape/test-models@workspace:packages/test-models"],
 
