@@ -4,7 +4,15 @@
 
 **Pass — the SolveSpace v3.2 solver subset is viable behind a flat worker-owned WASM ABI.**
 
-The spike clears the solver-selection gate. It does not promote the generated binary directly into product UI code. Production work must still define domain sketch records, a worker protocol, drag branch-continuation behavior, scale budgets, and conflict UX.
+The spike clears the solver-selection gate. The generated binary is never imported by product UI code; subsequent production work promotes the exact reviewed output only behind the document-worker boundary.
+
+## Production promotion status
+
+The non-visual promotion gate is now complete. Sketch schema v0 defines bounded origin-plane point, line, circle, and arc records, every P0 constraint family, semantic reference compatibility, and Quantity-backed dimensions. Ordinary revisioned add, update, and remove commands provide deterministic tamper-resistant replay, persistence commits accept the same events, and `.vshape` v0 preserves the analytical records and authored expressions.
+
+Document protocol v4 carries exact-revision `solveSketch` requests and strict solution records. `@vibeshape/sketch-solver` evaluates document variables, maps stable IDs to ephemeral ABI handles, restores compatible prior solutions, applies explicit drag targets last, and maps solved values and conflicts back to stable IDs. The document session rebuilds the committed snapshot before retrying one recoverable solve after worker replacement. The real-browser production harness solves a `#width`-driven fully constrained line, performs two continuation/drag solves, and solves a 1,000-point sketch in the actual generated worker WASM. `bun run solvespace:verify:runtime` independently fixes the promoted module and WASM to the reviewed hashes below.
+
+Profile detection, sketch-mode interaction, conflict repair UX, and sketch-driven solid features remain product work; they are not part of this solver spike or the completed non-visual promotion boundary.
 
 ## Scope
 
@@ -23,7 +31,7 @@ It covers:
 - Bun and Chromium module-worker execution;
 - source and output provenance, bit reproducibility, and corresponding-source packaging.
 
-The spike does not cover profile detection, construction geometry policy, production serialization, UI interaction, solution-branch continuity across complex drags, very large sketches, or every non-P0 SolveSpace constraint.
+The original spike does not cover profile detection, product UI interaction, solution-branch continuity across complex drags, very large sketches beyond the initial 1,000-point product budget, or every non-P0 SolveSpace constraint. Production serialization, construction flags, ordinary commands, and the initial continuation policy were implemented after the spike and are summarized above.
 
 ## Reproducible inputs
 
@@ -140,7 +148,7 @@ bun run solvespace:evidence
 bun run solvespace:bundle:compliance
 ```
 
-All four paths are local-only where they perform native work and reject truthy `CI`. There is no SolveSpace GitHub Actions workflow. Ordinary PR CI only runs the fast TypeScript adapter unit tests and never downloads or source-builds SolveSpace.
+All four paths are local-only where they perform native work and reject truthy `CI`. There is no SolveSpace source-build or extended-evidence GitHub Actions workflow. Ordinary PR CI verifies the checked-in runtime hashes and runs fast TypeScript tests; it never downloads or source-builds SolveSpace. Production Vite and Playwright verification remain local pre-merge gates.
 
 ## Licensing and corresponding source
 
@@ -157,10 +165,10 @@ This technical bundle supports compliance but does not replace release legal rev
 
 ## Unsupported and deferred behavior
 
-No required P0 primitive is unsupported by the selected native subset. Deferred behavior includes cubic and curve-to-curve tangency, 3D sketch constraints, reference dimensions, large-sketch scaling thresholds, complex drag branch continuity, profile extraction, and user-facing repair guidance. These are not reasons to replace the solver now; they are explicit production acceptance work.
+No required P0 primitive is unsupported by the selected native subset. Deferred behavior includes cubic and curve-to-curve tangency, 3D sketch constraints, reference dimensions, budgets beyond the initial 1,000-point harness, complex drag branch continuity, profile extraction, and user-facing repair guidance. These are not reasons to replace the solver now; they are explicit product acceptance work.
 
 ## Stop/go decision
 
 **Go** with the narrow SolveSpace v3.2 WASM solver boundary selected in [ADR-0014](../adr/0014-solvespace-flat-wasm-solver.md).
 
-The next solver work is a production sketch domain and worker protocol using this ABI, followed by branch-continuation, scale, and interaction tests. The next independent Phase 0 uncertainty remains SPK-003 stable topology references.
+The production sketch domain, protocol v4, initial branch-continuation policy, variable-backed dimensions, recovery, and 1,000-point browser budget now consume this ABI. The next sketch work is profile detection and the accessible sketch interaction slice. The next independent Phase 0 uncertainty at the time of this decision was SPK-003 stable topology references; that spike has since passed separately.

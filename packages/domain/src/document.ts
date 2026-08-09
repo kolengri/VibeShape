@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
+import { type SketchRecord, sketchRecordsSchema } from "./sketch"
 import { type VariableDefinition, variableDefinitionsSchema } from "./variables"
 
 export const documentNameInputSchema = z.string().trim().min(1).max(120)
@@ -17,6 +18,7 @@ export const documentSnapshotSchema = z
     revision: revisionSchema,
     name: documentNameSchema,
     variables: variableDefinitionsSchema.default([]),
+    sketches: sketchRecordsSchema.default([]),
     features: featureRecordsSchema.default([]),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
@@ -26,8 +28,9 @@ export const documentSnapshotSchema = z
 type ParsedDocumentSnapshot = z.infer<typeof documentSnapshotSchema>
 
 export type DocumentSnapshot = Readonly<
-  Omit<ParsedDocumentSnapshot, "features" | "variables"> & {
+  Omit<ParsedDocumentSnapshot, "features" | "sketches" | "variables"> & {
     variables: readonly VariableDefinition[]
+    sketches: readonly SketchRecord[]
     features: readonly FeatureRecord[]
   }
 >

@@ -68,6 +68,8 @@ The functional operations, source-built destructor correction, transient history
 
 **Result: Pass.** The pinned SolveSpace v3.2 solver subset now builds as a deterministic ES module and WASM pair behind a flat typed-array ABI. The local corpus covers every P0 primitive, status and conflict reporting, 1,600 perturbation solves, degenerate geometry, 1,000 lifecycle cycles with a stable post-corpus heap, and a 19-fixture Chromium module-worker run. See [SPK-002 evidence](spikes/spk-002-sketch-solver.md) and [ADR-0014](adr/0014-solvespace-flat-wasm-solver.md).
 
+**Production follow-through:** the exact reviewed output is now promoted behind sketch schema v0 and document protocol v4. Revisioned sketch commands, semantic reference validation, variable-backed dimensions, stable-ID continuation, drag precedence, worker replacement/rebuild/retry, runtime hash verification, `.vshape` preservation, and the initial 1,000-point browser budget are executable. Profile detection and product interaction remain the next sketch slice.
+
 ### Question
 
 Can the SolveSpace solver be isolated behind a robust, testable ABI without depending on its experimental UI or web port?

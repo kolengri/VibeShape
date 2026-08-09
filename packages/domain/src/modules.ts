@@ -194,6 +194,45 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
         openWorld: false,
       },
     },
+    {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
+      kind: "org.vibeshape.sketch.update",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
+      kind: "org.vibeshape.sketch.remove",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "destructive",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: true,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
   ],
   queries: [
     {

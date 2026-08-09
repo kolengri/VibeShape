@@ -1,5 +1,6 @@
 import { applyDocumentCommand, type DocumentEvent } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { describe, expect, it } from "vitest"
 import { readVShape, VSHAPE_MEDIA_TYPE, writeVShape } from "./vshape"
@@ -8,6 +9,11 @@ const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
 const widthVariableId = "0195b5ac-b220-7a2c-8c33-67a36a7f21bc"
 const wallVariableId = "0195b5ac-b220-7a2c-8c33-67a36a7f21bd"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f21be"
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21bf"
+const sketchPointAId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c0"
+const sketchPointBId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c1"
+const sketchLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c2"
+const sketchConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c3"
 const timestamp = "2026-08-09T10:00:00Z"
 
 function commandId(index: number) {
@@ -57,13 +63,67 @@ function configurableProject() {
     },
   })
   events.push(variables.event)
-  const feature = apply(variables.snapshot, {
-    kind: "org.vibeshape.feature.add",
+  const sketch = apply(variables.snapshot, {
+    kind: "org.vibeshape.sketch.add",
     schemaVersion: 1,
     commandId: commandId(3),
     documentId,
     baseRevision: 2,
     issuedAt: "2026-08-09T10:02:00Z",
+    actor: { type: "user", userId: null },
+    payload: {
+      sketch: {
+        schemaVersion: 0,
+        id: sketchId,
+        label: "Bracket profile",
+        plane: "xy",
+        entities: [
+          {
+            schemaVersion: 0,
+            id: sketchPointAId,
+            type: "point",
+            x: 0,
+            y: 0,
+            construction: false,
+          },
+          {
+            schemaVersion: 0,
+            id: sketchPointBId,
+            type: "point",
+            x: 20,
+            y: 0,
+            construction: false,
+          },
+          {
+            schemaVersion: 0,
+            id: sketchLineId,
+            type: "line",
+            startPointId: sketchPointAId,
+            endPointId: sketchPointBId,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: sketchConstraintId,
+            type: "distance",
+            firstPointId: sketchPointAId,
+            secondPointId: sketchPointBId,
+            value: createLengthQuantity(20, "mm", "#width"),
+          },
+        ],
+      },
+    },
+  })
+  events.push(sketch.event)
+  const feature = apply(sketch.snapshot, {
+    kind: "org.vibeshape.feature.add",
+    schemaVersion: 1,
+    commandId: commandId(4),
+    documentId,
+    baseRevision: 3,
+    issuedAt: "2026-08-09T10:03:00Z",
     actor: { type: "user", userId: null },
     payload: {
       feature: {
@@ -123,11 +183,22 @@ describe(".vshape v0", () => {
     expect(read).toMatchObject({
       ok: true,
       value: {
-        manifest: { documentRevision: 3, units: "millimeter" },
+        manifest: { documentRevision: 4, units: "millimeter" },
         snapshot: {
           variables: [
             { id: wallVariableId, name: "wall", expression: "2 mm" },
             { id: widthVariableId, name: "width", expression: "10 * #wall" },
+          ],
+          sketches: [
+            {
+              id: sketchId,
+              constraints: [
+                {
+                  id: sketchConstraintId,
+                  value: { source: { expression: "#width" } },
+                },
+              ],
+            },
           ],
           features: [
             {

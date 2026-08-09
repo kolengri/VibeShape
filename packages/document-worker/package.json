@@ -19,6 +19,7 @@
     "@vibeshape/domain": "workspace:*",
     "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
+    "@vibeshape/sketch-solver": "workspace:*",
     "is-what": "catalog:"
   },
   "devDependencies": {

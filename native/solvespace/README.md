@@ -24,8 +24,8 @@ bun run solvespace:evidence
 bun run solvespace:bundle:compliance
 ```
 
-`solvespace:prepare` verifies the pinned SolveSpace, Eigen, and mimalloc archives. `solvespace:build` runs the pinned Emscripten image and writes quarantined outputs under `.artifacts/solvespace-build`. `solvespace:evidence` runs the typed adapter corpus in Bun and the raw ABI corpus in a real Chromium module worker. The compliance command creates a local corresponding-source archive with the exact sources, patch, wrapper, build recipe, evidence, and license texts.
+`solvespace:prepare` verifies the pinned SolveSpace, Eigen, and mimalloc archives. `solvespace:build` runs the pinned Emscripten image and writes review candidates under `.artifacts/solvespace-build`. `solvespace:evidence` runs the typed adapter corpus in Bun and the raw ABI corpus in a real Chromium module worker. The compliance command creates a local corresponding-source archive with the exact sources, patch, wrapper, build recipe, evidence, and license texts.
 
 The build sets `SOURCE_DATE_EPOCH`, `TZ=UTC`, and `LC_ALL=C`. This is required because mimalloc includes compilation date and time strings; without those variables, functionally identical WASM outputs have different hashes.
 
-Generated `.mjs`, `.wasm`, reports, source downloads, and compliance archives remain ignored under `.artifacts`. Do not commit or publish a generated binary without the matching corresponding-source bundle and release review.
+Generated candidates, reports, source downloads, and compliance archives remain ignored under `.artifacts`. The exact reviewed runtime is promoted to `packages/sketch-solver/runtime`; its matching public source bundle is `third_party/solvespace/solvespace-corresponding-source.tar.gz`. `bun run solvespace:verify:runtime` verifies all three artifacts. Do not replace or publish a generated binary without replacing the matching corresponding-source bundle and completing the release review.

@@ -137,6 +137,59 @@ describe("trusted command dispatcher", () => {
     }
   })
 
+  it("routes sketch mutations through the automation-visible document module", () => {
+    const dispatcher = commandDispatcher()
+    const created = dispatcher.dispatch(
+      null,
+      command(
+        "org.vibeshape.document.create",
+        0,
+        "Sketch document",
+        "0195b5ac-b214-7a2c-8c33-67a36a7f21ac",
+      ),
+    )
+    if (!created.ok) throw new Error(created.diagnostic.message)
+
+    const added = dispatcher.dispatch(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b215-7a2c-ac33-67a36a7f21ac",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-08T12:01:00Z",
+      actor: userActor,
+      payload: {
+        sketch: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+          label: "Automation profile",
+          plane: "xy",
+          entities: [
+            {
+              schemaVersion: 0,
+              id: "0195b5ac-b220-7a2c-8c33-67a36a7f3202",
+              type: "point",
+              x: 0,
+              y: 0,
+              construction: false,
+            },
+          ],
+          constraints: [],
+        },
+      },
+    })
+
+    expect(added).toMatchObject({
+      ok: true,
+      snapshot: { revision: 2, sketches: [{ label: "Automation profile" }] },
+      event: { type: "org.vibeshape.sketch.added" },
+    })
+    expect(moduleRegistry().getCommand("org.vibeshape.sketch.remove")).toMatchObject({
+      confirmation: "destructive",
+      automation: { exposure: "draft", destructive: true },
+    })
+  })
+
   it("routes feature commands only when the feature module and handler set are composed", () => {
     const dispatcher = featureCommandDispatcher()
     const created = dispatcher.dispatch(

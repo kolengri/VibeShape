@@ -279,6 +279,24 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     ownerModuleId: documentCoreModule.id,
     execute: applyDocumentCommand,
   },
+  {
+    kind: "org.vibeshape.sketch.add",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.sketch.update",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
+    kind: "org.vibeshape.sketch.remove",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
 ]
 
 type FeatureCommand = Extract<

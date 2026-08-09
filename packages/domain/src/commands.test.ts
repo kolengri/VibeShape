@@ -84,6 +84,7 @@ describe("document commands", () => {
       revision: 1,
       name: "Enclosure",
       variables: [],
+      sketches: [],
       features: [],
       createdAt: issuedAt,
       updatedAt: issuedAt,

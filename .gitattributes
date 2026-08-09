@@ -1,1 +1,3 @@
 *.patch -whitespace
+*.tar.gz binary
+*.wasm binary

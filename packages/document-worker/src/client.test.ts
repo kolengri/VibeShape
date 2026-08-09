@@ -9,6 +9,7 @@ import { DocumentWorkerClient, DocumentWorkerRequestError } from "./client-core"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 
 class FakeWorker {
   readonly posted: DocumentWorkerRequest[] = []
@@ -155,6 +156,16 @@ function exportRequest(requestId = "export-request"): DocumentWorkerRequest {
   }
 }
 
+function solveRequest(requestId = "solve-request"): DocumentWorkerRequest {
+  return {
+    ...healthRequest(requestId),
+    type: "solveSketch",
+    sketchId,
+    continuation: null,
+    draggedPoints: [],
+  }
+}
+
 describe("DocumentWorkerClient", () => {
   it("resolves a matching terminal response", async () => {
     const worker = new FakeWorker()
@@ -181,6 +192,43 @@ describe("DocumentWorkerClient", () => {
     await expect(pending).resolves.toMatchObject({
       type: "documentExported",
       file: new Uint8Array([1, 2, 3]),
+    })
+  })
+
+  it("resolves only the correlated sketch solution response", async () => {
+    const worker = new FakeWorker()
+    const client = new DocumentWorkerClient(worker)
+    const request = solveRequest()
+    const pending = client.request(request)
+    worker.emit({
+      ...responseEnvelope(request),
+      type: "sketchSolved",
+      solution: {
+        schemaVersion: 0,
+        sketchId,
+        sourceRevision: request.revision,
+        status: "fully-constrained",
+        degreesOfFreedom: 0,
+        maximumResidual: 0,
+        points: [],
+        circles: [],
+        failedConstraintIds: [],
+        heapCapacityBytes: 16 * 1024 * 1024,
+        solverBuild: {
+          schemaVersion: 0,
+          solver: "SolveSpace",
+          solverVersion: "3.2",
+          sourceRevision: "27b6a080c8b669421bd4d444650c3b8eddec5687",
+          abiVersion: 1,
+          moduleSha256: "60c8714fbd5d94a50bdfcde7bd1658cfb2a180ad44be124997905ece7be545c7",
+          wasmSha256: "c9e3e35084b3812e9eae7bdff8fd3290394918c88ba38504e58a9a9d4a2bd978",
+        },
+      },
+    })
+
+    await expect(pending).resolves.toMatchObject({
+      type: "sketchSolved",
+      solution: { sketchId, status: "fully-constrained" },
     })
   })
 

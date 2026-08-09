@@ -8,6 +8,28 @@ import {
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
+const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
+const sketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3202"
+
+function sketch() {
+  return {
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Profile",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: sketchPointId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  } as const
+}
 
 function document(revision = 1) {
   return {
@@ -114,6 +136,63 @@ describe("document worker protocol", () => {
         variables: [{ ...variable, name: "wall thickness" }],
       }).success,
     ).toBe(false)
+  })
+
+  it("validates production sketch records and stable solve messages", () => {
+    expect(
+      documentRebuildSnapshotSchema.parse({ ...document(), sketches: [sketch()] }),
+    ).toMatchObject({ sketches: [{ id: sketchId }] })
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...sketch(),
+            entities: [
+              ...sketch().entities,
+              { ...sketch().entities[0], type: "point", x: 1, y: 1 },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+
+    expect(
+      documentWorkerRequestSchema.parse({
+        ...envelope(),
+        type: "solveSketch",
+        sketchId,
+        continuation: null,
+        draggedPoints: [{ entityId: sketchPointId, x: 10, y: 20 }],
+      }),
+    ).toMatchObject({ type: "solveSketch", sketchId })
+    expect(
+      documentWorkerResponseSchema.parse({
+        ...envelope(),
+        type: "sketchSolved",
+        solution: {
+          schemaVersion: 0,
+          sketchId,
+          sourceRevision: 1,
+          status: "under-constrained",
+          degreesOfFreedom: 2,
+          maximumResidual: 1e-10,
+          points: [{ entityId: sketchPointId, x: 10, y: 20 }],
+          circles: [],
+          failedConstraintIds: [],
+          heapCapacityBytes: 16 * 1024 * 1024,
+          solverBuild: {
+            schemaVersion: 0,
+            solver: "SolveSpace",
+            solverVersion: "3.2",
+            sourceRevision: "27b6a080c8b669421bd4d444650c3b8eddec5687",
+            abiVersion: 1,
+            moduleSha256: "60c8714fbd5d94a50bdfcde7bd1658cfb2a180ad44be124997905ece7be545c7",
+            wasmSha256: "c9e3e35084b3812e9eae7bdff8fd3290394918c88ba38504e58a9a9d4a2bd978",
+          },
+        },
+      }),
+    ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
   })
 
   it("accepts progress and terminal failure responses", () => {

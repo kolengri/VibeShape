@@ -26,6 +26,9 @@ export const domainDiagnosticCodeSchema = z.enum([
   "invalid-feature-content-parameters",
   "invalid-feature-dependency-count",
   "invalid-feature-reference-count",
+  "sketch-already-exists",
+  "sketch-not-found",
+  "invalid-sketch",
 ])
 
 const domainDiagnosticSchema = z
@@ -45,6 +48,13 @@ export function domainDiagnostic(
   retryable = false,
 ): DomainDiagnostic {
   return { code, message, retryable, issues: [] }
+}
+
+export function zodDiagnosticIssues(error: z.ZodError): DomainDiagnostic["issues"] {
+  return error.issues.slice(0, 8).map((issue) => ({
+    path: issue.path.map(String).join("."),
+    message: issue.message,
+  }))
 }
 
 function requireNextRevision(baseRevision: number, revision: number) {

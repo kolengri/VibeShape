@@ -47,7 +47,7 @@ The documents use these terms:
 
 SPK-001 is **Pass — Phase 0 stop/go gate cleared**. Its controlled package is built from verified archives with the reviewed destructor correction; all 1,000-operation lifecycle blocks retain zero bytes, post-warmup live allocation drifts by 448 bytes across four further full batches, worker initialization p95 is 178.5 ms, and complete-fixture p95 is 278.8 ms on the declared Apple M1 baseline. Headless FreeCAD 1.1.3 imports the exact browser STEP output as one valid solid with matching volume and bounds. The controlled artifact remains quarantined until the production facade and extended corpus are reviewed.
 
-SPK-002 is **Pass — solver selection gate cleared**. The project source-builds the pinned SolveSpace v3.2 subset behind a flat typed-array ABI, covers every P0 constraint primitive, classifies fully, under-, and over-constrained systems with a conflict set, completes 1,600 perturbation solves and 1,000 lifecycle cycles, runs in a Chromium module worker, and produces byte-identical outputs across consecutive clean builds. Generated binaries remain quarantined until the production sketch worker consumes an exact reviewed build.
+SPK-002 is **Pass — solver selection gate cleared and exact output promoted**. The project source-builds the pinned SolveSpace v3.2 subset behind a flat typed-array ABI, covers every P0 constraint primitive, classifies fully, under-, and over-constrained systems with a conflict set, completes 1,600 perturbation solves and 1,000 lifecycle cycles, runs in a Chromium module worker, and produces byte-identical outputs across consecutive clean builds. The exact reviewed module and WASM are now consumed lazily by the production document worker through protocol v4 and verified by SHA-256 before the ordinary repository gate.
 
 SPK-003 is **Pass — stable-reference algorithm gate cleared**. Protocol v5 carries semantic roles, durable face-lineage tokens, and geometry signatures without native handles or persistent transient hashes. The local Chromium corpus rebuilds 12 boolean, fillet, pattern, suppression, restoration, and symmetry scenarios with zero false confident matches. Production feature-DAG integration, repair events, persistence, and broader property-based models remain implementation work rather than unresolved algorithm selection.
 
@@ -59,7 +59,7 @@ SPK-006 is **Proceed with reduced scope**. Strict immutable packages, exact lock
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
-- Production sketch records, worker protocol, drag branch-continuation policy, and large-sketch budgets on the accepted SolveSpace boundary.
+- Profile detection, conflict interaction, and sketch-mode UI on the completed production records, worker protocol, stable-ID continuation, and initial 1,000-point SolveSpace budget.
 - Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
 - Real startup, memory, rebuild, and representative large-project storage budgets.
 - Production extension modeling ABI, portable memory policy, document integration, package governance, and recovery rebuilds on the accepted reduced-scope seams.

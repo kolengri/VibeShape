@@ -23,8 +23,13 @@ import {
   type GeometryEngineMetadata,
   type GeometryProgressStage,
 } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
-import { type DocumentWorkerEndpoint, DocumentWorkerRuntime } from "./runtime"
+import {
+  type NativeSketchSolverModule,
+  SKETCH_SOLVER_ABI,
+  solveSketchRecord,
+} from "@vibeshape/sketch-solver"
+import { describe, expect, it, vi } from "vitest"
+import { type DocumentWorkerEndpoint, DocumentWorkerRuntime, type SketchSolvePort } from "./runtime"
 
 const documentIds = {
   primary: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
@@ -34,6 +39,10 @@ const featureIds = {
   box: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101"),
   cylinder: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
   boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
+} as const
+const sketchIds = {
+  sketch: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+  point: "0195b5ac-b220-7a2c-8c33-67a36a7f3202",
 } as const
 const environment: FeatureContentEnvironment = {
   schemaVersion: 0,
@@ -114,6 +123,26 @@ function document(documentId: string, revision = 1, cylinderHeight = 60) {
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
   })
+}
+
+function sketch() {
+  return {
+    schemaVersion: 0,
+    id: sketchIds.sketch,
+    label: "Worker profile",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: sketchIds.point,
+        type: "point",
+        x: 1,
+        y: 2,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  } as const
 }
 
 function geometry() {
@@ -229,7 +258,7 @@ function request(
   }
 }
 
-function createHarness() {
+function createHarness(solveSketch: SketchSolvePort | null = null) {
   const messages: DocumentWorkerResponse[] = []
   const transfers: Transferable[][] = []
   const engine = new FakeEngine()
@@ -239,7 +268,38 @@ function createHarness() {
       transfers.push(transfer)
     },
   }
-  return { engine, messages, transfers, runtime: new DocumentWorkerRuntime(engine, endpoint) }
+  return {
+    engine,
+    messages,
+    transfers,
+    runtime: new DocumentWorkerRuntime(engine, endpoint, undefined, solveSketch),
+  }
+}
+
+function sketchSolverModule(): NativeSketchSolverModule {
+  return {
+    PARAMETER_METADATA_STRIDE: SKETCH_SOLVER_ABI.parameterMetadataStride,
+    ENTITY_RECORD_STRIDE: SKETCH_SOLVER_ABI.entityRecordStride,
+    CONSTRAINT_RECORD_STRIDE: SKETCH_SOLVER_ABI.constraintRecordStride,
+    solveFlatSystem: vi.fn(
+      (
+        _parameterMetadata,
+        parameterValues,
+        _entityRecords,
+        _constraintRecords,
+        _constraintValues,
+        _draggedParameters,
+      ) => ({
+        abiStatus: 0,
+        solverStatus: 0,
+        degreesOfFreedom: 2,
+        maximumResidual: 1e-10,
+        parameterValues: parameterValues.slice(),
+        failedConstraints: new Uint32Array(),
+      }),
+    ),
+    getHeapCapacityBytes: () => 16 * 1024 * 1024,
+  }
 }
 
 function rebuilt(messages: readonly DocumentWorkerResponse[], requestId: string) {
@@ -416,6 +476,128 @@ describe("DocumentWorkerRuntime", () => {
     const exportedTransfer = transfers.at(-1)?.[0]
     if (!(exportedTransfer instanceof ArrayBuffer)) throw new Error("Expected export transfer.")
     expect(exportedTransfer.byteLength).toBe(3)
+  })
+
+  it("solves the exact rebuilt sketch through the production flat ABI boundary", async () => {
+    const module = sketchSolverModule()
+    const solvePort: SketchSolvePort = (input) => solveSketchRecord(module, input)
+    const { messages, runtime } = createHarness(solvePort)
+    await runtime.handle({
+      ...request("rebuild-for-sketch"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [sketch()],
+      }),
+    })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "solve-sketch",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      continuation: null,
+      draggedPoints: [{ entityId: sketchIds.point, x: 10, y: 20 }],
+    })
+
+    expect(module.solveFlatSystem).toHaveBeenCalledOnce()
+    expect(messages.find(({ requestId }) => requestId === "solve-sketch")).toMatchObject({
+      type: "sketchSolved",
+      solution: {
+        sketchId: sketchIds.sketch,
+        sourceRevision: 1,
+        status: "under-constrained",
+        points: [{ entityId: sketchIds.point, x: 10, y: 20 }],
+      },
+    })
+  })
+
+  it("rejects unavailable, stale, missing, and invalid sketch solve state without mutation", async () => {
+    const unavailable = createHarness()
+    await unavailable.runtime.handle({
+      ...request("rebuild-without-solver"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [sketch()],
+      }),
+    })
+    await unavailable.runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "unavailable-solver",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      continuation: null,
+      draggedPoints: [],
+    })
+    expect(unavailable.messages.at(-1)).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "sketch-solver-unavailable", retryable: false },
+    })
+
+    const module = sketchSolverModule()
+    const harness = createHarness((input) => solveSketchRecord(module, input))
+    await harness.runtime.handle({
+      ...request("rebuild-valid-sketch"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [sketch()],
+      }),
+    })
+    await harness.runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "stale-sketch",
+      documentId: documentIds.primary,
+      revision: 2,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      continuation: null,
+      draggedPoints: [],
+    })
+    await harness.runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "missing-sketch",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      continuation: null,
+      draggedPoints: [],
+    })
+    await harness.runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "future-continuation",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      continuation: {
+        schemaVersion: 0,
+        sketchId: sketchIds.sketch,
+        sourceRevision: 2,
+        points: [],
+        circles: [],
+      },
+      draggedPoints: [],
+    })
+    expect(harness.messages.find(({ requestId }) => requestId === "stale-sketch")).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "sketch-state-unavailable" },
+    })
+    expect(harness.messages.find(({ requestId }) => requestId === "missing-sketch")).toMatchObject({
+      type: "failure",
+      diagnostic: { code: "sketch-not-found" },
+    })
+    expect(
+      harness.messages.find(({ requestId }) => requestId === "future-continuation"),
+    ).toMatchObject({ type: "failure", diagnostic: { code: "sketch-solve-invalid" } })
+    expect(module.solveFlatSystem).not.toHaveBeenCalled()
   })
 
   it("rejects stale and empty export revisions without invoking the engine", async () => {

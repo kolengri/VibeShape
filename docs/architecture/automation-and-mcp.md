@@ -100,7 +100,7 @@ Candidate first-party module families are:
 
 These are logical identities, not a commitment to one Bun workspace per module. Package extraction follows demonstrated dependency, execution, ownership, or publication needs.
 
-The current registry starts with `org.vibeshape.core.document`. Its document create/rename and variable add/expression-update/remove commands are the conformance fixtures for command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. The same module owns exact-revision document-summary and cursor-paginated variable-list queries.
+The current registry starts with `org.vibeshape.core.document`. Its document create/rename, variable mutation, and sketch add/update/remove commands are the conformance fixtures for command ownership, explicit schema versions, confirmation classes, automation annotations, and deterministic registration. Sketch removal is explicitly destructive; add and update require review. The same module owns exact-revision document-summary and cursor-paginated variable-list queries. A bounded sketch resource remains future MCP transport work, but models and the UI already share the same trusted revisioned sketch-command dispatcher.
 
 ## MCP primitives
 
