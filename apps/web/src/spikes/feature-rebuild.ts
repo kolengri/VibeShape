@@ -1,42 +1,30 @@
 import {
-  type DocumentFeatureRebuildResult,
-  type FeatureGeometryEvaluationPort,
-  rebuildDocumentFeatures,
-} from "@vibeshape/application/feature-rebuild"
+  createDocumentRequestEnvelope,
+  createDocumentWorkerClient,
+  type DocumentWorkerClient,
+} from "@vibeshape/document-worker/client"
 import {
   booleanFeatureType,
   boxFeatureType,
-  createFeatureTypeRegistry,
   createLengthQuantity,
-  createModuleRegistry,
   cylinderFeatureType,
-  documentCoreModule,
-  type FeatureId,
   type FeatureRecord,
-  featureCoreModule,
   featureIdSchema,
-  partDesignFeatureTypeHandlers,
-  partDesignModule,
 } from "@vibeshape/domain"
-import {
-  createGeometryRequestEnvelope,
-  createGeometryWorkerClient,
-  type GeometryWorkerClient,
-} from "@vibeshape/geometry-worker/client"
-import { createGeometryFeatureEvaluationPort } from "../geometry/feature-evaluation-port"
+import { documentRebuildSnapshotSchema } from "@vibeshape/protocol"
 
-type SuccessfulRebuild = Extract<DocumentFeatureRebuildResult, { ok: true }>
-type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
+type TerminalResponse = Awaited<ReturnType<DocumentWorkerClient["request"]>>
+type SuccessfulRebuild = Extract<TerminalResponse, { type: "documentRebuilt" }>
 type HealthResponse = Extract<TerminalResponse, { type: "health" }>
 type DisposalResponse = Extract<TerminalResponse, { type: "documentDisposed" }>
 
 type RebuildSummary = {
   records: SuccessfulRebuild["evaluation"]["records"]
-  dirtyFeatureIds: readonly FeatureId[]
-  evaluatedFeatureIds: readonly FeatureId[]
-  reusedFeatureIds: readonly FeatureId[]
+  dirtyFeatureIds: readonly string[]
+  evaluatedFeatureIds: readonly string[]
+  reusedFeatureIds: readonly string[]
   geometry: readonly {
-    featureId: FeatureId
+    featureId: string
     contentHash: string
     volume: number
     brepHit: boolean
@@ -48,7 +36,7 @@ interface FeatureRebuildHarnessState {
   initial: RebuildSummary | null
   reused: RebuildSummary | null
   changed: RebuildSummary | null
-  requestFeatureIds: FeatureId[]
+  requestFeatureIds: string[]
   progress: string[]
   health: HealthResponse | null
   disposal: DisposalResponse | null
@@ -97,14 +85,6 @@ function expectResponse<Type extends TerminalResponse["type"]>(
   return response as Extract<TerminalResponse, { type: Type }>
 }
 
-function featureRegistry() {
-  const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
-  if (!modules.ok) throw new Error(modules.diagnostic.message)
-  const featureTypes = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
-  if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
-  return featureTypes.registry
-}
-
 function documentSnapshot(cylinderHeight: number, revision: number) {
   const box: FeatureRecord = {
     schemaVersion: 0,
@@ -142,7 +122,7 @@ function documentSnapshot(cylinderHeight: number, revision: number) {
     references: [],
     suppressed: false,
   }
-  return {
+  return documentRebuildSnapshotSchema.parse({
     schemaVersion: 0,
     id: documentId,
     revision,
@@ -150,23 +130,10 @@ function documentSnapshot(cylinderHeight: number, revision: number) {
     features: [boolean, cylinder, box],
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
-  } as const
+  })
 }
 
-async function sha256(canonicalPayload: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalPayload))
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-function observedPort(port: FeatureGeometryEvaluationPort): FeatureGeometryEvaluationPort {
-  return (request) => {
-    state.requestFeatureIds.push(request.featureId)
-    return port(request)
-  }
-}
-
-function summary(result: DocumentFeatureRebuildResult) {
-  if (!result.ok) throw new Error(`${result.diagnostic.code}: ${result.diagnostic.message}`)
+function summary(result: SuccessfulRebuild) {
   return {
     records: result.evaluation.records,
     dirtyFeatureIds: result.evaluation.dirtyFeatureIds,
@@ -182,61 +149,49 @@ function summary(result: DocumentFeatureRebuildResult) {
 }
 
 async function run() {
-  const client = createGeometryWorkerClient()
+  const client = createDocumentWorkerClient()
   const status = statusElement()
   try {
-    const initialized = expectResponse(
-      await client.request({
-        ...createGeometryRequestEnvelope(documentId, generation),
-        type: "initializeEngine",
-      }),
-      "initialized",
-    )
-    const evaluateGeometry = observedPort(createGeometryFeatureEvaluationPort(client))
     const initialDocument = documentSnapshot(60, 1)
-    const common = {
-      generation,
-      registry: featureRegistry(),
-      environment: initialized.engine.featureContentEnvironment,
-      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
-      hash: sha256,
-      evaluateGeometry,
-      onProgress(featureId: FeatureId, stage: string) {
-        state.progress.push(`${featureId}:${stage}`)
-      },
-    } as const
+    const rebuild = async (document: ReturnType<typeof documentSnapshot>) => {
+      const response = await client.request(
+        {
+          ...createDocumentRequestEnvelope(documentId, generation, document.revision),
+          type: "rebuildDocument",
+          document,
+          mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+        },
+        {
+          onProgress(progress) {
+            state.progress.push(`${progress.featureId}:${progress.stage}`)
+            if (progress.stage === "feature-validation") {
+              state.requestFeatureIds.push(progress.featureId)
+            }
+          },
+        },
+      )
+      return expectResponse(response, "documentRebuilt")
+    }
 
-    const initialResult = await rebuildDocumentFeatures({
-      ...common,
-      document: initialDocument,
-    })
+    const initialResult = await rebuild(initialDocument)
     state.initial = summary(initialResult)
-    if (!initialResult.ok) throw new Error(initialResult.diagnostic.message)
 
-    const reusedResult = await rebuildDocumentFeatures({
-      ...common,
-      document: initialDocument,
-      previous: initialResult,
-    })
+    const reusedResult = await rebuild(initialDocument)
     state.reused = summary(reusedResult)
 
-    const changedResult = await rebuildDocumentFeatures({
-      ...common,
-      document: documentSnapshot(20, 2),
-      previous: initialResult,
-    })
+    const changedResult = await rebuild(documentSnapshot(20, 2))
     state.changed = summary(changedResult)
 
     state.health = expectResponse(
       await client.request({
-        ...createGeometryRequestEnvelope(documentId, generation, 2),
+        ...createDocumentRequestEnvelope(documentId, generation, 2),
         type: "healthCheck",
       }),
       "health",
     )
     state.disposal = expectResponse(
       await client.request({
-        ...createGeometryRequestEnvelope(documentId, generation, 2),
+        ...createDocumentRequestEnvelope(documentId, generation, 2),
         type: "disposeDocument",
       }),
       "documentDisposed",

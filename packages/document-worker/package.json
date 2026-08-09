@@ -1,27 +1,26 @@
 {
-  "name": "@vibeshape/geometry-worker",
+  "name": "@vibeshape/document-worker",
   "version": "0.0.0",
   "private": true,
-  "description": "Geometry evaluation worker and CAD kernel adapter boundary.",
+  "description": "Document-scoped rebuild coordination and geometry ownership outside the browser main thread.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
-    "./engine": "./src/engine.ts",
     "./runtime": "./src/runtime.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@vibeshape/application": "workspace:*",
+    "@vibeshape/domain": "workspace:*",
+    "@vibeshape/geometry-worker": "workspace:*",
     "@vibeshape/protocol": "workspace:*",
-    "is-what": "catalog:",
-    "replicad": "catalog:",
-    "replicad-opencascadejs": "catalog:"
+    "is-what": "catalog:"
   },
   "devDependencies": {
-    "@vibeshape/test-models": "workspace:*",
     "@vibeshape/typescript-config": "workspace:*",
     "vite": "catalog:"
   }

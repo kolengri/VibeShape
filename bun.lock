@@ -23,7 +23,7 @@
       "name": "@vibeshape/web",
       "version": "0.0.0",
       "dependencies": {
-        "@vibeshape/application": "workspace:*",
+        "@vibeshape/document-worker": "workspace:*",
         "@vibeshape/geometry-worker": "workspace:*",
         "@vibeshape/i18n": "workspace:*",
         "@vibeshape/protocol": "workspace:*",
@@ -81,6 +81,21 @@
       },
       "devDependencies": {
         "@vibeshape/typescript-config": "workspace:*",
+      },
+    },
+    "packages/document-worker": {
+      "name": "@vibeshape/document-worker",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibeshape/application": "workspace:*",
+        "@vibeshape/domain": "workspace:*",
+        "@vibeshape/geometry-worker": "workspace:*",
+        "@vibeshape/protocol": "workspace:*",
+        "is-what": "catalog:",
+      },
+      "devDependencies": {
+        "@vibeshape/typescript-config": "workspace:*",
+        "vite": "catalog:",
       },
     },
     "packages/domain": {
@@ -691,6 +706,8 @@
     "@vibeshape/automation-api": ["@vibeshape/automation-api@workspace:packages/automation-api"],
 
     "@vibeshape/automation-host": ["@vibeshape/automation-host@workspace:packages/automation-host"],
+
+    "@vibeshape/document-worker": ["@vibeshape/document-worker@workspace:packages/document-worker"],
 
     "@vibeshape/domain": ["@vibeshape/domain@workspace:packages/domain"],
 

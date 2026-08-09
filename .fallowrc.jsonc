@@ -36,6 +36,7 @@
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
       { "name": "application", "patterns": ["packages/application/**"] },
+      { "name": "document-worker", "patterns": ["packages/document-worker/**"] },
       { "name": "extension-spike", "patterns": ["packages/extension-spike/**"] },
       {
         "name": "automation-api",
@@ -66,6 +67,11 @@
       { "from": "domain", "allow": [] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },
+      // The document worker composes application policy with the native geometry adapter.
+      {
+        "from": "document-worker",
+        "allow": ["application", "domain", "geometry-worker", "protocol"]
+      },
       // Serializable automation contracts may depend only on the pure domain model.
       { "from": "automation-api", "allow": ["domain"] },
       // Host policy coordinates public automation contracts and pure domain operations.
