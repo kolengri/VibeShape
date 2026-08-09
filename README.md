@@ -93,13 +93,13 @@ Run `bun ci` to verify a frozen installation from `bun.lock`. The first local cr
 
 ## Next practical step
 
-Implementation continues through **Phase 0 technical spikes**, not interface expansion. SPK-001's source-build, transient operation-history, memory, controlled-performance, technical release-bundle, and independent-application STEP gates are demonstrated locally. Before promoting spike adapters into the main product, we must resolve the remaining Phase 0 boundaries:
+Implementation continues through the **Phase 1 foundation vertical slice**, not interface expansion. The Phase 0 spike gates are recorded; accepted adapters are promoted only through production-oriented contracts with local evidence. The next boundaries are:
 
 1. Production sketch records and a worker protocol consume the accepted solver ABI, with branch-continuation and large-sketch budgets added before sketch UI expansion.
-2. Connect the document-worker recovery session to committed IndexedDB snapshots for page-reload and save/reopen recovery, then add topology repair events over the accepted `TopoRef` and downstream-failure contracts.
+2. Add topology repair events over the accepted `TopoRef` and downstream-failure contracts.
 3. The production geometry facade is selected from the measured OCCT spike boundaries.
 4. Production export integrates the accepted deterministic 3MF writer with print-quality OCCT tessellation, progress, cancellation, and persistent diagnostics.
-5. Production persistence integrates the accepted SPK-005 contract with `.vshape`, autosave scheduling, backup UX, BroadcastChannel coordination, migrations, and an installed-build update gate.
+5. Extend the implemented persisted document session with `.vshape`, autosave scheduling policy, backup UX, BroadcastChannel coordination, migrations, persistent cache promotion, and an installed-build update gate.
 6. Before any executable extension release, promote the accepted SPK-006 seams through a deterministic modeling ABI, portable memory policy, production transactions, document locks, persisted update/rollback, and recovery rebuild coverage.
 
 If a spike fails, the corresponding ADR must be revisited before the UI is expanded.

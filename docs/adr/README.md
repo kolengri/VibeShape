@@ -17,6 +17,7 @@
 | [0013](0013-microkernel-modules-and-mcp-automation.md) | Proposed | Microkernel feature modules and MCP over the ordinary command path |
 | [0014](0014-solvespace-flat-wasm-solver.md) | Accepted | SolveSpace v3.2 subset behind a flat worker-owned WASM ABI |
 | [0015](0015-document-variables-and-dimensional-expressions.md) | Accepted | Document variables, dimensional expression schema v0, and resolved feature identity |
+| [0016](0016-persisted-document-session-and-rebuild-sequencing.md) | Accepted | Persisted document sessions save semantic revisions before rebuilding derived geometry |
 
 Statuses:
 
