@@ -13,6 +13,7 @@ import type {
 } from "./commands"
 import type { DocumentSnapshot } from "./document"
 import type { draftIdSchema } from "./identifiers"
+import { readExtrusionFeatureParameters } from "./part-design"
 import { type SketchRecord, sketchRecordSchema, sketchRecordsSchema } from "./sketch"
 
 type SketchCommand = Extract<
@@ -145,6 +146,19 @@ function reduceRemovedEvent(
       ),
     }
   }
+  if (
+    current.snapshot.features.some(
+      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === event.sketch.id,
+    )
+  ) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "A sketch referenced by an extrusion cannot be removed.",
+      ),
+    }
+  }
   return {
     ok: true,
     snapshot: {
@@ -261,6 +275,17 @@ function createRemovedEvent(
   const sketch = current.snapshot.sketches.find(
     (candidate) => candidate.id === command.payload.sketchId,
   )
+  if (
+    sketch &&
+    current.snapshot.features.some(
+      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === sketch.id,
+    )
+  ) {
+    return domainDiagnostic(
+      "sketch-in-use",
+      `Sketch ${sketch.id} is referenced by an extrusion feature.`,
+    )
+  }
   return sketch
     ? {
         ...eventEnvelope(command, transactionId),

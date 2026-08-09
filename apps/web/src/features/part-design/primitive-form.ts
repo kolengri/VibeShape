@@ -2,6 +2,7 @@ import {
   createLengthQuantity,
   evaluateExpression,
   evaluateVariableDefinitions,
+  type FeatureRecord,
   type LengthQuantity,
   type VariableDefinition,
 } from "@vibeshape/domain"
@@ -49,4 +50,25 @@ export function featureSubmissionMessage(
     return copy.staleRevision
   }
   return copy.saveFailed
+}
+
+export async function submitFeatureMutation({
+  baseRevision,
+  copy,
+  feature,
+  onSave,
+  onSaved,
+  setMessage,
+}: Readonly<{
+  baseRevision: number
+  copy: Readonly<{ staleRevision: string; saveFailed: string }>
+  feature: FeatureRecord
+  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
+  onSaved: () => void
+  setMessage: (message: string | null) => void
+}>) {
+  const result = await onSave(baseRevision, feature)
+  const message = featureSubmissionMessage(result, copy)
+  setMessage(message)
+  if (!message) onSaved()
 }

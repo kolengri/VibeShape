@@ -4,7 +4,7 @@ import type { DocumentControllerState } from "../document/document-controller"
 import { booleanInputFeatures } from "../features/part-design/part-design-tool"
 import type { EditorWorkspaceName } from "./workspace"
 
-type PartDesignCommand = "box" | "cylinder" | "subtract"
+type PartDesignCommand = "box" | "cylinder" | "extrusion" | "subtract"
 
 function canCreateFeature(controller: DocumentControllerState) {
   return controller.status === "ready" && controller.report?.mode === "read-write"
@@ -22,8 +22,10 @@ function commandIsActive(activeCommand: PartDesignCommand | null, command: PartD
 export function CommandToolbar({
   activeCommand,
   controller,
+  extrusionAvailable,
   onCreateBox,
   onCreateCylinder,
+  onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
   onWorkspaceChange,
@@ -31,8 +33,10 @@ export function CommandToolbar({
 }: {
   activeCommand: PartDesignCommand | null
   controller: DocumentControllerState
+  extrusionAvailable: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
+  onCreateExtrusion: () => void
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onWorkspaceChange: (workspace: EditorWorkspaceName) => void
@@ -41,6 +45,7 @@ export function CommandToolbar({
   const t = useTranslations("app.shell.commandToolbar")
   const canCreate = canCreateFeature(controller)
   const canSubtract = canSubtractFeatures(controller)
+  const canExtrude = canCreate && extrusionAvailable
 
   return (
     <nav
@@ -79,7 +84,14 @@ export function CommandToolbar({
       >
         {t("createSketch")}
       </Button>
-      <Button type="button" size="sm" variant="ghost">
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={!canExtrude}
+        aria-pressed={commandIsActive(activeCommand, "extrusion")}
+        onClick={onCreateExtrusion}
+      >
         {t("extrude")}
       </Button>
       <Button

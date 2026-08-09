@@ -51,6 +51,8 @@ The Box create/edit slice implements idle → validate → persisted commit with
 
 The first rectangle-sketch slice implements idle → preview → validate → persisted commit. `Create sketch` enters an orthographic 2D workspace and publishes a dashed, explicitly unsaved rectangle while plane, width, or height changes. Width and height accept unit-aware literals or committed `#variables`; invalid raw text remains visible beside its error. Apply is asynchronous and single-flight, creates one ordinary sketch revision, then replaces the draft with exact SolveSpace coordinates, constraint state, degrees of freedom, and analytical profile measurements. Activating the saved sketch restores its authored expressions and updates only the plane and dimension quantities while preserving all stable identities. Cancel discards the preview. Global Escape routing, arbitrary drawing, and conflict repair remain open.
 
+The first extrusion slice starts from a saved supported rectangle sketch. `Extrude profile` carries its stable selector into a task panel that names the selected sketch and exposes distance plus symmetric state. Distance accepts the same unit-aware literals and committed `#variables` as other length fields. Invalid raw text and the selected profile remain visible; asynchronous Create or Update is single-flight, persists one ordinary feature revision, and closes only after persistence and authoritative rebuild succeed. Activating the extrusion restores the exact distance expression, selector, and symmetric state. Changing a referenced variable rebuilds the exact solid without rewriting the authored expression. Removing the source sketch is blocked until the extrusion is removed. The initial UI deliberately does not offer a transient-index region list, arbitrary profile picking, operation modes other than new body, or an unsaved solid preview.
+
 Feature removal is available from an active edit task. A feature with direct dependents keeps the destructive action disabled and names the downstream features that must be removed first; the initial implementation never guesses a cascade. A removable leaf opens the shared accessible `AlertDialog`, names the feature, warns that undo is not implemented, blocks repeated activation while the asynchronous commit is pending, remains open with a persistent error after failure, and closes only after semantic persistence and rebuild succeed. Successful removal closes the edit task, clears an invalid viewport selection, updates terminal geometry, and survives reload.
 
 ## Flow 1: create a printable part
@@ -76,7 +78,7 @@ The implemented Phase 1 export boundary is available from `Export…` in the app
 5. If a `TopoRef` is ambiguous, highlight affected downstream operations and present a bounded candidate set.
 6. Save the repaired reference as part of the command.
 
-The current Box implementation covers tree activation, raw parameter restoration, validation, atomic update, worker rebuild, and reload persistence. Debounced preview and topology-reference repair begin with later dependency-owning features.
+The current Box and Extrusion implementations cover tree activation, raw parameter restoration, validation, atomic update, worker rebuild, and reload persistence. Extrusion additionally proves stable profile intent across variable-driven sketch and distance rebuilds. Debounced solid preview, general profile picking, and topology-reference repair remain later interaction increments.
 
 ## Flow 3: import STEP as context
 

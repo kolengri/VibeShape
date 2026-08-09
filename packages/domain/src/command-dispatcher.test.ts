@@ -375,8 +375,9 @@ describe("trusted command dispatcher", () => {
 
   it("rejects a feature whose trusted semantic content projection fails", () => {
     const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
-    const [boxHandler, cylinderHandler, booleanHandler] = partDesignFeatureTypeHandlers
-    if (!modules.ok || !boxHandler || !cylinderHandler || !booleanHandler) {
+    const [boxHandler, cylinderHandler, booleanHandler, extrusionHandler] =
+      partDesignFeatureTypeHandlers
+    if (!modules.ok || !boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
       throw new Error("The part design command composition fixture is invalid.")
     }
     const featureTypes = createFeatureTypeRegistry(modules.registry, [
@@ -388,6 +389,7 @@ describe("trusted command dispatcher", () => {
       },
       cylinderHandler,
       booleanHandler,
+      extrusionHandler,
     ])
     if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
     const composed = createCommandDispatcher(

@@ -1,0 +1,239 @@
+import type {
+  DocumentFeatureContentPreparationPort,
+  DocumentFeatureContentPreparationResult,
+} from "@vibeshape/application/feature-rebuild"
+import {
+  type DocumentSnapshot,
+  type FeatureRecord,
+  readExtrusionFeatureParameters,
+  type SketchEntity,
+  type SketchRecord,
+} from "@vibeshape/domain"
+import { extrusionFeatureContentParametersSchema } from "@vibeshape/protocol"
+import {
+  resolveSketchProfileSelector,
+  type SketchProfileLoop,
+  type SolveSketchRecordResult,
+} from "@vibeshape/sketch-solver"
+import type { SketchSolvePort } from "./runtime"
+
+const TWO_PI = Math.PI * 2
+
+function failure(
+  code: string,
+  reason: string,
+  values: Readonly<Record<string, string | number>> = {},
+): Extract<DocumentFeatureContentPreparationResult, { ok: false }> {
+  return { ok: false, diagnostic: { code, values: { reason, ...values } } }
+}
+
+function normalizedPositiveAngle(angle: number) {
+  const normalized = angle % TWO_PI
+  return normalized < 0 ? normalized + TWO_PI : normalized
+}
+
+function solvedPoint(
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+  entityId: string,
+) {
+  return points.get(entityId) ?? null
+}
+
+function lineSegment(
+  entity: Extract<SketchEntity, { type: "line" }>,
+  reversed: boolean,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const first = solvedPoint(points, entity.startPointId)
+  const second = solvedPoint(points, entity.endPointId)
+  if (!first || !second) return null
+  const start = reversed ? second : first
+  const end = reversed ? first : second
+  return {
+    entityId: entity.id,
+    type: "line" as const,
+    start: [start.x, start.y] as const,
+    end: [end.x, end.y] as const,
+  }
+}
+
+function arcSegment(
+  entity: Extract<SketchEntity, { type: "arc" }>,
+  reversed: boolean,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const first = solvedPoint(points, entity.startPointId)
+  const second = solvedPoint(points, entity.endPointId)
+  if (!center || !first || !second) return null
+  const startAngle = Math.atan2(first.y - center.y, first.x - center.x)
+  const endAngle = Math.atan2(second.y - center.y, second.x - center.x)
+  const sweep = normalizedPositiveAngle(endAngle - startAngle) || TWO_PI
+  const radius = Math.hypot(first.x - center.x, first.y - center.y)
+  const middleAngle = startAngle + sweep / 2
+  const middle = [
+    center.x + radius * Math.cos(middleAngle),
+    center.y + radius * Math.sin(middleAngle),
+  ] as const
+  const start = reversed ? second : first
+  const end = reversed ? first : second
+  return {
+    entityId: entity.id,
+    type: "arc" as const,
+    start: [start.x, start.y] as const,
+    middle,
+    end: [end.x, end.y] as const,
+  }
+}
+
+function circleSegment(
+  entity: Extract<SketchEntity, { type: "circle" }>,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+  radii: ReadonlyMap<string, number>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const radius = radii.get(entity.id)
+  return center && radius
+    ? {
+        entityId: entity.id,
+        type: "circle" as const,
+        center: [center.x, center.y] as const,
+        radius,
+      }
+    : null
+}
+
+function materializeLoop(
+  loop: SketchProfileLoop,
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+) {
+  const entities = new Map(sketch.entities.map((entity) => [entity.id, entity]))
+  const points = new Map(solution.points.map(({ entityId, x, y }) => [entityId, { x, y }] as const))
+  const radii = new Map(solution.circles.map(({ entityId, radius }) => [entityId, radius] as const))
+  const segments = loop.segments.map((segment) => {
+    const entity = entities.get(segment.entityId)
+    if (!entity || entity.type !== segment.type) return null
+    if (entity.type === "line") return lineSegment(entity, segment.reversed, points)
+    if (entity.type === "arc") return arcSegment(entity, segment.reversed, points)
+    if (entity.type === "circle") return circleSegment(entity, points, radii)
+    return null
+  })
+  if (segments.some((segment) => segment === null)) return null
+  return {
+    sourceEntityIds: [...loop.sourceEntityIds].sort(),
+    segments: segments.flatMap((segment) => (segment ? [segment] : [])),
+  }
+}
+
+function prepareExtrusion(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
+) {
+  const resolution = resolveSketchProfileSelector(
+    parameters.profile,
+    sketch.id,
+    solution.profileResult,
+  )
+  if (resolution.status === "ambiguous") {
+    return failure("org.vibeshape.feature.sketch-profile-ambiguous", "ambiguous-profile", {
+      matchCount: resolution.profileIndices.length,
+    })
+  }
+  if (resolution.status === "missing") {
+    return failure("org.vibeshape.feature.sketch-profile-missing", resolution.reason)
+  }
+  const outerLoop = solution.profileResult.loops[resolution.outerLoopIndex]
+  const holeLoops = resolution.holeLoopIndices.map(
+    (loopIndex) => solution.profileResult.loops[loopIndex],
+  )
+  if (!outerLoop || holeLoops.some((loop) => loop === undefined)) {
+    return failure("org.vibeshape.feature.sketch-profile-missing", "invalid-loop-reference")
+  }
+  const outer = materializeLoop(outerLoop, sketch, solution)
+  const holes = holeLoops.map((loop) => (loop ? materializeLoop(loop, sketch, solution) : null))
+  if (!outer || holes.some((hole) => hole === null)) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "missing-solved-geometry")
+  }
+  const prepared = extrusionFeatureContentParametersSchema.safeParse({
+    sketchId: sketch.id,
+    plane: sketch.plane,
+    outer,
+    holes: holes.flatMap((hole) => (hole ? [hole] : [])),
+    distance: parameters.distance.value,
+    symmetric: parameters.symmetric,
+    operation: parameters.operation,
+  })
+  return prepared.success
+    ? ({ ok: true, parameters: prepared.data } as const)
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function solveSketchOnce(
+  solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
+  solveSketch: SketchSolvePort,
+  document: DocumentSnapshot,
+  sketch: SketchRecord,
+) {
+  const cached = solvedBySketchId.get(sketch.id)
+  if (cached) return cached
+  const pending = Promise.resolve(
+    solveSketch({
+      sketch,
+      variables: [...document.variables],
+      revision: document.revision,
+      continuation: null,
+      draggedPoints: [],
+    }),
+  )
+  solvedBySketchId.set(sketch.id, pending)
+  return pending
+}
+
+function validatedSolution(
+  result: SolveSketchRecordResult,
+  document: DocumentSnapshot,
+  sketch: SketchRecord,
+) {
+  if (!result.ok) {
+    return failure("org.vibeshape.feature.sketch-solve-failed", result.diagnostic.code)
+  }
+  const { solution } = result
+  const supportedStatus =
+    solution.status === "fully-constrained" || solution.status === "under-constrained"
+  return solution.sketchId === sketch.id &&
+    solution.sourceRevision === document.revision &&
+    supportedStatus
+    ? ({ ok: true, solution } as const)
+    : failure("org.vibeshape.feature.sketch-solve-failed", solution.status)
+}
+
+async function prepareFeatureContent(
+  document: DocumentSnapshot,
+  feature: FeatureRecord,
+  solveSketch: SketchSolvePort | null,
+  solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
+) {
+  const parameters = readExtrusionFeatureParameters(feature)
+  if (!parameters) return null
+  const sketch = document.sketches.find(({ id }) => id === parameters.profile.sketchId)
+  if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
+  if (!solveSketch) {
+    return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
+  }
+  const result = validatedSolution(
+    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch),
+    document,
+    sketch,
+  )
+  return result.ok ? prepareExtrusion(sketch, result.solution, parameters) : result
+}
+
+export function createDocumentFeatureContentPreparer(
+  solveSketch: SketchSolvePort | null,
+): DocumentFeatureContentPreparationPort {
+  const solvedBySketchId = new Map<string, Promise<SolveSketchRecordResult>>()
+  return ({ document, feature }) =>
+    prepareFeatureContent(document, feature, solveSketch, solvedBySketchId)
+}

@@ -2,8 +2,10 @@ import {
   booleanFeatureType,
   boxFeatureType,
   cylinderFeatureType,
+  extrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
+  type SketchProfileSelector,
 } from "@vibeshape/domain"
 
 export type ActivePartDesignTool =
@@ -11,6 +13,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
   | Readonly<{ kind: "edit-cylinder"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-extrusion"; profile: SketchProfileSelector }>
+  | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
 
@@ -35,8 +39,17 @@ export function isBooleanFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, booleanFeatureType.type)
 }
 
+export function isExtrusionFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, extrusionFeatureType.type)
+}
+
 function isPartDesignSolidFeature(feature: FeatureRecord) {
-  return isBoxFeature(feature) || isCylinderFeature(feature) || isBooleanFeature(feature)
+  return (
+    isBoxFeature(feature) ||
+    isCylinderFeature(feature) ||
+    isExtrusionFeature(feature) ||
+    isBooleanFeature(feature)
+  )
 }
 
 function dependentFeatureIds(features: readonly FeatureRecord[], rootFeatureId: FeatureId) {
@@ -83,6 +96,7 @@ export function editPartDesignTool(
   if (!feature) return null
   if (isBoxFeature(feature)) return { kind: "edit-box", featureId: feature.id }
   if (isCylinderFeature(feature)) return { kind: "edit-cylinder", featureId: feature.id }
+  if (isExtrusionFeature(feature)) return { kind: "edit-extrusion", featureId: feature.id }
   if (isBooleanFeature(feature)) return { kind: "edit-subtract", featureId: feature.id }
   return null
 }
@@ -96,6 +110,9 @@ export function activePartDesignCommand(activeTool: ActivePartDesignTool | null)
     case "create-cylinder":
     case "edit-cylinder":
       return "cylinder"
+    case "create-extrusion":
+    case "edit-extrusion":
+      return "extrusion"
     case "create-subtract":
     case "edit-subtract":
       return "subtract"

@@ -15,6 +15,7 @@ import {
   boxFeatureParametersSchema,
   boxFeatureType,
   cylinderFeatureType,
+  extrusionFeatureType,
   partDesignFeatureTypeHandlers,
 } from "./part-design"
 import { createLengthQuantity } from "./units"
@@ -99,6 +100,7 @@ describe("feature type registry", () => {
         booleanFeatureType.type.typeId,
         boxFeatureType.type.typeId,
         cylinderFeatureType.type.typeId,
+        extrusionFeatureType.type.typeId,
       ])
     }
   })
@@ -274,7 +276,8 @@ describe("feature type registry", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
     const booleanHandler = partDesignFeatureTypeHandlers[2]
-    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+    const extrusionHandler = partDesignFeatureTypeHandlers[3]
+    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
       throw new Error("The part design fixture must expose every handler.")
     }
 
@@ -282,7 +285,7 @@ describe("feature type registry", () => {
       ...boxHandler,
       parametersSchema: boxFeatureParametersSchema.transform(() => new Date(0)),
     }
-    const result = registry([malformed, cylinderHandler, booleanHandler])
+    const result = registry([malformed, cylinderHandler, booleanHandler, extrusionHandler])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -297,7 +300,8 @@ describe("feature type registry", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
     const cylinderHandler = partDesignFeatureTypeHandlers[1]
     const booleanHandler = partDesignFeatureTypeHandlers[2]
-    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+    const extrusionHandler = partDesignFeatureTypeHandlers[3]
+    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
       throw new Error("The part design fixture must expose every handler.")
     }
 
@@ -307,7 +311,7 @@ describe("feature type registry", () => {
         throw new Error("fixture detail")
       }),
     }
-    const result = registry([throwing, cylinderHandler, booleanHandler])
+    const result = registry([throwing, cylinderHandler, booleanHandler, extrusionHandler])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -323,8 +327,9 @@ describe("feature type registry", () => {
   })
 
   it("contains invalid and throwing content normalizers as stable diagnostics", () => {
-    const [boxHandler, cylinderHandler, booleanHandler] = partDesignFeatureTypeHandlers
-    if (!boxHandler || !cylinderHandler || !booleanHandler) {
+    const [boxHandler, cylinderHandler, booleanHandler, extrusionHandler] =
+      partDesignFeatureTypeHandlers
+    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
       throw new Error("The part design fixture must expose every handler.")
     }
 
@@ -332,6 +337,7 @@ describe("feature type registry", () => {
       { ...boxHandler, contentParameters: () => new Date(0) },
       cylinderHandler,
       booleanHandler,
+      extrusionHandler,
     ])
     expect(invalid.ok).toBe(true)
     if (invalid.ok) {
@@ -350,6 +356,7 @@ describe("feature type registry", () => {
       },
       cylinderHandler,
       booleanHandler,
+      extrusionHandler,
     ])
     expect(throwing.ok).toBe(true)
     if (throwing.ok) {

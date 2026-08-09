@@ -35,6 +35,7 @@ The documents use these terms:
 - Form controls are uncontrolled-first primitives with separate TanStack Form adapters.
 - Product copy uses typed ICU catalogs through the local-first `@vibeshape/i18n` layer.
 - Topology-reference failures are never repaired silently; ambiguity is visible to the user.
+- Sketch-driven features persist stable boundary selectors; solved coordinates and transient profile indices remain disposable worker data.
 - Extension packages and document locks use exact integrity; the accepted executable candidate is no-import WebAssembly with opaque-origin iframe UI, not arbitrary workspace JavaScript.
 - English is the canonical language for documentation and code comments.
 
@@ -59,7 +60,7 @@ SPK-006 is **Proceed with reduced scope**. Strict immutable packages, exact lock
 
 - Promotion of the exact controlled OCCT build and 262-binding set after the remaining release gates.
 - Whether Replicad is the production facade or only the prototype facade.
-- Interior-intersection splitting, stable-selector feature integration, conflict interaction, and sketch-mode UI on the completed production records, worker protocol, stable-ID continuation, deterministic profiles, and initial 1,000-point SolveSpace budget.
+- Interior-intersection splitting, general profile-picking interaction, conflict interaction, and free-form sketch UI beyond the completed rectangle-to-new-body-extrusion slice.
 - Production integration of the accepted project-owned 3MF writer with print-quality tessellation and export UX.
 - Real startup, memory, rebuild, and representative large-project storage budgets.
 - Production extension modeling ABI, portable memory policy, document integration, package governance, and recovery rebuilds on the accepted reduced-scope seams.

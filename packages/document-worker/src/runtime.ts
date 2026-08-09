@@ -26,6 +26,7 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
+import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 
 export interface DocumentWorkerEndpoint {
   postMessage(message: DocumentWorkerResponse, transfer?: Transferable[]): void
@@ -397,6 +398,7 @@ export class DocumentWorkerRuntime {
       environment: engine.featureContentEnvironment,
       mesh: request.mesh,
       hash: sha256,
+      prepareFeatureContent: createDocumentFeatureContentPreparer(this.solveSketch),
       evaluateGeometry: async (evaluation) => {
         const evaluated = await this.engine.evaluateFeature(
           { ...evaluation, dependencies: [...evaluation.dependencies] },

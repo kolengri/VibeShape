@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
+import { featureRecordSchema } from "./feature-graph"
+import { extrusionFeatureType } from "./part-design"
+import { createLengthQuantity } from "./units"
 
 const documentId = "018f0000-0000-7000-8000-000000000001"
 const sketchId = "018f0000-0000-7000-8000-000000000002"
@@ -177,5 +180,73 @@ describe("sketch document commands", () => {
         previousSketch: sketch("Tampered previous profile"),
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
+  test("blocks removal while a selector-backed extrusion references the sketch", () => {
+    const created = createDocument()
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: commandId(120),
+      documentId,
+      baseRevision: 1,
+      issuedAt,
+      actor,
+      payload: { sketch: sketch() },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+    const removal = applyDocumentCommand(added.snapshot, {
+      kind: "org.vibeshape.sketch.remove",
+      schemaVersion: 1,
+      commandId: commandId(121),
+      documentId,
+      baseRevision: 2,
+      issuedAt,
+      actor,
+      payload: { sketchId },
+    })
+    if (!removal.ok) throw new Error(removal.diagnostic.message)
+    const referenced = {
+      ...added.snapshot,
+      features: [
+        featureRecordSchema.parse({
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000006",
+          type: extrusionFeatureType.type,
+          parameters: {
+            profile: {
+              schemaVersion: 0,
+              sketchId,
+              outerBoundaryEntityIds: [lineId],
+              holeBoundaryEntityIds: [],
+            },
+            distance: createLengthQuantity(10),
+            symmetric: false,
+            operation: "new",
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        }),
+      ],
+    }
+
+    expect(
+      applyDocumentCommand(referenced, {
+        kind: "org.vibeshape.sketch.remove",
+        schemaVersion: 1,
+        commandId: commandId(122),
+        documentId,
+        baseRevision: 2,
+        issuedAt,
+        actor,
+        payload: { sketchId },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "sketch-in-use" } })
+    expect(reduceDocumentEvent(referenced, removal.event)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-event" },
+    })
   })
 })

@@ -1,4 +1,4 @@
-import { documentSnapshotSchema } from "@vibeshape/domain/document"
+import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
   computeFeatureContentHash,
   type FeatureContentEnvironment,
@@ -13,8 +13,10 @@ import {
   type FeatureEvaluationRecord,
   type FeatureGraph,
   type FeatureGraphEvaluation,
+  type FeatureParameters,
   type FeatureRecord,
   featureEvaluationRecordSchema,
+  featureParametersSchema,
   serializeFeatureRecord,
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
@@ -146,6 +148,7 @@ export type FeatureRebuildInput = Readonly<{
 
 type CoordinatedFeatureRebuildInput = FeatureRebuildInput &
   Readonly<{
+    contentParametersByFeatureId?: ReadonlyMap<FeatureId, FeatureParameters>
     forcedDirtyFeatureIds?: readonly FeatureId[]
     preflightFailures?: ReadonlyMap<FeatureId, FeatureDiagnostic>
   }>
@@ -168,8 +171,23 @@ export type DocumentFeatureRebuildInput = Readonly<{
   previous?: FeatureRebuildState
   hash: FeatureContentHasher
   evaluateGeometry: FeatureGeometryEvaluationPort
+  prepareFeatureContent?: DocumentFeatureContentPreparationPort
   onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
 }>
+
+export type DocumentFeatureContentPreparationResult =
+  | Readonly<{ ok: true; parameters: unknown }>
+  | Readonly<{ ok: false; diagnostic: FeatureDiagnostic }>
+
+export type DocumentFeatureContentPreparationPort = (
+  input: Readonly<{
+    document: DocumentSnapshot
+    feature: FeatureRecord
+  }>,
+) =>
+  | DocumentFeatureContentPreparationResult
+  | null
+  | Promise<DocumentFeatureContentPreparationResult | null>
 
 function failed(code: string, values: FeatureDiagnostic["values"] = {}) {
   return { status: "failed", diagnostics: [{ code, values }] } as const
@@ -479,41 +497,75 @@ function prepareFeatureRebuild(input: CoordinatedFeatureRebuildInput): FeatureRe
   }
 }
 
-async function evaluateScheduledFeature(
+async function scheduledFeatureContent(
   input: CoordinatedFeatureRebuildInput,
   prepared: PreparedFeatureRebuild,
   context: FeatureEvaluationContext,
 ) {
-  const preflightFailure = input.preflightFailures?.get(context.feature.id)
-  if (preflightFailure) return failed(preflightFailure.code, preflightFailure.values)
   const dependencies = successfulDependencies(context.dependencies)
+  const preparedParameters = input.contentParametersByFeatureId?.get(context.feature.id)
   const content = await computeFeatureContentHash(
     input.registry,
     {
       feature: context.feature,
       dependencies,
       environment: prepared.environment,
+      ...(preparedParameters ? { contentParameters: preparedParameters } : {}),
     },
     input.hash,
   )
   if (!content.ok) {
-    return failed("org.vibeshape.feature.content-identity-failed", {
-      reason: content.diagnostic.code,
-    })
+    return {
+      ok: false as const,
+      result: failed("org.vibeshape.feature.content-identity-failed", {
+        reason: content.diagnostic.code,
+      }),
+    }
   }
   const wireContent = featureContentIdentitySchema.safeParse(content.identity)
-  if (!wireContent.success) return failed("org.vibeshape.feature.worker-contract-rejected")
+  return wireContent.success
+    ? ({
+        ok: true as const,
+        dependencies,
+        contentHash: content.contentHash,
+        wireContent: wireContent.data,
+      } as const)
+    : ({
+        ok: false as const,
+        result: failed("org.vibeshape.feature.worker-contract-rejected"),
+      } as const)
+}
 
+function canReuseScheduledFeature(
+  prepared: PreparedFeatureRebuild,
+  context: FeatureEvaluationContext,
+  contentHash: string,
+) {
+  const previousGeometry = prepared.previous.geometryById.get(context.feature.id)
+  return (
+    prepared.previous.reusable &&
+    context.previous?.status === "succeeded" &&
+    context.previous.contentHash === contentHash &&
+    previousGeometry?.contentHash === contentHash
+  )
+}
+
+async function requestFeatureGeometry(
+  input: CoordinatedFeatureRebuildInput,
+  prepared: PreparedFeatureRebuild,
+  context: FeatureEvaluationContext,
+  content: Extract<Awaited<ReturnType<typeof scheduledFeatureContent>>, { ok: true }>,
+) {
   let output: unknown
   try {
-    const request: FeatureGeometryEvaluationRequest = {
+    output = await input.evaluateGeometry({
       documentId: prepared.identity.documentId,
       revision: prepared.identity.revision,
       generation: prepared.identity.generation,
       featureId: context.feature.id,
-      content: wireContent.data,
+      content: content.wireContent,
       contentHash: content.contentHash,
-      dependencies,
+      dependencies: content.dependencies,
       mesh: prepared.mesh,
       ...(input.onProgress
         ? {
@@ -521,8 +573,7 @@ async function evaluateScheduledFeature(
               input.onProgress?.(context.feature.id, stage, fraction),
           }
         : {}),
-    }
-    output = await input.evaluateGeometry(request)
+    })
   } catch {
     return failed("org.vibeshape.feature.geometry-evaluation-failed", {
       reason: "worker-request-failed",
@@ -554,6 +605,21 @@ async function evaluateScheduledFeature(
     geometry: parsed.data.geometry,
   })
   return { status: "succeeded", contentHash: content.contentHash } as const
+}
+
+async function evaluateScheduledFeature(
+  input: CoordinatedFeatureRebuildInput,
+  prepared: PreparedFeatureRebuild,
+  context: FeatureEvaluationContext,
+) {
+  const preflightFailure = input.preflightFailures?.get(context.feature.id)
+  if (preflightFailure) return failed(preflightFailure.code, preflightFailure.values)
+  const content = await scheduledFeatureContent(input, prepared, context)
+  if (!content.ok) return content.result
+  if (canReuseScheduledFeature(prepared, context, content.contentHash)) {
+    return { status: "succeeded", contentHash: content.contentHash } as const
+  }
+  return requestFeatureGeometry(input, prepared, context, content)
 }
 
 async function runFeatureRebuild(
@@ -593,32 +659,18 @@ export function rebuildFeatureGraph(input: FeatureRebuildInput): Promise<Feature
   return runFeatureRebuild(input)
 }
 
-export async function rebuildDocumentFeatures(
-  input: DocumentFeatureRebuildInput,
-): Promise<DocumentFeatureRebuildResult> {
-  const document = documentSnapshotSchema.safeParse(input.document)
-  if (!document.success) {
-    return {
-      ok: false,
-      diagnostic: {
-        code: "invalid-document-snapshot",
-        message: "The committed document snapshot is invalid.",
-      },
-    }
-  }
-  const variables = evaluateVariableDefinitions(document.data.variables)
-  if (!variables.ok) {
-    return {
-      ok: false,
-      diagnostic: {
-        code: "invalid-document-snapshot",
-        message: variables.diagnostic.message,
-      },
-    }
-  }
+function invalidDocumentSnapshot(message: string): DocumentFeatureRebuildResult {
+  return { ok: false, diagnostic: { code: "invalid-document-snapshot", message } }
+}
+
+function resolveDocumentFeatures(
+  document: DocumentSnapshot,
+  registry: FeatureTypeRegistry,
+  variables: Extract<ReturnType<typeof evaluateVariableDefinitions>, { ok: true }>,
+) {
   const preflightFailures = new Map<FeatureId, FeatureDiagnostic>()
-  const resolvedFeatures = document.data.features.map((feature) => {
-    const resolved = input.registry.resolveFeatureParameters(feature, variables.valuesByName)
+  const features = document.features.map((feature) => {
+    const resolved = registry.resolveFeatureParameters(feature, variables.valuesByName)
     if (resolved.ok) return resolved.feature
     preflightFailures.set(feature.id, {
       code: "org.vibeshape.feature.parameter-expression-failed",
@@ -631,16 +683,82 @@ export async function rebuildDocumentFeatures(
     })
     return feature
   })
-  const graph = createFeatureGraph(resolvedFeatures)
-  if (!graph.ok) {
+  return { features, preflightFailures }
+}
+
+async function callFeatureContentPreparer(
+  prepareFeatureContent: DocumentFeatureContentPreparationPort,
+  document: DocumentSnapshot,
+  feature: FeatureRecord,
+) {
+  try {
+    return await prepareFeatureContent({ document, feature })
+  } catch {
     return {
-      ok: false,
+      ok: false as const,
       diagnostic: {
-        code: "invalid-document-snapshot",
-        message: graph.diagnostic.message,
+        code: "org.vibeshape.feature.content-preparation-failed",
+        values: { reason: "preparation-threw" },
       },
     }
   }
+}
+
+async function prepareDocumentFeatureContent(
+  input: DocumentFeatureRebuildInput,
+  document: DocumentSnapshot,
+  features: readonly FeatureRecord[],
+  preflightFailures: Map<FeatureId, FeatureDiagnostic>,
+) {
+  const parametersByFeatureId = new Map<FeatureId, FeatureParameters>()
+  if (!input.prepareFeatureContent) return parametersByFeatureId
+  for (const feature of features) {
+    if (preflightFailures.has(feature.id)) continue
+    const prepared = await callFeatureContentPreparer(
+      input.prepareFeatureContent,
+      document,
+      feature,
+    )
+    if (!prepared) continue
+    if (!prepared.ok) {
+      preflightFailures.set(feature.id, prepared.diagnostic)
+      continue
+    }
+    const parameters = featureParametersSchema.safeParse(prepared.parameters)
+    if (parameters.success) {
+      parametersByFeatureId.set(feature.id, parameters.data)
+    } else {
+      preflightFailures.set(feature.id, {
+        code: "org.vibeshape.feature.content-preparation-failed",
+        values: { reason: "invalid-prepared-parameters" },
+      })
+    }
+  }
+  return parametersByFeatureId
+}
+
+export async function rebuildDocumentFeatures(
+  input: DocumentFeatureRebuildInput,
+): Promise<DocumentFeatureRebuildResult> {
+  const document = documentSnapshotSchema.safeParse(input.document)
+  if (!document.success) {
+    return invalidDocumentSnapshot("The committed document snapshot is invalid.")
+  }
+  const variables = evaluateVariableDefinitions(document.data.variables)
+  if (!variables.ok) return invalidDocumentSnapshot(variables.diagnostic.message)
+  const { features, preflightFailures } = resolveDocumentFeatures(
+    document.data,
+    input.registry,
+    variables,
+  )
+  const graph = createFeatureGraph(features)
+  if (!graph.ok) return invalidDocumentSnapshot(graph.diagnostic.message)
+  const contentParametersByFeatureId = await prepareDocumentFeatureContent(
+    input,
+    document.data,
+    features,
+    preflightFailures,
+  )
 
   return runFeatureRebuild({
     documentId: document.data.id,
@@ -652,7 +770,10 @@ export async function rebuildDocumentFeatures(
     mesh: input.mesh,
     hash: input.hash,
     evaluateGeometry: input.evaluateGeometry,
-    forcedDirtyFeatureIds: [...preflightFailures.keys()],
+    contentParametersByFeatureId,
+    forcedDirtyFeatureIds: [
+      ...new Set([...preflightFailures.keys(), ...contentParametersByFeatureId.keys()]),
+    ],
     preflightFailures,
     ...(input.previous ? { previous: input.previous } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
