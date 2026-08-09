@@ -27,7 +27,7 @@ test.describe("native project file", () => {
     await page.getByRole("button", { name: "Project…" }).click()
     const backupDownload = page.waitForEvent("download")
     await page
-      .getByRole("dialog", { name: "Project file" })
+      .getByRole("dialog", { name: "Projects" })
       .getByRole("button", { name: "Download .vshape" })
       .dblclick()
     const download = await backupDownload
@@ -38,7 +38,7 @@ test.describe("native project file", () => {
     expect(backupBytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
 
     await page.getByRole("button", { name: "Project…" }).click()
-    const currentProjectDialog = page.getByRole("dialog", { name: "Project file" })
+    const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
     await currentProjectDialog.getByLabel("Choose VibeShape project file").setInputFiles(backupPath)
     await expect(currentProjectDialog.getByRole("alert")).toContainText(
       "This exact project already exists in this browser.",
@@ -82,5 +82,50 @@ test.describe("native project file", () => {
     } finally {
       await importedContext.close()
     }
+  })
+
+  test("creates a new local project and reopens an existing configurable project", async ({
+    page,
+  }) => {
+    test.setTimeout(90_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Box", exact: true })
+      .click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Project…" }).click()
+    const createdProjectNavigation = page.waitForEvent(
+      "framenavigated",
+      (frame) => frame === page.mainFrame(),
+    )
+    await page
+      .getByRole("dialog", { name: "Projects" })
+      .getByRole("button", {
+        name: "New project",
+      })
+      .click()
+    await createdProjectNavigation
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Project…" }).click()
+    const dialog = page.getByRole("dialog", { name: "Projects" })
+    const previousProject = dialog.getByRole("listitem").filter({ hasText: "Revision 2" })
+    await expect(previousProject).toHaveCount(1)
+    const reopenedProjectNavigation = page.waitForEvent(
+      "framenavigated",
+      (frame) => frame === page.mainFrame(),
+    )
+    await previousProject.getByRole("button", { name: /Open .*revision 2/ }).click()
+    await reopenedProjectNavigation
+
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible({ timeout: 30_000 })
   })
 })

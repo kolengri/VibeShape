@@ -18,6 +18,14 @@ export interface I18nContextValue {
 
 const I18nContext = React.createContext<I18nContextValue | undefined>(undefined)
 
+function getRuntimeTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+  } catch {
+    return "UTC"
+  }
+}
+
 export interface I18nProviderProps {
   children: React.ReactNode
   i18n: I18nInstance<Locale>
@@ -32,6 +40,7 @@ export function I18nProvider({
   storage: providedStorage,
 }: I18nProviderProps) {
   const storage = providedStorage ?? getBrowserStorage()
+  const [timeZone] = React.useState(getRuntimeTimeZone)
   const [locale, setLocaleState] = React.useState(() =>
     i18n.resolveLocale(
       initialLocale,
@@ -66,7 +75,12 @@ export function I18nProvider({
 
   return (
     <I18nContext.Provider value={context}>
-      <IntlProvider formats={i18n.formats} locale={locale} messages={i18n.getMessages(locale)}>
+      <IntlProvider
+        formats={i18n.formats}
+        locale={locale}
+        messages={i18n.getMessages(locale)}
+        timeZone={timeZone}
+      >
         {children}
       </IntlProvider>
     </I18nContext.Provider>

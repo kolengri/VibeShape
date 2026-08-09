@@ -1,9 +1,9 @@
 import {
   canonicalJson,
+  commandActorsEqual,
   type DocumentEvent,
   type DocumentId,
   type DocumentSnapshot,
-  commandActorsEqual,
   documentEventSchema,
   documentIdSchema,
   documentSnapshotSchema,
@@ -22,11 +22,13 @@ import {
   type EventRecord,
   eventRecordSchema,
   type LeaseRecord,
+  type LocalProjectSummary,
+  localProjectSummarySchema,
   type PersistenceDiagnostic,
   type ProjectRecord,
-  portableProjectImportSchema,
   persistenceCommitInputSchema,
   persistenceDraftCommitInputSchema,
+  portableProjectImportSchema,
   projectRecordSchema,
   type RecoveryRecord,
   recoveryRecordSchema,
@@ -74,6 +76,8 @@ export interface PortableProjectImportReport {
   eventChecksums: readonly string[]
   snapshotChecksum: string
 }
+
+const MAX_LOCAL_PROJECTS = 4_096
 
 async function serializeRecord(value: unknown) {
   const payload = canonicalJson(value)
@@ -511,6 +515,43 @@ function semanticWriteTransaction(database: VibeShapeDatabase, operation: () => 
 
 export class LocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
+
+  async listProjects(): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
+    try {
+      const records = await this.database.projects.limit(MAX_LOCAL_PROJECTS + 1).toArray()
+      if (records.length > MAX_LOCAL_PROJECTS) {
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The local project index exceeds the supported project limit.",
+        )
+      }
+      const projects = records.map((record) => {
+        const project = projectRecordSchema.safeParse(record)
+        if (!project.success) {
+          throw persistenceInvariantError(
+            "corrupt-history",
+            "The local project index contains an invalid record.",
+          )
+        }
+        return localProjectSummarySchema.parse({
+          documentId: project.data.documentId,
+          name: project.data.name,
+          headRevision: project.data.headRevision,
+          createdAt: project.data.createdAt,
+          updatedAt: project.data.updatedAt,
+          lastExternalBackupAt: project.data.lastExternalBackupAt,
+        })
+      })
+      projects.sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.documentId.localeCompare(right.documentId),
+      )
+      return { ok: true, value: projects }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
 
   async commit(input: unknown): Promise<PersistenceResult<CommitReport>> {
     const parsed = persistenceCommitInputSchema.safeParse(input)

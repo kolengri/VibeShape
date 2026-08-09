@@ -29,6 +29,7 @@ import { readVShape, writeVShape } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
   LocalDocumentRepository,
+  type LocalProjectSummary,
   releaseDocumentLease,
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
@@ -74,6 +75,14 @@ export type ProjectImportResult =
   | { ok: true; documentId: ReturnType<typeof documentIdSchema.parse> }
   | { ok: false; diagnostic: { code: string; message: string } }
 
+export type LocalProjectListResult =
+  | { ok: true; projects: readonly LocalProjectSummary[] }
+  | { ok: false; diagnostic: { code: string; message: string } }
+
+export type ProjectSwitchResult =
+  | { ok: true }
+  | { ok: false; diagnostic: { code: string; message: string } }
+
 let state: DocumentControllerState = {
   status: "idle",
   report: null,
@@ -108,8 +117,20 @@ function readStoredId(storage: Storage, key: string) {
 function writeStoredId(storage: Storage, key: string, value: string) {
   try {
     storage.setItem(key, value)
+    return storage.getItem(key) === value
   } catch {
     // IndexedDB remains authoritative when browser key-value storage is unavailable.
+    return false
+  }
+}
+
+function removeStoredId(storage: Storage, key: string) {
+  try {
+    storage.removeItem(key)
+    return storage.getItem(key) === null
+  } catch {
+    // IndexedDB remains authoritative when browser key-value storage is unavailable.
+    return false
   }
 }
 
@@ -433,13 +454,64 @@ export async function importProjectBackup(bytes: Uint8Array): Promise<ProjectImp
     : { ok: false, diagnostic: imported.diagnostic }
 }
 
-export async function activateImportedProject(
-  documentId: ReturnType<typeof documentIdSchema.parse>,
-) {
-  await session?.close()
+export async function listLocalProjects(): Promise<LocalProjectListResult> {
+  if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
+  const result = await activeRepository.listProjects()
+  return result.ok
+    ? { ok: true, projects: result.value }
+    : { ok: false, diagnostic: result.diagnostic }
+}
+
+export async function activateLocalProject(documentIdInput: unknown): Promise<ProjectSwitchResult> {
+  if (!session || !activeRepository || state.status !== "ready") {
+    return unavailableProjectFileResult()
+  }
+  const documentId = documentIdSchema.safeParse(documentIdInput)
+  if (!documentId.success) {
+    return {
+      ok: false,
+      diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
+    }
+  }
+  if (session.snapshot.id === documentId.data) return { ok: true }
+  const projects = await activeRepository.listProjects()
+  if (!projects.ok) return { ok: false, diagnostic: projects.diagnostic }
+  if (!projects.value.some((project) => project.documentId === documentId.data)) {
+    return {
+      ok: false,
+      diagnostic: { code: "document-not-found", message: "The local project does not exist." },
+    }
+  }
+  if (!writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId.data)) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "storage-unavailable",
+        message: "The active project selection could not be stored in this browser.",
+      },
+    }
+  }
+  await session.close()
   session = null
-  writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
   window.location.reload()
+  return { ok: true }
+}
+
+export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
+  if (!session || state.status !== "ready") return unavailableProjectFileResult()
+  if (!removeStoredId(localStorage, DOCUMENT_STORAGE_KEY)) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "storage-unavailable",
+        message: "The active project selection could not be cleared in this browser.",
+      },
+    }
+  }
+  await session.close()
+  session = null
+  window.location.reload()
+  return { ok: true }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {
