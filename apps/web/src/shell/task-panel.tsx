@@ -1,20 +1,18 @@
 import {
   extrusionFeatureParametersSchema,
-  rectangleSketchDefinition,
-  rectangleSketchProfileSelector,
+  type SketchConstraintId,
+  type SketchEntityId,
   type SketchId,
+  type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import {
   addFeature,
   addSketch,
   createBrowserFeatureId,
-  createBrowserSketchConstraintId,
-  createBrowserSketchEntityId,
-  createBrowserSketchId,
   type DocumentControllerState,
   removeFeature,
   updateFeature,
@@ -37,12 +35,12 @@ import {
   isCylinderFeature,
   isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
-import {
-  RectangleSketchForm,
-  type RectangleSketchFormMode,
-  type RectangleSketchPreview,
-} from "../features/sketch/rectangle-sketch-form"
-import type { ActiveSketchTool } from "../features/sketch/sketch-tool"
+import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
+import type {
+  ActiveSketchTool,
+  SketchDraftChangeMode,
+  SketchEditorTool,
+} from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -57,8 +55,22 @@ type TaskPanelProps = Readonly<{
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
-  onSketchPreview: (preview: RectangleSketchPreview | null) => void
+  onSketchConstructionChange: (construction: boolean) => void
+  onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onSketchEditorToolChange: (tool: SketchEditorTool) => void
+  onSketchRedo: () => void
+  onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
+  onSketchUndo: () => void
+  sketchConstruction: boolean
+  sketchDraft: SketchRecord | null
+  sketchEditorTool: SketchEditorTool
+  sketchFailedConstraintIds: readonly SketchConstraintId[]
+  sketchProfiles: readonly SketchProfileSelector[]
+  sketchRedoAvailable: boolean
+  sketchSelectedEntityIds: readonly SketchEntityId[]
+  sketchSelectedProfile: SketchProfileSelector | null
+  sketchUndoAvailable: boolean
   workspace: EditorWorkspaceName
 }>
 
@@ -78,40 +90,53 @@ function VariablesTaskPanel() {
   )
 }
 
-function useRectangleSketchFormCopy(mode: RectangleSketchFormMode["kind"]) {
+function useSketchEditorCopy() {
   const t = useTranslations("app.shell.taskPanel.sketch")
-  const operationCopy = {
-    create: {
-      title: t("title"),
-      description: t("description"),
-      submit: t("finish"),
-      validationSummary: t("validationSummary"),
-      saveFailed: t("createFailed"),
-    },
-    edit: {
-      title: t("editTitle"),
-      description: t("editDescription"),
-      submit: t("update"),
-      validationSummary: t("updateValidationSummary"),
-      saveFailed: t("updateFailed"),
-    },
-  }[mode]
   return {
-    ...operationCopy,
+    addConstraint: t("addConstraint"),
+    angle: t("angle"),
+    arc: t("arc"),
+    cancel: t("cancel"),
+    circle: t("circle"),
+    coincident: t("coincident"),
+    concentric: t("concentric"),
+    conflict: t("conflict"),
+    construction: t("construction"),
+    constraints: t("constraints"),
+    diameter: t("diameter"),
+    dimension: t("dimension"),
+    dimensionExpression: t("dimensionExpression"),
+    dimensionInvalid: t("dimensionInvalid"),
     dimensions: t("dimensions"),
+    distance: t("distance"),
+    equal: t("equal"),
+    finish: t("finish"),
+    fixed: t("fixed"),
+    geometry: t("geometry"),
+    horizontal: t("horizontal"),
+    horizontalDistance: t("horizontalDistance"),
+    line: t("line"),
+    noConstraints: t("noConstraints"),
+    parallel: t("parallel"),
+    perpendicular: t("perpendicular"),
     plane: t("plane"),
-    planeDescription: t("planeDescription"),
     planeXy: t("planeXy"),
     planeXz: t("planeXz"),
     planeYz: t("planeYz"),
-    width: t("width"),
-    height: t("height"),
-    expressionDescription: t("expressionDescription"),
-    cancel: t("cancel"),
-    invalidExpression: t("invalidExpression"),
-    invalidDimension: t("invalidDimension"),
-    invalidRange: t("invalidRange"),
-    staleRevision: t("staleRevision"),
+    pointOnCurve: t("pointOnCurve"),
+    pointOnLine: t("pointOnLine"),
+    point: t("point"),
+    profile: (number: number) => t("profile", { number }),
+    profiles: t("profiles"),
+    radius: t("radius"),
+    rectangle: t("rectangle"),
+    redo: t("redo"),
+    remove: t("removeConstraint"),
+    select: t("select"),
+    tangent: t("tangent"),
+    undo: t("undo"),
+    vertical: t("vertical"),
+    verticalDistance: t("verticalDistance"),
   }
 }
 
@@ -779,14 +804,13 @@ function ActiveTaskPanel(props: ActiveTaskPanelProps) {
 function canExtrudeSelectedSketch(
   controller: DocumentControllerState,
   activeSketchId: SketchId | null,
+  selectedProfile: SketchProfileSelector | null,
 ) {
-  const selectedSketch = controller.report?.snapshot.sketches.find(
-    ({ id }) => id === activeSketchId,
-  )
   return Boolean(
     canCreateFeature(controller) &&
-      selectedSketch &&
-      rectangleSketchProfileSelector(selectedSketch) !== null,
+      activeSketchId &&
+      selectedProfile &&
+      selectedProfile.sketchId === activeSketchId,
   )
 }
 
@@ -800,6 +824,7 @@ function ModelTaskPanel({
   onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
+  sketchSelectedProfile,
 }: TaskPanelProps) {
   const report = controller.report
   const canCreate = canCreateFeature(controller)
@@ -808,7 +833,7 @@ function ModelTaskPanel({
   ) : (
     <StartTaskPanel
       canCreate={canCreate}
-      canExtrude={canExtrudeSelectedSketch(controller, activeSketchId)}
+      canExtrude={canExtrudeSelectedSketch(controller, activeSketchId, sketchSelectedProfile)}
       canSubtract={canCreateSubtract(controller)}
       onCreateBox={onCreateBox}
       onCreateCylinder={onCreateCylinder}
@@ -819,107 +844,119 @@ function ModelTaskPanel({
   )
 }
 
-function rectangleSketchFormMode(
-  activeSketchTool: ActiveSketchTool,
-  report: NonNullable<DocumentControllerState["report"]>,
-  sketchLabel: string,
-): RectangleSketchFormMode | null {
-  if (activeSketchTool.kind === "create-rectangle-sketch") {
-    return {
-      kind: "create",
-      sketchLabel,
-      createSketchId: createBrowserSketchId,
-      createEntityId: createBrowserSketchEntityId,
-      createConstraintId: createBrowserSketchConstraintId,
-    }
-  }
-  const sketch = report.snapshot.sketches.find(({ id }) => id === activeSketchTool.sketchId)
-  return sketch && rectangleSketchDefinition(sketch) ? { kind: "edit", sketch } : null
-}
+type ActiveSketchTaskPanelState = Readonly<{
+  activeSketchTool: ActiveSketchTool
+  construction: boolean
+  draft: SketchRecord
+  editorTool: SketchEditorTool
+  failedConstraintIds: readonly SketchConstraintId[]
+  profiles: readonly SketchProfileSelector[]
+  redoAvailable: boolean
+  selectedEntityIds: readonly SketchEntityId[]
+  selectedProfile: SketchProfileSelector | null
+  undoAvailable: boolean
+}>
 
-function UnsupportedSketchTaskPanel({ onCloseTool }: { onCloseTool: () => void }) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{t("unsupportedTitle")}</h2>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("unsupportedDescription")}</p>
-      <Button type="button" size="sm" variant="ghost" className="mt-4" onClick={onCloseTool}>
-        {t("cancel")}
-      </Button>
-    </aside>
-  )
-}
-
-function RectangleSketchTaskPanel({
-  copy,
-  mode,
-  onCloseTool,
-  onSketchPreview,
-  onSketchSaved,
-  report,
-}: {
-  copy: ReturnType<typeof useRectangleSketchFormCopy>
-  mode: RectangleSketchFormMode
+type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
-  onSketchPreview: (preview: RectangleSketchPreview | null) => void
+  onConstructionChange: (construction: boolean) => void
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
+  onRedo: () => void
+  onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
-  report: NonNullable<DocumentControllerState["report"]>
-}) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  const onSave = mode.kind === "edit" ? updateSketch : addSketch
-  const key =
-    mode.kind === "edit"
-      ? `edit:${mode.sketch.id}:${report.snapshot.revision}`
-      : `create:${report.snapshot.revision}`
-  return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <RectangleSketchForm
-        key={key}
-        baseRevision={report.snapshot.revision}
-        copy={copy}
-        disabled={report.mode === "read-only"}
-        mode={mode}
-        variables={report.snapshot.variables}
-        onCancel={onCloseTool}
-        onPreview={onSketchPreview}
-        onSave={onSave}
-        onSaved={onSketchSaved}
-      />
-    </aside>
-  )
+  onUndo: () => void
+}>
+
+function sketchSaveFailureMessage(
+  activeSketchTool: ActiveSketchTool,
+  sourceCode: string | null,
+  copy: Readonly<{ createFailed: string; staleRevision: string; updateFailed: string }>,
+) {
+  if (sourceCode === "stale-revision") return copy.staleRevision
+  return activeSketchTool.kind === "edit-sketch" ? copy.updateFailed : copy.createFailed
 }
 
 function ActiveSketchTaskPanel({
-  activeSketchTool,
-  onCloseTool,
-  onSketchPreview,
-  onSketchSaved,
+  actions,
   report,
+  state,
 }: {
-  activeSketchTool: ActiveSketchTool
-  onCloseTool: () => void
-  onSketchPreview: (preview: RectangleSketchPreview | null) => void
-  onSketchSaved: (sketch: SketchRecord) => void
+  actions: ActiveSketchTaskPanelActions
   report: NonNullable<DocumentControllerState["report"]>
+  state: ActiveSketchTaskPanelState
 }) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  const mode = rectangleSketchFormMode(
+  const {
     activeSketchTool,
-    report,
-    t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
-  )
-  const copy = useRectangleSketchFormCopy(mode?.kind ?? "create")
-  return mode ? (
-    <RectangleSketchTaskPanel
-      copy={copy}
-      mode={mode}
-      report={report}
-      onCloseTool={onCloseTool}
-      onSketchPreview={onSketchPreview}
-      onSketchSaved={onSketchSaved}
-    />
-  ) : (
-    <UnsupportedSketchTaskPanel onCloseTool={onCloseTool} />
+    construction,
+    draft,
+    editorTool,
+    failedConstraintIds,
+    profiles,
+    redoAvailable,
+    selectedEntityIds,
+    selectedProfile,
+    undoAvailable,
+  } = state
+  const {
+    onCloseTool,
+    onConstructionChange,
+    onDraftChange,
+    onEditorToolChange,
+    onRedo,
+    onSelectedProfileChange,
+    onSketchSaved,
+    onUndo,
+  } = actions
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  const [message, setMessage] = useState<string | null>(null)
+  const copy = useSketchEditorCopy()
+  const finish = async () => {
+    setMessage(null)
+    const save = activeSketchTool.kind === "edit-sketch" ? updateSketch : addSketch
+    const result = await save(report.snapshot.revision, draft)
+    if (!result.ok) {
+      setMessage(
+        sketchSaveFailureMessage(activeSketchTool, result.diagnostic.sourceCode, {
+          createFailed: t("createFailed"),
+          staleRevision: t("staleRevision"),
+          updateFailed: t("updateFailed"),
+        }),
+      )
+      return
+    }
+    onSketchSaved(draft)
+  }
+  return (
+    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <SketchEditorPanel
+        copy={copy}
+        state={{
+          construction,
+          disabled: report.mode === "read-only",
+          draft,
+          editorTool,
+          failedConstraintIds,
+          message,
+          profiles,
+          redoAvailable,
+          selectedEntityIds,
+          selectedProfile,
+          undoAvailable,
+          variables: report.snapshot.variables,
+        }}
+        actions={{
+          onCancel: onCloseTool,
+          onConstructionChange,
+          onDraftChange,
+          onEditorToolChange,
+          onFinish: finish,
+          onRedo,
+          onSelectedProfileChange,
+          onUndo,
+        }}
+      />
+    </aside>
   )
 }
 
@@ -950,30 +987,54 @@ function EmptySketchTaskPanel({
 
 function SelectedSketchTaskPanel({
   canCreate,
+  canExtrude,
   onCreateExtrusion,
   onCreateSketch,
   onEditSketch,
+  onSelectedProfileChange,
+  profiles,
+  selectedProfile,
   sketch,
 }: {
   canCreate: boolean
+  canExtrude: boolean
   onCreateExtrusion: () => void
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
+  onSelectedProfileChange: (profile: SketchProfileSelector) => void
+  profiles: readonly SketchProfileSelector[]
+  selectedProfile: SketchProfileSelector | null
   sketch: SketchRecord
 }) {
   const t = useTranslations("app.shell.taskPanel.sketch")
-  const canEdit = rectangleSketchDefinition(sketch) !== null
   return (
     <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <h2 className="text-sm font-medium">{sketch.label}</h2>
       <p className="mt-2 text-xs leading-4 text-muted-foreground">
         {t("savedDescription", { plane: sketch.plane.toUpperCase() })}
       </p>
+      {profiles.length > 1 ? (
+        <fieldset className="mt-3 flex flex-wrap gap-1 border-0 p-0">
+          <legend className="sr-only">{t("profiles")}</legend>
+          {profiles.map((profile, index) => (
+            <Button
+              key={profile.outerBoundaryEntityIds.join(":")}
+              type="button"
+              size="xs"
+              variant={selectedProfile === profile ? "secondary" : "outline"}
+              aria-pressed={selectedProfile === profile}
+              onClick={() => onSelectedProfileChange(profile)}
+            >
+              {t("profile", { number: index + 1 })}
+            </Button>
+          ))}
+        </fieldset>
+      ) : null}
       <Button
         type="button"
         size="sm"
         className="mt-4 w-full"
-        disabled={!canCreate || !canEdit}
+        disabled={!canExtrude}
         onClick={onCreateExtrusion}
       >
         {t("extrude")}
@@ -983,7 +1044,7 @@ function SelectedSketchTaskPanel({
         size="sm"
         variant="outline"
         className="mt-2 w-full"
-        disabled={!canCreate || !canEdit}
+        disabled={!canCreate}
         onClick={() => onEditSketch(sketch.id)}
       >
         {t("edit")}
@@ -998,11 +1059,6 @@ function SelectedSketchTaskPanel({
       >
         {t("create")}
       </Button>
-      {!canEdit ? (
-        <p className="mt-2 text-xs leading-4 text-muted-foreground">
-          {t("unsupportedDescription")}
-        </p>
-      ) : null}
     </aside>
   )
 }
@@ -1010,60 +1066,91 @@ function SelectedSketchTaskPanel({
 function SketchStartTaskPanel({
   activeSketchId,
   canCreate,
+  canExtrude,
   onCreateExtrusion,
   onCreateSketch,
   onEditSketch,
+  onSelectedProfileChange,
+  profiles,
   report,
+  selectedProfile,
 }: {
   activeSketchId: SketchId | null
   canCreate: boolean
+  canExtrude: boolean
   onCreateExtrusion: () => void
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
+  onSelectedProfileChange: (profile: SketchProfileSelector) => void
+  profiles: readonly SketchProfileSelector[]
   report: DocumentControllerState["report"]
+  selectedProfile: SketchProfileSelector | null
 }) {
   const sketch = report?.snapshot.sketches.find(({ id }) => id === activeSketchId)
   return sketch ? (
     <SelectedSketchTaskPanel
       canCreate={canCreate}
+      canExtrude={canExtrude}
+      profiles={profiles}
+      selectedProfile={selectedProfile}
       sketch={sketch}
       onCreateExtrusion={onCreateExtrusion}
       onCreateSketch={onCreateSketch}
       onEditSketch={onEditSketch}
+      onSelectedProfileChange={onSelectedProfileChange}
     />
   ) : (
     <EmptySketchTaskPanel canCreate={canCreate} onCreateSketch={onCreateSketch} />
   )
 }
 
-function SketchTaskPanel({
-  activeSketchId,
-  activeSketchTool,
-  controller,
-  onCloseTool,
-  onCreateExtrusion,
-  onCreateSketch,
-  onEditSketch,
-  onSketchPreview,
-  onSketchSaved,
-}: TaskPanelProps) {
-  const report = controller.report
-  return activeSketchTool && report ? (
-    <ActiveSketchTaskPanel
-      activeSketchTool={activeSketchTool}
-      report={report}
-      onCloseTool={onCloseTool}
-      onSketchPreview={onSketchPreview}
-      onSketchSaved={onSketchSaved}
-    />
-  ) : (
+function SketchTaskPanel(props: TaskPanelProps) {
+  const report = props.controller.report
+  if (props.activeSketchTool && report && props.sketchDraft) {
+    return (
+      <ActiveSketchTaskPanel
+        report={report}
+        state={{
+          activeSketchTool: props.activeSketchTool,
+          construction: props.sketchConstruction,
+          draft: props.sketchDraft,
+          editorTool: props.sketchEditorTool,
+          failedConstraintIds: props.sketchFailedConstraintIds,
+          profiles: props.sketchProfiles,
+          redoAvailable: props.sketchRedoAvailable,
+          selectedEntityIds: props.sketchSelectedEntityIds,
+          selectedProfile: props.sketchSelectedProfile,
+          undoAvailable: props.sketchUndoAvailable,
+        }}
+        actions={{
+          onCloseTool: props.onCloseTool,
+          onConstructionChange: props.onSketchConstructionChange,
+          onDraftChange: props.onSketchDraftChange,
+          onEditorToolChange: props.onSketchEditorToolChange,
+          onRedo: props.onSketchRedo,
+          onSelectedProfileChange: props.onSketchSelectedProfileChange,
+          onSketchSaved: props.onSketchSaved,
+          onUndo: props.onSketchUndo,
+        }}
+      />
+    )
+  }
+  return (
     <SketchStartTaskPanel
-      activeSketchId={activeSketchId}
-      canCreate={canCreateFeature(controller)}
-      onCreateExtrusion={onCreateExtrusion}
+      activeSketchId={props.activeSketchId}
+      canCreate={canCreateFeature(props.controller)}
+      canExtrude={canExtrudeSelectedSketch(
+        props.controller,
+        props.activeSketchId,
+        props.sketchSelectedProfile,
+      )}
+      profiles={props.sketchProfiles}
+      onCreateExtrusion={props.onCreateExtrusion}
       report={report}
-      onCreateSketch={onCreateSketch}
-      onEditSketch={onEditSketch}
+      onCreateSketch={props.onCreateSketch}
+      onEditSketch={props.onEditSketch}
+      onSelectedProfileChange={props.onSketchSelectedProfileChange}
+      selectedProfile={props.sketchSelectedProfile}
     />
   )
 }

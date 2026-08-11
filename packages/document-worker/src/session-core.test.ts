@@ -2,6 +2,7 @@ import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
+  documentRebuildSnapshotSchema,
 } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import { DocumentWorkerRequestError } from "./client-core"
@@ -341,9 +342,16 @@ describe("DocumentWorkerSession", () => {
   it("solves the exact rebuilt revision with stable drag and continuation records", async () => {
     const { clients, session } = createHarness()
     await session.rebuild({ document: document(4), mesh })
+    const sourceSketch = documentRebuildSnapshotSchema.parse(document(4)).sketches[0]
+    expect(sourceSketch).toBeDefined()
+    if (!sourceSketch) return
 
     const response = await session.solveSketch({
       sketchId,
+      draftSketch: {
+        ...sourceSketch,
+        label: "Unsaved session profile",
+      },
       continuation: {
         schemaVersion: 0,
         sketchId,
@@ -364,6 +372,10 @@ describe("DocumentWorkerSession", () => {
       },
     })
     expect(clients[0]?.requests.map(({ type }) => type)).toEqual(["rebuildDocument", "solveSketch"])
+    expect(clients[0]?.requests[1]).toMatchObject({
+      type: "solveSketch",
+      draftSketch: { id: sketchId, label: "Unsaved session profile" },
+    })
   })
 
   it("rebuilds committed state before retrying a sketch solve after worker failure", async () => {

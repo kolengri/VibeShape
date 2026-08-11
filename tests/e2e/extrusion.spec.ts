@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { drawRectangle } from "./sketch-helpers"
 
 test.describe("selector-backed extrusion", () => {
   test("creates, rebuilds, edits, and reopens a variable-driven solid", async ({ page }) => {
@@ -19,13 +20,12 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("button", { name: "Model", exact: true })
       .click()
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
-    const sketchForm = page.getByRole("form", { name: "Create rectangle sketch" })
-    await sketchForm.getByRole("textbox", { name: "Width" }).fill("20 mm")
-    await sketchForm.getByRole("textbox", { name: "Height" }).fill("10 mm")
-    await sketchForm.getByRole("combobox", { name: "Support plane" }).selectOption("xz")
-    await sketchForm.getByRole("button", { name: "Finish sketch" }).dblclick()
+    await page.getByRole("combobox", { name: "Support plane" }).selectOption("xz")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
     await page.getByRole("button", { name: "Extrude selected profile" }).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()

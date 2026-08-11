@@ -36,7 +36,7 @@ flowchart LR
     H --> I["Add another sketch or feature"]
 ```
 
-For the current rectangle slice, choosing width and height authors the constrained geometry on behalf of the user. This is a deliberate temporary authoring tool, not a replacement for the free-form sketcher.
+The product now authors sketch geometry interactively. The former rectangle-parameter form has been removed from the product path; the retained domain rectangle helper remains a deterministic compatibility and test utility.
 
 ## Delivery sequence
 
@@ -53,6 +53,8 @@ Status: implemented in the product shell.
 
 ### Slice 2 — plane selection in the modeling viewport
 
+Status: partially implemented. The accessible plane selector and normal-to-plane 2D workspace are active; viewport datum picking remains open.
+
 - Render XY, XZ, and YZ origin planes as selectable datum entities.
 - Support both preselection-first (`select plane → Sketch`) and command-first (`Sketch → select plane`) entry.
 - Replace the plane dropdown as the primary interaction while retaining it as an accessible equivalent.
@@ -63,19 +65,24 @@ Exit criterion: a new user can start a sketch from the viewport without reading 
 
 ### Slice 3 — interactive sketch authoring
 
-- Add Line, center rectangle, corner rectangle, Circle, Arc, Point, and Construction modes.
-- Add hover inference, explicit coincident/horizontal/vertical/tangent indicators, and visible degrees of freedom.
-- Add direct dimensions and the existing variable expressions to selected sketch geometry.
+Status: core P0 interaction implemented.
+
+- Point, Line/Polyline, corner Rectangle, Circle, center-point Arc, and Construction modes author analytical geometry; center rectangle and three-point Arc remain open.
+- Select, additive select, point dragging, cascade Delete, Escape placement cancel, local undo/redo, pan, zoom, and stable draft identities are implemented.
+- Rectangle placement adds horizontal and vertical intent automatically. Hover inference and constraint glyphs remain open; live solver state and degrees of freedom are visible.
+- Compatible selections expose every P0 constraint schema. Direct length and angle dimensions retain literal or committed `#variable` expressions through a TanStack Form adapter.
 - Preserve analytical entities; sampled display geometry never becomes semantic source data.
-- Expose actionable over-constraint conflicts without silently deleting constraints.
+- Preserve over-constrained drafts and failed constraint identities without silently deleting constraints; richer repair suggestions remain open.
 
 Exit criterion: the reference flange and bracket profiles can be created, fully constrained, edited, saved, and reopened.
 
 ### Slice 4 — profile-region selection and extrusion preview
 
-- Render solver-produced closed regions as hoverable and selectable areas.
+Status: stable single-profile selection implemented; multi-profile feature input and solid preview remain open.
+
+- Render solver-produced closed regions as selectable areas behind entity strokes.
 - Persist only canonical stable boundary-entity selectors.
-- Allow multiple selected regions, holes, and islands within the bounded profile contract.
+- Detect and list multiple regions, holes, and islands within the bounded profile contract; the current extrusion accepts one selected profile.
 - Preview the transient solid in the 3D viewport while distance, direction, and symmetric state change.
 - Show the exact selection set in the task panel and preserve it after validation failures.
 
@@ -92,7 +99,7 @@ Exit criterion: a printable bracket can be built without direct primitives and r
 
 ### Slice 6 — history and repair
 
-- Add rollback-aware history editing, suppression, reorder validation, and command-level undo/redo.
+- Active-sketch draft undo/redo is implemented. Add rollback-aware committed history editing, suppression, reorder validation, and command-level undo/redo.
 - Highlight downstream failures at the owning feature.
 - Resolve stable topology references conservatively; ambiguous references open repair UI instead of guessing.
 - Expose the same bounded repair choices through automation contracts.

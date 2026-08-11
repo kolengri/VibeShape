@@ -10,6 +10,7 @@ import {
   type SketchId,
   sessionIdSchema,
 } from "@vibeshape/domain/identifiers"
+import type { SketchRecord } from "@vibeshape/domain/sketch"
 import {
   type DocumentWorkerTerminalResponse,
   type FeatureMeshPolicy,
@@ -127,7 +128,10 @@ export type DocumentRebuildPort = Readonly<{
     mesh: FeatureMeshPolicy
   }) => Promise<DocumentRebuildResponse>
   exportDocument: (format: GeometryExportFormat) => Promise<DocumentExportResponse>
-  solveSketch: (input: { sketchId: SketchId }) => Promise<SketchSolveResponse>
+  solveSketch: (input: {
+    sketchId: SketchId
+    draftSketch?: SketchRecord
+  }) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
 }>
@@ -383,8 +387,11 @@ export class PersistentDocumentSession {
     return this.#enqueue(() => this.#exportDocument(format))
   }
 
-  solveSketch(sketchId: SketchId): Promise<PersistentSketchSolveResult> {
-    return this.#enqueue(() => this.#solveSketch(sketchId))
+  solveSketch(
+    sketchId: SketchId,
+    draftSketch?: SketchRecord,
+  ): Promise<PersistentSketchSolveResult> {
+    return this.#enqueue(() => this.#solveSketch(sketchId, draftSketch))
   }
 
   close(): Promise<SessionPortResult<void>> {
@@ -535,7 +542,10 @@ export class PersistentDocumentSession {
     }
   }
 
-  async #solveSketch(sketchId: SketchId): Promise<PersistentSketchSolveResult> {
+  async #solveSketch(
+    sketchId: SketchId,
+    draftSketch?: SketchRecord,
+  ): Promise<PersistentSketchSolveResult> {
     if (this.#closed) {
       return {
         ok: false,
@@ -543,7 +553,11 @@ export class PersistentDocumentSession {
       }
     }
     try {
-      return { ok: true, response: await this.#rebuildPort.solveSketch({ sketchId }) }
+      const input = draftSketch ? { sketchId, draftSketch } : { sketchId }
+      return {
+        ok: true,
+        response: await this.#rebuildPort.solveSketch(input),
+      }
     } catch {
       return {
         ok: false,

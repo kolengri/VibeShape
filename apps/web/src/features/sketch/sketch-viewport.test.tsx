@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
   createLengthQuantity,
   createRectangleSketch,
@@ -9,6 +9,7 @@ import {
   sketchIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type {
   ActiveSketchSolveResult,
@@ -49,7 +50,7 @@ function solveResult(): ActiveSketchSolveResult {
   return {
     ok: true,
     response: {
-      protocolVersion: 5,
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
       requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f32ff",
       documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f32fe",
       revision: 7,
@@ -110,10 +111,42 @@ function solveResult(): ActiveSketchSolveResult {
   }
 }
 
-function renderViewport(props: React.ComponentProps<typeof SketchViewport>) {
+const noOperation = () => undefined
+
+function renderViewport(
+  props: Readonly<{
+    draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
+    editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+    onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
+    onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
+    onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+    sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
+    solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
+  }>,
+) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <SketchViewport {...props} />
+      <SketchViewport
+        solveSketch={props.solveSketch}
+        state={{
+          construction: false,
+          controller,
+          draft: props.draft ?? null,
+          editorTool: props.editorTool ?? "select",
+          selectedEntityIds: [],
+          selectedProfile: null,
+          sketch: props.sketch,
+        }}
+        actions={{
+          onDraftChange: props.onDraftChange ?? noOperation,
+          onFailedConstraintsChange: noOperation,
+          onProfileSelect: props.onProfileSelect ?? noOperation,
+          onProfilesChange: props.onProfilesChange ?? noOperation,
+          onRedo: noOperation,
+          onSelectionChange: noOperation,
+          onUndo: noOperation,
+        }}
+      />
     </I18nProvider>,
   )
 }
@@ -123,27 +156,63 @@ afterEach(cleanup)
 describe("SketchViewport", () => {
   it("renders production solver state and exact profile measurements", async () => {
     const solveSketch = vi.fn(async () => solveResult())
-    renderViewport({ controller, preview: null, sketch, solveSketch })
+    const onProfilesChange = vi.fn()
+    const onProfileSelect = vi.fn()
+    renderViewport({ sketch, solveSketch, onProfilesChange, onProfileSelect })
 
     expect(await screen.findByRole("img", { name: "Solved sketch geometry" })).toBeTruthy()
-    expect(screen.getByText("Fully constrained")).toBeTruthy()
+    expect(await screen.findByText("Fully constrained")).toBeTruthy()
     expect(screen.getByText("Degrees of freedom: 0")).toBeTruthy()
     expect(screen.getByText("Profile: 360 mm² · 84 mm perimeter")).toBeTruthy()
-    expect(solveSketch).toHaveBeenCalledWith(7, sketchId)
+    expect(solveSketch).toHaveBeenCalledWith(7, sketch)
+    await waitFor(() => expect(onProfilesChange).toHaveBeenLastCalledWith([expect.any(Object)]))
+    fireEvent.pointerDown(document.querySelector('[data-sketch-profile-index="0"]') as Element)
+    expect(onProfileSelect).toHaveBeenCalledWith(expect.objectContaining({ sketchId }))
   })
 
-  it("renders an explicit unsaved preview without invoking the worker", () => {
+  it("solves and renders an editable transient draft", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     renderViewport({
-      controller,
-      preview: { width: 48, height: 20, plane: "yz" },
-      sketch: null,
+      draft: sketch,
+      editorTool: "line",
+      sketch,
       solveSketch,
     })
 
-    expect(screen.getByRole("img", { name: "Unsaved rectangular sketch preview" })).toBeTruthy()
-    expect(screen.getByText("Unsaved preview")).toBeTruthy()
-    expect(screen.getByText("YZ · millimeters")).toBeTruthy()
-    expect(solveSketch).not.toHaveBeenCalled()
+    expect(screen.getByRole("img", { name: "Editable sketch geometry" })).toBeTruthy()
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledWith(7, sketch))
+  })
+
+  it("creates line geometry from canvas pointer input without committing the document", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "line",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entities: expect.arrayContaining([expect.objectContaining({ type: "line" })]),
+      }),
+    )
   })
 })

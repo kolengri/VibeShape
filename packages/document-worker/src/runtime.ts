@@ -356,7 +356,9 @@ export class DocumentWorkerRuntime {
         retryable: true,
       }
     }
-    const sketch = document.sketches.find((candidate) => candidate.id === request.sketchId)
+    const sketch =
+      request.draftSketch ??
+      document.sketches.find((candidate) => candidate.id === request.sketchId)
     if (!sketch) {
       return {
         ok: false,

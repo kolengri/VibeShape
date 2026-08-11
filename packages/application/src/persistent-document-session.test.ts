@@ -1,6 +1,7 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { DocumentId, SessionId, SketchId } from "@vibeshape/domain/identifiers"
+import type { SketchRecord } from "@vibeshape/domain/sketch"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
@@ -113,6 +114,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   terminated = false
   exportedFormats: string[] = []
   solvedSketchIds: string[] = []
+  solvedSketchDrafts: Array<SketchRecord | null> = []
 
   async rebuild(input: Parameters<DocumentRebuildPort["rebuild"]>[0]) {
     if (this.failNextRebuild) {
@@ -154,6 +156,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
 
   async solveSketch(input: Parameters<DocumentRebuildPort["solveSketch"]>[0]) {
     this.solvedSketchIds.push(input.sketchId)
+    this.solvedSketchDrafts.push(input.draftSketch ?? null)
     return {
       protocolVersion: DOCUMENT_PROTOCOL_VERSION,
       requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fd",
@@ -291,6 +294,26 @@ describe("persistent document session", () => {
       },
     })
     expect(state.rebuildPorts[0]?.solvedSketchIds).toEqual([sketchId])
+    expect(state.rebuildPorts[0]?.solvedSketchDrafts).toEqual([null])
+  })
+
+  it("forwards a transient sketch draft without committing a semantic revision", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const draft = {
+      schemaVersion: 0,
+      id: sketchId,
+      label: "Unsaved profile",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    } as const satisfies SketchRecord
+
+    await expect(created.session.solveSketch(sketchId, draft)).resolves.toMatchObject({ ok: true })
+
+    expect(state.rebuildPorts[0]?.solvedSketchDrafts).toEqual([draft])
+    expect(created.session.snapshot).toMatchObject({ revision: 1, sketches: [] })
+    expect(state.repository.commitCount).toBe(1)
   })
 
   it("commits semantic revisions before rebuild and recovers them after an unclean reload", async () => {

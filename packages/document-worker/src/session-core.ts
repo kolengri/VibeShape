@@ -28,7 +28,7 @@ export type DocumentWorkerRebuildInput = Readonly<{
 
 export type DocumentWorkerSolveSketchInput = Readonly<
   Pick<SolveSketchRequest, "sketchId"> &
-    Partial<Pick<SolveSketchRequest, "continuation" | "draggedPoints">>
+    Partial<Pick<SolveSketchRequest, "continuation" | "draftSketch" | "draggedPoints">>
 >
 
 export interface DocumentWorkerClientPort {
@@ -230,6 +230,7 @@ export class DocumentWorkerSession {
       ...this.#envelope(revision),
       type: "solveSketch",
       sketchId: input.sketchId,
+      draftSketch: input.draftSketch ?? null,
       continuation: input.continuation ?? null,
       draggedPoints: input.draggedPoints ?? [],
     })

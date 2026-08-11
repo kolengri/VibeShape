@@ -86,5 +86,6 @@ The foundation includes:
 - native `Input` plus native `NativeSelect`, with state-agnostic `TextField` and `NativeSelectField` compositions that own labels, descriptions, and stable validation relationships;
 - shared `Field`, `FieldLabel`, `FieldDescription`, and `FieldError` compositions for consistent form layout;
 - a TanStack Form integration exposing `Form`, `useAppForm`, `TextField`, `NativeSelectField`, and `SubmitButton` adapters;
-- state-agnostic primitive and rectangle-sketch parameter panels with separate TanStack feature adapters that preserve raw Quantity expressions, publish preview state outside base controls, and submit through the shared single-flight action contract;
+- state-agnostic primitive and sketch-dimension fields with separate TanStack Form adapters that preserve raw Quantity expressions, publish transient draft state outside base controls, and submit through the shared single-flight action contract;
+- a specialized SVG sketch canvas that receives one schema-valid analytical draft, delegates mutations to pure domain sketch-edit operations, exposes entity and stable-region selection, and keeps solved display geometry disposable;
 - Vitest and Testing Library coverage for the base and integrated layers.

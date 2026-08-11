@@ -65,7 +65,7 @@ export type ApplyVariableTableResult =
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 export type FeatureMutationResult = ApplyVariableTableResult
-export type SketchMutationResult = ApplyVariableTableResult
+type SketchMutationResult = ApplyVariableTableResult
 export type ActiveSketchSolveResult = PersistentSketchSolveResult
 
 export type ActiveDocumentExportResult =
@@ -447,7 +447,7 @@ export function updateSketch(baseRevision: number, sketch: SketchRecord) {
 
 export async function solveActiveSketch(
   baseRevision: number,
-  sketchId: SketchId,
+  sketch: SketchId | SketchRecord,
 ): Promise<ActiveSketchSolveResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
@@ -460,10 +460,10 @@ export async function solveActiveSketch(
       },
     }
   }
-  if (
-    state.report.snapshot.revision !== baseRevision ||
-    !state.report.snapshot.sketches.some(({ id }) => id === sketchId)
-  ) {
+  const sketchId = typeof sketch === "string" ? sketch : sketch.id
+  const draftSketch = typeof sketch === "string" ? undefined : sketch
+  const committedSketchExists = state.report.snapshot.sketches.some(({ id }) => id === sketchId)
+  if (state.report.snapshot.revision !== baseRevision || (!draftSketch && !committedSketchExists)) {
     return {
       ok: false,
       diagnostic: {
@@ -474,7 +474,7 @@ export async function solveActiveSketch(
       },
     }
   }
-  return session.solveSketch(sketchId)
+  return session.solveSketch(sketchId, draftSketch)
 }
 
 export async function exportActiveDocument(

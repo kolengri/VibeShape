@@ -1,0 +1,181 @@
+import { describe, expect, it } from "vitest"
+import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
+import {
+  appendSketchArc,
+  appendSketchCircle,
+  appendSketchConstraint,
+  appendSketchLine,
+  appendSketchPoint,
+  appendSketchRectangle,
+  createEmptySketch,
+  moveSketchPoint,
+  removeSketchConstraints,
+  removeSketchEntities,
+  setSketchEntityConstruction,
+} from "./sketch-edit"
+
+const sketchId = "018f0000-0000-7000-8000-000000000001" as SketchId
+let nextEntityId = 1
+let nextConstraintId = 1
+
+function entityId() {
+  const suffix = String(nextEntityId++).padStart(12, "0")
+  return `018f0000-0000-7000-9000-${suffix}` as SketchEntityId
+}
+
+function constraintId() {
+  const suffix = String(nextConstraintId++).padStart(12, "0")
+  return `018f0000-0000-7000-a000-${suffix}` as SketchConstraintId
+}
+
+function empty() {
+  nextEntityId = 1
+  nextConstraintId = 1
+  return createEmptySketch({ id: sketchId, label: "Profile", plane: "xy" })
+}
+
+describe("sketch editing", () => {
+  it("appends a standalone analytical point", () => {
+    const result = appendSketchPoint(empty(), {
+      construction: true,
+      createEntityId: entityId,
+      point: { x: 3, y: -4 },
+    })
+
+    expect(result.createdEntityIds).toHaveLength(1)
+    expect(result.sketch.entities).toEqual([
+      expect.objectContaining({ type: "point", x: 3, y: -4, construction: true }),
+    ])
+  })
+
+  it("creates an empty sketch and appends connected lines through existing point targets", () => {
+    const first = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 20, y: 0 } },
+    })
+    const endPointId = first.sketch.entities.find((entity) => entity.type === "line")?.endPointId
+    expect(endPointId).toBeDefined()
+    if (!endPointId) return
+
+    const second = appendSketchLine(first.sketch, {
+      createEntityId: entityId,
+      start: { kind: "existing", pointId: endPointId },
+      end: { kind: "new", point: { x: 20, y: 10 } },
+    })
+
+    expect(second.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(3)
+    expect(second.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(2)
+    expect(second.sketch.entities.at(-1)).toMatchObject({ type: "line", startPointId: endPointId })
+  })
+
+  it("adds a rectangle with shared corners and automatic horizontal and vertical constraints", () => {
+    const result = appendSketchRectangle(empty(), {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      firstCorner: { x: -5, y: -3 },
+      oppositeCorner: { x: 5, y: 3 },
+    })
+
+    expect(result.sketch.entities).toHaveLength(8)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "horizontal",
+      "vertical",
+      "horizontal",
+      "vertical",
+    ])
+  })
+
+  it("adds circles and projects arc endpoints onto the authored radius", () => {
+    const circle = appendSketchCircle(empty(), {
+      center: { kind: "new", point: { x: 2, y: 2 } },
+      createEntityId: entityId,
+      perimeterPoint: { x: 7, y: 2 },
+    })
+    expect(circle.sketch.entities.at(-1)).toMatchObject({ type: "circle", radius: 5 })
+
+    const arc = appendSketchArc(circle.sketch, {
+      center: { x: 0, y: 0 },
+      createEntityId: entityId,
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 3 },
+    })
+    const end = arc.sketch.entities.at(-2)
+    expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("adds validated constraints and rejects incompatible selections", () => {
+    const line = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 5 } },
+    }).sketch
+    const lineId = line.entities.find((entity) => entity.type === "line")?.id
+    expect(lineId).toBeDefined()
+    if (!lineId) return
+
+    const constrained = appendSketchConstraint(line, { type: "horizontal", lineId }, constraintId)
+    expect(constrained.constraints).toHaveLength(1)
+    expect(appendSketchConstraint(constrained, { type: "horizontal", lineId }, constraintId)).toBe(
+      constrained,
+    )
+    expect(() =>
+      appendSketchConstraint(line, { type: "fixed", pointId: lineId }, constraintId),
+    ).toThrow()
+  })
+
+  it("cascades geometry and constraint removal without deleting shared points", () => {
+    const first = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const firstLine = first.entities.find((entity) => entity.type === "line")
+    expect(firstLine).toBeDefined()
+    if (!firstLine) return
+    const second = appendSketchLine(first, {
+      createEntityId: entityId,
+      start: { kind: "existing", pointId: firstLine.endPointId },
+      end: { kind: "new", point: { x: 10, y: 10 } },
+    }).sketch
+    const constrained = appendSketchConstraint(
+      second,
+      { type: "horizontal", lineId: firstLine.id },
+      constraintId,
+    )
+
+    const removed = removeSketchEntities(constrained, [firstLine.id])
+
+    expect(removed.entities.filter(({ type }) => type === "line")).toHaveLength(1)
+    expect(removed.entities.some(({ id }) => id === firstLine.endPointId)).toBe(true)
+    expect(removed.constraints).toEqual([])
+  })
+
+  it("moves points, toggles construction state, and removes constraints independently", () => {
+    const line = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const point = line.entities.find((entity) => entity.type === "point")
+    const segment = line.entities.find((entity) => entity.type === "line")
+    expect(point && segment).toBeTruthy()
+    if (!point || !segment) return
+    const moved = moveSketchPoint(line, point.id, { x: -2, y: 4 })
+    const construction = setSketchEntityConstruction(moved, [segment.id], true)
+    const constrained = appendSketchConstraint(
+      construction,
+      { type: "fixed", pointId: point.id },
+      constraintId,
+    )
+
+    expect(construction.entities.find(({ id }) => id === point.id)).toMatchObject({ x: -2, y: 4 })
+    expect(construction.entities.find(({ id }) => id === segment.id)).toMatchObject({
+      construction: true,
+    })
+    const constraint = constrained.constraints[0]
+    expect(constraint).toBeDefined()
+    if (!constraint) return
+    expect(removeSketchConstraints(constrained, [constraint.id]).constraints).toEqual([])
+  })
+})
