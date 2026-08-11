@@ -54,6 +54,7 @@ export type EditorWorkspaceActions = Readonly<{
   editFeature: (featureId: FeatureId) => void
   editSketch: (sketchId: SketchId) => void
   select: (selection: ViewerSelection | null) => void
+  selectSketch: (sketchId: SketchId) => void
   setSketchPreview: (preview: RectangleSketchPreview | null) => void
   sketchSaved: (sketch: SketchRecord) => void
   switchWorkspace: (workspace: EditorWorkspaceName) => void
@@ -88,7 +89,7 @@ export function EditorWorkspace({
         activeSketchId={activeSketchId}
         controller={controller}
         onFeatureActivate={actions.editFeature}
-        onSketchActivate={actions.editSketch}
+        onSketchActivate={actions.selectSketch}
         onWorkspaceChange={actions.switchWorkspace}
       />
       <WorkspaceContent

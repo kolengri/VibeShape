@@ -4,6 +4,8 @@ test.describe("variable-driven rectangle sketch", () => {
   test("creates, solves, edits, persists, and reopens a constrained profile", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+    await expect(startPanel.getByRole("heading", { name: "Start with a sketch" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -12,7 +14,11 @@ test.describe("variable-driven rectangle sketch", () => {
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Model", exact: true })
+      .click()
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
     await expect(page.getByRole("heading", { name: "Create rectangle sketch" })).toBeVisible()
     await page.getByRole("textbox", { name: "Width" }).fill("#width")
     await page.getByRole("textbox", { name: "Height" }).fill("20 mm")
@@ -24,7 +30,7 @@ test.describe("variable-driven rectangle sketch", () => {
 
     await page
       .getByRole("form", { name: "Create rectangle sketch" })
-      .getByRole("button", { name: "Create sketch" })
+      .getByRole("button", { name: "Finish sketch" })
       .dblclick()
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
     await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toBeVisible()
@@ -39,6 +45,8 @@ test.describe("variable-driven rectangle sketch", () => {
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
+    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByRole("textbox", { name: "Width" })).toHaveValue("#span")
     await expect(page.getByRole("textbox", { name: "Height" })).toHaveValue("20 mm")
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
@@ -49,6 +57,7 @@ test.describe("variable-driven rectangle sketch", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByRole("textbox", { name: "Width" })).toHaveValue("#span")
     await expect(page.getByRole("textbox", { name: "Height" })).toHaveValue("25 mm")
     await page.getByRole("button", { name: "Cancel" }).click()

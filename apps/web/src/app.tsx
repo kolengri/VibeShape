@@ -44,6 +44,11 @@ function useSketchInteraction() {
     setActiveSketchId(sketchId)
     setActiveSketchTool({ kind: "edit-rectangle-sketch", sketchId })
   }, [])
+  const select = useCallback((sketchId: SketchId) => {
+    setActiveSketchId(sketchId)
+    setActiveSketchTool(null)
+    setSketchPreview(null)
+  }, [])
   const close = useCallback(() => {
     setActiveSketchTool(null)
     setSketchPreview(null)
@@ -63,6 +68,7 @@ function useSketchInteraction() {
     create,
     edit,
     saved,
+    select,
     sketchPreview,
     updatePreview,
   }
@@ -78,6 +84,7 @@ function useModelInteraction(
     create: createSketchInteraction,
     edit: editSketchInteraction,
     saved: sketchSaved,
+    select: selectSketchInteraction,
     updatePreview: setSketchPreview,
   } = sketch
   const [workspace, setWorkspace] = useState<EditorWorkspaceName>("model")
@@ -116,6 +123,15 @@ function useModelInteraction(
     },
     [editSketchInteraction],
   )
+  const selectSketch = useCallback(
+    (sketchId: SketchId) => {
+      setWorkspace("sketch")
+      setActiveTool(null)
+      setSelection(null)
+      selectSketchInteraction(sketchId)
+    },
+    [selectSketchInteraction],
+  )
   const closeTool = useCallback(() => {
     setActiveTool(null)
     closeSketch()
@@ -152,6 +168,7 @@ function useModelInteraction(
       editFeature,
       editSketch,
       select: setSelection,
+      selectSketch,
       setSketchPreview,
       sketchSaved,
       switchWorkspace,

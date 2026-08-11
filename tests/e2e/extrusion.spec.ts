@@ -5,6 +5,8 @@ test.describe("selector-backed extrusion", () => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+    await expect(startPanel.getByRole("heading", { name: "Start with a sketch" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
@@ -12,15 +14,19 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("textbox", { name: "Variable expression" }).fill("18 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
-    await page.getByRole("button", { name: "Create sketch" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Model", exact: true })
+      .click()
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
     const sketchForm = page.getByRole("form", { name: "Create rectangle sketch" })
     await sketchForm.getByRole("textbox", { name: "Width" }).fill("20 mm")
     await sketchForm.getByRole("textbox", { name: "Height" }).fill("10 mm")
     await sketchForm.getByRole("combobox", { name: "Support plane" }).selectOption("xz")
-    await sketchForm.getByRole("button", { name: "Create sketch" }).dblclick()
+    await sketchForm.getByRole("button", { name: "Finish sketch" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
-    await page.getByRole("button", { name: "Extrude profile" }).click()
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("textbox", { name: "Distance" }).fill("#depth")
