@@ -166,7 +166,30 @@ describe("document worker protocol", () => {
         continuation: null,
         draggedPoints: [{ entityId: sketchPointId, x: 10, y: 20 }],
       }),
-    ).toMatchObject({ type: "solveSketch", sketchId })
+    ).toMatchObject({ type: "solveSketch", sketchId, draftSketch: null })
+    expect(
+      documentWorkerRequestSchema.parse({
+        ...envelope(),
+        type: "solveSketch",
+        sketchId,
+        draftSketch: { ...sketch(), label: "Unsaved profile" },
+      }),
+    ).toMatchObject({
+      type: "solveSketch",
+      sketchId,
+      draftSketch: { id: sketchId, label: "Unsaved profile" },
+    })
+    expect(
+      documentWorkerRequestSchema.safeParse({
+        ...envelope(),
+        type: "solveSketch",
+        sketchId,
+        draftSketch: {
+          ...sketch(),
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+        },
+      }).success,
+    ).toBe(false)
     expect(
       documentWorkerResponseSchema.parse({
         ...envelope(),

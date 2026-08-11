@@ -1,76 +1,210 @@
 import {
+  createEmptySketch,
   type FeatureId,
-  rectangleSketchProfileSelector,
+  type SketchConstraintId,
+  type SketchEntityId,
   type SketchId,
+  type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useCallback, useState } from "react"
-import { useDocumentController } from "./document/document-controller"
+import { useCallback, useRef, useState } from "react"
+import { createBrowserSketchId, useDocumentController } from "./document/document-controller"
 import {
   type ActivePartDesignTool,
   activePartDesignCommand,
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
-import type { RectangleSketchPreview } from "./features/sketch/rectangle-sketch-form"
-import type { ActiveSketchTool } from "./features/sketch/sketch-tool"
+import type {
+  ActiveSketchTool,
+  SketchDraftChangeMode,
+  SketchEditorTool,
+} from "./features/sketch/sketch-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
 import type { EditorWorkspaceName } from "./shell/workspace"
 
-function sketchPreviewKey(preview: RectangleSketchPreview | null) {
-  return preview ? `${preview.width}\u0000${preview.height}\u0000${preview.plane}` : "none"
+function sameProfile(first: SketchProfileSelector, second: SketchProfileSelector) {
+  return (
+    first.sketchId === second.sketchId &&
+    first.outerBoundaryEntityIds.join(":") === second.outerBoundaryEntityIds.join(":") &&
+    first.holeBoundaryEntityIds.map((hole) => hole.join(":")).join("|") ===
+      second.holeBoundaryEntityIds.map((hole) => hole.join(":")).join("|")
+  )
 }
 
-function sameSketchPreview(
-  current: RectangleSketchPreview | null,
-  next: RectangleSketchPreview | null,
-) {
-  return sketchPreviewKey(current) === sketchPreviewKey(next)
+function useSketchPresentationState() {
+  const [construction, setConstruction] = useState(false)
+  const [editorTool, setEditorTool] = useState<SketchEditorTool>("select")
+  const [profiles, setProfiles] = useState<readonly SketchProfileSelector[]>([])
+  const [failedConstraintIds, setFailedConstraintIds] = useState<readonly SketchConstraintId[]>([])
+  const [selectedEntityIds, setSelectedEntityIds] = useState<readonly SketchEntityId[]>([])
+  const [selectedProfile, setSelectedProfile] = useState<SketchProfileSelector | null>(null)
+  const reset = useCallback((nextEditorTool: SketchEditorTool) => {
+    setEditorTool(nextEditorTool)
+    setProfiles([])
+    setFailedConstraintIds([])
+    setSelectedEntityIds([])
+    setSelectedProfile(null)
+  }, [])
+  const profilesChanged = useCallback((nextProfiles: readonly SketchProfileSelector[]) => {
+    setProfiles(nextProfiles)
+    setSelectedProfile((current) => {
+      const matching = current
+        ? nextProfiles.find((profile) => sameProfile(profile, current))
+        : undefined
+      return matching ?? nextProfiles[0] ?? null
+    })
+  }, [])
+  return {
+    construction,
+    editorTool,
+    failedConstraintIds,
+    profiles,
+    profilesChanged,
+    reset,
+    selectedEntityIds,
+    selectedProfile,
+    setConstruction,
+    setEditorTool,
+    setFailedConstraintIds,
+    setSelectedEntityIds,
+    setSelectedProfile,
+  }
+}
+
+function useSketchDraftHistory(clearSelection: () => void) {
+  const [draft, setDraft] = useState<SketchRecord | null>(null)
+  const undoStack = useRef<SketchRecord[]>([])
+  const redoStack = useRef<SketchRecord[]>([])
+  const reset = useCallback((nextDraft: SketchRecord | null) => {
+    setDraft(nextDraft)
+    undoStack.current = []
+    redoStack.current = []
+  }, [])
+  const update = useCallback(
+    (nextDraft: SketchRecord, mode: SketchDraftChangeMode = "record") => {
+      if (draft && nextDraft !== draft && mode === "record") {
+        undoStack.current = [...undoStack.current.slice(-99), draft]
+        redoStack.current = []
+      }
+      setDraft(nextDraft)
+    },
+    [draft],
+  )
+  const undo = useCallback(() => {
+    const previous = undoStack.current.at(-1)
+    if (!draft || !previous) return
+    undoStack.current = undoStack.current.slice(0, -1)
+    redoStack.current = [...redoStack.current.slice(-99), draft]
+    setDraft(previous)
+    clearSelection()
+  }, [clearSelection, draft])
+  const redo = useCallback(() => {
+    const next = redoStack.current.at(-1)
+    if (!draft || !next) return
+    redoStack.current = redoStack.current.slice(0, -1)
+    undoStack.current = [...undoStack.current.slice(-99), draft]
+    setDraft(next)
+    clearSelection()
+  }, [clearSelection, draft])
+  return {
+    draft,
+    redo,
+    redoAvailable: redoStack.current.length > 0,
+    reset,
+    undo,
+    undoAvailable: undoStack.current.length > 0,
+    update,
+  }
 }
 
 function useSketchInteraction() {
+  const presentation = useSketchPresentationState()
+  const {
+    reset: resetPresentation,
+    setEditorTool,
+    setFailedConstraintIds,
+    setSelectedEntityIds,
+  } = presentation
+  const clearSelection = useCallback(() => setSelectedEntityIds([]), [setSelectedEntityIds])
+  const history = useSketchDraftHistory(clearSelection)
+  const { reset: resetHistory } = history
   const [activeSketchTool, setActiveSketchTool] = useState<ActiveSketchTool | null>(null)
   const [activeSketchId, setActiveSketchId] = useState<SketchId | null>(null)
-  const [sketchPreview, setSketchPreview] = useState<RectangleSketchPreview | null>(null)
-  const create = useCallback(() => {
-    setActiveSketchId(null)
-    setActiveSketchTool({ kind: "create-rectangle-sketch" })
-  }, [])
-  const edit = useCallback((sketchId: SketchId) => {
-    setActiveSketchId(sketchId)
-    setActiveSketchTool({ kind: "edit-rectangle-sketch", sketchId })
-  }, [])
-  const select = useCallback((sketchId: SketchId) => {
-    setActiveSketchId(sketchId)
-    setActiveSketchTool(null)
-    setSketchPreview(null)
-  }, [])
+  const create = useCallback(
+    (sketch: SketchRecord) => {
+      setActiveSketchId(sketch.id)
+      setActiveSketchTool({ kind: "create-sketch" })
+      resetHistory(sketch)
+      resetPresentation("line")
+    },
+    [resetHistory, resetPresentation],
+  )
+  const edit = useCallback(
+    (sketch: SketchRecord) => {
+      setActiveSketchId(sketch.id)
+      setActiveSketchTool({ kind: "edit-sketch", sketchId: sketch.id })
+      resetHistory(sketch)
+      resetPresentation("select")
+    },
+    [resetHistory, resetPresentation],
+  )
+  const select = useCallback(
+    (sketchId: SketchId) => {
+      setActiveSketchId(sketchId)
+      setActiveSketchTool(null)
+      resetHistory(null)
+      resetPresentation("select")
+    },
+    [resetHistory, resetPresentation],
+  )
   const close = useCallback(() => {
+    if (activeSketchTool?.kind === "create-sketch") setActiveSketchId(null)
     setActiveSketchTool(null)
-    setSketchPreview(null)
-  }, [])
-  const saved = useCallback((sketch: SketchRecord) => {
-    setActiveSketchId(sketch.id)
-    setActiveSketchTool(null)
-    setSketchPreview(null)
-  }, [])
-  const updatePreview = useCallback((preview: RectangleSketchPreview | null) => {
-    setSketchPreview((current) => (sameSketchPreview(current, preview) ? current : preview))
-  }, [])
+    resetHistory(null)
+    resetPresentation("select")
+  }, [activeSketchTool, resetHistory, resetPresentation])
+  const saved = useCallback(
+    (sketch: SketchRecord) => {
+      setActiveSketchId(sketch.id)
+      setActiveSketchTool(null)
+      resetHistory(null)
+      setEditorTool("select")
+      setFailedConstraintIds([])
+      setSelectedEntityIds([])
+    },
+    [resetHistory, setEditorTool, setFailedConstraintIds, setSelectedEntityIds],
+  )
   return {
     activeSketchId,
     activeSketchTool,
     close,
+    construction: presentation.construction,
     create,
+    draft: history.draft,
     edit,
+    editorTool: presentation.editorTool,
+    failedConstraintIds: presentation.failedConstraintIds,
+    profiles: presentation.profiles,
+    profilesChanged: presentation.profilesChanged,
+    redo: history.redo,
+    redoAvailable: history.redoAvailable,
     saved,
     select,
-    sketchPreview,
-    updatePreview,
+    selectedEntityIds: presentation.selectedEntityIds,
+    selectedProfile: presentation.selectedProfile,
+    setConstruction: presentation.setConstruction,
+    setEditorTool,
+    setFailedConstraintIds,
+    setSelectedEntityIds,
+    setSelectedProfile: presentation.setSelectedProfile,
+    undo: history.undo,
+    undoAvailable: history.undoAvailable,
+    updateDraft: history.update,
   }
 }
 
@@ -83,10 +217,11 @@ function useModelInteraction(
     close: closeSketch,
     create: createSketchInteraction,
     edit: editSketchInteraction,
+    selectedProfile,
     saved: sketchSaved,
     select: selectSketchInteraction,
-    updatePreview: setSketchPreview,
   } = sketch
+  const t = useTranslations("app.shell.taskPanel.sketch")
   const [workspace, setWorkspace] = useState<EditorWorkspaceName>("model")
   const [activeTool, setActiveTool] = useState<ActivePartDesignTool | null>(null)
   const [selection, setSelection] = useState<ViewerSelection | null>(null)
@@ -109,19 +244,29 @@ function useModelInteraction(
     [switchWorkspace],
   )
   const createSketch = useCallback(() => {
+    const report = controller.report
+    if (!report) return
     setWorkspace("sketch")
     setActiveTool(null)
     setSelection(null)
-    createSketchInteraction()
-  }, [createSketchInteraction])
+    createSketchInteraction(
+      createEmptySketch({
+        id: createBrowserSketchId(),
+        label: t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
+        plane: "xy",
+      }),
+    )
+  }, [controller.report, createSketchInteraction, t])
   const editSketch = useCallback(
     (sketchId: SketchId) => {
+      const source = controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
+      if (!source) return
       setWorkspace("sketch")
       setActiveTool(null)
       setSelection(null)
-      editSketchInteraction(sketchId)
+      editSketchInteraction(source)
     },
-    [editSketchInteraction],
+    [controller.report?.snapshot.sketches, editSketchInteraction],
   )
   const selectSketch = useCallback(
     (sketchId: SketchId) => {
@@ -138,11 +283,9 @@ function useModelInteraction(
   }, [closeSketch])
 
   const createExtrusion = useCallback(() => {
-    const source = controller.report?.snapshot.sketches.find(({ id }) => id === activeSketchId)
-    const profile = source ? rectangleSketchProfileSelector(source) : null
-    if (!profile) return
-    startModelTool({ kind: "create-extrusion", profile })
-  }, [activeSketchId, controller.report?.snapshot.sketches, startModelTool])
+    if (!selectedProfile || selectedProfile.sketchId !== activeSketchId) return
+    startModelTool({ kind: "create-extrusion", profile: selectedProfile })
+  }, [activeSketchId, selectedProfile, startModelTool])
   const editFeature = useCallback(
     (featureId: FeatureId) => {
       const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
@@ -151,12 +294,10 @@ function useModelInteraction(
     },
     [controller.report?.snapshot.features, startModelTool],
   )
-  const selectedSketch = controller.report?.snapshot.sketches.find(
-    ({ id }) => id === activeSketchId,
-  )
-  const extrusionAvailable = selectedSketch
-    ? rectangleSketchProfileSelector(selectedSketch) !== null
-    : false
+  const extrusionAvailable =
+    selectedProfile !== null &&
+    selectedProfile.sketchId === activeSketchId &&
+    sketch.activeSketchTool === null
   return {
     actions: {
       closeTool,
@@ -169,9 +310,17 @@ function useModelInteraction(
       editSketch,
       select: setSelection,
       selectSketch,
-      setSketchPreview,
+      setSketchConstruction: sketch.setConstruction,
+      redoSketchDraft: sketch.redo,
+      setSketchDraft: sketch.updateDraft,
+      setSketchEditorTool: sketch.setEditorTool,
+      setSketchFailedConstraintIds: sketch.setFailedConstraintIds,
+      setSketchProfiles: sketch.profilesChanged,
+      setSketchSelectedEntityIds: sketch.setSelectedEntityIds,
+      setSketchSelectedProfile: sketch.setSelectedProfile,
       sketchSaved,
       switchWorkspace,
+      undoSketchDraft: sketch.undo,
     } satisfies EditorWorkspaceActions,
     activeTool,
     extrusionAvailable,
@@ -209,7 +358,15 @@ export function App() {
         controller={controller}
         workspace={model.workspace}
         selection={model.selection}
-        sketchPreview={sketch.sketchPreview}
+        sketchConstruction={sketch.construction}
+        sketchDraft={sketch.draft}
+        sketchEditorTool={sketch.editorTool}
+        sketchFailedConstraintIds={sketch.failedConstraintIds}
+        sketchProfiles={sketch.profiles}
+        sketchRedoAvailable={sketch.redoAvailable}
+        sketchSelectedEntityIds={sketch.selectedEntityIds}
+        sketchSelectedProfile={sketch.selectedProfile}
+        sketchUndoAvailable={sketch.undoAvailable}
       />
       <StatusBar controller={controller} selection={model.selection} />
     </main>

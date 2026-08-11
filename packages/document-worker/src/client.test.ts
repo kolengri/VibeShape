@@ -161,6 +161,7 @@ function solveRequest(requestId = "solve-request"): DocumentWorkerRequest {
     ...healthRequest(requestId),
     type: "solveSketch",
     sketchId,
+    draftSketch: null,
     continuation: null,
     draggedPoints: [],
   }

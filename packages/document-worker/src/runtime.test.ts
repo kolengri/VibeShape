@@ -593,6 +593,57 @@ describe("DocumentWorkerRuntime", () => {
     })
   })
 
+  it("solves a validated transient sketch without adding it to committed worker state", async () => {
+    const solvePort = vi.fn((input: Parameters<SketchSolvePort>[0]) =>
+      solveSketchRecord(sketchSolverModule(), input),
+    )
+    const { messages, runtime } = createHarness(solvePort)
+    await runtime.handle({
+      ...request("rebuild-before-draft-sketch"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [],
+      }),
+    })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "solve-draft-sketch",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      draftSketch: { ...sketch(), label: "Unsaved worker profile" },
+      continuation: null,
+      draggedPoints: [],
+    })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "solve-uncommitted-sketch-without-draft",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: sketchIds.sketch,
+      draftSketch: null,
+      continuation: null,
+      draggedPoints: [],
+    })
+
+    expect(solvePort).toHaveBeenCalledOnce()
+    expect(solvePort.mock.calls[0]?.[0]).toMatchObject({
+      revision: 1,
+      sketch: { id: sketchIds.sketch, label: "Unsaved worker profile" },
+    })
+    expect(messages.find(({ requestId }) => requestId === "solve-draft-sketch")).toMatchObject({
+      type: "sketchSolved",
+      solution: { sketchId: sketchIds.sketch, sourceRevision: 1 },
+    })
+    expect(
+      messages.find(({ requestId }) => requestId === "solve-uncommitted-sketch-without-draft"),
+    ).toMatchObject({ type: "failure", diagnostic: { code: "sketch-not-found" } })
+  })
+
   it("rejects unavailable, stale, missing, and invalid sketch solve state without mutation", async () => {
     const unavailable = createHarness()
     await unavailable.runtime.handle({

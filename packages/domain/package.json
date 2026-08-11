@@ -21,6 +21,7 @@
     "./part-design": "./src/part-design.ts",
     "./rectangle-sketch": "./src/rectangle-sketch.ts",
     "./sketch": "./src/sketch.ts",
+    "./sketch-edit": "./src/sketch-edit.ts",
     "./sketch-profile-selector": "./src/sketch-profile-selector.ts",
     "./topology": "./src/topology.ts",
     "./units": "./src/units.ts",

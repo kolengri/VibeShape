@@ -1,12 +1,22 @@
-import type { FeatureId, SketchId, SketchRecord } from "@vibeshape/domain"
+import type {
+  FeatureId,
+  SketchConstraintId,
+  SketchEntityId,
+  SketchId,
+  SketchProfileSelector,
+  SketchRecord,
+} from "@vibeshape/domain"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import type { DocumentControllerState } from "../document/document-controller"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
-import type { RectangleSketchPreview } from "../features/sketch/rectangle-sketch-form"
-import type { ActiveSketchTool } from "../features/sketch/sketch-tool"
+import type {
+  ActiveSketchTool,
+  SketchDraftChangeMode,
+  SketchEditorTool,
+} from "../features/sketch/sketch-tool"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import { GeometryViewport } from "./geometry-viewport"
@@ -18,21 +28,62 @@ function WorkspaceContent({
   controller,
   onSelectionChange,
   selection,
+  sketchConstruction,
+  sketchDraft,
+  sketchEditorTool,
+  sketchSelectedEntityIds,
+  sketchSelectedProfile,
   selectedSketch,
-  sketchPreview,
+  onSketchDraftChange,
+  onSketchFailedConstraintsChange,
+  onSketchProfileSelect,
+  onSketchProfilesChange,
+  onSketchRedo,
+  onSketchSelectionChange,
+  onSketchUndo,
   workspace,
 }: {
   controller: DocumentControllerState
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
+  sketchConstruction: boolean
+  sketchDraft: SketchRecord | null
+  sketchEditorTool: SketchEditorTool
+  sketchSelectedEntityIds: readonly SketchEntityId[]
+  sketchSelectedProfile: SketchProfileSelector | null
   selectedSketch: SketchRecord | null
-  sketchPreview: RectangleSketchPreview | null
+  onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
+  onSketchProfileSelect: (profile: SketchProfileSelector) => void
+  onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
+  onSketchRedo: () => void
+  onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+  onSketchUndo: () => void
   workspace: EditorWorkspaceName
 }) {
   if (workspace === "variables") return <VariablesPanel controller={controller} />
   if (workspace === "sketch") {
     return (
-      <SketchViewport controller={controller} preview={sketchPreview} sketch={selectedSketch} />
+      <SketchViewport
+        state={{
+          construction: sketchConstruction,
+          controller,
+          draft: sketchDraft,
+          editorTool: sketchEditorTool,
+          selectedEntityIds: sketchSelectedEntityIds,
+          selectedProfile: sketchSelectedProfile,
+          sketch: selectedSketch,
+        }}
+        actions={{
+          onDraftChange: onSketchDraftChange,
+          onFailedConstraintsChange: onSketchFailedConstraintsChange,
+          onProfileSelect: onSketchProfileSelect,
+          onProfilesChange: onSketchProfilesChange,
+          onRedo: onSketchRedo,
+          onSelectionChange: onSketchSelectionChange,
+          onUndo: onSketchUndo,
+        }}
+      />
     )
   }
   return (
@@ -55,9 +106,17 @@ export type EditorWorkspaceActions = Readonly<{
   editSketch: (sketchId: SketchId) => void
   select: (selection: ViewerSelection | null) => void
   selectSketch: (sketchId: SketchId) => void
-  setSketchPreview: (preview: RectangleSketchPreview | null) => void
+  redoSketchDraft: () => void
+  setSketchConstruction: (construction: boolean) => void
+  setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  setSketchEditorTool: (tool: SketchEditorTool) => void
+  setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
+  setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
+  setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
   sketchSaved: (sketch: SketchRecord) => void
   switchWorkspace: (workspace: EditorWorkspaceName) => void
+  undoSketchDraft: () => void
 }>
 
 export function EditorWorkspace({
@@ -67,7 +126,15 @@ export function EditorWorkspace({
   activeSketchTool,
   controller,
   selection,
-  sketchPreview,
+  sketchConstruction,
+  sketchDraft,
+  sketchEditorTool,
+  sketchFailedConstraintIds,
+  sketchProfiles,
+  sketchRedoAvailable,
+  sketchSelectedEntityIds,
+  sketchSelectedProfile,
+  sketchUndoAvailable,
   workspace,
 }: {
   actions: EditorWorkspaceActions
@@ -76,7 +143,15 @@ export function EditorWorkspace({
   activeSketchTool: ActiveSketchTool | null
   controller: DocumentControllerState
   selection: ViewerSelection | null
-  sketchPreview: RectangleSketchPreview | null
+  sketchConstruction: boolean
+  sketchDraft: SketchRecord | null
+  sketchEditorTool: SketchEditorTool
+  sketchFailedConstraintIds: readonly SketchConstraintId[]
+  sketchProfiles: readonly SketchProfileSelector[]
+  sketchRedoAvailable: boolean
+  sketchSelectedEntityIds: readonly SketchEntityId[]
+  sketchSelectedProfile: SketchProfileSelector | null
+  sketchUndoAvailable: boolean
   workspace: EditorWorkspaceName
 }) {
   const selectedSketch =
@@ -97,7 +172,18 @@ export function EditorWorkspace({
         workspace={workspace}
         selection={selection}
         selectedSketch={selectedSketch}
-        sketchPreview={sketchPreview}
+        sketchConstruction={sketchConstruction}
+        sketchDraft={sketchDraft}
+        sketchEditorTool={sketchEditorTool}
+        sketchSelectedEntityIds={sketchSelectedEntityIds}
+        sketchSelectedProfile={sketchSelectedProfile}
+        onSketchDraftChange={actions.setSketchDraft}
+        onSketchFailedConstraintsChange={actions.setSketchFailedConstraintIds}
+        onSketchProfileSelect={actions.setSketchSelectedProfile}
+        onSketchProfilesChange={actions.setSketchProfiles}
+        onSketchRedo={actions.redoSketchDraft}
+        onSketchSelectionChange={actions.setSketchSelectedEntityIds}
+        onSketchUndo={actions.undoSketchDraft}
         onSelectionChange={actions.select}
       />
       <TaskPanel
@@ -113,8 +199,22 @@ export function EditorWorkspace({
         onCreateSketch={actions.createSketch}
         onCreateSubtract={actions.createSubtract}
         onEditSketch={actions.editSketch}
-        onSketchPreview={actions.setSketchPreview}
+        sketchConstruction={sketchConstruction}
+        sketchDraft={sketchDraft}
+        sketchEditorTool={sketchEditorTool}
+        sketchFailedConstraintIds={sketchFailedConstraintIds}
+        sketchProfiles={sketchProfiles}
+        sketchRedoAvailable={sketchRedoAvailable}
+        sketchSelectedEntityIds={sketchSelectedEntityIds}
+        sketchSelectedProfile={sketchSelectedProfile}
+        sketchUndoAvailable={sketchUndoAvailable}
+        onSketchConstructionChange={actions.setSketchConstruction}
+        onSketchDraftChange={actions.setSketchDraft}
+        onSketchEditorToolChange={actions.setSketchEditorTool}
+        onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
+        onSketchRedo={actions.redoSketchDraft}
         onSketchSaved={actions.sketchSaved}
+        onSketchUndo={actions.undoSketchDraft}
       />
     </div>
   )

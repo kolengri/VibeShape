@@ -203,6 +203,35 @@ Sketch mode switches to an orthographic view normal to the sketch plane by defau
 - Diagnostic overlays include a legend and can be hidden independently.
 - Print overhang, wall, and build-volume overlays identify that they are heuristic analyses, not guarantees.
 
+### Sketch Editor Interaction
+
+The sketch editor is a transient command surface over one analytical `SketchRecord`. It MUST keep authored geometry, stable IDs, constraints, dimension expressions, selection, and local history separate from solved display state.
+
+| Interaction | Required behavior |
+|---|---|
+| Place geometry | Point finishes after one position; Line remains chain-active after a segment; Rectangle and Circle finish after the required second point; center-point Arc finishes after center, start, and end |
+| Select | Primary activation replaces selection; the platform additive modifier toggles entities; empty-space activation clears selection |
+| Drag point | Updates only the active draft, requests a debounced worker solve, and creates one local undo checkpoint for the complete gesture |
+| Delete / Backspace | Removes selected entities plus invalid dependent geometry and constraints; shared points remain when still referenced |
+| Escape | Cancels the in-progress placement before it exits the active sketch command |
+| Undo / redo | Operates on the active sketch draft through buttons and `Ctrl/Cmd+Z`; it does not rewrite committed document history |
+| Pan / zoom | Shift-primary or middle drag pans; wheel or trackpad zoom targets the pointer and never changes sketch units |
+| Finish sketch | Performs one asynchronous, single-flight semantic add or update; double activation cannot create a second revision |
+| Cancel | Discards the complete draft and leaves the committed sketch unchanged |
+
+- Geometry tools MUST call shared pure domain editing operations. React components do not assemble unvalidated entity or constraint records ad hoc.
+- A completed placement MUST leave a schema-valid draft. Degenerate placement stays transient and does not create hidden entities.
+- Rectangle corners share point identities and receive explicit horizontal and vertical constraints; visual alignment is never the only design intent.
+- Construction state is explicit per entity. Construction curves participate in solving but never create selectable solid profiles.
+- Selected geometry, construction geometry, closed regions, solver conflicts, and under-constrained geometry require distinct non-color cues.
+- Constraint actions are enabled from compatible selections only. Repeating the same semantic constraint is idempotent.
+- A driving dimension uses a state-agnostic field primitive and a separate TanStack Form adapter. Authored unit or `#variable` expressions remain visible in the constraint list and survive save, edit, rename refactor, and reload.
+- The worker owns live solving. The main thread sends a complete validated transient draft against the exact rebuilt revision and ignores stale responses; preview requests never enter document history.
+- Solver status, degrees of freedom, and profile measurements remain visible without covering the geometry being edited. An over-constrained result preserves the draft and names or marks every failed constraint the solver can identify.
+- Closed regions render behind entity strokes. Region activation stores a stable boundary-entity selector; transient profile indices are display-only.
+- The accessible task panel exposes every geometry tool, constraint, dimension, profile, undo, redo, Finish, and Cancel action. Pointer-free coordinate entry and canvas placement remain documented alpha accessibility limitations.
+- Plane selection is available as a labeled native select until origin-plane viewport picking has equivalent keyboard, focus, and error behavior.
+
 ## Command and Tool Interaction
 
 ### Command Lifecycle

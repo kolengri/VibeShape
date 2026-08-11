@@ -14,7 +14,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 5 as const
+export const DOCUMENT_PROTOCOL_VERSION = 6 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -132,12 +132,23 @@ const exportDocumentRequestSchema = requestEnvelopeSchema.extend({
   format: geometryExportFormatSchema,
 })
 
-const solveSketchRequestSchema = requestEnvelopeSchema.extend({
-  type: z.literal("solveSketch"),
-  sketchId: sketchWireIdSchema,
-  continuation: sketchSolveContinuationWireSchema.nullable().default(null),
-  draggedPoints: z.array(sketchDragTargetWireSchema).max(128).default([]),
-})
+const solveSketchRequestSchema = requestEnvelopeSchema
+  .extend({
+    type: z.literal("solveSketch"),
+    sketchId: sketchWireIdSchema,
+    draftSketch: sketchWireRecordSchema.nullable().default(null),
+    continuation: sketchSolveContinuationWireSchema.nullable().default(null),
+    draggedPoints: z.array(sketchDragTargetWireSchema).max(128).default([]),
+  })
+  .superRefine((request, context) => {
+    if (request.draftSketch && request.draftSketch.id !== request.sketchId) {
+      context.addIssue({
+        code: "custom",
+        path: ["draftSketch", "id"],
+        message: "A transient sketch draft must match the requested sketch identity.",
+      })
+    }
+  })
 
 export const documentWorkerRequestSchema = z.discriminatedUnion("type", [
   rebuildDocumentRequestSchema,

@@ -1,0 +1,423 @@
+import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
+import {
+  type SketchConstraint,
+  type SketchEntity,
+  type SketchRecord,
+  sketchConstraintSchema,
+  sketchRecordSchema,
+} from "./sketch"
+
+export type SketchPoint2 = Readonly<{ x: number; y: number }>
+
+export type SketchPointTarget =
+  | Readonly<{ kind: "existing"; pointId: SketchEntityId }>
+  | Readonly<{ kind: "new"; point: SketchPoint2 }>
+
+export type SketchAppendResult = Readonly<{
+  createdEntityIds: readonly SketchEntityId[]
+  sketch: SketchRecord
+}>
+
+export type SketchConstraintDefinition<Constraint extends SketchConstraint = SketchConstraint> =
+  Constraint extends SketchConstraint ? Omit<Constraint, "id" | "schemaVersion"> : never
+
+type EntityIdFactory = () => SketchEntityId
+type ConstraintIdFactory = () => SketchConstraintId
+
+const MIN_GEOMETRY_DISTANCE = 1e-9
+
+function distance(first: SketchPoint2, second: SketchPoint2) {
+  return Math.hypot(second.x - first.x, second.y - first.y)
+}
+
+function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
+  const point = sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "point" }> =>
+      entity.id === pointId && entity.type === "point",
+  )
+  if (!point) throw new TypeError("A sketch point target must reference an existing point entity.")
+  return point
+}
+
+function resolvePointTarget(
+  sketch: SketchRecord,
+  target: SketchPointTarget,
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+) {
+  if (target.kind === "existing") {
+    const point = pointById(sketch, target.pointId)
+    return { entity: null, id: point.id, point }
+  }
+  const id = createEntityId()
+  const entity = {
+    schemaVersion: 0,
+    id,
+    type: "point",
+    x: target.point.x,
+    y: target.point.y,
+    construction,
+  } as const
+  return { entity, id, point: entity }
+}
+
+function parsedSketch(sketch: SketchRecord, entities: readonly SketchEntity[]) {
+  return sketchRecordSchema.parse({ ...sketch, entities })
+}
+
+export function createEmptySketch(input: {
+  id: SketchId
+  label: string
+  plane: SketchRecord["plane"]
+}): SketchRecord {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: input.id,
+    label: input.label,
+    plane: input.plane,
+    entities: [],
+    constraints: [],
+  })
+}
+
+export function appendSketchPoint(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    point: SketchPoint2
+  },
+): SketchAppendResult {
+  const entity = {
+    schemaVersion: 0,
+    id: input.createEntityId(),
+    type: "point",
+    x: input.point.x,
+    y: input.point.y,
+    construction: input.construction ?? false,
+  } as const
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, entity]),
+    createdEntityIds: [entity.id],
+  }
+}
+
+export function appendSketchLine(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    end: SketchPointTarget
+    start: SketchPointTarget
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const start = resolvePointTarget(sketch, input.start, construction, input.createEntityId)
+  const end = resolvePointTarget(sketch, input.end, construction, input.createEntityId)
+  if (start.id === end.id || distance(start.point, end.point) <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("A sketch line requires two distinct positions.")
+  }
+  const lineId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(start.entity ? [start.entity] : []),
+    ...(end.entity ? [end.entity] : []),
+    {
+      schemaVersion: 0,
+      id: lineId,
+      type: "line",
+      startPointId: start.id,
+      endPointId: end.id,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+export function appendSketchRectangle(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    firstCorner: SketchPoint2
+    oppositeCorner: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const width = Math.abs(input.oppositeCorner.x - input.firstCorner.x)
+  const height = Math.abs(input.oppositeCorner.y - input.firstCorner.y)
+  if (width <= MIN_GEOMETRY_DISTANCE || height <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("A sketch rectangle requires nonzero width and height.")
+  }
+  const pointIds = Array.from({ length: 4 }, input.createEntityId)
+  const lineIds = Array.from({ length: 4 }, input.createEntityId)
+  const [pointA, pointB, pointC, pointD] = pointIds
+  const [lineA, lineB, lineC, lineD] = lineIds
+  if (!pointA || !pointB || !pointC || !pointD || !lineA || !lineB || !lineC || !lineD) {
+    throw new TypeError("Sketch entity identity allocation failed.")
+  }
+  const points = [
+    { x: input.firstCorner.x, y: input.firstCorner.y },
+    { x: input.oppositeCorner.x, y: input.firstCorner.y },
+    { x: input.oppositeCorner.x, y: input.oppositeCorner.y },
+    { x: input.firstCorner.x, y: input.oppositeCorner.y },
+  ]
+  const entities: SketchEntity[] = [
+    ...points.map((point, index) => ({
+      schemaVersion: 0 as const,
+      id: pointIds[index] as SketchEntityId,
+      type: "point" as const,
+      ...point,
+      construction,
+    })),
+    {
+      schemaVersion: 0,
+      id: lineA,
+      type: "line",
+      startPointId: pointA,
+      endPointId: pointB,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: lineB,
+      type: "line",
+      startPointId: pointB,
+      endPointId: pointC,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: lineC,
+      type: "line",
+      startPointId: pointC,
+      endPointId: pointD,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: lineD,
+      type: "line",
+      startPointId: pointD,
+      endPointId: pointA,
+      construction,
+    },
+  ]
+  const constraints: SketchConstraint[] = [
+    { schemaVersion: 0, id: input.createConstraintId(), type: "horizontal", lineId: lineA },
+    { schemaVersion: 0, id: input.createConstraintId(), type: "vertical", lineId: lineB },
+    { schemaVersion: 0, id: input.createConstraintId(), type: "horizontal", lineId: lineC },
+    { schemaVersion: 0, id: input.createConstraintId(), type: "vertical", lineId: lineD },
+  ]
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...entities],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: entities.map(({ id }) => id),
+  }
+}
+
+export function appendSketchCircle(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    perimeterPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, construction, input.createEntityId)
+  const radius = distance(center.point, input.perimeterPoint)
+  if (radius <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("A sketch circle requires a positive radius.")
+  }
+  const circleId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(center.entity ? [center.entity] : []),
+    {
+      schemaVersion: 0,
+      id: circleId,
+      type: "circle",
+      centerPointId: center.id,
+      radius,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+export function appendSketchArc(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPoint2
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    end: SketchPoint2
+    start: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const radius = distance(input.center, input.start)
+  const endDistance = distance(input.center, input.end)
+  if (radius <= MIN_GEOMETRY_DISTANCE || endDistance <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("A sketch arc requires a positive radius.")
+  }
+  const end = {
+    x: input.center.x + ((input.end.x - input.center.x) * radius) / endDistance,
+    y: input.center.y + ((input.end.y - input.center.y) * radius) / endDistance,
+  }
+  if (distance(input.start, end) <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("A sketch arc requires distinct start and end angles.")
+  }
+  const centerPointId = input.createEntityId()
+  const startPointId = input.createEntityId()
+  const endPointId = input.createEntityId()
+  const arcId = input.createEntityId()
+  const entities: SketchEntity[] = [
+    { schemaVersion: 0, id: centerPointId, type: "point", ...input.center, construction },
+    { schemaVersion: 0, id: startPointId, type: "point", ...input.start, construction },
+    { schemaVersion: 0, id: endPointId, type: "point", ...end, construction },
+    {
+      schemaVersion: 0,
+      id: arcId,
+      type: "arc",
+      centerPointId,
+      startPointId,
+      endPointId,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...entities]),
+    createdEntityIds: entities.map(({ id }) => id),
+  }
+}
+
+export function appendSketchConstraint(
+  sketch: SketchRecord,
+  definition: SketchConstraintDefinition,
+  createConstraintId: ConstraintIdFactory,
+): SketchRecord {
+  const constraint = sketchConstraintSchema.parse({
+    ...definition,
+    schemaVersion: 0,
+    id: createConstraintId(),
+  })
+  const semanticConstraint = ({ id: _id, ...value }: SketchConstraint) => JSON.stringify(value)
+  if (
+    sketch.constraints.some(
+      (candidate) => semanticConstraint(candidate) === semanticConstraint(constraint),
+    )
+  ) {
+    return sketch
+  }
+  return sketchRecordSchema.parse({
+    ...sketch,
+    constraints: [...sketch.constraints, constraint],
+  })
+}
+
+function referencedEntityIds(constraint: SketchConstraint) {
+  return Object.entries(constraint)
+    .filter(([key, value]) => key !== "id" && key.endsWith("Id") && typeof value === "string")
+    .map(([, value]) => value as string)
+}
+
+function geometryPointIds(entity: SketchEntity) {
+  switch (entity.type) {
+    case "point":
+      return []
+    case "line":
+      return [entity.startPointId, entity.endPointId]
+    case "circle":
+      return [entity.centerPointId]
+    case "arc":
+      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+  }
+}
+
+export function removeSketchEntities(
+  sketch: SketchRecord,
+  selectedEntityIds: readonly SketchEntityId[],
+): SketchRecord {
+  const removedIds = new Set<string>(selectedEntityIds)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const entity of sketch.entities) {
+      if (entity.type === "point" || removedIds.has(entity.id)) continue
+      if (geometryPointIds(entity).some((pointId) => removedIds.has(pointId))) {
+        removedIds.add(entity.id)
+        changed = true
+      }
+    }
+  }
+
+  const removedPointCandidates = new Set(
+    sketch.entities
+      .filter((entity) => entity.type !== "point" && removedIds.has(entity.id))
+      .flatMap(geometryPointIds),
+  )
+  const remainingGeometry = sketch.entities.filter(
+    (entity) => entity.type !== "point" && !removedIds.has(entity.id),
+  )
+  const retainedPointIds = new Set(remainingGeometry.flatMap(geometryPointIds))
+  for (const pointId of removedPointCandidates) {
+    if (!retainedPointIds.has(pointId)) removedIds.add(pointId)
+  }
+
+  const entities = sketch.entities.filter(({ id }) => !removedIds.has(id))
+  const constraints = sketch.constraints.filter((constraint) =>
+    referencedEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
+  )
+  return sketchRecordSchema.parse({ ...sketch, entities, constraints })
+}
+
+export function removeSketchConstraints(
+  sketch: SketchRecord,
+  selectedConstraintIds: readonly SketchConstraintId[],
+): SketchRecord {
+  const removedIds = new Set<string>(selectedConstraintIds)
+  return sketchRecordSchema.parse({
+    ...sketch,
+    constraints: sketch.constraints.filter(({ id }) => !removedIds.has(id)),
+  })
+}
+
+export function moveSketchPoint(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  point: SketchPoint2,
+): SketchRecord {
+  let found = false
+  const entities = sketch.entities.map((entity) => {
+    if (entity.id !== pointId || entity.type !== "point") return entity
+    found = true
+    return { ...entity, x: point.x, y: point.y }
+  })
+  if (!found) throw new TypeError("A moved sketch point must reference an existing point entity.")
+  return parsedSketch(sketch, entities)
+}
+
+export function setSketchEntityConstruction(
+  sketch: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+  construction: boolean,
+): SketchRecord {
+  const selectedIds = new Set<string>(entityIds)
+  return parsedSketch(
+    sketch,
+    sketch.entities.map((entity) =>
+      selectedIds.has(entity.id) ? { ...entity, construction } : entity,
+    ),
+  )
+}
