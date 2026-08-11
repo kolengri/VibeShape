@@ -61,7 +61,7 @@ The production-oriented foundation now spans strict revisioned document, variabl
 - Worker protocol and restart/recovery behavior.
 - Three.js viewport and body/face/edge selection.
 - IndexedDB autosave and `.vshape` v0.
-- Primitive or extrusion modeling without the full sketcher.
+- Sketch-first rectangle-to-new-body extrusion modeling without the full free-form sketcher; direct primitives remain secondary advanced tools.
 - 3MF/STEP/STL smoke export.
 - Remembered desktop slicer handoff through the authenticated source bridge, with browser download fallback.
 - Stable built-in feature and command registries plus preservation of extension locks and unknown custom-feature payloads, without executing third-party code.

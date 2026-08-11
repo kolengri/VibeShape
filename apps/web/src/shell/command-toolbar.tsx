@@ -78,7 +78,7 @@ export function CommandToolbar({
       <Button
         type="button"
         size="sm"
-        variant="ghost"
+        variant="secondary"
         disabled={!canCreate}
         onClick={onCreateSketch}
       >
@@ -94,6 +94,8 @@ export function CommandToolbar({
       >
         {t("extrude")}
       </Button>
+      <span className="mx-1 h-5 border-l" aria-hidden="true" />
+      <span className="px-1 text-xs text-muted-foreground">{t("directSolids")}</span>
       <Button
         type="button"
         size="sm"

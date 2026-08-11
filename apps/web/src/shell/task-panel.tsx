@@ -1,6 +1,7 @@
 import {
   extrusionFeatureParametersSchema,
   rectangleSketchDefinition,
+  rectangleSketchProfileSelector,
   type SketchId,
   type SketchRecord,
 } from "@vibeshape/domain"
@@ -83,7 +84,7 @@ function useRectangleSketchFormCopy(mode: RectangleSketchFormMode["kind"]) {
     create: {
       title: t("title"),
       description: t("description"),
-      submit: t("create"),
+      submit: t("finish"),
       validationSummary: t("validationSummary"),
       saveFailed: t("createFailed"),
     },
@@ -499,26 +500,89 @@ function booleanOptions(
   }))
 }
 
-function StartTaskPanel({
+function StartModelingAction({
   canCreate,
-  canSubtract,
-  onCreateBox,
-  onCreateCylinder,
-  onCreateSubtract,
+  canExtrude,
+  onCreateExtrusion,
+  onCreateSketch,
 }: {
   canCreate: boolean
-  canSubtract: boolean
-  onCreateBox: () => void
-  onCreateCylinder: () => void
+  canExtrude: boolean
+  onCreateExtrusion: () => void
+  onCreateSketch: () => void
+}) {
+  const t = useTranslations("app.shell.taskPanel")
+  if (canExtrude) {
+    return (
+      <Button type="button" className="mt-4 w-full" onClick={onCreateExtrusion}>
+        {t("createExtrusion")}
+      </Button>
+    )
+  }
+  return (
+    <Button type="button" className="mt-4 w-full" disabled={!canCreate} onClick={onCreateSketch}>
+      {t("createSketch")}
+    </Button>
+  )
+}
+
+function SketchFirstWorkflow() {
+  const t = useTranslations("app.shell.taskPanel")
+  return (
+    <ol aria-label={t("workflowLabel")} className="mt-4 grid gap-2 border-t pt-4 text-xs">
+      <li>
+        <span className="font-medium">1. {t("workflowSketch")}</span>
+        <span className="block text-muted-foreground">{t("workflowSketchDescription")}</span>
+      </li>
+      <li>
+        <span className="font-medium">2. {t("workflowExtrude")}</span>
+        <span className="block text-muted-foreground">{t("workflowExtrudeDescription")}</span>
+      </li>
+      <li>
+        <span className="font-medium">3. {t("workflowRefine")}</span>
+        <span className="block text-muted-foreground">{t("workflowRefineDescription")}</span>
+      </li>
+    </ol>
+  )
+}
+
+function AvailableSubtractAction({
+  available,
+  onCreateSubtract,
+}: {
+  available: boolean
   onCreateSubtract: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
-
+  if (!available) return null
   return (
-    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{t("startModeling")}</h2>
-      <p className="mt-2 leading-5 text-muted-foreground">{t("description")}</p>
-      <Button type="button" className="mt-4 w-full" disabled={!canCreate} onClick={onCreateBox}>
+    <Button type="button" variant="outline" className="mt-4 w-full" onClick={onCreateSubtract}>
+      {t("createSubtract")}
+    </Button>
+  )
+}
+
+function DirectSolidsActions({
+  canCreate,
+  onCreateBox,
+  onCreateCylinder,
+}: {
+  canCreate: boolean
+  onCreateBox: () => void
+  onCreateCylinder: () => void
+}) {
+  const t = useTranslations("app.shell.taskPanel")
+  return (
+    <details className="mt-4 border-t pt-3">
+      <summary className="cursor-pointer text-xs font-medium">{t("directSolids")}</summary>
+      <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("directSolidsDescription")}</p>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-3 w-full"
+        disabled={!canCreate}
+        onClick={onCreateBox}
+      >
         {t("createBox")}
       </Button>
       <Button
@@ -530,18 +594,52 @@ function StartTaskPanel({
       >
         {t("createCylinder")}
       </Button>
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-2 w-full"
-        disabled={!canSubtract}
-        onClick={onCreateSubtract}
-      >
-        {t("createSubtract")}
-      </Button>
-      {!canSubtract ? (
-        <p className="mt-2 text-xs leading-4 text-muted-foreground">{t("subtractUnavailable")}</p>
-      ) : null}
+    </details>
+  )
+}
+
+function StartTaskPanel({
+  canCreate,
+  canExtrude,
+  canSubtract,
+  onCreateBox,
+  onCreateCylinder,
+  onCreateExtrusion,
+  onCreateSketch,
+  onCreateSubtract,
+}: {
+  canCreate: boolean
+  canExtrude: boolean
+  canSubtract: boolean
+  onCreateBox: () => void
+  onCreateCylinder: () => void
+  onCreateExtrusion: () => void
+  onCreateSketch: () => void
+  onCreateSubtract: () => void
+}) {
+  const t = useTranslations("app.shell.taskPanel")
+
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <h2 className="text-sm font-medium">
+        {t(canExtrude ? "selectedProfileReady" : "startModeling")}
+      </h2>
+      <p className="mt-2 leading-5 text-muted-foreground">
+        {t(canExtrude ? "selectedProfileDescription" : "description")}
+      </p>
+      <StartModelingAction
+        canCreate={canCreate}
+        canExtrude={canExtrude}
+        onCreateExtrusion={onCreateExtrusion}
+        onCreateSketch={onCreateSketch}
+      />
+      <SketchFirstWorkflow />
+      <AvailableSubtractAction available={canSubtract} onCreateSubtract={onCreateSubtract} />
+      <DirectSolidsActions
+        canCreate={canCreate}
+        onCreateBox={onCreateBox}
+        onCreateCylinder={onCreateCylinder}
+      />
     </aside>
   )
 }
@@ -678,23 +776,44 @@ function ActiveTaskPanel(props: ActiveTaskPanelProps) {
   return <Panel {...props} />
 }
 
+function canExtrudeSelectedSketch(
+  controller: DocumentControllerState,
+  activeSketchId: SketchId | null,
+) {
+  const selectedSketch = controller.report?.snapshot.sketches.find(
+    ({ id }) => id === activeSketchId,
+  )
+  return Boolean(
+    canCreateFeature(controller) &&
+      selectedSketch &&
+      rectangleSketchProfileSelector(selectedSketch) !== null,
+  )
+}
+
 function ModelTaskPanel({
+  activeSketchId,
   activeTool,
   controller,
   onCloseTool,
   onCreateBox,
   onCreateCylinder,
+  onCreateExtrusion,
+  onCreateSketch,
   onCreateSubtract,
 }: TaskPanelProps) {
   const report = controller.report
+  const canCreate = canCreateFeature(controller)
   return activeTool && report ? (
     <ActiveTaskPanel activeTool={activeTool} report={report} onCloseTool={onCloseTool} />
   ) : (
     <StartTaskPanel
-      canCreate={canCreateFeature(controller)}
+      canCreate={canCreate}
+      canExtrude={canExtrudeSelectedSketch(controller, activeSketchId)}
       canSubtract={canCreateSubtract(controller)}
       onCreateBox={onCreateBox}
       onCreateCylinder={onCreateCylinder}
+      onCreateExtrusion={onCreateExtrusion}
+      onCreateSketch={onCreateSketch}
       onCreateSubtract={onCreateSubtract}
     />
   )
@@ -855,9 +974,9 @@ function SelectedSketchTaskPanel({
         size="sm"
         className="mt-4 w-full"
         disabled={!canCreate || !canEdit}
-        onClick={() => onEditSketch(sketch.id)}
+        onClick={onCreateExtrusion}
       >
-        {t("edit")}
+        {t("extrude")}
       </Button>
       <Button
         type="button"
@@ -865,9 +984,9 @@ function SelectedSketchTaskPanel({
         variant="outline"
         className="mt-2 w-full"
         disabled={!canCreate || !canEdit}
-        onClick={onCreateExtrusion}
+        onClick={() => onEditSketch(sketch.id)}
       >
-        {t("extrude")}
+        {t("edit")}
       </Button>
       <Button
         type="button"
