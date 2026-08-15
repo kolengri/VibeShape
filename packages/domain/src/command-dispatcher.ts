@@ -250,6 +250,12 @@ export const documentCoreCommandHandlers: readonly TrustedCommandHandler[] = [
     execute: applyDocumentCommand,
   },
   {
+    kind: "org.vibeshape.document.set-display-units",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: applyDocumentCommand,
+  },
+  {
     kind: "org.vibeshape.variable.add",
     schemaVersion: 1,
     ownerModuleId: documentCoreModule.id,

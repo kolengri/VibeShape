@@ -15,6 +15,7 @@ import type {
   ActiveSketchSolveResult,
   DocumentControllerState,
 } from "../../document/document-controller"
+import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { SketchViewport } from "./sketch-viewport"
 
@@ -122,31 +123,36 @@ function renderViewport(
     onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
     sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
     solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
+    displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
   }>,
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <SketchViewport
-        solveSketch={props.solveSketch}
-        state={{
-          construction: false,
-          controller,
-          draft: props.draft ?? null,
-          editorTool: props.editorTool ?? "select",
-          selectedEntityIds: [],
-          selectedProfile: null,
-          sketch: props.sketch,
-        }}
-        actions={{
-          onDraftChange: props.onDraftChange ?? noOperation,
-          onFailedConstraintsChange: noOperation,
-          onProfileSelect: props.onProfileSelect ?? noOperation,
-          onProfilesChange: props.onProfilesChange ?? noOperation,
-          onRedo: noOperation,
-          onSelectionChange: noOperation,
-          onUndo: noOperation,
-        }}
-      />
+      <DocumentDisplayUnitsProvider
+        displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
+      >
+        <SketchViewport
+          solveSketch={props.solveSketch}
+          state={{
+            construction: false,
+            controller,
+            draft: props.draft ?? null,
+            editorTool: props.editorTool ?? "select",
+            selectedEntityIds: [],
+            selectedProfile: null,
+            sketch: props.sketch,
+          }}
+          actions={{
+            onDraftChange: props.onDraftChange ?? noOperation,
+            onFailedConstraintsChange: noOperation,
+            onProfileSelect: props.onProfileSelect ?? noOperation,
+            onProfilesChange: props.onProfilesChange ?? noOperation,
+            onRedo: noOperation,
+            onSelectionChange: noOperation,
+            onUndo: noOperation,
+          }}
+        />
+      </DocumentDisplayUnitsProvider>
     </I18nProvider>,
   )
 }
@@ -181,6 +187,17 @@ describe("SketchViewport", () => {
 
     expect(screen.getByRole("img", { name: "Editable sketch geometry" })).toBeTruthy()
     await waitFor(() => expect(solveSketch).toHaveBeenCalledWith(7, sketch))
+  })
+
+  it("formats solved profile measurements in the selected project unit", async () => {
+    renderViewport({
+      displayUnits: { length: "cm", angle: "deg" },
+      sketch,
+      solveSketch: vi.fn(async () => solveResult()),
+    })
+
+    expect(await screen.findByText("Profile: 3.6 cm² · 8.4 cm perimeter")).toBeTruthy()
+    expect(screen.getByText("XY · cm")).toBeTruthy()
   })
 
   it("creates line geometry from canvas pointer input without committing the document", () => {

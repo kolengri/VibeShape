@@ -9,8 +9,12 @@ import {
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import {
+  defaultLengthExpression,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
+import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
@@ -45,10 +49,14 @@ type CylinderFormValues = Readonly<{
 
 type FieldIssues = Readonly<Partial<Record<DimensionField, string>>>
 
-const DEFAULT_CYLINDER_VALUES: CylinderFormValues = {
-  radius: "10 mm",
-  height: "20 mm",
-  centered: false,
+function defaultCylinderValues(
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+): CylinderFormValues {
+  return {
+    radius: defaultLengthExpression(10, unit),
+    height: defaultLengthExpression(20, unit),
+    centered: false,
+  }
 }
 
 export type CylinderFormMode =
@@ -94,18 +102,21 @@ function parseCylinderValues(
   values: CylinderFormValues,
   variables: readonly VariableDefinition[],
   copy: CylinderFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
 ) {
   const radius = parsePrimitiveLengthExpression(
     values.radius,
     variables,
     copy,
     (quantity) => cylinderFeatureParametersSchema.shape.radius.safeParse(quantity).success,
+    displayUnit,
   )
   const height = parsePrimitiveLengthExpression(
     values.height,
     variables,
     copy,
     (quantity) => cylinderFeatureParametersSchema.shape.height.safeParse(quantity).success,
+    displayUnit,
   )
   const issues: Partial<Record<DimensionField, string>> = {}
   if (!radius.ok) issues.radius = radius.message
@@ -141,14 +152,17 @@ export function CylinderForm({
   variables: readonly VariableDefinition[]
 }) {
   const formElementRef = useRef<HTMLFormElement>(null)
+  const displayUnits = useDocumentDisplayUnits()
   const [issues, setIssues] = useState<FieldIssues>({})
   const [message, setMessage] = useState<string | null>(null)
   const defaultValues =
-    mode.kind === "edit" ? cylinderFormValuesFromFeature(mode.feature) : DEFAULT_CYLINDER_VALUES
+    mode.kind === "edit"
+      ? cylinderFormValuesFromFeature(mode.feature)
+      : defaultCylinderValues(displayUnits.length)
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value }) => {
-      const parsed = parseCylinderValues(value, variables, copy)
+      const parsed = parseCylinderValues(value, variables, copy, displayUnits.length)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)

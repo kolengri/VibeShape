@@ -3,6 +3,7 @@ import { Button } from "@vibeshape/ui/components/button"
 import { CommandIcon } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { DocumentControllerState } from "../document/document-controller"
+import { DocumentDisplayUnitsDialog } from "../document/document-display-units-dialog"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
@@ -43,6 +44,7 @@ export function ApplicationBar({
       <strong className="truncate text-sm">VibeShape</strong>
       <span className="truncate text-muted-foreground">{documentName}</span>
       <DocumentRenameDialog controller={controller} />
+      <DocumentDisplayUnitsDialog controller={controller} />
       <span className="ml-auto text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>

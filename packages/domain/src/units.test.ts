@@ -7,8 +7,11 @@ import {
   createScalarQuantity,
   lengthQuantitySchema,
   lengthToMillimeters,
+  millimetersToLength,
   quantitySchema,
+  radiansToAngle,
   scalarQuantitySchema,
+  squareMillimetersToArea,
 } from "./units"
 
 describe("canonical quantities", () => {
@@ -36,6 +39,25 @@ describe("canonical quantities", () => {
     expect(quantity.value).toBe(angleToRadians(90, "deg"))
     expect(quantity.value).toBeCloseTo(Math.PI / 2)
     expect(quantity.source).toEqual({ value: 90, unit: "deg", expression: "90 deg" })
+  })
+
+  it.each([
+    ["um", 0.001],
+    ["mm", 1],
+    ["cm", 10],
+    ["m", 1_000],
+    ["in", 25.4],
+    ["ft", 304.8],
+  ] as const)("converts canonical length and area into %s", (unit, millimeters) => {
+    expect(millimetersToLength(millimeters, unit)).toBe(1)
+    expect(squareMillimetersToArea(millimeters * millimeters, unit)).toBe(1)
+  })
+
+  it.each([
+    ["deg", Math.PI, 180],
+    ["rad", Math.PI, Math.PI],
+  ] as const)("converts canonical angles into %s", (unit, radians, expected) => {
+    expect(radiansToAngle(radians, unit)).toBe(expected)
   })
 
   it("normalizes negative zero for stable serialization", () => {

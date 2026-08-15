@@ -5,7 +5,13 @@ import {
   requireExistingDocumentRevision,
   zodDiagnosticIssues,
 } from "./command-support"
-import { type DocumentSnapshot, documentNameInputSchema, documentNameSchema } from "./document"
+import {
+  type DocumentSnapshot,
+  defaultDocumentDisplayUnits,
+  documentDisplayUnitsSchema,
+  documentNameInputSchema,
+  documentNameSchema,
+} from "./document"
 import { createFeatureDocumentEvent, reduceFeatureDocumentEvent } from "./feature-document-commands"
 import { featureRecordSchema } from "./feature-graph"
 import {
@@ -94,6 +100,12 @@ const renameDocumentCommandSchema = commandEnvelopeSchema.extend({
   payload: z.object({ name: documentNameInputSchema }).strict(),
 })
 
+const setDocumentDisplayUnitsCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.document.set-display-units"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ displayUnits: documentDisplayUnitsSchema }).strict(),
+})
+
 const addVariableCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.variable.add"),
   schemaVersion: z.literal(1),
@@ -171,6 +183,7 @@ const setFeatureSuppressedCommandSchema = commandEnvelopeSchema.extend({
 export const documentCommandSchema = z.discriminatedUnion("kind", [
   createDocumentCommandSchema,
   renameDocumentCommandSchema,
+  setDocumentDisplayUnitsCommandSchema,
   addVariableCommandSchema,
   setVariableExpressionCommandSchema,
   renameVariableCommandSchema,
@@ -207,6 +220,12 @@ const documentRenamedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.document.renamed"),
   previousName: documentNameSchema,
   name: documentNameSchema,
+})
+
+const documentDisplayUnitsChangedEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.document.display-units-changed"),
+  previousDisplayUnits: documentDisplayUnitsSchema,
+  displayUnits: documentDisplayUnitsSchema,
 })
 
 const variableAddedEventSchema = eventEnvelopeSchema.extend({
@@ -281,6 +300,7 @@ const featureSuppressionChangedEventSchema = eventEnvelopeSchema.extend({
 export const documentEventSchema = z.discriminatedUnion("type", [
   documentCreatedEventSchema,
   documentRenamedEventSchema,
+  documentDisplayUnitsChangedEventSchema,
   variableAddedEventSchema,
   variableExpressionChangedEventSchema,
   variableRenamedEventSchema,
@@ -340,6 +360,26 @@ type SketchEvent = Extract<
       | "org.vibeshape.sketch.removed"
   }
 >
+type FeatureCommand = Extract<
+  DocumentCommand,
+  {
+    kind:
+      | "org.vibeshape.feature.add"
+      | "org.vibeshape.feature.update"
+      | "org.vibeshape.feature.remove"
+      | "org.vibeshape.feature.set-suppressed"
+  }
+>
+type FeatureEvent = Extract<
+  DocumentEvent,
+  {
+    type:
+      | "org.vibeshape.feature.added"
+      | "org.vibeshape.feature.updated"
+      | "org.vibeshape.feature.removed"
+      | "org.vibeshape.feature.suppression-changed"
+  }
+>
 
 const variableCommandKinds = new Set<DocumentCommand["kind"]>([
   "org.vibeshape.variable.add",
@@ -365,6 +405,18 @@ const sketchEventTypes = new Set<DocumentEvent["type"]>([
   "org.vibeshape.sketch.updated",
   "org.vibeshape.sketch.removed",
 ])
+const featureCommandKinds = new Set<DocumentCommand["kind"]>([
+  "org.vibeshape.feature.add",
+  "org.vibeshape.feature.update",
+  "org.vibeshape.feature.remove",
+  "org.vibeshape.feature.set-suppressed",
+])
+const featureEventTypes = new Set<DocumentEvent["type"]>([
+  "org.vibeshape.feature.added",
+  "org.vibeshape.feature.updated",
+  "org.vibeshape.feature.removed",
+  "org.vibeshape.feature.suppression-changed",
+])
 
 function isVariableCommand(command: DocumentCommand): command is VariableCommand {
   return variableCommandKinds.has(command.kind)
@@ -382,8 +434,20 @@ function isSketchEvent(event: DocumentEvent): event is SketchEvent {
   return sketchEventTypes.has(event.type)
 }
 
+function isFeatureCommand(command: DocumentCommand): command is FeatureCommand {
+  return featureCommandKinds.has(command.kind)
+}
+
+function isFeatureEvent(event: DocumentEvent): event is FeatureEvent {
+  return featureEventTypes.has(event.type)
+}
+
 type DocumentCreatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.created" }>
 type DocumentRenamedEvent = Extract<DocumentEvent, { type: "org.vibeshape.document.renamed" }>
+type DocumentDisplayUnitsChangedEvent = Extract<
+  DocumentEvent,
+  { type: "org.vibeshape.document.display-units-changed" }
+>
 
 export type DocumentCommandResult =
   | { ok: true; snapshot: DocumentSnapshot; event: DocumentEvent }
@@ -466,10 +530,46 @@ function reduceCreatedEvent(
       id: event.documentId,
       revision: event.revision,
       name: event.name,
+      displayUnits: defaultDocumentDisplayUnits,
       variables: [],
       sketches: [],
       features: [],
       createdAt: event.issuedAt,
+      updatedAt: event.issuedAt,
+    },
+  }
+}
+
+function reduceDisplayUnitsChangedEvent(
+  snapshot: DocumentSnapshot | null,
+  event: DocumentDisplayUnitsChangedEvent,
+): DocumentEventResult {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    event.documentId,
+    event.baseRevision,
+    event.revision,
+  )
+  if (!current.ok) return current
+  const existing = current.snapshot.displayUnits
+  if (
+    existing.length !== event.previousDisplayUnits.length ||
+    existing.angle !== event.previousDisplayUnits.angle
+  ) {
+    return {
+      ok: false,
+      diagnostic: diagnostic(
+        "invalid-event",
+        "The display-unit event does not match the current document preferences.",
+      ),
+    }
+  }
+  return {
+    ok: true,
+    snapshot: {
+      ...current.snapshot,
+      revision: event.revision,
+      displayUnits: event.displayUnits,
       updatedAt: event.issuedAt,
     },
   }
@@ -515,20 +615,49 @@ function reduceParsedEvent(
 ): DocumentEventResult {
   if (isVariableEvent(event)) return reduceVariableDocumentEvent(snapshot, event)
   if (isSketchEvent(event)) return reduceSketchDocumentEvent(snapshot, event)
+  if (isFeatureEvent(event)) return reduceFeatureDocumentEvent(snapshot, event)
 
   switch (event.type) {
     case "org.vibeshape.document.created":
       return reduceCreatedEvent(snapshot, event)
     case "org.vibeshape.document.renamed":
       return reduceRenamedEvent(snapshot, event)
-    case "org.vibeshape.feature.added":
-      return reduceFeatureDocumentEvent(snapshot, event)
-    case "org.vibeshape.feature.updated":
-      return reduceFeatureDocumentEvent(snapshot, event)
-    case "org.vibeshape.feature.removed":
-      return reduceFeatureDocumentEvent(snapshot, event)
-    case "org.vibeshape.feature.suppression-changed":
-      return reduceFeatureDocumentEvent(snapshot, event)
+    case "org.vibeshape.document.display-units-changed":
+      return reduceDisplayUnitsChangedEvent(snapshot, event)
+  }
+}
+
+function createDocumentDisplayUnitsChangedEvent(
+  snapshot: DocumentSnapshot | null,
+  command: Extract<DocumentCommand, { kind: "org.vibeshape.document.set-display-units" }>,
+  transactionId: z.infer<typeof draftIdSchema> | null,
+): DocumentEvent | DomainDiagnostic {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    command.documentId,
+    command.baseRevision,
+  )
+  if (!current.ok) return current.diagnostic
+  const previousDisplayUnits = current.snapshot.displayUnits
+  const displayUnits = command.payload.displayUnits
+  if (
+    previousDisplayUnits.length === displayUnits.length &&
+    previousDisplayUnits.angle === displayUnits.angle
+  ) {
+    return diagnostic("command-no-op", "The document already uses these display units.")
+  }
+  return {
+    schemaVersion: 1,
+    type: "org.vibeshape.document.display-units-changed",
+    commandId: command.commandId,
+    transactionId,
+    documentId: command.documentId,
+    baseRevision: command.baseRevision,
+    revision: command.baseRevision + 1,
+    issuedAt: command.issuedAt,
+    actor: command.actor,
+    previousDisplayUnits,
+    displayUnits,
   }
 }
 
@@ -602,20 +731,17 @@ function createEvent(
   if (isSketchCommand(command)) {
     return createSketchDocumentEvent(snapshot, command, transactionId)
   }
+  if (isFeatureCommand(command)) {
+    return createFeatureDocumentEvent(snapshot, command, transactionId)
+  }
 
   switch (command.kind) {
     case "org.vibeshape.document.create":
       return createDocumentCreatedEvent(snapshot, command, transactionId)
     case "org.vibeshape.document.rename":
       return createDocumentRenamedEvent(snapshot, command, transactionId)
-    case "org.vibeshape.feature.add":
-      return createFeatureDocumentEvent(snapshot, command, transactionId)
-    case "org.vibeshape.feature.update":
-      return createFeatureDocumentEvent(snapshot, command, transactionId)
-    case "org.vibeshape.feature.remove":
-      return createFeatureDocumentEvent(snapshot, command, transactionId)
-    case "org.vibeshape.feature.set-suppressed":
-      return createFeatureDocumentEvent(snapshot, command, transactionId)
+    case "org.vibeshape.document.set-display-units":
+      return createDocumentDisplayUnitsChangedEvent(snapshot, command, transactionId)
   }
 }
 

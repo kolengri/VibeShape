@@ -51,8 +51,24 @@ export function lengthToMillimeters(value: number, unit: z.infer<typeof lengthIn
   return normalizeZero(value * millimetersPerUnit[unit])
 }
 
+export function millimetersToLength(value: number, unit: z.infer<typeof lengthInputUnitSchema>) {
+  return normalizeZero(value / millimetersPerUnit[unit])
+}
+
+export function squareMillimetersToArea(
+  value: number,
+  unit: z.infer<typeof lengthInputUnitSchema>,
+) {
+  const factor = millimetersPerUnit[unit]
+  return normalizeZero(value / (factor * factor))
+}
+
 export function angleToRadians(value: number, unit: z.infer<typeof angleInputUnitSchema>) {
   return normalizeZero(unit === "rad" ? value : (value * Math.PI) / 180)
+}
+
+export function radiansToAngle(value: number, unit: z.infer<typeof angleInputUnitSchema>) {
+  return normalizeZero(unit === "rad" ? value : (value * 180) / Math.PI)
 }
 
 export const lengthQuantitySchema = z

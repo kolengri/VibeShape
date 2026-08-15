@@ -10,6 +10,10 @@ import {
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import {
+  defaultLengthExpression,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
@@ -43,7 +47,11 @@ type ExtrusionFormValues = Readonly<{
 
 type FieldIssues = Readonly<Partial<Record<"distance", string>>>
 
-const DEFAULT_VALUES: ExtrusionFormValues = { distance: "10 mm", symmetric: false }
+function defaultValues(
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+): ExtrusionFormValues {
+  return { distance: defaultLengthExpression(10, unit), symmetric: false }
+}
 
 export type ExtrusionFormMode =
   | Readonly<{
@@ -93,12 +101,14 @@ function parseValues(
   profile: SketchProfileSelector,
   variables: readonly VariableDefinition[],
   copy: ExtrusionFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
 ) {
   const distance = parsePrimitiveLengthExpression(
     values.distance,
     variables,
     copy,
     (quantity) => extrusionFeatureParametersSchema.shape.distance.safeParse(quantity).success,
+    displayUnit,
   )
   if (!distance.ok) return { ok: false as const, issues: { distance: distance.message } }
   return {
@@ -134,13 +144,15 @@ export function ExtrusionForm({
   variables: readonly VariableDefinition[]
 }) {
   const formElementRef = useRef<HTMLFormElement>(null)
+  const displayUnits = useDocumentDisplayUnits()
   const [issues, setIssues] = useState<FieldIssues>({})
   const [message, setMessage] = useState<string | null>(null)
   const profile = profileForMode(mode)
   const form = useAppForm({
-    defaultValues: mode.kind === "edit" ? valuesFromFeature(mode.feature) : DEFAULT_VALUES,
+    defaultValues:
+      mode.kind === "edit" ? valuesFromFeature(mode.feature) : defaultValues(displayUnits.length),
     onSubmit: async ({ value }) => {
-      const parsed = parseValues(value, profile, variables, copy)
+      const parsed = parseValues(value, profile, variables, copy, displayUnits.length)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)

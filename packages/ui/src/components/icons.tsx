@@ -11,6 +11,7 @@ export {
   PenLine,
   RectangleHorizontal,
   Redo2,
+  Ruler,
   Scissors,
   Slash,
   Undo2,

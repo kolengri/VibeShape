@@ -9,8 +9,12 @@ import {
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
-import { LengthExpressionField } from "../part-design/length-expression-field"
+import {
+  defaultLengthExpression,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
+import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
   parsePrimitiveLengthExpression,
   quantityExpression,
@@ -47,11 +51,11 @@ type BoxFormValues = Readonly<{
 
 type FieldIssues = Readonly<Partial<Record<DimensionField, string>>>
 
-const DEFAULT_BOX_VALUES: BoxFormValues = {
-  width: "20 mm",
-  depth: "20 mm",
-  height: "20 mm",
-  centered: false,
+function defaultBoxValues(
+  unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+): BoxFormValues {
+  const length = defaultLengthExpression(20, unit)
+  return { width: length, depth: length, height: length, centered: false }
 }
 
 export type BoxFormMode =
@@ -98,6 +102,7 @@ function parseBoxValues(
   values: BoxFormValues,
   variables: readonly VariableDefinition[],
   copy: BoxFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
 ) {
   const parsed = {
     width: parsePrimitiveLengthExpression(
@@ -105,18 +110,21 @@ function parseBoxValues(
       variables,
       copy,
       (quantity) => boxFeatureParametersSchema.shape.width.safeParse(quantity).success,
+      displayUnit,
     ),
     depth: parsePrimitiveLengthExpression(
       values.depth,
       variables,
       copy,
       (quantity) => boxFeatureParametersSchema.shape.depth.safeParse(quantity).success,
+      displayUnit,
     ),
     height: parsePrimitiveLengthExpression(
       values.height,
       variables,
       copy,
       (quantity) => boxFeatureParametersSchema.shape.height.safeParse(quantity).success,
+      displayUnit,
     ),
   }
   const issues: Partial<Record<DimensionField, string>> = {}
@@ -159,14 +167,17 @@ export function BoxForm({
   variables: readonly VariableDefinition[]
 }) {
   const formElementRef = useRef<HTMLFormElement>(null)
+  const displayUnits = useDocumentDisplayUnits()
   const [issues, setIssues] = useState<FieldIssues>({})
   const [message, setMessage] = useState<string | null>(null)
   const defaultValues =
-    mode.kind === "edit" ? boxFormValuesFromFeature(mode.feature) : DEFAULT_BOX_VALUES
+    mode.kind === "edit"
+      ? boxFormValuesFromFeature(mode.feature)
+      : defaultBoxValues(displayUnits.length)
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value }) => {
-      const parsed = parseBoxValues(value, variables, copy)
+      const parsed = parseBoxValues(value, variables, copy, displayUnits.length)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)

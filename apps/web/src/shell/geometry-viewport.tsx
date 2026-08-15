@@ -21,6 +21,7 @@ import {
   type DocumentControllerState,
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
+import { useDocumentDisplayUnits } from "../document/document-display-units"
 
 type ViewportFactory = (
   canvas: HTMLCanvasElement,
@@ -261,6 +262,34 @@ function ViewportControls({
   )
 }
 
+function OriginPlaneSelectionOverlay({
+  preselectedPlane,
+  selection,
+}: {
+  preselectedPlane: ViewerOriginPlane | null
+  selection: Readonly<{ selectedPlane: ViewerOriginPlane }> | undefined
+}) {
+  const t = useTranslations("app.shell.viewport")
+  if (!selection) return null
+  const planeLabels: Record<ViewerOriginPlane, string> = {
+    xy: t("planeXy"),
+    xz: t("planeXz"),
+    yz: t("planeYz"),
+  }
+  const status = preselectedPlane
+    ? t("preselectedSketchPlane", { plane: planeLabels[preselectedPlane] })
+    : t("selectedSketchPlane", { plane: planeLabels[selection.selectedPlane] })
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm">
+      <p className="text-xs font-medium">{t("selectSketchPlane")}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">
+        {status}
+      </p>
+    </div>
+  )
+}
+
 export function GeometryViewport({
   controller,
   createViewport = loadGeometryViewport,
@@ -277,6 +306,7 @@ export function GeometryViewport({
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
 }) {
+  const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
   const meshes = useMemo(() => viewerMeshes(controller), [controller])
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
@@ -312,12 +342,6 @@ export function GeometryViewport({
       empty: t("empty"),
     },
   )
-  const planeLabels: Record<ViewerOriginPlane, string> = {
-    xy: t("planeXy"),
-    xz: t("planeXz"),
-    yz: t("planeYz"),
-  }
-
   return (
     <section
       aria-label={t("ariaLabel")}
@@ -336,20 +360,12 @@ export function GeometryViewport({
           viewportRef={viewportRef}
         />
       ) : null}
-      {originPlaneSelection ? (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm">
-          <p className="text-xs font-medium">{t("selectSketchPlane")}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">
-            {originPlanePreselection
-              ? t("preselectedSketchPlane", { plane: planeLabels[originPlanePreselection] })
-              : t("selectedSketchPlane", {
-                  plane: planeLabels[originPlaneSelection.selectedPlane],
-                })}
-          </p>
-        </div>
-      ) : null}
+      <OriginPlaneSelectionOverlay
+        preselectedPlane={originPlanePreselection}
+        selection={originPlaneSelection}
+      />
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
-        {t("orientation", { plane: "XY" })}
+        {t("orientation", { plane: "XY", unit: displayUnits.length })}
       </div>
     </section>
   )

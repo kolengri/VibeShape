@@ -11,6 +11,7 @@ import {
   sketchIdSchema,
 } from "@vibeshape/domain"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { SketchEditorPanel } from "./sketch-editor-panel"
 
 const copy = {
@@ -87,27 +88,33 @@ function renderPanel(
   failedConstraintIds: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["failedConstraintIds"] = [],
+  displayUnits: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"] = {
+    length: "mm",
+    angle: "deg",
+  },
 ) {
   render(
-    <SketchEditorPanel
-      copy={copy}
-      state={{
-        disabled: false,
-        draft: sketch,
-        failedConstraintIds,
-        message: null,
-        profiles: [],
-        selectedEntityIds,
-        selectedProfile: null,
-        variables: [],
-      }}
-      actions={{
-        onCancel: vi.fn(),
-        onDraftChange,
-        onFinish: vi.fn(async () => undefined),
-        onSelectedProfileChange: vi.fn(),
-      }}
-    />,
+    <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+      <SketchEditorPanel
+        copy={copy}
+        state={{
+          disabled: false,
+          draft: sketch,
+          failedConstraintIds,
+          message: null,
+          profiles: [],
+          selectedEntityIds,
+          selectedProfile: null,
+          variables: [],
+        }}
+        actions={{
+          onCancel: vi.fn(),
+          onDraftChange,
+          onFinish: vi.fn(async () => undefined),
+          onSelectedProfileChange: vi.fn(),
+        }}
+      />
+    </DocumentDisplayUnitsProvider>,
   )
   return onDraftChange
 }
@@ -176,5 +183,36 @@ describe("SketchEditorPanel", () => {
     const label = screen.getByText("Horizontal · Conflict")
     expect(label.closest("li")?.getAttribute("aria-invalid")).toBe("true")
     expect(constrained.constraints).toHaveLength(1)
+  })
+
+  it("uses project units for new sketch dimensions and persists unitless input explicitly", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const points = sketch.entities.filter((entity) => entity.type === "point")
+    const onDraftChange = renderPanel(
+      sketch,
+      points.map(({ id }) => id),
+      vi.fn(),
+      [],
+      { length: "in", angle: "rad" },
+    )
+    const expression = screen.getByRole("textbox", { name: "Driving expression" })
+    expect((expression as HTMLInputElement).value).toBe("0.393700787402 in")
+    await user.clear(expression)
+    await user.type(expression, "2")
+    await user.click(screen.getByRole("button", { name: "Add constraint" }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            value: expect.objectContaining({
+              value: 50.8,
+              source: expect.objectContaining({ expression: "2 in" }),
+            }),
+          }),
+        ],
+      }),
+    )
   })
 })

@@ -135,6 +135,19 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
       },
     },
     {
+      kind: "org.vibeshape.document.set-display-units",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      confirmation: "review",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: false,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
       kind: "org.vibeshape.variable.add",
       schemaVersion: 1,
       ownerModuleId: "org.vibeshape.core.document",

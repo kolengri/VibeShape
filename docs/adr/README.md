@@ -23,6 +23,7 @@
 | [0019](0019-selector-backed-new-body-extrusion.md) | Accepted | Stable sketch-profile selectors and transient analytical content for exact new-body extrusion |
 | [0020](0020-local-slicer-handoff-bridge.md) | Accepted | Authenticated loopback bridge with remembered slicer choice and download fallback |
 | [0021](0021-transient-sketch-draft-solving.md) | Accepted | Exact-revision worker solving for complete, non-persisted sketch drafts |
+| [0022](0022-project-display-unit-preferences.md) | Accepted | Revisioned project display units with canonical millimeter/radian geometry |
 
 Statuses:
 

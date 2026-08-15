@@ -87,6 +87,32 @@
       "staleRevision": "The project changed while its name was being edited. Review the current name and try again.",
       "saveFailed": "The project could not be renamed. Its current name is unchanged."
     },
+    "unitSettings": {
+      "trigger": "Project units: {length}, {angle}",
+      "tooltip": "Project units",
+      "title": "Project units",
+      "description": "Choose the default input and display units for this project. Exact geometry remains canonical in millimeters and radians.",
+      "closeLabel": "Close project units dialog",
+      "lengthLabel": "Length unit",
+      "lengthDescription": "Used for unitless length input, dimensions, variable results, and viewport measurements.",
+      "angleLabel": "Angle unit",
+      "angleDescription": "Used for unitless angle input and resolved angle values.",
+      "save": "Apply project units",
+      "cancel": "Cancel",
+      "readOnly": "Open the document with write access to change project units.",
+      "staleRevision": "The project changed while its units were being edited. Review the current units and try again.",
+      "saveFailed": "The project units could not be changed. The current units are unchanged.",
+      "options": {
+        "um": "Micrometers (um)",
+        "mm": "Millimeters (mm)",
+        "cm": "Centimeters (cm)",
+        "m": "Meters (m)",
+        "in": "Inches (in)",
+        "ft": "Feet (ft)",
+        "deg": "Degrees (deg)",
+        "rad": "Radians (rad)"
+      }
+    },
     "modelRename": {
       "trigger": "Rename {name}",
       "tooltip": "Rename",
@@ -286,7 +312,7 @@
         "selectionFace": "{feature} · Face {face}",
         "selectionNone": "None",
         "unnamedFeature": "Unnamed feature",
-        "units": "Units: {unit}"
+        "units": "Units: {length} · {angle}"
       },
       "taskPanel": {
         "ariaLabel": "Task panel",
@@ -328,7 +354,7 @@
           "depth": "Depth",
           "height": "Height",
           "centered": "Center on the origin",
-          "expressionDescription": "Enter a positive length such as 20 mm or a variable expression such as #width.",
+          "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #width.",
           "create": "Create box",
           "update": "Update box",
           "cancel": "Cancel",
@@ -351,7 +377,7 @@
           "radius": "Radius",
           "height": "Height",
           "centered": "Center on the origin",
-          "expressionDescription": "Enter a positive length such as 10 mm or a variable expression such as #radius.",
+          "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #radius.",
           "create": "Create cylinder",
           "update": "Update cylinder",
           "cancel": "Cancel",
@@ -395,7 +421,7 @@
           "profile": "Selected profile",
           "distance": "Distance",
           "symmetric": "Extrude symmetrically",
-          "expressionDescription": "Enter a positive length such as 10 mm or a variable expression such as #depth.",
+          "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #depth.",
           "create": "Create extrusion",
           "update": "Update extrusion",
           "cancel": "Cancel",
@@ -468,7 +494,7 @@
           "profile": "Profile {number}",
           "width": "Width",
           "height": "Height",
-          "expressionDescription": "Enter a positive length such as 40 mm or a variable expression such as #width.",
+          "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #width.",
           "create": "Create sketch",
           "finish": "Finish sketch",
           "update": "Update sketch",
@@ -505,7 +531,7 @@
         "fit": "Fit view",
         "loadFailed": "The local document could not be opened.",
         "loading": "Opening the local document and geometry engine…",
-        "orientation": "{plane} · millimeters",
+        "orientation": "{plane} · {unit}",
         "planeXy": "XY plane",
         "planeXz": "XZ plane",
         "planeYz": "YZ plane",
@@ -534,8 +560,8 @@
         "overConstrained": "Over-constrained",
         "failed": "Solve failed",
         "degreesOfFreedom": "Degrees of freedom: {count}",
-        "profile": "Profile: {area} mm² · {perimeter} mm perimeter",
-        "orientation": "{plane} · millimeters"
+        "profile": "Profile: {area} · {perimeter} perimeter",
+        "orientation": "{plane} · {unit}"
       }
     },
     "variables": {
