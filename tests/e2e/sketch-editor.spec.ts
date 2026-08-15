@@ -1,5 +1,11 @@
 import { expect, test } from "./fixtures"
-import { addDimension, drawRectangle, selectSketchEntities } from "./sketch-helpers"
+import {
+  addDimension,
+  confirmSketchPlane,
+  drawRectangle,
+  selectOriginPlaneInViewport,
+  selectSketchEntities,
+} from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
   test("authors every alpha analytical primitive on the canvas", async ({ page }) => {
@@ -9,6 +15,7 @@ test.describe("full sketch editor", () => {
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
       .click()
+    await selectOriginPlaneInViewport(page, "yz")
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const bounds = await drawing.boundingBox()
     if (!bounds) throw new Error("The editable sketch canvas is not visible.")
@@ -60,7 +67,7 @@ test.describe("full sketch editor", () => {
       .getByRole("button", { name: "Model", exact: true })
       .click()
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
-    await page.getByRole("combobox", { name: "Support plane" }).selectOption("xz")
+    await confirmSketchPlane(page, "xz")
     const drawing = await drawRectangle(page)
     await page.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
@@ -95,6 +102,7 @@ test.describe("full sketch editor", () => {
     const editableDrawing = page.getByRole("img", { name: "Editable sketch geometry" })
     await selectSketchEntities(page, editableDrawing, "point", [1, 2])
     await addDimension(page, "Vertical distance", "25 mm")
+    await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
 

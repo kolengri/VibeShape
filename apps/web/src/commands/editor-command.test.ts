@@ -130,6 +130,26 @@ describe("editor command registry", () => {
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
   })
 
+  it("keeps sketch geometry commands unavailable while an origin plane is being selected", () => {
+    const context = commandContext({ activeSketchTool: { kind: "select-sketch-plane" } })
+    const commands = resolveBuiltInEditorCommands(context)
+    const createSketch = commands.find(
+      ({ descriptor: command }) => command.id === editorCommandIds.createSketch,
+    )
+    const line = commands.find(
+      ({ descriptor: command }) => command.id === editorCommandIds.sketchLine,
+    )
+    const sketchWorkspace = commands.find(
+      ({ descriptor: command }) => command.id === editorCommandIds.workspaceSketch,
+    )
+
+    expect(createSketch?.active).toBe(true)
+    expect(createSketch?.toolbarVisible).toBe(true)
+    expect(line?.toolbarVisible).toBe(false)
+    expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
+    expect(sketchWorkspace?.eligibility).toEqual({ enabled: false, reason: "activeSketch" })
+  })
+
   it("cancels the active sketch tool before canceling the sketch command", () => {
     const toolContext = commandContext({
       activeSketchTool: { kind: "create-sketch" },
@@ -155,5 +175,17 @@ describe("editor command registry", () => {
 
     cancelSketch?.invoke()
     expect(sketchContext.actions.cancelActive).toHaveBeenCalledOnce()
+
+    const planeContext = commandContext({
+      activeSketchTool: { kind: "select-sketch-plane" },
+      sketchTool: "rectangle",
+    })
+    const cancelPlaneSelection = resolveBuiltInEditorCommands(planeContext).find(
+      ({ descriptor: command }) => command.id === editorCommandIds.cancelActive,
+    )
+
+    cancelPlaneSelection?.invoke()
+    expect(planeContext.actions.cancelActive).toHaveBeenCalledOnce()
+    expect(planeContext.actions.setSketchTool).not.toHaveBeenCalled()
   })
 })

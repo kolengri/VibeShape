@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures"
+import { confirmSketchPlane } from "./sketch-helpers"
 
 test.describe("foundation CAD shell", () => {
   test("renders the localized landmark structure", async ({ page }) => {
@@ -55,6 +56,8 @@ test.describe("foundation CAD shell", () => {
 
     await search.fill("new sketch")
     await palette.getByText("Create sketch", { exact: true }).click()
+    await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toBeVisible()
+    await confirmSketchPlane(page)
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
 
     await page.keyboard.press("r")

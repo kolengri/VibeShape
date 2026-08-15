@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { drawRectangle } from "./sketch-helpers"
+import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test.describe("selector-backed extrusion", () => {
   test("creates, rebuilds, edits, and reopens a variable-driven solid", async ({ page }) => {
@@ -20,7 +20,7 @@ test.describe("selector-backed extrusion", () => {
       .getByRole("button", { name: "Model", exact: true })
       .click()
     await startPanel.getByRole("button", { name: "Create sketch" }).click()
-    await page.getByRole("combobox", { name: "Support plane" }).selectOption("xz")
+    await confirmSketchPlane(page, "xz")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
 

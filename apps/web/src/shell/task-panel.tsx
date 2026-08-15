@@ -8,6 +8,8 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { type ReactNode, useState } from "react"
 import {
   addFeature,
@@ -36,7 +38,12 @@ import {
   isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
-import type { ActiveSketchTool, SketchDraftChangeMode } from "../features/sketch/sketch-tool"
+import {
+  type ActiveSketchEditorTool,
+  type ActiveSketchTool,
+  isActiveSketchEditorTool,
+  type SketchDraftChangeMode,
+} from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -52,6 +59,7 @@ type TaskPanelProps = Readonly<{
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
   sketchDraft: SketchRecord | null
@@ -824,7 +832,7 @@ function ModelTaskPanel({
 }
 
 type ActiveSketchTaskPanelState = Readonly<{
-  activeSketchTool: ActiveSketchTool
+  activeSketchTool: ActiveSketchEditorTool
   draft: SketchRecord
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
@@ -840,7 +848,7 @@ type ActiveSketchTaskPanelActions = Readonly<{
 }>
 
 function sketchSaveFailureMessage(
-  activeSketchTool: ActiveSketchTool,
+  activeSketchTool: ActiveSketchEditorTool,
   sourceCode: string | null,
   copy: Readonly<{ createFailed: string; staleRevision: string; updateFailed: string }>,
 ) {
@@ -917,6 +925,53 @@ function ActiveSketchTaskPanel({
             onSelectedProfileChange,
           }}
         />
+      </div>
+    </aside>
+  )
+}
+
+function SketchPlaneSelectionTaskPanel({
+  draft,
+  onCancel,
+  onDraftChange,
+  onPlaneSelect,
+}: {
+  draft: SketchRecord
+  onCancel: () => void
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onPlaneSelect: (plane: SketchRecord["plane"]) => void
+}) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  return (
+    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <h2 className="text-sm font-medium">{t("planeSelectionTitle")}</h2>
+      <p className="mt-2 text-xs leading-4 text-muted-foreground">
+        {t("planeSelectionDescription")}
+      </p>
+      <Field className="mt-4">
+        <FieldLabel htmlFor="sketch-origin-plane">{t("plane")}</FieldLabel>
+        <NativeSelect
+          id="sketch-origin-plane"
+          value={draft.plane}
+          onChange={(event) =>
+            onDraftChange(
+              { ...draft, plane: event.currentTarget.value as SketchRecord["plane"] },
+              "replace",
+            )
+          }
+        >
+          <option value="xy">{t("planeXy")}</option>
+          <option value="xz">{t("planeXz")}</option>
+          <option value="yz">{t("planeYz")}</option>
+        </NativeSelect>
+      </Field>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
+          {t("cancel")}
+        </Button>
+        <Button type="button" size="sm" onClick={() => onPlaneSelect(draft.plane)}>
+          {t("startSketch")}
+        </Button>
       </div>
     </aside>
   )
@@ -1068,7 +1123,7 @@ function SketchStartTaskPanel({
 
 function SketchTaskPanel(props: TaskPanelProps) {
   const report = props.controller.report
-  if (props.activeSketchTool && report && props.sketchDraft) {
+  if (isActiveSketchEditorTool(props.activeSketchTool) && report && props.sketchDraft) {
     return (
       <ActiveSketchTaskPanel
         report={report}
@@ -1116,6 +1171,16 @@ const taskPanelByWorkspace = {
 } satisfies Record<TaskPanelProps["workspace"], (props: TaskPanelProps) => ReactNode>
 
 export function TaskPanel(props: TaskPanelProps) {
+  if (props.activeSketchTool?.kind === "select-sketch-plane" && props.sketchDraft) {
+    return (
+      <SketchPlaneSelectionTaskPanel
+        draft={props.sketchDraft}
+        onCancel={props.onCloseTool}
+        onDraftChange={props.onSketchDraftChange}
+        onPlaneSelect={props.onSketchPlaneSelect}
+      />
+    )
+  }
   const Panel = taskPanelByWorkspace[props.workspace]
   return <Panel {...props} />
 }

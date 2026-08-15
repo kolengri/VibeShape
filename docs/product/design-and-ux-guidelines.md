@@ -231,7 +231,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - Solver status, degrees of freedom, and profile measurements remain visible without covering the geometry being edited. An over-constrained result preserves the draft and names or marks every failed constraint the solver can identify.
 - Closed regions render behind entity strokes. Region activation stores a stable boundary-entity selector; transient profile indices are display-only.
 - The accessible task panel exposes every geometry tool, constraint, dimension, profile, undo, redo, Finish, and Cancel action. Pointer-free coordinate entry and canvas placement remain documented alpha accessibility limitations.
-- Plane selection is available as a labeled native select until origin-plane viewport picking has equivalent keyboard, focus, and error behavior.
+- Command-first sketch creation exposes XY, XZ, and YZ as translucent 3D datum planes with hover preselection and primary-click acceptance. A synchronized labeled native select and explicit `Start sketch` action remain the keyboard-accessible equivalent; 2D sketch tools do not activate until support is accepted.
 
 ## Command and Tool Interaction
 

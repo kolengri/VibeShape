@@ -135,17 +135,27 @@ function useSketchInteraction() {
   } = presentation
   const clearSelection = useCallback(() => setSelectedEntityIds([]), [setSelectedEntityIds])
   const history = useSketchDraftHistory(clearSelection)
-  const { reset: resetHistory } = history
+  const { draft: historyDraft, reset: resetHistory, update: updateHistory } = history
   const [activeSketchTool, setActiveSketchTool] = useState<ActiveSketchTool | null>(null)
   const [activeSketchId, setActiveSketchId] = useState<SketchId | null>(null)
-  const create = useCallback(
+  const beginCreate = useCallback(
     (sketch: SketchRecord) => {
       setActiveSketchId(sketch.id)
-      setActiveSketchTool({ kind: "create-sketch" })
+      setActiveSketchTool({ kind: "select-sketch-plane" })
       resetHistory(sketch)
-      resetPresentation("line")
+      resetPresentation("select")
     },
     [resetHistory, resetPresentation],
+  )
+  const selectPlane = useCallback(
+    (plane: SketchRecord["plane"]) => {
+      if (activeSketchTool?.kind !== "select-sketch-plane" || !historyDraft) return false
+      updateHistory({ ...historyDraft, plane }, "replace")
+      setActiveSketchTool({ kind: "create-sketch" })
+      resetPresentation("line")
+      return true
+    },
+    [activeSketchTool, historyDraft, resetPresentation, updateHistory],
   )
   const edit = useCallback(
     (sketch: SketchRecord) => {
@@ -166,7 +176,7 @@ function useSketchInteraction() {
     [resetHistory, resetPresentation],
   )
   const close = useCallback(() => {
-    if (activeSketchTool?.kind === "create-sketch") setActiveSketchId(null)
+    if (activeSketchTool?.kind !== "edit-sketch") setActiveSketchId(null)
     setActiveSketchTool(null)
     resetHistory(null)
     resetPresentation("select")
@@ -187,7 +197,7 @@ function useSketchInteraction() {
     activeSketchTool,
     close,
     construction: presentation.construction,
-    create,
+    beginCreate,
     draft: history.draft,
     edit,
     editorTool: presentation.editorTool,
@@ -198,6 +208,7 @@ function useSketchInteraction() {
     redoAvailable: history.redoAvailable,
     saved,
     select,
+    selectPlane,
     selectedEntityIds: presentation.selectedEntityIds,
     selectedProfile: presentation.selectedProfile,
     setConstruction: presentation.setConstruction,
@@ -218,11 +229,12 @@ function useModelInteraction(
   const {
     activeSketchId,
     close: closeSketch,
-    create: createSketchInteraction,
+    beginCreate: beginCreateSketchInteraction,
     edit: editSketchInteraction,
     selectedProfile,
     saved: sketchSaved,
     select: selectSketchInteraction,
+    selectPlane: selectSketchPlaneInteraction,
   } = sketch
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [workspace, setWorkspace] = useState<EditorWorkspaceName>("model")
@@ -249,17 +261,25 @@ function useModelInteraction(
   const createSketch = useCallback(() => {
     const report = controller.report
     if (!report) return
-    setWorkspace("sketch")
+    setWorkspace("model")
     setActiveTool(null)
     setSelection(null)
-    createSketchInteraction(
+    beginCreateSketchInteraction(
       createEmptySketch({
         id: createBrowserSketchId(),
         label: t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
         plane: "xy",
       }),
     )
-  }, [controller.report, createSketchInteraction, t])
+  }, [beginCreateSketchInteraction, controller.report, t])
+  const selectSketchPlane = useCallback(
+    (plane: SketchRecord["plane"]) => {
+      if (!selectSketchPlaneInteraction(plane)) return
+      setWorkspace("sketch")
+      setSelection(null)
+    },
+    [selectSketchPlaneInteraction],
+  )
   const editSketch = useCallback(
     (sketchId: SketchId) => {
       const source = controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
@@ -313,6 +333,7 @@ function useModelInteraction(
       editSketch,
       select: setSelection,
       selectSketch,
+      selectSketchPlane,
       setSketchConstruction: sketch.setConstruction,
       redoSketchDraft: sketch.redo,
       setSketchDraft: sketch.updateDraft,

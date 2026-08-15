@@ -3,7 +3,11 @@ import {
   type activePartDesignCommand,
   booleanInputFeatures,
 } from "../features/part-design/part-design-tool"
-import type { ActiveSketchTool, SketchEditorTool } from "../features/sketch/sketch-tool"
+import {
+  type ActiveSketchTool,
+  isActiveSketchEditorTool,
+  type SketchEditorTool,
+} from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
 import {
   createEditorCommandRegistry,
@@ -208,7 +212,7 @@ function canCreateFeature(context: BuiltInEditorCommandContext) {
 }
 
 function requiresSketch(context: BuiltInEditorCommandContext) {
-  return context.state.activeSketchTool
+  return isActiveSketchEditorTool(context.state.activeSketchTool)
     ? editorCommandEnabled()
     : editorCommandDisabled("requiresSketch")
 }
@@ -228,7 +232,7 @@ function sketchToolHandler(
     getEligibility: requiresSketch,
     id,
     isActive: ({ state }) => state.sketchTool === tool,
-    isToolbarVisible: ({ state }) => state.activeSketchTool !== null,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
     ownerModuleId: sketchOwner,
   }
 }
@@ -247,7 +251,9 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: ({ state }) =>
       state.activePartDesignCommand
         ? editorCommandDisabled("activeFeature")
-        : editorCommandEnabled(),
+        : state.activeSketchTool?.kind === "select-sketch-plane"
+          ? editorCommandDisabled("activeSketch")
+          : editorCommandEnabled(),
     id: editorCommandIds.workspaceSketch,
     isActive: ({ state }) => state.workspace === "sketch",
     ownerModuleId: editorOwner,
@@ -256,7 +262,9 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     execute: ({ actions }) => actions.createSketch(),
     getEligibility: canCreateFeature,
     id: editorCommandIds.createSketch,
-    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    isActive: ({ state }) => state.activeSketchTool?.kind === "select-sketch-plane",
+    isToolbarVisible: ({ state }) =>
+      state.activeSketchTool === null || state.activeSketchTool.kind === "select-sketch-plane",
     ownerModuleId: sketchOwner,
   },
   {
@@ -315,7 +323,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: requiresSketch,
     id: editorCommandIds.sketchConstruction,
     isActive: ({ state }) => state.sketchConstruction,
-    isToolbarVisible: ({ state }) => state.activeSketchTool !== null,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
     ownerModuleId: sketchOwner,
   },
   {
@@ -328,7 +336,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
         : editorCommandDisabled("noSketchUndo")
     },
     id: editorCommandIds.sketchUndo,
-    isToolbarVisible: ({ state }) => state.activeSketchTool !== null,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
     ownerModuleId: sketchOwner,
   },
   {
@@ -341,12 +349,12 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
         : editorCommandDisabled("noSketchRedo")
     },
     id: editorCommandIds.sketchRedo,
-    isToolbarVisible: ({ state }) => state.activeSketchTool !== null,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
     ownerModuleId: sketchOwner,
   },
   {
     execute: ({ actions, state }) => {
-      if (state.activeSketchTool && state.sketchTool !== "select") {
+      if (isActiveSketchEditorTool(state.activeSketchTool) && state.sketchTool !== "select") {
         actions.setSketchTool("select")
         return
       }
