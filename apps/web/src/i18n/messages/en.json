@@ -71,6 +71,22 @@
         "duplicateFailed": "This local project could not be duplicated. Reload the project list and try again."
       }
     },
+    "projectRename": {
+      "trigger": "Rename {name}",
+      "tooltip": "Rename project",
+      "title": "Rename project",
+      "description": "Change the project name stored in its document history.",
+      "closeLabel": "Close rename project dialog",
+      "fieldLabel": "Project name",
+      "fieldDescription": "This name appears in the application bar, local project library, and exported filenames.",
+      "invalidName": "Enter a project name using 120 characters or fewer.",
+      "unchangedName": "Enter a different project name.",
+      "save": "Rename project",
+      "cancel": "Cancel",
+      "readOnly": "Open the document with write access to rename it.",
+      "staleRevision": "The project changed while its name was being edited. Review the current name and try again.",
+      "saveFailed": "The project could not be renamed. Its current name is unchanged."
+    },
     "export": {
       "trigger": "Export…",
       "title": "Export model",

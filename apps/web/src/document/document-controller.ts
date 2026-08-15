@@ -65,6 +65,7 @@ export type ApplyVariableTableResult =
   | { ok: true }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
+export type DocumentMutationResult = ApplyVariableTableResult
 export type FeatureMutationResult = ApplyVariableTableResult
 type SketchMutationResult = ApplyVariableTableResult
 export type ActiveSketchSolveResult = PersistentSketchSolveResult
@@ -723,6 +724,22 @@ export function renameVariable(baseRevision: number, variableId: VariableId, nam
     issuedAt: new Date().toISOString(),
     actor: { type: "user", userId: null },
     payload: { variableId, name },
+  }))
+}
+
+export function renameActiveProject(
+  baseRevision: number,
+  name: string,
+): Promise<DocumentMutationResult> {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.document.rename",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { name },
   }))
 }
 
