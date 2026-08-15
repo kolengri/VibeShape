@@ -166,7 +166,7 @@ The implemented export dialog downloads successful terminal bodies as determinis
 
 ## Interface and accessibility
 
-- All interface work follows the normative [Design and UX Guidelines](design-and-ux-guidelines.md).
+- All interface work follows the normative [Design and UX Guidelines](design-and-ux-guidelines.md) and the vertical delivery order in the [Editor experience implementation plan](editor-experience-plan.md).
 - Desktop-first, minimum working width of 1024 px.
 - Every core action is available through commands/shortcuts and the command palette.
 - Focus indicators, semantic labels, and keyboard-operable dialogs.

@@ -1148,14 +1148,19 @@ export function SketchViewport({
     "over-constrained": t("overConstrained"),
     failed: t("failed"),
   })
-  const statusText = solveMessage(activeSolveState, {
-    failed: t("solveFailed"),
-    loading: t("solving"),
-    status,
-  })
-  const degreesOfFreedom = solution
-    ? t("degreesOfFreedom", { count: solution.degreesOfFreedom })
-    : null
+  const emptySketch = activeSketch?.entities.length === 0
+  const statusText = emptySketch
+    ? t("emptyDraft")
+    : solveMessage(activeSolveState, {
+        failed: t("solveFailed"),
+        loading: t("solving"),
+        status,
+      })
+  const degreesOfFreedom = emptySketch
+    ? t("emptyDraftHint")
+    : solution
+      ? t("degreesOfFreedom", { count: solution.degreesOfFreedom })
+      : null
   const profileText = profile
     ? t("profile", { area: number(profile.area), perimeter: number(profile.perimeter) })
     : null

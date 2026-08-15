@@ -17,10 +17,9 @@ import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { TextField } from "@vibeshape/ui/components/text-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import type { ComponentProps, ReactNode } from "react"
+import type { ComponentProps } from "react"
 import { useMemo, useState } from "react"
 import { createBrowserSketchConstraintId } from "../../document/document-controller"
-import type { SketchEditorTool } from "./sketch-tool"
 
 type DimensionKind =
   | "distance"
@@ -33,13 +32,10 @@ type DimensionKind =
 type SketchEditorPanelCopy = Readonly<{
   addConstraint: string
   angle: string
-  arc: string
   cancel: string
-  circle: string
   coincident: string
   concentric: string
   conflict: string
-  construction: string
   constraints: string
   diameter: string
   dimension: string
@@ -50,10 +46,8 @@ type SketchEditorPanelCopy = Readonly<{
   equal: string
   finish: string
   fixed: string
-  geometry: string
   horizontal: string
   horizontalDistance: string
-  line: string
   noConstraints: string
   parallel: string
   perpendicular: string
@@ -63,16 +57,12 @@ type SketchEditorPanelCopy = Readonly<{
   planeYz: string
   pointOnCurve: string
   pointOnLine: string
-  point: string
   profile: (number: number) => string
   profiles: string
   radius: string
-  rectangle: string
-  redo: string
   remove: string
-  select: string
+  selectionHint: string
   tangent: string
-  undo: string
   vertical: string
   verticalDistance: string
 }>
@@ -399,93 +389,17 @@ function SketchDimensionForm({
   )
 }
 
-function ToolButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: ReactNode
-  onClick: () => void
-}) {
-  return (
-    <Button
-      type="button"
-      size="xs"
-      variant={active ? "secondary" : "outline"}
-      aria-pressed={active}
-      onClick={onClick}
-    >
-      {children}
-    </Button>
-  )
-}
-
-function SketchGeometrySection({
-  construction,
+function SketchSetupSection({
   copy,
   draft,
-  editorTool,
-  onConstructionChange,
   onDraftChange,
-  onEditorToolChange,
-  onRedo,
-  onUndo,
-  redoAvailable,
-  undoAvailable,
 }: {
-  construction: boolean
   copy: SketchEditorPanelCopy
   draft: SketchRecord
-  editorTool: SketchEditorTool
-  onConstructionChange: (construction: boolean) => void
   onDraftChange: (draft: SketchRecord) => void
-  onEditorToolChange: (tool: SketchEditorTool) => void
-  onRedo: () => void
-  onUndo: () => void
-  redoAvailable: boolean
-  undoAvailable: boolean
 }) {
-  const tools = [
-    ["select", copy.select],
-    ["point", copy.point],
-    ["line", copy.line],
-    ["rectangle", copy.rectangle],
-    ["circle", copy.circle],
-    ["arc", copy.arc],
-  ] as const
   return (
     <section className="grid gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {copy.geometry}
-      </h3>
-      <div className="flex flex-wrap gap-1">
-        {tools.map(([tool, label]) => (
-          <ToolButton
-            key={tool}
-            active={editorTool === tool}
-            onClick={() => onEditorToolChange(tool)}
-          >
-            {label}
-          </ToolButton>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-1">
-        <Button type="button" size="xs" variant="ghost" disabled={!undoAvailable} onClick={onUndo}>
-          {copy.undo}
-        </Button>
-        <Button type="button" size="xs" variant="ghost" disabled={!redoAvailable} onClick={onRedo}>
-          {copy.redo}
-        </Button>
-      </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={construction}
-          onChange={(event) => onConstructionChange(event.currentTarget.checked)}
-        />
-        {copy.construction}
-      </label>
       <Field>
         <FieldLabel htmlFor="sketch-plane">{copy.plane}</FieldLabel>
         <NativeSelect
@@ -559,29 +473,35 @@ function SketchConstraintSection({
     ["point-on-line", copy.pointOnLine],
     ["point-on-curve", copy.pointOnCurve],
   ] as const
+  const availableActions = [
+    ...geometricActions.map(([kind, label]) => ({
+      kind,
+      label,
+      definition: geometricConstraintDefinition(kind, entities),
+    })),
+    ...pointActions.map(([kind, label]) => ({
+      kind,
+      label,
+      definition: pointEntityConstraintDefinition(kind, entities),
+    })),
+  ].filter(
+    (action): action is typeof action & Readonly<{ definition: SketchConstraintDefinition }> =>
+      action.definition !== null,
+  )
   return (
     <section className="grid gap-2 border-t pt-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {copy.addConstraint}
       </h3>
-      <div className="flex flex-wrap gap-1">
-        {geometricActions.map(([kind, label]) => (
-          <ConstraintAction
-            key={kind}
-            definition={geometricConstraintDefinition(kind, entities)}
-            label={label}
-            onAdd={onAdd}
-          />
-        ))}
-        {pointActions.map(([kind, label]) => (
-          <ConstraintAction
-            key={kind}
-            definition={pointEntityConstraintDefinition(kind, entities)}
-            label={label}
-            onAdd={onAdd}
-          />
-        ))}
-      </div>
+      {availableActions.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {availableActions.map(({ definition, kind, label }) => (
+            <ConstraintAction key={kind} definition={definition} label={label} onAdd={onAdd} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs leading-4 text-muted-foreground">{copy.selectionHint}</p>
+      )}
       <SketchDimensionForm
         key={`${selectionKey}:${options.map(({ kind }) => kind).join(":")}`}
         copy={copy}
@@ -707,8 +627,8 @@ function SketchEditorFooter({
   onFinish: () => Promise<void>
 }) {
   return (
-    <>
-      <div className="grid grid-cols-2 gap-2 border-t pt-3">
+    <div className="sticky bottom-0 z-10 -mx-4 grid gap-2 border-t bg-panel px-4 py-3">
+      <div className="grid grid-cols-2 gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {copy.cancel}
         </Button>
@@ -721,34 +641,26 @@ function SketchEditorFooter({
           {message}
         </p>
       ) : null}
-    </>
+    </div>
   )
 }
 
 type SketchEditorPanelState = Readonly<{
-  construction: boolean
   disabled: boolean
   draft: SketchRecord
-  editorTool: SketchEditorTool
   failedConstraintIds: readonly string[]
   message: string | null
   profiles: readonly SketchProfileSelector[]
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
-  redoAvailable: boolean
-  undoAvailable: boolean
   variables: readonly VariableDefinition[]
 }>
 
 type SketchEditorPanelActions = Readonly<{
   onCancel: () => void
-  onConstructionChange: (construction: boolean) => void
   onDraftChange: (draft: SketchRecord) => void
-  onEditorToolChange: (tool: SketchEditorTool) => void
   onFinish: () => Promise<void>
-  onRedo: () => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  onUndo: () => void
 }>
 
 export function SketchEditorPanel({
@@ -761,29 +673,16 @@ export function SketchEditorPanel({
   state: SketchEditorPanelState
 }) {
   const {
-    construction,
     disabled,
     draft,
-    editorTool,
     failedConstraintIds,
     message,
     profiles,
-    redoAvailable,
     selectedEntityIds,
     selectedProfile,
-    undoAvailable,
     variables,
   } = state
-  const {
-    onCancel,
-    onConstructionChange,
-    onDraftChange,
-    onEditorToolChange,
-    onFinish,
-    onRedo,
-    onSelectedProfileChange,
-    onUndo,
-  } = actions
+  const { onCancel, onDraftChange, onFinish, onSelectedProfileChange } = actions
   const entities = useMemo(
     () => selectedEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
@@ -795,19 +694,7 @@ export function SketchEditorPanel({
 
   return (
     <div className="grid gap-4">
-      <SketchGeometrySection
-        construction={construction}
-        copy={copy}
-        draft={draft}
-        editorTool={editorTool}
-        redoAvailable={redoAvailable}
-        undoAvailable={undoAvailable}
-        onConstructionChange={onConstructionChange}
-        onDraftChange={onDraftChange}
-        onEditorToolChange={onEditorToolChange}
-        onRedo={onRedo}
-        onUndo={onUndo}
-      />
+      <SketchSetupSection copy={copy} draft={draft} onDraftChange={onDraftChange} />
       <SketchConstraintSection
         copy={copy}
         entities={entities}

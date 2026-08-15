@@ -194,6 +194,8 @@ describe("SketchViewport", () => {
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    expect(screen.getByText("Empty sketch")).toBeTruthy()
+    expect(screen.getByText("Choose a geometry tool from the toolbar to begin.")).toBeTruthy()
     vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
       left: 0,
       top: 0,

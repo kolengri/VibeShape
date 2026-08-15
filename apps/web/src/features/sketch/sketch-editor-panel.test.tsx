@@ -53,6 +53,7 @@ const copy = {
   rectangle: "Rectangle",
   redo: "Redo",
   remove: "Remove",
+  selectionHint: "Select geometry to see compatible constraints.",
   select: "Select",
   tangent: "Tangent",
   undo: "Undo",
@@ -91,28 +92,20 @@ function renderPanel(
     <SketchEditorPanel
       copy={copy}
       state={{
-        construction: false,
         disabled: false,
         draft: sketch,
-        editorTool: "select",
         failedConstraintIds,
         message: null,
         profiles: [],
-        redoAvailable: false,
         selectedEntityIds,
         selectedProfile: null,
-        undoAvailable: false,
         variables: [],
       }}
       actions={{
         onCancel: vi.fn(),
-        onConstructionChange: vi.fn(),
         onDraftChange,
-        onEditorToolChange: vi.fn(),
         onFinish: vi.fn(async () => undefined),
-        onRedo: vi.fn(),
         onSelectedProfileChange: vi.fn(),
-        onUndo: vi.fn(),
       }}
     />,
   )
