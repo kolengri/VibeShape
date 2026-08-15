@@ -18,6 +18,36 @@ test.describe("foundation CAD shell", () => {
     await expect(page.locator("footer[role='status']")).toContainText("Ready")
   })
 
+  test("orbits the 3D viewport with primary drag without accepting a sketch plane", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-origin-plane-selection", "xy")
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+    const before = await canvas.screenshot()
+
+    await page.mouse.move(bounds.x + bounds.width * 0.18, bounds.y + bounds.height * 0.07)
+    await page.mouse.down()
+    await page.mouse.move(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.07, {
+      steps: 8,
+    })
+    await page.mouse.up()
+
+    await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toBeVisible()
+    await expect(viewport).not.toHaveAttribute("data-origin-plane-preselection")
+    const after = await canvas.screenshot()
+    expect(after.equals(before), "Primary drag must change the rendered camera view.").toBe(false)
+  })
+
   test("keeps primary commands in a predictable keyboard order", async ({ browserName, page }) => {
     await page.goto("/")
 

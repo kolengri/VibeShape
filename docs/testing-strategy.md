@@ -169,7 +169,7 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 
 - Unit tests verify zero-copy typed-array binding, projection fallback, friendly face ordinals, and exact extraction of every triangle belonging to a rendered face.
 - React component tests verify lazy adapter ownership, terminal-mesh filtering, face and origin-plane callback wiring, empty-model datum initialization, explicit fit and clear actions, disposal, and localized renderer failure containment.
-- Playwright creates a real persisted variable-driven Box, waits for measured WebGL2 canvas output, selects a rendered face through an actual pointer click, observes the accessible feature-and-face summary, and clears it through the visible control. The sketch flow scans real canvas preselection state, clicks an XY origin plane through Three.js raycasting, and separately proves the synchronized keyboard-equivalent native select path.
+- Playwright creates a real persisted variable-driven Box, waits for measured WebGL2 canvas output, selects a rendered face through an actual pointer click, observes the accessible feature-and-face summary, and clears it through the visible control. A primary-button drag must change the real WebGL canvas without activating a sketch plane. The sketch flow scans real canvas preselection state, clicks an XY origin plane through Three.js raycasting, and separately proves the synchronized keyboard-equivalent native select path.
 - The selection flow runs locally in Chromium, Firefox, and WebKit. Empty click, rebuild clearing, pointer-mode expansion, and stable `TopoRef` integration receive focused regression tests with their owning implementation slices.
 
 ## Playwright execution contract
