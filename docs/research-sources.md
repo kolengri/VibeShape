@@ -200,6 +200,24 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 
 **Conclusion:** VibeShape targets WCAG 2.2 AA for its application chrome and uses tested shadcn/Radix primitives plus APG interaction patterns. The WebGL canvas retains accessible HTML equivalents for document structure, commands, selection summaries, and diagnostics; the project documents limitations of free-form spatial authoring instead of claiming complete canvas accessibility.
 
+## CAD Editor Interaction Models
+
+| Source | Evidence |
+|---|---|
+| [Onshape user interface basics](https://cad.onshape.com/help/Content/Home/user_interface_basics.htm) | Stable Part Studio graphics area, feature list, workflow-specific toolbars, grouped overflow, explicit dialogs, selection, undo/redo, and error indicators |
+| [Onshape sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm) | Sketch toolbar activation, grouped and last-used tools, shortcut toolbar, `Escape`, constraint visibility, and the transition from a valid open sketch into Extrude or Revolve |
+| [Onshape dialogs](https://cad.onshape.com/help/Content/Home/dialogs.htm) | Distinct selection and keyboard-input fields plus feature editing in historical context |
+| [Autodesk Fusion interface](https://help.autodesk.com/view/fusion360/ENU/?contextId=LP-STEPS-P13N-SNP-GS-OTH-CRD-1) | Stable Browser and canvas, contextual toolbar tabs, ViewCube/navigation, marking menu, and chronological parametric Timeline |
+| [Autodesk Fusion sketches](https://help.autodesk.com/view/fusion360/ENU/?contextId=SKT-3D-SKETCH) | Contextual Sketch tab, sketch palette, construction/grid/profile/dimension visibility controls, and automatic transition into a 3D feature command |
+| [Autodesk Fusion edit sketch](https://help.autodesk.com/view/fusion360/ENU/?contextId=SKT-EDIT-SKETCH) | Explicit plane or planar-face support, highlighted temporary sketch environment, Finish Sketch, and Browser/Timeline edit entry points |
+| [Shapr3D adaptive user interface](https://support.shapr3d.com/hc/en-us/articles/7873882619548-Adaptive-user-interface) | Selection-driven recommended tools, profile-to-Extrude and profile-plus-axis-to-Revolve promotion, and a bounded More path |
+| [Shapr3D History](https://support.shapr3d.com/hc/en-us/articles/11567903089180-History) | Editable history-step parameters, breakpoint, suppression, zoom, rename, duplication, deletion, and selection-related filtering |
+| [FreeCAD Sketcher Workbench](https://reqrefusion.github.io/FreeCAD-Documentation-html/wiki/en/Sketcher_Workbench.html) | Degrees-of-freedom feedback, automatic-constraint candidates, distinct snapping behavior, construction geometry, and solver guidance |
+| [SolveSpace reference](https://solvespace.com/ref.pl) | Graphics-first layout, constraint and dimension glyphs, direct label editing, automatic horizontal/vertical constraints, reference dimensions, and bounded failed-constraint suggestions |
+| [Radix Toolbar](https://www.radix-ui.com/primitives/docs/components/toolbar) | Roving tab index and arrow-key navigation used for the contextual command surface |
+
+**Conclusion:** the editor should combine Onshape's stable feature-centric shell, Fusion's explicit contextual mode, Shapr3D's selection-driven next actions, and the solver transparency of FreeCAD and SolveSpace. Adaptive actions supplement a complete command registry; they do not hide unavailable commands from search or bypass VibeShape's local persistence and validation boundaries. The implementation sequence is defined in the [Editor experience implementation plan](product/editor-experience-plan.md).
+
 ## npm Registry Snapshot
 
 Results from `npm view <package> version license` on 2026-08-07, with `is-what` reviewed on 2026-08-08:

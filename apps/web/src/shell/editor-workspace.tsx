@@ -131,10 +131,8 @@ export function EditorWorkspace({
   sketchEditorTool,
   sketchFailedConstraintIds,
   sketchProfiles,
-  sketchRedoAvailable,
   sketchSelectedEntityIds,
   sketchSelectedProfile,
-  sketchUndoAvailable,
   workspace,
 }: {
   actions: EditorWorkspaceActions
@@ -148,10 +146,8 @@ export function EditorWorkspace({
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
-  sketchRedoAvailable: boolean
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
-  sketchUndoAvailable: boolean
   workspace: EditorWorkspaceName
 }) {
   const selectedSketch =
@@ -199,22 +195,14 @@ export function EditorWorkspace({
         onCreateSketch={actions.createSketch}
         onCreateSubtract={actions.createSubtract}
         onEditSketch={actions.editSketch}
-        sketchConstruction={sketchConstruction}
         sketchDraft={sketchDraft}
-        sketchEditorTool={sketchEditorTool}
         sketchFailedConstraintIds={sketchFailedConstraintIds}
         sketchProfiles={sketchProfiles}
-        sketchRedoAvailable={sketchRedoAvailable}
         sketchSelectedEntityIds={sketchSelectedEntityIds}
         sketchSelectedProfile={sketchSelectedProfile}
-        sketchUndoAvailable={sketchUndoAvailable}
-        onSketchConstructionChange={actions.setSketchConstruction}
         onSketchDraftChange={actions.setSketchDraft}
-        onSketchEditorToolChange={actions.setSketchEditorTool}
         onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
-        onSketchRedo={actions.redoSketchDraft}
         onSketchSaved={actions.sketchSaved}
-        onSketchUndo={actions.undoSketchDraft}
       />
     </div>
   )

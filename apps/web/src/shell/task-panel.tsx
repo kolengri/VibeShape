@@ -36,11 +36,7 @@ import {
   isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
-import type {
-  ActiveSketchTool,
-  SketchDraftChangeMode,
-  SketchEditorTool,
-} from "../features/sketch/sketch-tool"
+import type { ActiveSketchTool, SketchDraftChangeMode } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -55,22 +51,14 @@ type TaskPanelProps = Readonly<{
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
-  onSketchConstructionChange: (construction: boolean) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
-  onSketchEditorToolChange: (tool: SketchEditorTool) => void
-  onSketchRedo: () => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
-  onSketchUndo: () => void
-  sketchConstruction: boolean
   sketchDraft: SketchRecord | null
-  sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
-  sketchRedoAvailable: boolean
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
-  sketchUndoAvailable: boolean
   workspace: EditorWorkspaceName
 }>
 
@@ -95,13 +83,10 @@ function useSketchEditorCopy() {
   return {
     addConstraint: t("addConstraint"),
     angle: t("angle"),
-    arc: t("arc"),
     cancel: t("cancel"),
-    circle: t("circle"),
     coincident: t("coincident"),
     concentric: t("concentric"),
     conflict: t("conflict"),
-    construction: t("construction"),
     constraints: t("constraints"),
     diameter: t("diameter"),
     dimension: t("dimension"),
@@ -112,10 +97,8 @@ function useSketchEditorCopy() {
     equal: t("equal"),
     finish: t("finish"),
     fixed: t("fixed"),
-    geometry: t("geometry"),
     horizontal: t("horizontal"),
     horizontalDistance: t("horizontalDistance"),
-    line: t("line"),
     noConstraints: t("noConstraints"),
     parallel: t("parallel"),
     perpendicular: t("perpendicular"),
@@ -125,16 +108,12 @@ function useSketchEditorCopy() {
     planeYz: t("planeYz"),
     pointOnCurve: t("pointOnCurve"),
     pointOnLine: t("pointOnLine"),
-    point: t("point"),
     profile: (number: number) => t("profile", { number }),
     profiles: t("profiles"),
     radius: t("radius"),
-    rectangle: t("rectangle"),
-    redo: t("redo"),
     remove: t("removeConstraint"),
-    select: t("select"),
+    selectionHint: t("constraintSelectionHint"),
     tangent: t("tangent"),
-    undo: t("undo"),
     vertical: t("vertical"),
     verticalDistance: t("verticalDistance"),
   }
@@ -846,26 +825,18 @@ function ModelTaskPanel({
 
 type ActiveSketchTaskPanelState = Readonly<{
   activeSketchTool: ActiveSketchTool
-  construction: boolean
   draft: SketchRecord
-  editorTool: SketchEditorTool
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
-  redoAvailable: boolean
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
-  undoAvailable: boolean
 }>
 
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
-  onConstructionChange: (construction: boolean) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
-  onEditorToolChange: (tool: SketchEditorTool) => void
-  onRedo: () => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
-  onUndo: () => void
 }>
 
 function sketchSaveFailureMessage(
@@ -888,29 +859,18 @@ function ActiveSketchTaskPanel({
 }) {
   const {
     activeSketchTool,
-    construction,
     draft,
-    editorTool,
     failedConstraintIds,
     profiles,
-    redoAvailable,
     selectedEntityIds,
     selectedProfile,
-    undoAvailable,
   } = state
-  const {
-    onCloseTool,
-    onConstructionChange,
-    onDraftChange,
-    onEditorToolChange,
-    onRedo,
-    onSelectedProfileChange,
-    onSketchSaved,
-    onUndo,
-  } = actions
+  const { onCloseTool, onDraftChange, onSelectedProfileChange, onSketchSaved } = actions
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
+  const modeDescription =
+    activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
     setMessage(null)
     const save = activeSketchTool.kind === "edit-sketch" ? updateSketch : addSketch
@@ -928,34 +888,36 @@ function ActiveSketchTaskPanel({
     onSketchSaved(draft)
   }
   return (
-    <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <SketchEditorPanel
-        copy={copy}
-        state={{
-          construction,
-          disabled: report.mode === "read-only",
-          draft,
-          editorTool,
-          failedConstraintIds,
-          message,
-          profiles,
-          redoAvailable,
-          selectedEntityIds,
-          selectedProfile,
-          undoAvailable,
-          variables: report.snapshot.variables,
-        }}
-        actions={{
-          onCancel: onCloseTool,
-          onConstructionChange,
-          onDraftChange,
-          onEditorToolChange,
-          onFinish: finish,
-          onRedo,
-          onSelectedProfileChange,
-          onUndo,
-        }}
-      />
+    <aside
+      aria-label={t("taskAriaLabel")}
+      className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
+    >
+      <header className="border-b px-4 py-3">
+        <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
+        <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
+        <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
+      </header>
+      <div className="min-h-0 overflow-auto p-4">
+        <SketchEditorPanel
+          copy={copy}
+          state={{
+            disabled: report.mode === "read-only",
+            draft,
+            failedConstraintIds,
+            message,
+            profiles,
+            selectedEntityIds,
+            selectedProfile,
+            variables: report.snapshot.variables,
+          }}
+          actions={{
+            onCancel: onCloseTool,
+            onDraftChange,
+            onFinish: finish,
+            onSelectedProfileChange,
+          }}
+        />
+      </div>
     </aside>
   )
 }
@@ -1112,25 +1074,17 @@ function SketchTaskPanel(props: TaskPanelProps) {
         report={report}
         state={{
           activeSketchTool: props.activeSketchTool,
-          construction: props.sketchConstruction,
           draft: props.sketchDraft,
-          editorTool: props.sketchEditorTool,
           failedConstraintIds: props.sketchFailedConstraintIds,
           profiles: props.sketchProfiles,
-          redoAvailable: props.sketchRedoAvailable,
           selectedEntityIds: props.sketchSelectedEntityIds,
           selectedProfile: props.sketchSelectedProfile,
-          undoAvailable: props.sketchUndoAvailable,
         }}
         actions={{
           onCloseTool: props.onCloseTool,
-          onConstructionChange: props.onSketchConstructionChange,
           onDraftChange: props.onSketchDraftChange,
-          onEditorToolChange: props.onSketchEditorToolChange,
-          onRedo: props.onSketchRedo,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,
           onSketchSaved: props.onSketchSaved,
-          onUndo: props.onSketchUndo,
         }}
       />
     )

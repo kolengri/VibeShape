@@ -24,14 +24,14 @@ test.describe("foundation CAD shell", () => {
     const modelButton = page.getByRole("button", { name: "Model", exact: true })
     const sketchButton = page.getByRole("button", { name: "Sketch", exact: true })
     // Safari uses Option+Tab to include every control in keyboard navigation.
-    const nextFocusableControl = browserName === "webkit" ? "Alt+Tab" : "Tab"
+    const enterToolbar = browserName === "webkit" ? "Alt+Tab" : "Tab"
 
     await exportButton.focus()
     await expect(exportButton).toBeFocused()
-    await page.keyboard.press(nextFocusableControl)
+    await page.keyboard.press(enterToolbar)
     await expect(modelButton).toBeFocused()
     await expect(modelButton).toHaveAttribute("aria-pressed", "true")
-    await page.keyboard.press(nextFocusableControl)
+    await page.keyboard.press("ArrowRight")
     await expect(sketchButton).toBeFocused()
   })
 

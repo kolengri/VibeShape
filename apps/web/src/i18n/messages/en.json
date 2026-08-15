@@ -148,14 +148,26 @@
       "commandToolbar": {
         "ariaLabel": "Model commands",
         "box": "Box",
+        "construction": "Construction geometry",
         "cylinder": "Cylinder",
         "createSketch": "Create sketch",
-        "directSolids": "Direct solids",
         "extrude": "Extrude",
         "model": "Model",
-        "print": "Print",
+        "primitives": "Primitives",
+        "redo": "Redo",
         "sketch": "Sketch",
-        "subtract": "Subtract"
+        "sketchToolsLabel": "Sketch geometry tools",
+        "sketchTools": {
+          "select": "Select",
+          "point": "Point",
+          "line": "Line",
+          "rectangle": "Rectangle",
+          "circle": "Circle",
+          "arc": "Center-point arc"
+        },
+        "subtract": "Subtract",
+        "undo": "Undo",
+        "workspaceLabel": "Editor workspace"
       },
       "modelTree": {
         "ariaLabel": "Model tree",
@@ -328,6 +340,7 @@
           "undo": "Undo",
           "redo": "Redo",
           "addConstraint": "Add constraint",
+          "constraintSelectionHint": "Select sketch geometry to see compatible constraints and dimensions.",
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "removeConstraint": "Remove",
@@ -364,6 +377,7 @@
           "edit": "Edit sketch",
           "extrude": "Extrude selected profile",
           "cancel": "Cancel",
+          "createModeDescription": "Choose geometry tools above, then constrain the profile here.",
           "sketchLabel": "Sketch {number}",
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
@@ -372,6 +386,8 @@
           "updateValidationSummary": "Fix the highlighted dimensions before updating the sketch.",
           "staleRevision": "The document changed while this sketch was being edited. Review the current sketch and try again.",
           "createFailed": "The sketch could not be created. Your parameter values are preserved.",
+          "editModeDescription": "Edit geometry in the viewport and preserve the sketch's design intent.",
+          "modeLabel": "Sketch mode",
           "updateFailed": "The sketch could not be updated. Your parameter values are preserved.",
           "unsupportedTitle": "Sketch editing unavailable",
           "unsupportedDescription": "This first editor can update rectangular sketches created by VibeShape. Other sketch geometry remains preserved."
@@ -401,6 +417,8 @@
       "viewport": {
         "ariaLabel": "2D sketch workspace",
         "empty": "Create a sketch or choose a saved sketch in the model tree.",
+        "emptyDraft": "Empty sketch",
+        "emptyDraftHint": "Choose a geometry tool from the toolbar to begin.",
         "preview": "Unsaved preview",
         "previewDrawing": "Unsaved rectangular sketch preview",
         "draftDrawing": "Editable sketch geometry",

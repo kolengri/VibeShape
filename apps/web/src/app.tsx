@@ -340,6 +340,7 @@ export function App() {
       <ApplicationBar controller={controller} />
       <CommandToolbar
         activeCommand={activePartDesignCommand(model.activeTool)}
+        activeSketchTool={sketch.activeSketchTool}
         controller={controller}
         workspace={model.workspace}
         onWorkspaceChange={model.actions.switchWorkspace}
@@ -349,6 +350,14 @@ export function App() {
         onCreateExtrusion={model.actions.createExtrusion}
         extrusionAvailable={model.extrusionAvailable}
         onCreateSubtract={model.actions.createSubtract}
+        sketchConstruction={sketch.construction}
+        sketchEditorTool={sketch.editorTool}
+        sketchRedoAvailable={sketch.redoAvailable}
+        sketchUndoAvailable={sketch.undoAvailable}
+        onSketchConstructionChange={model.actions.setSketchConstruction}
+        onSketchEditorToolChange={model.actions.setSketchEditorTool}
+        onSketchRedo={model.actions.redoSketchDraft}
+        onSketchUndo={model.actions.undoSketchDraft}
       />
       <EditorWorkspace
         actions={model.actions}
@@ -363,10 +372,8 @@ export function App() {
         sketchEditorTool={sketch.editorTool}
         sketchFailedConstraintIds={sketch.failedConstraintIds}
         sketchProfiles={sketch.profiles}
-        sketchRedoAvailable={sketch.redoAvailable}
         sketchSelectedEntityIds={sketch.selectedEntityIds}
         sketchSelectedProfile={sketch.selectedProfile}
-        sketchUndoAvailable={sketch.undoAvailable}
       />
       <StatusBar controller={controller} selection={model.selection} />
     </main>

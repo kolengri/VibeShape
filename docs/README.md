@@ -4,7 +4,7 @@
 
 1. [Product vision and scope](product/vision-and-scope.md).
 2. [Feature matrix](product/feature-matrix.md).
-3. [Design and UX guidelines](product/design-and-ux-guidelines.md), [core flows](product/ux-flows.md), and the [sketch-first modeling plan](product/sketch-first-modeling-plan.md).
+3. [Design and UX guidelines](product/design-and-ux-guidelines.md), [core flows](product/ux-flows.md), the [editor experience plan](product/editor-experience-plan.md), and the [sketch-first modeling plan](product/sketch-first-modeling-plan.md).
 4. [Architecture overview](architecture/overview.md).
 5. [Technology stack](architecture/technology-stack.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
