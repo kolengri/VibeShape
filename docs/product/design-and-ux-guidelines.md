@@ -186,10 +186,12 @@ The alpha default is:
 | Input | Behavior |
 |---|---|
 | Primary click | Select or place the active sketch entity |
+| Primary drag | Orbit the 3D camera; movement beyond the click threshold never activates selection |
+| `Shift` + primary drag | Pan |
 | Middle-button drag | Orbit |
 | `Shift` + middle-button drag | Pan |
 | Wheel or trackpad pinch | Zoom toward the pointer |
-| Secondary click | Context menu |
+| Secondary drag | Pan |
 | `F` | Fit selection, or fit all when nothing is selected |
 
 Trackpad gestures MUST have a complete preset and must not depend on browser-reserved gestures. Navigation profiles MAY be added later for familiar CAD conventions. Camera movement never commits document changes and remains available during a geometry rebuild unless the viewport itself is unavailable.
