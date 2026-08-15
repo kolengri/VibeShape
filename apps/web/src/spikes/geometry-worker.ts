@@ -5,6 +5,7 @@ import {
 } from "@vibeshape/geometry-worker/client"
 import { geometryLifecycleOperationSchema } from "@vibeshape/protocol"
 import { createKernelSpikeParameters } from "@vibeshape/test-models"
+import { isError } from "is-what"
 import { z } from "zod"
 
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
@@ -226,7 +227,7 @@ async function runSpike() {
     statusElement.textContent = "Geometry worker spike passed."
   } catch (error) {
     state.state = "failed"
-    state.error = error instanceof Error ? error.message : "Unknown geometry spike failure."
+    state.error = isError(error) ? error.message : "Unknown geometry spike failure."
     statusElement.dataset.state = "failed"
     statusElement.textContent = state.error
   }

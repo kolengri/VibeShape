@@ -117,7 +117,7 @@ The foundation adopts these proven monorepo patterns:
 - state-agnostic form primitives with a separate TanStack Form integration export;
 - single-flight async action controls that expose disabled, busy, loading, settlement, and duplicate-activation behavior;
 - a framework-agnostic `@vibeshape/i18n` workspace for typed ICU catalogs, locale preference, and React context;
-- Zod schemas at untrusted and versioned boundaries, with `is-what` limited to small runtime-kind narrowing after or alongside those boundaries;
+- Zod schemas at untrusted and versioned boundaries, with `is-what` declared by each importing workspace and limited to small runtime-kind narrowing after or inside validated boundaries; tag checks such as `isAnyObject` never substitute for shape or special-object validation;
 - repository-local skills for UI, testing, scoped verification, dependency audits, Fallow, type guards, and documentation synchronization.
 
 Do not copy patterns that do not fit this product:

@@ -13,6 +13,7 @@ import {
   featureIdSchema,
 } from "@vibeshape/domain"
 import { documentRebuildSnapshotSchema } from "@vibeshape/protocol"
+import { isError } from "is-what"
 
 type SuccessfulRebuild = DocumentWorkerRebuildResponse
 
@@ -197,7 +198,7 @@ async function run() {
     status.textContent = "Feature rebuild coordination passed."
   } catch (error) {
     state.state = "failed"
-    state.error = error instanceof Error ? error.message : "Unknown feature rebuild failure."
+    state.error = isError(error) ? error.message : "Unknown feature rebuild failure."
     status.dataset.state = "failed"
     status.textContent = state.error
   } finally {

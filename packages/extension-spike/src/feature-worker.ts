@@ -1,4 +1,4 @@
-import { isError } from "is-what"
+import { isError, isFunction, isNumber } from "is-what"
 import { type SandboxWorkerMessage, sandboxWorkerRequestSchema } from "./runtime-protocol"
 
 function post(value: SandboxWorkerMessage) {
@@ -27,9 +27,9 @@ async function runWasm(wasm: Uint8Array | null, input: number) {
   requireWorkerCondition(wasm !== null, "missing-wasm")
   const instance = await WebAssembly.instantiate(Uint8Array.from(wasm))
   const evaluate = Reflect.get(instance.instance.exports, "evaluate")
-  requireWorkerCondition(typeof evaluate === "function", "missing-evaluate-export")
+  requireWorkerCondition(isFunction(evaluate), "missing-evaluate-export")
   const value: unknown = Reflect.apply(evaluate, undefined, [input])
-  requireWorkerCondition(typeof value === "number", "invalid-feature-output-type")
+  requireWorkerCondition(isNumber(value), "invalid-feature-output-type")
   requireWorkerCondition(Number.isInteger(value), "invalid-feature-output")
   post(message({ type: "result", value }))
 }
@@ -40,10 +40,9 @@ function probeJavascriptAuthority() {
       type: "probe",
       terminal: true,
       authority: {
-        network: typeof globalThis.fetch === "function",
-        clock: typeof Date.now === "function",
-        randomness:
-          typeof Math.random === "function" || typeof crypto.getRandomValues === "function",
+        network: isFunction(globalThis.fetch),
+        clock: isFunction(Date.now),
+        randomness: isFunction(Math.random) || isFunction(crypto.getRandomValues),
         indexedDb: "indexedDB" in globalThis,
         cacheStorage: "caches" in globalThis,
         dom: "document" in globalThis,

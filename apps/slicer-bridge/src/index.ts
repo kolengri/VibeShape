@@ -3,6 +3,7 @@ import {
   SLICER_BRIDGE_HOST,
   SLICER_BRIDGE_PORT,
 } from "@vibeshape/slicer-handoff/protocol"
+import { isError } from "is-what"
 import {
   loadBridgeConfiguration,
   parseBridgeArguments,
@@ -61,7 +62,7 @@ async function main() {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Slicer bridge startup failed."
+  const message = isError(error) ? error.message : "Slicer bridge startup failed."
   process.stderr.write(`${message}\n`)
   process.exitCode = 1
 })

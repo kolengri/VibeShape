@@ -1,4 +1,4 @@
-import { isAnyObject } from "is-what"
+import { isAnyObject, isArray } from "is-what"
 import { z } from "zod"
 import { variableIdSchema } from "./identifiers"
 import {
@@ -581,7 +581,7 @@ function rewriteQuantityVariableReference(
 }
 
 function enqueueParameterChildren(frame: ParameterRewriteFrame, pending: ParameterRewriteFrame[]) {
-  if (Array.isArray(frame.value)) {
+  if (isArray(frame.value)) {
     const array: unknown[] = new Array(frame.value.length)
     frame.assign(array)
     for (let index = frame.value.length - 1; index >= 0; index -= 1) {
@@ -639,7 +639,7 @@ export function parameterVariableReferences(input: unknown) {
       }
       continue
     }
-    if (Array.isArray(value)) {
+    if (isArray(value)) {
       pending.push(...value)
       continue
     }

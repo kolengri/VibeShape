@@ -12,6 +12,7 @@ import { useFormatter } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Input } from "@vibeshape/ui/components/input"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { isInteger, isString } from "is-what"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { ApplyVariableTableResult } from "../../document/document-controller"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
@@ -50,7 +51,7 @@ function issueMessages(
   const issues = new Map<string, string>()
   for (const issue of error.issues) {
     const [index, field] = issue.path
-    if (typeof index === "number" && typeof field === "string") {
+    if (isInteger(index) && isString(field)) {
       issues.set(`${index}.${field}`, field === "name" ? copy.invalidName : copy.invalidExpression)
     }
   }
@@ -379,7 +380,7 @@ export function VariablesForm({
         setSubmitIssues(issueMessages(parsed.error, copy))
         setSubmitMessage(copy.validationSummary)
         const [index, field] = parsed.error.issues[0]?.path ?? []
-        if (typeof index === "number" && typeof field === "string") {
+        if (isInteger(index) && isString(field)) {
           formElementRef.current
             ?.querySelector<HTMLElement>(`[name="variables[${index}].${field}"]`)
             ?.focus()

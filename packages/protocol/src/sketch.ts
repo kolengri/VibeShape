@@ -1,3 +1,4 @@
+import { isString } from "is-what"
 import { z } from "zod"
 
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -248,7 +249,7 @@ function constraintReferences(constraint: SketchWireConstraint) {
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   return constraintReferenceFields[constraint.type].map((field) => {
     const reference = constraintRecord[field]
-    if (typeof reference !== "string") {
+    if (!isString(reference)) {
       throw new Error(`Sketch constraint reference ${field} is not a string.`)
     }
     return reference

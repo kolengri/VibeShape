@@ -1,3 +1,4 @@
+import { isFunction } from "is-what"
 import { z } from "zod"
 
 export const storageCapabilityReportSchema = z
@@ -33,7 +34,7 @@ export async function openOriginPrivateFileSystem(
   environment: Window & typeof globalThis,
 ): Promise<FileSystemDirectoryHandle | null> {
   const getDirectory = environment.navigator.storage?.getDirectory
-  if (typeof getDirectory !== "function") return null
+  if (!isFunction(getDirectory)) return null
   try {
     return await getDirectory.call(environment.navigator.storage)
   } catch {

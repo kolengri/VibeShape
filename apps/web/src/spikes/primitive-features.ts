@@ -24,6 +24,7 @@ import {
   extrusionFeatureContentParametersSchema,
   featureContentIdentitySchema,
 } from "@vibeshape/protocol"
+import { isError } from "is-what"
 
 type TerminalResponse = Awaited<ReturnType<GeometryWorkerClient["request"]>>
 type FeatureResponse = Extract<TerminalResponse, { type: "featureEvaluated" }>
@@ -371,7 +372,7 @@ async function run() {
     status.textContent = "Primitive feature evaluation passed."
   } catch (error) {
     state.state = "failed"
-    state.error = error instanceof Error ? error.message : "Unknown primitive feature failure."
+    state.error = isError(error) ? error.message : "Unknown primitive feature failure."
     status.dataset.state = "failed"
     status.textContent = state.error
   } finally {

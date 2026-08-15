@@ -15,9 +15,9 @@ import {
   createModuleRegistry,
   cylinderFeatureType,
   documentCoreModule,
+  type FeatureRecord,
   featureCoreModule,
   featureIdSchema,
-  type FeatureRecord,
   partDesignFeatureTypeHandlers,
   partDesignModule,
   sessionIdSchema,
@@ -28,6 +28,7 @@ import {
   releaseDocumentLease,
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
+import { isError } from "is-what"
 
 type RebuildSummary = Readonly<{
   evaluatedFeatureIds: readonly string[]
@@ -331,7 +332,7 @@ function installCloseControl(
 function publishFailure(error: unknown, database: VibeShapeDatabase, status: HTMLElement) {
   database.close()
   state.state = "failed"
-  state.error = error instanceof Error ? error.message : "Unknown persisted rebuild failure."
+  state.error = isError(error) ? error.message : "Unknown persisted rebuild failure."
   status.dataset.state = "failed"
   status.textContent = state.error
 }

@@ -15,6 +15,7 @@ import {
   VibeShapeDatabase,
   writeDerivedCache,
 } from "@vibeshape/persistence"
+import { isError } from "is-what"
 
 interface PersistenceSpikeState {
   state: "running" | "passed" | "failed"
@@ -523,7 +524,7 @@ void bootSpike()
   .catch((error: unknown) => {
     state.state = "failed"
     state.stage = currentStage
-    const message = error instanceof Error ? error.message : String(error)
+    const message = isError(error) ? error.message : String(error)
     state.error = `${currentStage}: ${message}`
     statusElement.dataset.state = "failed"
     statusElement.textContent = state.error

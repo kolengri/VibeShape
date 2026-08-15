@@ -20,6 +20,7 @@ import {
   verifyPackageSignature,
 } from "@vibeshape/extension-spike"
 import { strFromU8 } from "fflate"
+import { isError } from "is-what"
 
 interface ExtensionSpikeState {
   state: "running" | "passed" | "failed"
@@ -273,7 +274,7 @@ void runSpike()
     statusElement.textContent = "Extension sandbox corpus completed."
   })
   .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = isError(error) ? error.message : String(error)
     state.state = "failed"
     state.stage = currentStage
     state.error = `${currentStage}: ${message}`

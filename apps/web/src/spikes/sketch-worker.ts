@@ -1,5 +1,6 @@
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import { createLengthQuantity } from "@vibeshape/domain/units"
+import { isError } from "is-what"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f41ac"
 const constrainedSketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f4201"
@@ -330,6 +331,6 @@ runEvidence().then(
   },
   (error) => {
     resultElement.dataset.status = "failed"
-    resultElement.textContent = error instanceof Error ? error.message : String(error)
+    resultElement.textContent = isError(error) ? error.message : String(error)
   },
 )

@@ -28,6 +28,7 @@
     "@vibeshape/slicer-handoff": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "@vibeshape/viewer": "workspace:*",
+    "is-what": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "catalog:"
