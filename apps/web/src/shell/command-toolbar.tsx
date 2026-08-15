@@ -1,36 +1,68 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { ResolvedEditorCommand } from "../commands/editor-command"
 import {
   EditorCommandIconView,
+  editorCommandShortcutLabel,
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
 
-function ToolbarAction({ command, label }: { command: ResolvedEditorCommand; label: string }) {
+function ToolbarAction({
+  command,
+  disabledReason,
+  label,
+}: {
+  command: ResolvedEditorCommand
+  disabledReason: string | null
+  label: string
+}) {
+  const shortcut = command.descriptor.shortcut
+    ? editorCommandShortcutLabel(command.descriptor.shortcut)
+    : null
   return (
-    <ToolbarButton asChild>
-      <Button
-        type="button"
-        size="sm"
-        variant={command.active ? "secondary" : "ghost"}
-        aria-pressed={command.active}
-        disabled={!command.eligibility.enabled}
-        onClick={command.invoke}
-      >
-        <EditorCommandIconView icon={command.descriptor.icon} />
-        {label}
-      </Button>
-    </ToolbarButton>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <ToolbarButton asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={command.active ? "secondary" : "ghost"}
+              aria-label={label}
+              aria-pressed={command.active}
+              disabled={!command.eligibility.enabled}
+              onClick={command.invoke}
+            >
+              <EditorCommandIconView icon={command.descriptor.icon} />
+            </Button>
+          </ToolbarButton>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="grid gap-1">
+        <span className="flex items-center justify-between gap-3">
+          <span>{label}</span>
+          {shortcut ? (
+            <kbd className="rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
+              {shortcut}
+            </kbd>
+          ) : null}
+        </span>
+        {disabledReason ? <span className="text-muted-foreground">{disabledReason}</span> : null}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
 function ToolbarCommandGroup({
   commands,
+  getDisabledReason,
   getLabel,
   label,
 }: {
   commands: readonly ResolvedEditorCommand[]
+  getDisabledReason: (command: ResolvedEditorCommand) => string | null
   getLabel: (command: ResolvedEditorCommand) => string
   label: string
 }) {
@@ -38,7 +70,12 @@ function ToolbarCommandGroup({
     <fieldset className="contents">
       <legend className="sr-only">{label}</legend>
       {commands.map((command) => (
-        <ToolbarAction key={command.descriptor.id} command={command} label={getLabel(command)} />
+        <ToolbarAction
+          key={command.descriptor.id}
+          command={command}
+          disabledReason={getDisabledReason(command)}
+          label={getLabel(command)}
+        />
       ))}
     </fieldset>
   )
@@ -48,6 +85,8 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const t = useTranslations("app.shell.commandToolbar")
   const copy = useEditorCommandCopy()
   const getLabel = (command: ResolvedEditorCommand) => copy.label(command.descriptor)
+  const getDisabledReason = (command: ResolvedEditorCommand) =>
+    command.eligibility.enabled ? null : copy.disabledReason(command.eligibility.reason)
   const visibleCommands = commands.filter(({ toolbarVisible }) => toolbarVisible)
   const group = (groupName: ResolvedEditorCommand["descriptor"]["toolbarGroup"]) =>
     visibleCommands.filter(({ descriptor }) => descriptor.toolbarGroup === groupName)
@@ -68,6 +107,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
       <nav>
         <ToolbarCommandGroup
           commands={workspaceCommands}
+          getDisabledReason={getDisabledReason}
           getLabel={getLabel}
           label={t("workspaceLabel")}
         />
@@ -76,6 +116,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
           <>
             <ToolbarCommandGroup
               commands={sketchToolCommands}
+              getDisabledReason={getDisabledReason}
               getLabel={getLabel}
               label={t("sketchToolsLabel")}
             />
@@ -84,6 +125,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               <ToolbarAction
                 key={command.descriptor.id}
                 command={command}
+                disabledReason={getDisabledReason(command)}
                 label={getLabel(command)}
               />
             ))}
@@ -92,6 +134,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               <ToolbarAction
                 key={command.descriptor.id}
                 command={command}
+                disabledReason={getDisabledReason(command)}
                 label={getLabel(command)}
               />
             ))}
@@ -102,6 +145,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               <ToolbarAction
                 key={command.descriptor.id}
                 command={command}
+                disabledReason={getDisabledReason(command)}
                 label={getLabel(command)}
               />
             ))}
@@ -113,6 +157,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               <ToolbarAction
                 key={command.descriptor.id}
                 command={command}
+                disabledReason={getDisabledReason(command)}
                 label={getLabel(command)}
               />
             ))}

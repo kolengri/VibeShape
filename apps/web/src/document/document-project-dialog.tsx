@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { FolderOpen } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { type ChangeEvent, useRef, useState } from "react"
 import {
   activateLocalProject,
@@ -459,11 +461,16 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
         </span>
       ) : null}
       <Dialog open={open} onOpenChange={changeOpen}>
-        <DialogTrigger asChild>
-          <Button type="button" size="sm" variant="outline">
-            {t("trigger")}
-          </Button>
-        </DialogTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={t("trigger")}>
+                <FolderOpen aria-hidden="true" />
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("trigger")}</TooltipContent>
+        </Tooltip>
         <DialogContent
           className="max-h-[min(90vh,48rem)] max-w-2xl overflow-y-auto"
           closeLabel={t("closeLabel")}

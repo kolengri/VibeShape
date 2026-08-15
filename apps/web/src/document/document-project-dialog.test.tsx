@@ -3,7 +3,8 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../i18n"
 import type { DocumentControllerState } from "./document-controller"
 import { DocumentProjectDialog } from "./document-project-dialog"
@@ -18,6 +19,12 @@ const controller = {
   status: "ready",
   report: { snapshot: { id: activeDocumentId } },
 } as DocumentControllerState
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 const controllerMocks = vi.hoisted(() => ({
   activateLocalProject: vi.fn(),
@@ -38,10 +45,15 @@ vi.mock("./document-project-file", () => ({
   downloadProjectBackup: vi.fn(),
 }))
 
+beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
+afterAll(() => vi.unstubAllGlobals())
+
 function renderDialog() {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <DocumentProjectDialog controller={controller} />
+      <TooltipProvider>
+        <DocumentProjectDialog controller={controller} />
+      </TooltipProvider>
     </I18nProvider>,
   )
 }
@@ -100,7 +112,9 @@ describe("DocumentProjectDialog", () => {
       }),
     )
     renderDialog()
-    await user.click(screen.getByRole("button", { name: "Project…" }))
+    const projectTrigger = screen.getByRole("button", { name: "Project…" })
+    expect(projectTrigger.textContent).toBe("")
+    await user.click(projectTrigger)
     const backup = screen.getByRole("button", { name: "Download .vshape" })
 
     await user.dblClick(backup)

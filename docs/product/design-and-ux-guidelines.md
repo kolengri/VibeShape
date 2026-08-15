@@ -152,6 +152,7 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 - Use Lucide icons consistently at 16 px in dense controls and 20 px in larger actions.
 - An icon represents one concept everywhere; do not reuse it for unrelated commands.
 - Icon-only buttons require an accessible name and a tooltip that includes the command name and shortcut.
+- Stable high-frequency actions in the application bar and command toolbar use icon-only controls instead of repeating the same label beside the icon. Task-panel actions, form submission, destructive confirmation, menus, and unfamiliar one-off actions retain visible text when the label carries essential meaning.
 - Do not put icons on every menu item. Use them when they improve scanning or encode a stable command family.
 - Destructive actions do not become safe merely because they use a red icon.
 - Custom CAD icons use the same optical size, stroke weight, and view box as Lucide.

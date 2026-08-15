@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import {
   type BuiltInEditorCommandContext,
   resolveBuiltInEditorCommands,
@@ -34,6 +35,12 @@ const actions = {
   undoSketch: vi.fn(),
 }
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {}) {
   return resolveBuiltInEditorCommands({
     actions,
@@ -55,11 +62,15 @@ function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {})
 function renderToolbar(commandSet = commands()) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <CommandToolbar commands={commandSet} />
+      <TooltipProvider delayDuration={0}>
+        <CommandToolbar commands={commandSet} />
+      </TooltipProvider>
     </I18nProvider>,
   )
 }
 
+beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
+afterAll(() => vi.unstubAllGlobals())
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -76,8 +87,22 @@ describe("CommandToolbar", () => {
       true,
     )
 
-    await user.click(screen.getByRole("button", { name: "Create sketch" }))
+    const createSketch = screen.getByRole("button", { name: "Create sketch" })
+    expect(createSketch.textContent).toBe("")
+    await user.hover(createSketch)
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Create sketch")
+
+    await user.click(createSketch)
     expect(actions.createSketch).toHaveBeenCalledOnce()
+
+    const extrude = screen.getByRole("button", { name: "Extrude" })
+    await user.unhover(createSketch)
+    await user.hover(extrude)
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toContain(
+        "Select a closed sketch profile first.",
+      ),
+    )
   })
 
   it("replaces model features with contextual registry commands during a sketch", async () => {
