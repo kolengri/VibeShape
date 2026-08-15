@@ -13,6 +13,7 @@ import {
   createCoreCommandHandlers,
   createFeatureTypeRegistry,
   createModuleRegistry,
+  type DocumentDisplayUnits,
   documentCoreModule,
   documentIdSchema,
   draftIdSchema,
@@ -740,6 +741,22 @@ export function renameActiveProject(
     issuedAt: new Date().toISOString(),
     actor: { type: "user", userId: null },
     payload: { name },
+  }))
+}
+
+export function setActiveProjectDisplayUnits(
+  baseRevision: number,
+  displayUnits: DocumentDisplayUnits,
+): Promise<DocumentMutationResult> {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.document.set-display-units",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { displayUnits },
   }))
 }
 

@@ -1,5 +1,6 @@
 import {
   createLengthQuantity,
+  type DocumentDisplayUnits,
   evaluateExpression,
   evaluateVariableDefinitions,
   type FeatureRecord,
@@ -7,6 +8,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import type { FeatureMutationResult } from "../../document/document-controller"
+import { normalizeExpressionWithDisplayUnit } from "../../document/document-display-units"
 
 export type PrimitiveLengthCopy = Readonly<{
   invalidExpression: string
@@ -23,8 +25,9 @@ export function parsePrimitiveLengthExpression(
   variables: readonly VariableDefinition[],
   copy: PrimitiveLengthCopy,
   accepts: (quantity: LengthQuantity) => boolean,
+  displayUnit: DocumentDisplayUnits["length"] = "mm",
 ) {
-  const expression = rawExpression.trim()
+  const expression = normalizeExpressionWithDisplayUnit(rawExpression, displayUnit)
   const evaluatedVariables = evaluateVariableDefinitions(variables)
   if (!evaluatedVariables.ok) return { ok: false as const, message: copy.invalidExpression }
   const evaluated = evaluateExpression(expression, evaluatedVariables.valuesByName)

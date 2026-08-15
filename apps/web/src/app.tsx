@@ -1,5 +1,6 @@
 import {
   createEmptySketch,
+  defaultDocumentDisplayUnits,
   type FeatureId,
   type SketchConstraintId,
   type SketchEntityId,
@@ -13,6 +14,7 @@ import { useCallback, useRef, useState } from "react"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
 import { createBrowserSketchId, useDocumentController } from "./document/document-controller"
+import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
 import {
   type ActivePartDesignTool,
   activePartDesignCommand,
@@ -404,37 +406,41 @@ export function App() {
   })
 
   return (
-    <main className="cad-shell bg-background text-[13px] text-foreground">
-      <ApplicationBar
-        controller={controller}
-        onOpenCommandPalette={(returnFocusTarget) =>
-          setCommandPaletteOpenWithFocus(true, returnFocusTarget)
-        }
-      />
-      <EditorCommandPalette
-        commands={commands}
-        open={commandPaletteOpen}
-        returnFocusRef={commandPaletteReturnFocusRef}
-        onOpenChange={setCommandPaletteOpenWithFocus}
-      />
-      <CommandToolbar commands={commands} />
-      <EditorWorkspace
-        actions={model.actions}
-        activeSketchId={sketch.activeSketchId}
-        activeSketchTool={sketch.activeSketchTool}
-        activeTool={model.activeTool}
-        controller={controller}
-        workspace={model.workspace}
-        selection={model.selection}
-        sketchConstruction={sketch.construction}
-        sketchDraft={sketch.draft}
-        sketchEditorTool={sketch.editorTool}
-        sketchFailedConstraintIds={sketch.failedConstraintIds}
-        sketchProfiles={sketch.profiles}
-        sketchSelectedEntityIds={sketch.selectedEntityIds}
-        sketchSelectedProfile={sketch.selectedProfile}
-      />
-      <StatusBar controller={controller} selection={model.selection} />
-    </main>
+    <DocumentDisplayUnitsProvider
+      displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
+    >
+      <main className="cad-shell bg-background text-[13px] text-foreground">
+        <ApplicationBar
+          controller={controller}
+          onOpenCommandPalette={(returnFocusTarget) =>
+            setCommandPaletteOpenWithFocus(true, returnFocusTarget)
+          }
+        />
+        <EditorCommandPalette
+          commands={commands}
+          open={commandPaletteOpen}
+          returnFocusRef={commandPaletteReturnFocusRef}
+          onOpenChange={setCommandPaletteOpenWithFocus}
+        />
+        <CommandToolbar commands={commands} />
+        <EditorWorkspace
+          actions={model.actions}
+          activeSketchId={sketch.activeSketchId}
+          activeSketchTool={sketch.activeSketchTool}
+          activeTool={model.activeTool}
+          controller={controller}
+          workspace={model.workspace}
+          selection={model.selection}
+          sketchConstruction={sketch.construction}
+          sketchDraft={sketch.draft}
+          sketchEditorTool={sketch.editorTool}
+          sketchFailedConstraintIds={sketch.failedConstraintIds}
+          sketchProfiles={sketch.profiles}
+          sketchSelectedEntityIds={sketch.selectedEntityIds}
+          sketchSelectedProfile={sketch.selectedProfile}
+        />
+        <StatusBar controller={controller} selection={model.selection} />
+      </main>
+    </DocumentDisplayUnitsProvider>
   )
 }

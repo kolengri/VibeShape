@@ -34,6 +34,11 @@ import {
   type DocumentControllerState,
   solveActiveSketch,
 } from "../../document/document-controller"
+import {
+  formatDisplayArea,
+  formatDisplayLength,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 import type { SketchDraftChangeMode, SketchEditorTool } from "./sketch-tool"
 
 type SketchSolveFunction = (
@@ -1038,6 +1043,57 @@ function solveMessage(
   return labels.status
 }
 
+function sketchSolvePresentation({
+  copy,
+  empty,
+  formatNumber,
+  lengthUnit,
+  solution,
+  solveState,
+}: Readonly<{
+  copy: Readonly<{
+    degreesOfFreedom: (count: number) => string
+    emptyDraft: string
+    emptyDraftHint: string
+    failed: string
+    failedStatus: string
+    fullyConstrained: string
+    loading: string
+    overConstrained: string
+    profile: (area: string, perimeter: string) => string
+    underConstrained: string
+  }>
+  empty: boolean
+  formatNumber: (value: number) => string
+  lengthUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  solution: SolvedSketchWire | null
+  solveState: SolveState
+}>) {
+  const status = solveStatusLabel(solveState, {
+    "fully-constrained": copy.fullyConstrained,
+    "under-constrained": copy.underConstrained,
+    "over-constrained": copy.overConstrained,
+    failed: copy.failedStatus,
+  })
+  const profile = solution?.profileResult.profiles[0]
+  return {
+    degreesOfFreedom: empty
+      ? copy.emptyDraftHint
+      : solution
+        ? copy.degreesOfFreedom(solution.degreesOfFreedom)
+        : null,
+    profileText: profile
+      ? copy.profile(
+          formatDisplayArea(profile.area, lengthUnit, formatNumber),
+          formatDisplayLength(profile.perimeter, lengthUnit, formatNumber),
+        )
+      : null,
+    statusText: empty
+      ? copy.emptyDraft
+      : solveMessage(solveState, { failed: copy.failed, loading: copy.loading, status }),
+  }
+}
+
 type SketchDrawingConfiguration = Readonly<{
   ariaLabel: string
   construction: boolean
@@ -1095,11 +1151,13 @@ function SketchSolveOverlay({
   )
 }
 
-function SketchOrientation({ label }: { label: string | null }) {
-  if (!label) return null
+function SketchOrientation({ plane }: { plane: SketchRecord["plane"] | null }) {
+  const t = useTranslations("app.sketch.viewport")
+  const displayUnits = useDocumentDisplayUnits()
+  if (!plane) return null
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
-      {label}
+      {t("orientation", { plane: plane.toUpperCase(), unit: displayUnits.length })}
     </div>
   )
 }
@@ -1153,35 +1211,32 @@ export function SketchViewport({
   } = actions
   const t = useTranslations("app.sketch.viewport")
   const formatter = useFormatter()
+  const displayUnits = useDocumentDisplayUnits()
+  const number = (value: number) => formatter.number(value, { maximumFractionDigits: 6 })
   const activeSketch = draft ?? sketch
   const solveState = useSketchSolution(controller, activeSketch, solveSketch)
   const activeSolveState = currentSolveState(solveState, activeSketch)
   const solution = activeSolveState.kind === "solved" ? activeSolveState.solution : null
   const profiles = useMemo(() => (solution ? profileSelectors(solution) : []), [solution])
-  const profile = solution?.profileResult.profiles[0]
-  const number = (value: number) => formatter.number(value, { maximumFractionDigits: 3 })
-  const status = solveStatusLabel(activeSolveState, {
-    "fully-constrained": t("fullyConstrained"),
-    "under-constrained": t("underConstrained"),
-    "over-constrained": t("overConstrained"),
-    failed: t("failed"),
+  const { degreesOfFreedom, profileText, statusText } = sketchSolvePresentation({
+    copy: {
+      degreesOfFreedom: (count) => t("degreesOfFreedom", { count }),
+      emptyDraft: t("emptyDraft"),
+      emptyDraftHint: t("emptyDraftHint"),
+      failed: t("solveFailed"),
+      failedStatus: t("failed"),
+      fullyConstrained: t("fullyConstrained"),
+      loading: t("solving"),
+      overConstrained: t("overConstrained"),
+      profile: (area, perimeter) => t("profile", { area, perimeter }),
+      underConstrained: t("underConstrained"),
+    },
+    empty: activeSketch?.entities.length === 0,
+    formatNumber: number,
+    lengthUnit: displayUnits.length,
+    solution,
+    solveState: activeSolveState,
   })
-  const emptySketch = activeSketch?.entities.length === 0
-  const statusText = emptySketch
-    ? t("emptyDraft")
-    : solveMessage(activeSolveState, {
-        failed: t("solveFailed"),
-        loading: t("solving"),
-        status,
-      })
-  const degreesOfFreedom = emptySketch
-    ? t("emptyDraftHint")
-    : solution
-      ? t("degreesOfFreedom", { count: solution.degreesOfFreedom })
-      : null
-  const profileText = profile
-    ? t("profile", { area: number(profile.area), perimeter: number(profile.perimeter) })
-    : null
 
   useEffect(() => {
     onProfilesChange(solution ? profiles : [])
@@ -1220,9 +1275,7 @@ export function SketchViewport({
         profileText={profileText}
         status={statusText}
       />
-      <SketchOrientation
-        label={activeSketch ? t("orientation", { plane: activeSketch.plane.toUpperCase() }) : null}
-      />
+      <SketchOrientation plane={activeSketch?.plane ?? null} />
     </section>
   )
 }

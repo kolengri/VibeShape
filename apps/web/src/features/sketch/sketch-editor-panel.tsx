@@ -20,6 +20,12 @@ import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { ComponentProps } from "react"
 import { useMemo, useState } from "react"
 import { createBrowserSketchConstraintId } from "../../document/document-controller"
+import {
+  defaultAngleExpression,
+  defaultLengthExpression,
+  normalizeExpressionWithDisplayUnit,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 
 type DimensionKind =
   | "distance"
@@ -303,14 +309,19 @@ function dimensionDefinition(
   expression: string,
   entities: readonly SketchEntity[],
   variables: readonly VariableDefinition[],
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
 ) {
   const evaluatedVariables = evaluateVariableDefinitions(variables)
   if (!evaluatedVariables.ok) return null
-  const evaluated = evaluateExpression(expression.trim(), evaluatedVariables.valuesByName)
+  const normalizedExpression = normalizeExpressionWithDisplayUnit(
+    expression,
+    kind === "angle" ? displayUnits.angle : displayUnits.length,
+  )
+  const evaluated = evaluateExpression(normalizedExpression, evaluatedVariables.valuesByName)
   if (!evaluated.ok) return null
   return kind === "angle"
-    ? angleDimensionDefinition(expression, entities, evaluated.value)
-    : lengthDimensionDefinition(kind, expression, entities, evaluated.value)
+    ? angleDimensionDefinition(normalizedExpression, entities, evaluated.value)
+    : lengthDimensionDefinition(kind, normalizedExpression, entities, evaluated.value)
 }
 
 function SketchDimensionForm({
@@ -326,15 +337,25 @@ function SketchDimensionForm({
   options: readonly DimensionOption[]
   variables: readonly VariableDefinition[]
 }) {
+  const displayUnits = useDocumentDisplayUnits()
   const [message, setMessage] = useState<string | null>(null)
   const firstOption = options[0]
   const form = useAppForm({
     defaultValues: {
       kind: firstOption?.kind ?? ("distance" as DimensionKind),
-      expression: firstOption?.kind === "angle" ? "90 deg" : "10 mm",
+      expression:
+        firstOption?.kind === "angle"
+          ? defaultAngleExpression(Math.PI / 2, displayUnits.angle)
+          : defaultLengthExpression(10, displayUnits.length),
     },
     onSubmit: ({ value }) => {
-      const definition = dimensionDefinition(value.kind, value.expression, entities, variables)
+      const definition = dimensionDefinition(
+        value.kind,
+        value.expression,
+        entities,
+        variables,
+        displayUnits,
+      )
       if (!definition) {
         setMessage(copy.dimensionInvalid)
         return

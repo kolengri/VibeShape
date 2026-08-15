@@ -5,11 +5,13 @@ import userEvent from "@testing-library/user-event"
 import {
   boxFeatureType,
   createLengthQuantity,
+  type DocumentDisplayUnits,
   featureIdSchema,
   featureRecordSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { BoxForm, type BoxFormMode } from "./box-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
@@ -68,21 +70,24 @@ function renderForm(
     createFeatureId: () => featureId,
     featureLabel: "Box 1",
   },
+  displayUnits: DocumentDisplayUnits = { length: "mm", angle: "deg" },
 ) {
   const formCopy =
     mode.kind === "edit"
       ? { ...copy, title: "Edit box", submit: "Update box", saveFailed: "Update failed." }
       : copy
   render(
-    <BoxForm
-      baseRevision={2}
-      variables={variables}
-      copy={formCopy}
-      mode={mode}
-      onCancel={vi.fn()}
-      onSave={onSave}
-      onSaved={onSaved}
-    />,
+    <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+      <BoxForm
+        baseRevision={2}
+        variables={variables}
+        copy={formCopy}
+        mode={mode}
+        onCancel={vi.fn()}
+        onSave={onSave}
+        onSaved={onSaved}
+      />
+    </DocumentDisplayUnitsProvider>,
   )
   return { copy: formCopy, onSave, onSaved }
 }
@@ -141,6 +146,31 @@ describe("BoxForm", () => {
     expect((width as HTMLInputElement).value).toBe("#missing")
     expect(document.activeElement).toBe(width)
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("uses project units for defaults and normalizes unitless input before persistence", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm(undefined, undefined, undefined, {
+      length: "in",
+      angle: "deg",
+    })
+    const width = screen.getByRole("textbox", { name: copy.width }) as HTMLInputElement
+    expect(width.value).toBe("0.787401574803 in")
+    await user.clear(width)
+    await user.type(width, "2")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+
+    expect(onSave).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        parameters: expect.objectContaining({
+          width: expect.objectContaining({
+            value: 50.8,
+            source: expect.objectContaining({ expression: "2 in" }),
+          }),
+        }),
+      }),
+    )
   })
 
   it("restores source expressions and updates the existing feature identity", async () => {

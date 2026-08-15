@@ -57,6 +57,10 @@ describe("module registry", () => {
         ownerModuleId: "org.vibeshape.core.document",
         automation: { exposure: "draft", idempotent: false },
       })
+      expect(result.registry.getCommand("org.vibeshape.document.set-display-units")).toMatchObject({
+        ownerModuleId: "org.vibeshape.core.document",
+        automation: { exposure: "draft", destructive: false },
+      })
       expect(result.registry.getCommand("org.vibeshape.unknown")).toBeUndefined()
       expect(result.registry.getQuery("org.vibeshape.document.summary")).toMatchObject({
         ownerModuleId: "org.vibeshape.core.document",

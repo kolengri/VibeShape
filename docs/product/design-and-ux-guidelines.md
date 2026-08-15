@@ -287,8 +287,10 @@ Placeholder text is an example, never the only label or required instruction.
 ### Numeric Behavior
 
 - The document's internal length unit is millimeters, but fields display the chosen document or field unit.
+- The application bar exposes one project Units dialog for `um`, `mm`, `cm`, `m`, `in`, or `ft` length display and `deg` or `rad` angle display; the status bar and modeling view keep the active choice visible.
 - Preserve the user's raw text while editing. Parse and normalize on committed change, not on every keystroke.
-- Accept signed decimals and explicit units in P0; expressions follow the P1 expression grammar.
+- Accept signed decimals and explicit units in P0; expressions follow the P1 expression grammar. In a dimensionally known field, commit a bare finite numeric literal with the current project unit made explicit so a later preference change cannot alter the model.
+- A preference change converts displayed canonical results and defaults for new fields. It never rewrites an existing authored expression or changes physical geometry.
 - Show the normalized value after successful commit when it differs from the entered representation.
 - Empty, incomplete, non-finite, dimensionally invalid, and out-of-range values receive different messages.
 - Do not change a focused numeric value on wheel scroll. Arrow stepping requires an explicit field behavior and documented modifier scale.

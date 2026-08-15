@@ -15,6 +15,11 @@ import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { isInteger, isString } from "is-what"
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import type { ApplyVariableTableResult } from "../../document/document-controller"
+import {
+  formatDisplayAngle,
+  formatDisplayLength,
+  useDocumentDisplayUnits,
+} from "../../document/document-display-units"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
 
 const MAX_VARIABLES = 4_096
@@ -60,10 +65,16 @@ function issueMessages(
 
 function formatResult(
   value: { dimension: "length" | "angle" | "scalar"; value: number },
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
   formatNumber: (value: number) => string,
 ) {
-  const unit = value.dimension === "length" ? " mm" : value.dimension === "angle" ? " rad" : ""
-  return `${formatNumber(value.value)}${unit}`
+  if (value.dimension === "length") {
+    return formatDisplayLength(value.value, displayUnits.length, formatNumber)
+  }
+  if (value.dimension === "angle") {
+    return formatDisplayAngle(value.value, displayUnits.angle, formatNumber)
+  }
+  return formatNumber(value.value)
 }
 
 function submissionMessage(result: ApplyVariableTableResult, copy: VariablesFormCopy) {
@@ -212,9 +223,10 @@ function rowStatus(
 
 function resultText(
   evaluation: EvaluatedVariable | undefined,
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
   formatNumber: (value: number) => string,
 ) {
-  return evaluation ? formatResult(evaluation.value, formatNumber) : "—"
+  return evaluation ? formatResult(evaluation.value, displayUnits, formatNumber) : "—"
 }
 
 function invalidAttribute(error: string | undefined) {
@@ -359,6 +371,7 @@ export function VariablesForm({
   variables: readonly VariableDefinition[]
 }) {
   const formatter = useFormatter()
+  const displayUnits = useDocumentDisplayUnits()
   const formElementRef = useRef<HTMLFormElement>(null)
   const { focusedRowId, setFocusedRowId } = useVariableNameFocus(formElementRef)
   const [submitIssues, setSubmitIssues] = useState<ReadonlyMap<string, string>>(new Map())
@@ -524,7 +537,7 @@ export function VariablesForm({
                           )}
                         </form.Field>
                       ),
-                      result: resultText(evaluation, (value) =>
+                      result: resultText(evaluation, displayUnits, (value) =>
                         formatter.number(value, { maximumFractionDigits: 6 }),
                       ),
                       status: rowStatus(evaluation, hasStructuralIssue, copy),

@@ -12,6 +12,7 @@ import { documentSnapshotSchema } from "./document"
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const firstCommandId = "0195b5ac-b214-7a2c-8c33-67a36a7f21ac"
 const secondCommandId = "0195b5ac-b215-7a2c-ac33-67a36a7f21ac"
+const thirdCommandId = "0195b5ac-b216-7a2c-bc33-67a36a7f21ac"
 const issuedAt = "2026-08-08T12:00:00Z"
 const renamedAt = "2026-08-08T12:01:00Z"
 const userActor = { type: "user", userId: "org.vibeshape.user.alice" } as const
@@ -40,6 +41,20 @@ function renameCommand(overrides: Record<string, unknown> = {}) {
     issuedAt: renamedAt,
     actor: userActor,
     payload: { name: "Enclosure v2" },
+    ...overrides,
+  }
+}
+
+function setDisplayUnitsCommand(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "org.vibeshape.document.set-display-units",
+    schemaVersion: 1,
+    commandId: thirdCommandId,
+    documentId,
+    baseRevision: 1,
+    issuedAt: renamedAt,
+    actor: userActor,
+    payload: { displayUnits: { length: "in", angle: "rad" } },
     ...overrides,
   }
 }
@@ -83,6 +98,7 @@ describe("document commands", () => {
       id: documentId,
       revision: 1,
       name: "Enclosure",
+      displayUnits: { length: "mm", angle: "deg" },
       variables: [],
       sketches: [],
       features: [],
@@ -140,6 +156,38 @@ describe("document commands", () => {
     }
   })
 
+  it("persists project display units without changing canonical model content", () => {
+    const created = createDocument()
+    const result = applyDocumentCommand(created.snapshot, setDisplayUnitsCommand())
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.snapshot).toEqual({
+      ...created.snapshot,
+      revision: 2,
+      displayUnits: { length: "in", angle: "rad" },
+      updatedAt: renamedAt,
+    })
+    expect(result.event).toMatchObject({
+      type: "org.vibeshape.document.display-units-changed",
+      previousDisplayUnits: { length: "mm", angle: "deg" },
+      displayUnits: { length: "in", angle: "rad" },
+    })
+    expect(replayDocumentEvents([created.event, result.event])).toEqual({
+      ok: true,
+      snapshot: result.snapshot,
+    })
+    expect(
+      applyDocumentCommand(result.snapshot, setDisplayUnitsCommand({ baseRevision: 2 })),
+    ).toMatchObject({ ok: false, diagnostic: { code: "command-no-op" } })
+    expect(
+      reduceDocumentEvent(created.snapshot, {
+        ...result.event,
+        previousDisplayUnits: { length: "cm", angle: "deg" },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
   it.each([
     null,
     {},
@@ -148,6 +196,7 @@ describe("document commands", () => {
     createCommand({ payload: { name: "   " } }),
     createCommand({ extra: true }),
     createCommand({ baseRevision: Number.POSITIVE_INFINITY }),
+    setDisplayUnitsCommand({ payload: { displayUnits: { length: "px", angle: "deg" } } }),
   ])("rejects malformed or unsupported commands", (input) => {
     const result = parseDocumentCommand(input)
 

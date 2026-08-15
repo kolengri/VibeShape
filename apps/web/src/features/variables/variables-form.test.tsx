@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import { variableIdSchema } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { VariablesForm } from "./variables-form"
 
@@ -49,21 +50,25 @@ function renderForm({
   onApply = vi.fn<ApplyHandler>(async () => ({ ok: true as const })),
   onRename = vi.fn<RenameHandler>(async () => ({ ok: true as const })),
   variables = [],
+  displayUnits = { length: "mm", angle: "deg" } as const,
 }: {
   onApply?: ApplyHandler
   onRename?: RenameHandler
   variables?: VariablesFormProps["variables"]
+  displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
 } = {}) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <VariablesForm
-        baseRevision={1}
-        copy={copy}
-        variables={variables}
-        createVariableId={() => variableId}
-        onApply={onApply}
-        onRename={onRename}
-      />
+      <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+        <VariablesForm
+          baseRevision={1}
+          copy={copy}
+          variables={variables}
+          createVariableId={() => variableId}
+          onApply={onApply}
+          onRename={onRename}
+        />
+      </DocumentDisplayUnitsProvider>
     </I18nProvider>,
   )
   return { onApply, onRename }
@@ -118,6 +123,24 @@ describe("VariablesForm", () => {
     const name = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
     expect(name.value).toBe("")
     expect(document.activeElement).toBe(name)
+  })
+
+  it("formats resolved length and angle results in project display units", async () => {
+    renderForm({
+      displayUnits: { length: "in", angle: "deg" },
+      variables: [
+        { schemaVersion: 0, id: variableId, name: "width", expression: "25.4 mm" },
+        {
+          schemaVersion: 0,
+          id: secondVariableId,
+          name: "draft",
+          expression: "1.5707963267948966 rad",
+        },
+      ],
+    })
+
+    expect(screen.getByText("1 in", { selector: "td" })).toBeTruthy()
+    expect(screen.getByText("90 deg", { selector: "td" })).toBeTruthy()
   })
 
   it("renames a committed variable once while locking ordinary table edits", async () => {

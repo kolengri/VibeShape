@@ -161,7 +161,18 @@ function configurableProject() {
     },
   })
   events.push(feature.event)
-  return { snapshot: feature.snapshot, events }
+  const displayUnits = apply(feature.snapshot, {
+    kind: "org.vibeshape.document.set-display-units",
+    schemaVersion: 1,
+    commandId: commandId(5),
+    documentId,
+    baseRevision: 4,
+    issuedAt: "2026-08-09T10:04:00Z",
+    actor: { type: "user", userId: null },
+    payload: { displayUnits: { length: "in", angle: "deg" } },
+  })
+  events.push(displayUnits.event)
+  return { snapshot: displayUnits.snapshot, events }
 }
 
 const metadata = {
@@ -183,8 +194,9 @@ describe(".vshape v0", () => {
     expect(read).toMatchObject({
       ok: true,
       value: {
-        manifest: { documentRevision: 4, units: "millimeter" },
+        manifest: { documentRevision: 5, units: "millimeter" },
         snapshot: {
+          displayUnits: { length: "in", angle: "deg" },
           variables: [
             { id: wallVariableId, name: "wall", expression: "2 mm" },
             { id: widthVariableId, name: "width", expression: "10 * #wall" },
