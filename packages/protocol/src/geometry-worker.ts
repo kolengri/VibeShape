@@ -1,3 +1,4 @@
+import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
 export const GEOMETRY_PROTOCOL_VERSION = 8 as const
@@ -216,16 +217,22 @@ export const featureContentIdentitySchema = z
   .strict()
 
 function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
-  if (value === null || typeof value !== "object") {
+  if (isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
+  if (!isPlainObject(value)) {
+    if (
+      (value !== null && typeof value === "object") ||
+      isNaNValue(value) ||
+      (isNumber(value) && !Number.isFinite(value))
+    ) {
+      throw new TypeError("Canonical JSON accepts only JSON values.")
+    }
     const serialized = JSON.stringify(value)
     if (serialized === undefined) throw new TypeError("Canonical JSON accepts only JSON values.")
     return serialized
   }
-  const record = value as Record<string, unknown>
-  return `{${Object.keys(record)
+  return `{${Object.keys(value)
     .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
     .join(",")}}`
 }
 

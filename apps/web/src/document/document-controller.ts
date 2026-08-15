@@ -43,6 +43,7 @@ import {
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
 import type { GeometryExportFormat } from "@vibeshape/protocol"
+import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
 
 const DATABASE_NAME = "vibeshape-product-v0"
@@ -460,8 +461,8 @@ export async function solveActiveSketch(
       },
     }
   }
-  const sketchId = typeof sketch === "string" ? sketch : sketch.id
-  const draftSketch = typeof sketch === "string" ? undefined : sketch
+  const sketchId = isString(sketch) ? sketch : sketch.id
+  const draftSketch = isString(sketch) ? undefined : sketch
   const committedSketchExists = state.report.snapshot.sketches.some(({ id }) => id === sketchId)
   if (state.report.snapshot.revision !== baseRevision || (!draftSketch && !committedSketchExists)) {
     return {

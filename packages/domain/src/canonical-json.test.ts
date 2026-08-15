@@ -11,5 +11,9 @@ describe("canonical JSON", () => {
   it("rejects values that JSON cannot represent", () => {
     expect(() => canonicalJson(undefined)).toThrow("Canonical JSON accepts only JSON values.")
     expect(() => canonicalJson(new Date(0))).toThrow("Canonical JSON accepts only JSON values.")
+    expect(() => canonicalJson(Number.NaN)).toThrow("Canonical JSON accepts only JSON values.")
+    expect(() => canonicalJson(Number.POSITIVE_INFINITY)).toThrow(
+      "Canonical JSON accepts only JSON values.",
+    )
   })
 })

@@ -46,6 +46,7 @@
         "@vibeshape/slicer-handoff": "workspace:*",
         "@vibeshape/ui": "workspace:*",
         "@vibeshape/viewer": "workspace:*",
+        "is-what": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
         "zod": "catalog:",
@@ -213,6 +214,7 @@
       "name": "@vibeshape/protocol",
       "version": "0.0.0",
       "dependencies": {
+        "is-what": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

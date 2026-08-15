@@ -1,3 +1,4 @@
+import { isString } from "is-what"
 import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
 import {
   type SketchConstraint,
@@ -328,7 +329,7 @@ export function appendSketchConstraint(
 
 function referencedEntityIds(constraint: SketchConstraint) {
   return Object.entries(constraint)
-    .filter(([key, value]) => key !== "id" && key.endsWith("Id") && typeof value === "string")
+    .filter(([key, value]) => key !== "id" && key.endsWith("Id") && isString(value))
     .map(([, value]) => value as string)
 }
 

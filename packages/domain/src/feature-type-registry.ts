@@ -1,9 +1,5 @@
+import { isFunction } from "is-what"
 import type { z } from "zod"
-import {
-  type FeatureTypeDescriptor,
-  type FeatureTypeIdentity,
-  featureTypeKey,
-} from "./feature-type-contracts"
 import {
   type FeatureParameters,
   type FeatureRecord,
@@ -11,6 +7,11 @@ import {
   featureRecordSchema,
   featureTypeSchema,
 } from "./feature-graph"
+import {
+  type FeatureTypeDescriptor,
+  type FeatureTypeIdentity,
+  featureTypeKey,
+} from "./feature-type-contracts"
 import type { ModuleRegistry } from "./modules"
 import type { EvaluatedVariable, ExpressionValue } from "./variables"
 
@@ -123,8 +124,8 @@ function indexHandlers(
     const parsedType = featureTypeSchema.safeParse(handler.type)
     if (
       !parsedType.success ||
-      typeof handler.parametersSchema?.safeParse !== "function" ||
-      typeof handler.contentParameters !== "function"
+      !isFunction(handler.parametersSchema?.safeParse) ||
+      !isFunction(handler.contentParameters)
     ) {
       return registryFailure(
         "invalid-feature-type-handler",

@@ -1,4 +1,5 @@
 import { strToU8 } from "fflate"
+import { isFunction } from "is-what"
 import { describe, expect, it } from "vitest"
 import {
   buildExtensionArchive,
@@ -75,7 +76,7 @@ describe("extension package and runtime candidates", () => {
     expect(installed.manifest.id).toBe("org.example.threaded-insert")
     const instance = await WebAssembly.instantiate(scalarFeatureWasm(2))
     const evaluate = Reflect.get(instance.instance.exports, "evaluate")
-    if (typeof evaluate !== "function") throw new Error("The scalar fixture export is missing.")
+    if (!isFunction(evaluate)) throw new Error("The scalar fixture export is missing.")
     expect(Reflect.apply(evaluate, undefined, [21])).toBe(42)
   })
 

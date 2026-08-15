@@ -25,6 +25,8 @@ Do not create a generic `utils` package as a default destination. Domain semanti
 - Distinguish an object-shaped value from a valid ID, entity reference, topology reference, vector, or command.
 - Never use a handwritten shallow guard as a substitute for schema validation of a versioned object.
 - Never use `isObjectLike<T>` as evidence that object fields satisfy `T`; the upstream function intentionally checks only that the value is object-like.
+- Treat `isAnyObject` as an `Object`-tag check, not as proof that every JavaScript object kind is accepted; arrays, dates, errors, maps, sets, typed arrays, and class instances need their own semantics.
+- Use tag-based primitive guards only after validation or within a constrained union because boxed primitives can share the same runtime tag as primitive values.
 - Declare `is-what` in every workspace that imports it and use the exact root-catalog version.
 - Do not validate OCCT or WASM handle lifetime with TypeScript types alone; enforce ownership in the adapter.
 

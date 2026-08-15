@@ -5,6 +5,7 @@ import {
 } from "@vibeshape/geometry-worker/client"
 import type { GeometryTerminalResponse } from "@vibeshape/protocol"
 import { topologySpikeScenarios } from "@vibeshape/test-models"
+import { isError } from "is-what"
 
 type TopologyResponse = Extract<GeometryTerminalResponse, { type: "topologySpikeCompleted" }>
 type HealthResponse = Extract<GeometryTerminalResponse, { type: "health" }>
@@ -103,7 +104,7 @@ async function runSpike() {
     statusElement.textContent = "Topology reference corpus completed."
   } catch (error) {
     state.state = "failed"
-    state.error = error instanceof Error ? error.message : String(error)
+    state.error = isError(error) ? error.message : String(error)
     statusElement.dataset.state = "failed"
     statusElement.textContent = state.error
   } finally {

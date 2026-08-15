@@ -1,5 +1,6 @@
 import { type ThreeMfExportReport, writeThreeMf } from "@vibeshape/formats/three-mf"
 import { createThreeMfInteroperabilityDocument } from "@vibeshape/test-models"
+import { isError } from "is-what"
 
 interface ThreeMfSpikeState {
   state: "running" | "passed" | "failed"
@@ -38,7 +39,7 @@ try {
   statusElement.textContent = "Browser 3MF export completed."
 } catch (error) {
   state.state = "failed"
-  state.error = error instanceof Error ? error.message : String(error)
+  state.error = isError(error) ? error.message : String(error)
   statusElement.dataset.state = "failed"
   statusElement.textContent = state.error
 }

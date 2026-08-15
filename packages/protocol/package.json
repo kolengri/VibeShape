@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "is-what": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

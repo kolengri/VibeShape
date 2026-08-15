@@ -1,3 +1,4 @@
+import { isString } from "is-what"
 import { z } from "zod"
 import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
@@ -264,7 +265,7 @@ function validateConstraintReferences(
   const rules: EntityReferenceRules = constraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
     const entityId = constraintRecord[field]
-    return typeof entityId === "string" && entityIs(entities, entityId, entityTypes)
+    return isString(entityId) && entityIs(entities, entityId, entityTypes)
   })
 }
 
