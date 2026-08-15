@@ -17,8 +17,11 @@ const fixtureThumbnail = new TextEncoder().encode(
 )
 const controller = {
   status: "ready",
-  report: { snapshot: { id: activeDocumentId } },
-} as DocumentControllerState
+  report: {
+    mode: "read-write",
+    snapshot: { id: activeDocumentId, name: "Bracket", revision: 3 },
+  },
+} as unknown as DocumentControllerState
 
 class ResizeObserverMock {
   observe() {}
@@ -34,6 +37,7 @@ const controllerMocks = vi.hoisted(() => ({
   exportActiveProjectBackup: vi.fn(),
   importProjectBackup: vi.fn(),
   listLocalProjects: vi.fn(),
+  renameActiveProject: vi.fn(),
 }))
 
 vi.mock("./document-controller", async (importOriginal) => ({
@@ -67,6 +71,7 @@ beforeEach(() => {
     documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f21ae",
     name: "Fixture copy",
   })
+  controllerMocks.renameActiveProject.mockResolvedValue({ ok: true })
   controllerMocks.listLocalProjects.mockResolvedValue({
     ok: true,
     projects: [
@@ -152,6 +157,22 @@ describe("DocumentProjectDialog", () => {
     expect(open.getAttribute("aria-busy")).toBe("true")
     finish?.({ ok: true })
     await waitFor(() => expect(open.getAttribute("aria-busy")).not.toBe("true"))
+  })
+
+  it("renames the current project from the local project library", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(screen.getByRole("button", { name: "Project…" }))
+
+    await user.click(await screen.findByRole("button", { name: "Rename Bracket" }))
+    const name = screen.getByRole("textbox", { name: "Project name" })
+    await user.clear(name)
+    await user.type(name, "Named bracket")
+    await user.click(screen.getByRole("button", { name: /^Rename project$/ }))
+
+    expect(controllerMocks.renameActiveProject).toHaveBeenCalledWith(3, "Named bracket")
+    await waitFor(() => expect(controllerMocks.listLocalProjects).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole("button", { name: "Rename Fixture" })).toBeNull()
   })
 
   it("duplicates a semantic project with a localized bounded name as one action", async () => {

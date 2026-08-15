@@ -7,7 +7,11 @@ import type {
   SketchRecord,
 } from "@vibeshape/domain"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import type { DocumentControllerState } from "../document/document-controller"
+import {
+  type DocumentControllerState,
+  updateFeature,
+  updateSketch,
+} from "../document/document-controller"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
@@ -188,8 +192,13 @@ export function EditorWorkspace({
         activeSketchId={activeSketchId}
         controller={controller}
         onFeatureActivate={actions.editFeature}
+        onFeatureRename={updateFeature}
         onSketchActivate={actions.selectSketch}
+        onSketchRename={updateSketch}
         onWorkspaceChange={actions.switchWorkspace}
+        sketchRenameBlockedId={
+          activeSketchTool?.kind === "edit-sketch" ? activeSketchTool.sketchId : null
+        }
       />
       <WorkspaceContent
         actions={{
