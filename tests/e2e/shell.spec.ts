@@ -35,6 +35,45 @@ test.describe("foundation CAD shell", () => {
     await expect(sketchButton).toBeFocused()
   })
 
+  test("discovers and runs registered commands from the palette and shortcuts", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const commandsButton = page.getByRole("button", { name: "Commands" })
+    await commandsButton.click()
+    const palette = page.getByRole("dialog", { name: "Command palette" })
+    await expect(palette).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(commandsButton).toBeFocused()
+
+    await page.keyboard.press("Control+K")
+    const search = page.getByRole("combobox", { name: "Search commands" })
+    await search.fill("extrude")
+    await expect(page.getByText("Select a closed sketch profile first.")).toBeVisible()
+
+    await search.fill("new sketch")
+    await palette.getByText("Create sketch", { exact: true }).click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+
+    await page.keyboard.press("r")
+    await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeHidden()
+  })
+
   test("preserves the modeling viewport in the compact desktop layout", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 600 })
     await page.goto("/")

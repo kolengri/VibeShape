@@ -30,7 +30,7 @@ The 2026-08-15 browser review at 1440 × 900 identified these concrete problems:
 - the sketch task had no persistent title or explanation of the active mode;
 - Finish and Cancel could scroll away with long constraint content;
 - workspace switching could discard an active command buffer without first finishing or canceling it;
-- the shell has no command palette, complete shortcut layer, responsive task-panel sheet, or saved panel-size preferences yet.
+- the shell had no command palette, complete shortcut layer, responsive task-panel sheet, or saved panel-size preferences before UX-2 started.
 
 ## Target interaction model
 
@@ -135,10 +135,16 @@ The initial slice meets this criterion at 1440 px and keeps the page bounded at 
 
 ### UX-2 — command registry, palette, shortcuts, and cancellation
 
+Status: initial registry and palette slice implemented.
+
 - Register every first-party action once with ID, label, group, icon, shortcut, eligibility reason, and invocation.
 - Implement `Ctrl/Cmd+K`, searchable disabled reasons, recent local ranking, and extension contribution ownership.
 - Implement the documented `Escape`, `Enter`, delete, undo/redo, fit, and safe single-letter sketch shortcuts.
 - Preserve focus and selection across command start, completion, cancellation, and failure.
+
+The initial slice composes serializable, owner-attributed descriptors with trusted handlers and fails closed on duplicate, missing, orphaned, or owner-mismatched registrations. The same resolved catalog now drives the contextual toolbar, the localized command palette, and safe sketch-tool, sketch-history, cancellation, and palette shortcuts. Disabled commands remain searchable with their current eligibility reason, recent successful choices rank locally, `Ctrl/Cmd+K` remains available from text fields, single-letter tools do not capture text or IME input, and `Escape` participates in the placement-first cancellation hierarchy. Component and cross-browser tests cover registry composition, keyword search, disabled reasons, focus restoration, palette invocation, and shortcut dispatch.
+
+Context-menu projection, extension-provided presentation descriptors, `Enter`, delete, fit, view shortcuts, committed document undo/redo, and complete selection restoration remain open. The UI presentation registry is not itself an automation or MCP contract; future external exposure must map to the versioned domain command descriptors and host policy described in the automation architecture.
 
 Exit criterion: toolbar, palette, shortcut, and context menu invoke the same command and eligibility logic.
 

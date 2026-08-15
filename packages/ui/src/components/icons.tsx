@@ -1,6 +1,7 @@
 export {
   Box,
   Circle,
+  Command as CommandIcon,
   Construction,
   Cuboid,
   DraftingCompass,
@@ -11,4 +12,5 @@ export {
   Scissors,
   Slash,
   Undo2,
+  X,
 } from "lucide-react"

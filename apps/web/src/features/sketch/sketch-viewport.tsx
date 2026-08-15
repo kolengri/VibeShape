@@ -806,6 +806,34 @@ function zoomedBounds(bounds: SketchBounds, focus: SketchPoint2, deltaY: number)
   }
 }
 
+function consumeSketchHistoryShortcut(
+  event: KeyboardEvent<SVGSVGElement>,
+  onUndo: () => void,
+  onRedo: () => void,
+) {
+  const isHistoryShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z"
+  if (!isHistoryShortcut) return false
+  event.preventDefault()
+  if (event.shiftKey) onRedo()
+  else onUndo()
+  return true
+}
+
+function consumePendingPlacementCancel(
+  event: KeyboardEvent<SVGSVGElement>,
+  hasPendingPlacement: boolean,
+  cancel: () => void,
+) {
+  if (event.key !== "Escape" || !hasPendingPlacement) return false
+  event.preventDefault()
+  cancel()
+  return true
+}
+
+function isSketchDeleteKey(event: KeyboardEvent<SVGSVGElement>) {
+  return event.key === "Delete" || event.key === "Backspace"
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -877,19 +905,9 @@ function SketchDrawing({
     }
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
-    const undoShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z"
-    if (undoShortcut) {
-      event.preventDefault()
-      if (event.shiftKey) onRedo()
-      else onUndo()
-      return
-    }
-    if (event.key === "Escape") {
-      setPending(null)
-      return
-    }
-    const deleteKey = event.key === "Delete" || event.key === "Backspace"
-    if (!deleteKey || !draft) return
+    if (consumeSketchHistoryShortcut(event, onUndo, onRedo)) return
+    if (consumePendingPlacementCancel(event, pending !== null, () => setPending(null))) return
+    if (!isSketchDeleteKey(event) || !draft) return
     event.preventDefault()
     onDraftChange(removeSketchEntities(draft, selectedEntityIds))
     onSelectionChange([])
