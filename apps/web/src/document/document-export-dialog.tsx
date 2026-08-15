@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vibeshape/ui/components/dialog"
+import { Download } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useState } from "react"
 import { SlicerHandoffPanel } from "../printing/slicer-handoff-panel"
 import type { DocumentControllerState } from "./document-controller"
@@ -150,11 +152,16 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
         <ExportStatus messageKey={activity.statusKey} />
       )}
       <Dialog open={open} onOpenChange={changeDialogOpen}>
-        <DialogTrigger asChild>
-          <Button type="button" size="sm" variant="outline">
-            {t("trigger")}
-          </Button>
-        </DialogTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={t("trigger")}>
+                <Download aria-hidden="true" />
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("trigger")}</TooltipContent>
+        </Tooltip>
         <DialogContent
           closeLabel={t("closeLabel")}
           className="max-h-[calc(100%-2rem)] max-w-3xl overflow-y-auto"

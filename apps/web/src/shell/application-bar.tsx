@@ -1,6 +1,7 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { CommandIcon } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
@@ -43,18 +44,25 @@ export function ApplicationBar({
       <span className="ml-auto text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={(event) => onOpenCommandPalette(event.currentTarget)}
-      >
-        <CommandIcon aria-hidden="true" />
-        {commandsT("open")}
-        <kbd className="hidden rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground lg:inline">
-          {commandsT("openShortcut")}
-        </kbd>
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={commandsT("open")}
+            onClick={(event) => onOpenCommandPalette(event.currentTarget)}
+          >
+            <CommandIcon aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent className="flex items-center gap-3">
+          <span>{commandsT("open")}</span>
+          <kbd className="rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
+            {commandsT("openShortcut")}
+          </kbd>
+        </TooltipContent>
+      </Tooltip>
       <DocumentProjectDialog controller={controller} />
       <DocumentExportDialog controller={controller} />
     </header>
