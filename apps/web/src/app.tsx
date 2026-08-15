@@ -10,6 +10,8 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useCallback, useRef, useState } from "react"
+import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
+import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
 import { createBrowserSketchId, useDocumentController } from "./document/document-controller"
 import {
   type ActivePartDesignTool,
@@ -22,6 +24,7 @@ import type {
   SketchEditorTool,
 } from "./features/sketch/sketch-tool"
 import { ApplicationBar } from "./shell/application-bar"
+import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
@@ -334,31 +337,66 @@ export function App() {
   const controller = useDocumentController(t("untitledProject"))
   const sketch = useSketchInteraction()
   const model = useModelInteraction(controller, sketch)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
+  const setCommandPaletteOpenWithFocus = useCallback(
+    (open: boolean, returnFocusTarget?: HTMLElement) => {
+      if (open) {
+        commandPaletteReturnFocusRef.current =
+          returnFocusTarget ??
+          (document.activeElement instanceof HTMLElement ? document.activeElement : null)
+      }
+      setCommandPaletteOpen(open)
+    },
+    [],
+  )
+  const commands = resolveBuiltInEditorCommands({
+    actions: {
+      cancelActive: model.actions.closeTool,
+      createBox: model.actions.createBox,
+      createCylinder: model.actions.createCylinder,
+      createExtrusion: model.actions.createExtrusion,
+      createSketch: model.actions.createSketch,
+      createSubtract: model.actions.createSubtract,
+      redoSketch: model.actions.redoSketchDraft,
+      setSketchConstruction: model.actions.setSketchConstruction,
+      setSketchTool: model.actions.setSketchEditorTool,
+      switchWorkspace: model.actions.switchWorkspace,
+      undoSketch: model.actions.undoSketchDraft,
+    },
+    state: {
+      activePartDesignCommand: activePartDesignCommand(model.activeTool),
+      activeSketchTool: sketch.activeSketchTool,
+      controller,
+      extrusionAvailable: model.extrusionAvailable,
+      sketchConstruction: sketch.construction,
+      sketchRedoAvailable: sketch.redoAvailable,
+      sketchTool: sketch.editorTool,
+      sketchUndoAvailable: sketch.undoAvailable,
+      workspace: model.workspace,
+    },
+  })
+  useEditorCommandShortcuts({
+    commands,
+    paletteOpen: commandPaletteOpen,
+    onPaletteOpenChange: setCommandPaletteOpenWithFocus,
+  })
 
   return (
     <main className="cad-shell bg-background text-[13px] text-foreground">
-      <ApplicationBar controller={controller} />
-      <CommandToolbar
-        activeCommand={activePartDesignCommand(model.activeTool)}
-        activeSketchTool={sketch.activeSketchTool}
+      <ApplicationBar
         controller={controller}
-        workspace={model.workspace}
-        onWorkspaceChange={model.actions.switchWorkspace}
-        onCreateSketch={model.actions.createSketch}
-        onCreateBox={model.actions.createBox}
-        onCreateCylinder={model.actions.createCylinder}
-        onCreateExtrusion={model.actions.createExtrusion}
-        extrusionAvailable={model.extrusionAvailable}
-        onCreateSubtract={model.actions.createSubtract}
-        sketchConstruction={sketch.construction}
-        sketchEditorTool={sketch.editorTool}
-        sketchRedoAvailable={sketch.redoAvailable}
-        sketchUndoAvailable={sketch.undoAvailable}
-        onSketchConstructionChange={model.actions.setSketchConstruction}
-        onSketchEditorToolChange={model.actions.setSketchEditorTool}
-        onSketchRedo={model.actions.redoSketchDraft}
-        onSketchUndo={model.actions.undoSketchDraft}
+        onOpenCommandPalette={(returnFocusTarget) =>
+          setCommandPaletteOpenWithFocus(true, returnFocusTarget)
+        }
       />
+      <EditorCommandPalette
+        commands={commands}
+        open={commandPaletteOpen}
+        returnFocusRef={commandPaletteReturnFocusRef}
+        onOpenChange={setCommandPaletteOpenWithFocus}
+      />
+      <CommandToolbar commands={commands} />
       <EditorWorkspace
         actions={model.actions}
         activeSketchId={sketch.activeSketchId}

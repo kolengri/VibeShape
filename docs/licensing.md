@@ -42,6 +42,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |
 | Tailwind CSS / Vite plugin | MIT | Include a third-party notice |
 | shadcn/ui source and CLI | MIT | Preserve applicable notices when copying or modifying source |
+| cmdk | MIT | Include a third-party notice; the command-palette runtime ships in the browser bundle |
 | Radix UI | MIT | Include a third-party notice |
 | Lucide React | ISC | Include a third-party notice |
 | TanStack Form | MIT | Include a third-party notice |
@@ -57,11 +58,11 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | 3MF specification | Royalty-free specification terms | Follow specification attribution and terms; the VibeShape writer remains GPL-licensed |
 | PrusaSlicer / CuraEngine | AGPL-3.0 | Do not bundle in the MVP; record any future integration in a separate ADR |
 
-This matrix is a snapshot from 2026-08-08. The lockfile and software bill of materials are the source of truth for the dependencies present in a release.
+This matrix is a snapshot from 2026-08-15. The lockfile and software bill of materials are the source of truth for the dependencies present in a release.
 
 PrusaSlicer, Snapmaker Orca, and Bambu Studio are invoked only as separately installed local interoperability tools. They are not copied into, linked with, or distributed by VibeShape. Their presence on one development machine is evidence metadata, not a project runtime dependency.
 
-Generated shadcn components become part of the VibeShape source tree, but their provenance must not be erased. `THIRD_PARTY_NOTICES` records the upstream project, CLI version, and MIT license. VibeShape modifications are distributed as part of the GPL project while preserving upstream permissive-license notices.
+Generated shadcn components become part of the VibeShape source tree, but their provenance must not be erased. The dependency matrix records the upstream source and license; every release third-party notice bundle must record the exact CLI version and copied component provenance. VibeShape modifications are distributed as part of the GPL project while preserving upstream permissive-license notices.
 
 ## OCCT Obligations
 

@@ -137,6 +137,74 @@
         "failed": "Export failed"
       }
     },
+    "commands": {
+      "open": "Commands",
+      "openShortcut": "Ctrl/Cmd+K",
+      "palette": {
+        "title": "Command palette",
+        "description": "Search every registered editor command, including commands that need a different selection or mode.",
+        "closeLabel": "Close command palette",
+        "searchLabel": "Search commands",
+        "placeholder": "Search commands…",
+        "resultsLabel": "Command results",
+        "empty": "No matching commands"
+      },
+      "groups": {
+        "workspace": "Workspace",
+        "modeling": "Modeling",
+        "sketch": "Sketch",
+        "history": "History"
+      },
+      "disabledReasons": {
+        "activeFeature": "Finish or cancel the active feature first.",
+        "activeSketch": "Finish or cancel the active sketch first.",
+        "documentUnavailable": "Open a writable document first.",
+        "noActiveCommand": "No command is active.",
+        "noSketchRedo": "There is no sketch change to redo.",
+        "noSketchUndo": "There is no sketch change to undo.",
+        "readOnly": "Open the document with write access.",
+        "requiresSketch": "Start or edit a sketch first.",
+        "selectProfile": "Select a closed sketch profile first.",
+        "selectTwoSolids": "Create at least two eligible solids first."
+      },
+      "items": {
+        "cancelActive": {
+          "label": "Cancel active command",
+          "keywords": "escape|close|stop|discard preview"
+        },
+        "createBox": { "label": "Box", "keywords": "create box|primitive|solid|cube" },
+        "createCylinder": {
+          "label": "Cylinder",
+          "keywords": "create cylinder|primitive|solid|round"
+        },
+        "createExtrusion": { "label": "Extrude", "keywords": "create extrusion|profile|solid|pad" },
+        "createSketch": { "label": "Create sketch", "keywords": "new sketch|2d|profile|draw" },
+        "createSubtract": {
+          "label": "Subtract",
+          "keywords": "boolean cut|remove solid|difference"
+        },
+        "sketchArc": { "label": "Center-point arc", "keywords": "arc|curve|center start end" },
+        "sketchCircle": { "label": "Circle", "keywords": "sketch circle|round|radius|diameter" },
+        "sketchConstruction": {
+          "label": "Construction geometry",
+          "keywords": "toggle construction|reference geometry|helper"
+        },
+        "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchPoint": { "label": "Point", "keywords": "sketch point|vertex|coordinate" },
+        "sketchRectangle": {
+          "label": "Rectangle",
+          "keywords": "sketch rectangle|box profile|four sides"
+        },
+        "sketchRedo": { "label": "Redo", "keywords": "redo sketch|restore change|history" },
+        "sketchSelect": { "label": "Select", "keywords": "selection|pointer|choose geometry" },
+        "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
+        "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
+        "workspaceSketch": {
+          "label": "Sketch",
+          "keywords": "sketch workspace|2d|drawing|constraints"
+        }
+      }
+    },
     "shell": {
       "applicationBar": {
         "loading": "Opening local document…",
@@ -147,26 +215,8 @@
       },
       "commandToolbar": {
         "ariaLabel": "Model commands",
-        "box": "Box",
-        "construction": "Construction geometry",
-        "cylinder": "Cylinder",
-        "createSketch": "Create sketch",
-        "extrude": "Extrude",
-        "model": "Model",
         "primitives": "Primitives",
-        "redo": "Redo",
-        "sketch": "Sketch",
         "sketchToolsLabel": "Sketch geometry tools",
-        "sketchTools": {
-          "select": "Select",
-          "point": "Point",
-          "line": "Line",
-          "rectangle": "Rectangle",
-          "circle": "Circle",
-          "arc": "Center-point arc"
-        },
-        "subtract": "Subtract",
-        "undo": "Undo",
         "workspaceLabel": "Editor workspace"
       },
       "modelTree": {
