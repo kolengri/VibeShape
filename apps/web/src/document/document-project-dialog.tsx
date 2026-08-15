@@ -26,6 +26,7 @@ import {
   listLocalProjects,
 } from "./document-controller"
 import { downloadProjectBackup } from "./document-project-file"
+import { DocumentRenameDialog } from "./document-rename-dialog"
 import { ProjectDeleteAction } from "./project-delete-action"
 
 type ProjectActivity =
@@ -127,6 +128,7 @@ function ProjectPreview({ project }: { project: LocalProjectSummary }) {
 
 function LocalProjectList({
   activeDocumentId,
+  controller,
   disabled,
   duplicatingDocumentId,
   onCreate,
@@ -135,10 +137,12 @@ function LocalProjectList({
   onDuplicate,
   onOpen,
   onPendingDeleteChange,
+  onRenamed,
   projects,
   switchingDocumentId,
 }: {
   activeDocumentId: string | undefined
+  controller: DocumentControllerState
   disabled: boolean
   duplicatingDocumentId: string | null
   onCreate: () => unknown
@@ -150,6 +154,7 @@ function LocalProjectList({
   onDuplicate: (project: LocalProjectSummary) => unknown
   onOpen: (documentId: string) => unknown
   onPendingDeleteChange: (pending: boolean) => void
+  onRenamed: () => void
   projects: readonly LocalProjectSummary[]
   switchingDocumentId: string | null
 }) {
@@ -212,6 +217,13 @@ function LocalProjectList({
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  {isCurrent ? (
+                    <DocumentRenameDialog
+                      controller={controller}
+                      disabled={disabled}
+                      onRenamed={onRenamed}
+                    />
+                  ) : null}
                   <Button
                     type="button"
                     size="sm"
@@ -260,6 +272,7 @@ function LocalProjectList({
 
 function ProjectLibrary({
   activeDocumentId,
+  controller,
   disabled,
   duplicatingDocumentId,
   library,
@@ -268,10 +281,12 @@ function ProjectLibrary({
   onDuplicate,
   onOpen,
   onPendingDeleteChange,
+  onRenamed,
   onRetry,
   switchingDocumentId,
 }: {
   activeDocumentId: string | undefined
+  controller: DocumentControllerState
   disabled: boolean
   duplicatingDocumentId: string | null
   library: ProjectLibraryState
@@ -280,6 +295,7 @@ function ProjectLibrary({
   onDuplicate: (project: LocalProjectSummary) => unknown
   onOpen: (documentId: string) => unknown
   onPendingDeleteChange: (pending: boolean) => void
+  onRenamed: () => void
   onRetry: () => unknown
   switchingDocumentId: string | null
 }) {
@@ -309,6 +325,7 @@ function ProjectLibrary({
   return (
     <LocalProjectList
       activeDocumentId={activeDocumentId}
+      controller={controller}
       disabled={disabled}
       duplicatingDocumentId={duplicatingDocumentId}
       onCreate={onCreate}
@@ -317,6 +334,7 @@ function ProjectLibrary({
       onDuplicate={onDuplicate}
       onOpen={onOpen}
       onPendingDeleteChange={onPendingDeleteChange}
+      onRenamed={onRenamed}
       projects={library.projects}
       switchingDocumentId={switchingDocumentId}
     />
@@ -486,6 +504,7 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
           ) : null}
           <ProjectLibrary
             activeDocumentId={controller.report?.snapshot.id}
+            controller={controller}
             disabled={disabled}
             duplicatingDocumentId={duplicatingDocumentId}
             library={library}
@@ -494,6 +513,7 @@ export function DocumentProjectDialog({ controller }: { controller: DocumentCont
             onDuplicate={duplicateProject}
             onOpen={openProject}
             onPendingDeleteChange={(pending) => setActivity(pending ? "deleting" : "idle")}
+            onRenamed={() => void loadProjects()}
             onRetry={loadProjects}
             switchingDocumentId={switchingDocumentId}
           />

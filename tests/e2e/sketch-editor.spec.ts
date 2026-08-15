@@ -114,5 +114,14 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Cancel" }).click()
     await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Rename Sketch 1" }).click()
+    const renameSketch = page.getByRole("dialog", { name: "Rename sketch" })
+    await renameSketch.getByRole("textbox", { name: "Sketch name" }).fill("Mounting profile")
+    await renameSketch.getByRole("button", { name: "Rename sketch", exact: true }).dblclick()
+    await expect(page.getByRole("treeitem", { name: "Mounting profile" })).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByRole("treeitem", { name: "Mounting profile" })).toBeVisible()
   })
 })

@@ -87,6 +87,35 @@
       "staleRevision": "The project changed while its name was being edited. Review the current name and try again.",
       "saveFailed": "The project could not be renamed. Its current name is unchanged."
     },
+    "modelRename": {
+      "trigger": "Rename {name}",
+      "tooltip": "Rename",
+      "cancel": "Cancel",
+      "invalidName": "Enter a name using 120 characters or fewer.",
+      "unchangedName": "Enter a different name.",
+      "readOnly": "Open the document with write access to rename this item.",
+      "finishSketch": "Finish or cancel sketch editing before renaming this sketch.",
+      "feature": {
+        "title": "Rename feature",
+        "description": "Change the feature name stored in model history.",
+        "closeLabel": "Close rename feature dialog",
+        "fieldLabel": "Feature name",
+        "fieldDescription": "This name appears in the model tree and feature references.",
+        "save": "Rename feature",
+        "staleRevision": "The model changed while this feature name was being edited. Review the current name and try again.",
+        "saveFailed": "The feature could not be renamed. Its current name is unchanged."
+      },
+      "sketch": {
+        "title": "Rename sketch",
+        "description": "Change the sketch name stored in model history.",
+        "closeLabel": "Close rename sketch dialog",
+        "fieldLabel": "Sketch name",
+        "fieldDescription": "This name appears in the model tree and sketch references.",
+        "save": "Rename sketch",
+        "staleRevision": "The model changed while this sketch name was being edited. Review the current name and try again.",
+        "saveFailed": "The sketch could not be renamed. Its current name is unchanged."
+      }
+    },
     "export": {
       "trigger": "Export…",
       "title": "Export model",

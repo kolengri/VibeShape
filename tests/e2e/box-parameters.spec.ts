@@ -92,5 +92,20 @@ test.describe("Box parameters", () => {
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
     ).toHaveValue("#span")
+
+    await page
+      .getByRole("form", { name: "Edit box" })
+      .getByRole("button", { name: "Cancel" })
+      .click()
+    const featureItem = page.getByRole("treeitem", { name: "Box 1" })
+    await featureItem.focus()
+    await page.keyboard.press("F2")
+    const renameFeature = page.getByRole("dialog", { name: "Rename feature" })
+    await renameFeature.getByRole("textbox", { name: "Feature name" }).fill("Base block")
+    await renameFeature.getByRole("button", { name: "Rename feature", exact: true }).dblclick()
+    await expect(page.getByRole("treeitem", { name: "Base block" })).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByRole("treeitem", { name: "Base block" })).toBeVisible()
   })
 })
