@@ -9,10 +9,19 @@ import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  variableIdSchema,
 } from "@vibeshape/domain"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
+import { i18n } from "../../i18n"
 import { SketchEditorPanel } from "./sketch-editor-panel"
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 const copy = {
   addConstraint: "Add constraint",
@@ -92,33 +101,37 @@ function renderPanel(
     length: "mm",
     angle: "deg",
   },
+  variables: React.ComponentProps<typeof SketchEditorPanel>["state"]["variables"] = [],
 ) {
   render(
-    <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
-      <SketchEditorPanel
-        copy={copy}
-        state={{
-          disabled: false,
-          draft: sketch,
-          failedConstraintIds,
-          message: null,
-          profiles: [],
-          selectedEntityIds,
-          selectedProfile: null,
-          variables: [],
-        }}
-        actions={{
-          onCancel: vi.fn(),
-          onDraftChange,
-          onFinish: vi.fn(async () => undefined),
-          onSelectedProfileChange: vi.fn(),
-        }}
-      />
-    </DocumentDisplayUnitsProvider>,
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+        <SketchEditorPanel
+          copy={copy}
+          state={{
+            disabled: false,
+            draft: sketch,
+            failedConstraintIds,
+            message: null,
+            profiles: [],
+            selectedEntityIds,
+            selectedProfile: null,
+            variables,
+          }}
+          actions={{
+            onCancel: vi.fn(),
+            onDraftChange,
+            onFinish: vi.fn(async () => undefined),
+            onSelectedProfileChange: vi.fn(),
+          }}
+        />
+      </DocumentDisplayUnitsProvider>
+    </I18nProvider>,
   )
   return onDraftChange
 }
 
+vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
@@ -148,8 +161,8 @@ describe("SketchEditorPanel", () => {
       points.map(({ id }) => id),
     )
 
-    await user.clear(screen.getByRole("textbox", { name: "Driving expression" }))
-    await user.type(screen.getByRole("textbox", { name: "Driving expression" }), "20 mm")
+    await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
+    await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "20 mm")
     await user.click(screen.getByRole("button", { name: "Add constraint" }))
 
     expect(onDraftChange).toHaveBeenCalledWith(
@@ -164,6 +177,34 @@ describe("SketchEditorPanel", () => {
         ],
       }),
     )
+  })
+
+  it("completes a variable reference inside a driving dimension", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const points = sketch.entities.filter((entity) => entity.type === "point")
+    renderPanel(
+      sketch,
+      points.map(({ id }) => id),
+      vi.fn(),
+      [],
+      undefined,
+      [
+        {
+          schemaVersion: 0,
+          id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601"),
+          name: "width",
+          expression: "20 mm",
+        },
+      ],
+    )
+
+    const expression = screen.getByRole("combobox", { name: "Driving expression" })
+    await user.clear(expression)
+    await user.type(expression, "#wi")
+    await user.keyboard("{Enter}")
+
+    expect((expression as HTMLInputElement).value).toBe("#width")
   })
 
   it("marks solver-reported conflicting constraints without removing them", () => {
@@ -196,7 +237,7 @@ describe("SketchEditorPanel", () => {
       [],
       { length: "in", angle: "rad" },
     )
-    const expression = screen.getByRole("textbox", { name: "Driving expression" })
+    const expression = screen.getByRole("combobox", { name: "Driving expression" })
     expect((expression as HTMLInputElement).value).toBe("0.393700787402 in")
     await user.clear(expression)
     await user.type(expression, "2")

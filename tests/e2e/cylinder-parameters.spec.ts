@@ -7,7 +7,7 @@ test.describe("Cylinder parameters", () => {
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("radius")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("12 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("12 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
 
     await page
@@ -16,7 +16,7 @@ test.describe("Cylinder parameters", () => {
       .click()
     const createForm = page.getByRole("form", { name: "Create cylinder" })
     await expect(createForm).toBeVisible()
-    await createForm.getByRole("textbox", { name: "Radius" }).fill("#radius")
+    await createForm.getByRole("combobox", { name: "Radius" }).fill("#radius")
     await createForm.getByRole("checkbox", { name: "Center on the origin" }).check()
     await createForm.getByRole("button", { name: "Create cylinder" }).dblclick()
 
@@ -27,9 +27,9 @@ test.describe("Cylinder parameters", () => {
 
     await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit cylinder" })
-    await expect(editForm.getByRole("textbox", { name: "Radius" })).toHaveValue("#radius")
+    await expect(editForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
     await expect(editForm.getByRole("checkbox", { name: "Center on the origin" })).toBeChecked()
-    await editForm.getByRole("textbox", { name: "Height" }).fill("42 mm")
+    await editForm.getByRole("combobox", { name: "Height" }).fill("42 mm")
     await editForm.getByRole("button", { name: "Update cylinder" }).dblclick()
     await expect(editForm).not.toBeVisible()
 
@@ -38,8 +38,8 @@ test.describe("Cylinder parameters", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit cylinder" })
-    await expect(reopenedForm.getByRole("textbox", { name: "Radius" })).toHaveValue("#radius")
-    await expect(reopenedForm.getByRole("textbox", { name: "Height" })).toHaveValue("42 mm")
+    await expect(reopenedForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
+    await expect(reopenedForm.getByRole("combobox", { name: "Height" })).toHaveValue("42 mm")
     await expect(reopenedForm.getByRole("checkbox", { name: "Center on the origin" })).toBeChecked()
   })
 })

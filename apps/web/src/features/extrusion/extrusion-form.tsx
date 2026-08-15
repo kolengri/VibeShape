@@ -8,11 +8,10 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
-  useDocumentDisplayUnits,
+  type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -21,6 +20,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import {
   ExtrusionParameterPanel,
   type ExtrusionParameterPanelCopy,
@@ -44,8 +44,6 @@ type ExtrusionFormValues = Readonly<{
   distance: string
   symmetric: boolean
 }>
-
-type FieldIssues = Readonly<Partial<Record<"distance", string>>>
 
 function defaultValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
@@ -143,10 +141,16 @@ export function ExtrusionForm({
   profileLabel: string
   variables: readonly VariableDefinition[]
 }) {
-  const formElementRef = useRef<HTMLFormElement>(null)
-  const displayUnits = useDocumentDisplayUnits()
-  const [issues, setIssues] = useState<FieldIssues>({})
-  const [message, setMessage] = useState<string | null>(null)
+  const {
+    clearSubmissionErrors,
+    displayUnits,
+    formElementRef,
+    issues,
+    message,
+    setIssues,
+    setMessage,
+    suggestions,
+  } = useParameterFormState(variables)
   const profile = profileForMode(mode)
   const form = useAppForm({
     defaultValues:
@@ -172,11 +176,6 @@ export function ExtrusionForm({
     },
   })
 
-  const clearSubmissionErrors = () => {
-    if (issues.distance) setIssues({})
-    if (message) setMessage(null)
-  }
-
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
       <ExtrusionParameterPanel
@@ -194,10 +193,11 @@ export function ExtrusionForm({
                 label={copy.distance}
                 description={copy.expressionDescription}
                 error={issues.distance}
+                suggestions={suggestions}
                 onBlur={field.handleBlur}
-                onChange={(event) => {
+                onValueChange={(value) => {
                   clearSubmissionErrors()
-                  field.handleChange(event.currentTarget.value)
+                  field.handleChange(value)
                 }}
               />
             )}

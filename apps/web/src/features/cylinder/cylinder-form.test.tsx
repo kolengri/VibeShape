@@ -9,7 +9,9 @@ import {
   featureRecordSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { i18n } from "../../i18n"
 import { CylinderForm, type CylinderFormMode } from "./cylinder-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2612")
@@ -77,15 +79,17 @@ function renderForm(
         }
       : copy
   render(
-    <CylinderForm
-      baseRevision={3}
-      variables={variables}
-      copy={formCopy}
-      mode={mode}
-      onCancel={vi.fn()}
-      onSave={onSave}
-      onSaved={onSaved}
-    />,
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <CylinderForm
+        baseRevision={3}
+        variables={variables}
+        copy={formCopy}
+        mode={mode}
+        onCancel={vi.fn()}
+        onSave={onSave}
+        onSaved={onSaved}
+      />
+    </I18nProvider>,
   )
   return { copy: formCopy, onSave, onSaved }
 }
@@ -102,7 +106,7 @@ describe("CylinderForm", () => {
     })
     const { onSaved } = renderForm(onSave)
 
-    const radius = screen.getByRole("textbox", { name: copy.radius })
+    const radius = screen.getByRole("combobox", { name: copy.radius })
     await user.clear(radius)
     await user.type(radius, "#radius")
     const create = screen.getByRole("button", { name: copy.submit })
@@ -132,7 +136,7 @@ describe("CylinderForm", () => {
   it("preserves invalid raw input and focuses its adjacent error", async () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
-    const radius = screen.getByRole("textbox", { name: copy.radius })
+    const radius = screen.getByRole("combobox", { name: copy.radius })
 
     await user.clear(radius)
     await user.type(radius, "#missing")
@@ -151,17 +155,17 @@ describe("CylinderForm", () => {
     const mode = { kind: "edit", feature: existingFeature } as const
     const { copy: editCopy, onSave, onSaved } = renderForm(undefined, undefined, mode)
 
-    expect((screen.getByRole("textbox", { name: copy.radius }) as HTMLInputElement).value).toBe(
+    expect((screen.getByRole("combobox", { name: copy.radius }) as HTMLInputElement).value).toBe(
       "#radius",
     )
-    expect((screen.getByRole("textbox", { name: copy.height }) as HTMLInputElement).value).toBe(
+    expect((screen.getByRole("combobox", { name: copy.height }) as HTMLInputElement).value).toBe(
       "30 mm",
     )
     expect(
       (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
     ).toBe(true)
 
-    const height = screen.getByRole("textbox", { name: copy.height })
+    const height = screen.getByRole("combobox", { name: copy.height })
     await user.clear(height)
     await user.type(height, "42 mm")
     await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))

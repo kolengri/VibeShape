@@ -59,7 +59,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("48 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("48 mm")
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
     await page

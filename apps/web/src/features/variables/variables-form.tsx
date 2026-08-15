@@ -20,6 +20,7 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { VariableExpressionInput, variableExpressionSuggestions } from "./variable-expression-input"
 import { VariablesTable, type VariablesTableCopy } from "./variables-table"
 
 const MAX_VARIABLES = 4_096
@@ -452,6 +453,7 @@ export function VariablesForm({
               const evaluated = structural.success
                 ? evaluateVariableDefinitions(structural.data)
                 : null
+              const suggestions = variableExpressionSuggestions(rows)
 
               return (
                 <VariablesTable
@@ -520,18 +522,20 @@ export function VariablesForm({
                       expressionField: (
                         <form.Field name={`variables[${index}].expression`}>
                           {(field) => (
-                            <Input
+                            <VariableExpressionInput
                               name={field.name}
                               value={field.state.value}
                               disabled={disabled || rename.pending || rename.rowId !== null}
+                              excludedSuggestionId={row.id}
+                              suggestions={suggestions}
                               aria-label={copy.expressionInput}
                               aria-describedby={`${row.id}-expression-error`}
                               aria-invalid={invalidAttribute(errors.expressionError)}
                               className="h-8 font-mono"
                               onBlur={field.handleBlur}
-                              onChange={(event) => {
+                              onValueChange={(value) => {
                                 clearSubmissionErrors()
-                                field.handleChange(event.currentTarget.value)
+                                field.handleChange(value)
                               }}
                             />
                           )}

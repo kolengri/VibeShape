@@ -7,11 +7,10 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
-  useDocumentDisplayUnits,
+  type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
@@ -24,6 +23,7 @@ import {
   PrimitiveParameterPanel,
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
+import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
 type DimensionField = "radius" | "height"
 
@@ -46,8 +46,6 @@ type CylinderFormValues = Readonly<{
   height: string
   centered: boolean
 }>
-
-type FieldIssues = Readonly<Partial<Record<DimensionField, string>>>
 
 function defaultCylinderValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
@@ -151,10 +149,16 @@ export function CylinderForm({
   onSaved: () => void
   variables: readonly VariableDefinition[]
 }) {
-  const formElementRef = useRef<HTMLFormElement>(null)
-  const displayUnits = useDocumentDisplayUnits()
-  const [issues, setIssues] = useState<FieldIssues>({})
-  const [message, setMessage] = useState<string | null>(null)
+  const {
+    clearSubmissionErrors,
+    displayUnits,
+    formElementRef,
+    issues,
+    message,
+    setIssues,
+    setMessage,
+    suggestions,
+  } = useParameterFormState(variables)
   const defaultValues =
     mode.kind === "edit"
       ? cylinderFormValuesFromFeature(mode.feature)
@@ -185,11 +189,6 @@ export function CylinderForm({
     },
   })
 
-  const clearSubmissionErrors = () => {
-    if (Object.keys(issues).length > 0) setIssues({})
-    if (message) setMessage(null)
-  }
-
   const dimensionField = (fieldName: DimensionField, label: string) => (
     <form.Field name={fieldName}>
       {(field) => (
@@ -200,10 +199,11 @@ export function CylinderForm({
           label={label}
           description={copy.expressionDescription}
           error={issues[fieldName]}
+          suggestions={suggestions}
           onBlur={field.handleBlur}
-          onChange={(event) => {
+          onValueChange={(value) => {
             clearSubmissionErrors()
-            field.handleChange(event.currentTarget.value)
+            field.handleChange(value)
           }}
         />
       )}

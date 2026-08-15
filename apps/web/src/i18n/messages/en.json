@@ -1,5 +1,8 @@
 {
   "app": {
+    "variableSuggestions": {
+      "label": "Available variables"
+    },
     "projectFile": {
       "trigger": "Project…",
       "title": "Projects",

@@ -19,7 +19,7 @@ test.describe("project display units", () => {
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("25.4 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("25.4 mm")
     await expect(page.getByRole("cell", { name: "1 in" })).toBeVisible()
     await page.getByRole("button", { name: "Apply variables" }).dblclick()
 
@@ -32,14 +32,16 @@ test.describe("project display units", () => {
       .getByRole("button", { name: "Box", exact: true })
       .click()
     const createBox = page.getByRole("form", { name: "Create box" })
-    await expect(createBox.getByRole("textbox", { name: "Width" })).toHaveValue("0.787401574803 in")
-    await createBox.getByRole("textbox", { name: "Width" }).fill("2")
+    await expect(createBox.getByRole("combobox", { name: "Width" })).toHaveValue(
+      "0.787401574803 in",
+    )
+    await createBox.getByRole("combobox", { name: "Width" }).fill("2")
     await createBox.getByRole("button", { name: "Create box" }).dblclick()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(
-      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("2 in")
 
     await page.reload()
@@ -49,7 +51,7 @@ test.describe("project display units", () => {
     await expect(page.getByRole("cell", { name: "1 in" })).toBeVisible()
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(
-      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("2 in")
   })
 })
