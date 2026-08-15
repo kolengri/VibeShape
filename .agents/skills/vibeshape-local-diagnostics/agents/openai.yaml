@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Local Diagnostics"
+  short_description: "Diagnose local CAD failures from runtime evidence"
+  default_prompt: "Use $vibeshape-local-diagnostics to diagnose this local VibeShape failure from runtime evidence."
