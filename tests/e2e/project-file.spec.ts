@@ -159,15 +159,26 @@ test.describe("native project file", () => {
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
 
+    await page.getByRole("button", { name: "Rename Untitled project" }).click()
+    const renameDialog = page.getByRole("dialog", { name: "Rename project" })
+    await renameDialog.getByRole("textbox", { name: "Project name" }).fill("Calibration bracket")
+    await renameDialog.getByRole("button", { name: "Rename project", exact: true }).dblclick()
+    await expect(renameDialog).toHaveCount(0)
+    await expect(page.getByText("Calibration bracket", { exact: true })).toBeVisible()
+
     await page.getByRole("button", { name: "Project…" }).click()
-    await expect(page.getByRole("img", { name: "3D preview of Untitled project" })).toBeVisible()
+    await expect(
+      page.getByRole("dialog", { name: "Projects" }).getByText("Calibration bracket", {
+        exact: true,
+      }),
+    ).toBeVisible()
     const backupDownload = page.waitForEvent("download")
     await page
       .getByRole("dialog", { name: "Projects" })
       .getByRole("button", { name: "Download .vshape" })
       .dblclick()
     const download = await backupDownload
-    expect(download.suggestedFilename()).toBe("Untitled project.vshape")
+    expect(download.suggestedFilename()).toBe("Calibration bracket.vshape")
     const backupPath = await download.path()
     if (!backupPath) throw new Error("Playwright did not retain the .vshape download.")
     const backupBytes = await readFile(backupPath)
@@ -196,6 +207,7 @@ test.describe("native project file", () => {
       await importedPage.getByRole("button", { name: "Project…" }).click()
       await importedPage.getByLabel("Choose VibeShape project file").setInputFiles(backupPath)
 
+      await expect(importedPage.getByText("Calibration bracket", { exact: true })).toBeVisible()
       await expect(importedPage.getByRole("treeitem", { name: "Box 1" })).toBeVisible({
         timeout: 30_000,
       })

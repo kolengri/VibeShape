@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
+import { DocumentRenameDialog } from "../document/document-rename-dialog"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -41,6 +42,7 @@ export function ApplicationBar({
     <header className="flex min-w-0 items-center gap-3 border-b bg-toolbar px-2">
       <strong className="truncate text-sm">VibeShape</strong>
       <span className="truncate text-muted-foreground">{documentName}</span>
+      <DocumentRenameDialog controller={controller} />
       <span className="ml-auto text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>
