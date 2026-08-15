@@ -28,7 +28,9 @@ Use the repository-local skills under `.agents/skills` when their descriptions m
 - `vibeshape-testing` for runtime changes and regression coverage;
 - `vibeshape-verify-scope` before reporting implementation work complete;
 - `vibeshape-dependency-audit` for audits, upgrades, CVEs, and engine dependency changes;
+- `vibeshape-feature-boundaries` before placing new CAD capabilities, modules, extension seams, or automation surfaces;
 - `vibeshape-fallow` for changed-code intelligence, cleanup evidence, duplication, complexity, styling drift, and package-boundary findings;
+- `vibeshape-local-diagnostics` for local runtime, browser, worker, WASM, persistence, and stale-UI failures;
 - `vibeshape-type-guards` for runtime narrowing and schema-boundary decisions;
 - `vibeshape-documentation-sync` after durable implementation or architecture changes.
 

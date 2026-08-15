@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeShape Feature Boundaries"
+  short_description: "Place CAD capabilities behind stable boundaries"
+  default_prompt: "Use $vibeshape-feature-boundaries to decide where this VibeShape capability should live."
