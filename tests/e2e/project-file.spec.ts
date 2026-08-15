@@ -147,14 +147,14 @@ test.describe("native project file", () => {
     await expect(page.getByRole("heading", { name: "Variables", exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("24 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Box", exact: true })
       .click()
     const createBox = page.getByRole("form", { name: "Create box" })
-    await createBox.getByRole("textbox", { name: "Width" }).fill("#width")
+    await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
@@ -217,14 +217,14 @@ test.describe("native project file", () => {
       await expect(importedPage.getByRole("textbox", { name: "Variable name" })).toHaveValue(
         "width",
       )
-      await expect(importedPage.getByRole("textbox", { name: "Variable expression" })).toHaveValue(
+      await expect(importedPage.getByRole("combobox", { name: "Variable expression" })).toHaveValue(
         "24 mm",
       )
       await importedPage.getByRole("treeitem", { name: "Box 1" }).click()
       await expect(
         importedPage
           .getByRole("form", { name: "Edit box" })
-          .getByRole("textbox", { name: "Width" }),
+          .getByRole("combobox", { name: "Width" }),
       ).toHaveValue("#width")
       expect(runtimeErrors).toEqual([])
     } finally {
@@ -241,14 +241,14 @@ test.describe("native project file", () => {
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("24 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
     await page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Box", exact: true })
       .click()
     const createBox = page.getByRole("form", { name: "Create box" })
-    await createBox.getByRole("textbox", { name: "Width" }).fill("#width")
+    await createBox.getByRole("combobox", { name: "Width" }).fill("#width")
     await createBox.getByRole("button", { name: "Create box" }).click()
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
     await expect.poll(() => projectThumbnailCount(page)).toBe(1)
@@ -303,7 +303,7 @@ test.describe("native project file", () => {
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("width")
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(
-      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#width")
 
     await page.getByRole("button", { name: "Project…" }).click()

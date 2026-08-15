@@ -15,9 +15,7 @@ import {
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
-import { TextField } from "@vibeshape/ui/components/text-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import type { ComponentProps } from "react"
 import { useMemo, useState } from "react"
 import { createBrowserSketchConstraintId } from "../../document/document-controller"
 import {
@@ -26,6 +24,8 @@ import {
   normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { VariableExpressionField } from "../variables/variable-expression-field"
+import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 
 type DimensionKind =
   | "distance"
@@ -262,10 +262,6 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
   )
 }
 
-function SketchDimensionField(props: ComponentProps<typeof TextField>) {
-  return <TextField {...props} />
-}
-
 function angleDimensionDefinition(
   expression: string,
   entities: readonly SketchEntity[],
@@ -340,6 +336,7 @@ function SketchDimensionForm({
   const displayUnits = useDocumentDisplayUnits()
   const [message, setMessage] = useState<string | null>(null)
   const firstOption = options[0]
+  const suggestions = variableExpressionSuggestions(variables)
   const form = useAppForm({
     defaultValues: {
       kind: firstOption?.kind ?? ("distance" as DimensionKind),
@@ -389,16 +386,18 @@ function SketchDimensionForm({
       </form.Field>
       <form.Field name="expression">
         {(field) => (
-          <SketchDimensionField
+          <VariableExpressionField
             id="sketch-dimension-expression"
             name={field.name}
             label={copy.dimensionExpression}
             value={field.state.value}
             error={message ?? undefined}
+            suggestions={suggestions}
+            inputClassName="font-mono tabular-nums"
             onBlur={field.handleBlur}
-            onChange={(event) => {
+            onValueChange={(value) => {
               setMessage(null)
-              field.handleChange(event.currentTarget.value)
+              field.handleChange(value)
             }}
           />
         )}

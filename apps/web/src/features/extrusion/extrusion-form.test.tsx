@@ -10,7 +10,9 @@ import {
   sketchProfileSelectorSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { i18n } from "../../i18n"
 import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3601")
@@ -82,16 +84,18 @@ function renderForm(
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
   render(
-    <ExtrusionForm
-      baseRevision={4}
-      copy={formCopy}
-      mode={mode}
-      profileLabel="Sketch 1"
-      variables={variables}
-      onCancel={vi.fn()}
-      onSave={onSave}
-      onSaved={onSaved}
-    />,
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <ExtrusionForm
+        baseRevision={4}
+        copy={formCopy}
+        mode={mode}
+        profileLabel="Sketch 1"
+        variables={variables}
+        onCancel={vi.fn()}
+        onSave={onSave}
+        onSaved={onSaved}
+      />
+    </I18nProvider>,
   )
   return { formCopy, onSave, onSaved }
 }
@@ -107,7 +111,7 @@ describe("ExtrusionForm", () => {
       return { ok: true as const }
     })
     const { onSaved } = renderForm(onSave)
-    const distance = screen.getByRole("textbox", { name: copy.distance })
+    const distance = screen.getByRole("combobox", { name: copy.distance })
     await user.clear(distance)
     await user.type(distance, "#depth")
     const create = screen.getByRole("button", { name: copy.submit })
@@ -135,7 +139,7 @@ describe("ExtrusionForm", () => {
   it("preserves invalid raw input and focuses the distance error", async () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
-    const distance = screen.getByRole("textbox", { name: copy.distance })
+    const distance = screen.getByRole("combobox", { name: copy.distance })
     await user.clear(distance)
     await user.type(distance, "#missing")
     await user.click(screen.getByRole("button", { name: copy.submit }))
@@ -150,7 +154,7 @@ describe("ExtrusionForm", () => {
     const user = userEvent.setup()
     const mode = { kind: "edit", feature: existingFeature } as const
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
-    const distance = screen.getByRole("textbox", { name: copy.distance })
+    const distance = screen.getByRole("combobox", { name: copy.distance })
     expect((distance as HTMLInputElement).value).toBe("#depth")
     expect(
       (screen.getByRole("checkbox", { name: copy.symmetric }) as HTMLInputElement).checked,

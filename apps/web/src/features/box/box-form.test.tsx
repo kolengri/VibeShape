@@ -10,9 +10,17 @@ import {
   featureRecordSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
+import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
+import { i18n } from "../../i18n"
 import { BoxForm, type BoxFormMode } from "./box-form"
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601")
@@ -77,21 +85,24 @@ function renderForm(
       ? { ...copy, title: "Edit box", submit: "Update box", saveFailed: "Update failed." }
       : copy
   render(
-    <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
-      <BoxForm
-        baseRevision={2}
-        variables={variables}
-        copy={formCopy}
-        mode={mode}
-        onCancel={vi.fn()}
-        onSave={onSave}
-        onSaved={onSaved}
-      />
-    </DocumentDisplayUnitsProvider>,
+    <I18nProvider i18n={i18n} initialLocale="en">
+      <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+        <BoxForm
+          baseRevision={2}
+          variables={variables}
+          copy={formCopy}
+          mode={mode}
+          onCancel={vi.fn()}
+          onSave={onSave}
+          onSaved={onSaved}
+        />
+      </DocumentDisplayUnitsProvider>
+    </I18nProvider>,
   )
   return { copy: formCopy, onSave, onSaved }
 }
 
+vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("BoxForm", () => {
@@ -104,9 +115,12 @@ describe("BoxForm", () => {
     })
     const { onSaved } = renderForm(onSave)
 
-    const width = screen.getByRole("textbox", { name: copy.width })
+    const width = screen.getByRole("combobox", { name: copy.width })
     await user.clear(width)
-    await user.type(width, "#width")
+    await user.type(width, "#wi")
+    expect(screen.getByRole("option", { name: /#width/ })).toBeTruthy()
+    await user.keyboard("{Enter}")
+    expect((width as HTMLInputElement).value).toBe("#width")
     const create = screen.getByRole("button", { name: copy.submit })
     await user.dblClick(create)
 
@@ -133,7 +147,7 @@ describe("BoxForm", () => {
   it("preserves invalid raw input and focuses its adjacent error", async () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
-    const width = screen.getByRole("textbox", { name: copy.width })
+    const width = screen.getByRole("combobox", { name: copy.width })
 
     await user.clear(width)
     await user.type(width, "#missing")
@@ -154,7 +168,7 @@ describe("BoxForm", () => {
       length: "in",
       angle: "deg",
     })
-    const width = screen.getByRole("textbox", { name: copy.width }) as HTMLInputElement
+    const width = screen.getByRole("combobox", { name: copy.width }) as HTMLInputElement
     expect(width.value).toBe("0.787401574803 in")
     await user.clear(width)
     await user.type(width, "2")
@@ -178,20 +192,20 @@ describe("BoxForm", () => {
     const mode = { kind: "edit", feature: existingFeature } as const
     const { copy: editCopy, onSave, onSaved } = renderForm(undefined, undefined, mode)
 
-    expect((screen.getByRole("textbox", { name: copy.width }) as HTMLInputElement).value).toBe(
+    expect((screen.getByRole("combobox", { name: copy.width }) as HTMLInputElement).value).toBe(
       "#width",
     )
-    expect((screen.getByRole("textbox", { name: copy.depth }) as HTMLInputElement).value).toBe(
+    expect((screen.getByRole("combobox", { name: copy.depth }) as HTMLInputElement).value).toBe(
       "2 cm",
     )
-    expect((screen.getByRole("textbox", { name: copy.height }) as HTMLInputElement).value).toBe(
+    expect((screen.getByRole("combobox", { name: copy.height }) as HTMLInputElement).value).toBe(
       "20 mm",
     )
     expect(
       (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
     ).toBe(true)
 
-    const depth = screen.getByRole("textbox", { name: copy.depth })
+    const depth = screen.getByRole("combobox", { name: copy.depth })
     await user.clear(depth)
     await user.type(depth, "28 mm")
     await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))

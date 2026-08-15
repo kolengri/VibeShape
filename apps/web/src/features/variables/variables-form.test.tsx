@@ -9,6 +9,12 @@ import { DocumentDisplayUnitsProvider } from "../../document/document-display-un
 import { i18n } from "../../i18n"
 import { VariablesForm } from "./variables-form"
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 const variableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601")
 const secondVariableId = variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 const copy = {
@@ -74,6 +80,7 @@ function renderForm({
   return { onApply, onRename }
 }
 
+vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("VariablesForm", () => {
@@ -93,7 +100,7 @@ describe("VariablesForm", () => {
     const name = screen.getByRole("textbox", { name: copy.nameInput }) as HTMLInputElement
     expect(document.activeElement).toBe(name)
     await user.type(name, "width")
-    await user.type(screen.getByRole("textbox", { name: copy.expressionInput }), "20 mm")
+    await user.type(screen.getByRole("combobox", { name: copy.expressionInput }), "20 mm")
 
     expect(await screen.findByText("20 mm", { selector: "td" })).toBeTruthy()
     const apply = screen.getByRole("button", { name: copy.apply })
@@ -141,6 +148,27 @@ describe("VariablesForm", () => {
 
     expect(screen.getByText("1 in", { selector: "td" })).toBeTruthy()
     expect(screen.getByText("90 deg", { selector: "td" })).toBeTruthy()
+  })
+
+  it("suggests other variables while editing a variable expression", async () => {
+    const user = userEvent.setup()
+    renderForm({
+      variables: [
+        { schemaVersion: 0, id: variableId, name: "width", expression: "20 mm" },
+        { schemaVersion: 0, id: secondVariableId, name: "height", expression: "10 mm" },
+      ],
+    })
+
+    const expression = screen.getAllByRole("combobox", { name: copy.expressionInput })[1]
+    expect(expression).toBeDefined()
+    if (!expression) return
+    await user.clear(expression)
+    await user.type(expression, "#")
+
+    expect(screen.getByRole("option", { name: /#width/ })).toBeTruthy()
+    expect(screen.queryByRole("option", { name: /#height/ })).toBeNull()
+    await user.keyboard("{Enter}")
+    expect((expression as HTMLInputElement).value).toBe("#width")
   })
 
   it("renames a committed variable once while locking ordinary table edits", async () => {

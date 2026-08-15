@@ -289,6 +289,7 @@ Placeholder text is an example, never the only label or required instruction.
 - The document's internal length unit is millimeters, but fields display the chosen document or field unit.
 - The application bar exposes one project Units dialog for `um`, `mm`, `cm`, `m`, `in`, or `ft` length display and `deg` or `rad` angle display; the status bar and modeling view keep the active choice visible.
 - Preserve the user's raw text while editing. Parse and normalize on committed change, not on every keystroke.
+- When the collapsed caret follows `#` in an expression field, open a bounded autocomplete list filtered by the variable-name fragment at that caret. Arrow keys move the active option, `Enter` or `Tab` inserts the exact `#name` token, pointer selection preserves input focus, and `Escape` closes only the list. Inserting a suggestion replaces only the active token and never replaces authored text with its resolved value.
 - Accept signed decimals and explicit units in P0; expressions follow the P1 expression grammar. In a dimensionally known field, commit a bare finite numeric literal with the current project unit made explicit so a later preference change cannot alter the model.
 - A preference change converts displayed canonical results and defaults for new fields. It never rewrites an existing authored expression or changes physical geometry.
 - Show the normalized value after successful commit when it differs from the entered representation.
@@ -314,6 +315,7 @@ The table has these columns:
 - `Add variable` creates an uncontrolled editing row and focuses its name field; it does not change the committed document until Apply succeeds.
 - The uncontrolled table component owns raw incomplete input. Its TanStack Form integration supplies validation, dirty state, submission, and command construction without replacing the primitive's DOM contract.
 - A committed expression may reference any row with `#name`; row order is presentation only and never changes evaluation semantics.
+- Expression autocomplete uses the same current table draft so newly authored names are available immediately, but excludes the owning row by stable variable ID to prevent suggesting a direct self-reference.
 - Errors stay adjacent to the owning row and the panel exposes an error summary that moves focus to the first invalid control.
 - Apply validates the exact visible table and emits one ordinary `org.vibeshape.variable.replace-table` command inside a persisted draft against the displayed base revision. Stale revisions preserve the editing buffer and offer rebase or discard rather than silently overwriting newer work.
 - Removing a referenced variable is unavailable and names the dependent variable, feature parameter, or sketch dimension. The application never converts a broken reference into a numeric fallback.
@@ -334,6 +336,7 @@ The table has these columns:
 - Reset restores the command's initial value, not a hidden global default.
 - Parameter changes use a short debounce for preview but Apply always validates the exact visible values.
 - A parameter that accepts variables preserves the authored expression in the field; a resolved value may be shown alongside it but never silently replaces `#name` source text.
+- Variable autocomplete behavior is identical in feature parameters, sketch dimensions, and variable formulas; forms integrate the same state-agnostic expression input through their TanStack Form value callback.
 
 ## Model Tree
 

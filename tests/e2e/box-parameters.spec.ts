@@ -7,7 +7,7 @@ test.describe("Box parameters", () => {
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("button", { name: "Add variable" }).click()
     await page.getByRole("textbox", { name: "Variable name" }).fill("width")
-    await page.getByRole("textbox", { name: "Variable expression" }).fill("24 mm")
+    await page.getByRole("combobox", { name: "Variable expression" }).fill("24 mm")
     await page.getByRole("button", { name: "Apply variables" }).click()
 
     await page
@@ -19,7 +19,11 @@ test.describe("Box parameters", () => {
       .click()
     const boxForm = page.getByRole("form", { name: "Create box" })
     await expect(boxForm).toBeVisible()
-    await boxForm.getByRole("textbox", { name: "Width" }).fill("#width")
+    const width = boxForm.getByRole("combobox", { name: "Width" })
+    await width.fill("#wi")
+    await expect(page.getByRole("option", { name: /#width/ })).toBeVisible()
+    await width.press("Enter")
+    await expect(width).toHaveValue("#width")
     await boxForm.getByRole("button", { name: "Create box" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
@@ -55,8 +59,8 @@ test.describe("Box parameters", () => {
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit box" })
-    await expect(editForm.getByRole("textbox", { name: "Width" })).toHaveValue("#width")
-    await editForm.getByRole("textbox", { name: "Depth" }).fill("28 mm")
+    await expect(editForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
+    await editForm.getByRole("combobox", { name: "Depth" }).fill("28 mm")
     await editForm.getByRole("button", { name: "Update box" }).dblclick()
     await expect(editForm).not.toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -66,8 +70,8 @@ test.describe("Box parameters", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     const reopenedEditForm = page.getByRole("form", { name: "Edit box" })
-    await expect(reopenedEditForm.getByRole("textbox", { name: "Width" })).toHaveValue("#width")
-    await expect(reopenedEditForm.getByRole("textbox", { name: "Depth" })).toHaveValue("28 mm")
+    await expect(reopenedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
+    await expect(reopenedEditForm.getByRole("combobox", { name: "Depth" })).toHaveValue("28 mm")
 
     await reopenedEditForm.getByRole("button", { name: "Cancel" }).click()
     await page.getByRole("treeitem", { name: "Variables" }).click()
@@ -82,7 +86,7 @@ test.describe("Box parameters", () => {
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     const renamedEditForm = page.getByRole("form", { name: "Edit box" })
-    await expect(renamedEditForm.getByRole("textbox", { name: "Width" })).toHaveValue("#span")
+    await expect(renamedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#span")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
     await page.reload()
@@ -90,7 +94,7 @@ test.describe("Box parameters", () => {
     await expect(page.getByRole("textbox", { name: "Variable name" })).toHaveValue("span")
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(
-      page.getByRole("form", { name: "Edit box" }).getByRole("textbox", { name: "Width" }),
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#span")
 
     await page

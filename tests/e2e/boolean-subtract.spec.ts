@@ -17,8 +17,8 @@ test.describe("Boolean subtraction", () => {
     async function createCylinder(radius: string, label: string) {
       await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
       const form = page.getByRole("form", { name: "Create cylinder" })
-      await form.getByRole("textbox", { name: "Radius" }).fill(radius)
-      await form.getByRole("textbox", { name: "Height" }).fill("40 mm")
+      await form.getByRole("combobox", { name: "Radius" }).fill(radius)
+      await form.getByRole("combobox", { name: "Height" }).fill("40 mm")
       await form.getByRole("checkbox", { name: "Center on the origin" }).check()
       await form.getByRole("button", { name: "Create cylinder" }).click()
       await expect(page.getByRole("treeitem", { name: label })).toBeVisible()
