@@ -24,73 +24,100 @@ import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
-function WorkspaceContent({
-  controller,
-  onSelectionChange,
-  selection,
-  sketchConstruction,
-  sketchDraft,
-  sketchEditorTool,
-  sketchSelectedEntityIds,
-  sketchSelectedProfile,
-  selectedSketch,
-  onSketchDraftChange,
-  onSketchFailedConstraintsChange,
-  onSketchProfileSelect,
-  onSketchProfilesChange,
-  onSketchRedo,
-  onSketchSelectionChange,
-  onSketchUndo,
-  workspace,
-}: {
+type WorkspaceContentProps = Readonly<{
+  actions: Readonly<{
+    onSelectionChange: (selection: ViewerSelection | null) => void
+    onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+    onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
+    onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
+    onSketchProfileSelect: (profile: SketchProfileSelector) => void
+    onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
+    onSketchRedo: () => void
+    onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+    onSketchUndo: () => void
+  }>
   controller: DocumentControllerState
-  onSelectionChange: (selection: ViewerSelection | null) => void
-  selection: ViewerSelection | null
-  sketchConstruction: boolean
-  sketchDraft: SketchRecord | null
-  sketchEditorTool: SketchEditorTool
-  sketchSelectedEntityIds: readonly SketchEntityId[]
-  sketchSelectedProfile: SketchProfileSelector | null
-  selectedSketch: SketchRecord | null
-  onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
-  onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
-  onSketchProfileSelect: (profile: SketchProfileSelector) => void
-  onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
-  onSketchRedo: () => void
-  onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
-  onSketchUndo: () => void
+  model: Readonly<{ selection: ViewerSelection | null }>
+  sketch: Readonly<{
+    activeTool: ActiveSketchTool | null
+    construction: boolean
+    draft: SketchRecord | null
+    editorTool: SketchEditorTool
+    selectedEntityIds: readonly SketchEntityId[]
+    selectedProfile: SketchProfileSelector | null
+    selectedSketch: SketchRecord | null
+  }>
   workspace: EditorWorkspaceName
-}) {
-  if (workspace === "variables") return <VariablesPanel controller={controller} />
-  if (workspace === "sketch") {
-    return (
-      <SketchViewport
-        state={{
-          construction: sketchConstruction,
-          controller,
-          draft: sketchDraft,
-          editorTool: sketchEditorTool,
-          selectedEntityIds: sketchSelectedEntityIds,
-          selectedProfile: sketchSelectedProfile,
-          sketch: selectedSketch,
-        }}
-        actions={{
-          onDraftChange: onSketchDraftChange,
-          onFailedConstraintsChange: onSketchFailedConstraintsChange,
-          onProfileSelect: onSketchProfileSelect,
-          onProfilesChange: onSketchProfilesChange,
-          onRedo: onSketchRedo,
-          onSelectionChange: onSketchSelectionChange,
-          onUndo: onSketchUndo,
-        }}
-      />
-    )
-  }
+}>
+
+function SketchWorkspaceContent({
+  actions,
+  controller,
+  sketch,
+}: Pick<WorkspaceContentProps, "actions" | "controller" | "sketch">) {
+  return (
+    <SketchViewport
+      state={{
+        construction: sketch.construction,
+        controller,
+        draft: sketch.draft,
+        editorTool: sketch.editorTool,
+        selectedEntityIds: sketch.selectedEntityIds,
+        selectedProfile: sketch.selectedProfile,
+        sketch: sketch.selectedSketch,
+      }}
+      actions={{
+        onDraftChange: actions.onSketchDraftChange,
+        onFailedConstraintsChange: actions.onSketchFailedConstraintsChange,
+        onProfileSelect: actions.onSketchProfileSelect,
+        onProfilesChange: actions.onSketchProfilesChange,
+        onRedo: actions.onSketchRedo,
+        onSelectionChange: actions.onSketchSelectionChange,
+        onUndo: actions.onSketchUndo,
+      }}
+    />
+  )
+}
+
+function ModelingWorkspaceContent({
+  actions,
+  controller,
+  model,
+  sketch,
+}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch">) {
   return (
     <GeometryViewport
       controller={controller}
-      selection={selection}
-      onSelectionChange={onSelectionChange}
+      selection={model.selection}
+      onSelectionChange={actions.onSelectionChange}
+      {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
+        ? {
+            originPlaneSelection: {
+              selectedPlane: sketch.draft.plane,
+              onSelect: actions.onSketchPlaneSelect,
+            },
+          }
+        : {})}
+    />
+  )
+}
+
+function WorkspaceContent(props: WorkspaceContentProps) {
+  if (props.workspace === "variables") {
+    return <VariablesPanel controller={props.controller} />
+  }
+  return props.workspace === "sketch" ? (
+    <SketchWorkspaceContent
+      actions={props.actions}
+      controller={props.controller}
+      sketch={props.sketch}
+    />
+  ) : (
+    <ModelingWorkspaceContent
+      actions={props.actions}
+      controller={props.controller}
+      model={props.model}
+      sketch={props.sketch}
     />
   )
 }
@@ -106,6 +133,7 @@ export type EditorWorkspaceActions = Readonly<{
   editSketch: (sketchId: SketchId) => void
   select: (selection: ViewerSelection | null) => void
   selectSketch: (sketchId: SketchId) => void
+  selectSketchPlane: (plane: SketchRecord["plane"]) => void
   redoSketchDraft: () => void
   setSketchConstruction: (construction: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -164,23 +192,29 @@ export function EditorWorkspace({
         onWorkspaceChange={actions.switchWorkspace}
       />
       <WorkspaceContent
+        actions={{
+          onSelectionChange: actions.select,
+          onSketchDraftChange: actions.setSketchDraft,
+          onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
+          onSketchPlaneSelect: actions.selectSketchPlane,
+          onSketchProfileSelect: actions.setSketchSelectedProfile,
+          onSketchProfilesChange: actions.setSketchProfiles,
+          onSketchRedo: actions.redoSketchDraft,
+          onSketchSelectionChange: actions.setSketchSelectedEntityIds,
+          onSketchUndo: actions.undoSketchDraft,
+        }}
         controller={controller}
+        model={{ selection }}
         workspace={workspace}
-        selection={selection}
-        selectedSketch={selectedSketch}
-        sketchConstruction={sketchConstruction}
-        sketchDraft={sketchDraft}
-        sketchEditorTool={sketchEditorTool}
-        sketchSelectedEntityIds={sketchSelectedEntityIds}
-        sketchSelectedProfile={sketchSelectedProfile}
-        onSketchDraftChange={actions.setSketchDraft}
-        onSketchFailedConstraintsChange={actions.setSketchFailedConstraintIds}
-        onSketchProfileSelect={actions.setSketchSelectedProfile}
-        onSketchProfilesChange={actions.setSketchProfiles}
-        onSketchRedo={actions.redoSketchDraft}
-        onSketchSelectionChange={actions.setSketchSelectedEntityIds}
-        onSketchUndo={actions.undoSketchDraft}
-        onSelectionChange={actions.select}
+        sketch={{
+          activeTool: activeSketchTool,
+          construction: sketchConstruction,
+          draft: sketchDraft,
+          editorTool: sketchEditorTool,
+          selectedEntityIds: sketchSelectedEntityIds,
+          selectedProfile: sketchSelectedProfile,
+          selectedSketch,
+        }}
       />
       <TaskPanel
         activeSketchId={activeSketchId}
@@ -203,6 +237,7 @@ export function EditorWorkspace({
         onSketchDraftChange={actions.setSketchDraft}
         onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
         onSketchSaved={actions.sketchSaved}
+        onSketchPlaneSelect={actions.selectSketchPlane}
       />
     </div>
   )

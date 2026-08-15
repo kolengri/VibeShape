@@ -5,6 +5,7 @@ import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
   ViewerMesh,
+  ViewerOriginPlane,
   ViewerSelection,
 } from "@vibeshape/viewer/three-viewport"
 import {
@@ -31,6 +32,8 @@ type ViewportMount = {
   viewport: GeometryViewportPort | null
 }
 
+const ignoreOriginPlaneSelection = () => undefined
+
 async function loadGeometryViewport(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
   const { createGeometryViewport } = await import("@vibeshape/viewer/three-viewport")
   return createGeometryViewport(canvas, options)
@@ -55,6 +58,7 @@ function viewportMessage(
   controller: DocumentControllerState,
   rendererFailed: boolean,
   meshCount: number,
+  originPlaneSelectionActive: boolean,
   copy: {
     loading: string
     loadFailed: string
@@ -63,9 +67,21 @@ function viewportMessage(
     empty: string
   },
 ) {
-  if (rendererFailed && meshCount > 0) {
+  if (rendererFailed && (meshCount > 0 || originPlaneSelectionActive)) {
     return { kind: "error" as const, text: copy.unavailable }
   }
+  const documentMessage = documentViewportMessage(controller, copy)
+  if (documentMessage) return documentMessage
+  if (meshCount === 0 && !originPlaneSelectionActive) {
+    return { kind: "status" as const, text: copy.empty }
+  }
+  return null
+}
+
+function documentViewportMessage(
+  controller: DocumentControllerState,
+  copy: { loading: string; loadFailed: string; rebuildFailed: string },
+) {
   if (controller.status === "idle" || controller.status === "loading") {
     return { kind: "status" as const, text: copy.loading }
   }
@@ -73,21 +89,27 @@ function viewportMessage(
   if (controller.report && !controller.report.rebuild.ok) {
     return { kind: "error" as const, text: copy.rebuildFailed }
   }
-  if (meshCount === 0) return { kind: "status" as const, text: copy.empty }
   return null
 }
 
 async function initializeViewport(
   canvas: HTMLCanvasElement,
   createViewport: ViewportFactory,
+  onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
+  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
   mount: ViewportMount,
   viewportRef: RefObject<GeometryViewportPort | null>,
   latestMeshesRef: RefObject<readonly ViewerMesh[]>,
+  latestOriginPlaneRef: RefObject<ViewerOriginPlane | null>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
   try {
-    const viewport = await createViewport(canvas, { onSelectionChange })
+    const viewport = await createViewport(canvas, {
+      onOriginPlanePreselectionChange,
+      onOriginPlaneSelectionChange,
+      onSelectionChange,
+    })
     if (mount.cancelled) {
       viewport.dispose()
       return
@@ -95,6 +117,7 @@ async function initializeViewport(
     mount.viewport = viewport
     viewportRef.current = viewport
     viewport.setMeshes(latestMeshesRef.current)
+    viewport.setOriginPlaneSelection(latestOriginPlaneRef.current)
     setRendererFailed(false)
   } catch {
     if (!mount.cancelled) setRendererFailed(true)
@@ -104,26 +127,35 @@ async function initializeViewport(
 function useViewportRenderer(
   createViewport: ViewportFactory,
   meshes: readonly ViewerMesh[],
+  originPlaneSelection: ViewerOriginPlane | null,
+  originPlaneSelectionActive: boolean,
+  onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
+  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
   const latestMeshesRef = useRef(meshes)
+  const latestOriginPlaneRef = useRef(originPlaneSelection)
   const [rendererFailed, setRendererFailed] = useState(false)
   latestMeshesRef.current = meshes
-  const hasGeometry = meshes.length > 0
+  latestOriginPlaneRef.current = originPlaneSelection
+  const shouldInitialize = meshes.length > 0 || originPlaneSelectionActive
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!hasGeometry || !canvas) return
+    if (!shouldInitialize || !canvas) return
     const mount: ViewportMount = { cancelled: false, viewport: null }
     void initializeViewport(
       canvas,
       createViewport,
+      onOriginPlanePreselectionChange,
+      onOriginPlaneSelectionChange,
       onSelectionChange,
       mount,
       viewportRef,
       latestMeshesRef,
+      latestOriginPlaneRef,
       setRendererFailed,
     )
     return () => {
@@ -131,11 +163,21 @@ function useViewportRenderer(
       if (viewportRef.current === mount.viewport) viewportRef.current = null
       mount.viewport?.dispose()
     }
-  }, [createViewport, hasGeometry, onSelectionChange])
+  }, [
+    createViewport,
+    onOriginPlanePreselectionChange,
+    onOriginPlaneSelectionChange,
+    onSelectionChange,
+    shouldInitialize,
+  ])
 
   useEffect(() => {
     viewportRef.current?.setMeshes(meshes)
   }, [meshes])
+
+  useEffect(() => {
+    viewportRef.current?.setOriginPlaneSelection(originPlaneSelection)
+  }, [originPlaneSelection])
 
   return { canvasRef, rendererFailed, viewportRef }
 }
@@ -222,19 +264,31 @@ function ViewportControls({
 export function GeometryViewport({
   controller,
   createViewport = loadGeometryViewport,
+  originPlaneSelection,
   onSelectionChange,
   selection,
 }: {
   controller: DocumentControllerState
   createViewport?: ViewportFactory
+  originPlaneSelection?: Readonly<{
+    selectedPlane: ViewerOriginPlane
+    onSelect: (plane: ViewerOriginPlane) => void
+  }>
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
 }) {
   const t = useTranslations("app.shell.viewport")
   const meshes = useMemo(() => viewerMeshes(controller), [controller])
+  const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
+    null,
+  )
   const { canvasRef, rendererFailed, viewportRef } = useViewportRenderer(
     createViewport,
     meshes,
+    originPlaneSelection?.selectedPlane ?? null,
+    originPlaneSelection !== undefined,
+    setOriginPlanePreselection,
+    originPlaneSelection?.onSelect ?? ignoreOriginPlaneSelection,
     onSelectionChange,
   )
   useProjectThumbnail(controller, meshes)
@@ -245,29 +299,54 @@ export function GeometryViewport({
     }
   }, [meshes, onSelectionChange, selection])
 
-  const message = viewportMessage(controller, rendererFailed, meshes.length, {
-    loading: t("loading"),
-    loadFailed: t("loadFailed"),
-    rebuildFailed: t("rebuildFailed"),
-    unavailable: t("unavailable"),
-    empty: t("empty"),
-  })
+  const message = viewportMessage(
+    controller,
+    rendererFailed,
+    meshes.length,
+    originPlaneSelection !== undefined,
+    {
+      loading: t("loading"),
+      loadFailed: t("loadFailed"),
+      rebuildFailed: t("rebuildFailed"),
+      unavailable: t("unavailable"),
+      empty: t("empty"),
+    },
+  )
+  const planeLabels: Record<ViewerOriginPlane, string> = {
+    xy: t("planeXy"),
+    xz: t("planeXz"),
+    yz: t("planeYz"),
+  }
 
   return (
     <section
       aria-label={t("ariaLabel")}
       className="relative min-h-0 overflow-hidden bg-viewport-background"
       data-rendered-feature-count={meshes.length}
+      data-origin-plane-selection={originPlaneSelection?.selectedPlane}
+      data-origin-plane-preselection={originPlanePreselection ?? undefined}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
       <ViewportMessage message={message} title={t("title")} />
-      {meshes.length > 0 ? (
+      {meshes.length > 0 || originPlaneSelection ? (
         <ViewportControls
           clearLabel={t("clearSelection")}
           fitLabel={t("fit")}
           selection={selection}
           viewportRef={viewportRef}
         />
+      ) : null}
+      {originPlaneSelection ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm">
+          <p className="text-xs font-medium">{t("selectSketchPlane")}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">
+            {originPlanePreselection
+              ? t("preselectedSketchPlane", { plane: planeLabels[originPlanePreselection] })
+              : t("selectedSketchPlane", {
+                  plane: planeLabels[originPlaneSelection.selectedPlane],
+                })}
+          </p>
+        </div>
       ) : null}
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
         {t("orientation", { plane: "XY" })}

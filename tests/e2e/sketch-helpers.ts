@@ -12,6 +12,35 @@ export async function drawRectangle(page: Page) {
   return drawing
 }
 
+export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" = "xy") {
+  await page.getByRole("combobox", { name: "Support plane" }).selectOption(plane)
+  await page.getByRole("button", { name: "Start sketch" }).click()
+  await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+}
+
+export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  await expect(viewport).toHaveAttribute("data-origin-plane-selection", /xy|xz|yz/)
+  const canvas = viewport.locator("canvas")
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+
+  for (let row = 1; row < 12; row += 1) {
+    for (let column = 1; column < 12; column += 1) {
+      const x = bounds.x + (bounds.width * column) / 12
+      const y = bounds.y + (bounds.height * row) / 12
+      await page.mouse.move(x, y)
+      await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+      if ((await viewport.getAttribute("data-origin-plane-preselection")) === plane) {
+        await page.mouse.click(x, y)
+        await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+        return
+      }
+    }
+  }
+  throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable in the 3D viewport.`)
+}
+
 export async function selectSketchEntities(
   page: Page,
   drawing: Locator,

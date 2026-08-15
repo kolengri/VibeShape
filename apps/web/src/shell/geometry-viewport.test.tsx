@@ -2,7 +2,11 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
-import type { GeometryViewport as GeometryViewportPort, ViewerSelection } from "@vibeshape/viewer"
+import type {
+  GeometryViewportOptions,
+  GeometryViewport as GeometryViewportPort,
+  ViewerSelection,
+} from "@vibeshape/viewer"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
@@ -35,15 +39,22 @@ function readyController(
 function renderViewport(
   controller: DocumentControllerState,
   selection: ViewerSelection | null = null,
+  originPlaneSelection?: Readonly<{
+    selectedPlane: "xy" | "xz" | "yz"
+    onSelect: (plane: "xy" | "xz" | "yz") => void
+  }>,
 ) {
   const port: GeometryViewportPort = {
     setMeshes: vi.fn(),
+    setOriginPlaneSelection: vi.fn(),
     fit: vi.fn(),
     clearSelection: vi.fn(),
     dispose: vi.fn(),
   }
   const onSelectionChange = vi.fn()
-  const createViewport = vi.fn(() => port)
+  const createViewport = vi.fn(
+    (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
+  )
   const result = render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <GeometryViewport
@@ -51,6 +62,7 @@ function renderViewport(
         createViewport={createViewport}
         selection={selection}
         onSelectionChange={onSelectionChange}
+        {...(originPlaneSelection ? { originPlaneSelection } : {})}
       />
     </I18nProvider>,
   )
@@ -72,10 +84,12 @@ describe("GeometryViewport", () => {
     )
 
     await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
-    expect(createViewport).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), {
-      onSelectionChange,
-    })
+    expect(createViewport).toHaveBeenCalledWith(
+      expect.any(HTMLCanvasElement),
+      expect.objectContaining({ onSelectionChange }),
+    )
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null)
     expect(
       screen
         .getByRole("region", { name: "3D viewport" })
@@ -109,6 +123,30 @@ describe("GeometryViewport", () => {
     expect(screen.getByText("Create a feature to display its rebuilt geometry.").textContent).toBe(
       "Create a feature to display its rebuilt geometry.",
     )
+  })
+
+  it("initializes an empty 3D viewport for origin-plane preselection and selection", async () => {
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderViewport(readyController([], []), null, {
+      selectedPlane: "xz",
+      onSelect,
+    })
+
+    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    expect(port.setMeshes).toHaveBeenCalledWith([])
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz")
+    expect(screen.queryByText("Create a feature to display its rebuilt geometry.")).toBeNull()
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-origin-plane-selection")).toBe("xz")
+
+    const options = createViewport.mock.calls[0]?.[1]
+    options?.onOriginPlanePreselectionChange?.("yz")
+    await waitFor(() => expect(viewport.getAttribute("data-origin-plane-preselection")).toBe("yz"))
+    expect(screen.getByText("Click to sketch on YZ plane").textContent).toBe(
+      "Click to sketch on YZ plane",
+    )
+    options?.onOriginPlaneSelectionChange?.("xy")
+    expect(onSelect).toHaveBeenCalledWith("xy")
   })
 
   it("contains renderer initialization failures as a localized viewport state", async () => {
