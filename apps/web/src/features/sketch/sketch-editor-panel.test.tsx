@@ -50,6 +50,7 @@ const copy = {
   horizontal: "Horizontal",
   horizontalDistance: "Horizontal distance",
   line: "Line",
+  midpoint: "Midpoint",
   noConstraints: "No constraints",
   parallel: "Parallel",
   perpendicular: "Perpendicular",
@@ -69,6 +70,7 @@ const copy = {
   saveDimension: "Save dimension",
   selectionHint: "Select geometry to see compatible constraints.",
   select: "Select",
+  symmetric: "Symmetric",
   tangent: "Tangent",
   undo: "Undo",
   vertical: "Vertical",
@@ -106,6 +108,9 @@ function renderPanel(
     angle: "deg",
   },
   variables: React.ComponentProps<typeof SketchEditorPanel>["state"]["variables"] = [],
+  selectedConstraintId: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["state"]["selectedConstraintId"] = null,
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -119,6 +124,7 @@ function renderPanel(
               failedConstraintIds,
               message: null,
               profiles: [],
+              selectedConstraintId,
               selectedEntityIds,
               selectedProfile: null,
               variables,
@@ -127,6 +133,7 @@ function renderPanel(
               onCancel: vi.fn(),
               onDraftChange,
               onFinish: vi.fn(async () => undefined),
+              onSelectedConstraintChange: vi.fn(),
               onSelectedProfileChange: vi.fn(),
             }}
           />
@@ -154,6 +161,41 @@ describe("SketchEditorPanel", () => {
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
         constraints: [expect.objectContaining({ type: "horizontal", lineId: line.id })],
+      }),
+    )
+  })
+
+  it("offers midpoint and symmetric design-intent constraints for compatible selections", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    const points = sketch.entities.filter((entity) => entity.type === "point")
+    expect(line && points[0] && points[1]).toBeTruthy()
+    if (!line || !points[0] || !points[1]) return
+
+    const midpointChange = renderPanel(sketch, [points[0].id, line.id])
+    await user.click(screen.getByRole("button", { name: "Midpoint" }))
+    expect(midpointChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({ type: "midpoint", pointId: points[0].id, lineId: line.id }),
+        ],
+      }),
+    )
+    cleanup()
+
+    const symmetricChange = renderPanel(sketch, [points[0].id, points[1].id, line.id])
+    await user.click(screen.getByRole("button", { name: "Symmetric" }))
+    expect(symmetricChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            type: "symmetric",
+            firstPointId: points[0].id,
+            secondPointId: points[1].id,
+            lineId: line.id,
+          }),
+        ],
       }),
     )
   })
@@ -228,9 +270,8 @@ describe("SketchEditorPanel", () => {
       },
       () => constraintId,
     )
-    const onDraftChange = renderPanel(constrained, [])
+    const onDraftChange = renderPanel(constrained, [], vi.fn(), [], undefined, [], constraintId)
 
-    await user.click(screen.getByRole("button", { name: "Edit dimension" }))
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     expect((expression as HTMLInputElement).value).toBe("20 mm")
     await user.clear(expression)

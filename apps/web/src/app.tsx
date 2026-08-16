@@ -89,6 +89,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchEditorTool: sessionActions.setSketchEditorTool,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
         setSketchProfiles: sessionActions.setSketchProfiles,
+        setSketchSelectedConstraintId: sessionActions.setSketchSelectedConstraintId,
         setSketchSelectedEntityIds: sessionActions.setSketchSelectedEntityIds,
         setSketchSelectedProfile: sessionActions.setSketchSelectedProfile,
         sketchSaved: sessionActions.saveSketch,
@@ -189,6 +190,7 @@ function EditorApplication({
         sketchEditorTool={session.sketch.editorTool}
         sketchFailedConstraintIds={session.sketch.failedConstraintIds}
         sketchProfiles={session.sketch.profiles}
+        sketchSelectedConstraintId={session.sketch.selectedConstraintId}
         sketchSelectedEntityIds={session.sketch.selectedEntityIds}
         sketchSelectedProfile={session.sketch.selectedProfile}
       />

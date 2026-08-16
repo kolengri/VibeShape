@@ -30,6 +30,8 @@ test.describe("foundation CAD shell", () => {
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-origin-plane-selection", "xy")
+    await expect(viewport.getByRole("img", { name: "World axes" })).toBeVisible()
+    await expect(viewport.getByText("XYZ · mm", { exact: true })).toBeVisible()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The 3D viewport canvas is not visible.")

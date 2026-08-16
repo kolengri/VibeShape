@@ -28,6 +28,7 @@ export type SketchEditorSessionState = Readonly<{
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
   redoStack: readonly SketchRecord[]
+  selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   undoStack: readonly SketchRecord[]
@@ -56,6 +57,7 @@ export type EditorSessionActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
   setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
   startPartDesignTool: (tool: ActivePartDesignTool) => void
@@ -77,6 +79,7 @@ function createSketchState(): SketchEditorSessionState {
     failedConstraintIds: [],
     profiles: [],
     redoStack: [],
+    selectedConstraintId: null,
     selectedEntityIds: [],
     selectedProfile: null,
     undoStack: [],
@@ -109,6 +112,7 @@ function resetSketchPresentation(
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
+  sketch.selectedConstraintId = null
   sketch.selectedEntityIds = []
   sketch.selectedProfile = null
 }
@@ -173,6 +177,7 @@ export function createEditorSessionStore() {
             if (!current || !nextDraft) return
             pushBoundedHistory(state.sketch.undoStack, current)
             state.sketch.draft = nextDraft
+            state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
           })
         },
@@ -183,6 +188,7 @@ export function createEditorSessionStore() {
             resetSketchDraft(state.sketch, null)
             state.sketch.editorTool = "select"
             state.sketch.failedConstraintIds = []
+            state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
           }),
         selectSketch: (sketchId) =>
@@ -247,9 +253,15 @@ export function createEditorSessionStore() {
               : undefined
             state.sketch.selectedProfile = matchingProfile ?? profiles[0] ?? null
           }),
+        setSketchSelectedConstraintId: (constraintId) =>
+          set((state) => {
+            state.sketch.selectedConstraintId = constraintId
+            if (constraintId) state.sketch.selectedEntityIds = []
+          }),
         setSketchSelectedEntityIds: (entityIds) =>
           set((state) => {
             state.sketch.selectedEntityIds = [...entityIds]
+            state.sketch.selectedConstraintId = null
           }),
         setSketchSelectedProfile: (profile) =>
           set((state) => {
@@ -280,6 +292,7 @@ export function createEditorSessionStore() {
             if (!current || !previousDraft) return
             pushBoundedHistory(state.sketch.redoStack, current)
             state.sketch.draft = previousDraft
+            state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
           })
         },

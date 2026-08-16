@@ -19,11 +19,18 @@ test.describe("full sketch editor", () => {
     const drawing = await drawRectangle(page)
 
     await selectSketchEntities(page, drawing, "line", [0])
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await expect(precisionTools).toBeVisible()
+    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await expect(page.getByRole("combobox", { name: "Driving expression" })).toBeFocused()
     await addDimension(page, "Distance", "30 mm")
     const distanceConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 30 mm" })
     await expect(distanceConstraint).toBeVisible()
 
-    await distanceConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await page
+      .getByRole("region", { name: "2D sketch workspace" })
+      .getByRole("button", { name: "Edit dimension 30 mm" })
+      .click()
     await distanceConstraint.getByRole("combobox", { name: "Driving expression" }).fill("35 mm")
     await distanceConstraint.getByRole("button", { name: "Save dimension" }).click()
 
@@ -159,7 +166,10 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
 
     await selectSketchEntities(page, drawing, "point", [0])
-    await page.getByRole("button", { name: "Fix point" }).click()
+    await page
+      .getByRole("toolbar", { name: "Sketch precision tools" })
+      .getByRole("button", { name: "Fix point" })
+      .click()
     await selectSketchEntities(page, drawing, "point", [0, 1])
     await addDimension(page, "Horizontal distance", "#width")
     await selectSketchEntities(page, drawing, "point", [1, 2])

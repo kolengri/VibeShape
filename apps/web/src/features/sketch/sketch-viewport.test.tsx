@@ -11,6 +11,7 @@ import {
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type {
   ActiveSketchSolveResult,
@@ -124,12 +125,45 @@ type SketchViewportTestProps = Readonly<{
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
+  onConstraintSelectionChange?: React.ComponentProps<
+    typeof SketchViewport
+  >["actions"]["onConstraintSelectionChange"]
   onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+  selectedConstraintId?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["selectedConstraintId"]
+  selectedEntityIds?: React.ComponentProps<typeof SketchViewport>["state"]["selectedEntityIds"]
   sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
   solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
   displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
 }>
+
+function viewportState(props: SketchViewportTestProps) {
+  return {
+    construction: false,
+    controller,
+    draft: props.draft ?? null,
+    editorTool: props.editorTool ?? "select",
+    selectedConstraintId: props.selectedConstraintId ?? null,
+    selectedEntityIds: props.selectedEntityIds ?? [],
+    selectedProfile: null,
+    sketch: props.sketch,
+  } satisfies React.ComponentProps<typeof SketchViewport>["state"]
+}
+
+function viewportActions(props: SketchViewportTestProps) {
+  return {
+    onDraftChange: props.onDraftChange ?? noOperation,
+    onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
+    onFailedConstraintsChange: noOperation,
+    onProfileSelect: props.onProfileSelect ?? noOperation,
+    onProfilesChange: props.onProfilesChange ?? noOperation,
+    onRedo: noOperation,
+    onSelectionChange: noOperation,
+    onUndo: noOperation,
+  } satisfies React.ComponentProps<typeof SketchViewport>["actions"]
+}
 
 function viewportElement(props: SketchViewportTestProps) {
   return (
@@ -137,27 +171,13 @@ function viewportElement(props: SketchViewportTestProps) {
       <DocumentDisplayUnitsProvider
         displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
       >
-        <SketchViewport
-          solveSketch={props.solveSketch}
-          state={{
-            construction: false,
-            controller,
-            draft: props.draft ?? null,
-            editorTool: props.editorTool ?? "select",
-            selectedEntityIds: [],
-            selectedProfile: null,
-            sketch: props.sketch,
-          }}
-          actions={{
-            onDraftChange: props.onDraftChange ?? noOperation,
-            onFailedConstraintsChange: noOperation,
-            onProfileSelect: props.onProfileSelect ?? noOperation,
-            onProfilesChange: props.onProfilesChange ?? noOperation,
-            onRedo: noOperation,
-            onSelectionChange: noOperation,
-            onUndo: noOperation,
-          }}
-        />
+        <TooltipProvider delayDuration={0}>
+          <SketchViewport
+            solveSketch={props.solveSketch}
+            state={viewportState(props)}
+            actions={viewportActions(props)}
+          />
+        </TooltipProvider>
       </DocumentDisplayUnitsProvider>
     </I18nProvider>
   )
@@ -369,15 +389,48 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="horizontal"]')).toBeTruthy()
   })
 
-  it("renders geometric constraint glyphs and driving dimension labels", () => {
+  it("renders selectable geometric constraint glyphs and driving dimension labels", () => {
+    const onConstraintSelectionChange = vi.fn()
     renderViewport({
       draft: sketch,
       sketch,
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onConstraintSelectionChange,
     })
 
     expect(document.querySelector('[data-sketch-constraint-kind="geometric"]')).toBeTruthy()
-    expect(document.querySelector('[data-sketch-constraint-kind="dimension"]')).toBeTruthy()
+    const dimension = document.querySelector('[data-sketch-constraint-kind="dimension"]')
+    expect(dimension).toBeTruthy()
+    fireEvent.click(dimension as Element)
+    expect(onConstraintSelectionChange).toHaveBeenCalledWith(
+      sketch.constraints.find((constraint) => "value" in constraint)?.id,
+    )
+  })
+
+  it("offers icon-only precision tools for the current sketch selection", () => {
+    const selectedLine = sketch.entities.find((entity) => entity.type === "line")
+    if (!selectedLine) throw new Error("The rectangle fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+
+    expect(screen.getByRole("toolbar", { name: "Sketch precision tools" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Horizontal" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Vertical" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Add drawing dimension" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Vertical" }))
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.arrayContaining([
+          expect.objectContaining({ type: "vertical", lineId: selectedLine.id }),
+        ]),
+      }),
+    )
   })
 
   it("forwards the previous exact solution and active point drag to the solver", async () => {

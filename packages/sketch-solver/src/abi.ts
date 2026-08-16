@@ -28,6 +28,8 @@ export const SOLVESPACE_CONSTRAINT_TYPE = {
   pointLineDistance: 100_003,
   pointOnLine: 100_006,
   equalLengthLines: 100_008,
+  symmetricLine: 100_017,
+  atMidpoint: 100_018,
   horizontal: 100_019,
   vertical: 100_020,
   diameter: 100_021,

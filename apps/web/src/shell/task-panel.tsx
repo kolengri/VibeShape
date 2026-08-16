@@ -67,11 +67,13 @@ type TaskPanelProps = Readonly<{
   onExtrusionPreviewChange: (feature: FeatureRecord | null) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
+  onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
   sketchDraft: SketchRecord | null
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
   workspace: EditorWorkspaceName
@@ -115,6 +117,7 @@ function useSketchEditorCopy() {
     fixed: t("fixed"),
     horizontal: t("horizontal"),
     horizontalDistance: t("horizontalDistance"),
+    midpoint: t("midpoint"),
     noConstraints: t("noConstraints"),
     parallel: t("parallel"),
     perpendicular: t("perpendicular"),
@@ -130,6 +133,7 @@ function useSketchEditorCopy() {
     remove: t("removeConstraint"),
     saveDimension: t("saveDimension"),
     selectionHint: t("constraintSelectionHint"),
+    symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
     vertical: t("vertical"),
     verticalDistance: t("verticalDistance"),
@@ -910,6 +914,7 @@ type ActiveSketchTaskPanelState = Readonly<{
   draft: SketchRecord
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
+  selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
 }>
@@ -917,6 +922,7 @@ type ActiveSketchTaskPanelState = Readonly<{
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (sketch: SketchRecord) => void
 }>
@@ -944,10 +950,17 @@ function ActiveSketchTaskPanel({
     draft,
     failedConstraintIds,
     profiles,
+    selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
   } = state
-  const { onCloseTool, onDraftChange, onSelectedProfileChange, onSketchSaved } = actions
+  const {
+    onCloseTool,
+    onDraftChange,
+    onSelectedConstraintChange,
+    onSelectedProfileChange,
+    onSketchSaved,
+  } = actions
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
@@ -988,6 +1001,7 @@ function ActiveSketchTaskPanel({
             failedConstraintIds,
             message,
             profiles,
+            selectedConstraintId,
             selectedEntityIds,
             selectedProfile,
             variables: report.snapshot.variables,
@@ -996,6 +1010,7 @@ function ActiveSketchTaskPanel({
             onCancel: onCloseTool,
             onDraftChange,
             onFinish: finish,
+            onSelectedConstraintChange,
             onSelectedProfileChange,
           }}
         />
@@ -1206,12 +1221,14 @@ function SketchTaskPanel(props: TaskPanelProps) {
           draft: props.sketchDraft,
           failedConstraintIds: props.sketchFailedConstraintIds,
           profiles: props.sketchProfiles,
+          selectedConstraintId: props.sketchSelectedConstraintId,
           selectedEntityIds: props.sketchSelectedEntityIds,
           selectedProfile: props.sketchSelectedProfile,
         }}
         actions={{
           onCloseTool: props.onCloseTool,
           onDraftChange: props.onSketchDraftChange,
+          onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,
           onSketchSaved: props.onSketchSaved,
         }}

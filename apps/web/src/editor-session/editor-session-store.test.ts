@@ -1,6 +1,7 @@
 import {
   createEmptySketch,
   type SketchProfileSelector,
+  sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
 } from "@vibeshape/domain"
@@ -9,6 +10,7 @@ import { createEditorSessionStore } from "./editor-session-store"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 const boundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3201")
+const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-67a36a7f3201")
 
 function createSketch(label = "Sketch 1") {
   return createEmptySketch({ id: sketchId, label, plane: "xy" })
@@ -93,6 +95,24 @@ describe("editor session store", () => {
 
     expect(store.getState().sketch.draft?.label).toBe("Draft 105")
     expect(store.getState().sketch.selectedEntityIds).toEqual([])
+  })
+
+  it("keeps entity and constraint selection mutually exclusive", () => {
+    const store = createEditorSessionStore()
+    store.getState().actions.beginSketchEdit(createSketch())
+
+    store.getState().actions.setSketchSelectedEntityIds([boundaryEntityId])
+    store.getState().actions.setSketchSelectedConstraintId(constraintId)
+    expect(store.getState().sketch).toMatchObject({
+      selectedConstraintId: constraintId,
+      selectedEntityIds: [],
+    })
+
+    store.getState().actions.setSketchSelectedEntityIds([boundaryEntityId])
+    expect(store.getState().sketch).toMatchObject({
+      selectedConstraintId: null,
+      selectedEntityIds: [boundaryEntityId],
+    })
   })
 
   it("keeps the solved profile selected after a sketch is saved", () => {

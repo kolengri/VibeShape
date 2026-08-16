@@ -437,6 +437,23 @@ function ViewportControlsSlot({
   )
 }
 
+function WorldAxesLegend() {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <div
+      aria-label={t("worldAxes")}
+      className="pointer-events-none absolute bottom-2 left-2 size-20 rounded-md border border-border/70 bg-background/10 shadow-inner"
+      role="img"
+    >
+      <div className="absolute bottom-1 right-1 flex gap-1 rounded-sm bg-background/75 px-1 font-mono text-[10px] font-semibold">
+        <span className="text-axis-x">X</span>
+        <span className="text-axis-y">Y</span>
+        <span className="text-axis-z">Z</span>
+      </div>
+    </div>
+  )
+}
+
 export function GeometryViewport(props: GeometryViewportProps) {
   const { extrusionPreview, originPlaneSelection, selection } = props
   const displayUnits = useDocumentDisplayUnits()
@@ -468,8 +485,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
         preselectedPlane={originPlanePreselection}
         selection={originPlaneSelection}
       />
-      <div className="pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
-        {t("orientation", { plane: "XY", unit: displayUnits.length })}
+      <WorldAxesLegend />
+      <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
+        {t("orientation", { plane: "XYZ", unit: displayUnits.length })}
       </div>
     </section>
   )

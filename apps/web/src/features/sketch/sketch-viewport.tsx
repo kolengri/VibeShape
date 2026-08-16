@@ -11,6 +11,7 @@ import {
   moveSketchPoint,
   removeSketchEntities,
   type SketchAxisInference,
+  type SketchConstraintDefinition,
   type SketchConstraintId,
   type SketchEntity,
   type SketchEntityId,
@@ -19,15 +20,20 @@ import {
   type SketchPointTarget,
   type SketchProfileSelector,
   type SketchRecord,
-  threePointArcGeometry,
   sketchConstraintIdSchema,
   sketchProfileSelectorSchema,
+  threePointArcGeometry,
 } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
+import { Button } from "@vibeshape/ui/components/button"
+import { Ruler } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import {
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type RefObject,
   useEffect,
   useMemo,
   useRef,
@@ -47,6 +53,12 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import {
+  compatibleSketchConstraintTools,
+  compatibleSketchDimensionTools,
+  type SketchConstraintToolKind,
+  selectedSketchEntities,
+} from "./sketch-constraint-tools"
 import type { SketchDraftChangeMode, SketchEditorTool } from "./sketch-tool"
 
 type SketchSolveFunction = (
@@ -720,11 +732,13 @@ const geometricConstraintLabels: Partial<
   equal: "=",
   fixed: "F",
   horizontal: "H",
+  midpoint: "M",
   parallel: "∥",
   perpendicular: "⊥",
   "point-on-curve": "⊙",
   "point-on-line": "⊙",
   tangent: "T",
+  symmetric: "S",
   vertical: "V",
 }
 
@@ -773,38 +787,89 @@ function constraintGlyphs(sketch: SketchRecord, solution: SolvedSketchWire | nul
     .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
 }
 
-function ConstraintGlyphs({
+type SketchViewportSize = Readonly<{ height: number; width: number }>
+
+function constraintAnnotationPosition(
+  point: SketchPoint2,
+  bounds: SketchBounds,
+  viewport: SketchViewportSize,
+): CSSProperties {
+  const horizontal = (point.x - bounds.minX) / bounds.width
+  const vertical = (bounds.minY + bounds.height - point.y) / bounds.height
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return { left: `${horizontal * 100}%`, top: `${vertical * 100}%` }
+  }
+  const scale = Math.min(viewport.width / bounds.width, viewport.height / bounds.height)
+  const offsetX = (viewport.width - bounds.width * scale) / 2
+  const offsetY = (viewport.height - bounds.height * scale) / 2
+  return {
+    left: offsetX + horizontal * bounds.width * scale,
+    top: offsetY + vertical * bounds.height * scale,
+  }
+}
+
+function useSketchViewportSize(svgRef: RefObject<SVGSVGElement | null>) {
+  const [size, setSize] = useState<SketchViewportSize>({ height: 0, width: 0 })
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const update = (width: number, height: number) => setSize({ width, height })
+    const rectangle = svg.getBoundingClientRect()
+    update(rectangle.width, rectangle.height)
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width, entry.contentRect.height)
+    })
+    observer.observe(svg)
+    return () => observer.disconnect()
+  }, [svgRef])
+  return size
+}
+
+function ConstraintAnnotations({
   bounds,
+  constraintLabel,
+  onSelect,
+  selectedConstraintId,
   sketch,
   solution,
+  viewport,
 }: {
   bounds: SketchBounds
+  constraintLabel: (dimensional: boolean, label: string) => string
+  onSelect: (constraintId: SketchConstraintId) => void
+  selectedConstraintId: SketchConstraintId | null
   sketch: SketchRecord
   solution: SolvedSketchWire | null
+  viewport: SketchViewportSize
 }) {
-  const fontSize = Math.max(bounds.width / 105, bounds.height / 78)
   return (
-    <g className="pointer-events-none">
+    <div className="pointer-events-none absolute inset-0">
       {constraintGlyphs(sketch, solution).map((glyph) => (
-        <text
+        <Button
           key={glyph.id}
-          x={glyph.point.x + fontSize * 0.45}
-          y={-glyph.point.y - fontSize * 0.45}
+          type="button"
+          size="xs"
+          variant={selectedConstraintId === glyph.id ? "secondary" : "ghost"}
           data-sketch-constraint-id={glyph.id}
           data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
+          aria-label={constraintLabel(glyph.dimensional, glyph.label)}
+          aria-pressed={selectedConstraintId === glyph.id}
           className={
             glyph.dimensional
-              ? "fill-foreground stroke-background font-mono"
-              : "fill-primary stroke-background font-mono font-semibold"
+              ? "pointer-events-auto absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] text-foreground shadow-xs"
+              : "pointer-events-auto absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs"
           }
-          fontSize={fontSize}
-          paintOrder="stroke"
-          strokeWidth={3}
+          style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelect(glyph.id)
+          }}
         >
           {glyph.label}
-        </text>
+        </Button>
       ))}
-    </g>
+    </div>
   )
 }
 
@@ -1244,11 +1309,13 @@ function SketchDrawing({
     editorTool,
     onDragTargetChange,
     onDraftChange,
+    onConstraintSelectionChange,
     onProfileSelect,
     onRedo,
     onSelectionChange,
     onUndo,
     selectedEntityIds,
+    selectedConstraintId,
     selectedProfile,
     solution,
   } = configuration
@@ -1260,6 +1327,7 @@ function SketchDrawing({
   const [pending, setPending] = useState<PendingGeometry | null>(null)
   const dragRecordedRef = useRef(false)
   const svgRef = useRef<SVGSVGElement>(null)
+  const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
 
   useEffect(() => {
@@ -1388,60 +1456,74 @@ function SketchDrawing({
     onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
   }
   return (
-    <svg
-      ref={svgRef}
-      aria-label={ariaLabel}
-      className="size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      role="img"
-      tabIndex={editable ? 0 : undefined}
-      viewBox={`${bounds.minX} ${-bounds.minY - bounds.height} ${bounds.width} ${bounds.height}`}
-      onKeyDown={handleKeyDown}
-      onPointerDown={handleCanvasPointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerLeave}
-      onWheel={handleWheel}
-    >
-      <title>{ariaLabel}</title>
-      <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
-        <line
-          x1={bounds.minX}
-          y1={0}
-          x2={bounds.minX + bounds.width}
-          y2={0}
-          vectorEffect="non-scaling-stroke"
+    <div className="relative size-full">
+      <svg
+        ref={svgRef}
+        aria-label={ariaLabel}
+        className="size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        role="img"
+        tabIndex={editable ? 0 : undefined}
+        viewBox={`${bounds.minX} ${-bounds.minY - bounds.height} ${bounds.width} ${bounds.height}`}
+        onKeyDown={handleKeyDown}
+        onPointerDown={handleCanvasPointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onWheel={handleWheel}
+      >
+        <title>{ariaLabel}</title>
+        <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
+          <line
+            x1={bounds.minX}
+            y1={0}
+            x2={bounds.minX + bounds.width}
+            y2={0}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={0}
+            y1={bounds.minY}
+            x2={0}
+            y2={bounds.minY + bounds.height}
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+        <ProfileRegions
+          editable={editable}
+          editorTool={editorTool}
+          profiles={solution ? profileSelectors(solution) : []}
+          selectedProfile={selectedProfile}
+          sketch={sketch}
+          solution={solution}
+          onSelect={onProfileSelect}
         />
-        <line
-          x1={0}
-          y1={bounds.minY}
-          x2={0}
-          y2={bounds.minY + bounds.height}
-          vectorEffect="non-scaling-stroke"
+        <SketchGeometry
+          editable={editable}
+          selectedEntityIds={selectedEntityIds}
+          sketch={sketch}
+          solution={solution}
+          tool={editorTool}
+          onPointPointerDown={handlePointPointerDown}
+          onSelect={handleSelection}
+          onTarget={appendAt}
         />
-      </g>
-      <ProfileRegions
-        editable={editable}
-        editorTool={editorTool}
-        profiles={solution ? profileSelectors(solution) : []}
-        selectedProfile={selectedProfile}
+        <PendingPreview cursor={cursor} pending={pending} sketch={sketch} />
+        <InferenceGlyph bounds={bounds} inference={inference} />
+      </svg>
+      <ConstraintAnnotations
+        bounds={bounds}
+        constraintLabel={(dimensional, label) =>
+          dimensional
+            ? configuration.editDimensionLabel(label)
+            : configuration.selectConstraintLabel(label)
+        }
+        selectedConstraintId={selectedConstraintId}
         sketch={sketch}
         solution={solution}
-        onSelect={onProfileSelect}
+        viewport={viewportSize}
+        onSelect={onConstraintSelectionChange}
       />
-      <SketchGeometry
-        editable={editable}
-        selectedEntityIds={selectedEntityIds}
-        sketch={sketch}
-        solution={solution}
-        tool={editorTool}
-        onPointPointerDown={handlePointPointerDown}
-        onSelect={handleSelection}
-        onTarget={appendAt}
-      />
-      <ConstraintGlyphs bounds={bounds} sketch={sketch} solution={solution} />
-      <PendingPreview cursor={cursor} pending={pending} sketch={sketch} />
-      <InferenceGlyph bounds={bounds} inference={inference} />
-    </svg>
+    </div>
   )
 }
 
@@ -1521,13 +1603,17 @@ type SketchDrawingConfiguration = Readonly<{
   ariaLabel: string
   construction: boolean
   draft: SketchRecord | null
+  editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
+  onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onDragTargetChange: (target: SketchDragTarget | null) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
+  selectConstraintLabel: (label: string) => string
+  selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   solution: SolvedSketchWire | null
@@ -1586,11 +1672,113 @@ function SketchOrientation({ plane }: { plane: SketchRecord["plane"] | null }) {
   )
 }
 
+const constraintToolSymbols = {
+  coincident: "×",
+  concentric: "◎",
+  equal: "=",
+  fixed: "F",
+  horizontal: "H",
+  midpoint: "M",
+  parallel: "∥",
+  perpendicular: "⊥",
+  "point-on-curve": "⊙",
+  "point-on-line": "⊙",
+  symmetric: "S",
+  tangent: "T",
+  vertical: "V",
+} satisfies Record<SketchConstraintToolKind, string>
+
+function SketchPrecisionToolbar({
+  draft,
+  editorTool,
+  onDraftChange,
+  selectedEntityIds,
+}: Readonly<{
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  selectedEntityIds: readonly SketchEntityId[]
+}>) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  const viewportT = useTranslations("app.sketch.viewport")
+  const entities = useMemo(
+    () => (draft ? selectedSketchEntities(draft, selectedEntityIds) : []),
+    [draft, selectedEntityIds],
+  )
+  const constraints = compatibleSketchConstraintTools(entities)
+  const dimensions = compatibleSketchDimensionTools(entities)
+  if (!draft || editorTool !== "select" || (constraints.length === 0 && dimensions.length === 0)) {
+    return null
+  }
+  const labels: Record<SketchConstraintToolKind, string> = {
+    coincident: t("coincident"),
+    concentric: t("concentric"),
+    equal: t("equal"),
+    fixed: t("fixed"),
+    horizontal: t("horizontal"),
+    midpoint: t("midpoint"),
+    parallel: t("parallel"),
+    perpendicular: t("perpendicular"),
+    "point-on-curve": t("pointOnCurve"),
+    "point-on-line": t("pointOnLine"),
+    symmetric: t("symmetricConstraint"),
+    tangent: t("tangent"),
+    vertical: t("vertical"),
+  }
+  const apply = (definition: SketchConstraintDefinition) => {
+    onDraftChange(appendSketchConstraint(draft, definition, createBrowserSketchConstraintId))
+  }
+  return (
+    <div
+      aria-label={viewportT("precisionTools")}
+      className="absolute right-3 top-3 flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm"
+      role="toolbar"
+    >
+      {constraints.map(({ definition, kind }) => (
+        <Tooltip key={kind}>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={labels[kind]}
+              onClick={() => apply(definition)}
+            >
+              <span aria-hidden="true" className="font-mono text-sm font-semibold">
+                {constraintToolSymbols[kind]}
+              </span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{labels[kind]}</TooltipContent>
+        </Tooltip>
+      ))}
+      {dimensions.length > 0 ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-controls="sketch-dimension-expression"
+              aria-label={viewportT("dimensionTool")}
+              onClick={() => document.getElementById("sketch-dimension-expression")?.focus()}
+            >
+              <Ruler aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{viewportT("dimensionTool")}</TooltipContent>
+        </Tooltip>
+      ) : null}
+    </div>
+  )
+}
+
 type SketchViewportState = Readonly<{
   construction: boolean
   controller: DocumentControllerState
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   sketch: SketchRecord | null
@@ -1599,6 +1787,7 @@ type SketchViewportState = Readonly<{
 type SketchViewportActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
+  onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
@@ -1620,12 +1809,14 @@ export function SketchViewport({
     controller,
     draft,
     editorTool,
+    selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
     sketch,
   } = state
   const {
     onDraftChange,
+    onConstraintSelectionChange,
     onFailedConstraintsChange,
     onProfilesChange,
     onProfileSelect,
@@ -1685,11 +1876,15 @@ export function SketchViewport({
           ariaLabel: draft ? t("draftDrawing") : t("solvedDrawing"),
           construction,
           draft,
+          editDimensionLabel: (label) => t("editDimension", { label }),
           editorTool,
+          onConstraintSelectionChange,
           onDragTargetChange: (target) =>
             setDragState(target && activeSketch ? { sketchId: activeSketch.id, target } : null),
           selectedProfile,
+          selectedConstraintId,
           selectedEntityIds,
+          selectConstraintLabel: (label) => t("selectConstraint", { label }),
           solution: displaySolution,
           onDraftChange,
           onProfileSelect,
@@ -1703,6 +1898,12 @@ export function SketchViewport({
         degreesOfFreedom={degreesOfFreedom}
         profileText={profileText}
         status={statusText}
+      />
+      <SketchPrecisionToolbar
+        draft={draft}
+        editorTool={editorTool}
+        selectedEntityIds={selectedEntityIds}
+        onDraftChange={onDraftChange}
       />
       <SketchOrientation plane={activeSketch?.plane ?? null} />
     </section>

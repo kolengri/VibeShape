@@ -14,6 +14,7 @@ import {
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
+import { useExtrusionPreview } from "../features/extrusion/use-extrusion-preview"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
@@ -23,7 +24,6 @@ import type {
   SketchDraftChangeMode,
   SketchEditorTool,
 } from "../features/sketch/sketch-tool"
-import { useExtrusionPreview } from "../features/extrusion/use-extrusion-preview"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import { GeometryViewport } from "./geometry-viewport"
@@ -58,6 +58,7 @@ type WorkspaceContentProps = Readonly<{
     onSketchProfileSelect: (profile: SketchProfileSelector) => void
     onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
     onSketchRedo: () => void
+    onSketchConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
     onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
     onSketchUndo: () => void
   }>
@@ -71,6 +72,7 @@ type WorkspaceContentProps = Readonly<{
     construction: boolean
     draft: SketchRecord | null
     editorTool: SketchEditorTool
+    selectedConstraintId: SketchConstraintId | null
     selectedEntityIds: readonly SketchEntityId[]
     selectedProfile: SketchProfileSelector | null
     selectedSketch: SketchRecord | null
@@ -90,6 +92,7 @@ function SketchWorkspaceContent({
         controller,
         draft: sketch.draft,
         editorTool: sketch.editorTool,
+        selectedConstraintId: sketch.selectedConstraintId,
         selectedEntityIds: sketch.selectedEntityIds,
         selectedProfile: sketch.selectedProfile,
         sketch: sketch.selectedSketch,
@@ -100,6 +103,7 @@ function SketchWorkspaceContent({
         onProfileSelect: actions.onSketchProfileSelect,
         onProfilesChange: actions.onSketchProfilesChange,
         onRedo: actions.onSketchRedo,
+        onConstraintSelectionChange: actions.onSketchConstraintSelectionChange,
         onSelectionChange: actions.onSketchSelectionChange,
         onUndo: actions.onSketchUndo,
       }}
@@ -169,6 +173,7 @@ export type EditorWorkspaceActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
   setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
   sketchSaved: (sketch: SketchRecord) => void
@@ -188,6 +193,7 @@ type EditorWorkspaceProps = Readonly<{
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
   workspace: EditorWorkspaceName
@@ -246,6 +252,7 @@ function EditorContent({
         onSketchProfileSelect: actions.setSketchSelectedProfile,
         onSketchProfilesChange: actions.setSketchProfiles,
         onSketchRedo: actions.redoSketchDraft,
+        onSketchConstraintSelectionChange: actions.setSketchSelectedConstraintId,
         onSketchSelectionChange: actions.setSketchSelectedEntityIds,
         onSketchUndo: actions.undoSketchDraft,
       }}
@@ -257,6 +264,7 @@ function EditorContent({
         construction: props.sketchConstruction,
         draft: props.sketchDraft,
         editorTool: props.sketchEditorTool,
+        selectedConstraintId: props.sketchSelectedConstraintId,
         selectedEntityIds: props.sketchSelectedEntityIds,
         selectedProfile: props.sketchSelectedProfile,
         selectedSketch,
@@ -291,9 +299,11 @@ function EditorTaskPanel({
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
+      sketchSelectedConstraintId={props.sketchSelectedConstraintId}
       sketchSelectedEntityIds={props.sketchSelectedEntityIds}
       sketchSelectedProfile={props.sketchSelectedProfile}
       onSketchDraftChange={actions.setSketchDraft}
+      onSketchSelectedConstraintChange={actions.setSketchSelectedConstraintId}
       onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
       onSketchSaved={actions.sketchSaved}
       onSketchPlaneSelect={actions.selectSketchPlane}

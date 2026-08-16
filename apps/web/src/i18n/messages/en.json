@@ -492,11 +492,13 @@
           "coincident": "Coincident",
           "horizontal": "Horizontal",
           "vertical": "Vertical",
+          "midpoint": "Midpoint",
           "parallel": "Parallel",
           "perpendicular": "Perpendicular",
           "equal": "Equal",
           "tangent": "Tangent",
           "concentric": "Concentric",
+          "symmetricConstraint": "Symmetric",
           "conflict": "Conflict",
           "fixed": "Fix point",
           "pointOnLine": "Point on line",
@@ -564,6 +566,7 @@
         "previewReady": "Unsaved extrusion preview",
         "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
         "title": "3D viewport",
+        "worldAxes": "World axes",
         "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
       }
     },
@@ -585,6 +588,10 @@
         "failed": "Solve failed",
         "degreesOfFreedom": "Degrees of freedom: {count}",
         "profile": "Profile: {area} · {perimeter} perimeter",
+        "precisionTools": "Sketch precision tools",
+        "dimensionTool": "Add drawing dimension",
+        "editDimension": "Edit dimension {label}",
+        "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
       }
     },

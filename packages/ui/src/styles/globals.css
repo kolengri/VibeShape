@@ -30,6 +30,9 @@
   --preselection: oklch(0.76 0.12 199.5);
   --diagnostic-warning: oklch(0.72 0.15 75.8);
   --diagnostic-error: oklch(0.58 0.22 27.33);
+  --axis-x: oklch(0.61 0.2 25.5);
+  --axis-y: oklch(0.58 0.15 151.5);
+  --axis-z: oklch(0.58 0.18 255.5);
   --radius: 0.25rem;
   --model-tree-width: 15rem;
   --task-panel-width: 20rem;
@@ -63,6 +66,9 @@
   --preselection: oklch(0.75 0.13 199.5);
   --diagnostic-warning: oklch(0.78 0.14 75.8);
   --diagnostic-error: oklch(0.68 0.2 25.33);
+  --axis-x: oklch(0.72 0.18 25.5);
+  --axis-y: oklch(0.71 0.15 151.5);
+  --axis-z: oklch(0.72 0.16 255.5);
 }
 
 @theme inline {
@@ -92,6 +98,9 @@
   --color-preselection: var(--preselection);
   --color-diagnostic-warning: var(--diagnostic-warning);
   --color-diagnostic-error: var(--diagnostic-error);
+  --color-axis-x: var(--axis-x);
+  --color-axis-y: var(--axis-y);
+  --color-axis-z: var(--axis-z);
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
   --radius-xs: calc(var(--radius) * 0.75);
