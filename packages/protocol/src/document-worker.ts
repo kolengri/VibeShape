@@ -14,7 +14,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 6 as const
+export const DOCUMENT_PROTOCOL_VERSION = 7 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -55,6 +55,13 @@ const documentVariableSchema = z
   })
   .strict()
 
+const documentDisplayUnitsSchema = z
+  .object({
+    length: z.enum(["um", "mm", "cm", "m", "in", "ft"]),
+    angle: z.enum(["rad", "deg"]),
+  })
+  .strict()
+
 const featureParametersSchema = z
   .record(z.string().min(1).max(128), z.json())
   .refine((parameters) => Object.keys(parameters).length <= 512)
@@ -79,6 +86,7 @@ export const documentRebuildSnapshotSchema = z
     id: documentWorkerDocumentIdSchema,
     revision: revisionSchema,
     name: z.string().min(1).max(120),
+    displayUnits: documentDisplayUnitsSchema,
     variables: z.array(documentVariableSchema).max(MAX_VARIABLES).default([]),
     sketches: z.array(sketchWireRecordSchema).max(MAX_SKETCHES).default([]),
     features: z.array(documentFeatureSchema).max(MAX_FEATURES),

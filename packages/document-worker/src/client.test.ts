@@ -110,6 +110,7 @@ function rebuildRequest(requestId = "rebuild-request"): DocumentWorkerRequest {
       id: documentId,
       revision: 3,
       name: "Client test",
+      displayUnits: { length: "mm", angle: "deg" },
       features: [
         {
           schemaVersion: 0,

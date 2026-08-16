@@ -119,6 +119,7 @@ function document(documentId: string, revision = 1, cylinderHeight = 60) {
     id: documentId,
     revision,
     name: "Runtime test",
+    displayUnits: { length: "mm", angle: "deg" },
     features: [boolean(), cylinder(cylinderHeight), box()],
     createdAt: "2026-08-09T00:00:00.000Z",
     updatedAt: "2026-08-09T00:00:00.000Z",
