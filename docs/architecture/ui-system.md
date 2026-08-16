@@ -50,9 +50,13 @@ packages/ui/
 
 `apps/web/src/editor-session` owns one vanilla Zustand store instance per active editor session. React
 provides that instance through context and consumes narrow selectors; Immer middleware implements
-cohesive nested updates without exposing mutable state to components. The first hydrated document ID
-binds to the existing store so early interaction is retained; changing an established active document
-ID replaces the store and therefore discards every unfinished editor session by design.
+cohesive nested updates without exposing mutable state to components. The provider creates its store
+once per mount through lazy React state. It does not inspect document identity, mutate refs during
+render, or replace the context value in response to a prop change. The current project-switch flow
+closes the active document session and reloads the page, so the provider mount already matches the
+editor-session lifetime. If project switching later becomes in-place, an owning component outside the
+provider must remount the provider with a stable document key; concurrently mounted document tabs
+must each own a separate provider or use an explicitly keyed store registry.
 
 The store owns workspace and active-tool coordination, viewport selection, unsaved sketch drafts,
 sketch-local undo and redo, profile selection, and transient shell overlays. It MUST NOT own or clone

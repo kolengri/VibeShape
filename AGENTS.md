@@ -19,6 +19,7 @@
 - Treat generated shadcn components as reviewed project source, not as opaque dependencies.
 - Build form controls as state-agnostic, uncontrolled-first primitives before adding separate TanStack Form adapters.
 - Async action controls must prevent duplicate activation, expose accessible pending state, and release their lock on both fulfillment and rejection.
+- Create scoped vanilla Zustand stores once inside React providers with lazy `useState`; reset a scope by remounting an owning keyed boundary, never by mutating refs during render.
 
 ## Project skills
 

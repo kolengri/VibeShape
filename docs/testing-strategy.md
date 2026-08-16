@@ -191,6 +191,7 @@ The SPK-001 technical release bundle is also generated locally. `bun run occt:bu
 - Production Vite build confirms Tailwind discovery across `apps/web` and `packages/ui`.
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - Shared UI component tests cover native uncontrolled behavior before TanStack Form adapters, including double activation, async settlement, disabled/busy semantics, labels, and validation relationships.
+- Editor-session component tests prove one vanilla Zustand store per provider mount, retention across ordinary rerenders, and reset only when the owning React boundary remounts.
 - I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
