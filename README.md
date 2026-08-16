@@ -79,6 +79,7 @@ Key decisions:
 | [Risk register](docs/risks.md) | Technical and product risks |
 | [Research sources](docs/research-sources.md) | Primary sources and review date |
 | [ADRs](docs/adr/README.md) | Accepted architecture decisions |
+| [Codex agent team](docs/codex-agent-team.md) | Project-scoped subagent roles, routing, isolation, and validation |
 
 ## Development
 
