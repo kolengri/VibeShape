@@ -258,6 +258,10 @@
           "keywords": "boolean cut|remove solid|difference"
         },
         "sketchArc": { "label": "Center-point arc", "keywords": "arc|curve|center start end" },
+        "sketchCenterRectangle": {
+          "label": "Center rectangle",
+          "keywords": "center rectangle|symmetric box profile|rectangle from center"
+        },
         "sketchCircle": { "label": "Circle", "keywords": "sketch circle|round|radius|diameter" },
         "sketchConstruction": {
           "label": "Construction geometry",

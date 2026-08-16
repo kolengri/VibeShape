@@ -130,6 +130,21 @@ describe("editor command registry", () => {
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
   })
 
+  it("routes the center rectangle shortcut descriptor to the trusted sketch tool handler", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchCenterRectangle,
+    )
+
+    expect(command?.descriptor.shortcut).toEqual({ key: "r", modifiers: ["shift"] })
+    expect(command?.toolbarVisible).toBe(true)
+    command?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
+  })
+
   it("keeps sketch geometry commands unavailable while an origin plane is being selected", () => {
     const context = commandContext({ activeSketchTool: { kind: "select-sketch-plane" } })
     const commands = resolveBuiltInEditorCommands(context)

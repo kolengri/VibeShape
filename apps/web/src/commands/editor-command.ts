@@ -6,6 +6,7 @@ export const editorCommandIds = {
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   sketchArc: "org.vibeshape.editor.sketch.tool.arc",
+  sketchCenterRectangle: "org.vibeshape.editor.sketch.tool.center-rectangle",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
@@ -35,6 +36,7 @@ export type EditorCommandIcon =
   | "box"
   | "cancel"
   | "circle"
+  | "center-rectangle"
   | "construction"
   | "cylinder"
   | "extrude"
@@ -56,6 +58,7 @@ export type EditorCommandLabelKey =
   | "createSketch"
   | "createSubtract"
   | "sketchArc"
+  | "sketchCenterRectangle"
   | "sketchCircle"
   | "sketchConstruction"
   | "sketchLine"

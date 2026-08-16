@@ -11,6 +11,7 @@ export {
   Pencil,
   PenLine,
   RectangleHorizontal,
+  Scan,
   Redo2,
   Ruler,
   Scissors,

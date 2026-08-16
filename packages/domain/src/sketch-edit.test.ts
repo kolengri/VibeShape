@@ -3,6 +3,7 @@ import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers
 import {
   appendSketchArc,
   appendSketchCircle,
+  appendSketchCenterRectangle,
   appendSketchConstraint,
   appendSketchLine,
   appendSketchPoint,
@@ -86,6 +87,55 @@ describe("sketch editing", () => {
       "horizontal",
       "vertical",
     ])
+  })
+
+  it("adds a center rectangle with persistent symmetric construction intent", () => {
+    const result = appendSketchCenterRectangle(empty(), {
+      center: { kind: "new", point: { x: 2, y: -1 } },
+      corner: { x: 7, y: 2 },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+    })
+    const points = result.sketch.entities.filter(({ type }) => type === "point")
+    const lines = result.sketch.entities.filter(({ type }) => type === "line")
+
+    expect(points).toHaveLength(5)
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ x: 2, y: -1, construction: true }),
+        expect.objectContaining({ x: -3, y: -4 }),
+        expect.objectContaining({ x: 7, y: 2 }),
+      ]),
+    )
+    expect(lines.filter(({ construction }) => construction)).toHaveLength(4)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "horizontal",
+      "vertical",
+      "horizontal",
+      "vertical",
+      "parallel",
+      "equal",
+    ])
+  })
+
+  it("reuses an inferred center point without duplicating its identity", () => {
+    const withCenter = appendSketchPoint(empty(), {
+      createEntityId: entityId,
+      point: { x: 0, y: 0 },
+    })
+    const centerId = withCenter.createdEntityIds[0]
+    expect(centerId).toBeDefined()
+    if (!centerId) return
+
+    const result = appendSketchCenterRectangle(withCenter.sketch, {
+      center: { kind: "existing", pointId: centerId },
+      corner: { x: 5, y: 3 },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+    })
+
+    expect(result.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(5)
+    expect(result.sketch.entities.filter(({ id }) => id === centerId)).toHaveLength(1)
   })
 
   it("adds circles and projects arc endpoints onto the authored radius", () => {

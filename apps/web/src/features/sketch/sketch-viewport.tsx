@@ -1,5 +1,6 @@
 import {
   appendSketchArc,
+  appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
@@ -72,6 +73,7 @@ type DisplayPoint = Readonly<{
 type PendingGeometry =
   | Readonly<{ kind: "line"; start: SketchPointTarget }>
   | Readonly<{ kind: "rectangle"; firstCorner: SketchPoint2 }>
+  | Readonly<{ kind: "center-rectangle"; center: SketchPointTarget }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
   | Readonly<{ kind: "arc-start"; center: SketchPoint2 }>
   | Readonly<{ kind: "arc-end"; center: SketchPoint2; start: SketchPoint2 }>
@@ -760,6 +762,8 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
       return pointForTarget(sketch, pending.start)
     case "rectangle":
       return pending.firstCorner
+    case "center-rectangle":
+      return pointForTarget(sketch, pending.center)
     case "circle":
       return pointForTarget(sketch, pending.center)
     case "arc-start":
@@ -788,6 +792,21 @@ function PendingShape({
       />
     )
   }
+  if (pending.kind === "center-rectangle") {
+    const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
+    return (
+      <>
+        <rect
+          x={Math.min(opposite.x, cursor.x)}
+          y={Math.min(opposite.y, cursor.y)}
+          width={Math.abs(cursor.x - opposite.x)}
+          height={Math.abs(cursor.y - opposite.y)}
+        />
+        <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+        <line x1={opposite.x} y1={cursor.y} x2={cursor.x} y2={opposite.y} />
+      </>
+    )
+  }
   if (pending.kind === "circle") {
     return (
       <circle cx={start.x} cy={start.y} r={Math.hypot(cursor.x - start.x, cursor.y - start.y)} />
@@ -814,6 +833,7 @@ function PendingPreview({
     <g
       transform="scale(1 -1)"
       className="pointer-events-none stroke-muted-foreground"
+      data-sketch-preview-tool={pending.kind}
       fill="none"
       strokeDasharray="5 4"
       strokeWidth={1.5}
@@ -933,6 +953,22 @@ function placeRectangle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeCenterRectangle(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "center-rectangle") {
+    return { draft: null, pending: { kind: "center-rectangle", center: input.target } }
+  }
+  return {
+    draft: appendSketchCenterRectangle(input.draft, {
+      center: input.pending.center,
+      construction: input.construction,
+      corner: input.point,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+    }).sketch,
+    pending: null,
+  }
+}
+
 function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
     return { draft: null, pending: { kind: "circle", center: input.target } }
@@ -972,6 +1008,7 @@ function placeArc(input: PlacementInput): PlacementUpdate {
 
 const placementBuilders = {
   arc: placeArc,
+  "center-rectangle": placeCenterRectangle,
   circle: placeCircle,
   line: placeLine,
   point: placePoint,
@@ -1045,18 +1082,20 @@ function unsnappedInference(point: SketchPoint2): SketchPointInference {
   return { axis: null, point, target: { kind: "new", point } }
 }
 
+const alwaysSupportsPointInference = () => true
+const neverSupportsPointInference = () => false
+const pointInferenceSupport = {
+  arc: neverSupportsPointInference,
+  circle: (pending) => pending?.kind !== "circle",
+  "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
+  line: alwaysSupportsPointInference,
+  point: alwaysSupportsPointInference,
+  rectangle: neverSupportsPointInference,
+  select: neverSupportsPointInference,
+} satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
+
 function supportsPointInference(editorTool: SketchEditorTool, pending: PendingGeometry | null) {
-  switch (editorTool) {
-    case "line":
-    case "point":
-      return true
-    case "circle":
-      return pending?.kind !== "circle"
-    case "arc":
-    case "rectangle":
-    case "select":
-      return false
-  }
+  return pointInferenceSupport[editorTool](pending)
 }
 
 function lineInferenceAnchor(

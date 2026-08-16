@@ -69,6 +69,10 @@ function parsedSketch(sketch: SketchRecord, entities: readonly SketchEntity[]) {
   return sketchRecordSchema.parse({ ...sketch, entities })
 }
 
+function allocateFourEntityIds(createEntityId: EntityIdFactory) {
+  return [createEntityId(), createEntityId(), createEntityId(), createEntityId()] as const
+}
+
 export function createEmptySketch(input: {
   id: SketchId
   label: string
@@ -156,13 +160,10 @@ export function appendSketchRectangle(
   if (width <= MIN_GEOMETRY_DISTANCE || height <= MIN_GEOMETRY_DISTANCE) {
     throw new RangeError("A sketch rectangle requires nonzero width and height.")
   }
-  const pointIds = Array.from({ length: 4 }, input.createEntityId)
-  const lineIds = Array.from({ length: 4 }, input.createEntityId)
+  const pointIds = allocateFourEntityIds(input.createEntityId)
+  const lineIds = allocateFourEntityIds(input.createEntityId)
   const [pointA, pointB, pointC, pointD] = pointIds
   const [lineA, lineB, lineC, lineD] = lineIds
-  if (!pointA || !pointB || !pointC || !pointD || !lineA || !lineB || !lineC || !lineD) {
-    throw new TypeError("Sketch entity identity allocation failed.")
-  }
   const points = [
     { x: input.firstCorner.x, y: input.firstCorner.y },
     { x: input.oppositeCorner.x, y: input.firstCorner.y },
@@ -223,6 +224,99 @@ export function appendSketchRectangle(
       constraints: [...sketch.constraints, ...constraints],
     }),
     createdEntityIds: entities.map(({ id }) => id),
+  }
+}
+
+function centerRectangleSpokes(
+  centerId: SketchEntityId,
+  cornerIds: readonly [SketchEntityId, SketchEntityId, SketchEntityId, SketchEntityId],
+  createEntityId: EntityIdFactory,
+) {
+  const spokeIds = allocateFourEntityIds(createEntityId)
+  const entities = spokeIds.map(
+    (id, index): SketchEntity => ({
+      schemaVersion: 0,
+      id,
+      type: "line",
+      startPointId: centerId,
+      endPointId: cornerIds[index] as SketchEntityId,
+      construction: true,
+    }),
+  )
+  return { entities, ids: spokeIds }
+}
+
+function centerRectangleSymmetryConstraints(
+  oppositeSpokeIds: readonly [SketchEntityId, SketchEntityId],
+  createConstraintId: ConstraintIdFactory,
+): readonly SketchConstraint[] {
+  const [firstEntityId, secondEntityId] = oppositeSpokeIds
+  return [
+    {
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type: "parallel",
+      firstEntityId,
+      secondEntityId,
+    },
+    {
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type: "equal",
+      firstEntityId,
+      secondEntityId,
+    },
+  ]
+}
+
+export function appendSketchCenterRectangle(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    corner: SketchPoint2
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+  },
+): SketchAppendResult {
+  const center = resolvePointTarget(sketch, input.center, true, input.createEntityId)
+  const sketchWithCenter = center.entity
+    ? parsedSketch(sketch, [...sketch.entities, center.entity])
+    : sketch
+  const rectangle = appendSketchRectangle(sketchWithCenter, {
+    ...(input.construction === undefined ? {} : { construction: input.construction }),
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    firstCorner: {
+      x: center.point.x * 2 - input.corner.x,
+      y: center.point.y * 2 - input.corner.y,
+    },
+    oppositeCorner: input.corner,
+  })
+  const [pointA, pointB, pointC, pointD] = rectangle.createdEntityIds
+  if (!pointA || !pointB || !pointC || !pointD) {
+    throw new TypeError("Center rectangle corner identity allocation failed.")
+  }
+  const spokes = centerRectangleSpokes(
+    center.id,
+    [pointA, pointB, pointC, pointD],
+    input.createEntityId,
+  )
+  const symmetryConstraints = centerRectangleSymmetryConstraints(
+    [spokes.ids[0], spokes.ids[2]],
+    input.createConstraintId,
+  )
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...rectangle.sketch,
+      entities: [...rectangle.sketch.entities, ...spokes.entities],
+      constraints: [...rectangle.sketch.constraints, ...symmetryConstraints],
+    }),
+    createdEntityIds: [
+      ...(center.entity ? [center.entity.id] : []),
+      ...rectangle.createdEntityIds,
+      ...spokes.ids,
+    ],
   }
 }
 
