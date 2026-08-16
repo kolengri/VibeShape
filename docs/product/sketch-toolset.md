@@ -14,8 +14,8 @@ and selection are presentation state; they never replace stable entity and const
 | Tool | Minimum behavior | Status |
 |---|---|---|
 | Select | Single and additive entity selection, point dragging, and Delete/Backspace | Implemented |
-| Point | Place a stable analytical point with inference | Implemented |
-| Line | Place a stable segment with endpoint reuse and horizontal/vertical inference | Implemented |
+| Point | Place a stable analytical point with persistent point, midpoint, intersection, and point-on-line inference | Implemented |
+| Line | Place a stable segment with endpoint reuse plus persistent point, direction, and tangent inference | Implemented |
 | Midpoint Line | Place a segment symmetrically from its midpoint with persistent midpoint intent | Implemented |
 | Corner Rectangle | Author four lines as one local history edit | Implemented |
 | Center Rectangle | Author symmetric geometry and construction diagonals as one local history edit | Implemented |
@@ -96,9 +96,14 @@ adding solver constraints.
 7. Solver conflicts remain visible by stable constraint identity. The editor never deletes or
    weakens constraints automatically.
 8. Pointer-drag previews remain local to the viewport and solver scheduler. The editor publishes
-   exactly one global draft and one undo checkpoint when the gesture ends.
+   exactly one global draft and one undo checkpoint when the gesture ends. Raw pointer samples are
+   reduced to the latest sample per animation frame before inference, React state, or solving work.
 9. Large constraint lists scroll inside the fixed-height task panel. They never increase the CAD
    workspace row height or move sketch geometry outside the visible viewport.
+10. Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, horizontal,
+    vertical, parallel, perpendicular, and endpoint-tangent candidates use deterministic priority
+    and visible glyphs. Accepting a candidate persists its semantic constraint; holding `Shift`
+    suppresses inference without changing the active tool.
 
 ## View orientation
 
@@ -109,8 +114,8 @@ active support plane and display unit.
 
 ## Follow-up sequence
 
-1. Add midpoint, center, tangent, perpendicular, and intersection inference candidates with explicit
-   acceptance rules.
+1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
+   quadrant candidates, and projected/external geometry inference.
 2. Add ellipses, slots, polygons, and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing.
 4. Add reference dimensions and a driving/reference conversion command.
