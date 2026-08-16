@@ -152,6 +152,58 @@ const verticalDistanceConstraintSchema = pointPairSchema
 const distanceConstraintSchema = pointPairSchema
   .extend({ type: z.literal("distance"), value: lengthQuantitySchema })
   .strict()
+const offsetLinePairSchema = z
+  .object({
+    sourceLineId: sketchEntityIdSchema,
+    offsetLineId: sketchEntityIdSchema,
+    distanceScale: z.union([z.literal(-1), z.literal(1)]),
+  })
+  .strict()
+  .refine((pair) => pair.sourceLineId !== pair.offsetLineId, {
+    message: "A sketch offset pair requires distinct source and offset lines.",
+  })
+const offsetEndpointPairSchema = z
+  .object({
+    sourcePointId: sketchEntityIdSchema,
+    offsetPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((pair) => pair.sourcePointId !== pair.offsetPointId, {
+    message: "A sketch offset endpoint pair requires distinct points.",
+  })
+const offsetConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("offset"),
+    linePairs: z.array(offsetLinePairSchema).min(1).max(MAX_SKETCH_ENTITIES),
+    endpointPairs: z.array(offsetEndpointPairSchema).max(2),
+    value: lengthQuantitySchema,
+  })
+  .strict()
+  .refine((constraint) => constraint.value.value !== 0, {
+    message: "A sketch offset requires a nonzero distance.",
+  })
+  .refine(
+    (constraint) =>
+      new Set(constraint.linePairs.map(({ sourceLineId }) => sourceLineId)).size ===
+        constraint.linePairs.length &&
+      new Set(constraint.linePairs.map(({ offsetLineId }) => offsetLineId)).size ===
+        constraint.linePairs.length,
+    {
+      message: "A sketch offset cannot repeat source or offset lines.",
+    },
+  )
+  .refine(
+    (constraint) => constraint.endpointPairs.length === 0 || constraint.endpointPairs.length === 2,
+    { message: "An open sketch offset requires both endpoint pairs." },
+  )
+  .refine(
+    (constraint) =>
+      new Set(constraint.endpointPairs.map(({ sourcePointId }) => sourcePointId)).size ===
+        constraint.endpointPairs.length &&
+      new Set(constraint.endpointPairs.map(({ offsetPointId }) => offsetPointId)).size ===
+        constraint.endpointPairs.length,
+    { message: "A sketch offset cannot repeat source or offset endpoint points." },
+  )
 const angleConstraintSchema = entityPairSchema
   .extend({ type: z.literal("angle"), value: angleQuantitySchema })
   .strict()
@@ -187,6 +239,7 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   horizontalDistanceConstraintSchema,
   verticalDistanceConstraintSchema,
   distanceConstraintSchema,
+  offsetConstraintSchema,
   angleConstraintSchema,
   radiusConstraintSchema,
   diameterConstraintSchema,
@@ -227,7 +280,7 @@ function validateEntityReferences(
   }
 }
 
-type NonEqualConstraintType = Exclude<SketchConstraint["type"], "equal">
+type RuleValidatedConstraintType = Exclude<SketchConstraint["type"], "equal" | "offset">
 type EntityReferenceRules = Readonly<Record<string, readonly SketchEntity["type"][]>>
 
 const constraintEntityReferenceRules = {
@@ -256,7 +309,7 @@ const constraintEntityReferenceRules = {
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
   diameter: { curveId: ["circle", "arc"] },
-} as const satisfies Record<NonEqualConstraintType, EntityReferenceRules>
+} as const satisfies Record<RuleValidatedConstraintType, EntityReferenceRules>
 
 function validateEqualConstraintReferences(
   constraint: Extract<SketchConstraint, { type: "equal" }>,
@@ -279,11 +332,100 @@ function validateConstraintReferences(
   if (constraint.type === "equal") {
     return validateEqualConstraintReferences(constraint, entities)
   }
+  if (constraint.type === "offset") {
+    return (
+      constraint.linePairs.every(
+        ({ sourceLineId, offsetLineId }) =>
+          entityIs(entities, sourceLineId, ["line"]) && entityIs(entities, offsetLineId, ["line"]),
+      ) &&
+      constraint.endpointPairs.every(
+        ({ sourcePointId, offsetPointId }) =>
+          entityIs(entities, sourcePointId, ["point"]) &&
+          entityIs(entities, offsetPointId, ["point"]),
+      )
+    )
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: EntityReferenceRules = constraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
     const entityId = constraintRecord[field]
     return isString(entityId) && entityIs(entities, entityId, entityTypes)
+  })
+}
+
+type SketchStructure = Readonly<{
+  constraints: readonly SketchConstraint[]
+  entities: readonly SketchEntity[]
+}>
+
+function indexSketchEntities(sketch: SketchStructure, context: z.RefinementCtx) {
+  const entities = new Map<string, SketchEntity>()
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (entities.has(entity.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["entities", index, "id"],
+        message: "Sketch entity IDs must be unique.",
+      })
+    }
+    entities.set(entity.id, entity)
+  }
+  return entities
+}
+
+function validateSketchEntityTable(
+  sketch: SketchStructure,
+  entities: ReadonlyMap<string, SketchEntity>,
+  context: z.RefinementCtx,
+) {
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (validateEntityReferences(entity, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["entities", index],
+      message: "A sketch entity reference has an incompatible or missing target.",
+    })
+  }
+}
+
+function nativeConstraintCount(constraints: readonly SketchConstraint[]) {
+  return constraints.reduce(
+    (count, constraint) =>
+      count +
+      (constraint.type === "offset"
+        ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
+        : 1),
+    0,
+  )
+}
+
+function validateSketchConstraintTable(
+  sketch: SketchStructure,
+  entities: ReadonlyMap<string, SketchEntity>,
+  context: z.RefinementCtx,
+) {
+  const constraintIds = new Set<string>()
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (constraintIds.has(constraint.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["constraints", index, "id"],
+        message: "Sketch constraint IDs must be unique.",
+      })
+    }
+    constraintIds.add(constraint.id)
+    if (validateConstraintReferences(constraint, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message: "A sketch constraint reference has an incompatible or missing target.",
+    })
+  }
+  if (nativeConstraintCount(sketch.constraints) <= MAX_SKETCH_CONSTRAINTS) return
+  context.addIssue({
+    code: "custom",
+    path: ["constraints"],
+    message: "Sketch constraints exceed the native solver safety limit.",
   })
 }
 
@@ -302,45 +444,9 @@ export const sketchRecordSchema = z
   })
   .strict()
   .superRefine((sketch, context) => {
-    const entities = new Map<string, SketchEntity>()
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (entities.has(entity.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index, "id"],
-          message: "Sketch entity IDs must be unique.",
-        })
-      }
-      entities.set(entity.id, entity)
-    }
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (!validateEntityReferences(entity, entities)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index],
-          message: "A sketch entity reference has an incompatible or missing target.",
-        })
-      }
-    }
-
-    const constraintIds = new Set<string>()
-    for (const [index, constraint] of sketch.constraints.entries()) {
-      if (constraintIds.has(constraint.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index, "id"],
-          message: "Sketch constraint IDs must be unique.",
-        })
-      }
-      constraintIds.add(constraint.id)
-      if (!validateConstraintReferences(constraint, entities)) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index],
-          message: "A sketch constraint reference has an incompatible or missing target.",
-        })
-      }
-    }
+    const entities = indexSketchEntities(sketch, context)
+    validateSketchEntityTable(sketch, entities, context)
+    validateSketchConstraintTable(sketch, entities, context)
   })
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)

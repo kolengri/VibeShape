@@ -163,6 +163,14 @@ function validSketch() {
       {
         schemaVersion: 0,
         id: constraintId(117),
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+        value: createLengthQuantity(20),
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(118),
         type: "angle",
         firstEntityId: lineA,
         secondEntityId: lineB,
@@ -170,14 +178,14 @@ function validSketch() {
       },
       {
         schemaVersion: 0,
-        id: constraintId(118),
+        id: constraintId(119),
         type: "radius",
         curveId: circle,
         value: createLengthQuantity(5),
       },
       {
         schemaVersion: 0,
-        id: constraintId(119),
+        id: constraintId(120),
         type: "diameter",
         curveId: arc,
         value: createLengthQuantity(40),
@@ -208,6 +216,7 @@ describe("sketchRecordSchema", () => {
       "horizontal-distance",
       "vertical-distance",
       "distance",
+      "offset",
       "angle",
       "radius",
       "diameter",
@@ -236,10 +245,52 @@ describe("sketchRecordSchema", () => {
       entities: fixture.entities.filter((entity) => entity.id !== pointB),
       constraints: [],
     }
+    const sameOffsetLine = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(201),
+          type: "offset",
+          endpointPairs: [],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineA, distanceScale: 1 }],
+          value: createLengthQuantity(5),
+        },
+      ],
+    }
+    const incompleteOffsetEndpoints = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(202),
+          type: "offset",
+          endpointPairs: [{ sourcePointId: pointA, offsetPointId: pointC }],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+          value: createLengthQuantity(5),
+        },
+      ],
+    }
+    const zeroOffset = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(203),
+          type: "offset",
+          endpointPairs: [],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+          value: createLengthQuantity(0),
+        },
+      ],
+    }
 
     expect(sketchRecordSchema.safeParse(duplicate).success).toBe(false)
     expect(sketchRecordSchema.safeParse(wrongConstraintTarget).success).toBe(false)
     expect(sketchRecordSchema.safeParse(missingEntityTarget).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(sameOffsetLine).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(incompleteOffsetEndpoints).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(zeroOffset).success).toBe(false)
   })
 
   test("rejects degenerate analytical records and non-finite or out-of-budget geometry", () => {

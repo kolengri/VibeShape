@@ -424,6 +424,70 @@ describe("SketchViewport", () => {
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
   })
 
+  it("previews and commits a preselected connected line-chain offset", () => {
+    const fixture = sketch
+    const lines = fixture.entities.filter((entity) => entity.type === "line")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "offset",
+      onDraftChange,
+      selectedEntityIds: lines.map(({ id }) => id),
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Move the pointer to set the signed offset, then click.",
+    )
+
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 250 })
+    const preview = document.querySelector('[data-sketch-preview-tool="offset-distance"]')
+    expect(preview).toBeTruthy()
+    expect(preview?.querySelectorAll("line")).toHaveLength(4)
+    fireEvent.pointerDown(drawing, { button: 0, clientX: 400, clientY: 250 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(8)
+    expect(nextDraft.constraints.filter(({ type }) => type === "offset")).toHaveLength(1)
+  })
+
+  it("selects a connected offset source from the canvas and cancels only its distance step", () => {
+    const fixture = lineSketchFixture("b259", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The offset fixture must contain a source line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "offset",
+      onDraftChange,
+      onEditorToolChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    const lineElement = document.querySelector(`[data-sketch-entity-id="${line.id}"]`)
+    if (!lineElement) throw new Error("The offset source must be rendered.")
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Select a line or connected line chain to offset.",
+    )
+
+    fireEvent.pointerDown(lineElement)
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Move the pointer to set the signed offset, then click.",
+    )
+    fireEvent.keyDown(drawing, { key: "Escape" })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(onEditorToolChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Select a line or connected line chain to offset.",
+    )
+  })
+
   it("splits a circle after two curve clicks with an analytical preview", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const fixture = appendSketchCircle(emptySketch, {

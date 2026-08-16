@@ -52,6 +52,7 @@ const copy = {
   line: "Line",
   midpoint: "Midpoint",
   noConstraints: "No constraints",
+  offset: "Offset",
   parallel: "Parallel",
   perpendicular: "Perpendicular",
   plane: "Support plane",
@@ -288,6 +289,74 @@ describe("SketchEditorPanel", () => {
             value: expect.objectContaining({
               value: 32,
               source: expect.objectContaining({ expression: "32 mm" }),
+            }),
+          }),
+        ],
+      }),
+    )
+  })
+
+  it("edits a signed offset through the shared variable-aware dimension form", async () => {
+    const user = userEvent.setup()
+    const sourceSketch = lineSketch()
+    const withOffsetLine = appendSketchLine(sourceSketch, {
+      createEntityId,
+      start: { kind: "new", point: { x: 0, y: 5 } },
+      end: { kind: "new", point: { x: 20, y: 5 } },
+    }).sketch
+    const [sourceLine, offsetLine] = withOffsetLine.entities.filter(
+      (entity) => entity.type === "line",
+    )
+    if (!sourceLine || !offsetLine) throw new Error("The offset form fixture requires two lines.")
+    const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-000000000003")
+    const constrained = appendSketchConstraint(
+      withOffsetLine,
+      {
+        type: "offset",
+        endpointPairs: [
+          {
+            sourcePointId: sourceLine.startPointId,
+            offsetPointId: offsetLine.startPointId,
+          },
+          { sourcePointId: sourceLine.endPointId, offsetPointId: offsetLine.endPointId },
+        ],
+        linePairs: [{ sourceLineId: sourceLine.id, offsetLineId: offsetLine.id, distanceScale: 1 }],
+        value: createLengthQuantity(5, "mm", "5 mm"),
+      },
+      () => constraintId,
+    )
+    const gapVariable = {
+      schemaVersion: 0 as const,
+      id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602"),
+      name: "gap",
+      expression: "8 mm",
+    }
+    const onDraftChange = renderPanel(
+      constrained,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [gapVariable],
+      constraintId,
+    )
+
+    const expression = screen.getByRole("combobox", { name: "Driving expression" })
+    await user.clear(expression)
+    await user.type(expression, "-#ga")
+    await user.keyboard("{Enter}")
+    expect((expression as HTMLInputElement).value).toBe("-#gap")
+    await user.click(screen.getByRole("button", { name: "Save dimension" }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            id: constraintId,
+            type: "offset",
+            value: expect.objectContaining({
+              value: -8,
+              source: expect.objectContaining({ expression: "-#gap" }),
             }),
           }),
         ],

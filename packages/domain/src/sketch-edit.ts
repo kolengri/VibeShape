@@ -72,13 +72,25 @@ export function sketchLineIntersection(
   }
 }
 
-function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
+export function requireSketchPoint(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  missingMessage = "A sketch operation requires an existing point entity.",
+) {
   const point = sketch.entities.find(
     (entity): entity is Extract<SketchEntity, { type: "point" }> =>
       entity.id === pointId && entity.type === "point",
   )
-  if (!point) throw new TypeError("A sketch point target must reference an existing point entity.")
+  if (!point) throw new TypeError(missingMessage)
   return point
+}
+
+function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
+  return requireSketchPoint(
+    sketch,
+    pointId,
+    "A sketch point target must reference an existing point entity.",
+  )
 }
 
 function resolvePointTarget(
@@ -1681,6 +1693,18 @@ export function appendSketchConstraint(
 }
 
 function referencedEntityIds(constraint: SketchConstraint) {
+  if (constraint.type === "offset") {
+    return [
+      ...constraint.linePairs.flatMap(({ sourceLineId, offsetLineId }) => [
+        sourceLineId,
+        offsetLineId,
+      ]),
+      ...constraint.endpointPairs.flatMap(({ sourcePointId, offsetPointId }) => [
+        sourcePointId,
+        offsetPointId,
+      ]),
+    ]
+  }
   return Object.entries(constraint)
     .filter(([key, value]) => key !== "id" && key.endsWith("Id") && isString(value))
     .map(([, value]) => value as string)

@@ -517,6 +517,81 @@ test.describe("full sketch editor", () => {
     )
   })
 
+  test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+    await page.getByRole("button", { name: "Offset", exact: true }).click()
+    await expect(
+      page.getByText("Move the pointer to set the signed offset, then click."),
+    ).toBeVisible()
+    await page.mouse.move(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.52)
+    const preview = drawing.locator('[data-sketch-preview-tool="offset-distance"]')
+    await expect(preview).toBeVisible()
+    await expect(preview.locator("line")).toHaveCount(4)
+    const previewDistance = Number(await preview.getAttribute("data-sketch-offset-distance"))
+    expect(Math.abs(previewDistance)).toBeGreaterThan(0.01)
+    await page.mouse.click(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.52)
+
+    await expect(lines).toHaveCount(8)
+    const offsetConstraint = page.getByRole("listitem").filter({ hasText: /Offset ·/ })
+    await expect(offsetConstraint).toBeVisible()
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(lines).toHaveCount(8)
+
+    const signedDistance = async () => {
+      const values = await lines.evaluateAll((elements) =>
+        [elements[0], elements[4]].map((element) => ({
+          x1: Number(element.getAttribute("x1")),
+          y1: Number(element.getAttribute("y1")),
+          x2: Number(element.getAttribute("x2")),
+          y2: Number(element.getAttribute("y2")),
+        })),
+      )
+      const [source, offset] = values
+      if (!source || !offset) throw new Error("The offset line pair is not rendered.")
+      const directionX = source.x2 - source.x1
+      const directionY = source.y2 - source.y1
+      const length = Math.hypot(directionX, directionY)
+      return (
+        (directionX * ((offset.y1 + offset.y2) / 2 - source.y1) -
+          directionY * ((offset.x1 + offset.x2) / 2 - source.x1)) /
+        length
+      )
+    }
+    const initialDistance = await signedDistance()
+    expect(Math.sign(initialDistance)).toBe(Math.sign(previewDistance))
+    const oppositeExpression = initialDistance > 0 ? "-8 mm" : "8 mm"
+    await offsetConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await offsetConstraint
+      .getByRole("combobox", { name: "Driving expression" })
+      .fill(oppositeExpression)
+    await offsetConstraint.getByRole("button", { name: "Save dimension" }).click()
+
+    await expect(offsetConstraint).toContainText(`Offset · ${oppositeExpression}`)
+    await expect
+      .poll(async () => {
+        const distance = await signedDistance()
+        return Math.sign(distance) === -Math.sign(initialDistance) && Math.abs(distance) > 7.99
+      })
+      .toBe(true)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("trims, splits, and extends lines as atomic sketch edits", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

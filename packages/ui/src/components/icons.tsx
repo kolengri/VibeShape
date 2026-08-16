@@ -6,6 +6,7 @@ export {
   CircleDashed,
   Command as CommandIcon,
   Construction,
+  CopyPlus,
   Cuboid,
   Download,
   DraftingCompass,

@@ -61,6 +61,7 @@ type SketchEditorPanelCopy = Readonly<{
   horizontalDistance: string
   midpoint: string
   noConstraints: string
+  offset: string
   parallel: string
   perpendicular: string
   plane: string
@@ -102,6 +103,7 @@ function constraintName(
     "point-on-curve": copy.pointOnCurve,
     fixed: copy.fixed,
     "horizontal-distance": copy.horizontalDistance,
+    offset: copy.offset,
     "vertical-distance": copy.verticalDistance,
     distance: copy.distance,
     angle: copy.angle,
@@ -124,6 +126,7 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
     diameter: copy.diameter,
     distance: copy.distance,
     "horizontal-distance": copy.horizontalDistance,
+    offset: copy.offset,
     radius: copy.radius,
     "vertical-distance": copy.verticalDistance,
   }
@@ -149,7 +152,10 @@ function evaluateDimensionValue(
       ? createAngleQuantity(evaluated.value.value, "rad", normalizedExpression)
       : null
   }
-  return evaluated.value.dimension === "length" && evaluated.value.value > 0
+  const validLength =
+    evaluated.value.dimension === "length" &&
+    (kind === "offset" ? evaluated.value.value !== 0 : evaluated.value.value > 0)
+  return validLength
     ? createLengthQuantity(evaluated.value.value, "mm", normalizedExpression)
     : null
 }

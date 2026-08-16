@@ -35,6 +35,7 @@ and selection are presentation state; they never replace stable entity and const
 | Extend open curve | Move the clicked-near line or arc endpoint to the nearest reachable bounded line, arc, or circle intersection while preserving the curve identity | Implemented |
 | Split curve | Divide a line or arc at one projected point; divide a circle at two projected points into complementary equal-radius arcs | Implemented |
 | Mirror | Reflect selected or subsequently picked points, lines, arcs, and circles across a sketch line while preserving shared-point and symmetry intent | Implemented |
+| Offset | Offset one line or a connected non-branching line chain/loop with live signed preview and one variable-ready driving dimension | Implemented for lines |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -49,10 +50,13 @@ duplicated with artificial center modes.
 
 Trim and Split operate on analytical lines, arcs, and circles. Extend operates on open analytical
 lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch line as its axis and
-reflects points or analytical curves through shared pure domain operations. Ellipse, spline,
-drag-through Trim, and free-end Extend variants remain follow-up work together with Offset, pattern
-authoring, curve-chain slots, and projected external geometry. These capabilities require exact
-domain and solver behavior and MUST NOT be simulated only in the toolbar.
+reflects points or analytical curves through shared pure domain operations. Offset accepts a
+preselected line set or expands one clicked line to its connected non-branching component, previews
+the signed side and miter intersections, and commits one compound constraint whose dimension drives
+every line pair plus both open-chain endpoints. Ellipse, spline, drag-through Trim, free-end Extend,
+round-curve Offset, pattern authoring, curve-chain slots, and projected external geometry remain
+follow-up work. These capabilities require exact domain and solver behavior and MUST NOT be simulated
+only in the toolbar.
 
 ## Onshape-oriented parity baseline
 
@@ -64,7 +68,8 @@ baseline is derived from the official
 [Trim](https://cad.onshape.com/help/Content/Sketch/trim.htm),
 [Extend](https://cad.onshape.com/help/Content/Sketch/extend.htm), and
 [Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm), and
-[Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm) documentation.
+[Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm), and
+[Offset](https://cad.onshape.com/help/Content/Sketch/offset.htm) documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
@@ -74,7 +79,7 @@ baseline is derived from the official
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, and point/line/arc/circle Mirror across a sketch line | Drag-through Trim, free-end Extend, ellipse/spline modification, Offset, Transform, and patterns |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, and signed connected-line Offset | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, Transform, and patterns |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible

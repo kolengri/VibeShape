@@ -8,6 +8,7 @@ import {
 } from "./sketch"
 import {
   appendSketchConstraint,
+  requireSketchPoint,
   type SketchAppendResult,
   type SketchPoint2,
   sketchLineIntersection,
@@ -58,11 +59,7 @@ function positiveSweep(startAngle: number, endAngle: number) {
 }
 
 function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
-  const point = sketch.entities.find(
-    (entity): entity is SketchPointEntity => entity.id === pointId && entity.type === "point",
-  )
-  if (!point) throw new TypeError("A curve operation requires an existing point entity.")
-  return point
+  return requireSketchPoint(sketch, pointId, "A curve operation requires an existing point entity.")
 }
 
 function curveById(sketch: SketchRecord, curveId: SketchEntityId) {

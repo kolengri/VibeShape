@@ -289,6 +289,15 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "offset",
+    id: editorCommandIds.sketchOffset,
+    labelKey: "sketchOffset",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "o" },
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "split",
     id: editorCommandIds.sketchSplit,
     labelKey: "sketchSplit",
@@ -365,6 +374,7 @@ function sketchToolHandler(
     | "sketchInscribedPolygon"
     | "sketchLine"
     | "sketchMirror"
+    | "sketchOffset"
     | "sketchPoint"
     | "sketchRectangle"
     | "sketchSelect"
@@ -493,6 +503,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
+  sketchToolHandler(editorCommandIds.sketchOffset, "offset"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
