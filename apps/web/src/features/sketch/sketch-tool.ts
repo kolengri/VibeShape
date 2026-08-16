@@ -21,6 +21,7 @@ export type SketchEditorTool =
   | "rectangle"
   | "center-rectangle"
   | "aligned-rectangle"
+  | "centered-aligned-rectangle"
   | "circle"
   | "three-point-circle"
   | "arc"

@@ -436,6 +436,64 @@ describe("SketchViewport", () => {
     ])
   })
 
+  it("previews and creates a centered aligned rectangle with a persistent center axis", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "centered-aligned-rectangle",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 300 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="centered-aligned-rectangle-side"]'),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 180 })
+    const widthPreview = document.querySelector(
+      '[data-sketch-preview-tool="centered-aligned-rectangle-width"]',
+    )
+    expect(widthPreview?.querySelector("polygon")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(7)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(5)
+    expect(
+      draft.entities.filter(
+        ({ type, construction }: { construction: boolean; type: string }) =>
+          type === "line" && construction,
+      ),
+    ).toHaveLength(1)
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual([
+      "perpendicular",
+      "parallel",
+      "parallel",
+      "midpoint",
+      "midpoint",
+      "midpoint",
+    ])
+  })
+
   it("previews and creates a three-point arc as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()

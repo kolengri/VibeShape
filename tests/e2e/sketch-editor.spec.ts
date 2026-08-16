@@ -282,6 +282,41 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   })
 
+  test("authors a centered aligned rectangle from its center axis", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Rectangle tools", "Centered aligned rectangle")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.48)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="centered-aligned-rectangle-side"]'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.48)
+    await page.mouse.move(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.3)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="centered-aligned-rectangle-width"] polygon'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.3)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(7)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
+    await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
+    await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
+    await expect(page.getByText("Midpoint", { exact: true })).toHaveCount(3)
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
+  })
+
   test("persists automatic perpendicular and midpoint inference with Shift suppression", async ({
     page,
   }) => {

@@ -135,6 +135,10 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Aligned rectangle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("aligned-rectangle")
 
+    await user.click(screen.getByRole("button", { name: "Rectangle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Centered aligned rectangle" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("centered-aligned-rectangle")
+
     await user.click(screen.getByRole("button", { name: "Line tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Midpoint line" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("midpoint-line")

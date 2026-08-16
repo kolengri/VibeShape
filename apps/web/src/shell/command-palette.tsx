@@ -38,6 +38,7 @@ const recentCommandIdsSchema = z
       editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchThreePointCircle,
       editorCommandIds.sketchCenterRectangle,
+      editorCommandIds.sketchCenteredAlignedRectangle,
       editorCommandIds.sketchCircle,
       editorCommandIds.sketchConstruction,
       editorCommandIds.sketchLine,

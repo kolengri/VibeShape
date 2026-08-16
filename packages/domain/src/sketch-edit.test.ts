@@ -5,6 +5,7 @@ import {
   appendSketchAlignedRectangle,
   appendSketchArc,
   appendSketchCenterRectangle,
+  appendSketchCenteredAlignedRectangle,
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
@@ -190,6 +191,55 @@ describe("sketch editing", () => {
         firstSideStart: { kind: "new", point: { x: 0, y: 0 } },
         firstSideEnd: { kind: "new", point: { x: 10, y: 10 } },
         widthPoint: { x: 5, y: 5 },
+      }),
+    ).toThrow("perpendicular width")
+  })
+
+  it("adds a centered aligned rectangle with a persistent center axis", () => {
+    const result = appendSketchCenteredAlignedRectangle(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      sidePoint: { kind: "new", point: { x: 10, y: 0 } },
+      widthPoint: { x: 0, y: 4 },
+    })
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+    const lines = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "line" }> => entity.type === "line",
+    )
+
+    expect(points).toHaveLength(7)
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ x: 0, y: 0, construction: true }),
+        expect.objectContaining({ x: 10, y: 0, construction: true }),
+        expect.objectContaining({ x: -10, y: 0, construction: true }),
+        expect.objectContaining({ x: -10, y: -4, construction: false }),
+        expect.objectContaining({ x: 10, y: 4, construction: false }),
+      ]),
+    )
+    expect(lines).toHaveLength(5)
+    expect(lines.filter(({ construction }) => construction)).toHaveLength(1)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "perpendicular",
+      "parallel",
+      "parallel",
+      "midpoint",
+      "midpoint",
+      "midpoint",
+    ])
+  })
+
+  it("rejects a degenerate centered aligned rectangle", () => {
+    expect(() =>
+      appendSketchCenteredAlignedRectangle(empty(), {
+        center: { kind: "new", point: { x: 0, y: 0 } },
+        createConstraintId: constraintId,
+        createEntityId: entityId,
+        sidePoint: { kind: "new", point: { x: 10, y: 0 } },
+        widthPoint: { x: 5, y: 0 },
       }),
     ).toThrow("perpendicular width")
   })

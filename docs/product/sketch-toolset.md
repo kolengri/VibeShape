@@ -20,6 +20,7 @@ and selection are presentation state; they never replace stable entity and const
 | Corner Rectangle | Author four lines as one local history edit | Implemented |
 | Center Rectangle | Author symmetric geometry and construction diagonals as one local history edit | Implemented |
 | Aligned Rectangle | Define one side, then a signed perpendicular width with persistent perpendicular and parallel intent | Implemented |
+| Centered Aligned Rectangle | Define the center, symmetric direction/half-length, and perpendicular half-width with a persistent construction axis and midpoint intent | Implemented |
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
@@ -29,11 +30,12 @@ and selection are presentation state; they never replace stable entity and const
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
 The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
-and Aligned Rectangle; Center-point and Three-point Circle; and Three-point, Tangent, and
-Center-point Arc. The family
+Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle; and Three-point,
+Tangent, and Center-point Arc. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
-the standard shortcut when one exists. Center construction is a property of the geometry family,
-not a requirement to duplicate every command with an artificial center mode.
+the standard shortcut when one exists. Every family exposes a center-origin variant when its
+geometry has a stable, unambiguous center construction. Free-form or selection-driven tools are not
+duplicated with artificial center modes.
 
 Trim, Extend, Split, mirror/pattern authoring, ellipses, slots, polygons, splines, and projected
 external geometry remain follow-up tools. They require new exact domain and solver behavior and

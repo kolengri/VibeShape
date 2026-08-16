@@ -274,6 +274,10 @@
           "label": "Center rectangle",
           "keywords": "center rectangle|symmetric box profile|rectangle from center"
         },
+        "sketchCenteredAlignedRectangle": {
+          "label": "Centered aligned rectangle",
+          "keywords": "centered aligned rectangle|three point center rectangle|rotated rectangle from center|symmetric aligned box"
+        },
         "sketchCircle": {
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"

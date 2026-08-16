@@ -84,6 +84,7 @@ const sketchToolFamilies = [
       editorCommandIds.sketchRectangle,
       editorCommandIds.sketchCenterRectangle,
       editorCommandIds.sketchAlignedRectangle,
+      editorCommandIds.sketchCenteredAlignedRectangle,
     ],
     id: "rectangle",
     labelKey: "rectangleToolsLabel",

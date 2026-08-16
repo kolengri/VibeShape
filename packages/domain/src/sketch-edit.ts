@@ -73,6 +73,42 @@ function allocateFourEntityIds(createEntityId: EntityIdFactory) {
   return [createEntityId(), createEntityId(), createEntityId(), createEntityId()] as const
 }
 
+type FourEntityIds = ReturnType<typeof allocateFourEntityIds>
+type FourPoints = readonly [SketchPoint2, SketchPoint2, SketchPoint2, SketchPoint2]
+
+function pointEntities(
+  pointIds: FourEntityIds,
+  points: FourPoints,
+  construction: boolean,
+): readonly SketchEntity[] {
+  return points.map((point, index) => ({
+    schemaVersion: 0 as const,
+    id: pointIds[index] as SketchEntityId,
+    type: "point" as const,
+    ...point,
+    construction,
+  }))
+}
+
+function closedLineEntities(
+  pointIds: FourEntityIds,
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+) {
+  const lineIds = allocateFourEntityIds(createEntityId)
+  const entities = lineIds.map(
+    (id, index): SketchEntity => ({
+      schemaVersion: 0,
+      id,
+      type: "line",
+      startPointId: pointIds[index] as SketchEntityId,
+      endPointId: pointIds[(index + 1) % pointIds.length] as SketchEntityId,
+      construction,
+    }),
+  )
+  return { entities, lineIds }
+}
+
 export function createEmptySketch(input: {
   id: SketchId
   label: string
@@ -229,56 +265,15 @@ export function appendSketchRectangle(
     throw new RangeError("A sketch rectangle requires nonzero width and height.")
   }
   const pointIds = allocateFourEntityIds(input.createEntityId)
-  const lineIds = allocateFourEntityIds(input.createEntityId)
-  const [pointA, pointB, pointC, pointD] = pointIds
-  const [lineA, lineB, lineC, lineD] = lineIds
-  const points = [
+  const points: FourPoints = [
     { x: input.firstCorner.x, y: input.firstCorner.y },
     { x: input.oppositeCorner.x, y: input.firstCorner.y },
     { x: input.oppositeCorner.x, y: input.oppositeCorner.y },
     { x: input.firstCorner.x, y: input.oppositeCorner.y },
   ]
-  const entities: SketchEntity[] = [
-    ...points.map((point, index) => ({
-      schemaVersion: 0 as const,
-      id: pointIds[index] as SketchEntityId,
-      type: "point" as const,
-      ...point,
-      construction,
-    })),
-    {
-      schemaVersion: 0,
-      id: lineA,
-      type: "line",
-      startPointId: pointA,
-      endPointId: pointB,
-      construction,
-    },
-    {
-      schemaVersion: 0,
-      id: lineB,
-      type: "line",
-      startPointId: pointB,
-      endPointId: pointC,
-      construction,
-    },
-    {
-      schemaVersion: 0,
-      id: lineC,
-      type: "line",
-      startPointId: pointC,
-      endPointId: pointD,
-      construction,
-    },
-    {
-      schemaVersion: 0,
-      id: lineD,
-      type: "line",
-      startPointId: pointD,
-      endPointId: pointA,
-      construction,
-    },
-  ]
+  const outline = closedLineEntities(pointIds, construction, input.createEntityId)
+  const [lineA, lineB, lineC, lineD] = outline.lineIds
+  const entities = [...pointEntities(pointIds, points, construction), ...outline.entities]
   const constraints: SketchConstraint[] = [
     { schemaVersion: 0, id: input.createConstraintId(), type: "horizontal", lineId: lineA },
     { schemaVersion: 0, id: input.createConstraintId(), type: "vertical", lineId: lineB },
@@ -332,35 +327,22 @@ function alignedRectangleEntities(
   const thirdPointId = createEntityId()
   const fourthPointId = createEntityId()
   const cornerIds = [first.id, second.id, thirdPointId, fourthPointId] as const
-  const points: SketchEntity[] = [
-    { id: thirdPointId, point: geometry.third },
-    { id: fourthPointId, point: geometry.fourth },
-  ].map(({ id, point }) => ({
+  const points: SketchEntity[] = [geometry.third, geometry.fourth].map((point, index) => ({
     schemaVersion: 0,
-    id,
+    id: [thirdPointId, fourthPointId][index] as SketchEntityId,
     type: "point",
     ...point,
     construction,
   }))
-  const lineIds = allocateFourEntityIds(createEntityId)
-  const lines = lineIds.map(
-    (id, index): SketchEntity => ({
-      schemaVersion: 0,
-      id,
-      type: "line",
-      startPointId: cornerIds[index] as SketchEntityId,
-      endPointId: cornerIds[(index + 1) % cornerIds.length] as SketchEntityId,
-      construction,
-    }),
-  )
+  const outline = closedLineEntities(cornerIds, construction, createEntityId)
   return {
     additions: [
       ...(first.entity ? [first.entity] : []),
       ...(second.entity ? [second.entity] : []),
       ...points,
-      ...lines,
+      ...outline.entities,
     ],
-    lineIds,
+    lineIds: outline.lineIds,
   }
 }
 
@@ -425,6 +407,141 @@ export function appendSketchAlignedRectangle(
     input.createEntityId,
   )
   const constraints = alignedRectangleConstraints(lineIds, input.createConstraintId)
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+export type CenteredAlignedRectangleGeometry = Readonly<{
+  corners: FourPoints
+  oppositeSidePoint: SketchPoint2
+}>
+
+export function centeredAlignedRectangleGeometry(
+  center: SketchPoint2,
+  sidePoint: SketchPoint2,
+  widthPoint: SketchPoint2,
+): CenteredAlignedRectangleGeometry | null {
+  const halfSide = { x: sidePoint.x - center.x, y: sidePoint.y - center.y }
+  const halfSideLength = Math.hypot(halfSide.x, halfSide.y)
+  if (halfSideLength <= MIN_GEOMETRY_DISTANCE) return null
+  const signedHalfWidth =
+    (halfSide.x * (widthPoint.y - center.y) - halfSide.y * (widthPoint.x - center.x)) /
+    halfSideLength
+  if (Math.abs(signedHalfWidth) <= MIN_GEOMETRY_DISTANCE) return null
+  const halfWidth = {
+    x: (-halfSide.y * signedHalfWidth) / halfSideLength,
+    y: (halfSide.x * signedHalfWidth) / halfSideLength,
+  }
+  return {
+    corners: [
+      { x: center.x - halfSide.x - halfWidth.x, y: center.y - halfSide.y - halfWidth.y },
+      { x: center.x + halfSide.x - halfWidth.x, y: center.y + halfSide.y - halfWidth.y },
+      { x: center.x + halfSide.x + halfWidth.x, y: center.y + halfSide.y + halfWidth.y },
+      { x: center.x - halfSide.x + halfWidth.x, y: center.y - halfSide.y + halfWidth.y },
+    ],
+    oppositeSidePoint: { x: center.x - halfSide.x, y: center.y - halfSide.y },
+  }
+}
+
+function centeredAlignedRectangleConstraints(
+  centerId: SketchEntityId,
+  sidePointId: SketchEntityId,
+  oppositeSidePointId: SketchEntityId,
+  axisLineId: SketchEntityId,
+  lineIds: FourEntityIds,
+  createConstraintId: ConstraintIdFactory,
+) {
+  const [, secondLineId, , fourthLineId] = lineIds
+  const midpointDefinitions = [
+    { type: "midpoint", pointId: centerId, lineId: axisLineId },
+    { type: "midpoint", pointId: sidePointId, lineId: secondLineId },
+    { type: "midpoint", pointId: oppositeSidePointId, lineId: fourthLineId },
+  ] as const
+  return [
+    ...alignedRectangleConstraints(lineIds, createConstraintId),
+    ...midpointDefinitions.map(
+      ({ pointId, lineId }): SketchConstraint => ({
+        schemaVersion: 0,
+        id: createConstraintId(),
+        type: "midpoint",
+        pointId,
+        lineId,
+      }),
+    ),
+  ]
+}
+
+export function appendSketchCenteredAlignedRectangle(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    sidePoint: SketchPointTarget
+    widthPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, true, input.createEntityId)
+  const sketchWithCenter = center.entity
+    ? parsedSketch(sketch, [...sketch.entities, center.entity])
+    : sketch
+  const sidePoint = resolvePointTarget(
+    sketchWithCenter,
+    input.sidePoint,
+    true,
+    input.createEntityId,
+  )
+  if (
+    center.id === sidePoint.id ||
+    distance(center.point, sidePoint.point) <= MIN_GEOMETRY_DISTANCE
+  ) {
+    throw new RangeError("A centered aligned rectangle requires a nonzero center axis.")
+  }
+  const geometry = centeredAlignedRectangleGeometry(center.point, sidePoint.point, input.widthPoint)
+  if (!geometry) {
+    throw new RangeError("A centered aligned rectangle requires a nonzero perpendicular width.")
+  }
+  const oppositeSidePointId = input.createEntityId()
+  const axisLineId = input.createEntityId()
+  const cornerIds = allocateFourEntityIds(input.createEntityId)
+  const outline = closedLineEntities(cornerIds, construction, input.createEntityId)
+  const additions: SketchEntity[] = [
+    ...(center.entity ? [center.entity] : []),
+    ...(sidePoint.entity ? [sidePoint.entity] : []),
+    {
+      schemaVersion: 0,
+      id: oppositeSidePointId,
+      type: "point",
+      ...geometry.oppositeSidePoint,
+      construction: true,
+    },
+    {
+      schemaVersion: 0,
+      id: axisLineId,
+      type: "line",
+      startPointId: oppositeSidePointId,
+      endPointId: sidePoint.id,
+      construction: true,
+    },
+    ...pointEntities(cornerIds, geometry.corners, construction),
+    ...outline.entities,
+  ]
+  const constraints = centeredAlignedRectangleConstraints(
+    center.id,
+    sidePoint.id,
+    oppositeSidePointId,
+    axisLineId,
+    outline.lineIds,
+    input.createConstraintId,
+  )
   return {
     sketch: sketchRecordSchema.parse({
       ...sketch,

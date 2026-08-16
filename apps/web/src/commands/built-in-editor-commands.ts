@@ -172,6 +172,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "centered-aligned-rectangle",
+    id: editorCommandIds.sketchCenteredAlignedRectangle,
+    labelKey: "sketchCenteredAlignedRectangle",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "circle",
     id: editorCommandIds.sketchCircle,
     labelKey: "sketchCircle",
@@ -275,6 +283,7 @@ function sketchToolHandler(
     | "sketchThreePointArc"
     | "sketchThreePointCircle"
     | "sketchCenterRectangle"
+    | "sketchCenteredAlignedRectangle"
     | "sketchCircle"
     | "sketchLine"
     | "sketchPoint"
@@ -375,6 +384,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchRectangle, "rectangle"),
   sketchToolHandler(editorCommandIds.sketchCenterRectangle, "center-rectangle"),
   sketchToolHandler(editorCommandIds.sketchAlignedRectangle, "aligned-rectangle"),
+  sketchToolHandler(editorCommandIds.sketchCenteredAlignedRectangle, "centered-aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
