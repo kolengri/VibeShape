@@ -194,7 +194,7 @@ The alpha default is:
 | Secondary drag | Pan |
 | `F` | Fit selection, or fit all when nothing is selected |
 
-Trackpad gestures MUST have a complete preset and must not depend on browser-reserved gestures. Navigation profiles MAY be added later for familiar CAD conventions. Camera movement never commits document changes and remains available during a geometry rebuild unless the viewport itself is unavailable.
+Trackpad gestures MUST have a complete preset and must not depend on browser-reserved gestures. Navigation profiles MAY be added later for familiar CAD conventions. Camera movement never commits document changes and remains available during a geometry rebuild unless the viewport itself is unavailable. Replacing preview or rebuilt meshes MUST preserve the current orbit, pan, and zoom. Automatic fit is limited to initial viewport creation; later fitting requires an explicit user command.
 
 Sketch mode switches to an orthographic view normal to the sketch plane by default. Leaving sketch mode restores the previous model camera unless the user explicitly chooses another view.
 
@@ -214,7 +214,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 |---|---|
 | Place geometry | Point finishes after one position; Line remains chain-active after a segment; corner Rectangle, center Rectangle, and Circle finish after the required second point; center-point Arc finishes after center, start, and end; three-point Arc finishes after start, end, and point-on-arc |
 | Select | Primary activation replaces selection; the platform additive modifier toggles entities; empty-space activation clears selection |
-| Drag point | Updates only the active draft, requests a debounced worker solve, and creates one local undo checkpoint for the complete gesture |
+| Drag point | Updates only the active draft, requests a debounced worker solve with the current drag target and previous continuation state, keeps the last valid solved geometry visible until the replacement arrives, and creates one local undo checkpoint for the complete gesture |
 | Delete / Backspace | Removes selected entities plus invalid dependent geometry and constraints; shared points remain when still referenced |
 | Escape | Cancels the in-progress placement before it exits the active sketch command |
 | Undo / redo | Operates on the active sketch draft through buttons and `Ctrl/Cmd+Z`; it does not rewrite committed document history |

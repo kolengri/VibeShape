@@ -4,6 +4,7 @@ import {
   type PersistentDocumentSession,
   type PersistentDocumentSessionDiagnostic,
   type PersistentDocumentSessionReport,
+  type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
@@ -69,6 +70,7 @@ export type DocumentMutationResult = ApplyVariableTableResult
 export type FeatureMutationResult = ApplyVariableTableResult
 type SketchMutationResult = ApplyVariableTableResult
 export type ActiveSketchSolveResult = PersistentSketchSolveResult
+export type ActiveSketchSolveOptions = PersistentSketchSolveOptions
 
 export type ActiveDocumentExportResult =
   | {
@@ -454,6 +456,7 @@ export function updateSketch(baseRevision: number, sketch: SketchRecord) {
 export async function solveActiveSketch(
   baseRevision: number,
   sketch: SketchId | SketchRecord,
+  options: ActiveSketchSolveOptions = {},
 ): Promise<ActiveSketchSolveResult> {
   if (!session || state.status !== "ready" || !state.report) {
     return {
@@ -480,7 +483,7 @@ export async function solveActiveSketch(
       },
     }
   }
-  return session.solveSketch(sketchId, draftSketch)
+  return session.solveSketch(sketchId, draftSketch, options)
 }
 
 export async function exportActiveDocument(
