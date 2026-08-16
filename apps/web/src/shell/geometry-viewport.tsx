@@ -22,6 +22,8 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
+import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
+import { terminalFeatureIds } from "../features/part-design/terminal-features"
 
 type ViewportFactory = (
   canvas: HTMLCanvasElement,
@@ -40,16 +42,10 @@ async function loadGeometryViewport(canvas: HTMLCanvasElement, options: Geometry
   return createGeometryViewport(canvas, options)
 }
 
-function terminalFeatureIds(controller: DocumentControllerState) {
-  const features = controller.report?.snapshot.features ?? []
-  const dependencyIds = new Set(features.flatMap(({ dependencies }) => dependencies))
-  return new Set<string>(features.filter(({ id }) => !dependencyIds.has(id)).map(({ id }) => id))
-}
-
 export function viewerMeshes(controller: DocumentControllerState): readonly ViewerMesh[] {
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
-  const terminalIds = terminalFeatureIds(controller)
+  const terminalIds = terminalFeatureIds(controller.report?.snapshot.features ?? [])
   return rebuild.response.geometry
     .filter(({ featureId }) => terminalIds.has(featureId))
     .map(({ featureId, geometry }) => ({ featureId, ...geometry.mesh }))
@@ -290,46 +286,76 @@ function OriginPlaneSelectionOverlay({
   )
 }
 
-export function GeometryViewport({
-  controller,
-  createViewport = loadGeometryViewport,
-  originPlaneSelection,
-  onSelectionChange,
-  selection,
-}: {
+function PreviewStatus({ status }: { status: ExtrusionPreviewState["status"] }) {
+  const t = useTranslations("app.shell.viewport")
+  if (status === "idle") return null
+  const failed = status === "error"
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+      <p
+        className={failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+        role={failed ? "alert" : "status"}
+        aria-live="polite"
+      >
+        {t(failed ? "previewFailed" : status === "loading" ? "previewLoading" : "previewReady")}
+      </p>
+    </div>
+  )
+}
+
+type GeometryViewportProps = Readonly<{
   controller: DocumentControllerState
   createViewport?: ViewportFactory
+  extrusionPreview?: ExtrusionPreviewState
   originPlaneSelection?: Readonly<{
     selectedPlane: ViewerOriginPlane
     onSelect: (plane: ViewerOriginPlane) => void
   }>
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
-}) {
-  const displayUnits = useDocumentDisplayUnits()
-  const t = useTranslations("app.shell.viewport")
-  const meshes = useMemo(() => viewerMeshes(controller), [controller])
-  const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
-    null,
-  )
-  const { canvasRef, rendererFailed, viewportRef } = useViewportRenderer(
-    createViewport,
-    meshes,
-    originPlaneSelection?.selectedPlane ?? null,
-    originPlaneSelection !== undefined,
-    setOriginPlanePreselection,
-    originPlaneSelection?.onSelect ?? ignoreOriginPlaneSelection,
-    onSelectionChange,
-  )
-  useProjectThumbnail(controller, meshes)
+}>
 
+function previewMeshes(
+  preview: ExtrusionPreviewState | undefined,
+  committedMeshes: readonly ViewerMesh[],
+) {
+  return preview?.status === "ready" ? preview.meshes : committedMeshes
+}
+
+function selectedOriginPlane(selection: GeometryViewportProps["originPlaneSelection"]) {
+  return selection?.selectedPlane ?? null
+}
+
+function selectOriginPlaneHandler(selection: GeometryViewportProps["originPlaneSelection"]) {
+  return selection?.onSelect ?? ignoreOriginPlaneSelection
+}
+
+function previewAllowsViewportMessage(preview: ExtrusionPreviewState | undefined) {
+  return preview?.status !== "loading" && preview?.status !== "error"
+}
+
+function useClearInvalidSelection(
+  meshes: readonly ViewerMesh[],
+  selection: ViewerSelection | null,
+  onSelectionChange: GeometryViewportProps["onSelectionChange"],
+) {
   useEffect(() => {
     if (selection && !meshes.some(({ featureId }) => featureId === selection.featureId)) {
       onSelectionChange(null)
     }
   }, [meshes, onSelectionChange, selection])
+}
 
-  const message = viewportMessage(
+function translatedViewportMessage(
+  controller: DocumentControllerState,
+  rendererFailed: boolean,
+  meshes: readonly ViewerMesh[],
+  originPlaneSelection: GeometryViewportProps["originPlaneSelection"],
+  preview: ExtrusionPreviewState | undefined,
+  t: ReturnType<typeof useTranslations<"app.shell.viewport">>,
+) {
+  if (!previewAllowsViewportMessage(preview)) return null
+  return viewportMessage(
     controller,
     rendererFailed,
     meshes.length,
@@ -342,24 +368,101 @@ export function GeometryViewport({
       empty: t("empty"),
     },
   )
+}
+
+function useGeometryViewportModel(props: GeometryViewportProps) {
+  const {
+    controller,
+    createViewport = loadGeometryViewport,
+    extrusionPreview,
+    originPlaneSelection,
+    onSelectionChange,
+    selection,
+  } = props
+  const t = useTranslations("app.shell.viewport")
+  const committedMeshes = useMemo(() => viewerMeshes(controller), [controller])
+  const meshes = previewMeshes(extrusionPreview, committedMeshes)
+  const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
+    null,
+  )
+  const { canvasRef, rendererFailed, viewportRef } = useViewportRenderer(
+    createViewport,
+    meshes,
+    selectedOriginPlane(originPlaneSelection),
+    originPlaneSelection !== undefined,
+    setOriginPlanePreselection,
+    selectOriginPlaneHandler(originPlaneSelection),
+    onSelectionChange,
+  )
+  useProjectThumbnail(controller, committedMeshes)
+  useClearInvalidSelection(meshes, selection, onSelectionChange)
+  const message = translatedViewportMessage(
+    controller,
+    rendererFailed,
+    meshes,
+    originPlaneSelection,
+    extrusionPreview,
+    t,
+  )
+  return {
+    canvasRef,
+    meshes,
+    message,
+    originPlanePreselection,
+    viewportRef,
+  }
+}
+
+function ViewportControlsSlot({
+  meshes,
+  originPlaneSelection,
+  selection,
+  viewportRef,
+}: Readonly<{
+  meshes: readonly ViewerMesh[]
+  originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
+  selection: GeometryViewportProps["selection"]
+  viewportRef: RefObject<GeometryViewportPort | null>
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  if (meshes.length === 0 && !originPlaneSelection) return null
+  return (
+    <ViewportControls
+      clearLabel={t("clearSelection")}
+      fitLabel={t("fit")}
+      selection={selection}
+      viewportRef={viewportRef}
+    />
+  )
+}
+
+export function GeometryViewport(props: GeometryViewportProps) {
+  const { extrusionPreview, originPlaneSelection, selection } = props
+  const displayUnits = useDocumentDisplayUnits()
+  const t = useTranslations("app.shell.viewport")
+  const { canvasRef, meshes, message, originPlanePreselection, viewportRef } =
+    useGeometryViewportModel(props)
   return (
     <section
       aria-label={t("ariaLabel")}
       className="relative min-h-0 overflow-hidden bg-viewport-background"
       data-rendered-feature-count={meshes.length}
+      data-preview-feature-count={
+        meshes.filter(({ appearance }) => appearance === "preview").length
+      }
+      data-preview-status={extrusionPreview?.status ?? "idle"}
       data-origin-plane-selection={originPlaneSelection?.selectedPlane}
       data-origin-plane-preselection={originPlanePreselection ?? undefined}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
       <ViewportMessage message={message} title={t("title")} />
-      {meshes.length > 0 || originPlaneSelection ? (
-        <ViewportControls
-          clearLabel={t("clearSelection")}
-          fitLabel={t("fit")}
-          selection={selection}
-          viewportRef={viewportRef}
-        />
-      ) : null}
+      <PreviewStatus status={extrusionPreview?.status ?? "idle"} />
+      <ViewportControlsSlot
+        meshes={meshes}
+        originPlaneSelection={originPlaneSelection}
+        selection={selection}
+        viewportRef={viewportRef}
+      />
       <OriginPlaneSelectionOverlay
         preselectedPlane={originPlanePreselection}
         selection={originPlaneSelection}

@@ -46,12 +46,11 @@ import {
 import type { GeometryExportFormat } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
+import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 
 const DATABASE_NAME = "vibeshape-product-v0"
 const DOCUMENT_STORAGE_KEY = "vibeshape-active-document-id"
 const SESSION_STORAGE_KEY = "vibeshape-browser-session-id"
-const MESH_POLICY = { chordTolerance: 0.05, angularTolerance: 0.1 } as const
-
 type ControllerStatus = "idle" | "loading" | "ready" | "error"
 type SaveStatus = "saved" | "saving" | "save-error"
 
@@ -231,16 +230,16 @@ async function openOrCreate(defaultDocumentName: string) {
     const opened = await openPersistentDocumentSession(sessionDependencies, {
       documentId: storedDocumentId.data,
       sessionId,
-      mesh: MESH_POLICY,
+      mesh: PRODUCT_MESH_POLICY,
     })
     if (opened.ok) return opened
     if (opened.diagnostic.sourceCode !== "document-not-found") return opened
   }
 
-  const documentId = documentIdSchema.parse(browserUuidV7())
+  const documentId = createBrowserDocumentId()
   const created = await createPersistentDocumentSession(sessionDependencies, {
     sessionId,
-    mesh: MESH_POLICY,
+    mesh: PRODUCT_MESH_POLICY,
     command: createCommand(documentId, defaultDocumentName),
   })
   if (created.ok) writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId)
@@ -283,6 +282,10 @@ function startDocumentController(defaultDocumentName: string) {
 
 export function createBrowserVariableId() {
   return variableIdSchema.parse(browserUuidV7())
+}
+
+export function createBrowserDocumentId() {
+  return documentIdSchema.parse(browserUuidV7())
 }
 
 export function createBrowserFeatureId() {

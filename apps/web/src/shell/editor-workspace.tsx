@@ -1,5 +1,6 @@
 import type {
   FeatureId,
+  FeatureRecord,
   SketchConstraintId,
   SketchEntityId,
   SketchId,
@@ -7,6 +8,7 @@ import type {
   SketchRecord,
 } from "@vibeshape/domain"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
+import { useState } from "react"
 import {
   type DocumentControllerState,
   updateFeature,
@@ -21,12 +23,31 @@ import type {
   SketchDraftChangeMode,
   SketchEditorTool,
 } from "../features/sketch/sketch-tool"
+import { useExtrusionPreview } from "../features/extrusion/use-extrusion-preview"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import { GeometryViewport } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
+
+const EMPTY_GEOMETRY = [] as const
+
+function committedGeometry(controller: DocumentControllerState) {
+  const rebuild = controller.report?.rebuild
+  return rebuild?.ok ? rebuild.response.geometry : EMPTY_GEOMETRY
+}
+
+function isExtrusionToolActive(activeTool: ActivePartDesignTool | null) {
+  return activeTool?.kind === "create-extrusion" || activeTool?.kind === "edit-extrusion"
+}
+
+function extrusionPreviewCandidate(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+) {
+  return isExtrusionToolActive(activeTool) ? candidate : null
+}
 
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
@@ -41,7 +62,10 @@ type WorkspaceContentProps = Readonly<{
     onSketchUndo: () => void
   }>
   controller: DocumentControllerState
-  model: Readonly<{ selection: ViewerSelection | null }>
+  model: Readonly<{
+    extrusionPreview: ReturnType<typeof useExtrusionPreview>
+    selection: ViewerSelection | null
+  }>
   sketch: Readonly<{
     activeTool: ActiveSketchTool | null
     construction: boolean
@@ -92,6 +116,7 @@ function ModelingWorkspaceContent({
   return (
     <GeometryViewport
       controller={controller}
+      extrusionPreview={model.extrusionPreview}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
@@ -151,22 +176,7 @@ export type EditorWorkspaceActions = Readonly<{
   undoSketchDraft: () => void
 }>
 
-export function EditorWorkspace({
-  actions,
-  activeTool,
-  activeSketchId,
-  activeSketchTool,
-  controller,
-  selection,
-  sketchConstruction,
-  sketchDraft,
-  sketchEditorTool,
-  sketchFailedConstraintIds,
-  sketchProfiles,
-  sketchSelectedEntityIds,
-  sketchSelectedProfile,
-  workspace,
-}: {
+type EditorWorkspaceProps = Readonly<{
   actions: EditorWorkspaceActions
   activeTool: ActivePartDesignTool | null
   activeSketchId: SketchId | null
@@ -181,73 +191,126 @@ export function EditorWorkspace({
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
   workspace: EditorWorkspaceName
+}>
+
+function useEditorExtrusionPreview(
+  controller: DocumentControllerState,
+  activeTool: ActivePartDesignTool | null,
+) {
+  const [extrusionPreviewFeature, setExtrusionPreviewFeature] = useState<FeatureRecord | null>(null)
+  const extrusionPreview = useExtrusionPreview(
+    controller.report?.snapshot ?? null,
+    extrusionPreviewCandidate(activeTool, extrusionPreviewFeature),
+    committedGeometry(controller),
+  )
+  return { extrusionPreview, setExtrusionPreviewFeature }
+}
+
+function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
+  const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
+  return (
+    <ModelTree
+      activeWorkspace={workspace}
+      activeFeatureId={activeFeatureId(activeTool)}
+      activeSketchId={activeSketchId}
+      controller={controller}
+      onFeatureActivate={actions.editFeature}
+      onFeatureRename={updateFeature}
+      onSketchActivate={actions.selectSketch}
+      onSketchRename={updateSketch}
+      onWorkspaceChange={actions.switchWorkspace}
+      sketchRenameBlockedId={
+        activeSketchTool?.kind === "edit-sketch" ? activeSketchTool.sketchId : null
+      }
+    />
+  )
+}
+
+function EditorContent({
+  extrusionPreview,
+  props,
+}: {
+  extrusionPreview: ReturnType<typeof useExtrusionPreview>
+  props: EditorWorkspaceProps
 }) {
+  const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
   const selectedSketch =
     controller.report?.snapshot.sketches.find(({ id }) => id === activeSketchId) ?? null
   return (
+    <WorkspaceContent
+      actions={{
+        onSelectionChange: actions.select,
+        onSketchDraftChange: actions.setSketchDraft,
+        onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
+        onSketchPlaneSelect: actions.selectSketchPlane,
+        onSketchProfileSelect: actions.setSketchSelectedProfile,
+        onSketchProfilesChange: actions.setSketchProfiles,
+        onSketchRedo: actions.redoSketchDraft,
+        onSketchSelectionChange: actions.setSketchSelectedEntityIds,
+        onSketchUndo: actions.undoSketchDraft,
+      }}
+      controller={controller}
+      model={{ extrusionPreview, selection }}
+      workspace={workspace}
+      sketch={{
+        activeTool: activeSketchTool,
+        construction: props.sketchConstruction,
+        draft: props.sketchDraft,
+        editorTool: props.sketchEditorTool,
+        selectedEntityIds: props.sketchSelectedEntityIds,
+        selectedProfile: props.sketchSelectedProfile,
+        selectedSketch,
+      }}
+    />
+  )
+}
+
+function EditorTaskPanel({
+  onExtrusionPreviewChange,
+  props,
+}: {
+  onExtrusionPreviewChange: (feature: FeatureRecord | null) => void
+  props: EditorWorkspaceProps
+}) {
+  const { actions } = props
+  return (
+    <TaskPanel
+      activeSketchId={props.activeSketchId}
+      activeSketchTool={props.activeSketchTool}
+      activeTool={props.activeTool}
+      controller={props.controller}
+      workspace={props.workspace}
+      onCloseTool={actions.closeTool}
+      onCreateBox={actions.createBox}
+      onCreateCylinder={actions.createCylinder}
+      onCreateExtrusion={actions.createExtrusion}
+      onCreateSketch={actions.createSketch}
+      onCreateSubtract={actions.createSubtract}
+      onEditSketch={actions.editSketch}
+      onExtrusionPreviewChange={onExtrusionPreviewChange}
+      sketchDraft={props.sketchDraft}
+      sketchFailedConstraintIds={props.sketchFailedConstraintIds}
+      sketchProfiles={props.sketchProfiles}
+      sketchSelectedEntityIds={props.sketchSelectedEntityIds}
+      sketchSelectedProfile={props.sketchSelectedProfile}
+      onSketchDraftChange={actions.setSketchDraft}
+      onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
+      onSketchSaved={actions.sketchSaved}
+      onSketchPlaneSelect={actions.selectSketchPlane}
+    />
+  )
+}
+
+export function EditorWorkspace(props: EditorWorkspaceProps) {
+  const { extrusionPreview, setExtrusionPreviewFeature } = useEditorExtrusionPreview(
+    props.controller,
+    props.activeTool,
+  )
+  return (
     <div className="cad-workspace-grid min-h-0">
-      <ModelTree
-        activeWorkspace={workspace}
-        activeFeatureId={activeFeatureId(activeTool)}
-        activeSketchId={activeSketchId}
-        controller={controller}
-        onFeatureActivate={actions.editFeature}
-        onFeatureRename={updateFeature}
-        onSketchActivate={actions.selectSketch}
-        onSketchRename={updateSketch}
-        onWorkspaceChange={actions.switchWorkspace}
-        sketchRenameBlockedId={
-          activeSketchTool?.kind === "edit-sketch" ? activeSketchTool.sketchId : null
-        }
-      />
-      <WorkspaceContent
-        actions={{
-          onSelectionChange: actions.select,
-          onSketchDraftChange: actions.setSketchDraft,
-          onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
-          onSketchPlaneSelect: actions.selectSketchPlane,
-          onSketchProfileSelect: actions.setSketchSelectedProfile,
-          onSketchProfilesChange: actions.setSketchProfiles,
-          onSketchRedo: actions.redoSketchDraft,
-          onSketchSelectionChange: actions.setSketchSelectedEntityIds,
-          onSketchUndo: actions.undoSketchDraft,
-        }}
-        controller={controller}
-        model={{ selection }}
-        workspace={workspace}
-        sketch={{
-          activeTool: activeSketchTool,
-          construction: sketchConstruction,
-          draft: sketchDraft,
-          editorTool: sketchEditorTool,
-          selectedEntityIds: sketchSelectedEntityIds,
-          selectedProfile: sketchSelectedProfile,
-          selectedSketch,
-        }}
-      />
-      <TaskPanel
-        activeSketchId={activeSketchId}
-        activeSketchTool={activeSketchTool}
-        activeTool={activeTool}
-        controller={controller}
-        workspace={workspace}
-        onCloseTool={actions.closeTool}
-        onCreateBox={actions.createBox}
-        onCreateCylinder={actions.createCylinder}
-        onCreateExtrusion={actions.createExtrusion}
-        onCreateSketch={actions.createSketch}
-        onCreateSubtract={actions.createSubtract}
-        onEditSketch={actions.editSketch}
-        sketchDraft={sketchDraft}
-        sketchFailedConstraintIds={sketchFailedConstraintIds}
-        sketchProfiles={sketchProfiles}
-        sketchSelectedEntityIds={sketchSelectedEntityIds}
-        sketchSelectedProfile={sketchSelectedProfile}
-        onSketchDraftChange={actions.setSketchDraft}
-        onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
-        onSketchSaved={actions.sketchSaved}
-        onSketchPlaneSelect={actions.selectSketchPlane}
-      />
+      <EditorModelTree props={props} />
+      <EditorContent extrusionPreview={extrusionPreview} props={props} />
+      <EditorTaskPanel onExtrusionPreviewChange={setExtrusionPreviewFeature} props={props} />
     </div>
   )
 }
