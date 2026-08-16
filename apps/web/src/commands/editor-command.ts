@@ -6,7 +6,9 @@ export const editorCommandIds = {
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   sketchArc: "org.vibeshape.editor.sketch.tool.arc",
+  sketchMidpointLine: "org.vibeshape.editor.sketch.tool.midpoint-line",
   sketchThreePointArc: "org.vibeshape.editor.sketch.tool.three-point-arc",
+  sketchThreePointCircle: "org.vibeshape.editor.sketch.tool.three-point-circle",
   sketchCenterRectangle: "org.vibeshape.editor.sketch.tool.center-rectangle",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
@@ -42,6 +44,7 @@ export type EditorCommandIcon =
   | "cylinder"
   | "extrude"
   | "line"
+  | "midpoint-line"
   | "model"
   | "point"
   | "rectangle"
@@ -51,6 +54,7 @@ export type EditorCommandIcon =
   | "subtract"
   | "undo"
   | "three-point-arc"
+  | "three-point-circle"
 
 export type EditorCommandLabelKey =
   | "cancelActive"
@@ -60,7 +64,9 @@ export type EditorCommandLabelKey =
   | "createSketch"
   | "createSubtract"
   | "sketchArc"
+  | "sketchMidpointLine"
   | "sketchThreePointArc"
+  | "sketchThreePointCircle"
   | "sketchCenterRectangle"
   | "sketchCircle"
   | "sketchConstruction"

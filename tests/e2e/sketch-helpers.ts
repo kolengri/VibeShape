@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test"
 import { expect } from "./fixtures"
 
 export async function drawRectangle(page: Page) {
-  await page.getByRole("button", { name: "Rectangle", exact: true }).click()
+  await selectSketchTool(page, "Rectangle tools", "Rectangle G")
   const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
   const bounds = await drawing.boundingBox()
   if (!bounds) throw new Error("The editable sketch canvas is not visible.")
@@ -10,6 +10,11 @@ export async function drawRectangle(page: Page) {
   await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   return drawing
+}
+
+export async function selectSketchTool(page: Page, family: string, tool: string) {
+  await page.getByRole("button", { name: family, exact: true }).click()
+  await page.getByRole("menuitemradio", { name: tool, exact: true }).click()
 }
 
 export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" = "xy") {

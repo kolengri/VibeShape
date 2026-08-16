@@ -144,6 +144,74 @@ export function appendSketchLine(
   }
 }
 
+export function appendSketchMidpointLine(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    endpoint: SketchPointTarget
+    midpoint: SketchPointTarget
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const midpoint = resolvePointTarget(sketch, input.midpoint, true, input.createEntityId)
+  const sketchWithMidpoint = midpoint.entity
+    ? parsedSketch(sketch, [...sketch.entities, midpoint.entity])
+    : sketch
+  const endpoint = resolvePointTarget(
+    sketchWithMidpoint,
+    input.endpoint,
+    construction,
+    input.createEntityId,
+  )
+  if (
+    endpoint.id === midpoint.id ||
+    distance(endpoint.point, midpoint.point) <= MIN_GEOMETRY_DISTANCE
+  ) {
+    throw new RangeError("A midpoint line requires a distinct midpoint and endpoint.")
+  }
+  const oppositePointId = input.createEntityId()
+  const lineId = input.createEntityId()
+  const oppositePoint = {
+    schemaVersion: 0,
+    id: oppositePointId,
+    type: "point",
+    x: midpoint.point.x * 2 - endpoint.point.x,
+    y: midpoint.point.y * 2 - endpoint.point.y,
+    construction,
+  } as const
+  const line = {
+    schemaVersion: 0,
+    id: lineId,
+    type: "line",
+    startPointId: oppositePointId,
+    endPointId: endpoint.id,
+    construction,
+  } as const
+  const additions: SketchEntity[] = [
+    ...(midpoint.entity ? [midpoint.entity] : []),
+    ...(endpoint.entity ? [endpoint.entity] : []),
+    oppositePoint,
+    line,
+  ]
+  const constraint = {
+    schemaVersion: 0,
+    id: input.createConstraintId(),
+    type: "midpoint",
+    pointId: midpoint.id,
+    lineId,
+  } as const
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, constraint],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 export function appendSketchRectangle(
   sketch: SketchRecord,
   input: {
@@ -414,6 +482,11 @@ export type ThreePointArcGeometry = Readonly<{
   start: SketchPoint2
 }>
 
+export type ThreePointCircleGeometry = Readonly<{
+  center: SketchPoint2
+  radius: number
+}>
+
 export function threePointArcGeometry(
   firstEndpoint: SketchPoint2,
   secondEndpoint: SketchPoint2,
@@ -454,6 +527,93 @@ export function threePointArcGeometry(
     end: reversed ? firstEndpoint : secondEndpoint,
     reversed,
     start: reversed ? secondEndpoint : firstEndpoint,
+  }
+}
+
+export function threePointCircleGeometry(
+  first: SketchPoint2,
+  second: SketchPoint2,
+  third: SketchPoint2,
+): ThreePointCircleGeometry | null {
+  const arc = threePointArcGeometry(first, second, third)
+  return arc ? { center: arc.center, radius: distance(arc.center, first) } : null
+}
+
+export function appendSketchThreePointCircle(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    firstPoint: SketchPointTarget
+    secondPoint: SketchPointTarget
+    thirdPoint: SketchPointTarget
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const first = resolvePointTarget(sketch, input.firstPoint, construction, input.createEntityId)
+  const sketchWithFirst = first.entity
+    ? parsedSketch(sketch, [...sketch.entities, first.entity])
+    : sketch
+  const second = resolvePointTarget(
+    sketchWithFirst,
+    input.secondPoint,
+    construction,
+    input.createEntityId,
+  )
+  const sketchWithSecond = second.entity
+    ? parsedSketch(sketchWithFirst, [...sketchWithFirst.entities, second.entity])
+    : sketchWithFirst
+  const third = resolvePointTarget(
+    sketchWithSecond,
+    input.thirdPoint,
+    construction,
+    input.createEntityId,
+  )
+  if (new Set([first.id, second.id, third.id]).size !== 3) {
+    throw new RangeError("A three-point circle requires three distinct points.")
+  }
+  const geometry = threePointCircleGeometry(first.point, second.point, third.point)
+  if (!geometry) {
+    throw new RangeError("A three-point circle requires three non-collinear positions.")
+  }
+  const centerPointId = input.createEntityId()
+  const circleId = input.createEntityId()
+  const circle = {
+    schemaVersion: 0,
+    id: circleId,
+    type: "circle",
+    centerPointId,
+    radius: geometry.radius,
+    construction,
+  } as const
+  const additions: SketchEntity[] = [
+    ...(first.entity ? [first.entity] : []),
+    ...(second.entity ? [second.entity] : []),
+    ...(third.entity ? [third.entity] : []),
+    {
+      schemaVersion: 0,
+      id: centerPointId,
+      type: "point",
+      ...geometry.center,
+      construction: true,
+    },
+    circle,
+  ]
+  const constraints: SketchConstraint[] = [first.id, second.id, third.id].map((pointId) => ({
+    schemaVersion: 0,
+    id: input.createConstraintId(),
+    type: "point-on-curve",
+    pointId,
+    curveId: circleId,
+  }))
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
   }
 }
 

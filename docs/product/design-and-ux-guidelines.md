@@ -212,9 +212,9 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 
 | Interaction | Required behavior |
 |---|---|
-| Place geometry | Point finishes after one position; Line remains chain-active after a segment; corner Rectangle, center Rectangle, and Circle finish after the required second point; center-point Arc finishes after center, start, and end; three-point Arc finishes after start, end, and point-on-arc |
+| Place geometry | Point finishes after one position; Line remains chain-active after a segment; Midpoint Line finishes after midpoint and endpoint; corner Rectangle, center Rectangle, and center-point Circle finish after the required second point; three-point Circle finishes after three circumference points; center-point Arc finishes after center, start, and end; three-point Arc finishes after start, end, and point-on-arc |
 | Select | Primary activation replaces selection; the platform additive modifier toggles entities; empty-space activation clears selection |
-| Drag point | Publishes at most the latest pointer position per animation frame, renders the active target immediately over the last valid solution, coalesces solving to one in-flight request plus the latest pending draft, forwards the previous continuation state, and creates one local undo checkpoint for the complete gesture |
+| Drag point | Keeps the latest pointer position in viewport-local preview state, renders only the affected point and curves over the last valid exact solution, coalesces solving to one in-flight request plus the latest pending draft, forwards the previous continuation state, and publishes one global draft plus one local undo checkpoint only when the gesture ends |
 | Delete / Backspace | Removes selected entities plus invalid dependent geometry and constraints; shared points remain when still referenced |
 | Escape | Cancels the in-progress placement before it exits the active sketch command |
 | Undo / redo | Operates on the active sketch draft through buttons and `Ctrl/Cmd+Z`; it does not rewrite committed document history |
@@ -226,6 +226,8 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - A completed placement MUST leave a schema-valid draft. Degenerate placement stays transient and does not create hidden entities.
 - Rectangle corners share point identities and receive explicit horizontal and vertical constraints; visual alignment is never the only design intent.
 - Center Rectangle shows a symmetric preview from the picked center, stores non-profile construction spokes, and uses only the nonredundant equal/parallel diagonal intent required to keep the center stable.
+- Midpoint Line shows the complete mirrored segment after its midpoint pick and persists one Midpoint constraint instead of baking symmetry into display coordinates only.
+- Three-point Circle previews the exact circumcircle after two circumference picks, reuses inferred point identities, rejects repeated or collinear input, and persists each point-on-curve relation.
 - Three-point Arc previews the exact circumcircle after two endpoint picks, reuses inferred endpoint identities, rejects collinear input without hidden geometry, and preserves the sweep passing through the third pick.
 - Point and line placement use deterministic screen-tolerance inference. Existing-point snaps reuse the stable point identity, while horizontal or vertical line inference shows a preview glyph and persists the matching geometric constraint when the segment is accepted.
 - Construction state is explicit per entity. Construction curves participate in solving but never create selectable solid profiles.
@@ -236,6 +238,8 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - Solver status, degrees of freedom, and profile measurements remain visible without covering the geometry being edited. An over-constrained result preserves the draft and names or marks every failed constraint the solver can identify.
 - Closed regions render behind entity strokes. Region activation stores a stable boundary-entity selector; transient profile indices are display-only.
 - The accessible task panel exposes every geometry tool, constraint, dimension, profile, undo, redo, Finish, and Cancel action. Pointer-free coordinate entry and canvas placement remain documented alpha accessibility limitations.
+- Related geometry variants use one split family action. The primary icon invokes the active or last-used variant; the adjacent Radix menu exposes every variant through keyboard navigation and a localized accessible name.
+- The application shell occupies exactly the visible viewport. Model-tree and task-panel overflow scroll inside their own grid areas; adding entities or constraints never changes the sketch canvas height.
 - Command-first sketch creation exposes XY, XZ, and YZ as translucent 3D datum planes with hover preselection and primary-click acceptance. A synchronized labeled native select and explicit `Start sketch` action remain the keyboard-accessible equivalent; 2D sketch tools do not activate until support is accepted.
 
 ## Command and Tool Interaction

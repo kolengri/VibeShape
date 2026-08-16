@@ -139,7 +139,7 @@ describe("editor command registry", () => {
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchCenterRectangle,
     )
 
-    expect(command?.descriptor.shortcut).toEqual({ key: "r", modifiers: ["shift"] })
+    expect(command?.descriptor.shortcut).toEqual({ key: "r" })
     expect(command?.toolbarVisible).toBe(true)
     command?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
@@ -154,7 +154,7 @@ describe("editor command registry", () => {
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchThreePointArc,
     )
 
-    expect(command?.descriptor.shortcut).toEqual({ key: "a", modifiers: ["shift"] })
+    expect(command?.descriptor.shortcut).toEqual({ key: "a" })
     command?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
