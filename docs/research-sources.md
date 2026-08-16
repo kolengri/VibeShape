@@ -169,6 +169,8 @@ Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the curre
 | [shadcn/ui monorepo](https://ui.shadcn.com/docs/monorepo) | CLI routing, per-workspace `components.json`, shared UI exports, and the Tailwind v4 configuration rule |
 | [shadcn/ui Vite installation](https://ui.shadcn.com/docs/installation/vite) | Vite and Tailwind integration plus monorepo-aware component addition |
 | [shadcn/ui CLI](https://ui.shadcn.com/docs/cli) | `init`, `add`, `view`, `diff`, and `info` workflows plus source-component management |
+| [Zustand vanilla store and React context](https://github.com/pmndrs/zustand/blob/v5.0.12/README.md) | Per-provider vanilla store instances, context injection, and selector-based `useStore` subscriptions |
+| [Zustand Immer middleware](https://github.com/pmndrs/zustand/blob/v5.0.12/docs/reference/integrations/immer-middleware.md) | Typed nested updates through `zustand/middleware/immer` without exposing mutation to consumers |
 | [TanStack Form React quick start](https://tanstack.com/form/latest/docs/framework/react/quick-start) | `createFormHookContexts`, `createFormHook`, reusable field/form components, typed values, and async submission |
 | [TanStack Form reactivity](https://tanstack.com/form/latest/docs/framework/react/guides/reactivity) | Focused `form.Subscribe` state selection for submit controls and other reactive UI |
 | [use-intl package guide](https://github.com/amannn/next-intl/tree/main/packages/use-intl) | Framework-agnostic `IntlProvider`, typed `useTranslations`, nested ICU messages, and React usage without Next.js |
@@ -179,7 +181,7 @@ Context7 resolved Fallow to `/fallow-rs/fallow` and `/fallow-rs/docs`; the curre
 | [Fallow audit reference](https://docs.fallow.tools/cli/audit) | Merge-base changed-file analysis, pass/warn/fail verdicts, and exit codes |
 | [Fallow upstream and GitHub Action](https://github.com/fallow-rs/fallow) | MIT-licensed CLI, versioned Agent Skill, Bun installation, action permissions, full-history checkout, and PR feedback |
 
-**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports. Biome provides deterministic formatting and linting, TypeScript owns compile-time correctness, and Fallow adds changed-code and architecture intelligence; project-specific tests remain separate gates.
+**Conclusion:** Bun workspaces cover the initial monorepo, package-version, and CI requirements without Turborepo. Tailwind v4 and shadcn/Radix have official Vite and monorepo paths; shared primitives belong in a dedicated workspace with explicit aliases and exports. One vanilla Zustand store per editor session coordinates transient state through selectors and Immer actions without replacing the document or form authorities. Biome provides deterministic formatting and linting, TypeScript owns compile-time correctness, and Fallow adds changed-code and architecture intelligence; project-specific tests remain separate gates.
 
 ## UX, Accessibility, and Component Behavior
 
@@ -220,7 +222,7 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 
 ## npm Registry Snapshot
 
-Results from `npm view <package> version license` on 2026-08-07, with `is-what` reviewed on 2026-08-08:
+Results from `npm view <package> version license` on 2026-08-07, with `is-what` reviewed on 2026-08-08 and the editor-state dependencies reviewed on 2026-08-16:
 
 - React 19.2.8, MIT
 - React DOM 19.2.8, MIT
@@ -232,6 +234,7 @@ Results from `npm view <package> version license` on 2026-08-07, with `is-what` 
 - Replicad 0.23.1, MIT
 - OpenCascade.js 1.1.1, LGPL-2.1-only
 - Zustand 5.0.14, MIT
+- Immer 11.1.17, MIT
 - Dexie 4.4.4, Apache-2.0
 - Zod 4.4.3, MIT
 - `is-what` 5.5.0, MIT; ESM, `sideEffects: false`, bundled TypeScript declarations, and no runtime dependencies

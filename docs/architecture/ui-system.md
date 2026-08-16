@@ -46,6 +46,24 @@ packages/ui/
 - product-specific shortcuts and diagnostics;
 - composition of primitives into work panels.
 
+## Editor-session state
+
+`apps/web/src/editor-session` owns one vanilla Zustand store instance per active editor session. React
+provides that instance through context and consumes narrow selectors; Immer middleware implements
+cohesive nested updates without exposing mutable state to components. The first hydrated document ID
+binds to the existing store so early interaction is retained; changing an established active document
+ID replaces the store and therefore discards every unfinished editor session by design.
+
+The store owns workspace and active-tool coordination, viewport selection, unsaved sketch drafts,
+sketch-local undo and redo, profile selection, and transient shell overlays. It MUST NOT own or clone
+the committed document snapshot, semantic revision history, TanStack Form values, persisted records,
+worker sessions, solved geometry, mesh buffers, or Three.js objects. Store actions may prepare UI
+intent, but committed changes still pass through the ordinary revision-checked application command
+and persistence path. Third-party extensions and MCP adapters never receive the store instance.
+
+Persistent UI preferences use their existing schema-validated preference owners rather than the
+editor-session store. Zustand persistence middleware is not enabled for semantic or draft state.
+
 ## shadcn CLI routing in the monorepo
 
 Every workspace that can receive CLI-generated files has a consistent `components.json`.
