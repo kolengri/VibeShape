@@ -2,6 +2,8 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
+  appendSketchArc,
+  appendSketchLine,
   createLengthQuantity,
   createRectangleSketch,
   moveSketchPoint,
@@ -589,6 +591,153 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="horizontal"]')).toBeTruthy()
   })
 
+  it("suppresses inference with Shift and persists a midpoint point relation", () => {
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      editorTool: "point",
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 324, shiftKey: true })
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeNull()
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 324 })
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 324 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    const createdPoint = draft.entities
+      .filter(({ type }: { type: string }) => type === "point")
+      .at(-1)
+    const referenceLine = sketch.entities.find((entity) => entity.type === "line")
+    if (!createdPoint || !referenceLine) throw new Error("Midpoint inference must create a point.")
+    expect(draft.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "midpoint",
+          pointId: createdPoint.id,
+          lineId: referenceLine?.id,
+        }),
+      ]),
+    )
+  })
+
+  it("persists perpendicular inference for a connected non-axis line", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const diagonalSketch = appendSketchLine(emptySketch, {
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b243"),
+      start: { kind: "new", point: { x: -30, y: -20 } },
+      end: { kind: "new", point: { x: 0, y: 0 } },
+    }).sketch
+    const referenceLine = diagonalSketch.entities.find((entity) => entity.type === "line")
+    if (!referenceLine) throw new Error("The diagonal fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: diagonalSketch,
+      editorTool: "line",
+      sketch: diagonalSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const pointElement = document.querySelector(
+      `[data-sketch-entity-id="${referenceLine.endPointId}"]`,
+    )
+    if (!pointElement) throw new Error("The diagonal endpoint must be rendered.")
+
+    fireEvent.pointerDown(pointElement)
+    fireEvent.pointerMove(drawing, { clientX: 380, clientY: 140 })
+    expect(document.querySelector('[data-sketch-direction-inference="perpendicular"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, { clientX: 380, clientY: 140 })
+
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    const createdLine = draft.entities
+      .filter(({ type }: { type: string }) => type === "line")
+      .at(-1)
+    if (!createdLine) throw new Error("Perpendicular inference must create a line.")
+    expect(draft.constraints).toEqual([
+      expect.objectContaining({
+        type: "perpendicular",
+        firstEntityId: referenceLine.id,
+        secondEntityId: createdLine.id,
+      }),
+    ])
+  })
+
+  it("persists tangent inference when Line continues from an arc endpoint", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcSketch = appendSketchArc(emptySketch, {
+      center: { x: 0, y: 0 },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b244"),
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+    }).sketch
+    const arc = arcSketch.entities.find((entity) => entity.type === "arc")
+    if (!arc) throw new Error("The arc fixture must contain an arc.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: arcSketch,
+      editorTool: "line",
+      sketch: arcSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const startPoint = document.querySelector(`[data-sketch-entity-id="${arc.startPointId}"]`)
+    if (!startPoint) throw new Error("The arc start point must be rendered.")
+
+    fireEvent.pointerDown(startPoint)
+    fireEvent.pointerMove(drawing, { clientX: 420, clientY: 200 })
+    expect(document.querySelector('[data-sketch-direction-inference="tangent"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, { clientX: 420, clientY: 200 })
+
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    const createdLine = draft.entities
+      .filter(({ type }: { type: string }) => type === "line")
+      .at(-1)
+    if (!createdLine) throw new Error("Tangent inference must create a line.")
+    expect(draft.constraints).toEqual([
+      expect.objectContaining({ type: "tangent", arcId: arc.id, lineId: createdLine.id }),
+    ])
+  })
+
   it("renders selectable geometric constraint glyphs and driving dimension labels", () => {
     const onConstraintSelectionChange = vi.fn()
     renderViewport({
@@ -727,6 +876,67 @@ describe("SketchViewport", () => {
       expect.objectContaining({
         entities: expect.arrayContaining([
           expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
+        ]),
+      }),
+      "record",
+    )
+  })
+
+  it("persists midpoint inference in the single point-drag commit", () => {
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(async () => solveResult()),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const draggedPoint = pointEntities[0]
+    const midpointLine = sketch.entities.filter((entity) => entity.type === "line")[2]
+    if (!draggedPoint || !midpointLine) throw new Error("The rectangle fixture is incomplete.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The dragged sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 390, clientY: 280, pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 276, pointerId: 1 })
+    expect(frames).toHaveLength(1)
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeNull()
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must schedule an animation frame.")
+    act(() => frame(0))
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: draggedPoint.id, type: "point", x: 15, y: 12 }),
+        ]),
+        constraints: expect.arrayContaining([
+          expect.objectContaining({
+            type: "midpoint",
+            pointId: draggedPoint.id,
+            lineId: midpointLine.id,
+          }),
         ]),
       }),
       "record",

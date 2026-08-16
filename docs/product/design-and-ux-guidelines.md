@@ -218,7 +218,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 | Delete / Backspace | Removes selected entities plus invalid dependent geometry and constraints; shared points remain when still referenced |
 | Escape | Cancels the in-progress placement before it exits the active sketch command |
 | Undo / redo | Operates on the active sketch draft through buttons and `Ctrl/Cmd+Z`; it does not rewrite committed document history |
-| Pan / zoom | Shift-primary or middle drag pans; wheel or trackpad zoom targets the pointer and never changes sketch units |
+| Pan / zoom | Middle or secondary drag pans; wheel or trackpad zoom targets the pointer and never changes sketch units |
 | Finish sketch | Performs one asynchronous, single-flight semantic add or update; double activation cannot create a second revision |
 | Cancel | Discards the complete draft and leaves the committed sketch unchanged |
 
@@ -229,7 +229,8 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - Midpoint Line shows the complete mirrored segment after its midpoint pick and persists one Midpoint constraint instead of baking symmetry into display coordinates only.
 - Three-point Circle previews the exact circumcircle after two circumference picks, reuses inferred point identities, rejects repeated or collinear input, and persists each point-on-curve relation.
 - Three-point Arc previews the exact circumcircle after two endpoint picks, reuses inferred endpoint identities, rejects collinear input without hidden geometry, and preserves the sweep passing through the third pick.
-- Point and line placement use deterministic screen-tolerance inference. Existing-point snaps reuse the stable point identity, while horizontal or vertical line inference shows a preview glyph and persists the matching geometric constraint when the segment is accepted.
+- Point and line placement use deterministic screen-tolerance inference. Existing-point snaps reuse the stable point identity; midpoint, bounded segment-intersection, and point-on-line candidates persist the corresponding relations; and line direction candidates persist horizontal, vertical, parallel, perpendicular, or endpoint-tangent intent. Point dragging accepts the same point-relation candidates in its single release commit. Holding `Shift` suppresses inference for precise unconstrained placement.
+- Point-drag pointer samples are reduced to the latest sample per animation frame before inference and React publication. Stationary geometry retains memoized rendering, solver requests remain coalesced, and pointer release still records exactly one draft edit.
 - Construction state is explicit per entity. Construction curves participate in solving but never create selectable solid profiles.
 - Selected geometry, construction geometry, closed regions, solver conflicts, and under-constrained geometry require distinct non-color cues.
 - Constraint actions are enabled from compatible selections only. Repeating the same semantic constraint is idempotent.

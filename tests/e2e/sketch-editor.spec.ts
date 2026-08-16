@@ -282,6 +282,63 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   })
 
+  test("persists automatic perpendicular and midpoint inference with Shift suppression", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    const firstStart = {
+      x: bounds.x + bounds.width * 0.3,
+      y: bounds.y + bounds.height * 0.65,
+    }
+    const sharedEndpoint = {
+      x: bounds.x + bounds.width * 0.5,
+      y: bounds.y + bounds.height * 0.5,
+    }
+    const perpendicularEnd = {
+      x: bounds.x + bounds.width * 0.3875,
+      y: bounds.y + bounds.height * 0.2333,
+    }
+    await page.mouse.click(firstStart.x, firstStart.y)
+    await page.mouse.click(sharedEndpoint.x, sharedEndpoint.y)
+    await page.mouse.move(perpendicularEnd.x, perpendicularEnd.y)
+    await expect(drawing.locator('[data-sketch-direction-inference="perpendicular"]')).toBeVisible()
+    await page.mouse.click(perpendicularEnd.x, perpendicularEnd.y)
+
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
+    await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    const firstLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    const firstLineBounds = await firstLine.boundingBox()
+    if (!firstLineBounds) throw new Error("The inferred reference line is not visible.")
+    const midpointProbe = {
+      x: firstLineBounds.x + firstLineBounds.width / 2,
+      y: firstLineBounds.y + firstLineBounds.height / 2 + 7,
+    }
+    await page.keyboard.down("Shift")
+    await page.mouse.move(midpointProbe.x, midpointProbe.y)
+    await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toHaveCount(0)
+    await page.keyboard.up("Shift")
+    await page.mouse.move(midpointProbe.x + 1, midpointProbe.y)
+    await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toBeVisible()
+    await page.mouse.click(midpointProbe.x + 1, midpointProbe.y)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)
+    await expect(page.getByText("Midpoint", { exact: true })).toBeVisible()
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({
     page,
   }) => {
