@@ -37,6 +37,39 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Distance · 35 mm", { exact: true })).toBeVisible()
   })
 
+  test("keeps a dragged endpoint responsive while sketch solves are coalesced", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const endpoint = drawing.locator('[data-sketch-entity-type="point"]').first()
+    const endpointBounds = await endpoint.boundingBox()
+    if (!endpointBounds) throw new Error("The sketch endpoint is not visible.")
+    const initialX = await endpoint.getAttribute("cx")
+    const initialY = await endpoint.getAttribute("cy")
+    const startX = endpointBounds.x + endpointBounds.width / 2
+    const startY = endpointBounds.y + endpointBounds.height / 2
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + 90, startY - 60, { steps: 12 })
+    await expect
+      .poll(async () => [await endpoint.getAttribute("cx"), await endpoint.getAttribute("cy")], {
+        timeout: 1_000,
+      })
+      .not.toEqual([initialX, initialY])
+    await page.mouse.up()
+
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("authors every alpha analytical primitive on the canvas", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

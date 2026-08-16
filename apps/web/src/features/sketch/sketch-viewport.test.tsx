@@ -12,6 +12,7 @@ import {
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
+import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type {
   ActiveSketchSolveResult,
@@ -187,7 +188,27 @@ function renderViewport(props: SketchViewportTestProps) {
   return render(viewportElement(props))
 }
 
-afterEach(cleanup)
+function StatefulSketchViewport(
+  props: Omit<SketchViewportTestProps, "draft" | "sketch"> & {
+    onDraftChange?: NonNullable<SketchViewportTestProps["onDraftChange"]>
+  },
+) {
+  const [draft, setDraft] = useState(sketch)
+  return viewportElement({
+    ...props,
+    draft,
+    sketch,
+    onDraftChange: (nextDraft, mode) => {
+      setDraft(nextDraft)
+      props.onDraftChange?.(nextDraft, mode)
+    },
+  })
+}
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe("SketchViewport", () => {
   it("renders production solver state and exact profile measurements", async () => {
@@ -469,6 +490,233 @@ describe("SketchViewport", () => {
         draggedPoints: [expect.objectContaining({ entityId: firstPoint.id })],
       }),
     )
+  })
+
+  it("commits only the latest point position once per animation frame", async () => {
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({ draft: sketch, sketch, solveSketch, onDraftChange })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)
+    if (!pointElement) throw new Error("The first sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 500, clientY: 240, pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must schedule an animation frame.")
+    act(() => frame(0))
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
+        ]),
+      }),
+      "record",
+    )
+  })
+
+  it("renders the latest drag immediately and coalesces stale in-flight solves", async () => {
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    let resolveInFlight: ((result: ActiveSketchSolveResult) => void) | null = null
+    const solveSketch = vi
+      .fn<NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>>()
+      .mockResolvedValueOnce(solveResult())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ActiveSketchSolveResult>((resolve) => {
+            resolveInFlight = resolve
+          }),
+      )
+      .mockResolvedValue(solveResult())
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    render(<StatefulSketchViewport solveSketch={solveSketch} onDraftChange={onDraftChange} />)
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const pointSelector = `[data-sketch-entity-id="${firstPoint.id}"]`
+    const pointElement = document.querySelector(pointSelector)
+    if (!pointElement) throw new Error("The first sketch point must be rendered.")
+    const moveAndFlush = (clientX: number, clientY: number) => {
+      fireEvent.pointerMove(drawing, { clientX, clientY, pointerId: 1 })
+      const frame = frames.shift()
+      if (!frame) throw new Error("The point drag must schedule an animation frame.")
+      act(() => frame(0))
+    }
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    moveAndFlush(500, 240)
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    moveAndFlush(600, 180)
+
+    expect(solveSketch).toHaveBeenCalledTimes(2)
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("65")
+    expect(document.querySelector(pointSelector)?.getAttribute("cy")).toBe("36")
+    await act(async () => resolveInFlight?.(solveResult()))
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(3))
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ id: sketch.id }),
+      expect.objectContaining({
+        draggedPoints: [{ entityId: firstPoint.id, x: 65, y: 36 }],
+      }),
+    )
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 50)))
+    expect(solveSketch).toHaveBeenCalledTimes(3)
+  })
+
+  it("keeps the final drag target when the pointer is released before the frame", async () => {
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    const finalPoint = { x: 65, y: 36 }
+    let resolveReleasedDrag: ((result: ActiveSketchSolveResult) => void) | null = null
+    const solveSketch = vi
+      .fn<NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>>()
+      .mockResolvedValueOnce(solveResult())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ActiveSketchSolveResult>((resolve) => {
+            resolveReleasedDrag = resolve
+          }),
+      )
+      .mockResolvedValue(solveResult(new Map([[firstPoint.id, finalPoint]])))
+    const frames = new Map<number, FrameRequestCallback>()
+    let frameId = 0
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1
+      frames.set(frameId, callback)
+      return frameId
+    })
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id)
+    })
+    render(<StatefulSketchViewport solveSketch={solveSketch} />)
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const pointSelector = `[data-sketch-entity-id="${firstPoint.id}"]`
+    const pointElement = document.querySelector(pointSelector)
+    if (!pointElement) throw new Error("The first sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(frames).toHaveLength(0)
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("65")
+    expect(document.querySelector(pointSelector)?.getAttribute("cy")).toBe("36")
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ id: sketch.id }),
+      expect.objectContaining({
+        draggedPoints: [{ entityId: firstPoint.id, ...finalPoint }],
+      }),
+    )
+
+    await act(async () =>
+      resolveReleasedDrag?.(solveResult(new Map([[firstPoint.id, finalPoint]]))),
+    )
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(3))
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("65")
+    expect(document.querySelector(pointSelector)?.getAttribute("cy")).toBe("36")
+  })
+
+  it("cancels the queued drag frame when pointer input is interrupted", async () => {
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    const onDraftChange = vi.fn()
+    const frames = new Map<number, FrameRequestCallback>()
+    let frameId = 0
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameId += 1
+      frames.set(frameId, callback)
+      return frameId
+    })
+    const cancelAnimationFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation((id) => {
+        frames.delete(id)
+      })
+    render(
+      <StatefulSketchViewport
+        solveSketch={vi.fn(async () => solveResult())}
+        onDraftChange={onDraftChange}
+      />,
+    )
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)
+    if (!pointElement) throw new Error("The first sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    fireEvent.pointerCancel(drawing, { pointerId: 1 })
+
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
+    expect(frames).toHaveLength(0)
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)))
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
   it("keeps the last exact geometry visible while a changed draft is solving", async () => {
