@@ -300,6 +300,10 @@
           "keywords": "extend sketch line|lengthen to boundary|modify geometry"
         },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchMirror": {
+          "label": "Mirror",
+          "keywords": "mirror sketch geometry|reflect entities|symmetry line|copy across axis"
+        },
         "sketchInscribedPolygon": {
           "label": "Inscribed polygon",
           "keywords": "inscribed polygon|polygon around circle|regular polygon|center polygon"
@@ -654,6 +658,9 @@
         "precisionTools": "Sketch precision tools",
         "dimensionTool": "Add drawing dimension",
         "editDimension": "Edit dimension {label}",
+        "mirrorSelectAxis": "Select a mirror line, then select geometry to mirror.",
+        "mirrorSelectAxisForSelection": "Select a mirror line for the selected geometry.",
+        "mirrorSelectSources": "Select geometry to mirror. Press Escape when finished.",
         "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
       }

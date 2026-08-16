@@ -441,6 +441,82 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("mirrors selected or subsequently picked geometry across a sketch line", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const clickAt = (horizontal: number, vertical: number) =>
+      page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
+    const construction = page.getByRole("button", { name: "Construction geometry" })
+
+    await construction.click()
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await clickAt(0.5, 0.3)
+    await clickAt(0.5, 0.7)
+    await page.keyboard.press("Escape")
+    await construction.click()
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await clickAt(0.65, 0.42)
+    await clickAt(0.78, 0.58)
+    await page.keyboard.press("Escape")
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+    await expect(lines).toHaveCount(2)
+
+    await selectSketchEntities(page, drawing, "line", [1])
+    await page.getByRole("button", { name: "Mirror", exact: true }).click()
+    await expect(page.getByText("Select a mirror line for the selected geometry.")).toBeVisible()
+    await lines.first().dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+    })
+    await expect(lines).toHaveCount(3)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(2)
+    await page.getByRole("button", { name: "Mirror", exact: true }).click()
+    await lines.first().dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 2,
+    })
+    await expect(
+      page.getByText("Select geometry to mirror. Press Escape when finished."),
+    ).toBeVisible()
+    await lines.nth(1).dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 3,
+    })
+    await expect(lines).toHaveCount(3)
+    await expect(page.getByRole("button", { name: "Mirror", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await drawing.press("Escape")
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
   test("trims, splits, and extends lines as atomic sketch edits", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

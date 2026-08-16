@@ -183,6 +183,9 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Extend" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("extend")
 
+    await user.click(screen.getByRole("button", { name: "Mirror" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("mirror")
+
     await user.click(screen.getByRole("button", { name: "Split" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("split")
 

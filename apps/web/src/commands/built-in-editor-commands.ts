@@ -281,6 +281,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "mirror",
+    id: editorCommandIds.sketchMirror,
+    labelKey: "sketchMirror",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "split",
     id: editorCommandIds.sketchSplit,
     labelKey: "sketchSplit",
@@ -356,6 +364,7 @@ function sketchToolHandler(
     | "sketchExtend"
     | "sketchInscribedPolygon"
     | "sketchLine"
+    | "sketchMirror"
     | "sketchPoint"
     | "sketchRectangle"
     | "sketchSelect"
@@ -483,6 +492,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
   sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
+  sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),

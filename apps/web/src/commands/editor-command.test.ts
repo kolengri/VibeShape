@@ -160,7 +160,7 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
-  it("routes line modification commands through trusted sketch tool handlers", () => {
+  it("routes sketch modification commands through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
       workspace: "sketch",
@@ -170,16 +170,21 @@ describe("editor command registry", () => {
     const extend = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchExtend,
     )
+    const mirror = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchMirror,
+    )
     const split = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchSplit)
 
     expect(trim?.descriptor.shortcut).toEqual({ key: "m" })
     expect(trim?.toolbarVisible).toBe(true)
     trim?.invoke()
     extend?.invoke()
+    mirror?.invoke()
     split?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(1, "trim")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(2, "extend")
-    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "split")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "mirror")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(4, "split")
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {
