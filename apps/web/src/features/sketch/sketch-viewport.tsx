@@ -53,6 +53,7 @@ import {
   type PointerEvent,
   type RefObject,
   type SetStateAction,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -227,6 +228,7 @@ type PanGesture = Readonly<{
 
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
+const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
   return {
@@ -388,6 +390,13 @@ function dragTargetForSketch(
 ): SketchDragTarget | null {
   if (!activeSketch || dragState?.sketchId !== activeSketch.id) return null
   return dragState.target
+}
+
+function releasedDragTargetForSketch(
+  activeSketch: SketchRecord | null,
+  dragState: SketchDragState | null,
+) {
+  return dragState?.active === false ? dragTargetForSketch(activeSketch, dragState) : null
 }
 
 function nextSketchDragState(
@@ -2843,8 +2852,13 @@ function useSketchPointDrag({
 }) {
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
   const dragFrameRef = useRef<number | null>(null)
+  const dragSolveTimerRef = useRef<number | null>(null)
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
   const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
+  const queuedDragSolveTargetRef = useRef<Readonly<{
+    point: SketchPoint2
+    pointId: SketchEntityId
+  }> | null>(null)
   const references = useMemo(
     () => draggedPointReferences(inferenceReferences, draggingPointId),
     [draggingPointId, inferenceReferences],
@@ -2853,8 +2867,25 @@ function useSketchPointDrag({
   useEffect(
     () => () => {
       if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
+      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
     },
     [],
+  )
+
+  const scheduleLiveSolve = useCallback(
+    (pointId: SketchEntityId, point: SketchPoint2) => {
+      queuedDragSolveTargetRef.current = { point, pointId }
+      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
+      dragSolveTimerRef.current = window.setTimeout(() => {
+        dragSolveTimerRef.current = null
+        const target = queuedDragSolveTargetRef.current
+        queuedDragSolveTargetRef.current = null
+        if (target) {
+          startTransition(() => onDraggingPointChange(target.pointId, target.point))
+        }
+      }, LIVE_DRAG_SOLVE_IDLE_DELAY_MS)
+    },
+    [onDraggingPointChange],
   )
 
   const preview = useCallback(
@@ -2870,10 +2901,10 @@ function useSketchPointDrag({
       const next = { inference, point: inference.point }
       lastDragPreviewRef.current = next
       onPreview(next)
-      onDraggingPointChange(draggingPointId, next.point)
+      scheduleLiveSolve(draggingPointId, next.point)
       return next
     },
-    [bounds, draft, draggingPointId, onDraggingPointChange, onPreview, references],
+    [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve],
   )
   const flush = useCallback(() => {
     if (dragFrameRef.current !== null) {
@@ -2902,7 +2933,13 @@ function useSketchPointDrag({
   )
   const finish = useCallback(() => {
     const finalPreview = flush()
+    if (dragSolveTimerRef.current !== null) {
+      window.clearTimeout(dragSolveTimerRef.current)
+      dragSolveTimerRef.current = null
+    }
+    queuedDragSolveTargetRef.current = null
     if (draft && draggingPointId && finalPreview) {
+      onDraggingPointChange(draggingPointId, finalPreview.point)
       const moved = moveSketchPoint(draft, draggingPointId, finalPreview.point)
       onDraftChange(
         applyDraggedPointInference(moved, draggingPointId, finalPreview.inference),
@@ -2913,16 +2950,17 @@ function useSketchPointDrag({
     setDraggingPointId(null)
     lastDragPreviewRef.current = null
   }, [draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
-  const start = useCallback(
-    (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
-      if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
-      lastDragPreviewRef.current = null
-      queuedDragInputRef.current = null
-      setDraggingPointId(pointId)
-      onDraggingPointChange(pointId)
-    },
-    [onDraggingPointChange],
-  )
+  const start = useCallback((event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
+    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    lastDragPreviewRef.current = null
+    queuedDragInputRef.current = null
+    queuedDragSolveTargetRef.current = null
+    if (dragSolveTimerRef.current !== null) {
+      window.clearTimeout(dragSolveTimerRef.current)
+      dragSolveTimerRef.current = null
+    }
+    setDraggingPointId(pointId)
+  }, [])
   return { draggingPointId, finish, start, update }
 }
 
@@ -2944,6 +2982,7 @@ type SketchDrawingViewProps = Readonly<{
     annotationProfiles: readonly SketchProfileSelector[]
     bounds: SketchBounds
     cursor: SketchPoint2 | null
+    dragTarget: SketchDragTarget | null
     draggingPointId: SketchEntityId | null
     editable: boolean
     geometry: SketchGeometryPresentation
@@ -3007,7 +3046,7 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <StableSketchGeometry
-          draggingPointId={configuration.dragTarget?.entityId ?? null}
+          draggingPointId={state.dragTarget?.entityId ?? null}
           editable={state.editable}
           selectedEntityIds={configuration.selectedEntityIds}
           presentation={state.geometry}
@@ -3017,7 +3056,7 @@ function SketchDrawingView({
           onTarget={handlers.appendAt}
         />
         <DraggedSketchGeometry
-          dragTarget={configuration.dragTarget}
+          dragTarget={state.dragTarget}
           presentation={state.geometry}
           selectedEntityIds={configuration.selectedEntityIds}
         />
@@ -3129,6 +3168,13 @@ function SketchDrawing({
     onDraggingPointChange,
     onPreview: handleDragPreview,
   })
+  const dragTarget = useMemo<SketchDragTarget | null>(
+    () =>
+      draggingPointId && cursor
+        ? { entityId: draggingPointId, x: cursor.x, y: cursor.y }
+        : configuration.releasedDragTarget,
+    [configuration.releasedDragTarget, cursor, draggingPointId],
+  )
 
   const eventPoint = (event: PointerEvent<SVGSVGElement | SVGCircleElement>) => {
     const svg = svgRef.current
@@ -3255,6 +3301,7 @@ function SketchDrawing({
         annotationProfiles,
         bounds,
         cursor,
+        dragTarget,
         draggingPointId,
         editable,
         geometry,
@@ -3405,7 +3452,6 @@ type SketchDrawingConfiguration = Readonly<{
   annotationSolution: SolvedSketchWire | null
   construction: boolean
   draft: SketchRecord | null
-  dragTarget: SketchDragTarget | null
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
@@ -3416,6 +3462,7 @@ type SketchDrawingConfiguration = Readonly<{
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
+  releasedDragTarget: SketchDragTarget | null
   selectConstraintLabel: (label: string) => string
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
@@ -3441,6 +3488,8 @@ function SketchViewportContent({
   }
   return <SketchDrawing key={activeSketch.id} configuration={configuration} sketch={activeSketch} />
 }
+
+const StableSketchViewportContent = memo(SketchViewportContent)
 
 function SketchSolveOverlay({
   active,
@@ -3683,6 +3732,10 @@ export function SketchViewport({
     () => dragTargetForSketch(activeSketch, dragState),
     [activeSketch, dragState],
   )
+  const releasedDragTarget = useMemo(
+    () => releasedDragTargetForSketch(activeSketch, dragState),
+    [activeSketch, dragState],
+  )
   const handleDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
   const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
   useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
@@ -3697,37 +3750,61 @@ export function SketchViewport({
     solution,
     activeSolveState,
   )
+  const drawingConfiguration = useMemo<SketchDrawingConfiguration>(
+    () => ({
+      ariaLabel: presentation.drawingLabel,
+      annotationSolution: displaySolution,
+      construction,
+      draft,
+      editDimensionLabel: presentation.editDimensionLabel,
+      editorTool,
+      onConstraintSelectionChange,
+      onDraggingPointChange: handleDraggingPointChange,
+      onEditorToolChange,
+      selectedProfile,
+      selectedConstraintId,
+      selectedEntityIds,
+      selectConstraintLabel: presentation.selectConstraintLabel,
+      solution: displaySolution,
+      onDraftChange,
+      onProfileSelect,
+      onRedo,
+      onSelectionChange,
+      onUndo,
+      releasedDragTarget,
+    }),
+    [
+      construction,
+      displaySolution,
+      draft,
+      editorTool,
+      handleDraggingPointChange,
+      onConstraintSelectionChange,
+      onDraftChange,
+      onEditorToolChange,
+      onProfileSelect,
+      onRedo,
+      onSelectionChange,
+      onUndo,
+      presentation.drawingLabel,
+      presentation.editDimensionLabel,
+      presentation.selectConstraintLabel,
+      releasedDragTarget,
+      selectedConstraintId,
+      selectedEntityIds,
+      selectedProfile,
+    ],
+  )
 
   return (
     <section
       aria-label={presentation.ariaLabel}
       className="relative min-h-0 overflow-hidden bg-viewport-background"
     >
-      <SketchViewportContent
+      <StableSketchViewportContent
         activeSketch={activeSketch}
         emptyMessage={presentation.emptyMessage}
-        configuration={{
-          ariaLabel: presentation.drawingLabel,
-          annotationSolution: displaySolution,
-          construction,
-          draft,
-          dragTarget,
-          editDimensionLabel: presentation.editDimensionLabel,
-          editorTool,
-          onConstraintSelectionChange,
-          onDraggingPointChange: handleDraggingPointChange,
-          onEditorToolChange,
-          selectedProfile,
-          selectedConstraintId,
-          selectedEntityIds,
-          selectConstraintLabel: presentation.selectConstraintLabel,
-          solution: displaySolution,
-          onDraftChange,
-          onProfileSelect,
-          onRedo,
-          onSelectionChange,
-          onUndo,
-        }}
+        configuration={drawingConfiguration}
       />
       <SketchSolveOverlay
         active={activeSketch !== null}

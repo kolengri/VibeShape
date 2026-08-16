@@ -1025,7 +1025,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("keeps drag frames local and commits only the final point position", async () => {
+  it("keeps drag frames local, defers live solving during motion, and commits the final point", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
@@ -1067,6 +1067,8 @@ describe("SketchViewport", () => {
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
     ).toBe("36")
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
+    expect(solveSketch).toHaveBeenCalledTimes(1)
 
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
