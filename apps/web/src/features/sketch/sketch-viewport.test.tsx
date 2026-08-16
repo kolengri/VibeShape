@@ -1081,6 +1081,69 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("limits drag-frame rendering to the point and its incident curves", async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(async () => solveResult()),
+    })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const draggedPoint = pointEntities[0]
+    if (!draggedPoint) throw new Error("The rectangle fixture must contain a point.")
+    const lines = sketch.entities.filter((entity) => entity.type === "line")
+    const incidentLines = lines.filter(
+      (line) => line.startPointId === draggedPoint.id || line.endPointId === draggedPoint.id,
+    )
+    const unrelatedLine = lines.find(
+      (line) => line.startPointId !== draggedPoint.id && line.endPointId !== draggedPoint.id,
+    )
+    if (!unrelatedLine) throw new Error("The rectangle fixture must contain an unrelated line.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    const unrelatedElement = document.querySelector(`[data-sketch-entity-id="${unrelatedLine.id}"]`)
+    if (!pointElement || !unrelatedElement) {
+      throw new Error("The rectangle geometry must be rendered.")
+    }
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must schedule an animation frame.")
+    act(() => frame(0))
+
+    const overlay = document.querySelector(`[data-sketch-drag-overlay="${draggedPoint.id}"]`)
+    expect(overlay).toBeTruthy()
+    expect(overlay?.querySelectorAll("line")).toHaveLength(incidentLines.length)
+    expect(drawing.querySelectorAll('[data-sketch-entity-type="line"]')).toHaveLength(lines.length)
+    expect(
+      incidentLines.every(
+        ({ id }) =>
+          document.querySelector(`[data-sketch-entity-id="${id}"]`)?.getAttribute("opacity") ===
+          "0",
+      ),
+    ).toBe(true)
+    expect(document.querySelector(`[data-sketch-entity-id="${unrelatedLine.id}"]`)).toBe(
+      unrelatedElement,
+    )
+    expect(unrelatedElement.getAttribute("opacity")).toBeNull()
+  })
+
   it("persists midpoint inference in the single point-drag commit", () => {
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
