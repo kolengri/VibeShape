@@ -28,13 +28,19 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
     await page.getByRole("button", { name: "Extrude selected profile" }).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("combobox", { name: "Distance" }).fill("#depth")
     await createForm.getByRole("checkbox", { name: "Extrude symmetrically" }).check()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
+    await expect(page.getByText("Unsaved extrusion preview", { exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).not.toBeVisible()
     await createForm.getByRole("button", { name: "Create extrusion" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -44,7 +50,13 @@ test.describe("selector-backed extrusion", () => {
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByRole("combobox", { name: "Distance" })).toHaveValue("#depth")
     await expect(editForm.getByRole("checkbox", { name: "Extrude symmetrically" })).toBeChecked()
+    await editForm.getByRole("combobox", { name: "Distance" }).fill("21 mm")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
     await editForm.getByRole("button", { name: "Cancel" }).click()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle")
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     const expression = page.getByRole("combobox", { name: "Variable expression" })

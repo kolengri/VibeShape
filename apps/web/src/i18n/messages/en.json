@@ -551,6 +551,9 @@
         "selectSketchPlane": "Select an origin plane to start the sketch.",
         "selectedSketchPlane": "Current choice: {plane}",
         "preselectedSketchPlane": "Click to sketch on {plane}",
+        "previewFailed": "The unsaved extrusion could not be previewed. Adjust its parameters or target.",
+        "previewLoading": "Rebuilding unsaved extrusion preview…",
+        "previewReady": "Unsaved extrusion preview",
         "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
         "title": "3D viewport",
         "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."

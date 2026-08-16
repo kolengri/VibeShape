@@ -11,6 +11,7 @@ import {
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { useEffect, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
@@ -105,6 +106,7 @@ function profileForMode(mode: ExtrusionFormMode) {
 
 function extrusionRecord(
   mode: ExtrusionFormMode,
+  featureId: FeatureId,
   parameters: ReturnType<typeof extrusionFeatureParametersSchema.parse>,
   targetFeatureId: FeatureId | null,
 ) {
@@ -119,7 +121,7 @@ function extrusionRecord(
   }
   return featureRecordSchema.parse({
     schemaVersion: 0,
-    id: mode.createFeatureId(),
+    id: featureId,
     type: extrusionFeatureType.type,
     parameters,
     dependencies,
@@ -127,6 +129,53 @@ function extrusionRecord(
     suppressed: false,
     label: mode.featureLabel,
   })
+}
+
+function ExtrusionPreviewSync({
+  copy,
+  displayUnit,
+  featureId,
+  mode,
+  onPreviewChange,
+  options,
+  profile,
+  values,
+  variables,
+}: {
+  copy: ExtrusionFormCopy
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  featureId: FeatureId
+  mode: ExtrusionFormMode
+  onPreviewChange: (feature: FeatureRecord | null) => void
+  options: readonly ExtrusionTargetOption[]
+  profile: SketchProfileSelector
+  values: ExtrusionFormValues
+  variables: readonly VariableDefinition[]
+}) {
+  const inputRef = useRef({ copy, displayUnit, mode, options, profile, variables })
+  inputRef.current = { copy, displayUnit, mode, options, profile, variables }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const input = inputRef.current
+      const parsed = parseValues(
+        values,
+        input.profile,
+        input.variables,
+        input.options,
+        input.copy,
+        input.displayUnit,
+      )
+      onPreviewChange(
+        parsed.ok
+          ? extrusionRecord(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
+          : null,
+      )
+    }, 180)
+    return () => window.clearTimeout(timeout)
+  }, [featureId, onPreviewChange, values])
+
+  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+  return null
 }
 
 function parseValues(
@@ -177,6 +226,7 @@ export function ExtrusionForm({
   onCancel,
   onSave,
   onSaved,
+  onPreviewChange,
   options,
   profileLabel,
   variables,
@@ -188,6 +238,7 @@ export function ExtrusionForm({
   onCancel: () => void
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
+  onPreviewChange?: (feature: FeatureRecord | null) => void
   options: readonly ExtrusionTargetOption[]
   profileLabel: string
   variables: readonly VariableDefinition[]
@@ -203,6 +254,9 @@ export function ExtrusionForm({
     suggestions,
   } = useParameterFormState(variables)
   const profile = profileForMode(mode)
+  const [featureId] = useState(() =>
+    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
+  )
   const form = useAppForm({
     defaultValues:
       mode.kind === "edit"
@@ -222,7 +276,7 @@ export function ExtrusionForm({
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: extrusionRecord(mode, parsed.parameters, parsed.targetFeatureId),
+        feature: extrusionRecord(mode, featureId, parsed.parameters, parsed.targetFeatureId),
         onSave,
         onSaved,
         setMessage,
@@ -232,6 +286,23 @@ export function ExtrusionForm({
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onPreviewChange ? (
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <ExtrusionPreviewSync
+              copy={copy}
+              displayUnit={displayUnits.length}
+              featureId={featureId}
+              mode={mode}
+              onPreviewChange={onPreviewChange}
+              options={options}
+              profile={profile}
+              values={values}
+              variables={variables}
+            />
+          )}
+        </form.Subscribe>
+      ) : null}
       <ExtrusionParameterPanel
         copy={copy}
         disabled={disabled}

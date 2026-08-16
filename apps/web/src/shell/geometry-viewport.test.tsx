@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
 import { GeometryViewport, viewerMeshes } from "./geometry-viewport"
+import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
 
 const boxId = "0195b5ac-b220-7a2c-8c33-67a36a7f2602"
 const booleanId = "0195b5ac-b220-7a2c-8c33-67a36a7f2603"
@@ -43,6 +44,7 @@ function renderViewport(
     selectedPlane: "xy" | "xz" | "yz"
     onSelect: (plane: "xy" | "xz" | "yz") => void
   }>,
+  extrusionPreview?: ExtrusionPreviewState,
 ) {
   const port: GeometryViewportPort = {
     setMeshes: vi.fn(),
@@ -62,6 +64,7 @@ function renderViewport(
         createViewport={createViewport}
         selection={selection}
         onSelectionChange={onSelectionChange}
+        {...(extrusionPreview ? { extrusionPreview } : {})}
         {...(originPlaneSelection ? { originPlaneSelection } : {})}
       />
     </I18nProvider>,
@@ -72,6 +75,20 @@ function renderViewport(
 afterEach(cleanup)
 
 describe("GeometryViewport", () => {
+  it("renders exact unsaved meshes as a distinct preview state", async () => {
+    const previewMesh = { featureId: boxId, appearance: "preview" as const, ...mesh }
+    const { port } = renderViewport(readyController([], []), null, undefined, {
+      status: "ready",
+      meshes: [previewMesh],
+    })
+
+    await waitFor(() => expect(port.setMeshes).toHaveBeenCalledWith([previewMesh]))
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-preview-status")).toBe("ready")
+    expect(viewport.getAttribute("data-preview-feature-count")).toBe("1")
+    expect(screen.getByRole("status").textContent).toBe("Unsaved extrusion preview")
+  })
+
   it("owns the imperative viewer lifecycle and exposes fit for rebuilt terminal geometry", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],

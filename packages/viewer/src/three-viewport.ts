@@ -34,6 +34,7 @@ export const viewerOriginPlanes = ["xy", "xz", "yz"] as const
 export type ViewerOriginPlane = (typeof viewerOriginPlanes)[number]
 
 export type ViewerMesh = Readonly<{
+  appearance?: "model" | "preview"
   featureId: string
   positions: Float32Array
   normals: Float32Array
@@ -198,6 +199,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     metalness: 0.04,
   })
   readonly #edgeMaterial = new LineBasicMaterial({ color: new Color("#263746") })
+  readonly #previewSurfaceMaterial = new MeshBasicMaterial({
+    color: new Color("#4c8dff"),
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  readonly #previewEdgeMaterial = new LineBasicMaterial({
+    color: new Color("#65a9ee"),
+    transparent: true,
+    opacity: 0.9,
+  })
   readonly #preselectionMaterial = new MeshBasicMaterial({
     color: new Color("#65a9ee"),
     transparent: true,
@@ -289,13 +302,22 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#surfaceMeshes.length = 0
     this.#meshSources.clear()
     for (const source of meshes) {
-      this.#meshSources.set(source.featureId, source)
+      const preview = source.appearance === "preview"
       const geometry = createViewerGeometry(source)
-      const surface = new Mesh(geometry, this.#surfaceMaterial)
+      const surface = new Mesh(
+        geometry,
+        preview ? this.#previewSurfaceMaterial : this.#surfaceMaterial,
+      )
       surface.name = source.featureId
-      this.#surfaceMeshes.push(surface)
+      if (!preview) {
+        this.#meshSources.set(source.featureId, source)
+        this.#surfaceMeshes.push(surface)
+      }
       this.#modelGroup.add(surface)
-      const edges = new LineSegments(new EdgesGeometry(geometry, 28), this.#edgeMaterial)
+      const edges = new LineSegments(
+        new EdgesGeometry(geometry, 28),
+        preview ? this.#previewEdgeMaterial : this.#edgeMaterial,
+      )
       edges.name = `${source.featureId}:edges`
       this.#modelGroup.add(edges)
     }
@@ -367,6 +389,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#selectionGroup)
     this.#surfaceMaterial.dispose()
     this.#edgeMaterial.dispose()
+    this.#previewSurfaceMaterial.dispose()
+    this.#previewEdgeMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()

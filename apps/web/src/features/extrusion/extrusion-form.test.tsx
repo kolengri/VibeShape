@@ -89,6 +89,7 @@ function renderForm(
     featureLabel: "Extrusion 1",
     profile,
   },
+  onPreviewChange = vi.fn(),
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
   render(
@@ -106,17 +107,44 @@ function renderForm(
         profileLabel="Sketch 1"
         variables={variables}
         onCancel={vi.fn()}
+        onPreviewChange={onPreviewChange}
         onSave={onSave}
         onSaved={onSaved}
       />
     </I18nProvider>,
   )
-  return { formCopy, onSave, onSaved }
+  return { formCopy, onPreviewChange, onSave, onSaved }
 }
 
 afterEach(cleanup)
 
 describe("ExtrusionForm", () => {
+  it("publishes a debounced schema-valid draft without committing it", async () => {
+    const user = userEvent.setup()
+    const { onPreviewChange, onSave } = renderForm()
+
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenCalledWith(
+        expect.objectContaining({ id: featureId, parameters: expect.objectContaining({}) }),
+      ),
+    )
+    const distance = screen.getByRole("combobox", { name: copy.distance })
+    await user.clear(distance)
+    await user.type(distance, "25 mm")
+
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: featureId,
+          parameters: expect.objectContaining({
+            distance: expect.objectContaining({ value: 25 }),
+          }),
+        }),
+      ),
+    )
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   it("resolves a variable and guards asynchronous double submission", async () => {
     const user = userEvent.setup()
     const submission = deferred()
