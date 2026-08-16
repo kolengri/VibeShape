@@ -23,6 +23,8 @@ and selection are presentation state; they never replace stable entity and const
 | Centered Aligned Rectangle | Define the center, symmetric direction/half-length, and perpendicular half-width with a persistent construction axis and midpoint intent | Implemented |
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
+| Circumscribed Polygon | Define a center, vertex radius, and 3–50 sides; keep every vertex on one construction circle with equal side intent | Implemented |
+| Inscribed Polygon | Define a center, tangent-circle radius, and 3–50 sides; keep side midpoints on the construction circle with equal side intent | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
 | Three-point Arc | Author an exact circumcircle arc from three non-collinear points | Implemented |
 | Tangent Arc | Continue from a line endpoint with a shared point and persistent tangent intent | Implemented |
@@ -33,16 +35,41 @@ and selection are presentation state; they never replace stable entity and const
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
 The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
-Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle; and Three-point,
-Tangent, and Center-point Arc; and Straight, Centered, and selection-driven Slot. The family
+Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle; Inscribed and
+Circumscribed Polygon; Three-point, Tangent, and Center-point Arc; and Straight, Centered, and
+selection-driven Slot. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
 the standard shortcut when one exists. Every family exposes a center-origin variant when its
 geometry has a stable, unambiguous center construction. Free-form or selection-driven tools are not
 duplicated with artificial center modes.
 
-Trim, Extend, Split, mirror/pattern authoring, ellipses, curve-chain slots, polygons, splines, and
+Trim, Extend, Split, mirror/pattern authoring, ellipses, curve-chain slots, splines, and
 projected external geometry remain follow-up tools. They require new exact domain and solver
 behavior and MUST NOT be simulated only in the toolbar.
+
+## Onshape-oriented parity baseline
+
+VibeShape follows the interaction grammar of Onshape without copying its visual design. The
+baseline is derived from the official [Sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm),
+[Circumscribed Polygon](https://cad.onshape.com/help/Content/Sketch/circumscribed_polygon.htm), and
+[Inscribed Polygon](https://cad.onshape.com/help/Content/Sketch/inscribed_polygon.htm) documentation.
+
+| Family | Current parity | Remaining production gap |
+|---|---|---|
+| Line | Line and center-origin Midpoint Line in one remembered split family | Infinite construction line and richer wake-up inference |
+| Rectangle | Corner, Center, Aligned, and Centered Aligned variants | Selection-driven conversion and numeric placement |
+| Circle | Center-point and Three-point variants | Tangent circle and ellipse require exact solver entities |
+| Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
+| Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
+| Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
+| Modify | Delete and direct point manipulation | Trim, Extend, Split, Offset, Mirror, Transform, and patterns |
+| Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
+
+Every family button invokes its active or last-used variant. Polygon placement uses three visible
+stages: select the center, select the vertex radius or tangent-circle radius, then adjust the side
+count with pointer distance or type an integer from 3 through 50. `Enter` commits a valid count,
+`Backspace` edits typed input, and `Escape` cancels the transient polygon without changing the draft.
+The completed polygon is one schema-valid domain operation and one local undo entry.
 
 ## Mandatory geometric constraints
 
@@ -113,6 +140,11 @@ adding solver constraints.
     vertical, parallel, perpendicular, and endpoint-tangent candidates use deterministic priority
     and visible glyphs. Accepting a candidate persists its semantic constraint; holding `Shift`
     suppresses inference without changing the active tool.
+11. Center-origin polygon previews show the construction circle, radius guide, outline, and side
+    count before commit. Circumscribed Polygon places vertices on the construction circle;
+    Inscribed Polygon places the construction circle tangent to the outline. Closed-loop-dependent
+    constraints omit mathematically redundant relations so an exact valid polygon is not reported
+    as over-constrained.
 
 ## View orientation
 
@@ -126,7 +158,7 @@ active support plane and display unit.
 1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
    quadrant candidates, and projected/external geometry inference.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
-   ellipses, polygons, and splines through exact analytical or solver-backed entities.
+   ellipses and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing.
 4. Add reference dimensions and a driving/reference conversion command.
 5. Add Trim, Extend, and Split with stable replacement identity and dependent-constraint repair.

@@ -71,7 +71,7 @@ function ToolbarAction({
   )
 }
 
-type SketchToolFamilyId = "line" | "rectangle" | "circle" | "arc" | "slot"
+type SketchToolFamilyId = "line" | "rectangle" | "circle" | "polygon" | "arc" | "slot"
 
 const sketchToolFamilies = [
   {
@@ -93,6 +93,14 @@ const sketchToolFamilies = [
     commandIds: [editorCommandIds.sketchCircle, editorCommandIds.sketchThreePointCircle],
     id: "circle",
     labelKey: "circleToolsLabel",
+  },
+  {
+    commandIds: [
+      editorCommandIds.sketchInscribedPolygon,
+      editorCommandIds.sketchCircumscribedPolygon,
+    ],
+    id: "polygon",
+    labelKey: "polygonToolsLabel",
   },
   {
     commandIds: [
@@ -119,6 +127,7 @@ const sketchToolFamilies = [
     | "lineToolsLabel"
     | "rectangleToolsLabel"
     | "circleToolsLabel"
+    | "polygonToolsLabel"
     | "arcToolsLabel"
     | "slotToolsLabel"
 }[]
@@ -127,6 +136,7 @@ const defaultFamilyCommandIds: Readonly<Record<SketchToolFamilyId, EditorCommand
   arc: editorCommandIds.sketchThreePointArc,
   circle: editorCommandIds.sketchCircle,
   line: editorCommandIds.sketchLine,
+  polygon: editorCommandIds.sketchInscribedPolygon,
   rectangle: editorCommandIds.sketchCenterRectangle,
   slot: editorCommandIds.sketchCenteredSlot,
 }

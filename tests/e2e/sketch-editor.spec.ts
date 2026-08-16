@@ -229,6 +229,52 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("authors both regular polygon variants with an explicit side count", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const clickAt = (horizontal: number, vertical: number) =>
+      page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
+
+    await selectSketchTool(page, "Polygon tools", "Circumscribed polygon")
+    await clickAt(0.35, 0.5)
+    await page.mouse.move(bounds.x + bounds.width * 0.52, bounds.y + bounds.height * 0.5)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="regular-polygon-radius"]'),
+    ).toBeVisible()
+    await clickAt(0.52, 0.5)
+    await expect(drawing.locator('[data-sketch-polygon-preview="circumscribed"]')).toBeVisible()
+    await page.keyboard.press("8")
+    await expect(drawing.locator('[data-sketch-polygon-side-count="8"]')).toHaveText("8")
+    await page.keyboard.press("Enter")
+
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
+    await selectSketchTool(page, "Polygon tools", "Inscribed polygon")
+    await clickAt(0.65, 0.5)
+    await page.mouse.move(bounds.x + bounds.width * 0.78, bounds.y + bounds.height * 0.5)
+    await clickAt(0.78, 0.5)
+    await expect(drawing.locator('[data-sketch-polygon-preview="inscribed"]')).toBeVisible()
+    await page.keyboard.press("4")
+    await page.keyboard.press("Enter")
+
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+  })
+
   test("authors aligned rectangle and tangent arc design intent", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

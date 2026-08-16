@@ -387,6 +387,112 @@ describe("SketchViewport", () => {
     expect(draft.constraints).toHaveLength(6)
   })
 
+  it("creates a circumscribed polygon from center, radius, and typed side count", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "circumscribed-polygon",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 300 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="regular-polygon-radius"]'),
+    ).toBeTruthy()
+    expect(document.querySelector('[data-sketch-polygon-preview="circumscribed"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 300 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="regular-polygon-sides"]'),
+    ).toBeTruthy()
+    expect(document.querySelector('[data-sketch-polygon-side-count="6"]')).toBeTruthy()
+    fireEvent.pointerMove(drawing, { clientX: 640, clientY: 300 })
+    const pointerSideCount = Number(
+      document
+        .querySelector("[data-sketch-polygon-side-count]")
+        ?.getAttribute("data-sketch-polygon-side-count"),
+    )
+    expect(pointerSideCount).toBeGreaterThan(6)
+
+    fireEvent.keyDown(drawing, { key: "8" })
+    expect(document.querySelector('[data-sketch-polygon-side-count="8"]')?.textContent).toBe("8")
+    fireEvent.keyDown(drawing, { key: "Enter" })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(8)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "circle")).toEqual([
+      expect.objectContaining({ construction: true }),
+    ])
+    expect(draft.constraints.filter(({ type }: { type: string }) => type === "equal")).toHaveLength(
+      7,
+    )
+  })
+
+  it("keeps invalid inscribed polygon side input pending and commits one valid edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "inscribed-polygon",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 300 })
+    expect(document.querySelector('[data-sketch-polygon-preview="inscribed"]')).toBeTruthy()
+
+    fireEvent.keyDown(drawing, { key: "2" })
+    fireEvent.keyDown(drawing, { key: "Enter" })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(
+      document.querySelector('[data-sketch-preview-tool="regular-polygon-sides"]'),
+    ).toBeTruthy()
+    fireEvent.keyDown(drawing, { key: "Backspace" })
+    fireEvent.keyDown(drawing, { key: "4" })
+    fireEvent.keyDown(drawing, { key: "Enter" })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(4)
+    expect(
+      draft.constraints.filter(({ type }: { type: string }) => type === "midpoint"),
+    ).toHaveLength(4)
+    expect(draft.constraints.filter(({ type }: { type: string }) => type === "equal")).toHaveLength(
+      3,
+    )
+  })
+
   it("previews and creates an aligned rectangle with persistent design intent", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()

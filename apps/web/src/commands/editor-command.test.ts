@@ -160,7 +160,7 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
-  it("routes aligned rectangles, slots, and tangent arc through trusted sketch tool handlers", () => {
+  it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
       workspace: "sketch",
@@ -181,6 +181,12 @@ describe("editor command registry", () => {
     const centeredSlot = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchCenteredSlot,
     )
+    const inscribedPolygon = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchInscribedPolygon,
+    )
+    const circumscribedPolygon = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchCircumscribedPolygon,
+    )
 
     expect(alignedRectangle?.toolbarVisible).toBe(true)
     alignedRectangle?.invoke()
@@ -194,6 +200,10 @@ describe("editor command registry", () => {
     expect(centeredSlot?.toolbarVisible).toBe(true)
     centeredSlot?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("centered-slot")
+    inscribedPolygon?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("inscribed-polygon")
+    circumscribedPolygon?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("circumscribed-polygon")
     expect(tangentArc?.descriptor.shortcut).toEqual({ key: "a", modifiers: ["shift"] })
     tangentArc?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")

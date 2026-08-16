@@ -148,6 +148,15 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-circle")
 
+    await user.click(screen.getByRole("button", { name: "Polygon tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Circumscribed polygon" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("circumscribed-polygon")
+    expect(screen.getByRole("button", { name: "Circumscribed polygon" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Polygon tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Inscribed polygon" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("inscribed-polygon")
+
     await user.click(screen.getByRole("button", { name: "Slot tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Straight slot" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("slot")
