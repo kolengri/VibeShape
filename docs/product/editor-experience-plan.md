@@ -161,7 +161,7 @@ Exit criterion: a user can locate, select, edit, hide, and diagnose any authored
 
 - Add viewport preselection, endpoint/midpoint/center/intersection snapping, inference guides, and accepted auto-constraints.
 - Render constraint glyphs and editable dimension labels with accessible task-panel equivalents.
-- Center Rectangle is implemented with point inference, symmetric preview, stable construction intent, one-step local history, toolbar/palette presentation, and `Shift+R`; three-point Arc, Trim, Extend, Split, and guided conflict repair remain open.
+- Center Rectangle and Three-point Arc are implemented with exact previews, point inference, one-step local history, toolbar/palette presentation, and `Shift+R`/`Shift+A`; Trim, Extend, Split, and guided conflict repair remain open.
 - Add numeric placement and coordinate editing for keyboard-accessible precision.
 
 Exit criterion: the reference bracket can be drawn, fully constrained, diagnosed, edited, and reopened without using the constraint list as the primary spatial interface.

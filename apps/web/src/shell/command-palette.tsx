@@ -33,6 +33,7 @@ const recentCommandIdsSchema = z
       editorCommandIds.createSketch,
       editorCommandIds.createSubtract,
       editorCommandIds.sketchArc,
+      editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchCenterRectangle,
       editorCommandIds.sketchCircle,
       editorCommandIds.sketchConstruction,

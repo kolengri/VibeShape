@@ -212,7 +212,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 
 | Interaction | Required behavior |
 |---|---|
-| Place geometry | Point finishes after one position; Line remains chain-active after a segment; corner Rectangle, center Rectangle, and Circle finish after the required second point; center-point Arc finishes after center, start, and end |
+| Place geometry | Point finishes after one position; Line remains chain-active after a segment; corner Rectangle, center Rectangle, and Circle finish after the required second point; center-point Arc finishes after center, start, and end; three-point Arc finishes after start, end, and point-on-arc |
 | Select | Primary activation replaces selection; the platform additive modifier toggles entities; empty-space activation clears selection |
 | Drag point | Updates only the active draft, requests a debounced worker solve, and creates one local undo checkpoint for the complete gesture |
 | Delete / Backspace | Removes selected entities plus invalid dependent geometry and constraints; shared points remain when still referenced |
@@ -226,6 +226,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - A completed placement MUST leave a schema-valid draft. Degenerate placement stays transient and does not create hidden entities.
 - Rectangle corners share point identities and receive explicit horizontal and vertical constraints; visual alignment is never the only design intent.
 - Center Rectangle shows a symmetric preview from the picked center, stores non-profile construction spokes, and uses only the nonredundant equal/parallel diagonal intent required to keep the center stable.
+- Three-point Arc previews the exact circumcircle after two endpoint picks, reuses inferred endpoint identities, rejects collinear input without hidden geometry, and preserves the sweep passing through the third pick.
 - Point and line placement use deterministic screen-tolerance inference. Existing-point snaps reuse the stable point identity, while horizontal or vertical line inference shows a preview glyph and persists the matching geometric constraint when the segment is accepted.
 - Construction state is explicit per entity. Construction curves participate in solving but never create selectable solid profiles.
 - Selected geometry, construction geometry, closed regions, solver conflicts, and under-constrained geometry require distinct non-color cues.

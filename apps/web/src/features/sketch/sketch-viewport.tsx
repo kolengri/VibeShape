@@ -6,6 +6,7 @@ import {
   appendSketchLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchThreePointArc,
   inferSketchPoint,
   moveSketchPoint,
   removeSketchEntities,
@@ -18,6 +19,7 @@ import {
   type SketchPointTarget,
   type SketchProfileSelector,
   type SketchRecord,
+  threePointArcGeometry,
   sketchConstraintIdSchema,
   sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
@@ -77,6 +79,12 @@ type PendingGeometry =
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
   | Readonly<{ kind: "arc-start"; center: SketchPoint2 }>
   | Readonly<{ kind: "arc-end"; center: SketchPoint2; start: SketchPoint2 }>
+  | Readonly<{ kind: "three-point-arc-end"; start: SketchPointTarget }>
+  | Readonly<{
+      kind: "three-point-arc-point"
+      end: SketchPointTarget
+      start: SketchPointTarget
+    }>
 
 type PanGesture = Readonly<{
   bounds: SketchBounds
@@ -770,16 +778,21 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
       return pending.center
     case "arc-end":
       return pending.start
+    case "three-point-arc-end":
+    case "three-point-arc-point":
+      return pointForTarget(sketch, pending.start)
   }
 }
 
 function PendingShape({
   cursor,
   pending,
+  sketch,
   start,
 }: {
   cursor: SketchPoint2
   pending: PendingGeometry
+  sketch: SketchRecord
   start: SketchPoint2
 }) {
   if (pending.kind === "rectangle") {
@@ -815,6 +828,15 @@ function PendingShape({
   if (pending.kind === "arc-end") {
     return <polyline points={arcPolyline(pending.center, pending.start, cursor)} />
   }
+  if (pending.kind === "three-point-arc-point") {
+    const end = pointForTarget(sketch, pending.end)
+    const geometry = threePointArcGeometry(start, end, cursor)
+    return geometry ? (
+      <polyline points={arcPolyline(geometry.center, geometry.start, geometry.end)} />
+    ) : (
+      <polyline points={`${start.x},${start.y} ${end.x},${end.y} ${cursor.x},${cursor.y}`} />
+    )
+  }
   return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
 }
 
@@ -839,7 +861,7 @@ function PendingPreview({
       strokeWidth={1.5}
       vectorEffect="non-scaling-stroke"
     >
-      <PendingShape cursor={cursor} pending={pending} start={start} />
+      <PendingShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
     </g>
   )
 }
@@ -1006,6 +1028,35 @@ function placeArc(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeThreePointArc(input: PlacementInput): PlacementUpdate {
+  if (
+    input.pending?.kind !== "three-point-arc-end" &&
+    input.pending?.kind !== "three-point-arc-point"
+  ) {
+    return { draft: null, pending: { kind: "three-point-arc-end", start: input.target } }
+  }
+  if (input.pending.kind === "three-point-arc-end") {
+    return {
+      draft: null,
+      pending: {
+        kind: "three-point-arc-point",
+        start: input.pending.start,
+        end: input.target,
+      },
+    }
+  }
+  return {
+    draft: appendSketchThreePointArc(input.draft, {
+      construction: input.construction,
+      createEntityId: createBrowserSketchEntityId,
+      firstEndpoint: input.pending.start,
+      secondEndpoint: input.pending.end,
+      pointOnArc: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
 const placementBuilders = {
   arc: placeArc,
   "center-rectangle": placeCenterRectangle,
@@ -1013,6 +1064,7 @@ const placementBuilders = {
   line: placeLine,
   point: placePoint,
   rectangle: placeRectangle,
+  "three-point-arc": placeThreePointArc,
 } satisfies Record<Exclude<SketchEditorTool, "select">, (input: PlacementInput) => PlacementUpdate>
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
@@ -1092,6 +1144,7 @@ const pointInferenceSupport = {
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
+  "three-point-arc": alwaysSupportsPointInference,
 } satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
 
 function supportsPointInference(editorTool: SketchEditorTool, pending: PendingGeometry | null) {

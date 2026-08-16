@@ -12,6 +12,7 @@ import {
   Redo2,
   Scissors,
   Slash,
+  Spline,
   Undo2,
   X,
 } from "@vibeshape/ui/components/icons"
@@ -42,6 +43,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   select: MousePointer2,
   sketch: DraftingCompass,
   subtract: Scissors,
+  "three-point-arc": Spline,
   undo: Undo2,
 }
 

@@ -16,6 +16,7 @@ export {
   Ruler,
   Scissors,
   Slash,
+  Spline,
   Trash2,
   Undo2,
   X,

@@ -102,6 +102,37 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
   })
 
+  test("authors a three-point arc with exact preview and local history", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await page.getByRole("button", { name: "Three-point arc", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.55)
+    await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.3)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="three-point-arc-point"]'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.3)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(3)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(0)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+  })
+
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({
     page,
   }) => {

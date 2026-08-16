@@ -285,6 +285,45 @@ describe("SketchViewport", () => {
     expect(draft.constraints).toHaveLength(6)
   })
 
+  it("previews and creates a three-point arc as one draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "three-point-arc",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 160 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="three-point-arc-point"]'),
+    ).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 160 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(3)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(1)
+    expect(draft.constraints).toEqual([])
+  })
+
   it("previews horizontal inference before applying the automatic constraint", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     renderViewport({

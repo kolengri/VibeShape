@@ -145,6 +145,20 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
   })
 
+  it("routes the three-point arc shortcut descriptor to the trusted sketch tool handler", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchThreePointArc,
+    )
+
+    expect(command?.descriptor.shortcut).toEqual({ key: "a", modifiers: ["shift"] })
+    command?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
+  })
+
   it("keeps sketch geometry commands unavailable while an origin plane is being selected", () => {
     const context = commandContext({ activeSketchTool: { kind: "select-sketch-plane" } })
     const commands = resolveBuiltInEditorCommands(context)

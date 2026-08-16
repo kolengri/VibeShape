@@ -174,6 +174,15 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "three-point-arc",
+    id: editorCommandIds.sketchThreePointArc,
+    labelKey: "sketchThreePointArc",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "a", modifiers: ["shift"] },
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "construction",
     id: editorCommandIds.sketchConstruction,
     labelKey: "sketchConstruction",
@@ -229,6 +238,7 @@ function requiresSketch(context: BuiltInEditorCommandContext) {
 function sketchToolHandler(
   id: (typeof editorCommandIds)[
     | "sketchArc"
+    | "sketchThreePointArc"
     | "sketchCenterRectangle"
     | "sketchCircle"
     | "sketchLine"
@@ -329,6 +339,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchCenterRectangle, "center-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
+  sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
     getEligibility: requiresSketch,
