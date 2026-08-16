@@ -13,12 +13,16 @@ import {
   appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchRegularPolygon,
   appendSketchStraightSlot,
   appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   createEmptySketch,
+  MAX_REGULAR_POLYGON_SIDES,
+  MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
+  regularPolygonGeometry,
   removeSketchConstraints,
   removeSketchEntities,
   setSketchDimensionValue,
@@ -327,6 +331,105 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("constructs Onshape-compatible regular polygon geometry from a center and radius", () => {
+    const circumscribed = regularPolygonGeometry(
+      { x: 2, y: -1 },
+      { x: 12, y: -1 },
+      4,
+      "circumscribed",
+    )
+    const inscribed = regularPolygonGeometry({ x: 2, y: -1 }, { x: 12, y: -1 }, 4, "inscribed")
+    if (!circumscribed || !inscribed) {
+      throw new Error("The regular polygon fixtures require a positive radius.")
+    }
+
+    expect(circumscribed.constructionRadius).toBe(10)
+    expect(circumscribed.tangentPoints).toHaveLength(0)
+    expect(circumscribed.vertices).toHaveLength(4)
+    expect(circumscribed.vertices[0]).toMatchObject({ x: 12, y: -1 })
+    expect(circumscribed.vertices[1]?.x).toBeCloseTo(2)
+    expect(circumscribed.vertices[1]?.y).toBeCloseTo(9)
+    expect(inscribed.constructionRadius).toBe(10)
+    expect(inscribed.tangentPoints).toHaveLength(4)
+    expect(inscribed.tangentPoints[0]).toMatchObject({ x: 12, y: -1 })
+    expect(inscribed.vertices).toHaveLength(4)
+    expect(inscribed.vertices[0]?.x).toBeCloseTo(12)
+    expect(inscribed.vertices[0]?.y).toBeCloseTo(-11)
+    expect(inscribed.vertices[1]?.x).toBeCloseTo(12)
+    expect(inscribed.vertices[1]?.y).toBeCloseTo(9)
+  })
+
+  it("rejects invalid regular polygon side counts and radii", () => {
+    const center = { x: 0, y: 0 }
+    const radiusPoint = { x: 10, y: 0 }
+
+    expect(() =>
+      regularPolygonGeometry(center, radiusPoint, MIN_REGULAR_POLYGON_SIDES - 1, "inscribed"),
+    ).toThrow("integer side count")
+    expect(() =>
+      regularPolygonGeometry(center, radiusPoint, MAX_REGULAR_POLYGON_SIDES + 1, "circumscribed"),
+    ).toThrow("integer side count")
+    expect(() => regularPolygonGeometry(center, radiusPoint, 4.5, "inscribed")).toThrow(
+      "integer side count",
+    )
+    expect(regularPolygonGeometry(center, center, 6, "circumscribed")).toBeNull()
+    expect(
+      regularPolygonGeometry(center, { x: Number.POSITIVE_INFINITY, y: 0 }, 6, "inscribed"),
+    ).toBeNull()
+  })
+
+  it("adds a circumscribed polygon inside its construction circle with equal chords", () => {
+    const result = appendSketchRegularPolygon(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      mode: "circumscribed",
+      radiusPoint: { kind: "new", point: { x: 10, y: 0 } },
+      sideCount: 6,
+    })
+    const points = result.sketch.entities.filter(({ type }) => type === "point")
+    const lines = result.sketch.entities.filter(({ type }) => type === "line")
+    const circles = result.sketch.entities.filter(({ type }) => type === "circle")
+
+    expect(result.sketch.entities).toHaveLength(14)
+    expect(points).toHaveLength(7)
+    expect(lines).toHaveLength(6)
+    expect(lines.every(({ construction }) => !construction)).toBe(true)
+    expect(circles).toEqual([
+      expect.objectContaining({ construction: true, radius: 10, type: "circle" }),
+    ])
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-curve")).toHaveLength(
+      6,
+    )
+    expect(result.sketch.constraints.filter(({ type }) => type === "equal")).toHaveLength(5)
+  })
+
+  it("adds an inscribed polygon around its tangent circle with exact midpoint intent", () => {
+    const result = appendSketchRegularPolygon(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      mode: "inscribed",
+      radiusPoint: { kind: "new", point: { x: 10, y: 0 } },
+      sideCount: 4,
+    })
+    const points = result.sketch.entities.filter(({ type }) => type === "point")
+    const lines = result.sketch.entities.filter(({ type }) => type === "line")
+    const circle = result.sketch.entities.find(({ type }) => type === "circle")
+
+    expect(result.sketch.entities).toHaveLength(14)
+    expect(points).toHaveLength(9)
+    expect(points.filter(({ construction }) => construction)).toHaveLength(5)
+    expect(lines).toHaveLength(4)
+    expect(lines.filter(({ construction }) => construction)).toHaveLength(0)
+    expect(circle).toMatchObject({ construction: true, radius: 10, type: "circle" })
+    expect(result.sketch.constraints.filter(({ type }) => type === "midpoint")).toHaveLength(4)
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-curve")).toHaveLength(
+      3,
+    )
+    expect(result.sketch.constraints.filter(({ type }) => type === "equal")).toHaveLength(3)
   })
 
   it("adds an arc tangent to a shared line endpoint", () => {

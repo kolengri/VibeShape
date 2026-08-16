@@ -30,6 +30,11 @@ type ConstraintIdFactory = () => SketchConstraintId
 
 const MIN_GEOMETRY_DISTANCE = 1e-9
 
+export const MIN_REGULAR_POLYGON_SIDES = 3
+export const MAX_REGULAR_POLYGON_SIDES = 50
+
+export type RegularPolygonMode = "circumscribed" | "inscribed"
+
 function distance(first: SketchPoint2, second: SketchPoint2) {
   return Math.hypot(second.x - first.x, second.y - first.y)
 }
@@ -924,6 +929,353 @@ export function appendSketchCircle(
     sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
     createdEntityIds: additions.map(({ id }) => id),
   }
+}
+
+export type RegularPolygonGeometry = Readonly<{
+  constructionRadius: number
+  mode: RegularPolygonMode
+  tangentPoints: readonly SketchPoint2[]
+  vertices: readonly SketchPoint2[]
+}>
+
+function assertRegularPolygonSideCount(sideCount: number) {
+  if (
+    !Number.isInteger(sideCount) ||
+    sideCount < MIN_REGULAR_POLYGON_SIDES ||
+    sideCount > MAX_REGULAR_POLYGON_SIDES
+  ) {
+    throw new RangeError(
+      `A regular polygon requires an integer side count from ${MIN_REGULAR_POLYGON_SIDES} through ${MAX_REGULAR_POLYGON_SIDES}.`,
+    )
+  }
+}
+
+function pointsAroundCircle(
+  center: SketchPoint2,
+  radius: number,
+  startAngle: number,
+  sideCount: number,
+) {
+  const angleStep = (Math.PI * 2) / sideCount
+  return Array.from({ length: sideCount }, (_, index): SketchPoint2 => {
+    const angle = startAngle + angleStep * index
+    return {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    }
+  })
+}
+
+export function regularPolygonGeometry(
+  center: SketchPoint2,
+  radiusPoint: SketchPoint2,
+  sideCount: number,
+  mode: RegularPolygonMode,
+): RegularPolygonGeometry | null {
+  assertRegularPolygonSideCount(sideCount)
+  const constructionRadius = distance(center, radiusPoint)
+  if (!Number.isFinite(constructionRadius) || constructionRadius <= MIN_GEOMETRY_DISTANCE) {
+    return null
+  }
+  const radiusAngle = Math.atan2(radiusPoint.y - center.y, radiusPoint.x - center.x)
+  if (mode === "circumscribed") {
+    return {
+      constructionRadius,
+      mode,
+      tangentPoints: [],
+      vertices: pointsAroundCircle(center, constructionRadius, radiusAngle, sideCount),
+    }
+  }
+  const halfAngle = Math.PI / sideCount
+  const vertexRadius = constructionRadius / Math.cos(halfAngle)
+  return {
+    constructionRadius,
+    mode,
+    tangentPoints: pointsAroundCircle(center, constructionRadius, radiusAngle, sideCount),
+    vertices: pointsAroundCircle(center, vertexRadius, radiusAngle - halfAngle, sideCount),
+  }
+}
+
+function allocateEntityIds(count: number, createEntityId: EntityIdFactory) {
+  return Array.from({ length: count }, () => createEntityId())
+}
+
+function polygonPointEntities(
+  pointIds: readonly SketchEntityId[],
+  points: readonly SketchPoint2[],
+  construction: boolean,
+) {
+  if (pointIds.length !== points.length) {
+    throw new TypeError("Regular polygon point identity allocation failed.")
+  }
+  return points.map(
+    (point, index): SketchEntity => ({
+      schemaVersion: 0,
+      id: pointIds[index] as SketchEntityId,
+      type: "point",
+      ...point,
+      construction,
+    }),
+  )
+}
+
+function polygonLineEntities(
+  pointIds: readonly SketchEntityId[],
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+) {
+  const lineIds = allocateEntityIds(pointIds.length, createEntityId)
+  const entities = lineIds.map(
+    (id, index): SketchEntity => ({
+      schemaVersion: 0,
+      id,
+      type: "line",
+      startPointId: pointIds[index] as SketchEntityId,
+      endPointId: pointIds[(index + 1) % pointIds.length] as SketchEntityId,
+      construction,
+    }),
+  )
+  return { entities, lineIds }
+}
+
+function polygonConstructionCircle(
+  centerPointId: SketchEntityId,
+  radius: number,
+  createEntityId: EntityIdFactory,
+): Extract<SketchEntity, { type: "circle" }> {
+  return {
+    schemaVersion: 0,
+    id: createEntityId(),
+    type: "circle",
+    centerPointId,
+    radius,
+    construction: true,
+  }
+}
+
+function circumscribedPolygonConstraints(
+  vertexIds: readonly SketchEntityId[],
+  lineIds: readonly SketchEntityId[],
+  circleId: SketchEntityId,
+  createConstraintId: ConstraintIdFactory,
+) {
+  const firstLineId = lineIds[0]
+  if (!firstLineId) throw new TypeError("A regular polygon requires an outline.")
+  const curveConstraints = vertexIds.map(
+    (pointId): SketchConstraint => ({
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type: "point-on-curve",
+      pointId,
+      curveId: circleId,
+    }),
+  )
+  const equalConstraints = lineIds.slice(1).map(
+    (secondEntityId): SketchConstraint => ({
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type: "equal",
+      firstEntityId: firstLineId,
+      secondEntityId,
+    }),
+  )
+  return [...curveConstraints, ...equalConstraints]
+}
+
+function inscribedPolygonConstraints(
+  tangentPointIds: readonly SketchEntityId[],
+  outlineLineIds: readonly SketchEntityId[],
+  circleId: SketchEntityId,
+  createConstraintId: ConstraintIdFactory,
+) {
+  const tangentConstraints = tangentPointIds.flatMap(
+    (pointId, index): readonly SketchConstraint[] => {
+      const outlineLineId = outlineLineIds[index]
+      if (!outlineLineId) {
+        throw new TypeError("Regular polygon tangent identity allocation failed.")
+      }
+      return [
+        {
+          schemaVersion: 0,
+          id: createConstraintId(),
+          type: "midpoint",
+          pointId,
+          lineId: outlineLineId,
+        },
+        ...(index === tangentPointIds.length - 1
+          ? []
+          : [
+              {
+                schemaVersion: 0 as const,
+                id: createConstraintId(),
+                type: "point-on-curve" as const,
+                pointId,
+                curveId: circleId,
+              },
+            ]),
+      ]
+    },
+  )
+  const firstOutlineLineId = outlineLineIds[0]
+  if (!firstOutlineLineId) {
+    throw new TypeError("A regular polygon requires at least three outline references.")
+  }
+  const equalSideConstraints = outlineLineIds.slice(1).map(
+    (outlineLineId): SketchConstraint => ({
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type: "equal",
+      firstEntityId: firstOutlineLineId,
+      secondEntityId: outlineLineId,
+    }),
+  )
+  return [...tangentConstraints, ...equalSideConstraints]
+}
+
+function appendCircumscribedPolygon(
+  sketch: SketchRecord,
+  input: {
+    center: ReturnType<typeof resolvePointTarget>
+    construction: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    geometry: RegularPolygonGeometry
+    radiusPoint: ReturnType<typeof resolvePointTarget>
+  },
+) {
+  const remainingVertexIds = allocateEntityIds(
+    input.geometry.vertices.length - 1,
+    input.createEntityId,
+  )
+  const vertexIds = [input.radiusPoint.id, ...remainingVertexIds]
+  const vertices = polygonPointEntities(
+    remainingVertexIds,
+    input.geometry.vertices.slice(1),
+    input.construction,
+  )
+  const outline = polygonLineEntities(vertexIds, input.construction, input.createEntityId)
+  const circle = polygonConstructionCircle(
+    input.center.id,
+    input.geometry.constructionRadius,
+    input.createEntityId,
+  )
+  const additions: SketchEntity[] = [
+    ...(input.center.entity ? [input.center.entity] : []),
+    ...(input.radiusPoint.entity ? [input.radiusPoint.entity] : []),
+    ...vertices,
+    ...outline.entities,
+    circle,
+  ]
+  const constraints = circumscribedPolygonConstraints(
+    vertexIds,
+    outline.lineIds,
+    circle.id,
+    input.createConstraintId,
+  )
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+function appendInscribedPolygon(
+  sketch: SketchRecord,
+  input: {
+    center: ReturnType<typeof resolvePointTarget>
+    construction: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    geometry: RegularPolygonGeometry
+    radiusPoint: ReturnType<typeof resolvePointTarget>
+  },
+) {
+  const remainingTangentPointIds = allocateEntityIds(
+    input.geometry.tangentPoints.length - 1,
+    input.createEntityId,
+  )
+  const tangentPointIds = [input.radiusPoint.id, ...remainingTangentPointIds]
+  const tangentPoints = polygonPointEntities(
+    remainingTangentPointIds,
+    input.geometry.tangentPoints.slice(1),
+    true,
+  )
+  const vertexIds = allocateEntityIds(input.geometry.vertices.length, input.createEntityId)
+  const vertices = polygonPointEntities(vertexIds, input.geometry.vertices, input.construction)
+  const outline = polygonLineEntities(vertexIds, input.construction, input.createEntityId)
+  const circle = polygonConstructionCircle(
+    input.center.id,
+    input.geometry.constructionRadius,
+    input.createEntityId,
+  )
+  const additions: SketchEntity[] = [
+    ...(input.center.entity ? [input.center.entity] : []),
+    ...(input.radiusPoint.entity ? [input.radiusPoint.entity] : []),
+    ...tangentPoints,
+    ...vertices,
+    ...outline.entities,
+    circle,
+  ]
+  const constraints = inscribedPolygonConstraints(
+    tangentPointIds,
+    outline.lineIds,
+    circle.id,
+    input.createConstraintId,
+  )
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+export function appendSketchRegularPolygon(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    mode: RegularPolygonMode
+    radiusPoint: SketchPointTarget
+    sideCount: number
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, true, input.createEntityId)
+  const sketchWithCenter = center.entity
+    ? parsedSketch(sketch, [...sketch.entities, center.entity])
+    : sketch
+  const radiusPoint = resolvePointTarget(
+    sketchWithCenter,
+    input.radiusPoint,
+    input.mode === "inscribed" ? true : construction,
+    input.createEntityId,
+  )
+  const geometry = regularPolygonGeometry(
+    center.point,
+    radiusPoint.point,
+    input.sideCount,
+    input.mode,
+  )
+  if (center.id === radiusPoint.id || !geometry) {
+    throw new RangeError("A regular polygon requires a positive construction radius.")
+  }
+  const append = input.mode === "inscribed" ? appendInscribedPolygon : appendCircumscribedPolygon
+  return append(sketch, {
+    center,
+    construction,
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    geometry,
+    radiusPoint,
+  })
 }
 
 export function appendSketchArc(

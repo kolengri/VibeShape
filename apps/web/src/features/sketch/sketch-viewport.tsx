@@ -11,6 +11,7 @@ import {
   appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchRegularPolygon,
   appendSketchSlotAroundLine,
   appendSketchStraightSlot,
   appendSketchTangentArc,
@@ -18,7 +19,11 @@ import {
   appendSketchThreePointCircle,
   centeredAlignedRectangleGeometry,
   inferSketchPoint,
+  MAX_REGULAR_POLYGON_SIDES,
+  MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
+  type RegularPolygonMode,
+  regularPolygonGeometry,
   removeSketchEntities,
   type SketchConstraintDefinition,
   type SketchConstraintId,
@@ -186,6 +191,18 @@ type PendingGeometry =
       side: SketchPointTarget
     }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "regular-polygon-radius"
+      mode: RegularPolygonMode
+    }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "regular-polygon-sides"
+      mode: RegularPolygonMode
+      radiusPoint: SketchPointTarget
+      sideCountInput: string | null
+    }>
   | Readonly<{ kind: "arc-start"; center: SketchPoint2 }>
   | Readonly<{ kind: "arc-end"; center: SketchPoint2; start: SketchPoint2 }>
   | Readonly<{ kind: "three-point-arc-end"; start: SketchPointTarget }>
@@ -229,6 +246,7 @@ type PanGesture = Readonly<{
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
+const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
   return {
@@ -1389,6 +1407,8 @@ type PendingWithTargetCenter = Extract<
   | { kind: "centered-slot-end" }
   | { kind: "centered-slot-width" }
   | { kind: "circle" }
+  | { kind: "regular-polygon-radius" }
+  | { kind: "regular-polygon-sides" }
 >
 
 const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
@@ -1398,6 +1418,8 @@ const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
   "centered-slot-end",
   "centered-slot-width",
   "circle",
+  "regular-polygon-radius",
+  "regular-polygon-sides",
 ])
 
 function hasPendingTargetStart(pending: PendingGeometry): pending is PendingWithTargetStart {
@@ -1763,6 +1785,92 @@ function PendingRoundCurveShape({
   }
 }
 
+type PendingRegularPolygon = Extract<
+  PendingGeometry,
+  { kind: "regular-polygon-radius" } | { kind: "regular-polygon-sides" }
+>
+
+function regularPolygonPointerSideCount(
+  center: SketchPoint2,
+  radiusPoint: SketchPoint2,
+  cursor: SketchPoint2,
+) {
+  const radius = Math.hypot(radiusPoint.x - center.x, radiusPoint.y - center.y)
+  const cursorRadius = Math.hypot(cursor.x - center.x, cursor.y - center.y)
+  const step = Math.max(radius * 0.15, 1e-9)
+  const sideCount = DEFAULT_REGULAR_POLYGON_SIDES + Math.round((cursorRadius - radius) / step)
+  return Math.min(MAX_REGULAR_POLYGON_SIDES, Math.max(MIN_REGULAR_POLYGON_SIDES, sideCount))
+}
+
+function parsedRegularPolygonSideCount(value: string | null) {
+  if (value === null || !/^\d{1,2}$/.test(value)) return null
+  const sideCount = Number(value)
+  return sideCount >= MIN_REGULAR_POLYGON_SIDES && sideCount <= MAX_REGULAR_POLYGON_SIDES
+    ? sideCount
+    : null
+}
+
+function regularPolygonPreview(
+  cursor: SketchPoint2,
+  pending: PendingRegularPolygon,
+  sketch: SketchRecord,
+) {
+  const center = pointForTarget(sketch, pending.center)
+  const radiusPoint =
+    pending.kind === "regular-polygon-radius" ? cursor : pointForTarget(sketch, pending.radiusPoint)
+  const typedSideCount =
+    pending.kind === "regular-polygon-sides"
+      ? parsedRegularPolygonSideCount(pending.sideCountInput)
+      : null
+  const sideCount =
+    typedSideCount ??
+    (pending.kind === "regular-polygon-sides"
+      ? regularPolygonPointerSideCount(center, radiusPoint, cursor)
+      : DEFAULT_REGULAR_POLYGON_SIDES)
+  const geometry = regularPolygonGeometry(center, radiusPoint, sideCount, pending.mode)
+  return geometry ? { center, geometry, radiusPoint, sideCount } : null
+}
+
+function PendingRegularPolygonShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingRegularPolygon
+  sketch: SketchRecord
+}) {
+  const preview = regularPolygonPreview(cursor, pending, sketch)
+  if (!preview) return null
+  const labelPoint = {
+    x: preview.radiusPoint.x,
+    y: preview.radiusPoint.y + preview.geometry.constructionRadius * 0.12,
+  }
+  return (
+    <g data-sketch-polygon-preview={pending.mode}>
+      <circle cx={preview.center.x} cy={preview.center.y} r={preview.geometry.constructionRadius} />
+      <line
+        x1={preview.center.x}
+        y1={preview.center.y}
+        x2={preview.radiusPoint.x}
+        y2={preview.radiusPoint.y}
+      />
+      <polygon points={preview.geometry.vertices.map(({ x, y }) => `${x},${y}`).join(" ")} />
+      {pending.kind === "regular-polygon-sides" ? (
+        <text
+          className="fill-muted-foreground stroke-none font-mono font-semibold"
+          data-sketch-polygon-side-count={preview.sideCount}
+          fontSize={Math.max(preview.geometry.constructionRadius * 0.18, 1)}
+          textAnchor="middle"
+          transform={`translate(${labelPoint.x} ${labelPoint.y}) scale(1 -1)`}
+        >
+          {pending.sideCountInput ?? preview.sideCount}
+        </text>
+      ) : null}
+    </g>
+  )
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -1780,6 +1888,9 @@ function PendingCurveShape({
   }
   if (isPendingSlot(pending)) {
     return <PendingSlotShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+  }
+  if (pending.kind === "regular-polygon-radius" || pending.kind === "regular-polygon-sides") {
+    return <PendingRegularPolygonShape cursor={cursor} pending={pending} sketch={sketch} />
   }
   if (isPendingRoundCurve(pending)) {
     return (
@@ -2279,6 +2390,72 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeRegularPolygonRadius(
+  mode: RegularPolygonMode,
+  input: PlacementInput,
+  pending: Extract<PendingGeometry, { kind: "regular-polygon-radius" }>,
+): PlacementUpdate {
+  const center = pointForTarget(input.draft, pending.center)
+  if (!regularPolygonGeometry(center, input.point, DEFAULT_REGULAR_POLYGON_SIDES, mode)) {
+    return { draft: null, pending }
+  }
+  return {
+    draft: null,
+    pending: {
+      center: pending.center,
+      kind: "regular-polygon-sides",
+      mode,
+      radiusPoint: input.target,
+      sideCountInput: null,
+    },
+  }
+}
+
+function completeRegularPolygon(
+  mode: RegularPolygonMode,
+  input: PlacementInput,
+  pending: Extract<PendingGeometry, { kind: "regular-polygon-sides" }>,
+): PlacementUpdate {
+  const center = pointForTarget(input.draft, pending.center)
+  const radiusPoint = pointForTarget(input.draft, pending.radiusPoint)
+  const typedSideCount = parsedRegularPolygonSideCount(pending.sideCountInput)
+  if (pending.sideCountInput !== null && typedSideCount === null) {
+    return { draft: null, pending }
+  }
+  const sideCount =
+    typedSideCount ?? regularPolygonPointerSideCount(center, radiusPoint, input.point)
+  return {
+    draft: appendSketchRegularPolygon(input.draft, {
+      center: pending.center,
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      mode,
+      radiusPoint: pending.radiusPoint,
+      sideCount,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeRegularPolygon(mode: RegularPolygonMode, input: PlacementInput): PlacementUpdate {
+  const pending = input.pending
+  if (pending?.kind === "regular-polygon-radius") {
+    return placeRegularPolygonRadius(mode, input, pending)
+  }
+  if (pending?.kind === "regular-polygon-sides") {
+    return completeRegularPolygon(mode, input, pending)
+  }
+  return {
+    draft: null,
+    pending: { center: input.target, kind: "regular-polygon-radius", mode },
+  }
+}
+
+const placeCircumscribedPolygon = (input: PlacementInput) =>
+  placeRegularPolygon("circumscribed", input)
+const placeInscribedPolygon = (input: PlacementInput) => placeRegularPolygon("inscribed", input)
+
 function placeThreePointCircle(input: PlacementInput): PlacementUpdate {
   if (
     input.pending?.kind !== "three-point-circle-second" &&
@@ -2389,6 +2566,8 @@ const placementBuilders = {
   "centered-aligned-rectangle": placeCenteredAlignedRectangle,
   "centered-slot": placeCenteredSlot,
   circle: placeCircle,
+  "circumscribed-polygon": placeCircumscribedPolygon,
+  "inscribed-polygon": placeInscribedPolygon,
   line: placeLine,
   "midpoint-line": placeMidpointLine,
   point: placePoint,
@@ -2527,9 +2706,11 @@ const pointInferenceSupport = {
   "aligned-rectangle": alwaysSupportsPointInference,
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
+  "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
   "centered-slot": (pending) => pending?.kind !== "centered-slot-width",
+  "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
   point: alwaysSupportsPointInference,
@@ -2761,9 +2942,79 @@ function handleSketchPointerMove(input: {
   input.setCursor(inference ? inference.point : point)
 }
 
+type RegularPolygonKeyInput = Readonly<{
+  appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
+  cursor: SketchPoint2 | null
+  event: KeyboardEvent<SVGSVGElement>
+  inference: SketchPointInference | null
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}>
+
+function updateRegularPolygonSideCountInput(
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>,
+  update: (value: string | null) => string | null,
+) {
+  setPending((current) =>
+    current?.kind === "regular-polygon-sides"
+      ? { ...current, sideCountInput: update(current.sideCountInput) }
+      : current,
+  )
+}
+
+function consumeRegularPolygonDigit(input: RegularPolygonKeyInput) {
+  const { event } = input
+  if (!/^\d$/.test(event.key)) return false
+  event.preventDefault()
+  updateRegularPolygonSideCountInput(input.setPending, (current) =>
+    `${current ?? ""}${event.key}`.slice(-2),
+  )
+  return true
+}
+
+function consumeRegularPolygonBackspace(input: RegularPolygonKeyInput) {
+  if (input.event.key !== "Backspace") return false
+  input.event.preventDefault()
+  updateRegularPolygonSideCountInput(input.setPending, (current) => current?.slice(0, -1) || null)
+  return true
+}
+
+function isCommittableRegularPolygonSideCount(value: string | null) {
+  if (value === null) return true
+  return parsedRegularPolygonSideCount(value) !== null
+}
+
+function consumeRegularPolygonCommit(
+  input: RegularPolygonKeyInput,
+  pending: Extract<PendingGeometry, { kind: "regular-polygon-sides" }>,
+) {
+  if (input.event.key !== "Enter") return false
+  input.event.preventDefault()
+  if (input.cursor && isCommittableRegularPolygonSideCount(pending.sideCountInput)) {
+    input.appendAt(
+      input.inference?.target ?? { kind: "new", point: input.cursor },
+      input.inference ?? undefined,
+    )
+  }
+  return true
+}
+
+function consumeRegularPolygonSideCountKey(
+  input: RegularPolygonKeyInput,
+  pending: Extract<PendingGeometry, { kind: "regular-polygon-sides" }>,
+) {
+  return (
+    consumeRegularPolygonDigit(input) ||
+    consumeRegularPolygonBackspace(input) ||
+    consumeRegularPolygonCommit(input, pending)
+  )
+}
+
 function handleSketchKeyDown(input: {
+  appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
+  cursor: SketchPoint2 | null
   draft: SketchRecord | null
   event: KeyboardEvent<SVGSVGElement>
+  inference: SketchPointInference | null
   onDraftChange: SketchDrawingConfiguration["onDraftChange"]
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -2775,6 +3026,12 @@ function handleSketchKeyDown(input: {
   if (consumeSketchHistoryShortcut(input.event, input.onUndo, input.onRedo)) return
   if (
     consumePendingPlacementCancel(input.event, input.pending !== null, () => input.setPending(null))
+  ) {
+    return
+  }
+  if (
+    input.pending?.kind === "regular-polygon-sides" &&
+    consumeRegularPolygonSideCountKey(input, input.pending)
   ) {
     return
   }
@@ -3233,8 +3490,11 @@ function SketchDrawing({
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
     handleSketchKeyDown({
+      appendAt,
+      cursor,
       draft,
       event,
+      inference,
       onDraftChange,
       onRedo,
       onSelectionChange,

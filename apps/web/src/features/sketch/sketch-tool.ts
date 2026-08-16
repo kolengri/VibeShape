@@ -24,6 +24,8 @@ export type SketchEditorTool =
   | "centered-aligned-rectangle"
   | "circle"
   | "three-point-circle"
+  | "inscribed-polygon"
+  | "circumscribed-polygon"
   | "slot"
   | "centered-slot"
   | "slot-from-selection"

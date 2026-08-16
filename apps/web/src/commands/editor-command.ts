@@ -14,8 +14,10 @@ export const editorCommandIds = {
   sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
+  sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
+  sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
   sketchSlot: "org.vibeshape.editor.sketch.tool.slot",
@@ -46,6 +48,7 @@ export type EditorCommandIcon =
   | "box"
   | "cancel"
   | "circle"
+  | "circumscribed-polygon"
   | "center-rectangle"
   | "centered-aligned-rectangle"
   | "centered-slot"
@@ -53,6 +56,7 @@ export type EditorCommandIcon =
   | "cylinder"
   | "extrude"
   | "line"
+  | "inscribed-polygon"
   | "midpoint-line"
   | "model"
   | "point"
@@ -83,8 +87,10 @@ export type EditorCommandLabelKey =
   | "sketchCenteredAlignedRectangle"
   | "sketchCenteredSlot"
   | "sketchCircle"
+  | "sketchCircumscribedPolygon"
   | "sketchConstruction"
   | "sketchLine"
+  | "sketchInscribedPolygon"
   | "sketchPoint"
   | "sketchRectangle"
   | "sketchSlot"

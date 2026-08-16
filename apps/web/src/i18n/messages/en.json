@@ -287,11 +287,19 @@
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"
         },
+        "sketchCircumscribedPolygon": {
+          "label": "Circumscribed polygon",
+          "keywords": "circumscribed polygon|polygon inside circle|regular polygon|center polygon"
+        },
         "sketchConstruction": {
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchInscribedPolygon": {
+          "label": "Inscribed polygon",
+          "keywords": "inscribed polygon|polygon around circle|regular polygon|center polygon"
+        },
         "sketchMidpointLine": {
           "label": "Midpoint line",
           "keywords": "midpoint line|center line|symmetric segment"
@@ -336,6 +344,7 @@
         "arcToolsLabel": "Arc tools",
         "circleToolsLabel": "Circle tools",
         "lineToolsLabel": "Line tools",
+        "polygonToolsLabel": "Polygon tools",
         "primitives": "Primitives",
         "rectangleToolsLabel": "Rectangle tools",
         "sketchToolsLabel": "Sketch geometry tools",
