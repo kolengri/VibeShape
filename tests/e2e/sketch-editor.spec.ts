@@ -5,6 +5,7 @@ import {
   drawRectangle,
   selectOriginPlaneInViewport,
   selectSketchEntities,
+  selectSketchTool,
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
@@ -48,17 +49,40 @@ test.describe("full sketch editor", () => {
       .click()
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
+    for (let index = 0; index < 24; index += 1) {
+      const column = index % 6
+      const row = Math.floor(index / 6)
+      const left = 0.1 + column * 0.13
+      const top = 0.12 + row * 0.17
+      await page.mouse.click(bounds.x + bounds.width * left, bounds.y + bounds.height * top)
+      await page.mouse.click(
+        bounds.x + bounds.width * (left + 0.08),
+        bounds.y + bounds.height * (top + 0.1),
+      )
+    }
+    await expect
+      .poll(() => drawing.locator('[data-sketch-entity-type="line"]').count())
+      .toBeGreaterThanOrEqual(96)
     await page.getByRole("button", { name: "Select", exact: true }).click()
-    const endpoint = drawing.locator('[data-sketch-entity-type="point"]').first()
+    const endpoint = drawing.locator('[data-sketch-entity-type="point"]').last()
     const endpointBounds = await endpoint.boundingBox()
     if (!endpointBounds) throw new Error("The sketch endpoint is not visible.")
     const initialX = await endpoint.getAttribute("cx")
     const initialY = await endpoint.getAttribute("cy")
     const startX = endpointBounds.x + endpointBounds.width / 2
     const startY = endpointBounds.y + endpointBounds.height / 2
+    const retainedBounds = await drawing.boundingBox()
+    if (!retainedBounds) throw new Error("The heavy sketch canvas is not visible.")
+    expect(retainedBounds.height).toBeCloseTo(bounds.height, 0)
+    expect(startY).toBeGreaterThanOrEqual(retainedBounds.y)
+    expect(startY).toBeLessThanOrEqual(retainedBounds.y + retainedBounds.height)
 
     await page.mouse.move(startX, startY)
     await page.mouse.down()
+    await expect(drawing).toHaveAttribute("data-sketch-dragging-point-id", /.+/)
     await page.mouse.move(startX + 90, startY - 60, { steps: 12 })
     await expect
       .poll(async () => [await endpoint.getAttribute("cx"), await endpoint.getAttribute("cy")], {
@@ -92,12 +116,12 @@ test.describe("full sketch editor", () => {
     const construction = page.getByRole("button", { name: "Construction geometry" })
     await construction.click()
     await expect(construction).toHaveAttribute("aria-pressed", "true")
-    await page.getByRole("button", { name: "Circle", exact: true }).click()
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await clickAt(0.65, 0.3)
     await clickAt(0.75, 0.3)
     await construction.click()
     await expect(construction).toHaveAttribute("aria-pressed", "false")
-    await page.getByRole("button", { name: "Center-point arc", exact: true }).click()
+    await selectSketchTool(page, "Arc tools", "Center-point arc")
     await clickAt(0.7, 0.7)
     await clickAt(0.8, 0.7)
     await clickAt(0.7, 0.6)
@@ -123,7 +147,7 @@ test.describe("full sketch editor", () => {
     const bounds = await drawing.boundingBox()
     if (!bounds) throw new Error("The editable sketch canvas is not visible.")
 
-    await page.getByRole("button", { name: "Center rectangle", exact: true }).click()
+    await selectSketchTool(page, "Rectangle tools", "Center rectangle R")
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
     await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.35)
     await expect(drawing.locator('[data-sketch-preview-tool="center-rectangle"]')).toBeVisible()
@@ -154,7 +178,7 @@ test.describe("full sketch editor", () => {
     const bounds = await drawing.boundingBox()
     if (!bounds) throw new Error("The editable sketch canvas is not visible.")
 
-    await page.getByRole("button", { name: "Three-point arc", exact: true }).click()
+    await selectSketchTool(page, "Arc tools", "Three-point arc A")
     await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
     await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.55)
     await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.3)
@@ -171,6 +195,38 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(0)
     await page.getByRole("button", { name: "Redo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+  })
+
+  test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Line tools", "Midpoint line")
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.65)
+    await page.mouse.move(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.55)
+    await expect(drawing.locator('[data-sketch-preview-tool="midpoint-line"]')).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.55)
+
+    await selectSketchTool(page, "Circle tools", "Three-point circle")
+    await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.62)
+    await page.mouse.click(bounds.x + bounds.width * 0.8, bounds.y + bounds.height * 0.62)
+    await page.mouse.move(bounds.x + bounds.width * 0.69, bounds.y + bounds.height * 0.38)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="three-point-circle-third"]'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.69, bounds.y + bounds.height * 0.38)
+
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({

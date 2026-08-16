@@ -3,13 +3,15 @@ import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers
 import type { SketchEntity } from "./sketch"
 import {
   appendSketchArc,
-  appendSketchCircle,
   appendSketchCenterRectangle,
+  appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
+  appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
   appendSketchThreePointArc,
+  appendSketchThreePointCircle,
   createEmptySketch,
   moveSketchPoint,
   removeSketchConstraints,
@@ -72,6 +74,34 @@ describe("sketch editing", () => {
     expect(second.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(3)
     expect(second.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(2)
     expect(second.sketch.entities.at(-1)).toMatchObject({ type: "line", startPointId: endPointId })
+  })
+
+  it("adds a line symmetrically from its midpoint with persistent design intent", () => {
+    const result = appendSketchMidpointLine(empty(), {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      midpoint: { kind: "new", point: { x: 3, y: -2 } },
+      endpoint: { kind: "new", point: { x: 8, y: 1 } },
+    })
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+    const line = result.sketch.entities.find((entity) => entity.type === "line")
+
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ x: 3, y: -2, construction: true }),
+        expect.objectContaining({ x: 8, y: 1 }),
+        expect.objectContaining({ x: -2, y: -5 }),
+      ]),
+    )
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({
+        type: "midpoint",
+        pointId: points.find(({ x, y }) => x === 3 && y === -2)?.id,
+        lineId: line?.id,
+      }),
+    ])
   })
 
   it("adds a rectangle with shared corners and automatic horizontal and vertical constraints", () => {
@@ -158,6 +188,46 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("adds a circle through three points and preserves each circumference relation", () => {
+    const result = appendSketchThreePointCircle(empty(), {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      firstPoint: { kind: "new", point: { x: -10, y: 0 } },
+      secondPoint: { kind: "new", point: { x: 0, y: 10 } },
+      thirdPoint: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const circle = result.sketch.entities.find((entity) => entity.type === "circle")
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+
+    expect(circle).toMatchObject({ radius: 10 })
+    expect(points).toHaveLength(4)
+    const center = points.find(({ id }) => id === circle?.centerPointId)
+    expect(center?.x).toBeCloseTo(0)
+    expect(center?.y).toBeCloseTo(0)
+    expect(result.sketch.constraints).toHaveLength(3)
+    expect(result.sketch.constraints).toEqual(
+      points
+        .filter(({ x, y }) => x !== 0 || y !== 0)
+        .map(({ id }) =>
+          expect.objectContaining({ type: "point-on-curve", pointId: id, curveId: circle?.id }),
+        ),
+    )
+  })
+
+  it("rejects repeated or collinear three-point circle positions", () => {
+    expect(() =>
+      appendSketchThreePointCircle(empty(), {
+        createConstraintId: constraintId,
+        createEntityId: entityId,
+        firstPoint: { kind: "new", point: { x: 0, y: 0 } },
+        secondPoint: { kind: "new", point: { x: 5, y: 0 } },
+        thirdPoint: { kind: "new", point: { x: 10, y: 0 } },
+      }),
+    ).toThrow("non-collinear")
   })
 
   it("creates a three-point arc whose positive sweep passes through the third pick", () => {

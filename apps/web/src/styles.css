@@ -4,7 +4,9 @@
 .cad-shell {
   display: grid;
   grid-template-rows: 2.5rem 2.25rem minmax(0, 1fr) 1.5rem;
-  min-height: 100svh;
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .cad-workspace-grid {
@@ -12,6 +14,7 @@
   grid-template-columns:
     var(--model-tree-width) minmax(0, 1fr)
     var(--task-panel-width);
+  overflow: hidden;
 }
 
 @media (width < 64rem) {

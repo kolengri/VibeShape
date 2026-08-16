@@ -208,6 +208,10 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 |---|---|
 | [Onshape user interface basics](https://cad.onshape.com/help/Content/Home/user_interface_basics.htm) | Stable Part Studio graphics area, feature list, workflow-specific toolbars, grouped overflow, explicit dialogs, selection, undo/redo, and error indicators |
 | [Onshape sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm) | Sketch toolbar activation, grouped and last-used tools, shortcut toolbar, `Escape`, constraint visibility, and the transition from a valid open sketch into Extrude or Revolve |
+| [Onshape Midpoint Line](https://cad.onshape.com/help/Content/Sketch/midpoint_line.htm) | Midpoint-first symmetric segment authoring and persistent midpoint relation |
+| [Onshape Center Point Rectangle](https://cad.onshape.com/help/Content/Sketch/center_point_rectangle.htm) | Center-first symmetric rectangle workflow and construction diagonals |
+| [Onshape 3 Point Circle](https://cad.onshape.com/help/Content/Sketch/3_point_circle.htm) | Exact circle placement through three circumference points |
+| [Onshape Center Point Arc](https://cad.onshape.com/help/Content/Sketch/center_point_arc.htm) | Center, start, and endpoint arc workflow |
 | [Onshape dialogs](https://cad.onshape.com/help/Content/Home/dialogs.htm) | Distinct selection and keyboard-input fields plus feature editing in historical context |
 | [Autodesk Fusion interface](https://help.autodesk.com/view/fusion360/ENU/?contextId=LP-STEPS-P13N-SNP-GS-OTH-CRD-1) | Stable Browser and canvas, contextual toolbar tabs, ViewCube/navigation, marking menu, and chronological parametric Timeline |
 | [Autodesk Fusion sketches](https://help.autodesk.com/view/fusion360/ENU/?contextId=SKT-3D-SKETCH) | Contextual Sketch tab, sketch palette, construction/grid/profile/dimension visibility controls, and automatic transition into a 3D feature command |

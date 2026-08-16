@@ -138,11 +138,19 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "midpoint-line",
+    id: editorCommandIds.sketchMidpointLine,
+    labelKey: "sketchMidpointLine",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "rectangle",
     id: editorCommandIds.sketchRectangle,
     labelKey: "sketchRectangle",
     ownerModuleId: sketchOwner,
-    shortcut: { key: "r" },
+    shortcut: { key: "g" },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -151,7 +159,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCenterRectangle,
     labelKey: "sketchCenterRectangle",
     ownerModuleId: sketchOwner,
-    shortcut: { key: "r", modifiers: ["shift"] },
+    shortcut: { key: "r" },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -165,11 +173,18 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "three-point-circle",
+    id: editorCommandIds.sketchThreePointCircle,
+    labelKey: "sketchThreePointCircle",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "arc",
     id: editorCommandIds.sketchArc,
     labelKey: "sketchArc",
     ownerModuleId: sketchOwner,
-    shortcut: { key: "a" },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -178,7 +193,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchThreePointArc,
     labelKey: "sketchThreePointArc",
     ownerModuleId: sketchOwner,
-    shortcut: { key: "a", modifiers: ["shift"] },
+    shortcut: { key: "a" },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -238,7 +253,9 @@ function requiresSketch(context: BuiltInEditorCommandContext) {
 function sketchToolHandler(
   id: (typeof editorCommandIds)[
     | "sketchArc"
+    | "sketchMidpointLine"
     | "sketchThreePointArc"
+    | "sketchThreePointCircle"
     | "sketchCenterRectangle"
     | "sketchCircle"
     | "sketchLine"
@@ -335,9 +352,11 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchSelect, "select"),
   sketchToolHandler(editorCommandIds.sketchPoint, "point"),
   sketchToolHandler(editorCommandIds.sketchLine, "line"),
+  sketchToolHandler(editorCommandIds.sketchMidpointLine, "midpoint-line"),
   sketchToolHandler(editorCommandIds.sketchRectangle, "rectangle"),
   sketchToolHandler(editorCommandIds.sketchCenterRectangle, "center-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
+  sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   {

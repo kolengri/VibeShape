@@ -295,6 +295,45 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("previews and creates a midpoint line with persistent symmetry", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "midpoint-line",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180 })
+    expect(document.querySelector('[data-sketch-preview-tool="midpoint-line"]')).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(3)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(1)
+    expect(draft.entities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "point", construction: true })]),
+    )
+    expect(draft.constraints).toEqual([expect.objectContaining({ type: "midpoint" })])
+  })
+
   it("previews and creates a symmetric center rectangle as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
@@ -381,6 +420,52 @@ describe("SketchViewport", () => {
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(3)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(1)
     expect(draft.constraints).toEqual([])
+  })
+
+  it("previews and creates a circle through three picked points as one draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "three-point-circle",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 160 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="three-point-circle-third"]'),
+    ).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 160 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(4)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "circle")).toHaveLength(1)
+    expect(draft.constraints).toHaveLength(3)
+    expect(draft.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "point-on-curve" }),
+        expect.objectContaining({ type: "point-on-curve" }),
+        expect.objectContaining({ type: "point-on-curve" }),
+      ]),
+    )
   })
 
   it("previews horizontal inference before applying the automatic constraint", () => {
@@ -481,7 +566,12 @@ describe("SketchViewport", () => {
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
     expect(solveSketch).toHaveBeenLastCalledWith(
       7,
-      sketch,
+      expect.objectContaining({
+        id: sketch.id,
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
+        ]),
+      }),
       expect.objectContaining({
         continuation: expect.objectContaining({
           sketchId,
@@ -492,7 +582,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("commits only the latest point position once per animation frame", async () => {
+  it("keeps drag frames local and commits only the final point position", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
@@ -527,6 +617,16 @@ describe("SketchViewport", () => {
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
     act(() => frame(0))
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(
+      document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cx"),
+    ).toBe("65")
+    expect(
+      document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
+    ).toBe("36")
+
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
     expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({

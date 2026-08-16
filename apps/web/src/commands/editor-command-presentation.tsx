@@ -2,14 +2,16 @@ import { useTranslations } from "@vibeshape/i18n"
 import {
   Box as BoxIcon,
   Circle,
+  CircleDashed,
   Construction,
   Cuboid,
   DraftingCompass,
+  Minus,
   MousePointer2,
   PenLine,
   RectangleHorizontal,
-  Scan,
   Redo2,
+  Scan,
   Scissors,
   Slash,
   Spline,
@@ -36,6 +38,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   cylinder: Circle,
   extrude: BoxIcon,
   line: Slash,
+  "midpoint-line": Minus,
   model: Cuboid,
   point: Circle,
   rectangle: RectangleHorizontal,
@@ -44,6 +47,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   sketch: DraftingCompass,
   subtract: Scissors,
   "three-point-arc": Spline,
+  "three-point-circle": CircleDashed,
   undo: Undo2,
 }
 

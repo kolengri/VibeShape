@@ -262,16 +262,27 @@
           "label": "Three-point arc",
           "keywords": "three point arc|arc through point|start end curve"
         },
+        "sketchThreePointCircle": {
+          "label": "Three-point circle",
+          "keywords": "three point circle|circumcircle|circle through points"
+        },
         "sketchCenterRectangle": {
           "label": "Center rectangle",
           "keywords": "center rectangle|symmetric box profile|rectangle from center"
         },
-        "sketchCircle": { "label": "Circle", "keywords": "sketch circle|round|radius|diameter" },
+        "sketchCircle": {
+          "label": "Center-point circle",
+          "keywords": "sketch circle|center point circle|round|radius|diameter"
+        },
         "sketchConstruction": {
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchMidpointLine": {
+          "label": "Midpoint line",
+          "keywords": "midpoint line|center line|symmetric segment"
+        },
         "sketchPoint": { "label": "Point", "keywords": "sketch point|vertex|coordinate" },
         "sketchRectangle": {
           "label": "Rectangle",
@@ -297,7 +308,11 @@
       },
       "commandToolbar": {
         "ariaLabel": "Model commands",
+        "arcToolsLabel": "Arc tools",
+        "circleToolsLabel": "Circle tools",
+        "lineToolsLabel": "Line tools",
         "primitives": "Primitives",
+        "rectangleToolsLabel": "Rectangle tools",
         "sketchToolsLabel": "Sketch geometry tools",
         "workspaceLabel": "Editor workspace"
       },

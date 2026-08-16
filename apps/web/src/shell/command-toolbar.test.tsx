@@ -122,13 +122,25 @@ describe("CommandToolbar", () => {
     ).toBe("false")
     expect((screen.getByRole("button", { name: "Model" }) as HTMLButtonElement).disabled).toBe(true)
 
-    await user.click(screen.getByRole("button", { name: "Rectangle" }))
+    await user.click(screen.getByRole("button", { name: "Rectangle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Rectangle G" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("rectangle")
+    expect(screen.getByRole("button", { name: "Rectangle" })).toBeTruthy()
 
-    await user.click(screen.getByRole("button", { name: "Center rectangle" }))
+    await user.click(screen.getByRole("button", { name: "Rectangle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Center rectangle R" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
 
-    await user.click(screen.getByRole("button", { name: "Three-point arc" }))
+    await user.click(screen.getByRole("button", { name: "Line tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Midpoint line" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("midpoint-line")
+
+    await user.click(screen.getByRole("button", { name: "Circle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-circle")
+
+    await user.click(screen.getByRole("button", { name: "Arc tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Three-point arc A" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
 
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))

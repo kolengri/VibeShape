@@ -1,8 +1,21 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import { ChevronDown } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
-import type { ResolvedEditorCommand } from "../commands/editor-command"
+import { useEffect, useState } from "react"
+import {
+  type EditorCommandId,
+  editorCommandIds,
+  type ResolvedEditorCommand,
+} from "../commands/editor-command"
 import {
   EditorCommandIconView,
   editorCommandShortcutLabel,
@@ -10,10 +23,12 @@ import {
 } from "../commands/editor-command-presentation"
 
 function ToolbarAction({
+  buttonClassName,
   command,
   disabledReason,
   label,
 }: {
+  buttonClassName?: string
   command: ResolvedEditorCommand
   disabledReason: string | null
   label: string
@@ -32,6 +47,7 @@ function ToolbarAction({
               variant={command.active ? "secondary" : "ghost"}
               aria-label={label}
               aria-pressed={command.active}
+              className={buttonClassName}
               disabled={!command.eligibility.enabled}
               onClick={command.invoke}
             >
@@ -52,6 +68,139 @@ function ToolbarAction({
         {disabledReason ? <span className="text-muted-foreground">{disabledReason}</span> : null}
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+type SketchToolFamilyId = "line" | "rectangle" | "circle" | "arc"
+
+const sketchToolFamilies = [
+  {
+    commandIds: [editorCommandIds.sketchLine, editorCommandIds.sketchMidpointLine],
+    id: "line",
+    labelKey: "lineToolsLabel",
+  },
+  {
+    commandIds: [editorCommandIds.sketchRectangle, editorCommandIds.sketchCenterRectangle],
+    id: "rectangle",
+    labelKey: "rectangleToolsLabel",
+  },
+  {
+    commandIds: [editorCommandIds.sketchCircle, editorCommandIds.sketchThreePointCircle],
+    id: "circle",
+    labelKey: "circleToolsLabel",
+  },
+  {
+    commandIds: [editorCommandIds.sketchThreePointArc, editorCommandIds.sketchArc],
+    id: "arc",
+    labelKey: "arcToolsLabel",
+  },
+] as const satisfies readonly {
+  commandIds: readonly EditorCommandId[]
+  id: SketchToolFamilyId
+  labelKey: "lineToolsLabel" | "rectangleToolsLabel" | "circleToolsLabel" | "arcToolsLabel"
+}[]
+
+const defaultFamilyCommandIds: Readonly<Record<SketchToolFamilyId, EditorCommandId>> = {
+  arc: editorCommandIds.sketchThreePointArc,
+  circle: editorCommandIds.sketchCircle,
+  line: editorCommandIds.sketchLine,
+  rectangle: editorCommandIds.sketchCenterRectangle,
+}
+
+const groupedSketchToolIds: ReadonlySet<EditorCommandId> = new Set<EditorCommandId>(
+  sketchToolFamilies.flatMap(({ commandIds }) => commandIds),
+)
+
+function familyCommands(
+  commands: readonly ResolvedEditorCommand[],
+  commandIds: readonly EditorCommandId[],
+) {
+  const commandsById = new Map(commands.map((command) => [command.descriptor.id, command]))
+  return commandIds.flatMap((id) => {
+    const command = commandsById.get(id)
+    return command ? [command] : []
+  })
+}
+
+function SketchToolFamilyAction({
+  commands,
+  disabledReason,
+  familyLabel,
+  label,
+  lastUsedCommandId,
+  onCommandSelect,
+}: {
+  commands: readonly ResolvedEditorCommand[]
+  disabledReason: (command: ResolvedEditorCommand) => string | null
+  familyLabel: string
+  label: (command: ResolvedEditorCommand) => string
+  lastUsedCommandId: EditorCommandId
+  onCommandSelect: (command: ResolvedEditorCommand) => void
+}) {
+  const activeCommand = commands.find(({ active }) => active)
+  const primaryCommand =
+    activeCommand ??
+    commands.find(({ descriptor }) => descriptor.id === lastUsedCommandId) ??
+    commands[0]
+  if (!primaryCommand) return null
+  return (
+    <span className="inline-flex">
+      <ToolbarAction
+        buttonClassName="rounded-r-none"
+        command={primaryCommand}
+        disabledReason={disabledReason(primaryCommand)}
+        label={label(primaryCommand)}
+      />
+      <DropdownMenu>
+        <Tooltip>
+          <ToolbarButton asChild>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant={activeCommand ? "secondary" : "ghost"}
+                  aria-label={familyLabel}
+                  className="w-6 rounded-l-none border-l border-border px-0"
+                >
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+          </ToolbarButton>
+          <TooltipContent>{familyLabel}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="start">
+          <DropdownMenuRadioGroup
+            value={activeCommand?.descriptor.id ?? ""}
+            onValueChange={(commandId) => {
+              const command = commands.find(({ descriptor }) => descriptor.id === commandId)
+              if (command) onCommandSelect(command)
+            }}
+          >
+            {commands.map((command) => {
+              const shortcut = command.descriptor.shortcut
+                ? editorCommandShortcutLabel(command.descriptor.shortcut)
+                : null
+              return (
+                <DropdownMenuRadioItem
+                  key={command.descriptor.id}
+                  value={command.descriptor.id}
+                  aria-label={shortcut ? `${label(command)} ${shortcut}` : label(command)}
+                  disabled={!command.eligibility.enabled}
+                >
+                  <EditorCommandIconView icon={command.descriptor.icon} />
+                  <span className="flex-1">{label(command)}</span>
+                  {shortcut ? (
+                    <kbd className="font-mono text-[10px] text-muted-foreground">{shortcut}</kbd>
+                  ) : null}
+                </DropdownMenuRadioItem>
+              )
+            })}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   )
 }
 
@@ -97,6 +246,29 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const sketchModeCommands = group("sketch-mode")
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
+  const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState(defaultFamilyCommandIds)
+  const activeSketchToolId = sketchToolCommands.find(({ active }) => active)?.descriptor.id
+
+  useEffect(() => {
+    if (!activeSketchToolId) return
+    const family = sketchToolFamilies.find(({ commandIds }) =>
+      commandIds.some((commandId) => commandId === activeSketchToolId),
+    )
+    if (!family) return
+    setLastUsedFamilyCommands((current) =>
+      current[family.id] === activeSketchToolId
+        ? current
+        : { ...current, [family.id]: activeSketchToolId },
+    )
+  }, [activeSketchToolId])
+
+  const selectFamilyCommand = (familyId: SketchToolFamilyId, command: ResolvedEditorCommand) => {
+    setLastUsedFamilyCommands((current) => ({
+      ...current,
+      [familyId]: command.descriptor.id,
+    }))
+    command.invoke()
+  }
 
   return (
     <Toolbar
@@ -115,11 +287,24 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         {sketchMode ? (
           <>
             <ToolbarCommandGroup
-              commands={sketchToolCommands}
+              commands={sketchToolCommands.filter(
+                ({ descriptor }) => !groupedSketchToolIds.has(descriptor.id),
+              )}
               getDisabledReason={getDisabledReason}
               getLabel={getLabel}
               label={t("sketchToolsLabel")}
             />
+            {sketchToolFamilies.map((family) => (
+              <SketchToolFamilyAction
+                key={family.id}
+                commands={familyCommands(sketchToolCommands, family.commandIds)}
+                disabledReason={getDisabledReason}
+                familyLabel={t(family.labelKey)}
+                label={getLabel}
+                lastUsedCommandId={lastUsedFamilyCommands[family.id]}
+                onCommandSelect={(command) => selectFamilyCommand(family.id, command)}
+              />
+            ))}
             <ToolbarSeparator />
             {sketchModeCommands.map((command) => (
               <ToolbarAction
