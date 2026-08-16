@@ -471,6 +471,8 @@
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "removeConstraint": "Remove",
+          "editConstraint": "Edit dimension",
+          "saveDimension": "Save dimension",
           "coincident": "Coincident",
           "horizontal": "Horizontal",
           "vertical": "Vertical",

@@ -7,6 +7,7 @@ import {
   sketchConstraintSchema,
   sketchRecordSchema,
 } from "./sketch"
+import type { AngleQuantity, LengthQuantity } from "./units"
 
 export type SketchPoint2 = Readonly<{ x: number; y: number }>
 
@@ -21,6 +22,8 @@ export type SketchAppendResult = Readonly<{
 
 export type SketchConstraintDefinition<Constraint extends SketchConstraint = SketchConstraint> =
   Constraint extends SketchConstraint ? Omit<Constraint, "id" | "schemaVersion"> : never
+
+export type SketchDimensionValue = LengthQuantity | AngleQuantity
 
 type EntityIdFactory = () => SketchEntityId
 type ConstraintIdFactory = () => SketchConstraintId
@@ -392,6 +395,26 @@ export function removeSketchConstraints(
     ...sketch,
     constraints: sketch.constraints.filter(({ id }) => !removedIds.has(id)),
   })
+}
+
+export function setSketchDimensionValue(
+  sketch: SketchRecord,
+  constraintId: SketchConstraintId,
+  value: SketchDimensionValue,
+): SketchRecord {
+  let updated = false
+  const constraints = sketch.constraints.map((constraint) => {
+    if (constraint.id !== constraintId) return constraint
+    if (!("value" in constraint)) {
+      throw new TypeError("Only dimensional sketch constraints have editable values.")
+    }
+    updated = true
+    return sketchConstraintSchema.parse({ ...constraint, value })
+  })
+  if (!updated) {
+    throw new TypeError("An edited sketch dimension must reference an existing constraint.")
+  }
+  return sketchRecordSchema.parse({ ...sketch, constraints })
 }
 
 export function moveSketchPoint(

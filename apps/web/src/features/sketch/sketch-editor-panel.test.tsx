@@ -6,12 +6,14 @@ import {
   appendSketchConstraint,
   appendSketchLine,
   createEmptySketch,
+  createLengthQuantity,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
@@ -40,6 +42,7 @@ const copy = {
   dimensionInvalid: "Invalid dimension",
   dimensions: "Dimensions",
   distance: "Distance",
+  editConstraint: "Edit dimension",
   equal: "Equal",
   finish: "Finish sketch",
   fixed: "Fix point",
@@ -63,6 +66,7 @@ const copy = {
   rectangle: "Rectangle",
   redo: "Redo",
   remove: "Remove",
+  saveDimension: "Save dimension",
   selectionHint: "Select geometry to see compatible constraints.",
   select: "Select",
   tangent: "Tangent",
@@ -105,27 +109,29 @@ function renderPanel(
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
-        <SketchEditorPanel
-          copy={copy}
-          state={{
-            disabled: false,
-            draft: sketch,
-            failedConstraintIds,
-            message: null,
-            profiles: [],
-            selectedEntityIds,
-            selectedProfile: null,
-            variables,
-          }}
-          actions={{
-            onCancel: vi.fn(),
-            onDraftChange,
-            onFinish: vi.fn(async () => undefined),
-            onSelectedProfileChange: vi.fn(),
-          }}
-        />
-      </DocumentDisplayUnitsProvider>
+      <TooltipProvider delayDuration={0}>
+        <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+          <SketchEditorPanel
+            copy={copy}
+            state={{
+              disabled: false,
+              draft: sketch,
+              failedConstraintIds,
+              message: null,
+              profiles: [],
+              selectedEntityIds,
+              selectedProfile: null,
+              variables,
+            }}
+            actions={{
+              onCancel: vi.fn(),
+              onDraftChange,
+              onFinish: vi.fn(async () => undefined),
+              onSelectedProfileChange: vi.fn(),
+            }}
+          />
+        </DocumentDisplayUnitsProvider>
+      </TooltipProvider>
     </I18nProvider>,
   )
   return onDraftChange
@@ -172,6 +178,75 @@ describe("SketchEditorPanel", () => {
             type: "distance",
             value: expect.objectContaining({
               source: expect.objectContaining({ expression: "20 mm" }),
+            }),
+          }),
+        ],
+      }),
+    )
+  })
+
+  it("creates a length dimension directly from a selected line", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    expect(line).toBeDefined()
+    if (!line) return
+    const onDraftChange = renderPanel(sketch, [line.id])
+
+    await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
+    await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "25 mm")
+    await user.click(screen.getByRole("button", { name: "Add constraint" }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            type: "distance",
+            firstPointId: line.startPointId,
+            secondPointId: line.endPointId,
+            value: expect.objectContaining({ value: 25 }),
+          }),
+        ],
+      }),
+    )
+  })
+
+  it("edits an existing line dimension without replacing its identity", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    expect(line).toBeDefined()
+    if (!line) return
+    const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-000000000002")
+    const constrained = appendSketchConstraint(
+      sketch,
+      {
+        type: "distance",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+        value: createLengthQuantity(20, "mm", "20 mm"),
+      },
+      () => constraintId,
+    )
+    const onDraftChange = renderPanel(constrained, [])
+
+    await user.click(screen.getByRole("button", { name: "Edit dimension" }))
+    const expression = screen.getByRole("combobox", { name: "Driving expression" })
+    expect((expression as HTMLInputElement).value).toBe("20 mm")
+    await user.clear(expression)
+    await user.type(expression, "32 mm")
+    await user.click(screen.getByRole("button", { name: "Save dimension" }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            id: constraintId,
+            firstPointId: line.startPointId,
+            secondPointId: line.endPointId,
+            value: expect.objectContaining({
+              value: 32,
+              source: expect.objectContaining({ expression: "32 mm" }),
             }),
           }),
         ],

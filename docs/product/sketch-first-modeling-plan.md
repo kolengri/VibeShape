@@ -69,8 +69,8 @@ Status: core P0 interaction implemented.
 
 - Point, Line/Polyline, corner Rectangle, Circle, center-point Arc, and Construction modes author analytical geometry; center rectangle and three-point Arc remain open.
 - Select, additive select, point dragging, cascade Delete, Escape placement cancel, local undo/redo, pan, zoom, and stable draft identities are implemented.
-- Rectangle placement adds horizontal and vertical intent automatically. Hover inference and constraint glyphs remain open; live solver state and degrees of freedom are visible.
-- Compatible selections expose every P0 constraint schema. Direct length and angle dimensions retain literal or committed `#variable` expressions through a TanStack Form adapter.
+- Rectangle placement adds horizontal and vertical intent automatically. Point placement reuses nearby stable point identities, and line placement previews and persists deterministic horizontal or vertical inference. Applied geometric constraints and driving expressions render as viewport glyphs; midpoint, curve, tangent, and perpendicular inference remain open. Live solver state and degrees of freedom are visible.
+- Compatible selections expose every P0 constraint schema. A selected line exposes its endpoint distance directly. Direct length and angle dimensions retain literal or committed `#variable` expressions through TanStack Form adapters and can be edited without replacing their stable constraint identity.
 - Preserve analytical entities; sampled display geometry never becomes semantic source data.
 - Preserve over-constrained drafts and failed constraint identities without silently deleting constraints; richer repair suggestions remain open.
 

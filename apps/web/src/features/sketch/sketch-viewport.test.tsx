@@ -231,7 +231,46 @@ describe("SketchViewport", () => {
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
         entities: expect.arrayContaining([expect.objectContaining({ type: "line" })]),
+        constraints: [expect.objectContaining({ type: "horizontal" })],
       }),
     )
+  })
+
+  it("previews horizontal inference before applying the automatic constraint", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "line",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 302 })
+
+    expect(document.querySelector('[data-sketch-inference="horizontal"]')).toBeTruthy()
+  })
+
+  it("renders geometric constraint glyphs and driving dimension labels", () => {
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(document.querySelector('[data-sketch-constraint-kind="geometric"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-constraint-kind="dimension"]')).toBeTruthy()
   })
 })

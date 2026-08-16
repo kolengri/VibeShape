@@ -11,8 +11,10 @@ import {
   moveSketchPoint,
   removeSketchConstraints,
   removeSketchEntities,
+  setSketchDimensionValue,
   setSketchEntityConstruction,
 } from "./sketch-edit"
+import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000001" as SketchId
 let nextEntityId = 1
@@ -177,5 +179,86 @@ describe("sketch editing", () => {
     expect(constraint).toBeDefined()
     if (!constraint) return
     expect(removeSketchConstraints(constrained, [constraint.id]).constraints).toEqual([])
+  })
+
+  it("updates a driving dimension while preserving its identity and references", () => {
+    const sketch = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    expect(line).toBeDefined()
+    if (!line) return
+    const constrained = appendSketchConstraint(
+      sketch,
+      {
+        type: "distance",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+        value: createLengthQuantity(10, "mm", "10 mm"),
+      },
+      constraintId,
+    )
+    const dimension = constrained.constraints[0]
+    expect(dimension).toBeDefined()
+    if (!dimension) return
+
+    const updated = setSketchDimensionValue(
+      constrained,
+      dimension.id,
+      createLengthQuantity(25, "mm", "#width"),
+    )
+
+    expect(updated.constraints[0]).toEqual({
+      ...dimension,
+      value: createLengthQuantity(25, "mm", "#width"),
+    })
+  })
+
+  it("rejects missing, geometric, and dimensionally incompatible constraint edits", () => {
+    const sketch = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    expect(line).toBeDefined()
+    if (!line) return
+    const geometric = appendSketchConstraint(
+      sketch,
+      { type: "horizontal", lineId: line.id },
+      constraintId,
+    )
+    const horizontal = geometric.constraints[0]
+    expect(horizontal).toBeDefined()
+    if (!horizontal) return
+    expect(() =>
+      setSketchDimensionValue(geometric, horizontal.id, createLengthQuantity(20)),
+    ).toThrow("Only dimensional")
+
+    const dimensional = appendSketchConstraint(
+      sketch,
+      {
+        type: "distance",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+        value: createLengthQuantity(10),
+      },
+      constraintId,
+    )
+    const distance = dimensional.constraints[0]
+    expect(distance).toBeDefined()
+    if (!distance) return
+    expect(() =>
+      setSketchDimensionValue(dimensional, distance.id, createAngleQuantity(Math.PI / 2)),
+    ).toThrow()
+    expect(() =>
+      setSketchDimensionValue(
+        dimensional,
+        "018f0000-0000-7000-a000-999999999999" as SketchConstraintId,
+        createLengthQuantity(20),
+      ),
+    ).toThrow("existing constraint")
   })
 })
