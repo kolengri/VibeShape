@@ -1,0 +1,118 @@
+import {
+  createEmptySketch,
+  type SketchProfileSelector,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "@vibeshape/domain"
+import { describe, expect, it } from "vitest"
+import { createEditorSessionStore } from "./editor-session-store"
+
+const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
+const boundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3201")
+
+function createSketch(label = "Sketch 1") {
+  return createEmptySketch({ id: sketchId, label, plane: "xy" })
+}
+
+function createProfile(): SketchProfileSelector {
+  return {
+    schemaVersion: 0,
+    sketchId,
+    outerBoundaryEntityIds: [boundaryEntityId],
+    holeBoundaryEntityIds: [],
+  }
+}
+
+describe("editor session store", () => {
+  it("creates isolated editor sessions and preserves unrelated selector references", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+    const firstSketchState = first.getState().sketch
+
+    first.getState().actions.setCommandPaletteOpen(true)
+    first.getState().actions.setSelection({ featureId: "feature-1", faceId: 4, faceOrdinal: 2 })
+
+    expect(first.getState().commandPaletteOpen).toBe(true)
+    expect(first.getState().sketch).toBe(firstSketchState)
+    expect(second.getState().commandPaletteOpen).toBe(false)
+    expect(second.getState().selection).toBeNull()
+  })
+
+  it("owns the create-sketch support-selection lifecycle without committing a document", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+
+    store.getState().actions.beginSketchCreate(sketch)
+
+    expect(store.getState()).toMatchObject({
+      activePartDesignTool: null,
+      selection: null,
+      workspace: "model",
+      sketch: {
+        activeSketchId: sketchId,
+        activeSketchTool: { kind: "select-sketch-plane" },
+        draft: sketch,
+        editorTool: "select",
+      },
+    })
+
+    store.getState().actions.selectSketchPlane("xz")
+
+    expect(store.getState()).toMatchObject({
+      selection: null,
+      workspace: "sketch",
+      sketch: {
+        activeSketchTool: { kind: "create-sketch" },
+        draft: { plane: "xz" },
+        editorTool: "line",
+        undoStack: [],
+      },
+    })
+  })
+
+  it("records bounded local sketch history and clears selection on undo and redo", () => {
+    const store = createEditorSessionStore()
+    const initial = createSketch("Draft 0")
+    store.getState().actions.beginSketchEdit(initial)
+
+    for (let index = 1; index <= 105; index += 1) {
+      store.getState().actions.setSketchDraft(createSketch(`Draft ${index}`))
+    }
+    store.getState().actions.setSketchSelectedEntityIds([boundaryEntityId])
+
+    expect(store.getState().sketch.undoStack).toHaveLength(100)
+    expect(store.getState().sketch.undoStack[0]?.label).toBe("Draft 5")
+
+    store.getState().actions.undoSketchDraft()
+
+    expect(store.getState().sketch.draft?.label).toBe("Draft 104")
+    expect(store.getState().sketch.selectedEntityIds).toEqual([])
+    expect(store.getState().sketch.redoStack).toHaveLength(1)
+
+    store.getState().actions.redoSketchDraft()
+
+    expect(store.getState().sketch.draft?.label).toBe("Draft 105")
+    expect(store.getState().sketch.selectedEntityIds).toEqual([])
+  })
+
+  it("keeps the solved profile selected after a sketch is saved", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+    const profile = createProfile()
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchProfiles([profile])
+
+    store.getState().actions.saveSketch(sketch)
+
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchId: sketchId,
+      activeSketchTool: null,
+      draft: null,
+      editorTool: "select",
+      profiles: [profile],
+      selectedProfile: profile,
+      undoStack: [],
+      redoStack: [],
+    })
+  })
+})

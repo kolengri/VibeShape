@@ -11,7 +11,7 @@
 | CAD kernel | OCCT through Replicad/OpenCascade.js | Exact B-Rep, booleans, fillets, and STEP |
 | Sketch solver | SolveSpace solver subset compiled to WASM | Mature constraint set and GPL-compatible licensing |
 | Viewport | Raw Three.js with WebGL2 baseline | Full control of picking, buffers, clipping, and lifecycle |
-| UI state | Zustand | Transient local UI state, separate from domain state |
+| UI state | Zustand with Immer middleware | Transient editor-session state with explicit actions, separate from committed domain state |
 | Form state | TanStack Form | Typed field and submission state behind adapters; base controls remain state-agnostic |
 | Internationalization | `use-intl` | Typed ICU messages and formatting without a Next.js or backend dependency |
 | Runtime schemas | Zod | Worker-message, file, and migration validation |
@@ -30,7 +30,7 @@
 
 ## Reviewed package-version snapshot
 
-Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate` usage reviewed on **2026-08-08**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
+Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate` usage reviewed on **2026-08-08** and the editor-state dependencies reviewed on **2026-08-16**. Packages already used by the foundation scaffold are pinned in workspace manifests and `bun.lock`; the remaining snapshot guides Phase 0 selection and is not an installation decision.
 
 | Package | Version | License |
 |---|---:|---|
@@ -45,6 +45,7 @@ Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate`
 | `replicad-opencascadejs` | 0.23.0 | MIT package wrapper; embedded OCCT obligations remain |
 | `opencascade.js` | 1.1.1 | LGPL-2.1-only |
 | `zustand` | 5.0.14 | MIT |
+| `immer` | 11.1.17 | MIT |
 | `dexie` | 4.4.4 | Apache-2.0 |
 | `zod` | 4.4.3 | MIT |
 | `is-what` | 5.5.0 | MIT |

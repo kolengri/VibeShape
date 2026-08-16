@@ -2,365 +2,117 @@ import {
   createEmptySketch,
   defaultDocumentDisplayUnits,
   type FeatureId,
-  type SketchConstraintId,
-  type SketchEntityId,
   type SketchId,
-  type SketchProfileSelector,
-  type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useMemo, useRef } from "react"
+import { useShallow } from "zustand/react/shallow"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
 import { createBrowserSketchId, useDocumentController } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
+import { EditorSessionProvider, useEditorSession } from "./editor-session/editor-session-provider"
 import {
-  type ActivePartDesignTool,
   activePartDesignCommand,
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
-import type {
-  ActiveSketchTool,
-  SketchDraftChangeMode,
-  SketchEditorTool,
-} from "./features/sketch/sketch-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
-import type { EditorWorkspaceName } from "./shell/workspace"
 
-function sameProfile(first: SketchProfileSelector, second: SketchProfileSelector) {
-  return (
-    first.sketchId === second.sketchId &&
-    first.outerBoundaryEntityIds.join(":") === second.outerBoundaryEntityIds.join(":") &&
-    first.holeBoundaryEntityIds.map((hole) => hole.join(":")).join("|") ===
-      second.holeBoundaryEntityIds.map((hole) => hole.join(":")).join("|")
-  )
-}
-
-function useSketchPresentationState() {
-  const [construction, setConstruction] = useState(false)
-  const [editorTool, setEditorTool] = useState<SketchEditorTool>("select")
-  const [profiles, setProfiles] = useState<readonly SketchProfileSelector[]>([])
-  const [failedConstraintIds, setFailedConstraintIds] = useState<readonly SketchConstraintId[]>([])
-  const [selectedEntityIds, setSelectedEntityIds] = useState<readonly SketchEntityId[]>([])
-  const [selectedProfile, setSelectedProfile] = useState<SketchProfileSelector | null>(null)
-  const reset = useCallback((nextEditorTool: SketchEditorTool) => {
-    setEditorTool(nextEditorTool)
-    setProfiles([])
-    setFailedConstraintIds([])
-    setSelectedEntityIds([])
-    setSelectedProfile(null)
-  }, [])
-  const profilesChanged = useCallback((nextProfiles: readonly SketchProfileSelector[]) => {
-    setProfiles(nextProfiles)
-    setSelectedProfile((current) => {
-      const matching = current
-        ? nextProfiles.find((profile) => sameProfile(profile, current))
-        : undefined
-      return matching ?? nextProfiles[0] ?? null
-    })
-  }, [])
-  return {
-    construction,
-    editorTool,
-    failedConstraintIds,
-    profiles,
-    profilesChanged,
-    reset,
-    selectedEntityIds,
-    selectedProfile,
-    setConstruction,
-    setEditorTool,
-    setFailedConstraintIds,
-    setSelectedEntityIds,
-    setSelectedProfile,
-  }
-}
-
-function useSketchDraftHistory(clearSelection: () => void) {
-  const [draft, setDraft] = useState<SketchRecord | null>(null)
-  const undoStack = useRef<SketchRecord[]>([])
-  const redoStack = useRef<SketchRecord[]>([])
-  const reset = useCallback((nextDraft: SketchRecord | null) => {
-    setDraft(nextDraft)
-    undoStack.current = []
-    redoStack.current = []
-  }, [])
-  const update = useCallback(
-    (nextDraft: SketchRecord, mode: SketchDraftChangeMode = "record") => {
-      if (draft && nextDraft !== draft && mode === "record") {
-        undoStack.current = [...undoStack.current.slice(-99), draft]
-        redoStack.current = []
-      }
-      setDraft(nextDraft)
-    },
-    [draft],
-  )
-  const undo = useCallback(() => {
-    const previous = undoStack.current.at(-1)
-    if (!draft || !previous) return
-    undoStack.current = undoStack.current.slice(0, -1)
-    redoStack.current = [...redoStack.current.slice(-99), draft]
-    setDraft(previous)
-    clearSelection()
-  }, [clearSelection, draft])
-  const redo = useCallback(() => {
-    const next = redoStack.current.at(-1)
-    if (!draft || !next) return
-    redoStack.current = redoStack.current.slice(0, -1)
-    undoStack.current = [...undoStack.current.slice(-99), draft]
-    setDraft(next)
-    clearSelection()
-  }, [clearSelection, draft])
-  return {
-    draft,
-    redo,
-    redoAvailable: redoStack.current.length > 0,
-    reset,
-    undo,
-    undoAvailable: undoStack.current.length > 0,
-    update,
-  }
-}
-
-function useSketchInteraction() {
-  const presentation = useSketchPresentationState()
-  const {
-    reset: resetPresentation,
-    setEditorTool,
-    setFailedConstraintIds,
-    setSelectedEntityIds,
-  } = presentation
-  const clearSelection = useCallback(() => setSelectedEntityIds([]), [setSelectedEntityIds])
-  const history = useSketchDraftHistory(clearSelection)
-  const { draft: historyDraft, reset: resetHistory, update: updateHistory } = history
-  const [activeSketchTool, setActiveSketchTool] = useState<ActiveSketchTool | null>(null)
-  const [activeSketchId, setActiveSketchId] = useState<SketchId | null>(null)
-  const beginCreate = useCallback(
-    (sketch: SketchRecord) => {
-      setActiveSketchId(sketch.id)
-      setActiveSketchTool({ kind: "select-sketch-plane" })
-      resetHistory(sketch)
-      resetPresentation("select")
-    },
-    [resetHistory, resetPresentation],
-  )
-  const selectPlane = useCallback(
-    (plane: SketchRecord["plane"]) => {
-      if (activeSketchTool?.kind !== "select-sketch-plane" || !historyDraft) return false
-      updateHistory({ ...historyDraft, plane }, "replace")
-      setActiveSketchTool({ kind: "create-sketch" })
-      resetPresentation("line")
-      return true
-    },
-    [activeSketchTool, historyDraft, resetPresentation, updateHistory],
-  )
-  const edit = useCallback(
-    (sketch: SketchRecord) => {
-      setActiveSketchId(sketch.id)
-      setActiveSketchTool({ kind: "edit-sketch", sketchId: sketch.id })
-      resetHistory(sketch)
-      resetPresentation("select")
-    },
-    [resetHistory, resetPresentation],
-  )
-  const select = useCallback(
-    (sketchId: SketchId) => {
-      setActiveSketchId(sketchId)
-      setActiveSketchTool(null)
-      resetHistory(null)
-      resetPresentation("select")
-    },
-    [resetHistory, resetPresentation],
-  )
-  const close = useCallback(() => {
-    if (activeSketchTool?.kind !== "edit-sketch") setActiveSketchId(null)
-    setActiveSketchTool(null)
-    resetHistory(null)
-    resetPresentation("select")
-  }, [activeSketchTool, resetHistory, resetPresentation])
-  const saved = useCallback(
-    (sketch: SketchRecord) => {
-      setActiveSketchId(sketch.id)
-      setActiveSketchTool(null)
-      resetHistory(null)
-      setEditorTool("select")
-      setFailedConstraintIds([])
-      setSelectedEntityIds([])
-    },
-    [resetHistory, setEditorTool, setFailedConstraintIds, setSelectedEntityIds],
-  )
-  return {
-    activeSketchId,
-    activeSketchTool,
-    close,
-    construction: presentation.construction,
-    beginCreate,
-    draft: history.draft,
-    edit,
-    editorTool: presentation.editorTool,
-    failedConstraintIds: presentation.failedConstraintIds,
-    profiles: presentation.profiles,
-    profilesChanged: presentation.profilesChanged,
-    redo: history.redo,
-    redoAvailable: history.redoAvailable,
-    saved,
-    select,
-    selectPlane,
-    selectedEntityIds: presentation.selectedEntityIds,
-    selectedProfile: presentation.selectedProfile,
-    setConstruction: presentation.setConstruction,
-    setEditorTool,
-    setFailedConstraintIds,
-    setSelectedEntityIds,
-    setSelectedProfile: presentation.setSelectedProfile,
-    undo: history.undo,
-    undoAvailable: history.undoAvailable,
-    updateDraft: history.update,
-  }
-}
-
-function useModelInteraction(
-  controller: ReturnType<typeof useDocumentController>,
-  sketch: ReturnType<typeof useSketchInteraction>,
-) {
-  const {
-    activeSketchId,
-    close: closeSketch,
-    beginCreate: beginCreateSketchInteraction,
-    edit: editSketchInteraction,
-    selectedProfile,
-    saved: sketchSaved,
-    select: selectSketchInteraction,
-    selectPlane: selectSketchPlaneInteraction,
-  } = sketch
+function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
-  const [workspace, setWorkspace] = useState<EditorWorkspaceName>("model")
-  const [activeTool, setActiveTool] = useState<ActivePartDesignTool | null>(null)
-  const [selection, setSelection] = useState<ViewerSelection | null>(null)
-  const switchWorkspace = useCallback(
-    (nextWorkspace: EditorWorkspaceName) => {
-      setWorkspace(nextWorkspace)
-      if (nextWorkspace !== "model") {
-        setActiveTool(null)
-        setSelection(null)
-      }
-      if (nextWorkspace !== "sketch") closeSketch()
-    },
-    [closeSketch],
+  const sessionActions = useEditorSession((state) => state.actions)
+  const { activeSketchId, selectedProfile } = useEditorSession(
+    useShallow((state) => ({
+      activeSketchId: state.sketch.activeSketchId,
+      selectedProfile: state.sketch.selectedProfile,
+    })),
   )
-  const startModelTool = useCallback(
-    (tool: ActivePartDesignTool) => {
-      switchWorkspace("model")
-      setActiveTool(tool)
-    },
-    [switchWorkspace],
-  )
+
   const createSketch = useCallback(() => {
     const report = controller.report
     if (!report) return
-    setWorkspace("model")
-    setActiveTool(null)
-    setSelection(null)
-    beginCreateSketchInteraction(
+    sessionActions.beginSketchCreate(
       createEmptySketch({
         id: createBrowserSketchId(),
         label: t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
         plane: "xy",
       }),
     )
-  }, [beginCreateSketchInteraction, controller.report, t])
-  const selectSketchPlane = useCallback(
-    (plane: SketchRecord["plane"]) => {
-      if (!selectSketchPlaneInteraction(plane)) return
-      setWorkspace("sketch")
-      setSelection(null)
-    },
-    [selectSketchPlaneInteraction],
-  )
+  }, [controller.report, sessionActions, t])
+
   const editSketch = useCallback(
     (sketchId: SketchId) => {
       const source = controller.report?.snapshot.sketches.find(({ id }) => id === sketchId)
-      if (!source) return
-      setWorkspace("sketch")
-      setActiveTool(null)
-      setSelection(null)
-      editSketchInteraction(source)
+      if (source) sessionActions.beginSketchEdit(source)
     },
-    [controller.report?.snapshot.sketches, editSketchInteraction],
+    [controller.report?.snapshot.sketches, sessionActions],
   )
-  const selectSketch = useCallback(
-    (sketchId: SketchId) => {
-      setWorkspace("sketch")
-      setActiveTool(null)
-      setSelection(null)
-      selectSketchInteraction(sketchId)
-    },
-    [selectSketchInteraction],
-  )
-  const closeTool = useCallback(() => {
-    setActiveTool(null)
-    closeSketch()
-  }, [closeSketch])
 
   const createExtrusion = useCallback(() => {
     if (!selectedProfile || selectedProfile.sketchId !== activeSketchId) return
-    startModelTool({ kind: "create-extrusion", profile: selectedProfile })
-  }, [activeSketchId, selectedProfile, startModelTool])
+    sessionActions.startPartDesignTool({
+      kind: "create-extrusion",
+      profile: selectedProfile,
+    })
+  }, [activeSketchId, selectedProfile, sessionActions])
+
   const editFeature = useCallback(
     (featureId: FeatureId) => {
       const feature = controller.report?.snapshot.features.find(({ id }) => id === featureId)
       const editTool = editPartDesignTool(feature)
-      if (editTool) startModelTool(editTool)
+      if (editTool) sessionActions.startPartDesignTool(editTool)
     },
-    [controller.report?.snapshot.features, startModelTool],
+    [controller.report?.snapshot.features, sessionActions],
   )
-  const extrusionAvailable =
-    selectedProfile !== null &&
-    selectedProfile.sketchId === activeSketchId &&
-    sketch.activeSketchTool === null
-  return {
-    actions: {
-      closeTool,
-      createBox: () => startModelTool({ kind: "create-box" }),
-      createCylinder: () => startModelTool({ kind: "create-cylinder" }),
-      createExtrusion,
-      createSketch,
-      createSubtract: () => startModelTool({ kind: "create-subtract" }),
-      editFeature,
-      editSketch,
-      select: setSelection,
-      selectSketch,
-      selectSketchPlane,
-      setSketchConstruction: sketch.setConstruction,
-      redoSketchDraft: sketch.redo,
-      setSketchDraft: sketch.updateDraft,
-      setSketchEditorTool: sketch.setEditorTool,
-      setSketchFailedConstraintIds: sketch.setFailedConstraintIds,
-      setSketchProfiles: sketch.profilesChanged,
-      setSketchSelectedEntityIds: sketch.setSelectedEntityIds,
-      setSketchSelectedProfile: sketch.setSelectedProfile,
-      sketchSaved,
-      switchWorkspace,
-      undoSketchDraft: sketch.undo,
-    } satisfies EditorWorkspaceActions,
-    activeTool,
-    extrusionAvailable,
-    selection,
-    workspace,
-  }
+
+  return useMemo(
+    () =>
+      ({
+        closeTool: sessionActions.closeActiveTool,
+        createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
+        createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
+        createExtrusion,
+        createSketch,
+        createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
+        editFeature,
+        editSketch,
+        select: sessionActions.setSelection,
+        selectSketch: sessionActions.selectSketch,
+        selectSketchPlane: sessionActions.selectSketchPlane,
+        redoSketchDraft: sessionActions.redoSketchDraft,
+        setSketchConstruction: sessionActions.setSketchConstruction,
+        setSketchDraft: sessionActions.setSketchDraft,
+        setSketchEditorTool: sessionActions.setSketchEditorTool,
+        setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
+        setSketchProfiles: sessionActions.setSketchProfiles,
+        setSketchSelectedEntityIds: sessionActions.setSketchSelectedEntityIds,
+        setSketchSelectedProfile: sessionActions.setSketchSelectedProfile,
+        sketchSaved: sessionActions.saveSketch,
+        switchWorkspace: sessionActions.switchWorkspace,
+        undoSketchDraft: sessionActions.undoSketchDraft,
+      }) satisfies EditorWorkspaceActions,
+    [createExtrusion, createSketch, editFeature, editSketch, sessionActions],
+  )
 }
 
-export function App() {
-  const t = useTranslations("app.shell.applicationBar")
-  const controller = useDocumentController(t("untitledProject"))
-  const sketch = useSketchInteraction()
-  const model = useModelInteraction(controller, sketch)
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+function EditorApplication({
+  controller,
+}: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
+  const session = useEditorSession(
+    useShallow((state) => ({
+      activePartDesignTool: state.activePartDesignTool,
+      commandPaletteOpen: state.commandPaletteOpen,
+      selection: state.selection,
+      sketch: state.sketch,
+      workspace: state.workspace,
+    })),
+  )
+  const sessionActions = useEditorSession((state) => state.actions)
+  const workspaceActions = useEditorWorkspaceActions(controller)
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
   const setCommandPaletteOpenWithFocus = useCallback(
     (open: boolean, returnFocusTarget?: HTMLElement) => {
@@ -369,78 +121,93 @@ export function App() {
           returnFocusTarget ??
           (document.activeElement instanceof HTMLElement ? document.activeElement : null)
       }
-      setCommandPaletteOpen(open)
+      sessionActions.setCommandPaletteOpen(open)
     },
-    [],
+    [sessionActions],
   )
+  const extrusionAvailable =
+    session.sketch.selectedProfile !== null &&
+    session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
+    session.sketch.activeSketchTool === null
   const commands = resolveBuiltInEditorCommands({
     actions: {
-      cancelActive: model.actions.closeTool,
-      createBox: model.actions.createBox,
-      createCylinder: model.actions.createCylinder,
-      createExtrusion: model.actions.createExtrusion,
-      createSketch: model.actions.createSketch,
-      createSubtract: model.actions.createSubtract,
-      redoSketch: model.actions.redoSketchDraft,
-      setSketchConstruction: model.actions.setSketchConstruction,
-      setSketchTool: model.actions.setSketchEditorTool,
-      switchWorkspace: model.actions.switchWorkspace,
-      undoSketch: model.actions.undoSketchDraft,
+      cancelActive: workspaceActions.closeTool,
+      createBox: workspaceActions.createBox,
+      createCylinder: workspaceActions.createCylinder,
+      createExtrusion: workspaceActions.createExtrusion,
+      createSketch: workspaceActions.createSketch,
+      createSubtract: workspaceActions.createSubtract,
+      redoSketch: workspaceActions.redoSketchDraft,
+      setSketchConstruction: workspaceActions.setSketchConstruction,
+      setSketchTool: workspaceActions.setSketchEditorTool,
+      switchWorkspace: workspaceActions.switchWorkspace,
+      undoSketch: workspaceActions.undoSketchDraft,
     },
     state: {
-      activePartDesignCommand: activePartDesignCommand(model.activeTool),
-      activeSketchTool: sketch.activeSketchTool,
+      activePartDesignCommand: activePartDesignCommand(session.activePartDesignTool),
+      activeSketchTool: session.sketch.activeSketchTool,
       controller,
-      extrusionAvailable: model.extrusionAvailable,
-      sketchConstruction: sketch.construction,
-      sketchRedoAvailable: sketch.redoAvailable,
-      sketchTool: sketch.editorTool,
-      sketchUndoAvailable: sketch.undoAvailable,
-      workspace: model.workspace,
+      extrusionAvailable,
+      sketchConstruction: session.sketch.construction,
+      sketchRedoAvailable: session.sketch.redoStack.length > 0,
+      sketchTool: session.sketch.editorTool,
+      sketchUndoAvailable: session.sketch.undoStack.length > 0,
+      workspace: session.workspace,
     },
   })
   useEditorCommandShortcuts({
     commands,
-    paletteOpen: commandPaletteOpen,
+    paletteOpen: session.commandPaletteOpen,
     onPaletteOpenChange: setCommandPaletteOpenWithFocus,
   })
+
+  return (
+    <main className="cad-shell bg-background text-[13px] text-foreground">
+      <ApplicationBar
+        controller={controller}
+        onOpenCommandPalette={(returnFocusTarget) =>
+          setCommandPaletteOpenWithFocus(true, returnFocusTarget)
+        }
+      />
+      <EditorCommandPalette
+        commands={commands}
+        open={session.commandPaletteOpen}
+        returnFocusRef={commandPaletteReturnFocusRef}
+        onOpenChange={setCommandPaletteOpenWithFocus}
+      />
+      <CommandToolbar commands={commands} />
+      <EditorWorkspace
+        actions={workspaceActions}
+        activeSketchId={session.sketch.activeSketchId}
+        activeSketchTool={session.sketch.activeSketchTool}
+        activeTool={session.activePartDesignTool}
+        controller={controller}
+        workspace={session.workspace}
+        selection={session.selection}
+        sketchConstruction={session.sketch.construction}
+        sketchDraft={session.sketch.draft}
+        sketchEditorTool={session.sketch.editorTool}
+        sketchFailedConstraintIds={session.sketch.failedConstraintIds}
+        sketchProfiles={session.sketch.profiles}
+        sketchSelectedEntityIds={session.sketch.selectedEntityIds}
+        sketchSelectedProfile={session.sketch.selectedProfile}
+      />
+      <StatusBar controller={controller} selection={session.selection} />
+    </main>
+  )
+}
+
+export function App() {
+  const t = useTranslations("app.shell.applicationBar")
+  const controller = useDocumentController(t("untitledProject"))
 
   return (
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <main className="cad-shell bg-background text-[13px] text-foreground">
-        <ApplicationBar
-          controller={controller}
-          onOpenCommandPalette={(returnFocusTarget) =>
-            setCommandPaletteOpenWithFocus(true, returnFocusTarget)
-          }
-        />
-        <EditorCommandPalette
-          commands={commands}
-          open={commandPaletteOpen}
-          returnFocusRef={commandPaletteReturnFocusRef}
-          onOpenChange={setCommandPaletteOpenWithFocus}
-        />
-        <CommandToolbar commands={commands} />
-        <EditorWorkspace
-          actions={model.actions}
-          activeSketchId={sketch.activeSketchId}
-          activeSketchTool={sketch.activeSketchTool}
-          activeTool={model.activeTool}
-          controller={controller}
-          workspace={model.workspace}
-          selection={model.selection}
-          sketchConstruction={sketch.construction}
-          sketchDraft={sketch.draft}
-          sketchEditorTool={sketch.editorTool}
-          sketchFailedConstraintIds={sketch.failedConstraintIds}
-          sketchProfiles={sketch.profiles}
-          sketchSelectedEntityIds={sketch.selectedEntityIds}
-          sketchSelectedProfile={sketch.selectedProfile}
-        />
-        <StatusBar controller={controller} selection={model.selection} />
-      </main>
+      <EditorSessionProvider documentId={controller.report?.snapshot.id ?? null}>
+        <EditorApplication controller={controller} />
+      </EditorSessionProvider>
     </DocumentDisplayUnitsProvider>
   )
 }

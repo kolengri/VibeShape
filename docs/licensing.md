@@ -35,6 +35,7 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Vite | MIT | Include a build-time notice according to release policy |
 | Vite React plugin | MIT | Include a build-time notice according to release policy |
 | Zustand | MIT | Include a third-party notice |
+| Immer | MIT | Include a third-party notice; it ships with the browser editor-state store |
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
 | is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |

@@ -28,10 +28,12 @@
     "@vibeshape/slicer-handoff": "workspace:*",
     "@vibeshape/ui": "workspace:*",
     "@vibeshape/viewer": "workspace:*",
+    "immer": "catalog:",
     "is-what": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "zustand": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

@@ -246,6 +246,7 @@ async function runEvidence() {
         id: documentId,
         revision: 1,
         name: "Sketch worker evidence",
+        displayUnits: { length: "mm", angle: "deg" },
         variables: [
           { schemaVersion: 0, id: variableId, name: "width", expression: "30 mm" },
           { schemaVersion: 0, id: heightVariableId, name: "height", expression: "12 mm" },
