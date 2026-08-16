@@ -264,6 +264,31 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "trim",
+    id: editorCommandIds.sketchTrim,
+    labelKey: "sketchTrim",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "m" },
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "extend",
+    id: editorCommandIds.sketchExtend,
+    labelKey: "sketchExtend",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "split",
+    id: editorCommandIds.sketchSplit,
+    labelKey: "sketchSplit",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "construction",
     id: editorCommandIds.sketchConstruction,
     labelKey: "sketchConstruction",
@@ -328,13 +353,16 @@ function sketchToolHandler(
     | "sketchCenteredSlot"
     | "sketchCircle"
     | "sketchCircumscribedPolygon"
+    | "sketchExtend"
     | "sketchInscribedPolygon"
     | "sketchLine"
     | "sketchPoint"
     | "sketchRectangle"
     | "sketchSelect"
     | "sketchSlot"
-    | "sketchTangentArc"],
+    | "sketchSplit"
+    | "sketchTangentArc"
+    | "sketchTrim"],
   tool: SketchEditorTool,
 ): EditorCommandHandler<BuiltInEditorCommandContext> {
   return {
@@ -453,6 +481,9 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
+  sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
+  sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
+  sketchToolHandler(editorCommandIds.sketchSplit, "split"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
     getEligibility: requiresSketch,

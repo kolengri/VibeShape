@@ -39,6 +39,39 @@ function distance(first: SketchPoint2, second: SketchPoint2) {
   return Math.hypot(second.x - first.x, second.y - first.y)
 }
 
+export type SketchLineIntersection = Readonly<{
+  firstParameter: number
+  point: SketchPoint2
+  secondParameter: number
+}>
+
+export function sketchLineIntersection(
+  firstStart: SketchPoint2,
+  firstEnd: SketchPoint2,
+  secondStart: SketchPoint2,
+  secondEnd: SketchPoint2,
+): SketchLineIntersection | null {
+  const firstX = firstEnd.x - firstStart.x
+  const firstY = firstEnd.y - firstStart.y
+  const secondX = secondEnd.x - secondStart.x
+  const secondY = secondEnd.y - secondStart.y
+  const denominator = firstX * secondY - firstY * secondX
+  const scale = Math.max(Math.hypot(firstX, firstY) * Math.hypot(secondX, secondY), 1)
+  if (Math.abs(denominator) <= MIN_GEOMETRY_DISTANCE * scale) return null
+  const offsetX = secondStart.x - firstStart.x
+  const offsetY = secondStart.y - firstStart.y
+  const firstParameter = (offsetX * secondY - offsetY * secondX) / denominator
+  const secondParameter = (offsetX * firstY - offsetY * firstX) / denominator
+  return {
+    firstParameter,
+    point: {
+      x: firstStart.x + firstX * firstParameter,
+      y: firstStart.y + firstY * firstParameter,
+    },
+    secondParameter,
+  }
+}
+
 function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
   const point = sketch.entities.find(
     (entity): entity is Extract<SketchEntity, { type: "point" }> =>
@@ -786,12 +819,12 @@ function slotConstraints(
   )
 }
 
-function lineEntity(sketch: SketchRecord, lineId: SketchEntityId) {
+function sketchLineById(sketch: SketchRecord, lineId: SketchEntityId) {
   const line = sketch.entities.find(
     (entity): entity is Extract<SketchEntity, { type: "line" }> =>
       entity.id === lineId && entity.type === "line",
   )
-  if (!line) throw new TypeError("A slot centerline must reference an existing line entity.")
+  if (!line) throw new TypeError("A sketch line operation must reference an existing line entity.")
   return line
 }
 
@@ -805,7 +838,7 @@ export function appendSketchSlotAroundLine(
     widthPoint: SketchPoint2
   },
 ): SketchAppendResult {
-  const centerLine = lineEntity(sketch, input.lineId)
+  const centerLine = sketchLineById(sketch, input.lineId)
   const startCenter = pointById(sketch, centerLine.startPointId)
   const endCenter = pointById(sketch, centerLine.endPointId)
   const geometry = straightSlotGeometry(startCenter, endCenter, input.widthPoint)
@@ -833,7 +866,7 @@ export function appendSketchSlotAroundLine(
 function appendedLineId(result: SketchAppendResult) {
   const lineId = result.createdEntityIds.at(-1)
   if (!lineId) throw new TypeError("A slot centerline identity allocation failed.")
-  lineEntity(result.sketch, lineId)
+  sketchLineById(result.sketch, lineId)
   return lineId
 }
 
@@ -1663,6 +1696,385 @@ function geometryPointIds(entity: SketchEntity) {
       return [entity.centerPointId]
     case "arc":
       return [entity.centerPointId, entity.startPointId, entity.endPointId]
+  }
+}
+
+type SketchLineEntity = Extract<SketchEntity, { type: "line" }>
+type SketchPointEntity = Extract<SketchEntity, { type: "point" }>
+type LineOperationIntersection = SketchLineIntersection &
+  Readonly<{
+    boundary: SketchLineEntity
+  }>
+
+const LINE_OPERATION_PARAMETER_EPSILON = 1e-7
+
+function sketchLinePoints(sketch: SketchRecord, line: SketchLineEntity) {
+  return {
+    end: pointById(sketch, line.endPointId),
+    start: pointById(sketch, line.startPointId),
+  }
+}
+
+function parameterOnSketchLine(sketch: SketchRecord, line: SketchLineEntity, point: SketchPoint2) {
+  const { start, end } = sketchLinePoints(sketch, line)
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY
+  if (lengthSquared <= MIN_GEOMETRY_DISTANCE ** 2) {
+    throw new RangeError("A sketch line operation requires a non-degenerate line.")
+  }
+  return ((point.x - start.x) * deltaX + (point.y - start.y) * deltaY) / lengthSquared
+}
+
+function lineOperationIntersections(sketch: SketchRecord, target: SketchLineEntity) {
+  const targetPoints = sketchLinePoints(sketch, target)
+  const intersections = sketch.entities.flatMap((entity): LineOperationIntersection[] => {
+    if (entity.type !== "line" || entity.id === target.id) return []
+    const boundaryPoints = sketchLinePoints(sketch, entity)
+    const intersection = sketchLineIntersection(
+      targetPoints.start,
+      targetPoints.end,
+      boundaryPoints.start,
+      boundaryPoints.end,
+    )
+    if (
+      !intersection ||
+      intersection.secondParameter < -LINE_OPERATION_PARAMETER_EPSILON ||
+      intersection.secondParameter > 1 + LINE_OPERATION_PARAMETER_EPSILON
+    ) {
+      return []
+    }
+    return [{ ...intersection, boundary: entity }]
+  })
+  intersections.sort(
+    (left, right) =>
+      left.firstParameter - right.firstParameter ||
+      left.boundary.id.localeCompare(right.boundary.id),
+  )
+  return intersections.filter(
+    (intersection, index) =>
+      index === 0 ||
+      Math.abs(intersection.firstParameter - (intersections[index - 1]?.firstParameter ?? 0)) >
+        LINE_OPERATION_PARAMETER_EPSILON,
+  )
+}
+
+function matchingIntersectionPoint(
+  sketch: SketchRecord,
+  target: SketchLineEntity,
+  intersection: LineOperationIntersection,
+) {
+  const candidateIds = [
+    target.startPointId,
+    target.endPointId,
+    intersection.boundary.startPointId,
+    intersection.boundary.endPointId,
+  ]
+  return candidateIds
+    .map((pointId) => pointById(sketch, pointId))
+    .find((point) => distance(point, intersection.point) <= MIN_GEOMETRY_DISTANCE)
+}
+
+function resolveLineOperationPoint(
+  sketch: SketchRecord,
+  target: SketchLineEntity,
+  intersection: LineOperationIntersection,
+  createEntityId: EntityIdFactory,
+) {
+  const existing = matchingIntersectionPoint(sketch, target, intersection)
+  if (existing) return { entity: null, id: existing.id, point: existing }
+  const id = createEntityId()
+  const entity: SketchPointEntity = {
+    schemaVersion: 0,
+    id,
+    type: "point",
+    ...intersection.point,
+    construction: target.construction,
+  }
+  return { entity, id, point: entity }
+}
+
+function replaceSketchLine(
+  sketch: SketchRecord,
+  line: SketchLineEntity,
+  endpoints: Readonly<{ startPointId: SketchEntityId; endPointId: SketchEntityId }>,
+  additions: readonly SketchEntity[],
+) {
+  return sketchRecordSchema.parse({
+    ...sketch,
+    entities: [
+      ...sketch.entities.map((entity) =>
+        entity.id === line.id ? { ...line, ...endpoints } : entity,
+      ),
+      ...additions,
+    ],
+  })
+}
+
+function appendPointOnBoundaryConstraint(
+  sketch: SketchRecord,
+  point: ReturnType<typeof resolveLineOperationPoint>,
+  boundaryLineId: SketchEntityId,
+  createConstraintId: ConstraintIdFactory,
+) {
+  return point.entity
+    ? appendSketchConstraint(
+        sketch,
+        { type: "point-on-line", pointId: point.id, lineId: boundaryLineId },
+        createConstraintId,
+      )
+    : sketch
+}
+
+function removeDetachedOperationPoints(sketch: SketchRecord, pointIds: readonly SketchEntityId[]) {
+  const retainedByGeometry = new Set(
+    sketch.entities.filter(({ type }) => type !== "point").flatMap(geometryPointIds),
+  )
+  const removableIds = new Set<string>(
+    pointIds.filter((pointId) => !retainedByGeometry.has(pointId)),
+  )
+  return removableIds.size === 0
+    ? sketch
+    : sketchRecordSchema.parse({
+        ...sketch,
+        constraints: sketch.constraints.filter((constraint) =>
+          referencedEntityIds(constraint).every((id) => !removableIds.has(id)),
+        ),
+        entities: sketch.entities.filter(({ id }) => !removableIds.has(id)),
+      })
+}
+
+export function splitSketchLine(
+  sketch: SketchRecord,
+  input: {
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    lineId: SketchEntityId
+    point: SketchPoint2
+  },
+): SketchAppendResult {
+  const line = sketchLineById(sketch, input.lineId)
+  const parameter = parameterOnSketchLine(sketch, line, input.point)
+  if (
+    parameter <= LINE_OPERATION_PARAMETER_EPSILON ||
+    parameter >= 1 - LINE_OPERATION_PARAMETER_EPSILON
+  ) {
+    throw new RangeError("A split point must lie inside the selected line.")
+  }
+  const points = sketchLinePoints(sketch, line)
+  const splitPoint: SketchPointEntity = {
+    schemaVersion: 0,
+    id: input.createEntityId(),
+    type: "point",
+    x: points.start.x + (points.end.x - points.start.x) * parameter,
+    y: points.start.y + (points.end.y - points.start.y) * parameter,
+    construction: line.construction,
+  }
+  const secondLine: SketchLineEntity = {
+    schemaVersion: 0,
+    id: input.createEntityId(),
+    type: "line",
+    startPointId: splitPoint.id,
+    endPointId: line.endPointId,
+    construction: line.construction,
+  }
+  const replaced = replaceSketchLine(
+    sketch,
+    line,
+    { startPointId: line.startPointId, endPointId: splitPoint.id },
+    [splitPoint, secondLine],
+  )
+  return {
+    sketch: appendSketchConstraint(
+      replaced,
+      { type: "parallel", firstEntityId: line.id, secondEntityId: secondLine.id },
+      input.createConstraintId,
+    ),
+    createdEntityIds: [splitPoint.id, secondLine.id],
+  }
+}
+
+function trimInteriorSketchLine(
+  sketch: SketchRecord,
+  line: SketchLineEntity,
+  before: LineOperationIntersection,
+  after: LineOperationIntersection,
+  input: {
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+  },
+): SketchAppendResult {
+  const beforePoint = resolveLineOperationPoint(sketch, line, before, input.createEntityId)
+  const afterPoint = resolveLineOperationPoint(sketch, line, after, input.createEntityId)
+  const secondLine: SketchLineEntity = {
+    schemaVersion: 0,
+    id: input.createEntityId(),
+    type: "line",
+    startPointId: afterPoint.id,
+    endPointId: line.endPointId,
+    construction: line.construction,
+  }
+  const additions: SketchEntity[] = [
+    ...(beforePoint.entity ? [beforePoint.entity] : []),
+    ...(afterPoint.entity ? [afterPoint.entity] : []),
+    secondLine,
+  ]
+  let next = replaceSketchLine(
+    sketch,
+    line,
+    { startPointId: line.startPointId, endPointId: beforePoint.id },
+    additions,
+  )
+  next = appendPointOnBoundaryConstraint(
+    next,
+    beforePoint,
+    before.boundary.id,
+    input.createConstraintId,
+  )
+  next = appendPointOnBoundaryConstraint(
+    next,
+    afterPoint,
+    after.boundary.id,
+    input.createConstraintId,
+  )
+  next = appendSketchConstraint(
+    next,
+    { type: "point-on-line", pointId: afterPoint.id, lineId: line.id },
+    input.createConstraintId,
+  )
+  next = appendSketchConstraint(
+    next,
+    { type: "parallel", firstEntityId: line.id, secondEntityId: secondLine.id },
+    input.createConstraintId,
+  )
+  return {
+    sketch: next,
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+function trimEndSketchLine(
+  sketch: SketchRecord,
+  line: SketchLineEntity,
+  intersection: LineOperationIntersection,
+  replaceStart: boolean,
+  input: {
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+  },
+): SketchAppendResult {
+  const point = resolveLineOperationPoint(sketch, line, intersection, input.createEntityId)
+  const replaced = replaceSketchLine(
+    sketch,
+    line,
+    {
+      startPointId: replaceStart ? point.id : line.startPointId,
+      endPointId: replaceStart ? line.endPointId : point.id,
+    },
+    point.entity ? [point.entity] : [],
+  )
+  const constrained = appendPointOnBoundaryConstraint(
+    replaced,
+    point,
+    intersection.boundary.id,
+    input.createConstraintId,
+  )
+  const removedEndpointId = replaceStart ? line.startPointId : line.endPointId
+  return {
+    sketch: removeDetachedOperationPoints(constrained, [removedEndpointId]),
+    createdEntityIds: point.entity ? [point.entity.id] : [],
+  }
+}
+
+export function trimSketchLine(
+  sketch: SketchRecord,
+  input: {
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    lineId: SketchEntityId
+    point: SketchPoint2
+  },
+): SketchAppendResult {
+  const line = sketchLineById(sketch, input.lineId)
+  const pickedParameter = parameterOnSketchLine(sketch, line, input.point)
+  const intersections = lineOperationIntersections(sketch, line).filter(
+    ({ firstParameter }) =>
+      firstParameter > LINE_OPERATION_PARAMETER_EPSILON &&
+      firstParameter < 1 - LINE_OPERATION_PARAMETER_EPSILON,
+  )
+  if (intersections.length === 0) {
+    throw new RangeError("Trim requires a bounded line intersection.")
+  }
+  const afterIndex = intersections.findIndex(
+    ({ firstParameter }) => firstParameter > pickedParameter,
+  )
+  if (afterIndex === 0) {
+    return trimEndSketchLine(
+      sketch,
+      line,
+      intersections[0] as LineOperationIntersection,
+      true,
+      input,
+    )
+  }
+  if (afterIndex < 0) {
+    return trimEndSketchLine(
+      sketch,
+      line,
+      intersections.at(-1) as LineOperationIntersection,
+      false,
+      input,
+    )
+  }
+  return trimInteriorSketchLine(
+    sketch,
+    line,
+    intersections[afterIndex - 1] as LineOperationIntersection,
+    intersections[afterIndex] as LineOperationIntersection,
+    input,
+  )
+}
+
+export function extendSketchLine(
+  sketch: SketchRecord,
+  input: {
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    lineId: SketchEntityId
+    point: SketchPoint2
+  },
+): SketchAppendResult {
+  const line = sketchLineById(sketch, input.lineId)
+  const extendStart = parameterOnSketchLine(sketch, line, input.point) < 0.5
+  const intersections = lineOperationIntersections(sketch, line).filter(({ firstParameter }) =>
+    extendStart
+      ? firstParameter < -LINE_OPERATION_PARAMETER_EPSILON
+      : firstParameter > 1 + LINE_OPERATION_PARAMETER_EPSILON,
+  )
+  const intersection = extendStart ? intersections.at(-1) : intersections[0]
+  if (!intersection) {
+    throw new RangeError("Extend requires a reachable bounded line intersection.")
+  }
+  const point = resolveLineOperationPoint(sketch, line, intersection, input.createEntityId)
+  const replaced = replaceSketchLine(
+    sketch,
+    line,
+    {
+      startPointId: extendStart ? point.id : line.startPointId,
+      endPointId: extendStart ? line.endPointId : point.id,
+    },
+    point.entity ? [point.entity] : [],
+  )
+  const constrained = appendPointOnBoundaryConstraint(
+    replaced,
+    point,
+    intersection.boundary.id,
+    input.createConstraintId,
+  )
+  const removedEndpointId = extendStart ? line.startPointId : line.endPointId
+  return {
+    sketch: removeDetachedOperationPoints(constrained, [removedEndpointId]),
+    createdEntityIds: point.entity ? [point.entity.id] : [],
   }
 }
 

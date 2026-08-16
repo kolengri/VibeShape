@@ -32,4 +32,14 @@ export type SketchEditorTool =
   | "arc"
   | "three-point-arc"
   | "tangent-arc"
+  | "trim"
+  | "extend"
+  | "split"
+export type SketchModificationTool = Extract<SketchEditorTool, "extend" | "split" | "trim">
 export type SketchDraftChangeMode = "record" | "replace"
+
+const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set(["extend", "split", "trim"])
+
+export function isSketchModificationTool(tool: SketchEditorTool): tool is SketchModificationTool {
+  return sketchModificationTools.has(tool)
+}

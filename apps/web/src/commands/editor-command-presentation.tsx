@@ -1,5 +1,6 @@
 import { useTranslations } from "@vibeshape/i18n"
 import {
+  ArrowUpRight,
   Box as BoxIcon,
   Circle,
   CircleDashed,
@@ -17,6 +18,7 @@ import {
   Scissors,
   Slash,
   Spline,
+  Split,
   Undo2,
   X,
 } from "@vibeshape/ui/components/icons"
@@ -43,6 +45,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   construction: Construction,
   cylinder: Circle,
   extrude: BoxIcon,
+  extend: ArrowUpRight,
   line: Slash,
   "inscribed-polygon": InscribedPolygonIcon,
   "midpoint-line": Minus,
@@ -53,8 +56,10 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   select: MousePointer2,
   sketch: DraftingCompass,
   slot: Minus,
+  split: Split,
   subtract: Scissors,
   "tangent-arc": PenLine,
+  trim: Scissors,
   "three-point-arc": Spline,
   "three-point-circle": CircleDashed,
   undo: Undo2,

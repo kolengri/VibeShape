@@ -1,4 +1,5 @@
 export {
+  ArrowUpRight,
   Box,
   ChevronDown,
   Circle,
@@ -20,6 +21,7 @@ export {
   Scissors,
   Slash,
   Spline,
+  Split,
   Trash2,
   Undo2,
   X,

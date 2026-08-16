@@ -7,6 +7,7 @@ import {
   createLengthQuantity,
   createRectangleSketch,
   moveSketchPoint,
+  type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
@@ -192,6 +193,37 @@ function renderViewport(props: SketchViewportTestProps) {
   return render(viewportElement(props))
 }
 
+function lineSketchFixture(
+  group: string,
+  segments: readonly Readonly<{ end: { x: number; y: number }; start: { x: number; y: number } }>[],
+) {
+  const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), group)
+  let result: SketchRecord = { ...sketch, constraints: [], entities: [] }
+  for (const segment of segments) {
+    result = appendSketchLine(result, {
+      construction: false,
+      createEntityId,
+      end: { kind: "new", point: segment.end },
+      start: { kind: "new", point: segment.start },
+    }).sketch
+  }
+  return result
+}
+
+function mockDrawingRectangle(drawing: HTMLElement) {
+  vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    top: 0,
+    width: 800,
+    height: 600,
+    right: 800,
+    bottom: 600,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  })
+}
+
 function StatefulSketchViewport(
   props: Omit<SketchViewportTestProps, "draft" | "sketch"> & {
     onDraftChange?: NonNullable<SketchViewportTestProps["onDraftChange"]>
@@ -215,6 +247,100 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("splits a clicked line at the pointer as one draft edit", () => {
+    const fixture = lineSketchFixture("b251", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The split fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "split",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The split target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
+      2,
+    )
+    expect(nextDraft.entities.find(({ id }: { id: string }) => id === target.id)).toBeTruthy()
+    expect(nextDraft.constraints).toEqual([
+      expect.objectContaining({ type: "parallel", firstEntityId: target.id }),
+    ])
+  })
+
+  it("trims the clicked line segment between neighboring boundaries", () => {
+    const fixture = lineSketchFixture("b252", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -3, y: -10 }, end: { x: -3, y: 10 } },
+      { start: { x: 3, y: -10 }, end: { x: 3, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
+      4,
+    )
+    expect(nextDraft.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "parallel", firstEntityId: target.id }),
+      ]),
+    )
+  })
+
+  it("extends the clicked line endpoint to the nearest bounded line", () => {
+    const fixture = lineSketchFixture("b253", [
+      { start: { x: -10, y: 0 }, end: { x: 0, y: 0 } },
+      { start: { x: 10, y: -10 }, end: { x: 10, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The extend fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "extend",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The extend target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { clientX: 398, clientY: 300 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    const extended = nextDraft.entities.find(({ id }: { id: string }) => id === target.id)
+    const endPoint = nextDraft.entities.find(({ id }: { id: string }) => id === extended.endPointId)
+    expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
+  })
+
   it("renders production solver state and exact profile measurements", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onProfilesChange = vi.fn()

@@ -160,6 +160,28 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
+  it("routes line modification commands through trusted sketch tool handlers", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const commands = resolveBuiltInEditorCommands(context)
+    const trim = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchTrim)
+    const extend = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchExtend,
+    )
+    const split = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchSplit)
+
+    expect(trim?.descriptor.shortcut).toEqual({ key: "m" })
+    expect(trim?.toolbarVisible).toBe(true)
+    trim?.invoke()
+    extend?.invoke()
+    split?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(1, "trim")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(2, "extend")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "split")
+  })
+
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },

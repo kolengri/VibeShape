@@ -295,6 +295,10 @@
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
+        "sketchExtend": {
+          "label": "Extend",
+          "keywords": "extend sketch line|lengthen to boundary|modify geometry"
+        },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
         "sketchInscribedPolygon": {
           "label": "Inscribed polygon",
@@ -319,9 +323,17 @@
           "label": "Slot from selected line",
           "keywords": "slot from selected line|convert line to slot|onshape slot|line centerline"
         },
+        "sketchSplit": {
+          "label": "Split",
+          "keywords": "split sketch line|divide segment|break geometry"
+        },
         "sketchTangentArc": {
           "label": "Tangent arc",
           "keywords": "tangent arc|line continuation|fillet curve|shift a"
+        },
+        "sketchTrim": {
+          "label": "Trim",
+          "keywords": "trim sketch line|remove segment|cut geometry|m"
         },
         "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
         "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
@@ -347,6 +359,7 @@
         "polygonToolsLabel": "Polygon tools",
         "primitives": "Primitives",
         "rectangleToolsLabel": "Rectangle tools",
+        "sketchModifyLabel": "Sketch modification tools",
         "sketchToolsLabel": "Sketch geometry tools",
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace"

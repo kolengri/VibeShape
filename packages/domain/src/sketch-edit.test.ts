@@ -19,6 +19,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   createEmptySketch,
+  extendSketchLine,
   MAX_REGULAR_POLYGON_SIDES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
@@ -27,7 +28,10 @@ import {
   removeSketchEntities,
   setSketchDimensionValue,
   setSketchEntityConstruction,
+  sketchLineIntersection,
+  splitSketchLine,
   tangentArcGeometry,
+  trimSketchLine,
 } from "./sketch-edit"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
@@ -84,6 +88,149 @@ describe("sketch editing", () => {
     expect(second.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(3)
     expect(second.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(2)
     expect(second.sketch.entities.at(-1)).toMatchObject({ type: "line", startPointId: endPointId })
+  })
+
+  it("computes stable infinite-line intersection parameters", () => {
+    expect(
+      sketchLineIntersection({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 4, y: -3 }, { x: 4, y: 3 }),
+    ).toEqual({ firstParameter: 0.4, secondParameter: 0.5, point: { x: 4, y: 0 } })
+    expect(
+      sketchLineIntersection({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 2 }, { x: 10, y: 2 }),
+    ).toBeNull()
+  })
+
+  it("splits a line while preserving its identity and collinear intent", () => {
+    const initial = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const original = initial.sketch.entities.find((entity) => entity.type === "line")
+    if (!original) throw new Error("The split fixture requires one line.")
+
+    const result = splitSketchLine(initial.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: original.id,
+      point: { x: 4, y: 2 },
+    })
+    const lines = result.sketch.entities.filter((entity) => entity.type === "line")
+    const splitPoint = result.sketch.entities.find(
+      (entity) => entity.type === "point" && entity.x === 4 && entity.y === 0,
+    )
+
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ id: original.id, endPointId: splitPoint?.id })
+    expect(lines[1]).toMatchObject({
+      startPointId: splitPoint?.id,
+      endPointId: original.endPointId,
+    })
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({
+        type: "parallel",
+        firstEntityId: original.id,
+        secondEntityId: lines[1]?.id,
+      }),
+    ])
+    expect(() =>
+      splitSketchLine(initial.sketch, {
+        createConstraintId: constraintId,
+        createEntityId: entityId,
+        lineId: original.id,
+        point: { x: 0, y: 0 },
+      }),
+    ).toThrow("inside")
+  })
+
+  it("trims the selected bounded line segment between two intersections", () => {
+    const targetResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const firstBoundaryResult = appendSketchLine(targetResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 3, y: -4 } },
+      end: { kind: "new", point: { x: 3, y: 4 } },
+    })
+    const fixture = appendSketchLine(firstBoundaryResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 7, y: -4 } },
+      end: { kind: "new", point: { x: 7, y: 4 } },
+    })
+    const linesBefore = fixture.sketch.entities.filter((entity) => entity.type === "line")
+    const target = linesBefore[0]
+    if (!target) throw new Error("The trim fixture requires a target line.")
+
+    const result = trimSketchLine(fixture.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: target.id,
+      point: { x: 5, y: 0 },
+    })
+    const lines = result.sketch.entities.filter((entity) => entity.type === "line")
+    const horizontalSegments = lines.filter(
+      ({ id }) => !linesBefore.some(({ id: old }) => old === id) || id === target.id,
+    )
+    const points = new Map(
+      result.sketch.entities
+        .filter(
+          (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+        )
+        .map((point) => [point.id, point]),
+    )
+
+    expect(lines).toHaveLength(4)
+    expect(horizontalSegments).toHaveLength(2)
+    expect(points.get(horizontalSegments[0]?.endPointId as SketchEntityId)).toMatchObject({
+      x: 3,
+      y: 0,
+    })
+    expect(points.get(horizontalSegments[1]?.startPointId as SketchEntityId)).toMatchObject({
+      x: 7,
+      y: 0,
+    })
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-line")).toHaveLength(3)
+    expect(result.sketch.constraints.filter(({ type }) => type === "parallel")).toHaveLength(1)
+  })
+
+  it("extends the selected line endpoint to the nearest bounded line", () => {
+    const targetResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 5, y: 0 } },
+    })
+    const fixture = appendSketchLine(targetResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 10, y: -4 } },
+      end: { kind: "new", point: { x: 10, y: 4 } },
+    })
+    const target = fixture.sketch.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The extend fixture requires a target line.")
+
+    const constrainedFixture = appendSketchConstraint(
+      fixture.sketch,
+      { type: "fixed", pointId: target.endPointId },
+      constraintId,
+    )
+    const result = extendSketchLine(constrainedFixture, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: target.id,
+      point: { x: 4.5, y: 0 },
+    })
+    const extended = result.sketch.entities.find(({ id }) => id === target.id)
+    const endPoint =
+      extended?.type === "line"
+        ? result.sketch.entities.find(({ id }) => id === extended.endPointId)
+        : null
+
+    expect(extended).toMatchObject({ type: "line", id: target.id })
+    expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
+    expect(result.sketch.entities.some(({ id }) => id === target.endPointId)).toBe(false)
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({ type: "point-on-line", pointId: endPoint?.id }),
+    ])
   })
 
   it("adds a line symmetrically from its midpoint with persistent design intent", () => {

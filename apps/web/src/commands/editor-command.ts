@@ -16,6 +16,7 @@ export const editorCommandIds = {
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
+  sketchExtend: "org.vibeshape.editor.sketch.modify.extend",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
@@ -25,6 +26,8 @@ export const editorCommandIds = {
   sketchRedo: "org.vibeshape.editor.sketch.redo",
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
   sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
+  sketchSplit: "org.vibeshape.editor.sketch.modify.split",
+  sketchTrim: "org.vibeshape.editor.sketch.modify.trim",
   sketchUndo: "org.vibeshape.editor.sketch.undo",
   workspaceModel: "org.vibeshape.editor.workspace.model",
   workspaceSketch: "org.vibeshape.editor.workspace.sketch",
@@ -40,6 +43,7 @@ export type EditorCommandToolbarGroup =
   | "model-primitives"
   | "sketch-tools"
   | "sketch-mode"
+  | "sketch-modify"
   | "history"
 
 export type EditorCommandIcon =
@@ -55,6 +59,7 @@ export type EditorCommandIcon =
   | "construction"
   | "cylinder"
   | "extrude"
+  | "extend"
   | "line"
   | "inscribed-polygon"
   | "midpoint-line"
@@ -65,8 +70,10 @@ export type EditorCommandIcon =
   | "select"
   | "sketch"
   | "slot"
+  | "split"
   | "subtract"
   | "tangent-arc"
+  | "trim"
   | "undo"
   | "three-point-arc"
   | "three-point-circle"
@@ -89,6 +96,7 @@ export type EditorCommandLabelKey =
   | "sketchCircle"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"
+  | "sketchExtend"
   | "sketchLine"
   | "sketchInscribedPolygon"
   | "sketchPoint"
@@ -97,7 +105,9 @@ export type EditorCommandLabelKey =
   | "sketchSlotAroundLine"
   | "sketchRedo"
   | "sketchSelect"
+  | "sketchSplit"
   | "sketchTangentArc"
+  | "sketchTrim"
   | "sketchUndo"
   | "workspaceModel"
   | "workspaceSketch"

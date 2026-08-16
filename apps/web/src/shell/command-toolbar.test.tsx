@@ -177,6 +177,15 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Tangent arc Shift+A" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")
 
+    await user.click(screen.getByRole("button", { name: "Trim" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("trim")
+
+    await user.click(screen.getByRole("button", { name: "Extend" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("extend")
+
+    await user.click(screen.getByRole("button", { name: "Split" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("split")
+
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)
 

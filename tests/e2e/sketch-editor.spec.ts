@@ -440,6 +440,76 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("trims, splits, and extends lines as atomic sketch edits", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const canvasPoint = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const drawLine = async (
+      start: Readonly<{ x: number; y: number }>,
+      end: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: "Line", exact: true }).click()
+      await page.mouse.click(start.x, start.y)
+      await page.mouse.click(end.x, end.y)
+      await page.keyboard.press("Escape")
+    }
+    const activateLine = async (
+      tool: "Trim" | "Extend" | "Split",
+      lineIndex: number,
+      point: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: tool, exact: true }).click()
+      await drawing
+        .locator('[data-sketch-entity-type="line"]')
+        .nth(lineIndex)
+        .dispatchEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          buttons: 1,
+          clientX: point.x,
+          clientY: point.y,
+          pointerId: 1,
+        })
+    }
+
+    await drawLine(canvasPoint(0.25, 0.5), canvasPoint(0.75, 0.5))
+    await drawLine(canvasPoint(0.4, 0.35), canvasPoint(0.4, 0.65))
+    await drawLine(canvasPoint(0.6, 0.35), canvasPoint(0.6, 0.65))
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+
+    await activateLine("Trim", 0, canvasPoint(0.5, 0.5))
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+
+    await activateLine("Split", 0, canvasPoint(0.5, 0.5))
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+
+    await drawLine(canvasPoint(0.25, 0.75), canvasPoint(0.4, 0.75))
+    await drawLine(canvasPoint(0.6, 0.65), canvasPoint(0.6, 0.85))
+    const extendTarget = drawing.locator('[data-sketch-entity-type="line"]').nth(3)
+    const originalEnd = await extendTarget.getAttribute("x2")
+    await activateLine("Extend", 3, canvasPoint(0.39, 0.75))
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
+    await expect(extendTarget).not.toHaveAttribute("x2", originalEnd ?? "")
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("persists automatic perpendicular and midpoint inference with Shift suppression", async ({
     page,
   }) => {

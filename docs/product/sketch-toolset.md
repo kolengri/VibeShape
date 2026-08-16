@@ -31,6 +31,9 @@ and selection are presentation state; they never replace stable entity and const
 | Straight Slot | Define two centerline endpoints and a signed half-width with analytical semicircular end caps | Implemented |
 | Centered Slot | Define a center, symmetric centerline endpoint, and signed half-width | Implemented |
 | Slot from selected line | Convert exactly one selected line into a construction centerline and define its signed half-width | Implemented |
+| Trim line | Remove the clicked line portion bounded by neighboring line intersections while preserving the original identity on the start-side remainder | Implemented |
+| Extend line | Move the clicked-near endpoint to the nearest reachable bounded line intersection while preserving the line identity | Implemented |
+| Split line | Divide a line at the clicked position into two collinear segments with one shared point | Implemented |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -43,16 +46,21 @@ the standard shortcut when one exists. Every family exposes a center-origin vari
 geometry has a stable, unambiguous center construction. Free-form or selection-driven tools are not
 duplicated with artificial center modes.
 
-Trim, Extend, Split, mirror/pattern authoring, ellipses, curve-chain slots, splines, and
-projected external geometry remain follow-up tools. They require new exact domain and solver
-behavior and MUST NOT be simulated only in the toolbar.
+Trim, Extend, and Split currently operate on analytical lines. Their circle, arc, ellipse, spline,
+and drag-through variants remain follow-up work together with Offset, mirror/pattern authoring,
+curve-chain slots, and projected external geometry. These capabilities require exact domain and
+solver behavior and MUST NOT be simulated only in the toolbar.
 
 ## Onshape-oriented parity baseline
 
 VibeShape follows the interaction grammar of Onshape without copying its visual design. The
-baseline is derived from the official [Sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm),
-[Circumscribed Polygon](https://cad.onshape.com/help/Content/Sketch/circumscribed_polygon.htm), and
-[Inscribed Polygon](https://cad.onshape.com/help/Content/Sketch/inscribed_polygon.htm) documentation.
+baseline is derived from the official
+[Sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm),
+[Circumscribed Polygon](https://cad.onshape.com/help/Content/Sketch/circumscribed_polygon.htm),
+[Inscribed Polygon](https://cad.onshape.com/help/Content/Sketch/inscribed_polygon.htm),
+[Trim](https://cad.onshape.com/help/Content/Sketch/trim.htm),
+[Extend](https://cad.onshape.com/help/Content/Sketch/extend.htm), and
+[Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm) documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
@@ -62,7 +70,7 @@ baseline is derived from the official [Sketch tools](https://cad.onshape.com/hel
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete and direct point manipulation | Trim, Extend, Split, Offset, Mirror, Transform, and patterns |
+| Modify | Delete, direct point manipulation, and click-targeted line Trim, Extend, and Split | Circle/arc modification, drag-through Trim, free-end Extend, Offset, Mirror, Transform, and patterns |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -145,6 +153,12 @@ adding solver constraints.
     Inscribed Polygon places the construction circle tangent to the outline. Closed-loop-dependent
     constraints omit mathematically redundant relations so an exact valid polygon is not reported
     as over-constrained.
+12. Trim, Extend, and Split are direct curve actions rather than selection-list commands. The line
+    under the pointer is the target, the canvas uses a crosshair cursor, and one successful click
+    produces one schema-valid draft and one local undo entry. The retained segment keeps the
+    original line identity. A detached endpoint and constraints that depend only on it are removed;
+    a point still shared by other geometry and its constraints remain. Unsupported curve kinds and
+    operations without a valid bounded result do not mutate the draft.
 
 ## View orientation
 
@@ -161,6 +175,7 @@ active support plane and display unit.
    ellipses and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing.
 4. Add reference dimensions and a driving/reference conversion command.
-5. Add Trim, Extend, and Split with stable replacement identity and dependent-constraint repair.
+5. Extend Trim, Extend, and Split from lines to analytical arcs and circles, then add drag-through
+   Trim and explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

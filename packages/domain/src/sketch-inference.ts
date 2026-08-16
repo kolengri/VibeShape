@@ -1,5 +1,5 @@
 import type { SketchEntityId } from "./identifiers"
-import type { SketchPoint2, SketchPointTarget } from "./sketch-edit"
+import { type SketchPoint2, type SketchPointTarget, sketchLineIntersection } from "./sketch-edit"
 
 export type SketchInferencePoint = SketchPoint2 & Readonly<{ id: SketchEntityId }>
 
@@ -140,23 +140,17 @@ function nearbyLines(
 }
 
 function segmentIntersection(first: SketchInferenceLine, second: SketchInferenceLine) {
-  const firstX = first.end.x - first.start.x
-  const firstY = first.end.y - first.start.y
-  const secondX = second.end.x - second.start.x
-  const secondY = second.end.y - second.start.y
-  const denominator = firstX * secondY - firstY * secondX
-  if (Math.abs(denominator) <= Number.EPSILON) return null
-  const offsetX = second.start.x - first.start.x
-  const offsetY = second.start.y - first.start.y
-  const firstParameter = (offsetX * secondY - offsetY * secondX) / denominator
-  const secondParameter = (offsetX * firstY - offsetY * firstX) / denominator
-  if (firstParameter < 0 || firstParameter > 1 || secondParameter < 0 || secondParameter > 1) {
+  const intersection = sketchLineIntersection(first.start, first.end, second.start, second.end)
+  if (
+    !intersection ||
+    intersection.firstParameter < 0 ||
+    intersection.firstParameter > 1 ||
+    intersection.secondParameter < 0 ||
+    intersection.secondParameter > 1
+  ) {
     return null
   }
-  return {
-    x: first.start.x + firstX * firstParameter,
-    y: first.start.y + firstY * firstParameter,
-  }
+  return intersection.point
 }
 
 function intersectionCandidate(

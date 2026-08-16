@@ -18,6 +18,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   centeredAlignedRectangleGeometry,
+  extendSketchLine,
   inferSketchPoint,
   MAX_REGULAR_POLYGON_SIDES,
   MIN_REGULAR_POLYGON_SIDES,
@@ -40,10 +41,12 @@ import {
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchProfileSelectorSchema,
+  splitSketchLine,
   straightSlotGeometry,
   tangentArcGeometry,
   threePointArcGeometry,
   threePointCircleGeometry,
+  trimSketchLine,
 } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -86,7 +89,12 @@ import {
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
-import type { SketchDraftChangeMode, SketchEditorTool } from "./sketch-tool"
+import {
+  isSketchModificationTool,
+  type SketchDraftChangeMode,
+  type SketchEditorTool,
+  type SketchModificationTool,
+} from "./sketch-tool"
 
 type SketchSolveFunction = (
   baseRevision: number,
@@ -1047,6 +1055,7 @@ const SketchPoint = memo(
 function SketchGeometry({
   draggingPointId,
   editable,
+  onCurveAction,
   onPointPointerDown,
   onSelect,
   onTarget,
@@ -1056,6 +1065,7 @@ function SketchGeometry({
 }: {
   draggingPointId: SketchDragTarget["entityId"] | null
   editable: boolean
+  onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
@@ -1064,14 +1074,16 @@ function SketchGeometry({
   tool: SketchEditorTool
 }) {
   const selectable = editable && tool === "select"
+  const modifiable = editable && isSketchModificationTool(tool)
   const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
   const geometryPointerDown = useCallback(
     (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
-      if (!selectable) return
+      if (!selectable && !modifiable) return
       event.stopPropagation()
-      onSelect(entityId, event.metaKey || event.ctrlKey || event.shiftKey)
+      if (selectable) onSelect(entityId, event.metaKey || event.ctrlKey || event.shiftKey)
+      else onCurveAction(event, entityId)
     },
-    [onSelect, selectable],
+    [modifiable, onCurveAction, onSelect, selectable],
   )
   return (
     <g transform="scale(1 -1)">
@@ -1082,7 +1094,7 @@ function SketchGeometry({
           hidden={Boolean(
             draggingPointId && curvePointIds(entity).some((pointId) => pointId === draggingPointId),
           )}
-          interactive
+          interactive={!modifiable || entity.type === "line"}
           points={presentation.pointsById}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
@@ -1093,7 +1105,7 @@ function SketchGeometry({
         <SketchPoint
           key={point.id}
           dragging={point.id === draggingPointId}
-          editable={editable}
+          editable={editable && !modifiable}
           point={point}
           selectable={selectable}
           selected={selectedIds.has(point.id)}
@@ -2577,10 +2589,13 @@ const placementBuilders = {
   "tangent-arc": placeTangentArc,
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
-} satisfies Record<Exclude<SketchEditorTool, "select">, (input: PlacementInput) => PlacementUpdate>
+} satisfies Record<
+  Exclude<SketchEditorTool, "select" | SketchModificationTool>,
+  (input: PlacementInput) => PlacementUpdate
+>
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return tool === "select" ? null : placementBuilders[tool](input)
+  return tool === "select" || isSketchModificationTool(tool) ? null : placementBuilders[tool](input)
 }
 
 function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
@@ -2588,6 +2603,41 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
     return { ok: true as const, update: placementUpdate(tool, input) }
   } catch {
     return { ok: false as const }
+  }
+}
+
+function sketchModificationUpdate(
+  tool: SketchModificationTool,
+  draft: SketchRecord,
+  entityId: SketchEntityId,
+  point: SketchPoint2,
+) {
+  const input = {
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    lineId: entityId,
+    point,
+  }
+  switch (tool) {
+    case "trim":
+      return trimSketchLine(draft, input).sketch
+    case "extend":
+      return extendSketchLine(draft, input).sketch
+    case "split":
+      return splitSketchLine(draft, input).sketch
+  }
+}
+
+function safeSketchModificationUpdate(
+  tool: SketchModificationTool,
+  draft: SketchRecord,
+  entityId: SketchEntityId,
+  point: SketchPoint2,
+) {
+  try {
+    return sketchModificationUpdate(tool, draft, entityId, point)
+  } catch {
+    return null
   }
 }
 
@@ -2710,6 +2760,7 @@ const pointInferenceSupport = {
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
   "centered-slot": (pending) => pending?.kind !== "centered-slot-width",
+  extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
@@ -2718,9 +2769,11 @@ const pointInferenceSupport = {
   select: neverSupportsPointInference,
   slot: (pending) => pending?.kind !== "slot-width",
   "slot-from-selection": neverSupportsPointInference,
+  split: neverSupportsPointInference,
   "tangent-arc": alwaysSupportsPointInference,
   "three-point-arc": alwaysSupportsPointInference,
   "three-point-circle": alwaysSupportsPointInference,
+  trim: neverSupportsPointInference,
 } satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
 
 function supportsPointInference(editorTool: SketchEditorTool, pending: PendingGeometry | null) {
@@ -3226,6 +3279,7 @@ type SketchDrawingViewProps = Readonly<{
   handlers: Readonly<{
     appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
     onCanvasPointerDown: (event: PointerEvent<SVGSVGElement>) => void
+    onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
     onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
     onPointerLeave: () => void
@@ -3262,8 +3316,11 @@ function SketchDrawingView({
       <svg
         ref={svgRef}
         aria-label={configuration.ariaLabel}
-        className="size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${isSketchModificationTool(configuration.editorTool) ? "cursor-crosshair" : ""}`}
         data-sketch-dragging-point-id={state.draggingPointId ?? undefined}
+        data-sketch-modification-tool={
+          isSketchModificationTool(configuration.editorTool) ? configuration.editorTool : undefined
+        }
         role="img"
         tabIndex={state.editable ? 0 : undefined}
         viewBox={`${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`}
@@ -3308,6 +3365,7 @@ function SketchDrawingView({
           selectedEntityIds={configuration.selectedEntityIds}
           presentation={state.geometry}
           tool={configuration.editorTool}
+          onCurveAction={handlers.onCurveAction}
           onPointPointerDown={handlers.onPointPointerDown}
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
@@ -3433,7 +3491,7 @@ function SketchDrawing({
     [configuration.releasedDragTarget, cursor, draggingPointId],
   )
 
-  const eventPoint = (event: PointerEvent<SVGSVGElement | SVGCircleElement>) => {
+  const eventPoint = (event: PointerEvent<SVGElement>) => {
     const svg = svgRef.current
     return svg ? pointerToSketchPoint(event, svg.getBoundingClientRect(), bounds) : null
   }
@@ -3516,6 +3574,16 @@ function SketchDrawing({
       setPanGesture,
     })
   }
+  const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (!draft || !isSketchModificationTool(editorTool)) return
+    const point = eventPoint(event)
+    if (!point) return
+    const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
+    if (!nextDraft) return
+    onDraftChange(nextDraft)
+    onSelectionChange([])
+    setInference(null)
+  }
   const handlePointerUp = () => {
     finishPointDrag()
     setInference(null)
@@ -3548,6 +3616,7 @@ function SketchDrawing({
       handlers={{
         appendAt,
         onCanvasPointerDown: handleCanvasPointerDown,
+        onCurveAction: handleCurveAction,
         onKeyDown: handleKeyDown,
         onPointPointerDown: handlePointPointerDown,
         onPointerLeave: handlePointerLeave,
