@@ -128,8 +128,8 @@ type SketchDragState = Readonly<{
 }>
 
 type SketchPointDragInput = Readonly<{
-  point: SketchPoint2
-  rectangle: Readonly<{ width: number; height: number }>
+  clientX: number
+  clientY: number
   suppressed: boolean
 }>
 
@@ -1133,7 +1133,7 @@ function SketchGeometry({
 
 const StableSketchGeometry = memo(SketchGeometry)
 
-const ignoreCurvePointerDown = () => undefined
+const ignoreCurveAction = () => undefined
 
 function DraggedSketchGeometry({
   dragTarget,
@@ -1171,7 +1171,7 @@ function DraggedSketchGeometry({
           points={points}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
-          onPointerDown={ignoreCurvePointerDown}
+          onPointerDown={ignoreCurveAction}
         />
       ))}
       <circle
@@ -2999,16 +2999,14 @@ function draggedPointReferences(
 
 function updateDraggedPointFromPointer(input: {
   draggingPointId: SketchEntityId | null
-  point: SketchPoint2
-  rectangle: Readonly<{ width: number; height: number }> | undefined
-  suppressed: boolean
+  event: PointerEvent<SVGSVGElement>
   updatePointDrag: (input: SketchPointDragInput) => boolean
 }) {
-  if (!input.draggingPointId || !input.rectangle) return false
+  if (!input.draggingPointId) return false
   input.updatePointDrag({
-    point: input.point,
-    rectangle: input.rectangle,
-    suppressed: input.suppressed,
+    clientX: input.event.clientX,
+    clientY: input.event.clientY,
+    suppressed: input.event.shiftKey,
   })
   return true
 }
@@ -3031,7 +3029,6 @@ function handleSketchPointerMove(input: {
   bounds: SketchBounds
   draggingPointId: SketchEntityId | null
   event: PointerEvent<SVGSVGElement>
-  eventPoint: (event: PointerEvent<SVGSVGElement>) => SketchPoint2 | null
   inferredPlacement: (
     point: SketchPoint2,
     rectangle: Readonly<{ width: number; height: number }>,
@@ -3054,25 +3051,21 @@ function handleSketchPointerMove(input: {
   ) {
     return
   }
-  const point = input.eventPoint(input.event)
-  if (!point) return
-  const rectangle = input.svg?.getBoundingClientRect()
   if (
     updateDraggedPointFromPointer({
       draggingPointId: input.draggingPointId,
-      point,
-      rectangle,
-      suppressed: input.event.shiftKey,
+      event: input.event,
       updatePointDrag: input.updatePointDrag,
     })
   ) {
     return
   }
-  const inference = rectangle
-    ? input.inferredPlacement(point, rectangle, input.event.shiftKey)
-    : null
+  const rectangle = input.svg?.getBoundingClientRect()
+  if (!rectangle) return
+  const point = pointerToSketchPoint(input.event, rectangle, input.bounds)
+  const inference = input.inferredPlacement(point, rectangle, input.event.shiftKey)
   input.setInference(inference)
-  input.setCursor(inference ? inference.point : point)
+  input.setCursor(inference.point)
 }
 
 type RegularPolygonKeyInput = Readonly<{
@@ -3235,10 +3228,12 @@ function useSketchPointDrag({
   onDraftChange,
   onDraggingPointChange,
   onPreview,
+  svgRef,
 }: Pick<SketchDrawingConfiguration, "draft" | "onDraftChange" | "onDraggingPointChange"> & {
   bounds: SketchBounds
   inferenceReferences: SketchInferenceReferences
   onPreview: (preview: SketchPointDragPreview) => void
+  svgRef: RefObject<SVGSVGElement | null>
 }) {
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
   const dragFrameRef = useRef<number | null>(null)
@@ -3281,10 +3276,13 @@ function useSketchPointDrag({
   const preview = useCallback(
     (input: SketchPointDragInput): SketchPointDragPreview | null => {
       if (!draft || !draggingPointId) return null
+      const rectangle = svgRef.current?.getBoundingClientRect()
+      if (!rectangle) return null
+      const point = pointerToSketchPoint(input, rectangle, bounds)
       const inference = draggedPointInference({
         bounds,
-        point: input.point,
-        rectangle: input.rectangle,
+        point,
+        rectangle,
         references,
         suppressed: input.suppressed,
       })
@@ -3294,7 +3292,7 @@ function useSketchPointDrag({
       scheduleLiveSolve(draggingPointId, next.point)
       return next
     },
-    [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve],
+    [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve, svgRef],
   )
   const flush = useCallback(() => {
     if (dragFrameRef.current !== null) {
@@ -3440,12 +3438,16 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <StableSketchGeometry
-          draggingPointId={state.dragTarget?.entityId ?? null}
+          draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
           editable={state.editable}
           selectedEntityIds={configuration.selectedEntityIds}
           presentation={state.geometry}
           tool={configuration.editorTool}
-          onCurveAction={handlers.onCurveAction}
+          onCurveAction={
+            isSketchModificationTool(configuration.editorTool)
+              ? handlers.onCurveAction
+              : ignoreCurveAction
+          }
           onPointPointerDown={handlers.onPointPointerDown}
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
@@ -3562,6 +3564,7 @@ function SketchDrawing({
     onDraftChange,
     onDraggingPointChange,
     onPreview: handleDragPreview,
+    svgRef,
   })
   const dragTarget = useMemo<SketchDragTarget | null>(
     () =>
@@ -3616,7 +3619,6 @@ function SketchDrawing({
       bounds,
       draggingPointId,
       event,
-      eventPoint,
       inferredPlacement,
       panGesture,
       setBounds,

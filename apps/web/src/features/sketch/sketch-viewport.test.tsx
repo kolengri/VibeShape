@@ -1352,7 +1352,7 @@ describe("SketchViewport", () => {
     renderViewport({ draft: sketch, sketch, solveSketch, onDraftChange })
     await screen.findByText("Fully constrained")
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
-    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+    const readViewportRectangle = vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
       left: 0,
       top: 0,
       width: 800,
@@ -1373,9 +1373,11 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
 
     expect(onDraftChange).not.toHaveBeenCalled()
+    expect(readViewportRectangle).not.toHaveBeenCalled()
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
     act(() => frame(0))
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     expect(onDraftChange).not.toHaveBeenCalled()
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cx"),
@@ -1405,9 +1407,36 @@ describe("SketchViewport", () => {
       frames.push(callback)
       return frames.length
     })
+    const lines = sketch.entities.filter((entity) => entity.type === "line")
+    const draggedPoint = pointEntities[0]
+    if (!draggedPoint) throw new Error("The rectangle fixture must contain a point.")
+    const incidentLines = lines.filter(
+      (line) => line.startPointId === draggedPoint.id || line.endPointId === draggedPoint.id,
+    )
+    const unrelatedLine = lines.find(
+      (line) => line.startPointId !== draggedPoint.id && line.endPointId !== draggedPoint.id,
+    )
+    if (!unrelatedLine) throw new Error("The rectangle fixture must contain an unrelated line.")
+    const unrelatedStartPointId = unrelatedLine.startPointId
+    let unrelatedLineReads = 0
+    const trackedUnrelatedLine = { ...unrelatedLine }
+    Object.defineProperty(trackedUnrelatedLine, "startPointId", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        unrelatedLineReads += 1
+        return unrelatedStartPointId
+      },
+    })
+    const trackedSketch = {
+      ...sketch,
+      entities: sketch.entities.map((entity) =>
+        entity.id === unrelatedLine.id ? trackedUnrelatedLine : entity,
+      ),
+    }
     renderViewport({
-      draft: sketch,
-      sketch,
+      draft: trackedSketch,
+      sketch: trackedSketch,
       solveSketch: vi.fn(async () => solveResult()),
     })
     await screen.findByText("Fully constrained")
@@ -1423,16 +1452,6 @@ describe("SketchViewport", () => {
       y: 0,
       toJSON: () => ({}),
     })
-    const draggedPoint = pointEntities[0]
-    if (!draggedPoint) throw new Error("The rectangle fixture must contain a point.")
-    const lines = sketch.entities.filter((entity) => entity.type === "line")
-    const incidentLines = lines.filter(
-      (line) => line.startPointId === draggedPoint.id || line.endPointId === draggedPoint.id,
-    )
-    const unrelatedLine = lines.find(
-      (line) => line.startPointId !== draggedPoint.id && line.endPointId !== draggedPoint.id,
-    )
-    if (!unrelatedLine) throw new Error("The rectangle fixture must contain an unrelated line.")
     const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
     const unrelatedElement = document.querySelector(`[data-sketch-entity-id="${unrelatedLine.id}"]`)
     if (!pointElement || !unrelatedElement) {
@@ -1440,6 +1459,7 @@ describe("SketchViewport", () => {
     }
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    const readsAfterDragStart = unrelatedLineReads
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
@@ -1460,6 +1480,7 @@ describe("SketchViewport", () => {
       unrelatedElement,
     )
     expect(unrelatedElement.getAttribute("opacity")).toBeNull()
+    expect(unrelatedLineReads).toBe(readsAfterDragStart)
   })
 
   it("persists midpoint inference in the single point-drag commit", () => {
