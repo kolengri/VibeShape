@@ -19,22 +19,25 @@ and selection are presentation state; they never replace stable entity and const
 | Midpoint Line | Place a segment symmetrically from its midpoint with persistent midpoint intent | Implemented |
 | Corner Rectangle | Author four lines as one local history edit | Implemented |
 | Center Rectangle | Author symmetric geometry and construction diagonals as one local history edit | Implemented |
+| Aligned Rectangle | Define one side, then a signed perpendicular width with persistent perpendicular and parallel intent | Implemented |
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
 | Three-point Arc | Author an exact circumcircle arc from three non-collinear points | Implemented |
+| Tangent Arc | Continue from a line endpoint with a shared point and persistent tangent intent | Implemented |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
-The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner and Center
-Rectangle; Center-point and Three-point Circle; and Three-point and Center-point Arc. The family
+The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
+and Aligned Rectangle; Center-point and Three-point Circle; and Three-point, Tangent, and
+Center-point Arc. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
 the standard shortcut when one exists. Center construction is a property of the geometry family,
 not a requirement to duplicate every command with an artificial center mode.
 
-Aligned Rectangle, Tangent Arc, Trim, Extend, Split, mirror/pattern authoring, ellipses, slots,
-polygons, splines, and projected external geometry remain follow-up tools. They require new exact
-domain and solver behavior and MUST NOT be simulated only in the toolbar.
+Trim, Extend, Split, mirror/pattern authoring, ellipses, slots, polygons, splines, and projected
+external geometry remain follow-up tools. They require new exact domain and solver behavior and
+MUST NOT be simulated only in the toolbar.
 
 ## Mandatory geometric constraints
 
@@ -106,12 +109,11 @@ active support plane and display unit.
 
 ## Follow-up sequence
 
-1. Add Aligned Rectangle and Tangent Arc to complete the current Onshape-style core families.
-2. Add midpoint, center, tangent, perpendicular, and intersection inference candidates with explicit
+1. Add midpoint, center, tangent, perpendicular, and intersection inference candidates with explicit
    acceptance rules.
-3. Add ellipses, slots, polygons, and splines through exact analytical or solver-backed entities.
-4. Add numeric point placement and coordinate editing.
-5. Add reference dimensions and a driving/reference conversion command.
-6. Add Trim, Extend, and Split with stable replacement identity and dependent-constraint repair.
-7. Add guided over-constraint repair that presents a bounded conflicting set without automatic
+2. Add ellipses, slots, polygons, and splines through exact analytical or solver-backed entities.
+3. Add numeric point placement and coordinate editing.
+4. Add reference dimensions and a driving/reference conversion command.
+5. Add Trim, Extend, and Split with stable replacement identity and dependent-constraint repair.
+6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

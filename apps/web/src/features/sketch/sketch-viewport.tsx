@@ -1,4 +1,6 @@
 import {
+  alignedRectangleGeometry,
+  appendSketchAlignedRectangle,
   appendSketchArc,
   appendSketchCenterRectangle,
   appendSketchCircle,
@@ -9,6 +11,7 @@ import {
   appendSketchRectangle,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
+  appendSketchTangentArc,
   inferSketchPoint,
   moveSketchPoint,
   removeSketchEntities,
@@ -26,6 +29,7 @@ import {
   sketchProfileSelectorSchema,
   threePointArcGeometry,
   threePointCircleGeometry,
+  tangentArcGeometry,
 } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -127,6 +131,12 @@ type PendingGeometry =
   | Readonly<{ kind: "midpoint-line"; midpoint: SketchPointTarget }>
   | Readonly<{ kind: "rectangle"; firstCorner: SketchPoint2 }>
   | Readonly<{ kind: "center-rectangle"; center: SketchPointTarget }>
+  | Readonly<{ kind: "aligned-rectangle-end"; start: SketchPointTarget }>
+  | Readonly<{
+      end: SketchPointTarget
+      kind: "aligned-rectangle-width"
+      start: SketchPointTarget
+    }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
   | Readonly<{ kind: "arc-start"; center: SketchPoint2 }>
   | Readonly<{ kind: "arc-end"; center: SketchPoint2; start: SketchPoint2 }>
@@ -141,6 +151,11 @@ type PendingGeometry =
       kind: "three-point-circle-third"
       first: SketchPointTarget
       second: SketchPointTarget
+    }>
+  | Readonly<{
+      kind: "tangent-arc"
+      lineId: SketchEntityId
+      startPointId: SketchEntityId
     }>
 
 type PanGesture = Readonly<{
@@ -1186,25 +1201,33 @@ function ConstraintAnnotations({
 
 const StableConstraintAnnotations = memo(ConstraintAnnotations)
 
+type PendingWithTargetStart = Extract<
+  PendingGeometry,
+  | { kind: "aligned-rectangle-end" }
+  | { kind: "aligned-rectangle-width" }
+  | { kind: "line" }
+  | { kind: "three-point-arc-end" }
+  | { kind: "three-point-arc-point" }
+>
+
+const pendingTargetStartKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
+  "aligned-rectangle-end",
+  "aligned-rectangle-width",
+  "line",
+  "three-point-arc-end",
+  "three-point-arc-point",
+])
+
+function hasPendingTargetStart(pending: PendingGeometry): pending is PendingWithTargetStart {
+  return pendingTargetStartKinds.has(pending.kind)
+}
+
 function pendingTargetStart(pending: PendingGeometry): SketchPointTarget | null {
-  switch (pending.kind) {
-    case "line":
-      return pending.start
-    case "midpoint-line":
-      return pending.midpoint
-    case "center-rectangle":
-      return pending.center
-    case "circle":
-      return pending.center
-    case "three-point-arc-end":
-    case "three-point-arc-point":
-      return pending.start
-    case "three-point-circle-second":
-    case "three-point-circle-third":
-      return pending.first
-    default:
-      return null
-  }
+  if (hasPendingTargetStart(pending)) return pending.start
+  if (pending.kind === "midpoint-line") return pending.midpoint
+  if (pending.kind === "center-rectangle" || pending.kind === "circle") return pending.center
+  if ("first" in pending) return pending.first
+  return pending.kind === "tangent-arc" ? { kind: "existing", pointId: pending.startPointId } : null
 }
 
 function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
@@ -1223,18 +1246,36 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
 }
 
 type PendingRectangle =
+  | Extract<PendingGeometry, { kind: "aligned-rectangle-end" }>
+  | Extract<PendingGeometry, { kind: "aligned-rectangle-width" }>
   | Extract<PendingGeometry, { kind: "rectangle" }>
   | Extract<PendingGeometry, { kind: "center-rectangle" }>
 
 function PendingRectangleShape({
   cursor,
   pending,
+  sketch,
   start,
 }: {
   cursor: SketchPoint2
   pending: PendingRectangle
+  sketch: SketchRecord
   start: SketchPoint2
 }) {
+  if (pending.kind === "aligned-rectangle-end") {
+    return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
+  }
+  if (pending.kind === "aligned-rectangle-width") {
+    const end = pointForTarget(sketch, pending.end)
+    const geometry = alignedRectangleGeometry(start, end, cursor)
+    return geometry ? (
+      <polygon
+        points={`${start.x},${start.y} ${end.x},${end.y} ${geometry.third.x},${geometry.third.y} ${geometry.fourth.x},${geometry.fourth.y}`}
+      />
+    ) : (
+      <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+    )
+  }
   if (pending.kind === "rectangle") {
     return (
       <rect
@@ -1263,6 +1304,105 @@ function PendingRectangleShape({
   return null
 }
 
+function lineAtEndpoint(sketch: SketchRecord, pointId: SketchEntityId) {
+  for (let index = sketch.entities.length - 1; index >= 0; index -= 1) {
+    const entity = sketch.entities[index]
+    if (
+      entity?.type === "line" &&
+      (entity.startPointId === pointId || entity.endPointId === pointId)
+    ) {
+      return entity
+    }
+  }
+  return null
+}
+
+function tangentArcReference(sketch: SketchRecord, target: SketchPointTarget) {
+  if (target.kind !== "existing") return null
+  const line = lineAtEndpoint(sketch, target.pointId)
+  return line ? { lineId: line.id, startPointId: target.pointId } : null
+}
+
+function tangentArcInteriorPoint(
+  sketch: SketchRecord,
+  lineId: SketchEntityId,
+  startPointId: SketchEntityId,
+) {
+  const line = sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "line" }> =>
+      entity.id === lineId && entity.type === "line",
+  )
+  if (!line) return null
+  const interiorPointId =
+    line.startPointId === startPointId
+      ? line.endPointId
+      : line.endPointId === startPointId
+        ? line.startPointId
+        : null
+  return interiorPointId
+    ? pointForTarget(sketch, { kind: "existing", pointId: interiorPointId })
+    : null
+}
+
+function PendingThreePointArcShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "three-point-arc-point" }>
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  const end = pointForTarget(sketch, pending.end)
+  const geometry = threePointArcGeometry(start, end, cursor)
+  return geometry ? (
+    <polyline points={arcPolyline(geometry.center, geometry.start, geometry.end)} />
+  ) : (
+    <polyline points={`${start.x},${start.y} ${end.x},${end.y} ${cursor.x},${cursor.y}`} />
+  )
+}
+
+function PendingThreePointCircleShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "three-point-circle-third" }>
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  const second = pointForTarget(sketch, pending.second)
+  const geometry = threePointCircleGeometry(start, second, cursor)
+  return geometry ? (
+    <circle cx={geometry.center.x} cy={geometry.center.y} r={geometry.radius} />
+  ) : (
+    <polyline points={`${start.x},${start.y} ${second.x},${second.y} ${cursor.x},${cursor.y}`} />
+  )
+}
+
+function PendingTangentArcShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "tangent-arc" }>
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  const interior = tangentArcInteriorPoint(sketch, pending.lineId, pending.startPointId)
+  const geometry = interior ? tangentArcGeometry(interior, start, cursor) : null
+  if (!geometry) return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
+  const arcStart = geometry.sharedEndpoint === "start" ? start : cursor
+  const arcEnd = geometry.sharedEndpoint === "end" ? start : cursor
+  return <polyline points={arcPolyline(geometry.center, arcStart, arcEnd)} />
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -1274,37 +1414,42 @@ function PendingCurveShape({
   sketch: SketchRecord
   start: SketchPoint2
 }) {
-  if (pending.kind === "midpoint-line") {
-    const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
-    return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+  switch (pending.kind) {
+    case "midpoint-line": {
+      const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
+      return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+    }
+    case "circle":
+      return (
+        <circle cx={start.x} cy={start.y} r={Math.hypot(cursor.x - start.x, cursor.y - start.y)} />
+      )
+    case "arc-end":
+      return <polyline points={arcPolyline(pending.center, pending.start, cursor)} />
+    case "three-point-arc-point":
+      return (
+        <PendingThreePointArcShape
+          cursor={cursor}
+          pending={pending}
+          sketch={sketch}
+          start={start}
+        />
+      )
+    case "three-point-circle-third":
+      return (
+        <PendingThreePointCircleShape
+          cursor={cursor}
+          pending={pending}
+          sketch={sketch}
+          start={start}
+        />
+      )
+    case "tangent-arc":
+      return (
+        <PendingTangentArcShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+      )
+    default:
+      return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
   }
-  if (pending.kind === "circle") {
-    return (
-      <circle cx={start.x} cy={start.y} r={Math.hypot(cursor.x - start.x, cursor.y - start.y)} />
-    )
-  }
-  if (pending.kind === "arc-end") {
-    return <polyline points={arcPolyline(pending.center, pending.start, cursor)} />
-  }
-  if (pending.kind === "three-point-arc-point") {
-    const end = pointForTarget(sketch, pending.end)
-    const geometry = threePointArcGeometry(start, end, cursor)
-    return geometry ? (
-      <polyline points={arcPolyline(geometry.center, geometry.start, geometry.end)} />
-    ) : (
-      <polyline points={`${start.x},${start.y} ${end.x},${end.y} ${cursor.x},${cursor.y}`} />
-    )
-  }
-  if (pending.kind === "three-point-circle-third") {
-    const second = pointForTarget(sketch, pending.second)
-    const geometry = threePointCircleGeometry(start, second, cursor)
-    return geometry ? (
-      <circle cx={geometry.center.x} cy={geometry.center.y} r={geometry.radius} />
-    ) : (
-      <polyline points={`${start.x},${start.y} ${second.x},${second.y} ${cursor.x},${cursor.y}`} />
-    )
-  }
-  return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
 }
 
 function PendingShape({
@@ -1318,8 +1463,13 @@ function PendingShape({
   sketch: SketchRecord
   start: SketchPoint2
 }) {
-  return pending.kind === "rectangle" || pending.kind === "center-rectangle" ? (
-    <PendingRectangleShape cursor={cursor} pending={pending} start={start} />
+  const rectanglePending =
+    pending.kind === "rectangle" ||
+    pending.kind === "center-rectangle" ||
+    pending.kind === "aligned-rectangle-end" ||
+    pending.kind === "aligned-rectangle-width"
+  return rectanglePending ? (
+    <PendingRectangleShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
   ) : (
     <PendingCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
   )
@@ -1362,6 +1512,7 @@ type PlacementInput = Readonly<{
 
 type PlacementUpdate = Readonly<{
   draft: SketchRecord | null
+  nextTool?: SketchEditorTool
   pending: PendingGeometry | null
 }>
 
@@ -1492,6 +1643,36 @@ function placeCenterRectangle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeAlignedRectangle(input: PlacementInput): PlacementUpdate {
+  if (
+    input.pending?.kind !== "aligned-rectangle-end" &&
+    input.pending?.kind !== "aligned-rectangle-width"
+  ) {
+    return { draft: null, pending: { kind: "aligned-rectangle-end", start: input.target } }
+  }
+  if (input.pending.kind === "aligned-rectangle-end") {
+    return {
+      draft: null,
+      pending: {
+        kind: "aligned-rectangle-width",
+        start: input.pending.start,
+        end: input.target,
+      },
+    }
+  }
+  return {
+    draft: appendSketchAlignedRectangle(input.draft, {
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      firstSideStart: input.pending.start,
+      firstSideEnd: input.pending.end,
+      widthPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
 function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
     return { draft: null, pending: { kind: "circle", center: input.target } }
@@ -1559,6 +1740,28 @@ function placeArc(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeTangentArc(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "tangent-arc") {
+    const reference = tangentArcReference(input.draft, input.target)
+    return {
+      draft: null,
+      pending: reference ? { kind: "tangent-arc", ...reference } : null,
+    }
+  }
+  return {
+    draft: appendSketchTangentArc(input.draft, {
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      end: input.target,
+      lineId: input.pending.lineId,
+      startPointId: input.pending.startPointId,
+    }).sketch,
+    nextTool: "line",
+    pending: null,
+  }
+}
+
 function placeThreePointArc(input: PlacementInput): PlacementUpdate {
   if (
     input.pending?.kind !== "three-point-arc-end" &&
@@ -1589,6 +1792,7 @@ function placeThreePointArc(input: PlacementInput): PlacementUpdate {
 }
 
 const placementBuilders = {
+  "aligned-rectangle": placeAlignedRectangle,
   arc: placeArc,
   "center-rectangle": placeCenterRectangle,
   circle: placeCircle,
@@ -1596,6 +1800,7 @@ const placementBuilders = {
   "midpoint-line": placeMidpointLine,
   point: placePoint,
   rectangle: placeRectangle,
+  "tangent-arc": placeTangentArc,
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
 } satisfies Record<Exclude<SketchEditorTool, "select">, (input: PlacementInput) => PlacementUpdate>
@@ -1670,6 +1875,7 @@ function unsnappedInference(point: SketchPoint2): SketchPointInference {
 const alwaysSupportsPointInference = () => true
 const neverSupportsPointInference = () => false
 const pointInferenceSupport = {
+  "aligned-rectangle": alwaysSupportsPointInference,
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
@@ -1678,6 +1884,7 @@ const pointInferenceSupport = {
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
+  "tangent-arc": alwaysSupportsPointInference,
   "three-point-arc": alwaysSupportsPointInference,
   "three-point-circle": alwaysSupportsPointInference,
 } satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
@@ -1808,6 +2015,7 @@ function SketchDrawing({
     editorTool,
     onDraggingPointChange,
     onDraftChange,
+    onEditorToolChange,
     onConstraintSelectionChange,
     onProfileSelect,
     onRedo,
@@ -1866,13 +2074,14 @@ function SketchDrawing({
         })
         if (!update) return
         if (update.draft) onDraftChange(update.draft)
+        if (update.nextTool) onEditorToolChange(update.nextTool)
         setPending(update.pending)
         setInference(null)
       } catch {
         setPending(null)
       }
     },
-    [construction, draft, editorTool, onDraftChange, pending],
+    [construction, draft, editorTool, onDraftChange, onEditorToolChange, pending],
   )
   const updatePanFromPointer = (event: PointerEvent<SVGSVGElement>) => {
     if (panGesture?.pointerId !== event.pointerId) return false
@@ -2152,6 +2361,7 @@ type SketchDrawingConfiguration = Readonly<{
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -2330,6 +2540,7 @@ type SketchViewportState = Readonly<{
 
 type SketchViewportActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
   onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
@@ -2407,6 +2618,7 @@ export function SketchViewport({
   } = state
   const {
     onDraftChange,
+    onEditorToolChange,
     onConstraintSelectionChange,
     onFailedConstraintsChange,
     onProfilesChange,
@@ -2457,6 +2669,7 @@ export function SketchViewport({
           editorTool,
           onConstraintSelectionChange,
           onDraggingPointChange: handleDraggingPointChange,
+          onEditorToolChange,
           selectedProfile,
           selectedConstraintId,
           selectedEntityIds,

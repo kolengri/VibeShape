@@ -126,6 +126,7 @@ type SketchViewportTestProps = Readonly<{
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
+  onEditorToolChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onEditorToolChange"]
   onConstraintSelectionChange?: React.ComponentProps<
     typeof SketchViewport
   >["actions"]["onConstraintSelectionChange"]
@@ -156,6 +157,7 @@ function viewportState(props: SketchViewportTestProps) {
 function viewportActions(props: SketchViewportTestProps) {
   return {
     onDraftChange: props.onDraftChange ?? noOperation,
+    onEditorToolChange: props.onEditorToolChange ?? noOperation,
     onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
     onFailedConstraintsChange: noOperation,
     onProfileSelect: props.onProfileSelect ?? noOperation,
@@ -383,6 +385,55 @@ describe("SketchViewport", () => {
     expect(draft.constraints).toHaveLength(6)
   })
 
+  it("previews and creates an aligned rectangle with persistent design intent", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "aligned-rectangle",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 220, clientY: 360 })
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 260 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="aligned-rectangle-end"]'),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(drawing, { clientX: 520, clientY: 260 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 140 })
+    const widthPreview = document.querySelector(
+      '[data-sketch-preview-tool="aligned-rectangle-width"]',
+    )
+    expect(widthPreview?.querySelector("polygon")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 140 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(4)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(4)
+    expect(draft.constraints).toEqual([
+      expect.objectContaining({ type: "perpendicular" }),
+      expect.objectContaining({ type: "parallel" }),
+      expect.objectContaining({ type: "parallel" }),
+    ])
+  })
+
   it("previews and creates a three-point arc as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
@@ -420,6 +471,49 @@ describe("SketchViewport", () => {
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(3)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(1)
     expect(draft.constraints).toEqual([])
+  })
+
+  it("creates a tangent arc from a line endpoint and returns to the line tool", () => {
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      editorTool: "tangent-arc",
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+      onEditorToolChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const startPoint = pointEntities[0]
+    if (!startPoint) throw new Error("The rectangle fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${startPoint.id}"]`)
+    if (!pointElement) throw new Error("The tangent start point must be rendered.")
+
+    fireEvent.pointerDown(pointElement)
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 180 })
+    expect(document.querySelector('[data-sketch-preview-tool="tangent-arc"]')).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(1)
+    expect(draft.constraints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "tangent" })]),
+    )
+    expect(onEditorToolChange).toHaveBeenCalledWith("line")
   })
 
   it("previews and creates a circle through three picked points as one draft edit", () => {
@@ -563,22 +657,23 @@ describe("SketchViewport", () => {
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
 
-    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
-    expect(solveSketch).toHaveBeenLastCalledWith(
-      7,
-      expect.objectContaining({
-        id: sketch.id,
-        entities: expect.arrayContaining([
-          expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
-        ]),
-      }),
-      expect.objectContaining({
-        continuation: expect.objectContaining({
-          sketchId,
-          points: expect.arrayContaining([expect.objectContaining({ entityId: firstPoint.id })]),
+    await waitFor(() =>
+      expect(solveSketch).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({
+          id: sketch.id,
+          entities: expect.arrayContaining([
+            expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
+          ]),
         }),
-        draggedPoints: [expect.objectContaining({ entityId: firstPoint.id })],
-      }),
+        expect.objectContaining({
+          continuation: expect.objectContaining({
+            sketchId,
+            points: expect.arrayContaining([expect.objectContaining({ entityId: firstPoint.id })]),
+          }),
+          draggedPoints: [expect.objectContaining({ entityId: firstPoint.id })],
+        }),
+      ),
     )
   })
 

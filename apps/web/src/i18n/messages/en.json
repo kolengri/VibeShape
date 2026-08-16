@@ -257,6 +257,10 @@
           "label": "Subtract",
           "keywords": "boolean cut|remove solid|difference"
         },
+        "sketchAlignedRectangle": {
+          "label": "Aligned rectangle",
+          "keywords": "aligned rectangle|rotated rectangle|three point rectangle|perpendicular box"
+        },
         "sketchArc": { "label": "Center-point arc", "keywords": "arc|curve|center start end" },
         "sketchThreePointArc": {
           "label": "Three-point arc",
@@ -290,6 +294,10 @@
         },
         "sketchRedo": { "label": "Redo", "keywords": "redo sketch|restore change|history" },
         "sketchSelect": { "label": "Select", "keywords": "selection|pointer|choose geometry" },
+        "sketchTangentArc": {
+          "label": "Tangent arc",
+          "keywords": "tangent arc|line continuation|fillet curve|shift a"
+        },
         "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
         "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
         "workspaceSketch": {

@@ -80,7 +80,11 @@ const sketchToolFamilies = [
     labelKey: "lineToolsLabel",
   },
   {
-    commandIds: [editorCommandIds.sketchRectangle, editorCommandIds.sketchCenterRectangle],
+    commandIds: [
+      editorCommandIds.sketchRectangle,
+      editorCommandIds.sketchCenterRectangle,
+      editorCommandIds.sketchAlignedRectangle,
+    ],
     id: "rectangle",
     labelKey: "rectangleToolsLabel",
   },
@@ -90,7 +94,11 @@ const sketchToolFamilies = [
     labelKey: "circleToolsLabel",
   },
   {
-    commandIds: [editorCommandIds.sketchThreePointArc, editorCommandIds.sketchArc],
+    commandIds: [
+      editorCommandIds.sketchThreePointArc,
+      editorCommandIds.sketchTangentArc,
+      editorCommandIds.sketchArc,
+    ],
     id: "arc",
     labelKey: "arcToolsLabel",
   },

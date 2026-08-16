@@ -131,6 +131,10 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Center rectangle R" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
 
+    await user.click(screen.getByRole("button", { name: "Rectangle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Aligned rectangle" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("aligned-rectangle")
+
     await user.click(screen.getByRole("button", { name: "Line tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Midpoint line" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("midpoint-line")
@@ -142,6 +146,10 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Arc tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point arc A" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
+
+    await user.click(screen.getByRole("button", { name: "Arc tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Tangent arc Shift+A" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")
 
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)

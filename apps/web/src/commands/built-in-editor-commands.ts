@@ -164,6 +164,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "aligned-rectangle",
+    id: editorCommandIds.sketchAlignedRectangle,
+    labelKey: "sketchAlignedRectangle",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "circle",
     id: editorCommandIds.sketchCircle,
     labelKey: "sketchCircle",
@@ -194,6 +202,15 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "sketchThreePointArc",
     ownerModuleId: sketchOwner,
     shortcut: { key: "a" },
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "tangent-arc",
+    id: editorCommandIds.sketchTangentArc,
+    labelKey: "sketchTangentArc",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "a", modifiers: ["shift"] },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -252,6 +269,7 @@ function requiresSketch(context: BuiltInEditorCommandContext) {
 
 function sketchToolHandler(
   id: (typeof editorCommandIds)[
+    | "sketchAlignedRectangle"
     | "sketchArc"
     | "sketchMidpointLine"
     | "sketchThreePointArc"
@@ -261,7 +279,8 @@ function sketchToolHandler(
     | "sketchLine"
     | "sketchPoint"
     | "sketchRectangle"
-    | "sketchSelect"],
+    | "sketchSelect"
+    | "sketchTangentArc"],
   tool: SketchEditorTool,
 ): EditorCommandHandler<BuiltInEditorCommandContext> {
   return {
@@ -355,10 +374,12 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchMidpointLine, "midpoint-line"),
   sketchToolHandler(editorCommandIds.sketchRectangle, "rectangle"),
   sketchToolHandler(editorCommandIds.sketchCenterRectangle, "center-rectangle"),
+  sketchToolHandler(editorCommandIds.sketchAlignedRectangle, "aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
+  sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
     getEligibility: requiresSketch,

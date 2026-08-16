@@ -53,6 +53,7 @@ type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+    onSketchEditorToolChange: (tool: SketchEditorTool) => void
     onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
     onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
     onSketchProfileSelect: (profile: SketchProfileSelector) => void
@@ -99,6 +100,7 @@ function SketchWorkspaceContent({
       }}
       actions={{
         onDraftChange: actions.onSketchDraftChange,
+        onEditorToolChange: actions.onSketchEditorToolChange,
         onFailedConstraintsChange: actions.onSketchFailedConstraintsChange,
         onProfileSelect: actions.onSketchProfileSelect,
         onProfilesChange: actions.onSketchProfilesChange,
@@ -247,6 +249,7 @@ function EditorContent({
       actions={{
         onSelectionChange: actions.select,
         onSketchDraftChange: actions.setSketchDraft,
+        onSketchEditorToolChange: actions.setSketchEditorTool,
         onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
         onSketchPlaneSelect: actions.selectSketchPlane,
         onSketchProfileSelect: actions.setSketchSelectedProfile,

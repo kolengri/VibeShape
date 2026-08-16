@@ -29,6 +29,7 @@ import type {
 } from "./editor-command"
 
 const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGElement>>>> = {
+  "aligned-rectangle": RectangleHorizontal,
   arc: PenLine,
   box: BoxIcon,
   cancel: X,
@@ -46,6 +47,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   select: MousePointer2,
   sketch: DraftingCompass,
   subtract: Scissors,
+  "tangent-arc": PenLine,
   "three-point-arc": Spline,
   "three-point-circle": CircleDashed,
   undo: Undo2,
