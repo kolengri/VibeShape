@@ -147,6 +147,15 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "center-rectangle",
+    id: editorCommandIds.sketchCenterRectangle,
+    labelKey: "sketchCenterRectangle",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "r", modifiers: ["shift"] },
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "circle",
     id: editorCommandIds.sketchCircle,
     labelKey: "sketchCircle",
@@ -220,6 +229,7 @@ function requiresSketch(context: BuiltInEditorCommandContext) {
 function sketchToolHandler(
   id: (typeof editorCommandIds)[
     | "sketchArc"
+    | "sketchCenterRectangle"
     | "sketchCircle"
     | "sketchLine"
     | "sketchPoint"
@@ -316,6 +326,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchPoint, "point"),
   sketchToolHandler(editorCommandIds.sketchLine, "line"),
   sketchToolHandler(editorCommandIds.sketchRectangle, "rectangle"),
+  sketchToolHandler(editorCommandIds.sketchCenterRectangle, "center-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   {

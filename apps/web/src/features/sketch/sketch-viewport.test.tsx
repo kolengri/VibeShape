@@ -236,6 +236,55 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("previews and creates a symmetric center rectangle as one draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "center-rectangle",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180 })
+    expect(document.querySelector('[data-sketch-preview-tool="center-rectangle"]')).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entities: expect.arrayContaining([
+          expect.objectContaining({ type: "point", construction: true }),
+          expect.objectContaining({ type: "line", construction: true }),
+        ]),
+        constraints: expect.arrayContaining([
+          expect.objectContaining({ type: "horizontal" }),
+          expect.objectContaining({ type: "parallel" }),
+          expect.objectContaining({ type: "equal" }),
+        ]),
+      }),
+    )
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(5)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(8)
+    expect(draft.constraints).toHaveLength(6)
+  })
+
   it("previews horizontal inference before applying the automatic constraint", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     renderViewport({

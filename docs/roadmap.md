@@ -61,7 +61,7 @@ The production-oriented foundation now spans strict revisioned document, variabl
 - Worker protocol and restart/recovery behavior.
 - Three.js viewport and body/face/edge selection.
 - IndexedDB autosave and `.vshape` v0.
-- Interactive sketch-to-new/add/remove/intersect extrusion with Point, Line/Polyline, Rectangle, Circle, center-point Arc, P0 constraints and dimensions, live solving, stable profile selection, explicit target dependencies, and local draft undo/redo; direct primitives remain secondary advanced tools.
+- Interactive sketch-to-new/add/remove/intersect extrusion with Point, Line/Polyline, corner and center Rectangle, Circle, center-point Arc, P0 constraints and dimensions, live solving, stable profile selection, explicit target dependencies, and local draft undo/redo; direct primitives remain secondary advanced tools.
 - 3MF/STEP/STL smoke export.
 - Remembered desktop slicer handoff through the authenticated source bridge, with browser download fallback.
 - Stable built-in feature and command registries plus preservation of extension locks and unknown custom-feature payloads, without executing third-party code.
@@ -73,7 +73,7 @@ Create a variable-driven rectangle and exact extrusion, modify an explicit targe
 
 ## Phase 2 — sketcher vertical slice (6–10 weeks)
 
-The production boundary and core P0 interaction slice are complete for analytical profiles and exact new/add/remove/intersect extrusion: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v7 solving and profile results, geometry protocol v8 analytical profile transport, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, deterministic outer/hole/island extraction, fail-closed stable selectors, OCCT prism and Boolean construction, stable cap/side roles, explicit target dependencies, worker recovery, the initial 1,000-point browser budget, an accessible interactive SVG sketcher, local draft undo/redo, selectable stable profile regions, and exact disposable extrusion create/edit preview. The remaining phase is center-rectangle, three-point Arc, trim/extend, multi-profile feature input, guided conflict repair, and general intersection splitting below.
+The production boundary and core P0 interaction slice are complete for analytical profiles and exact new/add/remove/intersect extrusion: origin-plane sketch records, all P0 constraint schemas, revisioned add/update/remove events, `.vshape` preservation, protocol v7 solving and profile results, geometry protocol v8 analytical profile transport, exact reviewed runtime verification, conflict/status mapping, variable dimensions, stable-ID continuation, deterministic outer/hole/island extraction, fail-closed stable selectors, OCCT prism and Boolean construction, stable cap/side roles, explicit target dependencies, worker recovery, the initial 1,000-point browser budget, an accessible interactive SVG sketcher with corner and center Rectangle, local draft undo/redo, selectable stable profile regions, and exact disposable extrusion create/edit preview. The remaining phase is three-point Arc, trim/extend, multi-profile feature input, guided conflict repair, and general intersection splitting below.
 
 ### Scope
 

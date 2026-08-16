@@ -161,15 +161,15 @@ Exit criterion: a user can locate, select, edit, hide, and diagnose any authored
 
 - Add viewport preselection, endpoint/midpoint/center/intersection snapping, inference guides, and accepted auto-constraints.
 - Render constraint glyphs and editable dimension labels with accessible task-panel equivalents.
-- Add center rectangle, three-point arc, Trim, Extend, Split, and guided conflict repair.
+- Center Rectangle is implemented with point inference, symmetric preview, stable construction intent, one-step local history, toolbar/palette presentation, and `Shift+R`; three-point Arc, Trim, Extend, Split, and guided conflict repair remain open.
 - Add numeric placement and coordinate editing for keyboard-accessible precision.
 
 Exit criterion: the reference bracket can be drawn, fully constrained, diagnosed, edited, and reopened without using the constraint list as the primary spatial interface.
 
 ### UX-5 — feature previews and history repair
 
-- Add unsaved Extrude preview and multi-profile selection.
-- Add Add, Remove, and Intersect operation intent, followed by Revolve and Hole.
+- Exact unsaved Extrude preview is implemented; multi-profile selection remains open.
+- Add, Remove, and Intersect operation intent is implemented; Revolve and Hole remain open.
 - Add manipulators paired with exact task-panel fields.
 - Add rollback/edit context and stable-reference repair UI for missing or ambiguous downstream inputs.
 

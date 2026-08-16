@@ -13,5 +13,12 @@ export function isActiveSketchEditorTool(
   return tool?.kind === "create-sketch" || tool?.kind === "edit-sketch"
 }
 
-export type SketchEditorTool = "select" | "point" | "line" | "rectangle" | "circle" | "arc"
+export type SketchEditorTool =
+  | "select"
+  | "point"
+  | "line"
+  | "rectangle"
+  | "center-rectangle"
+  | "circle"
+  | "arc"
 export type SketchDraftChangeMode = "record" | "replace"

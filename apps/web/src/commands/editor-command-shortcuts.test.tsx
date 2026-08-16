@@ -8,6 +8,7 @@ import { editorCommandEnabled, editorCommandIds } from "./editor-command"
 import { useEditorCommandShortcuts } from "./editor-command-shortcuts"
 
 const invokeLine = vi.fn()
+const invokeCenterRectangle = vi.fn()
 const invokeCancel = vi.fn()
 const paletteChange = vi.fn()
 const lineCommand: ResolvedEditorCommand = {
@@ -37,6 +38,20 @@ const cancelCommand: ResolvedEditorCommand = {
   eligibility: editorCommandEnabled(),
   invoke: invokeCancel,
   toolbarVisible: false,
+}
+const centerRectangleCommand: ResolvedEditorCommand = {
+  active: false,
+  descriptor: {
+    group: "sketch",
+    icon: "center-rectangle",
+    id: editorCommandIds.sketchCenterRectangle,
+    labelKey: "sketchCenterRectangle",
+    ownerModuleId: "org.vibeshape.core.sketch",
+    shortcut: { key: "r", modifiers: ["shift"] },
+  },
+  eligibility: editorCommandEnabled(),
+  invoke: invokeCenterRectangle,
+  toolbarVisible: true,
 }
 
 function ShortcutHarness({ commands = [lineCommand] }: { commands?: ResolvedEditorCommand[] }) {
@@ -68,6 +83,16 @@ describe("useEditorCommandShortcuts", () => {
     expect((screen.getByRole("textbox", { name: "Expression" }) as HTMLInputElement).value).toBe(
       "l",
     )
+  })
+
+  it("matches a registered Shift modifier exactly", async () => {
+    const user = userEvent.setup()
+    render(<ShortcutHarness commands={[lineCommand, centerRectangleCommand]} />)
+
+    await user.keyboard("r")
+    expect(invokeCenterRectangle).not.toHaveBeenCalled()
+    await user.keyboard("{Shift>}r{/Shift}")
+    expect(invokeCenterRectangle).toHaveBeenCalledOnce()
   })
 
   it("reserves Ctrl/Cmd+K for the command palette even from text input", async () => {
