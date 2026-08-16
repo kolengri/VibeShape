@@ -183,6 +183,40 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     }
   }
 
+  function performSimpleBoolean(
+    opencascade: OpenCascadeInstance,
+    source: Shape3D,
+    tool: Shape3D,
+    operation: "common" | "fuse",
+  ): Shape3D {
+    const progress = new opencascade.Message_ProgressRange_1()
+    const Builder =
+      operation === "fuse" ? opencascade.BRepAlgoAPI_Fuse_3 : opencascade.BRepAlgoAPI_Common_3
+    const builder = new Builder(source.wrapped, tool.wrapped, progress)
+
+    try {
+      builder.SetToFillHistory(false)
+      builder.Build(progress)
+      builder.SimplifyResult(true, true, 1e-3)
+      return adoptOcctShape(builder.Shape(), castShape)
+    } finally {
+      builder.delete()
+      progress.delete()
+    }
+  }
+
+  function fuseShapes(opencascade: OpenCascadeInstance, source: Shape3D, tool: Shape3D): Shape3D {
+    return performSimpleBoolean(opencascade, source, tool, "fuse")
+  }
+
+  function intersectShapes(
+    opencascade: OpenCascadeInstance,
+    source: Shape3D,
+    tool: Shape3D,
+  ): Shape3D {
+    return performSimpleBoolean(opencascade, source, tool, "common")
+  }
+
   function cutShapes(opencascade: OpenCascadeInstance, source: Shape3D, tool: Shape3D): Shape3D {
     return performCut(opencascade, source, tool, false).shape
   }
@@ -282,6 +316,8 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     cutShapes,
     cutShapesWithHistory,
     cutShapesWithLineage,
+    fuseShapes,
+    intersectShapes,
     filletEdgesAtZ,
     filletEdgesAtZWithHistory,
     filletEdgesAtZWithLineage,
@@ -294,6 +330,8 @@ export const {
   cutShapes: cutOcctShapes,
   cutShapesWithHistory: cutOcctShapesWithHistory,
   cutShapesWithLineage: cutOcctShapesWithLineage,
+  fuseShapes: fuseOcctShapes,
+  intersectShapes: intersectOcctShapes,
   filletEdgesAtZWithHistory: filletOcctEdgesAtZWithHistory,
   filletEdgesAtZWithLineage: filletOcctEdgesAtZWithLineage,
 } = createOcctShapeOperations(castOcctShape)

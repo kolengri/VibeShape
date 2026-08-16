@@ -35,6 +35,14 @@ const copy = {
   description: "Create a new solid.",
   parameters: "Extrusion parameters",
   profile: "Selected profile",
+  operation: "Result operation",
+  operationNew: "New body",
+  operationAdd: "Add to body",
+  operationRemove: "Remove from body",
+  operationIntersect: "Intersect with body",
+  target: "Target body",
+  targetDescription: "Choose a terminal body.",
+  missingTarget: "Select a target body.",
   distance: "Distance",
   symmetric: "Extrude symmetrically",
   expressionDescription: "Enter a length or #variable.",
@@ -89,6 +97,12 @@ function renderForm(
         baseRevision={4}
         copy={formCopy}
         mode={mode}
+        options={[
+          {
+            id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3602"),
+            label: "Box 1",
+          },
+        ]}
         profileLabel="Sketch 1"
         variables={variables}
         onCancel={vi.fn()}
@@ -176,6 +190,23 @@ describe("ExtrusionForm", () => {
             source: expect.objectContaining({ expression: "24 mm" }),
           }),
         }),
+      }),
+    )
+  })
+
+  it("persists an explicit target dependency for a body-modifying operation", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm()
+
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "remove")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: extrusionFeatureType.type,
+        parameters: expect.objectContaining({ operation: "remove" }),
+        dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3602"],
       }),
     )
   })

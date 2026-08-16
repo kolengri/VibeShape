@@ -10,6 +10,7 @@ import {
 import {
   extrusionFeatureParametersSchema,
   extrusionFeatureType,
+  legacyExtrusionFeatureType,
   partDesignFeatureTypeHandlers,
 } from "./part-design"
 import { createLengthQuantity } from "./units"
@@ -59,6 +60,38 @@ describe("selector-backed extrusion feature", () => {
         profile: { ...profile, transientProfileIndex: 0 },
       }).success,
     ).toBe(false)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "requires one explicit target dependency for %s",
+    (operation) => {
+      const feature = {
+        ...extrusion(),
+        parameters: { ...extrusion().parameters, operation },
+      }
+      expect(registry().validateFeature(feature)).toMatchObject({
+        ok: false,
+        diagnostic: {
+          code: "invalid-feature-parameters",
+          issues: [{ path: "dependencies" }],
+        },
+      })
+      expect(
+        registry().validateFeature({
+          ...feature,
+          dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3302"],
+        }),
+      ).toMatchObject({ ok: true })
+    },
+  )
+
+  it("keeps schema-version-1 new-body extrusion readable", () => {
+    expect(
+      registry().validateFeature({
+        ...extrusion(),
+        type: legacyExtrusionFeatureType.type,
+      }),
+    ).toMatchObject({ ok: true })
   })
 
   it("resolves distance expressions while retaining the authored selector", () => {

@@ -14,7 +14,6 @@ import {
   booleanFeatureType,
   boxFeatureParametersSchema,
   boxFeatureType,
-  cylinderFeatureType,
   extrusionFeatureType,
   partDesignFeatureTypeHandlers,
 } from "./part-design"
@@ -96,12 +95,12 @@ describe("feature type registry", () => {
         centered: true,
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
-      expect(result.registry.descriptors.map(({ type }) => type.typeId)).toEqual([
-        booleanFeatureType.type.typeId,
-        boxFeatureType.type.typeId,
-        cylinderFeatureType.type.typeId,
-        extrusionFeatureType.type.typeId,
-      ])
+      expect(result.registry.descriptors).toHaveLength(5)
+      expect(
+        result.registry.descriptors
+          .filter(({ type }) => type.typeId === extrusionFeatureType.type.typeId)
+          .map(({ type }) => type.schemaVersion),
+      ).toEqual([1, 2])
     }
   })
 
@@ -274,18 +273,13 @@ describe("feature type registry", () => {
 
   it("contains trusted schema transforms that return non-JSON parameter objects", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
-    const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    const booleanHandler = partDesignFeatureTypeHandlers[2]
-    const extrusionHandler = partDesignFeatureTypeHandlers[3]
-    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
-      throw new Error("The part design fixture must expose every handler.")
-    }
+    if (!boxHandler) throw new Error("The part design fixture must expose every handler.")
 
     const malformed: TrustedFeatureTypeHandler = {
       ...boxHandler,
       parametersSchema: boxFeatureParametersSchema.transform(() => new Date(0)),
     }
-    const result = registry([malformed, cylinderHandler, booleanHandler, extrusionHandler])
+    const result = registry([malformed, ...partDesignFeatureTypeHandlers.slice(1)])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -298,12 +292,7 @@ describe("feature type registry", () => {
 
   it("contains trusted parameter normalizer exceptions as stable diagnostics", () => {
     const boxHandler = partDesignFeatureTypeHandlers[0]
-    const cylinderHandler = partDesignFeatureTypeHandlers[1]
-    const booleanHandler = partDesignFeatureTypeHandlers[2]
-    const extrusionHandler = partDesignFeatureTypeHandlers[3]
-    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
-      throw new Error("The part design fixture must expose every handler.")
-    }
+    if (!boxHandler) throw new Error("The part design fixture must expose every handler.")
 
     const throwing: TrustedFeatureTypeHandler = {
       ...boxHandler,
@@ -311,7 +300,7 @@ describe("feature type registry", () => {
         throw new Error("fixture detail")
       }),
     }
-    const result = registry([throwing, cylinderHandler, booleanHandler, extrusionHandler])
+    const result = registry([throwing, ...partDesignFeatureTypeHandlers.slice(1)])
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -327,17 +316,12 @@ describe("feature type registry", () => {
   })
 
   it("contains invalid and throwing content normalizers as stable diagnostics", () => {
-    const [boxHandler, cylinderHandler, booleanHandler, extrusionHandler] =
-      partDesignFeatureTypeHandlers
-    if (!boxHandler || !cylinderHandler || !booleanHandler || !extrusionHandler) {
-      throw new Error("The part design fixture must expose every handler.")
-    }
+    const boxHandler = partDesignFeatureTypeHandlers[0]
+    if (!boxHandler) throw new Error("The part design fixture must expose every handler.")
 
     const invalid = registry([
       { ...boxHandler, contentParameters: () => new Date(0) },
-      cylinderHandler,
-      booleanHandler,
-      extrusionHandler,
+      ...partDesignFeatureTypeHandlers.slice(1),
     ])
     expect(invalid.ok).toBe(true)
     if (invalid.ok) {
@@ -354,9 +338,7 @@ describe("feature type registry", () => {
           throw new Error("fixture detail")
         },
       },
-      cylinderHandler,
-      booleanHandler,
-      extrusionHandler,
+      ...partDesignFeatureTypeHandlers.slice(1),
     ])
     expect(throwing.ok).toBe(true)
     if (throwing.ok) {

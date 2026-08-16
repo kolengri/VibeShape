@@ -11,6 +11,7 @@ import {
   boxFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
+  legacyExtrusionFeatureType,
 } from "./part-design"
 
 export const commandDescriptorSchema = z
@@ -343,7 +344,13 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   dependencies: [featureCoreModule.id],
   commands: [],
   queries: [],
-  featureTypes: [booleanFeatureType, boxFeatureType, cylinderFeatureType, extrusionFeatureType],
+  featureTypes: [
+    booleanFeatureType,
+    boxFeatureType,
+    cylinderFeatureType,
+    legacyExtrusionFeatureType,
+    extrusionFeatureType,
+  ],
 })
 
 function registryFailure(

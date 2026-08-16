@@ -110,6 +110,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.box",
         "org.vibeshape.feature.part-design.cylinder",
         "org.vibeshape.feature.part-design.extrusion",
+        "org.vibeshape.feature.part-design.extrusion",
       ])
     }
   })

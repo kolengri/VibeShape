@@ -59,7 +59,9 @@ export const booleanFeatureParametersSchema = z
 
 export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
 
-export const extrusionFeatureParametersSchema = z
+export const extrusionOperationSchema = z.enum(["new", "add", "remove", "intersect"])
+
+const legacyExtrusionFeatureParametersSchema = z
   .object({
     profile: sketchProfileSelectorSchema,
     distance: primitiveLengthSchema,
@@ -68,12 +70,21 @@ export const extrusionFeatureParametersSchema = z
   })
   .strict()
 
+export const extrusionFeatureParametersSchema = z
+  .object({
+    profile: sketchProfileSelectorSchema,
+    distance: primitiveLengthSchema,
+    symmetric: z.boolean(),
+    operation: extrusionOperationSchema,
+  })
+  .strict()
+
 export const extrusionFeatureAuthoredContentParametersSchema = z
   .object({
     profile: sketchProfileSelectorSchema,
     distance: primitiveContentLengthSchema,
     symmetric: z.boolean(),
-    operation: z.literal("new"),
+    operation: extrusionOperationSchema,
   })
   .strict()
 
@@ -159,7 +170,7 @@ function resolveExtrusionParameters(parameters: unknown, variables: VariableValu
       profile: sketchProfileSelectorSchema,
       distance: lengthQuantitySchema,
       symmetric: z.boolean(),
-      operation: z.literal("new"),
+      operation: extrusionOperationSchema,
     })
     .strict()
     .safeParse(parameters)
@@ -211,7 +222,7 @@ export const booleanFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 0 },
 })
 
-export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
+export const legacyExtrusionFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
     moduleId: "org.vibeshape.core.part-design",
@@ -224,19 +235,51 @@ export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 0 },
 })
 
-export function readExtrusionFeatureParameters(feature: FeatureRecord) {
+export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.extrusion",
+    schemaVersion: 2,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 1 },
+  references: { min: 0, max: 0 },
+})
+
+function isExtrusionType(feature: FeatureRecord) {
   const type = feature.type
-  const expected = extrusionFeatureType.type
-  if (
-    type.moduleId !== expected.moduleId ||
-    type.moduleVersion !== expected.moduleVersion ||
-    type.typeId !== expected.typeId ||
-    type.schemaVersion !== expected.schemaVersion
-  ) {
-    return null
-  }
+  return [legacyExtrusionFeatureType.type, extrusionFeatureType.type].some(
+    (expected) =>
+      type.moduleId === expected.moduleId &&
+      type.moduleVersion === expected.moduleVersion &&
+      type.typeId === expected.typeId &&
+      type.schemaVersion === expected.schemaVersion,
+  )
+}
+
+export function readExtrusionFeatureParameters(feature: FeatureRecord) {
+  if (!isExtrusionType(feature)) return null
   const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
+}
+
+function extrusionFeatureInvariant(feature: FeatureRecord) {
+  const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) return []
+  const expectedDependencyCount = parameters.data.operation === "new" ? 0 : 1
+  return feature.dependencies.length === expectedDependencyCount
+    ? []
+    : [
+        {
+          path: "dependencies",
+          message:
+            parameters.data.operation === "new"
+              ? "New-body extrusion cannot declare a target dependency."
+              : `${parameters.data.operation} extrusion requires exactly one target dependency.`,
+        },
+      ]
 }
 
 export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
@@ -275,8 +318,23 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   {
+    type: legacyExtrusionFeatureType.type,
+    parametersSchema: legacyExtrusionFeatureParametersSchema,
+    resolveParameters: resolveExtrusionParameters,
+    contentParameters(parameters) {
+      const extrusion = legacyExtrusionFeatureParametersSchema.parse(parameters)
+      return extrusionFeatureAuthoredContentParametersSchema.parse({
+        profile: extrusion.profile,
+        distance: extrusion.distance.value,
+        symmetric: extrusion.symmetric,
+        operation: extrusion.operation,
+      })
+    },
+  },
+  {
     type: extrusionFeatureType.type,
     parametersSchema: extrusionFeatureParametersSchema,
+    validateFeature: extrusionFeatureInvariant,
     resolveParameters: resolveExtrusionParameters,
     contentParameters(parameters) {
       const extrusion = extrusionFeatureParametersSchema.parse(parameters)

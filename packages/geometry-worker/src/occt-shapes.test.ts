@@ -103,6 +103,41 @@ describe("owned OCCT boolean adapter", () => {
     expect(cutter.delete).toHaveBeenCalledOnce()
     expect(progress.delete).toHaveBeenCalledOnce()
   })
+
+  it.each([
+    ["fuseShapes", "BRepAlgoAPI_Fuse_3"],
+    ["intersectShapes", "BRepAlgoAPI_Common_3"],
+  ] as const)("owns the %s builder and result", (operation, constructorName) => {
+    const rawShape = createDeletable()
+    const wrappedShape = { wrapped: createDeletable() }
+    const progress = createDeletable()
+    const builder = {
+      ...createDeletable(),
+      Build: vi.fn(),
+      SetToFillHistory: vi.fn(),
+      Shape: vi.fn(() => rawShape),
+      SimplifyResult: vi.fn(),
+    }
+    const builderConstructor = createConstructor(builder)
+    const opencascade = {
+      Message_ProgressRange_1: createConstructor(progress),
+      [constructorName]: builderConstructor,
+    } as unknown as OpenCascadeInstance
+    const source = { wrapped: createDeletable() }
+    const tool = { wrapped: createDeletable() }
+    const operations = createOcctShapeOperations(vi.fn(() => wrappedShape) as never)
+
+    const result = operations[operation](opencascade, source as never, tool as never)
+
+    expect(result).toBe(wrappedShape)
+    expect(builderConstructor).toHaveBeenCalledWith(source.wrapped, tool.wrapped, progress)
+    expect(builder.Build).toHaveBeenCalledWith(progress)
+    expect(builder.SetToFillHistory).toHaveBeenCalledWith(false)
+    expect(builder.SimplifyResult).toHaveBeenCalledWith(true, true, 1e-3)
+    expect(rawShape.delete).toHaveBeenCalledOnce()
+    expect(builder.delete).toHaveBeenCalledOnce()
+    expect(progress.delete).toHaveBeenCalledOnce()
+  })
 })
 
 describe("owned OCCT fillet adapter", () => {

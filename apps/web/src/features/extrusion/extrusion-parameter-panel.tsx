@@ -15,7 +15,9 @@ export function ExtrusionParameterPanel({
   message,
   onCancel,
   profileLabel,
+  operationField,
   symmetricField,
+  targetField,
 }: {
   copy: ExtrusionParameterPanelCopy
   disabled?: boolean
@@ -24,7 +26,9 @@ export function ExtrusionParameterPanel({
   message?: ReactNode
   onCancel: () => void
   profileLabel: string
+  operationField: ReactNode
   symmetricField: ReactNode
+  targetField?: ReactNode
 }) {
   return (
     <ParameterPanel
@@ -39,6 +43,8 @@ export function ExtrusionParameterPanel({
         <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
         <output className="text-sm">{profileLabel}</output>
       </div>
+      {operationField}
+      {targetField}
       {distanceField}
       <div className="pt-1">{symmetricField}</div>
     </ParameterPanel>

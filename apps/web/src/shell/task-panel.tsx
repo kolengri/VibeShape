@@ -27,11 +27,16 @@ import {
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
-import { ExtrusionForm, type ExtrusionFormMode } from "../features/extrusion/extrusion-form"
+import {
+  ExtrusionForm,
+  type ExtrusionFormMode,
+  type ExtrusionTargetOption,
+} from "../features/extrusion/extrusion-form"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
 import {
   type ActivePartDesignTool,
   booleanInputFeatures,
+  extrusionTargetFeatures,
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
@@ -256,7 +261,15 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
+    missingTarget: t("missingTarget"),
+    operation: t("operation"),
+    operationAdd: t("operationAdd"),
+    operationIntersect: t("operationIntersect"),
+    operationNew: t("operationNew"),
+    operationRemove: t("operationRemove"),
     staleRevision: t("staleRevision"),
+    target: t("target"),
+    targetDescription: t("targetDescription"),
   }
 }
 
@@ -316,10 +329,12 @@ function EditFeatureDeleteAction({
 function ExtrusionTaskPanel({
   mode,
   onCloseTool,
+  options,
   report,
 }: {
   mode: ExtrusionFormMode
   onCloseTool: () => void
+  options: readonly ExtrusionTargetOption[]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -341,6 +356,7 @@ function ExtrusionTaskPanel({
         copy={copy}
         disabled={report.mode === "read-only"}
         mode={mode}
+        options={options}
         profileLabel={profileLabel}
         variables={snapshot.variables}
         onCancel={onCloseTool}
@@ -509,6 +525,17 @@ function booleanOptions(
   unnamedFeature: string,
 ) {
   return booleanInputFeatures(report.snapshot.features, editingFeatureId).map((feature) => ({
+    id: feature.id,
+    label: feature.label ?? unnamedFeature,
+  }))
+}
+
+function extrusionOptions(
+  report: NonNullable<DocumentControllerState["report"]>,
+  editingFeatureId: Extract<ExtrusionFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
+  unnamedFeature: string,
+) {
+  return extrusionTargetFeatures(report.snapshot.features, editingFeatureId).map((feature) => ({
     id: feature.id,
     label: feature.label ?? unnamedFeature,
   }))
@@ -711,13 +738,22 @@ function ActiveExtrusionTaskPanel({
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
+  const modelTreeT = useTranslations("app.shell.modelTree")
   const extrusionCount = report.snapshot.features.filter(isExtrusionFeature).length
   const mode = extrusionFormMode(
     activeTool,
     report,
     t("featureLabel", { number: extrusionCount + 1 }),
   )
-  return mode ? <ExtrusionTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+  if (!mode) return null
+  const options = extrusionOptions(
+    report,
+    mode.kind === "edit" ? mode.feature.id : undefined,
+    modelTreeT("unnamedFeature"),
+  )
+  return (
+    <ExtrusionTaskPanel report={report} mode={mode} options={options} onCloseTool={onCloseTool} />
+  )
 }
 
 function ActiveSubtractTaskPanel({

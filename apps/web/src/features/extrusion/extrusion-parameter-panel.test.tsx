@@ -22,6 +22,7 @@ describe("ExtrusionParameterPanel", () => {
           cancel: "Cancel",
         }}
         profileLabel="Sketch 1"
+        operationField={<span>Operation</span>}
         distanceField={<TextField label="Distance" defaultValue="10 mm" />}
         symmetricField={
           <label>

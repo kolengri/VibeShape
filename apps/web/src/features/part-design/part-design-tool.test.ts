@@ -13,6 +13,7 @@ import {
   activePartDesignCommand,
   booleanInputFeatures,
   editPartDesignTool,
+  extrusionTargetFeatures,
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
@@ -123,5 +124,17 @@ describe("part-design tool routing", () => {
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean], boolean.id),
     ).toEqual([box, cylinder, extrusion])
+  })
+
+  it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
+    expect(extrusionTargetFeatures([box, cylinder, extrusion, boolean])).toEqual([
+      extrusion,
+      boolean,
+    ])
+    expect(extrusionTargetFeatures([box, cylinder, extrusion, boolean], boolean.id)).toEqual([
+      box,
+      cylinder,
+      extrusion,
+    ])
   })
 })
