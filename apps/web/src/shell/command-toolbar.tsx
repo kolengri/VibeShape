@@ -71,7 +71,7 @@ function ToolbarAction({
   )
 }
 
-type SketchToolFamilyId = "line" | "rectangle" | "circle" | "arc"
+type SketchToolFamilyId = "line" | "rectangle" | "circle" | "arc" | "slot"
 
 const sketchToolFamilies = [
   {
@@ -96,6 +96,15 @@ const sketchToolFamilies = [
   },
   {
     commandIds: [
+      editorCommandIds.sketchSlot,
+      editorCommandIds.sketchCenteredSlot,
+      editorCommandIds.sketchSlotAroundLine,
+    ],
+    id: "slot",
+    labelKey: "slotToolsLabel",
+  },
+  {
+    commandIds: [
       editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchTangentArc,
       editorCommandIds.sketchArc,
@@ -106,7 +115,12 @@ const sketchToolFamilies = [
 ] as const satisfies readonly {
   commandIds: readonly EditorCommandId[]
   id: SketchToolFamilyId
-  labelKey: "lineToolsLabel" | "rectangleToolsLabel" | "circleToolsLabel" | "arcToolsLabel"
+  labelKey:
+    | "lineToolsLabel"
+    | "rectangleToolsLabel"
+    | "circleToolsLabel"
+    | "arcToolsLabel"
+    | "slotToolsLabel"
 }[]
 
 const defaultFamilyCommandIds: Readonly<Record<SketchToolFamilyId, EditorCommandId>> = {
@@ -114,6 +128,7 @@ const defaultFamilyCommandIds: Readonly<Record<SketchToolFamilyId, EditorCommand
   circle: editorCommandIds.sketchCircle,
   line: editorCommandIds.sketchLine,
   rectangle: editorCommandIds.sketchCenterRectangle,
+  slot: editorCommandIds.sketchCenteredSlot,
 }
 
 const groupedSketchToolIds: ReadonlySet<EditorCommandId> = new Set<EditorCommandId>(

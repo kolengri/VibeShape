@@ -42,6 +42,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     extrusionAvailable: boolean
     sketchConstruction: boolean
     sketchRedoAvailable: boolean
+    slotFromSelectionAvailable: boolean
     sketchTool: SketchEditorTool
     sketchUndoAvailable: boolean
     workspace: EditorWorkspaceName
@@ -197,6 +198,30 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "slot",
+    id: editorCommandIds.sketchSlot,
+    labelKey: "sketchSlot",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "centered-slot",
+    id: editorCommandIds.sketchCenteredSlot,
+    labelKey: "sketchCenteredSlot",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "slot",
+    id: editorCommandIds.sketchSlotAroundLine,
+    labelKey: "sketchSlotAroundLine",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "arc",
     id: editorCommandIds.sketchArc,
     labelKey: "sketchArc",
@@ -284,11 +309,13 @@ function sketchToolHandler(
     | "sketchThreePointCircle"
     | "sketchCenterRectangle"
     | "sketchCenteredAlignedRectangle"
+    | "sketchCenteredSlot"
     | "sketchCircle"
     | "sketchLine"
     | "sketchPoint"
     | "sketchRectangle"
     | "sketchSelect"
+    | "sketchSlot"
     | "sketchTangentArc"],
   tool: SketchEditorTool,
 ): EditorCommandHandler<BuiltInEditorCommandContext> {
@@ -387,6 +414,22 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchCenteredAlignedRectangle, "centered-aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
+  sketchToolHandler(editorCommandIds.sketchSlot, "slot"),
+  sketchToolHandler(editorCommandIds.sketchCenteredSlot, "centered-slot"),
+  {
+    execute: ({ actions }) => actions.setSketchTool("slot-from-selection"),
+    getEligibility: (context) => {
+      const sketchEligibility = requiresSketch(context)
+      if (!sketchEligibility.enabled) return sketchEligibility
+      return context.state.slotFromSelectionAvailable
+        ? editorCommandEnabled()
+        : editorCommandDisabled("selectSketchLine")
+    },
+    id: editorCommandIds.sketchSlotAroundLine,
+    isActive: ({ state }) => state.sketchTool === "slot-from-selection",
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),

@@ -12,11 +12,14 @@ export const editorCommandIds = {
   sketchThreePointCircle: "org.vibeshape.editor.sketch.tool.three-point-circle",
   sketchCenterRectangle: "org.vibeshape.editor.sketch.tool.center-rectangle",
   sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
+  sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
+  sketchSlot: "org.vibeshape.editor.sketch.tool.slot",
+  sketchSlotAroundLine: "org.vibeshape.editor.sketch.tool.slot-around-line",
   sketchRedo: "org.vibeshape.editor.sketch.redo",
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
   sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
@@ -45,6 +48,7 @@ export type EditorCommandIcon =
   | "circle"
   | "center-rectangle"
   | "centered-aligned-rectangle"
+  | "centered-slot"
   | "construction"
   | "cylinder"
   | "extrude"
@@ -56,6 +60,7 @@ export type EditorCommandIcon =
   | "redo"
   | "select"
   | "sketch"
+  | "slot"
   | "subtract"
   | "tangent-arc"
   | "undo"
@@ -76,11 +81,14 @@ export type EditorCommandLabelKey =
   | "sketchThreePointCircle"
   | "sketchCenterRectangle"
   | "sketchCenteredAlignedRectangle"
+  | "sketchCenteredSlot"
   | "sketchCircle"
   | "sketchConstruction"
   | "sketchLine"
   | "sketchPoint"
   | "sketchRectangle"
+  | "sketchSlot"
+  | "sketchSlotAroundLine"
   | "sketchRedo"
   | "sketchSelect"
   | "sketchTangentArc"
@@ -99,6 +107,7 @@ export type EditorCommandDisabledReason =
   | "requiresSketch"
   | "selectProfile"
   | "selectTwoSolids"
+  | "selectSketchLine"
 
 export type EditorCommandShortcut = Readonly<{
   key: string

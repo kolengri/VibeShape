@@ -2,24 +2,27 @@ import {
   alignedRectangleGeometry,
   appendSketchAlignedRectangle,
   appendSketchArc,
-  appendSketchCenterRectangle,
   appendSketchCenteredAlignedRectangle,
+  appendSketchCenteredSlot,
+  appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchSlotAroundLine,
+  appendSketchStraightSlot,
+  appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
-  appendSketchTangentArc,
   centeredAlignedRectangleGeometry,
   inferSketchPoint,
   moveSketchPoint,
   removeSketchEntities,
   type SketchConstraintDefinition,
-  type SketchDirectionInference,
   type SketchConstraintId,
+  type SketchDirectionInference,
   type SketchEntity,
   type SketchEntityId,
   type SketchInferenceArc,
@@ -32,9 +35,10 @@ import {
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchProfileSelectorSchema,
+  straightSlotGeometry,
+  tangentArcGeometry,
   threePointArcGeometry,
   threePointCircleGeometry,
-  tangentArcGeometry,
 } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -74,6 +78,7 @@ import {
   compatibleSketchDimensionTools,
   type SketchConstraintToolKind,
   selectedSketchEntities,
+  selectedSketchLineId,
 } from "./sketch-constraint-tools"
 import type { SketchDraftChangeMode, SketchEditorTool } from "./sketch-tool"
 
@@ -86,12 +91,18 @@ type SketchSolveFunction = (
 type SolveState =
   | { kind: "idle" }
   | {
+      dragTarget: SketchDragTarget | null
       kind: "loading"
       previousSolution: SolvedSketchWire | null
       sourceSketch: SketchRecord
     }
-  | { kind: "solved"; solution: SolvedSketchWire; sourceSketch: SketchRecord }
-  | { kind: "error"; sourceSketch: SketchRecord }
+  | {
+      dragTarget: SketchDragTarget | null
+      kind: "solved"
+      solution: SolvedSketchWire
+      sourceSketch: SketchRecord
+    }
+  | { dragTarget: SketchDragTarget | null; kind: "error"; sourceSketch: SketchRecord }
 
 type SketchDragTarget = SolvedSketchWire["points"][number]
 type SketchDragState = Readonly<{
@@ -183,6 +194,19 @@ type PendingGeometry =
       lineId: SketchEntityId
       startPointId: SketchEntityId
     }>
+  | Readonly<{ kind: "slot-end"; start: SketchPointTarget }>
+  | Readonly<{
+      end: SketchPointTarget
+      kind: "slot-width"
+      start: SketchPointTarget
+    }>
+  | Readonly<{ center: SketchPointTarget; kind: "centered-slot-end" }>
+  | Readonly<{
+      center: SketchPointTarget
+      end: SketchPointTarget
+      kind: "centered-slot-width"
+    }>
+  | Readonly<{ kind: "slot-from-selection-width"; lineId: SketchEntityId }>
 
 type PanGesture = Readonly<{
   bounds: SketchBounds
@@ -225,8 +249,13 @@ function solveStateForResult(
   result: ActiveSketchSolveResult | null,
 ): SolveState {
   return result?.ok
-    ? { kind: "solved", solution: result.response.solution, sourceSketch: request.sketch }
-    : { kind: "error", sourceSketch: request.sketch }
+    ? {
+        dragTarget: request.dragTarget,
+        kind: "solved",
+        solution: result.response.solution,
+        sourceSketch: request.sketch,
+      }
+    : { dragTarget: request.dragTarget, kind: "error", sourceSketch: request.sketch }
 }
 
 function clearSketchSolveTimer(scheduler: SketchSolveScheduler) {
@@ -310,6 +339,7 @@ function useSketchSolution(
       current.kind === "loading" && current.sourceSketch.id === sketch.id
         ? current
         : {
+            dragTarget,
             kind: "loading",
             previousSolution: solutionForSketch(current, sketch.id),
             sourceSketch: sketch,
@@ -402,15 +432,6 @@ function useDraggingPointChange(
       setDragState((current) => nextSketchDragState(activeSketch, current, pointId, point)),
     [activeSketch, setDragState],
   )
-}
-
-function sketchWithDragTarget(
-  sketch: SketchRecord | null,
-  dragTarget: SketchDragTarget | null,
-): SketchRecord | null {
-  if (!sketch || !dragTarget) return sketch
-  const authoredPoint = authoredPoints(sketch).find(({ id }) => id === dragTarget.entityId)
-  return authoredPoint ? moveSketchPoint(sketch, authoredPoint.id, dragTarget) : sketch
 }
 
 function useSketchDisplaySolutions(
@@ -1234,6 +1255,8 @@ type PendingWithTargetStart = Extract<
   | { kind: "aligned-rectangle-end" }
   | { kind: "aligned-rectangle-width" }
   | { kind: "line" }
+  | { kind: "slot-end" }
+  | { kind: "slot-width" }
   | { kind: "three-point-arc-end" }
   | { kind: "three-point-arc-point" }
 >
@@ -1242,26 +1265,50 @@ const pendingTargetStartKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
   "aligned-rectangle-end",
   "aligned-rectangle-width",
   "line",
+  "slot-end",
+  "slot-width",
   "three-point-arc-end",
   "three-point-arc-point",
+])
+
+type PendingWithTargetCenter = Extract<
+  PendingGeometry,
+  | { kind: "center-rectangle" }
+  | { kind: "centered-aligned-rectangle-side" }
+  | { kind: "centered-aligned-rectangle-width" }
+  | { kind: "centered-slot-end" }
+  | { kind: "centered-slot-width" }
+  | { kind: "circle" }
+>
+
+const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
+  "center-rectangle",
+  "centered-aligned-rectangle-side",
+  "centered-aligned-rectangle-width",
+  "centered-slot-end",
+  "centered-slot-width",
+  "circle",
 ])
 
 function hasPendingTargetStart(pending: PendingGeometry): pending is PendingWithTargetStart {
   return pendingTargetStartKinds.has(pending.kind)
 }
 
+function hasPendingTargetCenter(pending: PendingGeometry): pending is PendingWithTargetCenter {
+  return pendingTargetCenterKinds.has(pending.kind)
+}
+
 function pendingTargetStart(pending: PendingGeometry): SketchPointTarget | null {
   if (hasPendingTargetStart(pending)) return pending.start
   if (pending.kind === "midpoint-line") return pending.midpoint
-  if (pending.kind === "center-rectangle" || pending.kind === "circle") return pending.center
-  if (
-    pending.kind === "centered-aligned-rectangle-side" ||
-    pending.kind === "centered-aligned-rectangle-width"
-  ) {
-    return pending.center
-  }
+  if (hasPendingTargetCenter(pending)) return pending.center
   if ("first" in pending) return pending.first
   return pending.kind === "tangent-arc" ? { kind: "existing", pointId: pending.startPointId } : null
+}
+
+function lineForPendingSlot(sketch: SketchRecord, lineId: SketchEntityId) {
+  const entity = sketch.entities.find(({ id }) => id === lineId)
+  return entity?.type === "line" ? entity : null
 }
 
 function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
@@ -1274,6 +1321,12 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
       return pending.center
     case "arc-end":
       return pending.start
+    case "slot-from-selection-width": {
+      const line = lineForPendingSlot(sketch, pending.lineId)
+      return line
+        ? pointForTarget(sketch, { kind: "existing", pointId: line.startPointId })
+        : { x: 0, y: 0 }
+    }
     default:
       return { x: 0, y: 0 }
   }
@@ -1461,22 +1514,114 @@ function PendingTangentArcShape({
   return <polyline points={arcPolyline(geometry.center, arcStart, arcEnd)} />
 }
 
-function PendingCurveShape({
+type PendingSlot = Extract<
+  PendingGeometry,
+  | { kind: "centered-slot-end" }
+  | { kind: "centered-slot-width" }
+  | { kind: "slot-end" }
+  | { kind: "slot-from-selection-width" }
+  | { kind: "slot-width" }
+>
+
+const pendingSlotKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
+  "centered-slot-end",
+  "centered-slot-width",
+  "slot-end",
+  "slot-from-selection-width",
+  "slot-width",
+])
+
+function isPendingSlot(pending: PendingGeometry): pending is PendingSlot {
+  return pendingSlotKinds.has(pending.kind)
+}
+
+function PendingSlotShape({
   cursor,
   pending,
   sketch,
   start,
 }: {
   cursor: SketchPoint2
-  pending: Exclude<PendingGeometry, PendingRectangle>
+  pending: PendingSlot
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  if (pending.kind === "slot-end") {
+    return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
+  }
+  if (pending.kind === "centered-slot-end") {
+    const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
+    return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+  }
+  const selectedLine =
+    pending.kind === "slot-from-selection-width" ? lineForPendingSlot(sketch, pending.lineId) : null
+  const selectedEnd = selectedLine
+    ? pointForTarget(sketch, { kind: "existing", pointId: selectedLine.endPointId })
+    : "end" in pending
+      ? pointForTarget(sketch, pending.end)
+      : start
+  const startCenter =
+    pending.kind === "centered-slot-width"
+      ? { x: start.x * 2 - selectedEnd.x, y: start.y * 2 - selectedEnd.y }
+      : start
+  const geometry = straightSlotGeometry(startCenter, selectedEnd, cursor)
+  if (!geometry) {
+    return <line x1={startCenter.x} y1={startCenter.y} x2={selectedEnd.x} y2={selectedEnd.y} />
+  }
+  return (
+    <>
+      <line
+        x1={geometry.startPositive.x}
+        y1={geometry.startPositive.y}
+        x2={geometry.endPositive.x}
+        y2={geometry.endPositive.y}
+      />
+      <line
+        x1={geometry.endNegative.x}
+        y1={geometry.endNegative.y}
+        x2={geometry.startNegative.x}
+        y2={geometry.startNegative.y}
+      />
+      <polyline points={arcPolyline(selectedEnd, geometry.endNegative, geometry.endPositive)} />
+      <polyline points={arcPolyline(startCenter, geometry.startPositive, geometry.startNegative)} />
+      <line x1={startCenter.x} y1={startCenter.y} x2={selectedEnd.x} y2={selectedEnd.y} />
+    </>
+  )
+}
+
+type PendingRoundCurve = Extract<
+  PendingGeometry,
+  | { kind: "arc-end" }
+  | { kind: "circle" }
+  | { kind: "tangent-arc" }
+  | { kind: "three-point-arc-point" }
+  | { kind: "three-point-circle-third" }
+>
+
+const pendingRoundCurveKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
+  "arc-end",
+  "circle",
+  "tangent-arc",
+  "three-point-arc-point",
+  "three-point-circle-third",
+])
+
+function isPendingRoundCurve(pending: PendingGeometry): pending is PendingRoundCurve {
+  return pendingRoundCurveKinds.has(pending.kind)
+}
+
+function PendingRoundCurveShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: PendingRoundCurve
   sketch: SketchRecord
   start: SketchPoint2
 }) {
   switch (pending.kind) {
-    case "midpoint-line": {
-      const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
-      return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
-    }
     case "circle":
       return (
         <circle cx={start.x} cy={start.y} r={Math.hypot(cursor.x - start.x, cursor.y - start.y)} />
@@ -1505,9 +1650,33 @@ function PendingCurveShape({
       return (
         <PendingTangentArcShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
       )
-    default:
-      return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
   }
+}
+
+function PendingCurveShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: Exclude<PendingGeometry, PendingRectangle>
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  if (pending.kind === "midpoint-line") {
+    const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
+    return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+  }
+  if (isPendingSlot(pending)) {
+    return <PendingSlotShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+  }
+  if (isPendingRoundCurve(pending)) {
+    return (
+      <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+    )
+  }
+  return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
 }
 
 function PendingShape({
@@ -1915,6 +2084,76 @@ function placeCenteredAlignedRectangle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeStraightSlot(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "slot-end" && input.pending?.kind !== "slot-width") {
+    return { draft: null, pending: { kind: "slot-end", start: input.target } }
+  }
+  if (input.pending.kind === "slot-end") {
+    return {
+      draft: null,
+      pending: { end: input.target, kind: "slot-width", start: input.pending.start },
+    }
+  }
+  return {
+    draft: appendSketchStraightSlot(input.draft, {
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      endCenter: input.pending.end,
+      startCenter: input.pending.start,
+      widthPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeCenteredSlot(input: PlacementInput): PlacementUpdate {
+  if (
+    input.pending?.kind !== "centered-slot-end" &&
+    input.pending?.kind !== "centered-slot-width"
+  ) {
+    return { draft: null, pending: { center: input.target, kind: "centered-slot-end" } }
+  }
+  if (input.pending.kind === "centered-slot-end") {
+    return {
+      draft: null,
+      pending: {
+        center: input.pending.center,
+        end: input.target,
+        kind: "centered-slot-width",
+      },
+    }
+  }
+  return {
+    draft: appendSketchCenteredSlot(input.draft, {
+      center: input.pending.center,
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      endCenter: input.pending.end,
+      widthPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeSlotFromSelection(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "slot-from-selection-width") {
+    return { draft: null, nextTool: "select", pending: null }
+  }
+  return {
+    draft: appendSketchSlotAroundLine(input.draft, {
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      lineId: input.pending.lineId,
+      widthPoint: input.point,
+    }).sketch,
+    nextTool: "select",
+    pending: null,
+  }
+}
+
 function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
     return { draft: null, pending: { kind: "circle", center: input.target } }
@@ -2038,11 +2277,14 @@ const placementBuilders = {
   arc: placeArc,
   "center-rectangle": placeCenterRectangle,
   "centered-aligned-rectangle": placeCenteredAlignedRectangle,
+  "centered-slot": placeCenteredSlot,
   circle: placeCircle,
   line: placeLine,
   "midpoint-line": placeMidpointLine,
   point: placePoint,
   rectangle: placeRectangle,
+  slot: placeStraightSlot,
+  "slot-from-selection": placeSlotFromSelection,
   "tangent-arc": placeTangentArc,
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
@@ -2177,11 +2419,14 @@ const pointInferenceSupport = {
   circle: (pending) => pending?.kind !== "circle",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
+  "centered-slot": (pending) => pending?.kind !== "centered-slot-width",
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
+  slot: (pending) => pending?.kind !== "slot-width",
+  "slot-from-selection": neverSupportsPointInference,
   "tangent-arc": alwaysSupportsPointInference,
   "three-point-arc": alwaysSupportsPointInference,
   "three-point-circle": alwaysSupportsPointInference,
@@ -2689,6 +2934,40 @@ function SketchDrawingView({
   )
 }
 
+function useSketchPlacementPresentation({
+  draft,
+  editorTool,
+  selectedEntityIds,
+  sketchId,
+}: Pick<SketchDrawingConfiguration, "draft" | "editorTool" | "selectedEntityIds"> & {
+  sketchId: SketchRecord["id"]
+}) {
+  const [cursor, setCursor] = useState<SketchPoint2 | null>(null)
+  const [inference, setInference] = useState<SketchPointInference | null>(null)
+  const [pending, setPending] = useState<PendingGeometry | null>(null)
+
+  useEffect(() => {
+    setPending(null)
+    setInference(null)
+  }, [editorTool, sketchId])
+
+  const slotFromSelectionLineId =
+    editorTool === "slot-from-selection" && draft
+      ? selectedSketchLineId(draft, selectedEntityIds)
+      : null
+  useEffect(() => {
+    if (editorTool !== "slot-from-selection") return
+    setPending(
+      slotFromSelectionLineId
+        ? { kind: "slot-from-selection-width", lineId: slotFromSelectionLineId }
+        : null,
+    )
+    setInference(null)
+  }, [editorTool, slotFromSelectionLineId])
+
+  return { cursor, inference, pending, setCursor, setInference, setPending }
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -2711,10 +2990,9 @@ function SketchDrawing({
     annotationSolution,
   } = configuration
   const [bounds, setBounds] = useState(() => sketchBounds(displayPoints(sketch, solution)))
-  const [cursor, setCursor] = useState<SketchPoint2 | null>(null)
-  const [inference, setInference] = useState<SketchPointInference | null>(null)
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
-  const [pending, setPending] = useState<PendingGeometry | null>(null)
+  const { cursor, inference, pending, setCursor, setInference, setPending } =
+    useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
@@ -2743,11 +3021,6 @@ function SketchDrawing({
     onDraggingPointChange,
     onPreview: handleDragPreview,
   })
-
-  useEffect(() => {
-    setPending(null)
-    setInference(null)
-  }, [editorTool, sketch.id])
 
   const eventPoint = (event: PointerEvent<SVGSVGElement | SVGCircleElement>) => {
     const svg = svgRef.current
@@ -2902,18 +3175,34 @@ function currentSolveState(solveState: SolveState, activeSketch: SketchRecord | 
   return { kind: "idle" }
 }
 
+function isReleasedSketchDrag(dragState: SketchDragState | null): dragState is SketchDragState {
+  return dragState !== null && !dragState.active
+}
+
+function isCompletedSketchSolve(
+  solveState: SolveState,
+): solveState is Extract<SolveState, { kind: "error" | "solved" }> {
+  return solveState.kind === "error" || solveState.kind === "solved"
+}
+
+function matchesReleasedDragTarget(target: SketchDragTarget | null, dragState: SketchDragState) {
+  if (target === null) return false
+  return (
+    target.entityId === dragState.pointId &&
+    target.x === dragState.target.x &&
+    target.y === dragState.target.y
+  )
+}
+
 function hasSettledReleasedDrag(
   activeSketch: SketchRecord | null,
   dragState: SketchDragState | null,
   solveState: SolveState,
 ) {
-  if (dragState === null || dragState.active || activeSketch === null) return false
-  if (solveState.kind === "idle" || solveState.kind === "loading") return false
-  const sourceSketch = solveState.sourceSketch
-  if (sourceSketch.id !== activeSketch.id) return false
-  const sourcePoint = authoredPoints(sourceSketch).find(({ id }) => id === dragState.pointId)
-  if (!sourcePoint) return false
-  return sourcePoint.x === dragState.target.x && sourcePoint.y === dragState.target.y
+  if (!isReleasedSketchDrag(dragState) || activeSketch === null) return false
+  if (!isCompletedSketchSolve(solveState)) return false
+  if (solveState.sourceSketch.id !== activeSketch.id) return false
+  return matchesReleasedDragTarget(solveState.dragTarget, dragState)
 }
 
 function useReleasedDragSettlement(
@@ -3284,12 +3573,8 @@ export function SketchViewport({
     () => dragTargetForSketch(activeSketch, dragState),
     [activeSketch, dragState],
   )
-  const solveSketchSource = useMemo(
-    () => sketchWithDragTarget(activeSketch, dragTarget),
-    [activeSketch, dragTarget],
-  )
   const handleDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
-  const solveState = useSketchSolution(controller, solveSketchSource, solveSketch, dragTarget)
+  const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
   useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
   const activeSolveState = currentSolveState(solveState, activeSketch)
   const solution = solvedSolution(activeSolveState)
