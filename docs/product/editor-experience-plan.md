@@ -160,9 +160,9 @@ Exit criterion: a user can locate, select, edit, hide, and diagnose any authored
 ### UX-4 — production sketch interaction
 
 - Add viewport preselection, endpoint/midpoint/center/intersection snapping, inference guides, and accepted auto-constraints.
-- Render constraint glyphs and editable dimension labels with accessible task-panel equivalents.
+- The [mandatory sketch precision toolset](sketch-toolset.md) is implemented for geometry, 13 geometric constraints, and six driving dimensions. Selection-driven icon tools use the complete selection, applied canvas glyphs are selectable, and a selected dimension label opens the accessible expression editor.
+- Add reference dimensions, numeric placement, and coordinate editing without converting reference measurements into solver constraints.
 - Center Rectangle and Three-point Arc are implemented with exact previews, point inference, one-step local history, toolbar/palette presentation, and `Shift+R`/`Shift+A`; Trim, Extend, Split, and guided conflict repair remain open.
-- Add numeric placement and coordinate editing for keyboard-accessible precision.
 
 Exit criterion: the reference bracket can be drawn, fully constrained, diagnosed, edited, and reopened without using the constraint list as the primary spatial interface.
 

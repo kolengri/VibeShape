@@ -1,5 +1,6 @@
 import {
   AmbientLight,
+  AxesHelper,
   Box3,
   BufferAttribute,
   BufferGeometry,
@@ -15,6 +16,7 @@ import {
   MeshStandardMaterial,
   MOUSE,
   OrthographicCamera,
+  PerspectiveCamera,
   PlaneGeometry,
   Raycaster,
   Scene,
@@ -29,6 +31,8 @@ const DEFAULT_VIEW_HEIGHT = 100
 const FIT_PADDING = 1.35
 const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
+const ORIENTATION_INSET_MARGIN = 8
+const ORIENTATION_INSET_SIZE = 80
 
 export const viewerOriginPlanes = ["xy", "xz", "yz"] as const
 export type ViewerOriginPlane = (typeof viewerOriginPlanes)[number]
@@ -181,6 +185,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #renderer: WebGLRenderer
   readonly #scene = new Scene()
   readonly #camera = new OrthographicCamera(-50, 50, 50, -50, 0.01, 10_000)
+  readonly #orientationScene = new Scene()
+  readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
+  readonly #orientationAxes = new AxesHelper(1.05)
   readonly #controls: OrbitControls
   readonly #modelGroup = new Group()
   readonly #originPlaneGroup = new Group()
@@ -263,6 +270,12 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#originPlaneGroup)
     this.#scene.add(this.#preselectionGroup)
     this.#scene.add(this.#selectionGroup)
+    this.#orientationAxes.setColors(
+      new Color("#e15b64"),
+      new Color("#35a66f"),
+      new Color("#4c8dff"),
+    )
+    this.#orientationScene.add(this.#orientationAxes)
     this.#scene.add(new AmbientLight(0xffffff, 1.6))
     const keyLight = new DirectionalLight(0xffffff, 2.8)
     keyLight.position.set(3, -4, 6)
@@ -395,6 +408,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#selectionMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
     for (const material of this.#originPlaneEdgeMaterials) material.dispose()
+    this.#orientationAxes.geometry.dispose()
+    const orientationMaterials = Array.isArray(this.#orientationAxes.material)
+      ? this.#orientationAxes.material
+      : [this.#orientationAxes.material]
+    for (const material of orientationMaterials) material.dispose()
     this.#originPlaneEdgeMaterials.length = 0
     this.#originPlaneMaterials.clear()
     this.#originPlaneMeshes.clear()
@@ -555,7 +573,45 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #render = () => {
-    if (!this.#disposed) this.#renderer.render(this.#scene, this.#camera)
+    if (this.#disposed) return
+    const width = this.#canvas.clientWidth
+    const height = this.#canvas.clientHeight
+    if (width <= 0 || height <= 0) return
+    this.#renderer.setScissorTest(false)
+    this.#renderer.setViewport(0, 0, width, height)
+    this.#renderer.render(this.#scene, this.#camera)
+
+    const insetSize = Math.min(
+      ORIENTATION_INSET_SIZE,
+      width - ORIENTATION_INSET_MARGIN * 2,
+      height - ORIENTATION_INSET_MARGIN * 2,
+    )
+    if (insetSize <= 0) return
+    this.#orientationCamera.position
+      .copy(this.#camera.position)
+      .sub(this.#controls.target)
+      .normalize()
+      .multiplyScalar(3)
+    this.#orientationCamera.up.copy(this.#camera.up)
+    this.#orientationCamera.lookAt(0, 0, 0)
+    this.#orientationCamera.updateMatrixWorld()
+    this.#renderer.setScissorTest(true)
+    this.#renderer.setScissor(
+      ORIENTATION_INSET_MARGIN,
+      ORIENTATION_INSET_MARGIN,
+      insetSize,
+      insetSize,
+    )
+    this.#renderer.setViewport(
+      ORIENTATION_INSET_MARGIN,
+      ORIENTATION_INSET_MARGIN,
+      insetSize,
+      insetSize,
+    )
+    this.#renderer.clearDepth()
+    this.#renderer.render(this.#orientationScene, this.#orientationCamera)
+    this.#renderer.setScissorTest(false)
+    this.#renderer.setViewport(0, 0, width, height)
   }
 }
 

@@ -340,6 +340,40 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
     }
   })()
 
+  const midpoint = (() => {
+    const builder = new FlatSketchBuilder()
+    const first = builder.addPoint(0, 0)
+    const second = builder.addPoint(10, 0)
+    const target = builder.addPoint(4.9, 0.2)
+    const line = builder.addLine(first.entity, second.entity)
+    builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.atMidpoint, {
+      pointA: target.entity,
+      entityA: line,
+    })
+    return {
+      name: "point at midpoint",
+      constraintTypes: [SOLVESPACE_CONSTRAINT_TYPE.atMidpoint],
+      system: builder.build(),
+    }
+  })()
+
+  const symmetric = (() => {
+    const builder = new FlatSketchBuilder()
+    const first = builder.addPoint(-5, 2)
+    const second = builder.addPoint(5.2, 2.1)
+    const axis = builder.addReferenceAxis("vertical")
+    builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.symmetricLine, {
+      pointA: first.entity,
+      pointB: second.entity,
+      entityA: axis,
+    })
+    return {
+      name: "points symmetric about line",
+      constraintTypes: [SOLVESPACE_CONSTRAINT_TYPE.symmetricLine],
+      system: builder.build(),
+    }
+  })()
+
   const fixed = (() => {
     const builder = new FlatSketchBuilder()
     const point = builder.addPoint(6, 8)
@@ -448,6 +482,8 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
       [0, 0, 10, 0, 0, 5, 9, 5],
     ),
     tangent,
+    midpoint,
+    symmetric,
     pointOnLine,
     pointOnCircle,
     fixed,

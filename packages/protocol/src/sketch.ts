@@ -148,6 +148,22 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("midpoint"),
+      pointId: sketchEntityIdSchema,
+      lineId: sketchEntityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("symmetric"),
+      ...pointPair,
+      lineId: sketchEntityIdSchema,
+    })
+    .strict(),
+  z
     .object({ ...constraintEnvelope, type: z.literal("fixed"), pointId: sketchEntityIdSchema })
     .strict(),
   z
@@ -236,6 +252,8 @@ const constraintReferenceFields = {
   concentric: ["firstEntityId", "secondEntityId"],
   "point-on-line": ["pointId", "lineId"],
   "point-on-curve": ["pointId", "curveId"],
+  midpoint: ["pointId", "lineId"],
+  symmetric: ["firstPointId", "secondPointId", "lineId"],
   fixed: ["pointId"],
   "horizontal-distance": ["firstPointId", "secondPointId"],
   "vertical-distance": ["firstPointId", "secondPointId"],

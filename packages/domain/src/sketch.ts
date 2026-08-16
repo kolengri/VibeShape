@@ -130,6 +130,16 @@ const pointOnCurveConstraintSchema = sketchConstraintEnvelopeSchema
     curveId: sketchEntityIdSchema,
   })
   .strict()
+const midpointConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("midpoint"),
+    pointId: sketchEntityIdSchema,
+    lineId: sketchEntityIdSchema,
+  })
+  .strict()
+const symmetricConstraintSchema = pointPairSchema
+  .extend({ type: z.literal("symmetric"), lineId: sketchEntityIdSchema })
+  .strict()
 const fixedConstraintSchema = sketchConstraintEnvelopeSchema
   .extend({ type: z.literal("fixed"), pointId: sketchEntityIdSchema })
   .strict()
@@ -171,6 +181,8 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   concentricConstraintSchema,
   pointOnLineConstraintSchema,
   pointOnCurveConstraintSchema,
+  midpointConstraintSchema,
+  symmetricConstraintSchema,
   fixedConstraintSchema,
   horizontalDistanceConstraintSchema,
   verticalDistanceConstraintSchema,
@@ -231,6 +243,12 @@ const constraintEntityReferenceRules = {
   },
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
+  midpoint: { pointId: ["point"], lineId: ["line"] },
+  symmetric: {
+    firstPointId: ["point"],
+    secondPointId: ["point"],
+    lineId: ["line"],
+  },
   fixed: { pointId: ["point"] },
   "horizontal-distance": { firstPointId: ["point"], secondPointId: ["point"] },
   "vertical-distance": { firstPointId: ["point"], secondPointId: ["point"] },

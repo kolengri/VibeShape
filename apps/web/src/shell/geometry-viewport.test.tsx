@@ -9,9 +9,9 @@ import type {
 } from "@vibeshape/viewer"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
+import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
 import { i18n } from "../i18n"
 import { GeometryViewport, viewerMeshes } from "./geometry-viewport"
-import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
 
 const boxId = "0195b5ac-b220-7a2c-8c33-67a36a7f2602"
 const booleanId = "0195b5ac-b220-7a2c-8c33-67a36a7f2603"
@@ -121,6 +121,8 @@ describe("GeometryViewport", () => {
         .getAttribute("data-rendered-feature-count"),
     ).toBe("1")
     expect(port.fit).toHaveBeenCalledOnce()
+    expect(screen.getByRole("img", { name: "World axes" })).toBeTruthy()
+    expect(screen.getByText("XYZ · mm")).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))
     expect(port.fit).toHaveBeenCalledTimes(2)

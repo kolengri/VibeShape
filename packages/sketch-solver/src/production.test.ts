@@ -25,6 +25,8 @@ const distanceId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-00000
 const radiusId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000007")
 const fixedId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000008")
 const variableId = variableIdSchema.parse("018f0000-0000-7000-8000-000000000009")
+const midpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000010")
+const symmetricId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000011")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -67,6 +69,15 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
         type: "radius",
         curveId: circleId,
         value: createLengthQuantity(4),
+      },
+      { schemaVersion: 0, id: midpointId, type: "midpoint", pointId: pointA, lineId },
+      {
+        schemaVersion: 0,
+        id: symmetricId,
+        type: "symmetric",
+        firstPointId: pointA,
+        secondPointId: pointB,
+        lineId,
       },
       { schemaVersion: 0, id: fixedId, type: "fixed", pointId: pointA },
     ],
@@ -124,9 +135,11 @@ describe("production sketch compilation", () => {
     expect(constraintTypes).toEqual([
       SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance,
       SOLVESPACE_CONSTRAINT_TYPE.diameter,
+      SOLVESPACE_CONSTRAINT_TYPE.atMidpoint,
+      SOLVESPACE_CONSTRAINT_TYPE.symmetricLine,
       SOLVESPACE_CONSTRAINT_TYPE.whereDragged,
     ])
-    expect(constraintValues).toEqual(new Float64Array([25, 8, 0]))
+    expect(constraintValues).toEqual(new Float64Array([25, 8, 0, 0, 0]))
     expect(entityTypes).toContain(80_000)
     expect(entityTypes).toContain(80_001)
     expect(result.compiled.system.solveGroup).toBe(2)

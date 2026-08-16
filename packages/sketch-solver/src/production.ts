@@ -443,7 +443,9 @@ function resolveDimension(
 
 type PointConstraint = Extract<
   SketchConstraint,
-  { type: "coincident" | "point-on-line" | "point-on-curve" | "fixed" }
+  {
+    type: "coincident" | "point-on-line" | "point-on-curve" | "midpoint" | "symmetric" | "fixed"
+  }
 >
 type RelationshipConstraint = Extract<
   SketchConstraint,
@@ -464,6 +466,8 @@ const pointConstraintTypes = new Set<SketchConstraint["type"]>([
   "coincident",
   "point-on-line",
   "point-on-curve",
+  "midpoint",
+  "symmetric",
   "fixed",
 ])
 const relationshipConstraintTypes = new Set<SketchConstraint["type"]>([
@@ -504,6 +508,19 @@ function addPointConstraint(builder: ProductionSketchBuilder, constraint: PointC
       builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle, {
         pointA: builder.entity(constraint.pointId),
         entityA: builder.entity(constraint.curveId),
+      })
+      return
+    case "midpoint":
+      builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.atMidpoint, {
+        pointA: builder.entity(constraint.pointId),
+        entityA: builder.entity(constraint.lineId),
+      })
+      return
+    case "symmetric":
+      builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.symmetricLine, {
+        pointA: builder.entity(constraint.firstPointId),
+        pointB: builder.entity(constraint.secondPointId),
+        entityA: builder.entity(constraint.lineId),
       })
       return
     case "fixed":

@@ -6,6 +6,7 @@ import {
   evaluateVariableDefinitions,
   removeSketchConstraints,
   type SketchConstraintDefinition,
+  type SketchConstraintId,
   type SketchDimensionValue,
   type SketchEntity,
   type SketchEntityId,
@@ -30,14 +31,13 @@ import {
 } from "../../document/document-display-units"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
-
-type DimensionKind =
-  | "distance"
-  | "horizontal-distance"
-  | "vertical-distance"
-  | "angle"
-  | "radius"
-  | "diameter"
+import {
+  compatibleSketchConstraintTools,
+  compatibleSketchDimensionTools,
+  createSketchDimensionConstraint,
+  type SketchDimensionKind,
+  selectedSketchEntities,
+} from "./sketch-constraint-tools"
 
 type SketchEditorPanelCopy = Readonly<{
   addConstraint: string
@@ -59,6 +59,7 @@ type SketchEditorPanelCopy = Readonly<{
   fixed: string
   horizontal: string
   horizontalDistance: string
+  midpoint: string
   noConstraints: string
   parallel: string
   perpendicular: string
@@ -74,12 +75,13 @@ type SketchEditorPanelCopy = Readonly<{
   remove: string
   saveDimension: string
   selectionHint: string
+  symmetric: string
   tangent: string
   vertical: string
   verticalDistance: string
 }>
 
-type DimensionOption = Readonly<{ kind: DimensionKind; label: string }>
+type DimensionOption = Readonly<{ kind: SketchDimensionKind; label: string }>
 
 function constraintName(
   type: SketchRecord["constraints"][number]["type"],
@@ -88,11 +90,13 @@ function constraintName(
   return {
     coincident: copy.coincident,
     horizontal: copy.horizontal,
+    midpoint: copy.midpoint,
     vertical: copy.vertical,
     parallel: copy.parallel,
     perpendicular: copy.perpendicular,
     equal: copy.equal,
     tangent: copy.tangent,
+    symmetric: copy.symmetric,
     concentric: copy.concentric,
     "point-on-line": copy.pointOnLine,
     "point-on-curve": copy.pointOnCurve,
@@ -114,211 +118,20 @@ function constraintValue(constraint: SketchRecord["constraints"][number]) {
   )
 }
 
-function selectedEntities(sketch: SketchRecord, ids: readonly SketchEntityId[]) {
-  const selected = new Set<string>(ids)
-  return sketch.entities.filter(({ id }) => selected.has(id))
-}
-
-function entitiesOfType<Type extends SketchEntity["type"]>(
-  entities: readonly SketchEntity[],
-  type: Type,
-): Array<Extract<SketchEntity, { type: Type }>> {
-  return entities.filter(
-    (entity): entity is Extract<SketchEntity, { type: Type }> => entity.type === type,
-  )
-}
-
-function pair<T>(values: readonly T[]): readonly [T, T] | null {
-  const first = values[0]
-  const second = values[1]
-  return values.length === 2 && first && second ? [first, second] : null
-}
-
-function curves(entities: readonly SketchEntity[]) {
-  return entities.filter(
-    (entity): entity is Extract<SketchEntity, { type: "arc" | "circle" }> =>
-      entity.type === "arc" || entity.type === "circle",
-  )
-}
-
-type GeometricConstraintKind = Exclude<
-  SketchConstraintDefinition["type"],
-  DimensionKind | "point-on-curve" | "point-on-line" | "fixed"
->
-
-type ConstraintBuilder = (entities: readonly SketchEntity[]) => SketchConstraintDefinition | null
-
-function axisConstraint(
-  type: "horizontal" | "vertical",
-  entities: readonly SketchEntity[],
-): SketchConstraintDefinition | null {
-  const lines = entitiesOfType(entities, "line")
-  return lines.length === 1 && lines[0] ? { type, lineId: lines[0].id } : null
-}
-
-function pairedLineConstraint(
-  type: "parallel" | "perpendicular",
-  entities: readonly SketchEntity[],
-): SketchConstraintDefinition | null {
-  const selected = pair(entitiesOfType(entities, "line"))
-  return selected ? { type, firstEntityId: selected[0].id, secondEntityId: selected[1].id } : null
-}
-
-const geometricConstraintBuilders = {
-  coincident: (entities) => {
-    const selected = pair(entitiesOfType(entities, "point"))
-    return selected
-      ? {
-          type: "coincident",
-          firstPointId: selected[0].id,
-          secondPointId: selected[1].id,
-        }
-      : null
-  },
-  concentric: (entities) => {
-    const selected = pair(curves(entities))
-    return selected
-      ? {
-          type: "concentric",
-          firstEntityId: selected[0].id,
-          secondEntityId: selected[1].id,
-        }
-      : null
-  },
-  equal: (entities) => {
-    const selected = pair(entitiesOfType(entities, "line")) ?? pair(curves(entities))
-    return selected
-      ? { type: "equal", firstEntityId: selected[0].id, secondEntityId: selected[1].id }
-      : null
-  },
-  horizontal: (entities) => axisConstraint("horizontal", entities),
-  parallel: (entities) => pairedLineConstraint("parallel", entities),
-  perpendicular: (entities) => pairedLineConstraint("perpendicular", entities),
-  tangent: (entities) => {
-    const lines = entitiesOfType(entities, "line")
-    const arcs = entitiesOfType(entities, "arc")
-    return lines.length === 1 && lines[0] && arcs.length === 1 && arcs[0]
-      ? { type: "tangent", lineId: lines[0].id, arcId: arcs[0].id }
-      : null
-  },
-  vertical: (entities) => axisConstraint("vertical", entities),
-} satisfies Record<GeometricConstraintKind, ConstraintBuilder>
-
-function geometricConstraintDefinition(
-  kind: GeometricConstraintKind,
-  entities: readonly SketchEntity[],
-) {
-  return geometricConstraintBuilders[kind](entities)
-}
-
-const pointConstraintBuilders = {
-  fixed: (entities) => {
-    const points = entitiesOfType(entities, "point")
-    return points.length === 1 && points[0]
-      ? { type: "fixed" as const, pointId: points[0].id }
-      : null
-  },
-  "point-on-curve": (entities) => {
-    const points = entitiesOfType(entities, "point")
-    const targets = curves(entities)
-    return points.length === 1 && points[0] && targets.length === 1 && targets[0]
-      ? { type: "point-on-curve" as const, pointId: points[0].id, curveId: targets[0].id }
-      : null
-  },
-  "point-on-line": (entities) => {
-    const points = entitiesOfType(entities, "point")
-    const lines = entitiesOfType(entities, "line")
-    return points.length === 1 && points[0] && lines.length === 1 && lines[0]
-      ? { type: "point-on-line" as const, pointId: points[0].id, lineId: lines[0].id }
-      : null
-  },
-} satisfies Record<"point-on-curve" | "point-on-line" | "fixed", ConstraintBuilder>
-
-function pointEntityConstraintDefinition(
-  kind: keyof typeof pointConstraintBuilders,
-  entities: readonly SketchEntity[],
-) {
-  return pointConstraintBuilders[kind](entities)
-}
-
 function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorPanelCopy) {
-  const selection = entities
-    .map(({ type }) => type)
-    .sort()
-    .join(":")
-  return (
-    (
-      {
-        arc: [
-          { kind: "radius", label: copy.radius },
-          { kind: "diameter", label: copy.diameter },
-        ],
-        circle: [
-          { kind: "radius", label: copy.radius },
-          { kind: "diameter", label: copy.diameter },
-        ],
-        line: [{ kind: "distance", label: copy.distance }],
-        "line:line": [{ kind: "angle", label: copy.angle }],
-        "point:point": [
-          { kind: "distance", label: copy.distance },
-          { kind: "horizontal-distance", label: copy.horizontalDistance },
-          { kind: "vertical-distance", label: copy.verticalDistance },
-        ],
-      } satisfies Record<string, DimensionOption[]>
-    )[selection] ?? []
-  )
-}
-
-function angleDimensionDefinition(
-  expression: string,
-  entities: readonly SketchEntity[],
-  value: Readonly<{ dimension: string; value: number }>,
-) {
-  const linesPair = pair(entitiesOfType(entities, "line"))
-  if (!linesPair || value.dimension !== "angle") return null
-  return {
-    type: "angle",
-    firstEntityId: linesPair[0].id,
-    secondEntityId: linesPair[1].id,
-    value: createAngleQuantity(value.value, "rad", expression.trim()),
-  } as const
-}
-
-function distancePointIds(
-  kind: Exclude<DimensionKind, "angle">,
-  entities: readonly SketchEntity[],
-) {
-  const pointsPair = pair(entitiesOfType(entities, "point"))
-  if (pointsPair) return [pointsPair[0].id, pointsPair[1].id] as const
-  const line = entitiesOfType(entities, "line")[0]
-  return kind === "distance" && line ? ([line.startPointId, line.endPointId] as const) : null
-}
-
-function lengthDimensionDefinition(
-  kind: Exclude<DimensionKind, "angle">,
-  expression: string,
-  entities: readonly SketchEntity[],
-  evaluated: Readonly<{ dimension: string; value: number }>,
-) {
-  if (evaluated.dimension !== "length" || evaluated.value <= 0) return null
-  const value = createLengthQuantity(evaluated.value, "mm", expression.trim())
-  if (kind === "radius" || kind === "diameter") {
-    const curve = curves(entities)[0]
-    return curve ? ({ type: kind, curveId: curve.id, value } as const) : null
+  const labels: Record<SketchDimensionKind, string> = {
+    angle: copy.angle,
+    diameter: copy.diameter,
+    distance: copy.distance,
+    "horizontal-distance": copy.horizontalDistance,
+    radius: copy.radius,
+    "vertical-distance": copy.verticalDistance,
   }
-  const pointIds = distancePointIds(kind, entities)
-  return pointIds
-    ? ({
-        type: kind,
-        firstPointId: pointIds[0],
-        secondPointId: pointIds[1],
-        value,
-      } as const)
-    : null
+  return compatibleSketchDimensionTools(entities).map((kind) => ({ kind, label: labels[kind] }))
 }
 
 function evaluateDimensionValue(
-  kind: DimensionKind,
+  kind: SketchDimensionKind,
   expression: string,
   variables: readonly VariableDefinition[],
   displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
@@ -342,18 +155,14 @@ function evaluateDimensionValue(
 }
 
 function dimensionDefinition(
-  kind: DimensionKind,
+  kind: SketchDimensionKind,
   expression: string,
   entities: readonly SketchEntity[],
   variables: readonly VariableDefinition[],
   displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
 ) {
   const value = evaluateDimensionValue(kind, expression, variables, displayUnits)
-  if (!value) return null
-  const normalizedExpression = value.source.expression ?? expression.trim()
-  return kind === "angle"
-    ? angleDimensionDefinition(normalizedExpression, entities, value)
-    : lengthDimensionDefinition(kind, normalizedExpression, entities, value)
+  return value ? createSketchDimensionConstraint(kind, entities, value) : null
 }
 
 function SketchDimensionForm({
@@ -375,7 +184,7 @@ function SketchDimensionForm({
   const suggestions = variableExpressionSuggestions(variables)
   const form = useAppForm({
     defaultValues: {
-      kind: firstOption?.kind ?? ("distance" as DimensionKind),
+      kind: firstOption?.kind ?? ("distance" as SketchDimensionKind),
       expression:
         firstOption?.kind === "angle"
           ? defaultAngleExpression(Math.PI / 2, displayUnits.angle)
@@ -409,7 +218,9 @@ function SketchDimensionForm({
               name={field.name}
               value={field.state.value}
               onBlur={field.handleBlur}
-              onChange={(event) => field.handleChange(event.currentTarget.value as DimensionKind)}
+              onChange={(event) =>
+                field.handleChange(event.currentTarget.value as SketchDimensionKind)
+              }
             >
               {options.map((option) => (
                 <option key={option.kind} value={option.kind}>
@@ -514,35 +325,8 @@ function SketchConstraintSection({
   selectionKey: string
   variables: readonly VariableDefinition[]
 }) {
-  const geometricActions = [
-    ["coincident", copy.coincident],
-    ["horizontal", copy.horizontal],
-    ["vertical", copy.vertical],
-    ["parallel", copy.parallel],
-    ["perpendicular", copy.perpendicular],
-    ["equal", copy.equal],
-    ["tangent", copy.tangent],
-    ["concentric", copy.concentric],
-  ] as const
-  const pointActions = [
-    ["fixed", copy.fixed],
-    ["point-on-line", copy.pointOnLine],
-    ["point-on-curve", copy.pointOnCurve],
-  ] as const
-  const availableActions = [
-    ...geometricActions.map(([kind, label]) => ({
-      kind,
-      label,
-      definition: geometricConstraintDefinition(kind, entities),
-    })),
-    ...pointActions.map(([kind, label]) => ({
-      kind,
-      label,
-      definition: pointEntityConstraintDefinition(kind, entities),
-    })),
-  ].filter(
-    (action): action is typeof action & Readonly<{ definition: SketchConstraintDefinition }> =>
-      action.definition !== null,
+  const availableActions = compatibleSketchConstraintTools(entities).map(
+    ({ definition, kind }) => ({ definition, kind, label: constraintName(kind, copy) }),
   )
   return (
     <section className="grid gap-2 border-t pt-3">
@@ -628,6 +412,8 @@ function AppliedConstraintRow({
   onEdit,
   onRemove,
   onSave,
+  onSelect,
+  selected,
   variables,
 }: {
   constraint: SketchRecord["constraints"][number]
@@ -637,20 +423,29 @@ function AppliedConstraintRow({
   onEdit: (editing: boolean) => void
   onRemove: () => void
   onSave: (value: SketchDimensionValue) => void
+  onSelect: () => void
+  selected: boolean
   variables: readonly VariableDefinition[]
 }) {
   const value = constraintValue(constraint)
   return (
     <li
       aria-invalid={failed || undefined}
-      className="grid min-w-0 gap-2 rounded-sm border px-2 py-1 aria-invalid:border-destructive aria-invalid:text-destructive"
+      data-selected={selected || undefined}
+      className="grid min-w-0 gap-2 rounded-sm border px-2 py-1 transition-colors data-[selected=true]:border-primary data-[selected=true]:bg-accent/60 aria-invalid:border-destructive aria-invalid:text-destructive"
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-xs">
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="min-w-0 flex-1 justify-start truncate px-0 font-normal hover:bg-transparent"
+          onClick={onSelect}
+        >
           {constraintName(constraint.type, copy)}
           {value ? ` · ${value}` : ""}
           {failed ? ` · ${copy.conflict}` : ""}
-        </span>
+        </Button>
         <ConstraintRowActions
           copy={copy}
           editable={value !== null}
@@ -708,6 +503,7 @@ function SketchDimensionEditForm({
       <form.Field name="expression">
         {(field) => (
           <VariableExpressionField
+            autoFocus
             id={expressionId}
             name={field.name}
             label={copy.dimensionExpression}
@@ -735,15 +531,18 @@ function AppliedConstraintsSection({
   draft,
   failedConstraintIds,
   onDraftChange,
+  onSelectedConstraintChange,
+  selectedConstraintId,
   variables,
 }: {
   copy: SketchEditorPanelCopy
   draft: SketchRecord
   failedConstraintIds: readonly string[]
   onDraftChange: (draft: SketchRecord) => void
+  onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
+  selectedConstraintId: SketchConstraintId | null
   variables: readonly VariableDefinition[]
 }) {
-  const [editingConstraintId, setEditingConstraintId] = useState<string | null>(null)
   return (
     <section className="grid gap-2 border-t pt-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -757,13 +556,18 @@ function AppliedConstraintsSection({
               constraint={constraint}
               copy={copy}
               failed={failedConstraintIds.includes(constraint.id)}
-              isEditing={editingConstraintId === constraint.id}
+              isEditing={selectedConstraintId === constraint.id && "value" in constraint}
+              selected={selectedConstraintId === constraint.id}
               variables={variables}
-              onEdit={(editing) => setEditingConstraintId(editing ? constraint.id : null)}
-              onRemove={() => onDraftChange(removeSketchConstraints(draft, [constraint.id]))}
+              onEdit={(editing) => onSelectedConstraintChange(editing ? constraint.id : null)}
+              onRemove={() => {
+                if (selectedConstraintId === constraint.id) onSelectedConstraintChange(null)
+                onDraftChange(removeSketchConstraints(draft, [constraint.id]))
+              }}
+              onSelect={() => onSelectedConstraintChange(constraint.id)}
               onSave={(value) => {
                 onDraftChange(setSketchDimensionValue(draft, constraint.id, value))
-                setEditingConstraintId(null)
+                onSelectedConstraintChange(null)
               }}
             />
           ))}
@@ -849,6 +653,7 @@ type SketchEditorPanelState = Readonly<{
   message: string | null
   profiles: readonly SketchProfileSelector[]
   selectedEntityIds: readonly SketchEntityId[]
+  selectedConstraintId: SketchConstraintId | null
   selectedProfile: SketchProfileSelector | null
   variables: readonly VariableDefinition[]
 }>
@@ -857,6 +662,7 @@ type SketchEditorPanelActions = Readonly<{
   onCancel: () => void
   onDraftChange: (draft: SketchRecord) => void
   onFinish: () => Promise<void>
+  onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
 }>
 
@@ -876,12 +682,14 @@ export function SketchEditorPanel({
     message,
     profiles,
     selectedEntityIds,
+    selectedConstraintId,
     selectedProfile,
     variables,
   } = state
-  const { onCancel, onDraftChange, onFinish, onSelectedProfileChange } = actions
+  const { onCancel, onDraftChange, onFinish, onSelectedConstraintChange, onSelectedProfileChange } =
+    actions
   const entities = useMemo(
-    () => selectedEntities(draft, selectedEntityIds),
+    () => selectedSketchEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
   )
   const options = dimensionOptions(entities, copy)
@@ -904,8 +712,10 @@ export function SketchEditorPanel({
         copy={copy}
         draft={draft}
         failedConstraintIds={failedConstraintIds}
+        selectedConstraintId={selectedConstraintId}
         variables={variables}
         onDraftChange={onDraftChange}
+        onSelectedConstraintChange={onSelectedConstraintChange}
       />
       <SketchProfilesSection
         copy={copy}
