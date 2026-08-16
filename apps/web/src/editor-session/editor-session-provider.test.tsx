@@ -21,10 +21,10 @@ function SessionProbe() {
 }
 
 describe("EditorSessionProvider", () => {
-  it("keeps early interaction through hydration and resets on a real document change", async () => {
+  it("keeps one store per provider mount and resets at an owning keyed boundary", async () => {
     const user = userEvent.setup()
     const { rerender } = render(
-      <EditorSessionProvider documentId={null}>
+      <EditorSessionProvider key="document-a">
         <SessionProbe />
       </EditorSessionProvider>,
     )
@@ -33,7 +33,7 @@ describe("EditorSessionProvider", () => {
     expect(screen.getByLabelText("Command palette state").textContent).toBe("open")
 
     rerender(
-      <EditorSessionProvider documentId="document-a">
+      <EditorSessionProvider key="document-a">
         <SessionProbe />
       </EditorSessionProvider>,
     )
@@ -41,7 +41,7 @@ describe("EditorSessionProvider", () => {
     expect(screen.getByLabelText("Command palette state").textContent).toBe("open")
 
     rerender(
-      <EditorSessionProvider documentId="document-b">
+      <EditorSessionProvider key="document-b">
         <SessionProbe />
       </EditorSessionProvider>,
     )

@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useRef } from "react"
+import { createContext, type ReactNode, useContext, useState } from "react"
 import { useStore } from "zustand"
 import {
   createEditorSessionStore,
@@ -8,29 +8,9 @@ import {
 
 const EditorSessionContext = createContext<EditorSessionStoreApi | null>(null)
 
-type EditorSessionOwner = {
-  documentId: string | null
-  store: EditorSessionStoreApi
-}
-
-export function EditorSessionProvider({
-  children,
-  documentId,
-}: Readonly<{ children: ReactNode; documentId: string | null }>) {
-  const ownerRef = useRef<EditorSessionOwner | null>(null)
-  let owner = ownerRef.current
-  if (!owner) {
-    owner = { documentId, store: createEditorSessionStore() }
-    ownerRef.current = owner
-  } else if (documentId && !owner.documentId) {
-    owner.documentId = documentId
-  } else if (documentId && documentId !== owner.documentId) {
-    owner = { documentId, store: createEditorSessionStore() }
-    ownerRef.current = owner
-  }
-  return (
-    <EditorSessionContext.Provider value={owner.store}>{children}</EditorSessionContext.Provider>
-  )
+export function EditorSessionProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const [store] = useState(() => createEditorSessionStore())
+  return <EditorSessionContext.Provider value={store}>{children}</EditorSessionContext.Provider>
 }
 
 export function useEditorSession<Result>(selector: (state: EditorSessionStore) => Result) {

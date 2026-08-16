@@ -205,7 +205,7 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <EditorSessionProvider documentId={controller.report?.snapshot.id ?? null}>
+      <EditorSessionProvider>
         <EditorApplication controller={controller} />
       </EditorSessionProvider>
     </DocumentDisplayUnitsProvider>
