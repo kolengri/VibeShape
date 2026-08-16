@@ -31,9 +31,12 @@ import { Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import {
   type CSSProperties,
+  type Dispatch,
   type KeyboardEvent,
   type PointerEvent,
   type RefObject,
+  type SetStateAction,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -78,7 +81,28 @@ type SolveState =
   | { kind: "error"; sourceSketch: SketchRecord }
 
 type SketchDragTarget = SolvedSketchWire["points"][number]
-type SketchDragState = Readonly<{ sketchId: SketchRecord["id"]; target: SketchDragTarget }>
+type SketchDragState = Readonly<{
+  active: boolean
+  pointId: SketchEntityId
+  sketchId: SketchRecord["id"]
+}>
+
+type SketchSolveRequest = Readonly<{
+  dragTarget: SketchDragTarget | null
+  requestId: number
+  revision: number
+  sketch: SketchRecord
+}>
+
+type SketchSolveScheduler = {
+  disposed: boolean
+  inFlight: boolean
+  latestRequest: SketchSolveRequest | null
+  latestSolution: SolvedSketchWire | null
+  nextRequestId: number
+  solveSketch: SketchSolveFunction
+  timer: number | null
+}
 
 type SketchBounds = Readonly<{
   height: number
@@ -117,6 +141,74 @@ type PanGesture = Readonly<{
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 
+function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
+  return {
+    disposed: false,
+    inFlight: false,
+    latestRequest: null,
+    latestSolution: null,
+    nextRequestId: 1,
+    solveSketch,
+    timer: null,
+  }
+}
+
+async function executeSketchSolveRequest(
+  scheduler: SketchSolveScheduler,
+  request: SketchSolveRequest,
+) {
+  try {
+    return await scheduler.solveSketch(request.revision, request.sketch, {
+      continuation: continuationForSketch(scheduler.latestSolution, request.sketch),
+      draggedPoints: request.dragTarget ? [request.dragTarget] : [],
+    })
+  } catch {
+    return null
+  }
+}
+
+function solveStateForResult(
+  request: SketchSolveRequest,
+  result: ActiveSketchSolveResult | null,
+): SolveState {
+  return result?.ok
+    ? { kind: "solved", solution: result.response.solution, sourceSketch: request.sketch }
+    : { kind: "error", sourceSketch: request.sketch }
+}
+
+function clearSketchSolveTimer(scheduler: SketchSolveScheduler) {
+  if (scheduler.timer === null) return
+  window.clearTimeout(scheduler.timer)
+  scheduler.timer = null
+}
+
+async function drainLatestSketchSolve(
+  scheduler: SketchSolveScheduler,
+  publish: (state: SolveState) => void,
+) {
+  if (scheduler.inFlight) return
+  scheduler.inFlight = true
+  try {
+    let request = scheduler.latestRequest
+    while (request && !scheduler.disposed) {
+      clearSketchSolveTimer(scheduler)
+      const result = await executeSketchSolveRequest(scheduler, request)
+      if (result?.ok) scheduler.latestSolution = result.response.solution
+      const latestRequest = scheduler.latestRequest
+      if (!latestRequest || scheduler.disposed) return
+      if (latestRequest.requestId !== request.requestId) {
+        request = latestRequest
+        continue
+      }
+      publish(solveStateForResult(request, result))
+      scheduler.latestRequest = null
+      return
+    }
+  } finally {
+    scheduler.inFlight = false
+  }
+}
+
 function useSketchSolution(
   controller: DocumentControllerState,
   sketch: SketchRecord | null,
@@ -124,42 +216,65 @@ function useSketchSolution(
   dragTarget: SketchDragTarget | null,
 ): SolveState {
   const [state, setState] = useState<SolveState>({ kind: "idle" })
-  const latestSolutionRef = useRef<SolvedSketchWire | null>(null)
+  const schedulerRef = useRef<SketchSolveScheduler | null>(null)
+  if (!schedulerRef.current) schedulerRef.current = createSketchSolveScheduler(solveSketch)
+  const scheduler = schedulerRef.current
   const revision = controller.report?.snapshot.revision
   const rebuildOk = controller.report?.rebuild.ok === true
+  scheduler.solveSketch = solveSketch
+
+  useEffect(() => {
+    scheduler.disposed = false
+    return () => {
+      scheduler.disposed = true
+      scheduler.latestRequest = null
+      if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
+    }
+  }, [scheduler])
 
   useEffect(() => {
     if (!sketch || revision === undefined || !rebuildOk) {
-      if (!sketch) latestSolutionRef.current = null
-      setState({ kind: "idle" })
+      if (!sketch) scheduler.latestSolution = null
+      scheduler.latestRequest = null
+      scheduler.nextRequestId += 1
+      if (scheduler.timer !== null) {
+        window.clearTimeout(scheduler.timer)
+        scheduler.timer = null
+      }
+      setState((current) => (current.kind === "idle" ? current : { kind: "idle" }))
       return
     }
-    let cancelled = false
-    setState((current) => ({
-      kind: "loading",
-      previousSolution: solutionForSketch(current, sketch.id),
-      sourceSketch: sketch,
-    }))
-    const continuation = continuationForSketch(latestSolutionRef.current, sketch)
-    const timeout = window.setTimeout(() => {
-      void solveSketch(revision, sketch, {
-        continuation,
-        draggedPoints: dragTarget ? [dragTarget] : [],
-      }).then((result) => {
-        if (cancelled) return
-        if (result.ok) latestSolutionRef.current = result.response.solution
-        setState(
-          result.ok
-            ? { kind: "solved", solution: result.response.solution, sourceSketch: sketch }
-            : { kind: "error", sourceSketch: sketch },
-        )
-      })
+
+    const request: SketchSolveRequest = {
+      dragTarget,
+      requestId: scheduler.nextRequestId,
+      revision,
+      sketch,
+    }
+    scheduler.nextRequestId += 1
+    scheduler.latestRequest = request
+    setState((current) =>
+      current.kind === "loading" && current.sourceSketch.id === sketch.id
+        ? current
+        : {
+            kind: "loading",
+            previousSolution: solutionForSketch(current, sketch.id),
+            sourceSketch: sketch,
+          },
+    )
+
+    if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
+    scheduler.timer = window.setTimeout(() => {
+      scheduler.timer = null
+      void drainLatestSketchSolve(scheduler, setState)
     }, 30)
     return () => {
-      cancelled = true
-      window.clearTimeout(timeout)
+      if (scheduler.timer !== null) {
+        window.clearTimeout(scheduler.timer)
+        scheduler.timer = null
+      }
     }
-  }, [dragTarget, rebuildOk, revision, sketch, solveSketch])
+  }, [dragTarget, rebuildOk, revision, scheduler, sketch, solveSketch])
 
   return state
 }
@@ -168,6 +283,65 @@ function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"])
   if (solveState.kind === "idle" || solveState.kind === "error") return null
   if (solveState.sourceSketch.id !== sketchId) return null
   return solveState.kind === "solved" ? solveState.solution : solveState.previousSolution
+}
+
+function solvedSolution(solveState: SolveState): SolvedSketchWire | null {
+  return solveState.kind === "solved" ? solveState.solution : null
+}
+
+function solutionWithDragTarget(
+  solution: SolvedSketchWire | null,
+  dragTarget: SketchDragTarget | null,
+) {
+  if (!solution || !dragTarget) return solution
+  let replaced = false
+  const points = solution.points.map((point) => {
+    if (point.entityId !== dragTarget.entityId) return point
+    replaced = true
+    return dragTarget
+  })
+  return replaced ? { ...solution, points } : solution
+}
+
+function dragTargetForSketch(
+  activeSketch: SketchRecord | null,
+  dragState: SketchDragState | null,
+): SketchDragTarget | null {
+  if (!activeSketch || dragState?.sketchId !== activeSketch.id) return null
+  const point = authoredPoints(activeSketch).find((entity) => entity.id === dragState.pointId)
+  return point ? { entityId: point.id, x: point.x, y: point.y } : null
+}
+
+function nextSketchDragState(
+  activeSketch: SketchRecord | null,
+  current: SketchDragState | null,
+  pointId: SketchEntityId | null,
+): SketchDragState | null {
+  if (pointId && activeSketch) return { active: true, pointId, sketchId: activeSketch.id }
+  return current ? { ...current, active: false } : null
+}
+
+function useDraggingPointChange(
+  activeSketch: SketchRecord | null,
+  setDragState: Dispatch<SetStateAction<SketchDragState | null>>,
+) {
+  return useCallback(
+    (pointId: SketchEntityId | null) =>
+      setDragState((current) => nextSketchDragState(activeSketch, current, pointId)),
+    [activeSketch, setDragState],
+  )
+}
+
+function useSketchDisplaySolution(
+  activeSketch: SketchRecord | null,
+  solveState: SolveState,
+  dragTarget: SketchDragTarget | null,
+) {
+  const previousSolution = activeSketch ? solutionForSketch(solveState, activeSketch.id) : null
+  return useMemo(
+    () => solutionWithDragTarget(previousSolution, dragTarget),
+    [dragTarget, previousSolution],
+  )
 }
 
 function continuationForSketch(solution: SolvedSketchWire | null, sketch: SketchRecord) {
@@ -1307,7 +1481,7 @@ function SketchDrawing({
     construction,
     draft,
     editorTool,
-    onDragTargetChange,
+    onDraggingPointChange,
     onDraftChange,
     onConstraintSelectionChange,
     onProfileSelect,
@@ -1326,6 +1500,8 @@ function SketchDrawing({
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const [pending, setPending] = useState<PendingGeometry | null>(null)
   const dragRecordedRef = useRef(false)
+  const dragFrameRef = useRef<number | null>(null)
+  const queuedDragPointRef = useRef<SketchPoint2 | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
@@ -1334,6 +1510,13 @@ function SketchDrawing({
     setPending(null)
     setInference(null)
   }, [editorTool, sketch.id])
+
+  useEffect(
+    () => () => {
+      if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
+    },
+    [],
+  )
 
   const eventPoint = (event: PointerEvent<SVGSVGElement | SVGCircleElement>) => {
     const svg = svgRef.current
@@ -1371,16 +1554,35 @@ function SketchDrawing({
     if (nextBounds) setBounds(nextBounds)
     return true
   }
-  const updateDraggedPoint = (point: SketchPoint2) => {
+  const commitDraggedPoint = (point: SketchPoint2) => {
     if (!draft || !draggingPointId) return false
-    setCursor(point)
-    setInference(null)
-    onDragTargetChange({ entityId: draggingPointId, x: point.x, y: point.y })
     onDraftChange(
       moveSketchPoint(draft, draggingPointId, point),
       dragRecordedRef.current ? "replace" : "record",
     )
     dragRecordedRef.current = true
+    return true
+  }
+  const flushDraggedPoint = () => {
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current)
+      dragFrameRef.current = null
+    }
+    const point = queuedDragPointRef.current
+    queuedDragPointRef.current = null
+    if (point) commitDraggedPoint(point)
+  }
+  const updateDraggedPoint = (point: SketchPoint2) => {
+    if (!draft || !draggingPointId) return false
+    queuedDragPointRef.current = point
+    if (dragFrameRef.current === null) {
+      dragFrameRef.current = window.requestAnimationFrame(() => {
+        dragFrameRef.current = null
+        const queuedPoint = queuedDragPointRef.current
+        queuedDragPointRef.current = null
+        if (queuedPoint) commitDraggedPoint(queuedPoint)
+      })
+    }
     return true
   }
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
@@ -1427,7 +1629,8 @@ function SketchDrawing({
     }
   }
   const handlePointerUp = () => {
-    if (draggingPointId) onDragTargetChange(null)
+    flushDraggedPoint()
+    if (draggingPointId) onDraggingPointChange(null)
     setDraggingPointId(null)
     dragRecordedRef.current = false
     setPanGesture(null)
@@ -1449,8 +1652,11 @@ function SketchDrawing({
     pointId: SketchEntityId,
   ) => {
     if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    setCursor(null)
+    setInference(null)
     dragRecordedRef.current = false
     setDraggingPointId(pointId)
+    onDraggingPointChange(pointId)
   }
   const handleSelection = (entityId: SketchEntityId, additive: boolean) => {
     onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
@@ -1468,6 +1674,7 @@ function SketchDrawing({
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         onWheel={handleWheel}
       >
@@ -1535,8 +1742,54 @@ function solveStatusLabel(
 }
 
 function currentSolveState(solveState: SolveState, activeSketch: SketchRecord | null): SolveState {
-  if (solveState.kind === "idle" || solveState.sourceSketch === activeSketch) return solveState
+  if (
+    solveState.kind === "idle" ||
+    (activeSketch !== null && solveState.sourceSketch.id === activeSketch.id)
+  ) {
+    return solveState
+  }
   return { kind: "idle" }
+}
+
+function hasSettledReleasedDrag(
+  activeSketch: SketchRecord | null,
+  dragState: SketchDragState | null,
+  solveState: SolveState,
+) {
+  return (
+    dragState !== null &&
+    !dragState.active &&
+    activeSketch !== null &&
+    solveState.kind !== "idle" &&
+    solveState.kind !== "loading" &&
+    solveState.sourceSketch.id === activeSketch.id
+  )
+}
+
+function useReleasedDragSettlement(
+  activeSketch: SketchRecord | null,
+  dragState: SketchDragState | null,
+  solveState: SolveState,
+  setDragState: Dispatch<SetStateAction<SketchDragState | null>>,
+) {
+  useEffect(() => {
+    if (hasSettledReleasedDrag(activeSketch, dragState, solveState)) setDragState(null)
+  }, [activeSketch, dragState, setDragState, solveState])
+}
+
+function useSketchSolutionNotifications(
+  solution: SolvedSketchWire | null,
+  profiles: readonly SketchProfileSelector[],
+  onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void,
+  onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void,
+) {
+  useEffect(() => {
+    onProfilesChange(solution ? profiles : [])
+  }, [onProfilesChange, profiles, solution])
+
+  useEffect(() => {
+    onFailedConstraintsChange(solution ? validConstraintIds(solution.failedConstraintIds) : [])
+  }, [onFailedConstraintsChange, solution])
 }
 
 function solveMessage(
@@ -1607,7 +1860,7 @@ type SketchDrawingConfiguration = Readonly<{
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
-  onDragTargetChange: (target: SketchDragTarget | null) => void
+  onDraggingPointChange: (pointId: SketchEntityId | null) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -1830,12 +2083,18 @@ export function SketchViewport({
   const [dragState, setDragState] = useState<SketchDragState | null>(null)
   const number = (value: number) => formatter.number(value, { maximumFractionDigits: 6 })
   const activeSketch = draft ?? sketch
-  const dragTarget = dragState && dragState.sketchId === activeSketch?.id ? dragState.target : null
+  const dragTarget = useMemo(
+    () => dragTargetForSketch(activeSketch, dragState),
+    [activeSketch, dragState],
+  )
+  const handleDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
   const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
+  useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
   const activeSolveState = currentSolveState(solveState, activeSketch)
-  const solution = activeSolveState.kind === "solved" ? activeSolveState.solution : null
-  const displaySolution = activeSketch ? solutionForSketch(solveState, activeSketch.id) : null
+  const solution = solvedSolution(activeSolveState)
+  const displaySolution = useSketchDisplaySolution(activeSketch, solveState, dragTarget)
   const profiles = useMemo(() => (solution ? profileSelectors(solution) : []), [solution])
+  useSketchSolutionNotifications(solution, profiles, onProfilesChange, onFailedConstraintsChange)
   const { degreesOfFreedom, profileText, statusText } = sketchSolvePresentation({
     copy: {
       degreesOfFreedom: (count) => t("degreesOfFreedom", { count }),
@@ -1856,14 +2115,6 @@ export function SketchViewport({
     solveState: activeSolveState,
   })
 
-  useEffect(() => {
-    onProfilesChange(solution ? profiles : [])
-  }, [onProfilesChange, profiles, solution])
-
-  useEffect(() => {
-    onFailedConstraintsChange(solution ? validConstraintIds(solution.failedConstraintIds) : [])
-  }, [onFailedConstraintsChange, solution])
-
   return (
     <section
       aria-label={t("ariaLabel")}
@@ -1879,8 +2130,7 @@ export function SketchViewport({
           editDimensionLabel: (label) => t("editDimension", { label }),
           editorTool,
           onConstraintSelectionChange,
-          onDragTargetChange: (target) =>
-            setDragState(target && activeSketch ? { sketchId: activeSketch.id, target } : null),
+          onDraggingPointChange: handleDraggingPointChange,
           selectedProfile,
           selectedConstraintId,
           selectedEntityIds,
