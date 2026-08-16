@@ -317,6 +317,83 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
   })
 
+  test("authors exact straight and centered slots with analytical end caps", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Slot tools", "Centered slot")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
+    await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="centered-slot-end"] line'),
+    ).toHaveAttribute("x2", "30")
+    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5)
+    await page.mouse.move(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="centered-slot-width"] polyline'),
+    ).toHaveCount(2)
+    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.38)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(7)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
+    await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+    await expect(
+      drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
+    ).toHaveCount(1)
+    await expect(page.getByText("Midpoint", { exact: true })).toBeVisible()
+    await expect(page.getByText("Parallel", { exact: true })).toBeVisible()
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
+
+    await selectSketchTool(page, "Slot tools", "Straight slot")
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.65)
+    await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.65)
+    await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.5)
+    await expect(drawing.locator('[data-sketch-preview-tool="slot-width"] polyline')).toHaveCount(2)
+    await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.5)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(6)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
+    await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(0)
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.5)
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    await selectSketchEntities(page, drawing, "line", [0])
+    await selectSketchTool(page, "Slot tools", "Slot from selected line")
+    await page.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="slot-from-selection-width"] polyline'),
+    ).toHaveCount(2)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(6)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
+    await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+    await expect(
+      drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
+    ).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("persists automatic perpendicular and midpoint inference with Shift suppression", async ({
     page,
   }) => {

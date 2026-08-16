@@ -50,6 +50,12 @@ export function selectedSketchEntities(sketch: SketchRecord, ids: readonly Sketc
   return sketch.entities.filter(({ id }) => selected.has(id))
 }
 
+export function selectedSketchLineId(sketch: SketchRecord, ids: readonly SketchEntityId[]) {
+  const selected = selectedSketchEntities(sketch, ids)
+  const line = selected[0]
+  return selected.length === 1 && line?.type === "line" ? line.id : null
+}
+
 function entitiesOfType<Type extends SketchEntity["type"]>(
   entities: readonly SketchEntity[],
   type: Type,

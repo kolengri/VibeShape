@@ -16,6 +16,7 @@ import {
   activePartDesignCommand,
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
+import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
@@ -130,6 +131,9 @@ function EditorApplication({
     session.sketch.selectedProfile !== null &&
     session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
     session.sketch.activeSketchTool === null
+  const slotFromSelectionAvailable =
+    session.sketch.draft !== null &&
+    selectedSketchLineId(session.sketch.draft, session.sketch.selectedEntityIds) !== null
   const commands = resolveBuiltInEditorCommands({
     actions: {
       cancelActive: workspaceActions.closeTool,
@@ -151,6 +155,7 @@ function EditorApplication({
       extrusionAvailable,
       sketchConstruction: session.sketch.construction,
       sketchRedoAvailable: session.sketch.redoStack.length > 0,
+      slotFromSelectionAvailable,
       sketchTool: session.sketch.editorTool,
       sketchUndoAvailable: session.sketch.undoStack.length > 0,
       workspace: session.workspace,

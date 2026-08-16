@@ -38,6 +38,7 @@ const commands = resolveBuiltInEditorCommands({
     extrusionAvailable: false,
     sketchConstruction: false,
     sketchRedoAvailable: false,
+    slotFromSelectionAvailable: false,
     sketchTool: "select",
     sketchUndoAvailable: false,
     workspace: "model",

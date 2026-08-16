@@ -645,6 +645,254 @@ export function appendSketchCenterRectangle(
   }
 }
 
+export type StraightSlotGeometry = Readonly<{
+  endNegative: SketchPoint2
+  endPositive: SketchPoint2
+  radius: number
+  startNegative: SketchPoint2
+  startPositive: SketchPoint2
+}>
+
+export function straightSlotGeometry(
+  startCenter: SketchPoint2,
+  endCenter: SketchPoint2,
+  widthPoint: SketchPoint2,
+): StraightSlotGeometry | null {
+  const axis = { x: endCenter.x - startCenter.x, y: endCenter.y - startCenter.y }
+  const axisLength = Math.hypot(axis.x, axis.y)
+  if (axisLength <= MIN_GEOMETRY_DISTANCE) return null
+  const unitNormal = { x: -axis.y / axisLength, y: axis.x / axisLength }
+  const radius = Math.abs(
+    (widthPoint.x - startCenter.x) * unitNormal.x + (widthPoint.y - startCenter.y) * unitNormal.y,
+  )
+  if (radius <= MIN_GEOMETRY_DISTANCE) return null
+  const offset = { x: unitNormal.x * radius, y: unitNormal.y * radius }
+  return {
+    endNegative: { x: endCenter.x - offset.x, y: endCenter.y - offset.y },
+    endPositive: { x: endCenter.x + offset.x, y: endCenter.y + offset.y },
+    radius,
+    startNegative: { x: startCenter.x - offset.x, y: startCenter.y - offset.y },
+    startPositive: { x: startCenter.x + offset.x, y: startCenter.y + offset.y },
+  }
+}
+
+function slotBoundaryEntities(
+  centerLine: Extract<SketchEntity, { type: "line" }>,
+  geometry: StraightSlotGeometry,
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+) {
+  const startPositiveId = createEntityId()
+  const endPositiveId = createEntityId()
+  const endNegativeId = createEntityId()
+  const startNegativeId = createEntityId()
+  const positiveLineId = createEntityId()
+  const negativeLineId = createEntityId()
+  const endArcId = createEntityId()
+  const startArcId = createEntityId()
+  const entities: SketchEntity[] = [
+    {
+      schemaVersion: 0,
+      id: startPositiveId,
+      type: "point",
+      ...geometry.startPositive,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: endPositiveId,
+      type: "point",
+      ...geometry.endPositive,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: endNegativeId,
+      type: "point",
+      ...geometry.endNegative,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: startNegativeId,
+      type: "point",
+      ...geometry.startNegative,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: positiveLineId,
+      type: "line",
+      startPointId: startPositiveId,
+      endPointId: endPositiveId,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: negativeLineId,
+      type: "line",
+      startPointId: endNegativeId,
+      endPointId: startNegativeId,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: endArcId,
+      type: "arc",
+      centerPointId: centerLine.endPointId,
+      startPointId: endNegativeId,
+      endPointId: endPositiveId,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: startArcId,
+      type: "arc",
+      centerPointId: centerLine.startPointId,
+      startPointId: startPositiveId,
+      endPointId: startNegativeId,
+      construction,
+    },
+  ]
+  return {
+    entities,
+    positiveLineId,
+  }
+}
+
+function slotConstraints(
+  centerLineId: SketchEntityId,
+  boundary: ReturnType<typeof slotBoundaryEntities>,
+  createConstraintId: ConstraintIdFactory,
+): readonly SketchConstraint[] {
+  const definitions = [
+    {
+      type: "parallel",
+      firstEntityId: centerLineId,
+      secondEntityId: boundary.positiveLineId,
+    },
+  ] as const
+  return definitions.map(
+    (definition): SketchConstraint => ({
+      schemaVersion: 0,
+      id: createConstraintId(),
+      ...definition,
+    }),
+  )
+}
+
+function lineEntity(sketch: SketchRecord, lineId: SketchEntityId) {
+  const line = sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "line" }> =>
+      entity.id === lineId && entity.type === "line",
+  )
+  if (!line) throw new TypeError("A slot centerline must reference an existing line entity.")
+  return line
+}
+
+export function appendSketchSlotAroundLine(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    lineId: SketchEntityId
+    widthPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const centerLine = lineEntity(sketch, input.lineId)
+  const startCenter = pointById(sketch, centerLine.startPointId)
+  const endCenter = pointById(sketch, centerLine.endPointId)
+  const geometry = straightSlotGeometry(startCenter, endCenter, input.widthPoint)
+  if (!geometry) throw new RangeError("A sketch slot requires a positive axis and width.")
+  const boundary = slotBoundaryEntities(
+    centerLine,
+    geometry,
+    input.construction ?? false,
+    input.createEntityId,
+  )
+  const constraints = slotConstraints(centerLine.id, boundary, input.createConstraintId)
+  const entities = sketch.entities.map((entity) =>
+    entity.id === centerLine.id ? { ...entity, construction: true } : entity,
+  )
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...entities, ...boundary.entities],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: boundary.entities.map(({ id }) => id),
+  }
+}
+
+function appendedLineId(result: SketchAppendResult) {
+  const lineId = result.createdEntityIds.at(-1)
+  if (!lineId) throw new TypeError("A slot centerline identity allocation failed.")
+  lineEntity(result.sketch, lineId)
+  return lineId
+}
+
+export function appendSketchStraightSlot(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    endCenter: SketchPointTarget
+    startCenter: SketchPointTarget
+    widthPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const centerLine = appendSketchLine(sketch, {
+    construction: true,
+    createEntityId: input.createEntityId,
+    end: input.endCenter,
+    start: input.startCenter,
+  })
+  const slot = appendSketchSlotAroundLine(centerLine.sketch, {
+    ...(input.construction === undefined ? {} : { construction: input.construction }),
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    lineId: appendedLineId(centerLine),
+    widthPoint: input.widthPoint,
+  })
+  return {
+    sketch: slot.sketch,
+    createdEntityIds: [...centerLine.createdEntityIds, ...slot.createdEntityIds],
+  }
+}
+
+export function appendSketchCenteredSlot(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    endCenter: SketchPointTarget
+    widthPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const centerLine = appendSketchMidpointLine(sketch, {
+    construction: true,
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    endpoint: input.endCenter,
+    midpoint: input.center,
+  })
+  const slot = appendSketchSlotAroundLine(centerLine.sketch, {
+    ...(input.construction === undefined ? {} : { construction: input.construction }),
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    lineId: appendedLineId(centerLine),
+    widthPoint: input.widthPoint,
+  })
+  return {
+    sketch: slot.sketch,
+    createdEntityIds: [...centerLine.createdEntityIds, ...slot.createdEntityIds],
+  }
+}
+
 export function appendSketchCircle(
   sketch: SketchRecord,
   input: {

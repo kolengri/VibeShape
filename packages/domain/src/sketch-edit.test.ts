@@ -4,14 +4,16 @@ import type { SketchEntity } from "./sketch"
 import {
   appendSketchAlignedRectangle,
   appendSketchArc,
-  appendSketchCenterRectangle,
   appendSketchCenteredAlignedRectangle,
+  appendSketchCenteredSlot,
+  appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchStraightSlot,
   appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
@@ -242,6 +244,51 @@ describe("sketch editing", () => {
         widthPoint: { x: 5, y: 0 },
       }),
     ).toThrow("perpendicular width")
+  })
+
+  it("adds a straight slot with an exact construction centerline and tangent end caps", () => {
+    const result = appendSketchStraightSlot(empty(), {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      endCenter: { kind: "new", point: { x: 20, y: 0 } },
+      startCenter: { kind: "new", point: { x: 0, y: 0 } },
+      widthPoint: { x: 5, y: 3 },
+    })
+    const points = result.sketch.entities.filter(({ type }) => type === "point")
+    const lines = result.sketch.entities.filter(({ type }) => type === "line")
+    const arcs = result.sketch.entities.filter(({ type }) => type === "arc")
+
+    expect(points).toHaveLength(6)
+    expect(lines).toHaveLength(3)
+    expect(lines.filter(({ construction }) => construction)).toHaveLength(1)
+    expect(arcs).toHaveLength(2)
+    expect(arcs.every(({ construction }) => !construction)).toBe(true)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual(["parallel"])
+  })
+
+  it("adds a centered slot with a midpoint-constrained symmetric centerline", () => {
+    const result = appendSketchCenteredSlot(empty(), {
+      center: { kind: "new", point: { x: 2, y: -1 } },
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      endCenter: { kind: "new", point: { x: 12, y: 4 } },
+      widthPoint: { x: 5, y: 7 },
+    })
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+
+    expect(points).toHaveLength(7)
+    expect(points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ x: 2, y: -1, construction: true }),
+        expect.objectContaining({ x: 12, y: 4, construction: true }),
+        expect.objectContaining({ x: -8, y: -6, construction: true }),
+      ]),
+    )
+    expect(result.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(3)
+    expect(result.sketch.entities.filter(({ type }) => type === "arc")).toHaveLength(2)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual(["midpoint", "parallel"])
   })
 
   it("reuses an inferred center point without duplicating its identity", () => {

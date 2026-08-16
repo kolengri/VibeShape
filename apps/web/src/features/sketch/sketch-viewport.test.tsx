@@ -494,6 +494,152 @@ describe("SketchViewport", () => {
     ])
   })
 
+  it("previews and creates a straight slot with analytical tangent end caps", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "slot",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 240, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 300 })
+    expect(document.querySelector('[data-sketch-preview-tool="slot-end"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, { clientX: 520, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 180 })
+    const widthPreview = document.querySelector('[data-sketch-preview-tool="slot-width"]')
+    expect(widthPreview?.querySelectorAll("line")).toHaveLength(3)
+    expect(widthPreview?.querySelectorAll("polyline")).toHaveLength(2)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 520, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(6)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(3)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(2)
+    expect(
+      draft.entities.filter(
+        ({ type, construction }: { construction: boolean; type: string }) =>
+          type === "line" && construction,
+      ),
+    ).toHaveLength(1)
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual(["parallel"])
+  })
+
+  it("previews and creates a centered slot around a midpoint-constrained centerline", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "centered-slot",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 300 })
+    const endPreview = document.querySelector('[data-sketch-preview-tool="centered-slot-end"]')
+    expect(endPreview?.querySelector("line")?.getAttribute("x1")).toBe("-40")
+    expect(endPreview?.querySelector("line")?.getAttribute("x2")).toBe("40")
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 560, clientY: 180 })
+    const widthPreview = document.querySelector('[data-sketch-preview-tool="centered-slot-width"]')
+    expect(widthPreview?.querySelectorAll("line")).toHaveLength(3)
+    expect(widthPreview?.querySelectorAll("polyline")).toHaveLength(2)
+
+    fireEvent.pointerDown(drawing, { clientX: 560, clientY: 180 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(7)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(3)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(2)
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual([
+      "midpoint",
+      "parallel",
+    ])
+  })
+
+  it("turns one selected line into a straight slot with one width click", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const lineSketch = appendSketchLine(emptySketch, {
+      construction: false,
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b247"),
+      end: { kind: "new", point: { x: 24, y: 0 } },
+      start: { kind: "new", point: { x: -24, y: 0 } },
+    }).sketch
+    const centerLine = lineSketch.entities.find((entity) => entity.type === "line")
+    if (!centerLine) throw new Error("Expected the slot source line to exist.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: lineSketch,
+      editorTool: "slot-from-selection",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [centerLine.id],
+      sketch: lineSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 180 })
+    const preview = document.querySelector('[data-sketch-preview-tool="slot-from-selection-width"]')
+    expect(preview?.querySelectorAll("line")).toHaveLength(3)
+    expect(preview?.querySelectorAll("polyline")).toHaveLength(2)
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 180 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+    const draft = onDraftChange.mock.calls[0]?.[0]
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(6)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(3)
+    expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(2)
+    expect(
+      draft.entities.find(({ id }: { id: string }) => id === centerLine.id)?.construction,
+    ).toBe(true)
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual(["parallel"])
+  })
+
   it("previews and creates a three-point arc as one draft edit", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
@@ -867,18 +1013,13 @@ describe("SketchViewport", () => {
     await waitFor(() =>
       expect(solveSketch).toHaveBeenCalledWith(
         7,
-        expect.objectContaining({
-          id: sketch.id,
-          entities: expect.arrayContaining([
-            expect.objectContaining({ id: firstPoint.id, type: "point", x: 65, y: 36 }),
-          ]),
-        }),
+        sketch,
         expect.objectContaining({
           continuation: expect.objectContaining({
             sketchId,
             points: expect.arrayContaining([expect.objectContaining({ entityId: firstPoint.id })]),
           }),
-          draggedPoints: [expect.objectContaining({ entityId: firstPoint.id })],
+          draggedPoints: [expect.objectContaining({ entityId: firstPoint.id, x: 65, y: 36 })],
         }),
       ),
     )

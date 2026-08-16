@@ -216,6 +216,7 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 | [Onshape 3 Point Circle](https://cad.onshape.com/help/Content/Sketch/3_point_circle.htm) | Exact circle placement through three circumference points |
 | [Onshape Center Point Arc](https://cad.onshape.com/help/Content/Sketch/center_point_arc.htm) | Center, start, and endpoint arc workflow |
 | [Onshape Tangent Arc](https://cad.onshape.com/help/Content/Sketch/arc_tangent.htm) | Line-endpoint continuation, tangent intent, `Shift+A`, and return to Line after completion |
+| [Onshape Slot](https://cad.onshape.com/help/Content/Sketch/slot.htm) | Selection-first or tool-first slot creation around sketch curves, explicit width control, and chain-selection follow-up behavior |
 | [Onshape dialogs](https://cad.onshape.com/help/Content/Home/dialogs.htm) | Distinct selection and keyboard-input fields plus feature editing in historical context |
 | [Autodesk Fusion interface](https://help.autodesk.com/view/fusion360/ENU/?contextId=LP-STEPS-P13N-SNP-GS-OTH-CRD-1) | Stable Browser and canvas, contextual toolbar tabs, ViewCube/navigation, marking menu, and chronological parametric Timeline |
 | [Autodesk Fusion sketches](https://help.autodesk.com/view/fusion360/ENU/?contextId=SKT-3D-SKETCH) | Contextual Sketch tab, sketch palette, construction/grid/profile/dimension visibility controls, and automatic transition into a 3D feature command |

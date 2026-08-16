@@ -62,6 +62,7 @@ function commandContext(
       extrusionAvailable: false,
       sketchConstruction: false,
       sketchRedoAvailable: false,
+      slotFromSelectionAvailable: false,
       sketchTool: "select",
       sketchUndoAvailable: false,
       workspace: "model",
@@ -159,7 +160,7 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
-  it("routes aligned rectangle variants and tangent arc through trusted sketch tool handlers", () => {
+  it("routes aligned rectangles, slots, and tangent arc through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
       workspace: "sketch",
@@ -174,6 +175,12 @@ describe("editor command registry", () => {
     const tangentArc = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchTangentArc,
     )
+    const straightSlot = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchSlot,
+    )
+    const centeredSlot = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchCenteredSlot,
+    )
 
     expect(alignedRectangle?.toolbarVisible).toBe(true)
     alignedRectangle?.invoke()
@@ -181,9 +188,39 @@ describe("editor command registry", () => {
     expect(centeredAlignedRectangle?.toolbarVisible).toBe(true)
     centeredAlignedRectangle?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("centered-aligned-rectangle")
+    expect(straightSlot?.toolbarVisible).toBe(true)
+    straightSlot?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("slot")
+    expect(centeredSlot?.toolbarVisible).toBe(true)
+    centeredSlot?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("centered-slot")
     expect(tangentArc?.descriptor.shortcut).toEqual({ key: "a", modifiers: ["shift"] })
     tangentArc?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")
+  })
+
+  it("offers slot from selection only for one selected sketch line", () => {
+    const unavailableContext = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      slotFromSelectionAvailable: false,
+      workspace: "sketch",
+    })
+    const unavailable = resolveBuiltInEditorCommands(unavailableContext).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchSlotAroundLine,
+    )
+    expect(unavailable?.eligibility).toEqual({ enabled: false, reason: "selectSketchLine" })
+
+    const availableContext = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      slotFromSelectionAvailable: true,
+      workspace: "sketch",
+    })
+    const available = resolveBuiltInEditorCommands(availableContext).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchSlotAroundLine,
+    )
+    expect(available?.eligibility).toEqual({ enabled: true })
+    available?.invoke()
+    expect(availableContext.actions.setSketchTool).toHaveBeenCalledWith("slot-from-selection")
   })
 
   it("keeps sketch geometry commands unavailable while an origin plane is being selected", () => {

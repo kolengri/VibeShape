@@ -51,6 +51,7 @@ function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {})
       extrusionAvailable: false,
       sketchConstruction: false,
       sketchRedoAvailable: false,
+      slotFromSelectionAvailable: true,
       sketchTool: "select",
       sketchUndoAvailable: false,
       workspace: "model",
@@ -146,6 +147,18 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Circle tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-circle")
+
+    await user.click(screen.getByRole("button", { name: "Slot tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Straight slot" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("slot")
+
+    await user.click(screen.getByRole("button", { name: "Slot tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Centered slot" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("centered-slot")
+
+    await user.click(screen.getByRole("button", { name: "Slot tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Slot from selected line" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("slot-from-selection")
 
     await user.click(screen.getByRole("button", { name: "Arc tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point arc A" }))

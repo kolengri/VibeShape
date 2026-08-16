@@ -238,6 +238,7 @@
         "noSketchUndo": "There is no sketch change to undo.",
         "readOnly": "Open the document with write access.",
         "requiresSketch": "Start or edit a sketch first.",
+        "selectSketchLine": "Select exactly one sketch line first.",
         "selectProfile": "Select a closed sketch profile first.",
         "selectTwoSolids": "Create at least two eligible solids first."
       },
@@ -278,6 +279,10 @@
           "label": "Centered aligned rectangle",
           "keywords": "centered aligned rectangle|three point center rectangle|rotated rectangle from center|symmetric aligned box"
         },
+        "sketchCenteredSlot": {
+          "label": "Centered slot",
+          "keywords": "centered slot|slot from center|symmetric slot|obround from center"
+        },
         "sketchCircle": {
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"
@@ -298,6 +303,14 @@
         },
         "sketchRedo": { "label": "Redo", "keywords": "redo sketch|restore change|history" },
         "sketchSelect": { "label": "Select", "keywords": "selection|pointer|choose geometry" },
+        "sketchSlot": {
+          "label": "Straight slot",
+          "keywords": "straight slot|center to center slot|obround|slotted hole"
+        },
+        "sketchSlotAroundLine": {
+          "label": "Slot from selected line",
+          "keywords": "slot from selected line|convert line to slot|onshape slot|line centerline"
+        },
         "sketchTangentArc": {
           "label": "Tangent arc",
           "keywords": "tangent arc|line continuation|fillet curve|shift a"
@@ -326,6 +339,7 @@
         "primitives": "Primitives",
         "rectangleToolsLabel": "Rectangle tools",
         "sketchToolsLabel": "Sketch geometry tools",
+        "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace"
       },
       "modelTree": {

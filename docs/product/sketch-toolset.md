@@ -26,20 +26,23 @@ and selection are presentation state; they never replace stable entity and const
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
 | Three-point Arc | Author an exact circumcircle arc from three non-collinear points | Implemented |
 | Tangent Arc | Continue from a line endpoint with a shared point and persistent tangent intent | Implemented |
+| Straight Slot | Define two centerline endpoints and a signed half-width with analytical semicircular end caps | Implemented |
+| Centered Slot | Define a center, symmetric centerline endpoint, and signed half-width | Implemented |
+| Slot from selected line | Convert exactly one selected line into a construction centerline and define its signed half-width | Implemented |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
 The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
 Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle; and Three-point,
-Tangent, and Center-point Arc. The family
+Tangent, and Center-point Arc; and Straight, Centered, and selection-driven Slot. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
 the standard shortcut when one exists. Every family exposes a center-origin variant when its
 geometry has a stable, unambiguous center construction. Free-form or selection-driven tools are not
 duplicated with artificial center modes.
 
-Trim, Extend, Split, mirror/pattern authoring, ellipses, slots, polygons, splines, and projected
-external geometry remain follow-up tools. They require new exact domain and solver behavior and
-MUST NOT be simulated only in the toolbar.
+Trim, Extend, Split, mirror/pattern authoring, ellipses, curve-chain slots, polygons, splines, and
+projected external geometry remain follow-up tools. They require new exact domain and solver
+behavior and MUST NOT be simulated only in the toolbar.
 
 ## Mandatory geometric constraints
 
@@ -100,6 +103,8 @@ adding solver constraints.
 8. Pointer-drag previews remain local to the viewport and solver scheduler. The editor publishes
    exactly one global draft and one undo checkpoint when the gesture ends. Raw pointer samples are
    reduced to the latest sample per animation frame before inference, React state, or solving work.
+   Per-frame work sends the original schema-valid sketch plus a separate drag target; it MUST NOT
+   clone or schema-parse the complete sketch for every pointer sample.
 9. Large constraint lists scroll inside the fixed-height task panel. They never increase the CAD
    workspace row height or move sketch geometry outside the visible viewport.
 10. Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, horizontal,
@@ -118,7 +123,8 @@ active support plane and display unit.
 
 1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
    quadrant candidates, and projected/external geometry inference.
-2. Add ellipses, slots, polygons, and splines through exact analytical or solver-backed entities.
+2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
+   ellipses, polygons, and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing.
 4. Add reference dimensions and a driving/reference conversion command.
 5. Add Trim, Extend, and Split with stable replacement identity and dependent-constraint repair.
