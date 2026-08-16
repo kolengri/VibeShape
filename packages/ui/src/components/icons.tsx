@@ -9,6 +9,7 @@ export {
   Cuboid,
   Download,
   DraftingCompass,
+  FlipHorizontal2,
   FolderOpen,
   Minus,
   MousePointer2,

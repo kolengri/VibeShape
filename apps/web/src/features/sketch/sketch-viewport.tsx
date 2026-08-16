@@ -49,6 +49,7 @@ import {
   threePointCircleGeometry,
   trimSketchCurve,
 } from "@vibeshape/domain"
+import { mirrorSketchEntities } from "@vibeshape/domain/sketch-transform-edit"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
@@ -236,6 +237,7 @@ type PendingGeometry =
       firstPoint: SketchPoint2
       kind: "split-circle-second"
     }>
+  | Readonly<{ axisLineId: SketchEntityId; kind: "mirror-sources" }>
   | Readonly<{ kind: "slot-end"; start: SketchPointTarget }>
   | Readonly<{
       end: SketchPointTarget
@@ -986,6 +988,8 @@ const SketchCurve = memo(
 type SketchPointDrawingProps = Readonly<{
   dragging: boolean
   editable: boolean
+  modificationTarget: boolean
+  onEntityAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
@@ -994,71 +998,88 @@ type SketchPointDrawingProps = Readonly<{
   selected: boolean
 }>
 
-const SketchPoint = memo(
-  function SketchPoint({
-    dragging,
-    editable,
-    onPointPointerDown,
-    onSelect,
-    onTarget,
-    point,
-    selectable,
-    selected,
-  }: SketchPointDrawingProps) {
-    return (
-      <>
-        <circle
-          data-sketch-entity-id={dragging ? undefined : point.id}
-          data-sketch-entity-type={dragging ? undefined : "point"}
-          cx={point.x}
-          cy={point.y}
-          r={7}
-          fill="transparent"
-          pointerEvents="all"
-          stroke="none"
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            if (selectable) {
-              onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
-              onPointPointerDown(event, point.id)
-            } else if (editable) {
-              onTarget({ kind: "existing", pointId: point.id })
-            }
-          }}
-        />
-        <circle
-          cx={point.x}
-          cy={point.y}
-          r={3}
-          className={
-            selected
-              ? "pointer-events-none fill-ring stroke-background"
-              : point.construction
-                ? "pointer-events-none fill-background stroke-muted-foreground"
-                : "pointer-events-none fill-background stroke-primary"
+const SketchPoint = memo(function SketchPoint({
+  dragging,
+  editable,
+  modificationTarget,
+  onEntityAction,
+  onPointPointerDown,
+  onSelect,
+  onTarget,
+  point,
+  selectable,
+  selected,
+}: SketchPointDrawingProps) {
+  return (
+    <>
+      <circle
+        data-sketch-entity-id={dragging ? undefined : point.id}
+        data-sketch-entity-type={dragging ? undefined : "point"}
+        cx={point.x}
+        cy={point.y}
+        r={7}
+        fill="transparent"
+        pointerEvents="all"
+        stroke="none"
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          if (selectable) {
+            onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
+            onPointPointerDown(event, point.id)
+          } else if (modificationTarget) {
+            onEntityAction(event, point.id)
+          } else if (editable) {
+            onTarget({ kind: "existing", pointId: point.id })
           }
-          opacity={dragging ? 0 : undefined}
-          strokeWidth={2}
-          vectorEffect="non-scaling-stroke"
-        />
-      </>
-    )
-  },
-  (previous, next) => {
-    return (
-      previous.dragging === next.dragging &&
-      previous.editable === next.editable &&
-      previous.onPointPointerDown === next.onPointPointerDown &&
-      previous.onSelect === next.onSelect &&
-      previous.onTarget === next.onTarget &&
-      previous.selectable === next.selectable &&
-      previous.selected === next.selected &&
-      sameDisplayPoint(previous.point, next.point)
-    )
-  },
-)
+        }}
+      />
+      <circle
+        cx={point.x}
+        cy={point.y}
+        r={3}
+        className={
+          selected
+            ? "pointer-events-none fill-ring stroke-background"
+            : point.construction
+              ? "pointer-events-none fill-background stroke-muted-foreground"
+              : "pointer-events-none fill-background stroke-primary"
+        }
+        opacity={dragging ? 0 : undefined}
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+    </>
+  )
+}, sameSketchPointDrawingProps)
 
-function supportsSketchCurveModification(tool: SketchModificationTool, curve: SketchCurveEntity) {
+const stableSketchPointDrawingKeys = [
+  "dragging",
+  "editable",
+  "modificationTarget",
+  "onEntityAction",
+  "onPointPointerDown",
+  "onSelect",
+  "onTarget",
+  "selectable",
+  "selected",
+] as const satisfies readonly (keyof SketchPointDrawingProps)[]
+
+function sameSketchPointDrawingProps(
+  previous: SketchPointDrawingProps,
+  next: SketchPointDrawingProps,
+) {
+  return (
+    sameDisplayPoint(previous.point, next.point) &&
+    stableSketchPointDrawingKeys.every((key) => previous[key] === next[key])
+  )
+}
+
+function supportsSketchCurveModification(
+  tool: SketchModificationTool,
+  curve: SketchCurveEntity,
+  pending: PendingGeometry | null,
+) {
+  if (tool === "mirror") return pending?.kind === "mirror-sources" || curve.type === "line"
   return tool !== "extend" || curve.type !== "circle"
 }
 
@@ -1069,6 +1090,7 @@ function SketchGeometry({
   onPointPointerDown,
   onSelect,
   onTarget,
+  pending,
   selectedEntityIds,
   presentation,
   tool,
@@ -1079,13 +1101,19 @@ function SketchGeometry({
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
+  pending: PendingGeometry | null
   selectedEntityIds: readonly SketchEntityId[]
   presentation: SketchGeometryPresentation
   tool: SketchEditorTool
 }) {
   const selectable = editable && tool === "select"
   const modifiable = editable && isSketchModificationTool(tool)
-  const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
+  const mirrorSourceSelection = tool === "mirror" && pending?.kind === "mirror-sources"
+  const selectedIds = useMemo(() => {
+    const ids = new Set(selectedEntityIds)
+    if (pending?.kind === "mirror-sources") ids.add(pending.axisLineId)
+    return ids
+  }, [pending, selectedEntityIds])
   const geometryPointerDown = useCallback(
     (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
       if (!selectable && !modifiable) return
@@ -1106,7 +1134,8 @@ function SketchGeometry({
           )}
           interactive={
             !modifiable ||
-            (isSketchModificationTool(tool) && supportsSketchCurveModification(tool, entity))
+            (isSketchModificationTool(tool) &&
+              supportsSketchCurveModification(tool, entity, pending))
           }
           points={presentation.pointsById}
           selected={selectedIds.has(entity.id)}
@@ -1118,7 +1147,9 @@ function SketchGeometry({
         <SketchPoint
           key={point.id}
           dragging={point.id === draggingPointId}
-          editable={editable && !modifiable}
+          editable={editable && (!modifiable || mirrorSourceSelection)}
+          modificationTarget={mirrorSourceSelection}
+          onEntityAction={geometryPointerDown}
           point={point}
           selectable={selectable}
           selected={selectedIds.has(point.id)}
@@ -1990,7 +2021,7 @@ function PendingPreview({
   pending: PendingGeometry | null
   sketch: SketchRecord
 }) {
-  if (!pending || !cursor) return null
+  if (!pending || !cursor || pending.kind === "mirror-sources") return null
   const start = pendingStart(pending, sketch)
   return (
     <g
@@ -2650,8 +2681,10 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
   }
 }
 
+type DirectSketchModificationTool = Exclude<SketchModificationTool, "mirror">
+
 function sketchModificationUpdate(
-  tool: SketchModificationTool,
+  tool: DirectSketchModificationTool,
   draft: SketchRecord,
   entityId: SketchEntityId,
   point: SketchPoint2,
@@ -2709,7 +2742,7 @@ function projectedCirclePoint(
 }
 
 function safeSketchModificationUpdate(
-  tool: SketchModificationTool,
+  tool: DirectSketchModificationTool,
   draft: SketchRecord,
   entityId: SketchEntityId,
   point: SketchPoint2,
@@ -2719,6 +2752,53 @@ function safeSketchModificationUpdate(
   } catch {
     return null
   }
+}
+
+function safeMirrorSketchEntities(
+  draft: SketchRecord,
+  axisLineId: SketchEntityId,
+  entityIds: readonly SketchEntityId[],
+) {
+  try {
+    return mirrorSketchEntities(draft, {
+      axisLineId,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+type MirrorActionResolution =
+  | Readonly<{
+      axisLineId: SketchEntityId
+      kind: "select-sources"
+    }>
+  | Readonly<{
+      keepSelectingSources: boolean
+      kind: "publish"
+      result: ReturnType<typeof mirrorSketchEntities>
+    }>
+
+function resolveMirrorAction(input: {
+  draft: SketchRecord
+  entityId: SketchEntityId
+  pending: PendingGeometry | null
+  selectedEntityIds: readonly SketchEntityId[]
+}): MirrorActionResolution | null {
+  if (input.pending?.kind === "mirror-sources") {
+    if (input.entityId === input.pending.axisLineId) return null
+    const result = safeMirrorSketchEntities(input.draft, input.pending.axisLineId, [input.entityId])
+    return result ? { keepSelectingSources: true, kind: "publish", result } : null
+  }
+  const axis = input.draft.entities.find(({ id }) => id === input.entityId)
+  if (axis?.type !== "line") return null
+  const sourceIds = input.selectedEntityIds.filter((selectedId) => selectedId !== axis.id)
+  if (sourceIds.length === 0) return { axisLineId: axis.id, kind: "select-sources" }
+  const result = safeMirrorSketchEntities(input.draft, axis.id, sourceIds)
+  return result ? { keepSelectingSources: false, kind: "publish", result } : null
 }
 
 function placementInputWithInference(input: {
@@ -2805,14 +2885,16 @@ function consumeSketchHistoryShortcut(
   return true
 }
 
-function consumePendingPlacementCancel(
-  event: KeyboardEvent<SVGSVGElement>,
-  hasPendingPlacement: boolean,
-  cancel: () => void,
-) {
-  if (event.key !== "Escape" || !hasPendingPlacement) return false
-  event.preventDefault()
-  cancel()
+function consumeSketchCancel(input: {
+  event: KeyboardEvent<SVGSVGElement>
+  onEditorToolChange: (tool: SketchEditorTool) => void
+  pending: PendingGeometry | null
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}) {
+  if (input.event.key !== "Escape" || input.pending === null) return false
+  input.event.preventDefault()
+  input.setPending(null)
+  if (input.pending.kind === "mirror-sources") input.onEditorToolChange("select")
   return true
 }
 
@@ -2844,6 +2926,7 @@ const pointInferenceSupport = {
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
+  mirror: neverSupportsPointInference,
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
@@ -3141,7 +3224,9 @@ function handleSketchKeyDown(input: {
   draft: SketchRecord | null
   event: KeyboardEvent<SVGSVGElement>
   inference: SketchPointInference | null
+  editorTool: SketchEditorTool
   onDraftChange: SketchDrawingConfiguration["onDraftChange"]
+  onEditorToolChange: (tool: SketchEditorTool) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
@@ -3150,11 +3235,7 @@ function handleSketchKeyDown(input: {
   setPending: Dispatch<SetStateAction<PendingGeometry | null>>
 }) {
   if (consumeSketchHistoryShortcut(input.event, input.onUndo, input.onRedo)) return
-  if (
-    consumePendingPlacementCancel(input.event, input.pending !== null, () => input.setPending(null))
-  ) {
-    return
-  }
+  if (consumeSketchCancel(input)) return
   if (
     input.pending?.kind === "regular-polygon-sides" &&
     consumeRegularPolygonSideCountKey(input, input.pending)
@@ -3451,6 +3532,7 @@ function SketchDrawingView({
           onPointPointerDown={handlers.onPointPointerDown}
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
+          pending={state.pending}
         />
         <DraggedSketchGeometry
           dragTarget={state.dragTarget}
@@ -3470,6 +3552,36 @@ function SketchDrawingView({
         viewport={state.viewportSize}
         onSelect={configuration.onConstraintSelectionChange}
       />
+      <SketchMirrorInstruction
+        editorTool={configuration.editorTool}
+        pending={state.pending}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+    </div>
+  )
+}
+
+function SketchMirrorInstruction({
+  editorTool,
+  pending,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "mirror") return null
+  let instruction = t("mirrorSelectAxis")
+  if (pending?.kind === "mirror-sources") instruction = t("mirrorSelectSources")
+  else if (selectedEntityCount > 0) instruction = t("mirrorSelectAxisForSelection")
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-mirror-instruction
+      role="status"
+    >
+      {instruction}
     </div>
   )
 }
@@ -3633,9 +3745,11 @@ function SketchDrawing({
       appendAt,
       cursor,
       draft,
+      editorTool,
       event,
       inference,
       onDraftChange,
+      onEditorToolChange,
       onRedo,
       onSelectionChange,
       onUndo,
@@ -3678,8 +3792,35 @@ function SketchDrawing({
       : null
     if (nextDraft) publishModificationDraft(nextDraft)
   }
+  const publishMirrorDraft = (
+    result: ReturnType<typeof mirrorSketchEntities>,
+    keepSelectingSources: boolean,
+  ) => {
+    if (result.createdEntityIds.length === 0) return
+    onDraftChange(result.sketch)
+    onSelectionChange([])
+    setInference(null)
+    if (keepSelectingSources) return
+    setPending(null)
+    onEditorToolChange("select")
+  }
+  const handleMirrorAction = (entityId: SketchEntityId) => {
+    if (!draft) return
+    const resolution = resolveMirrorAction({ draft, entityId, pending, selectedEntityIds })
+    if (resolution?.kind === "select-sources") {
+      onSelectionChange([])
+      setInference(null)
+      setPending({ axisLineId: resolution.axisLineId, kind: "mirror-sources" })
+      return
+    }
+    if (resolution) publishMirrorDraft(resolution.result, resolution.keepSelectingSources)
+  }
   const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
     if (!draft || !isSketchModificationTool(editorTool)) return
+    if (editorTool === "mirror") {
+      handleMirrorAction(entityId)
+      return
+    }
     const point = eventPoint(event)
     if (!point) return
     const entity = draft.entities.find(({ id }) => id === entityId)

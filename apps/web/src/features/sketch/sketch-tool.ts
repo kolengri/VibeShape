@@ -34,11 +34,20 @@ export type SketchEditorTool =
   | "tangent-arc"
   | "trim"
   | "extend"
+  | "mirror"
   | "split"
-export type SketchModificationTool = Extract<SketchEditorTool, "extend" | "split" | "trim">
+export type SketchModificationTool = Extract<
+  SketchEditorTool,
+  "extend" | "mirror" | "split" | "trim"
+>
 export type SketchDraftChangeMode = "record" | "replace"
 
-const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set(["extend", "split", "trim"])
+const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
+  "extend",
+  "mirror",
+  "split",
+  "trim",
+])
 
 export function isSketchModificationTool(tool: SketchEditorTool): tool is SketchModificationTool {
   return sketchModificationTools.has(tool)

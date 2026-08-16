@@ -34,6 +34,7 @@ and selection are presentation state; they never replace stable entity and const
 | Trim curve | Remove the clicked line, arc, or circle portion bounded by neighboring analytical curve intersections while preserving the original identity on one retained remainder | Implemented |
 | Extend open curve | Move the clicked-near line or arc endpoint to the nearest reachable bounded line, arc, or circle intersection while preserving the curve identity | Implemented |
 | Split curve | Divide a line or arc at one projected point; divide a circle at two projected points into complementary equal-radius arcs | Implemented |
+| Mirror | Reflect selected or subsequently picked points, lines, arcs, and circles across a sketch line while preserving shared-point and symmetry intent | Implemented |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -47,10 +48,11 @@ geometry has a stable, unambiguous center construction. Free-form or selection-d
 duplicated with artificial center modes.
 
 Trim and Split operate on analytical lines, arcs, and circles. Extend operates on open analytical
-lines and arcs because a closed circle has no endpoint. Ellipse, spline, drag-through Trim, and
-free-end Extend variants remain follow-up work together with Offset, mirror/pattern authoring,
-curve-chain slots, and projected external geometry. These capabilities require exact domain and
-solver behavior and MUST NOT be simulated only in the toolbar.
+lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch line as its axis and
+reflects points or analytical curves through shared pure domain operations. Ellipse, spline,
+drag-through Trim, and free-end Extend variants remain follow-up work together with Offset, pattern
+authoring, curve-chain slots, and projected external geometry. These capabilities require exact
+domain and solver behavior and MUST NOT be simulated only in the toolbar.
 
 ## Onshape-oriented parity baseline
 
@@ -61,7 +63,8 @@ baseline is derived from the official
 [Inscribed Polygon](https://cad.onshape.com/help/Content/Sketch/inscribed_polygon.htm),
 [Trim](https://cad.onshape.com/help/Content/Sketch/trim.htm),
 [Extend](https://cad.onshape.com/help/Content/Sketch/extend.htm), and
-[Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm) documentation.
+[Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm), and
+[Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm) documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
@@ -71,7 +74,7 @@ baseline is derived from the official
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, and open-curve Extend with line/arc/circle boundaries | Drag-through Trim, free-end Extend, ellipse/spline modification, Offset, Mirror, Transform, and patterns |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, and point/line/arc/circle Mirror across a sketch line | Drag-through Trim, free-end Extend, ellipse/spline modification, Offset, Transform, and patterns |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -164,6 +167,14 @@ adding solver constraints.
     circle into an arc. A detached endpoint and constraints that depend only on it are removed; a
     point still shared by other geometry and its constraints remain. Unsupported or degenerate
     actions and operations without a valid bounded result do not mutate the draft.
+13. Mirror supports both standard CAD selection orders. With selected source geometry, activating
+    Mirror and selecting a line reflects the complete selection as one local history edit and
+    returns to Select. With no preselection, activating Mirror requests the axis first, highlights
+    it, then reflects each subsequently selected point or curve while the tool remains active;
+    `Escape` finishes that sequence. Shared source points produce one shared mirrored point, points
+    on the axis retain their identity, off-axis point pairs receive Symmetric intent, and mirrored
+    round geometry retains equal-radius intent without redundant solver equations. Invalid axes,
+    missing sources, and attempts to mirror the axis itself leave the draft unchanged.
 
 ## View orientation
 
@@ -180,7 +191,7 @@ active support plane and display unit.
    ellipses and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing.
 4. Add reference dimensions and a driving/reference conversion command.
-5. Extend Trim, Extend, and Split to future ellipse and spline entities, then add drag-through Trim
-   and explicit free-end Extend behavior.
+5. Extend Trim, Extend, Split, and Mirror to future ellipse and spline entities, then add
+   drag-through Trim and explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

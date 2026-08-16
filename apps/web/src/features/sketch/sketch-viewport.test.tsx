@@ -342,6 +342,88 @@ describe("SketchViewport", () => {
     expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
   })
 
+  it("mirrors a preselected line after selecting its axis", () => {
+    const fixture = lineSketchFixture("b256", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: 2, y: 3 }, end: { x: 7, y: 8 } },
+    ])
+    const [axis, source] = fixture.entities.filter((entity) => entity.type === "line")
+    if (!axis || !source) throw new Error("The mirror fixture must contain an axis and a source.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "mirror",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [source.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select a mirror line for the selected geometry.",
+    )
+    const axisElement = document.querySelector(`[data-sketch-entity-id="${axis.id}"]`)
+    if (!axisElement) throw new Error("The mirror axis must be rendered.")
+
+    fireEvent.pointerDown(axisElement)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const reflectedLine = nextDraft.entities.find(
+      (entity) => entity.type === "line" && entity.id !== axis.id && entity.id !== source.id,
+    )
+    if (reflectedLine?.type !== "line") throw new Error("Mirror must create a reflected line.")
+    const reflectedPoints = [reflectedLine.startPointId, reflectedLine.endPointId].map((pointId) =>
+      nextDraft.entities.find(({ id }) => id === pointId),
+    )
+    expect(reflectedPoints).toEqual([
+      expect.objectContaining({ type: "point", x: 2, y: -3 }),
+      expect.objectContaining({ type: "point", x: 7, y: -8 }),
+    ])
+    expect(nextDraft.constraints.filter(({ type }) => type === "symmetric")).toHaveLength(2)
+  })
+
+  it("keeps Mirror active while selecting sources after the axis", () => {
+    const fixture = lineSketchFixture("b257", [
+      { start: { x: 0, y: -10 }, end: { x: 0, y: 10 } },
+      { start: { x: 3, y: 2 }, end: { x: 8, y: 7 } },
+    ])
+    const [axis, source] = fixture.entities.filter((entity) => entity.type === "line")
+    if (!axis || !source) throw new Error("The mirror fixture must contain an axis and a source.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "mirror",
+      onDraftChange,
+      onEditorToolChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select a mirror line, then select geometry to mirror.",
+    )
+    const axisElement = document.querySelector(`[data-sketch-entity-id="${axis.id}"]`)
+    const sourceElement = document.querySelector(`[data-sketch-entity-id="${source.id}"]`)
+    if (!axisElement || !sourceElement) throw new Error("The mirror geometry must be rendered.")
+
+    fireEvent.pointerDown(axisElement)
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select geometry to mirror. Press Escape when finished.",
+    )
+
+    fireEvent.pointerDown(sourceElement)
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onEditorToolChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
   it("splits a circle after two curve clicks with an analytical preview", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const fixture = appendSketchCircle(emptySketch, {
