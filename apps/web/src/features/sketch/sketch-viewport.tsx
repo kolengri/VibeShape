@@ -1,15 +1,19 @@
 import {
   appendSketchArc,
   appendSketchCircle,
+  appendSketchConstraint,
   appendSketchLine,
   appendSketchPoint,
   appendSketchRectangle,
+  inferSketchPoint,
   moveSketchPoint,
   removeSketchEntities,
+  type SketchAxisInference,
   type SketchConstraintId,
   type SketchEntity,
   type SketchEntityId,
   type SketchPoint2,
+  type SketchPointInference,
   type SketchPointTarget,
   type SketchProfileSelector,
   type SketchRecord,
@@ -600,6 +604,156 @@ function SketchGeometry({
   )
 }
 
+type ConstraintGlyph = Readonly<{
+  id: SketchConstraintId
+  label: string
+  point: SketchPoint2
+  dimensional: boolean
+}>
+
+function midpoint(first: SketchPoint2, second: SketchPoint2): SketchPoint2 {
+  return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 }
+}
+
+function midpointForIds(
+  firstId: SketchEntityId,
+  secondId: SketchEntityId,
+  anchors: (id: SketchEntityId) => SketchPoint2 | null,
+) {
+  const first = anchors(firstId)
+  const second = anchors(secondId)
+  return first && second ? midpoint(first, second) : null
+}
+
+function entityAnchor(
+  entity: SketchEntity | undefined,
+  points: ReadonlyMap<string, DisplayPoint>,
+  solvedCircles: ReadonlyMap<string, number>,
+): SketchPoint2 | null {
+  if (!entity) return null
+  const point = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
+  switch (entity.type) {
+    case "point":
+      return point(entity.id)
+    case "line":
+      return midpointForIds(entity.startPointId, entity.endPointId, point)
+    case "circle": {
+      const center = point(entity.centerPointId)
+      if (!center) return null
+      const radius = solvedCircles.get(entity.id) ?? entity.radius
+      return { x: center.x + radius * 0.7, y: center.y + radius * 0.7 }
+    }
+    case "arc":
+      return (
+        midpointForIds(entity.startPointId, entity.endPointId, point) ?? point(entity.centerPointId)
+      )
+  }
+}
+
+function dimensionalLabel(constraint: SketchRecord["constraints"][number]) {
+  if (!("value" in constraint)) return null
+  return (
+    constraint.value.source.expression ??
+    `${constraint.value.source.value} ${constraint.value.source.unit}`
+  )
+}
+
+const geometricConstraintLabels: Partial<
+  Record<SketchRecord["constraints"][number]["type"], string>
+> = {
+  coincident: "×",
+  concentric: "◎",
+  equal: "=",
+  fixed: "F",
+  horizontal: "H",
+  parallel: "∥",
+  perpendicular: "⊥",
+  "point-on-curve": "⊙",
+  "point-on-line": "⊙",
+  tangent: "T",
+  vertical: "V",
+}
+
+function constraintAnchor(
+  constraint: SketchRecord["constraints"][number],
+  pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+) {
+  if ("firstPointId" in constraint) {
+    return midpointForIds(constraint.firstPointId, constraint.secondPointId, pointAnchor)
+  }
+  if ("firstEntityId" in constraint) {
+    return midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor)
+  }
+  if ("pointId" in constraint) return pointAnchor(constraint.pointId)
+  if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
+  if ("arcId" in constraint) {
+    return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
+  }
+  if ("lineId" in constraint) return geometryAnchor(constraint.lineId)
+  return null
+}
+
+function constraintGlyph(
+  constraint: SketchRecord["constraints"][number],
+  pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+): ConstraintGlyph | null {
+  const point = constraintAnchor(constraint, pointAnchor, geometryAnchor)
+  const label = dimensionalLabel(constraint) ?? geometricConstraintLabels[constraint.type]
+  return point && label
+    ? { id: constraint.id, label, point, dimensional: "value" in constraint }
+    : null
+}
+
+function constraintGlyphs(sketch: SketchRecord, solution: SolvedSketchWire | null) {
+  const points = new Map(displayPoints(sketch, solution).map((point) => [point.id, point]))
+  const entities = new Map(sketch.entities.map((entity) => [entity.id, entity]))
+  const solvedCircles = new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius]))
+  const pointAnchor = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
+  const geometryAnchor = (id: SketchEntityId) =>
+    entityAnchor(entities.get(id), points, solvedCircles)
+
+  return sketch.constraints
+    .map((constraint) => constraintGlyph(constraint, pointAnchor, geometryAnchor))
+    .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
+}
+
+function ConstraintGlyphs({
+  bounds,
+  sketch,
+  solution,
+}: {
+  bounds: SketchBounds
+  sketch: SketchRecord
+  solution: SolvedSketchWire | null
+}) {
+  const fontSize = Math.max(bounds.width / 105, bounds.height / 78)
+  return (
+    <g className="pointer-events-none">
+      {constraintGlyphs(sketch, solution).map((glyph) => (
+        <text
+          key={glyph.id}
+          x={glyph.point.x + fontSize * 0.45}
+          y={-glyph.point.y - fontSize * 0.45}
+          data-sketch-constraint-id={glyph.id}
+          data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
+          className={
+            glyph.dimensional
+              ? "fill-foreground stroke-background font-mono"
+              : "fill-primary stroke-background font-mono font-semibold"
+          }
+          fontSize={fontSize}
+          paintOrder="stroke"
+          strokeWidth={3}
+        >
+          {glyph.label}
+        </text>
+      ))}
+    </g>
+  )
+}
+
 function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
   switch (pending.kind) {
     case "line":
@@ -671,6 +825,7 @@ function PendingPreview({
 }
 
 type PlacementInput = Readonly<{
+  axis: SketchAxisInference | null
   construction: boolean
   draft: SketchRecord
   pending: PendingGeometry | null
@@ -706,13 +861,60 @@ function placeLine(input: PlacementInput): PlacementUpdate {
     end: input.target,
   })
   const line = result.sketch.entities.at(-1)
+  const nextSketch =
+    line?.type === "line" && input.axis
+      ? appendSketchConstraint(
+          result.sketch,
+          { type: input.axis, lineId: line.id },
+          createBrowserSketchConstraintId,
+        )
+      : result.sketch
   return {
-    draft: result.sketch,
+    draft: nextSketch,
     pending:
       line?.type === "line"
         ? { kind: "line", start: { kind: "existing", pointId: line.endPointId } }
         : null,
   }
+}
+
+function InferenceGlyph({
+  bounds,
+  inference,
+}: {
+  bounds: SketchBounds
+  inference: SketchPointInference | null
+}) {
+  if (!inference || (inference.axis === null && inference.target.kind === "new")) return null
+  const size = Math.max(bounds.width / 90, bounds.height / 68)
+  const pointSnapped = inference.target.kind === "existing"
+  return (
+    <g
+      className="pointer-events-none fill-background stroke-ring text-ring"
+      data-sketch-inference={pointSnapped ? "coincident" : inference.axis}
+      transform={`translate(${inference.point.x} ${-inference.point.y})`}
+    >
+      {pointSnapped ? (
+        <rect
+          x={-size / 2}
+          y={-size / 2}
+          width={size}
+          height={size}
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : (
+        <text
+          x={size * 0.7}
+          y={-size * 0.7}
+          className="fill-ring stroke-none font-mono font-semibold"
+          fontSize={size}
+        >
+          {inference.axis === "horizontal" ? "H" : "V"}
+        </text>
+      )}
+    </g>
+  )
 }
 
 function placeRectangle(input: PlacementInput): PlacementUpdate {
@@ -839,6 +1041,59 @@ function isSketchDeleteKey(event: KeyboardEvent<SVGSVGElement>) {
   return event.key === "Delete" || event.key === "Backspace"
 }
 
+function unsnappedInference(point: SketchPoint2): SketchPointInference {
+  return { axis: null, point, target: { kind: "new", point } }
+}
+
+function supportsPointInference(editorTool: SketchEditorTool, pending: PendingGeometry | null) {
+  switch (editorTool) {
+    case "line":
+    case "point":
+      return true
+    case "circle":
+      return pending?.kind !== "circle"
+    case "arc":
+    case "rectangle":
+    case "select":
+      return false
+  }
+}
+
+function lineInferenceAnchor(
+  editorTool: SketchEditorTool,
+  pending: PendingGeometry | null,
+  draft: SketchRecord,
+) {
+  return editorTool === "line" && pending?.kind === "line"
+    ? pointForTarget(draft, pending.start)
+    : null
+}
+
+function placementInference(input: {
+  bounds: SketchBounds
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+  point: SketchPoint2
+  rectangle: Readonly<{ width: number; height: number }>
+  solution: SolvedSketchWire | null
+}): SketchPointInference {
+  if (!input.draft || !supportsPointInference(input.editorTool, input.pending)) {
+    return unsnappedInference(input.point)
+  }
+  const worldPerPixel = Math.max(
+    input.rectangle.width > 0 ? input.bounds.width / input.rectangle.width : 0,
+    input.rectangle.height > 0 ? input.bounds.height / input.rectangle.height : 0,
+  )
+  const anchor = lineInferenceAnchor(input.editorTool, input.pending, input.draft)
+  return inferSketchPoint({
+    ...(anchor ? { anchor } : {}),
+    point: input.point,
+    points: displayPoints(input.draft, input.solution),
+    tolerance: worldPerPixel * 10,
+  })
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -862,6 +1117,7 @@ function SketchDrawing({
   } = configuration
   const [bounds, setBounds] = useState(() => sketchBounds(displayPoints(sketch, solution)))
   const [cursor, setCursor] = useState<SketchPoint2 | null>(null)
+  const [inference, setInference] = useState<SketchPointInference | null>(null)
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const [pending, setPending] = useState<PendingGeometry | null>(null)
@@ -871,43 +1127,64 @@ function SketchDrawing({
 
   useEffect(() => {
     setPending(null)
+    setInference(null)
   }, [editorTool, sketch.id])
 
   const eventPoint = (event: PointerEvent<SVGSVGElement | SVGCircleElement>) => {
     const svg = svgRef.current
     return svg ? pointerToSketchPoint(event, svg.getBoundingClientRect(), bounds) : null
   }
-  const appendAt = (target: SketchPointTarget) => {
+  const inferredPlacement = (
+    point: SketchPoint2,
+    rectangle: Readonly<{ width: number; height: number }>,
+  ) => placementInference({ bounds, draft, editorTool, pending, point, rectangle, solution })
+  const appendAt = (target: SketchPointTarget, axis: SketchAxisInference | null = null) => {
     if (!draft) return
     const point = pointForTarget(draft, target)
     try {
-      const update = placementUpdate(editorTool, { construction, draft, pending, point, target })
+      const update = placementUpdate(editorTool, {
+        axis,
+        construction,
+        draft,
+        pending,
+        point,
+        target,
+      })
       if (!update) return
       if (update.draft) onDraftChange(update.draft)
       setPending(update.pending)
+      setInference(null)
     } catch {
       setPending(null)
     }
   }
-  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
-    if (panGesture?.pointerId === event.pointerId) {
-      const svg = svgRef.current
-      const rectangle = svg?.getBoundingClientRect()
-      if (!rectangle) return
-      const nextBounds = pannedBounds(panGesture, event, rectangle)
-      if (nextBounds) setBounds(nextBounds)
-      return
-    }
-    const point = eventPoint(event)
-    if (!point) return
+  const updatePanFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    if (panGesture?.pointerId !== event.pointerId) return false
+    const rectangle = svgRef.current?.getBoundingClientRect()
+    if (!rectangle) return true
+    const nextBounds = pannedBounds(panGesture, event, rectangle)
+    if (nextBounds) setBounds(nextBounds)
+    return true
+  }
+  const updateDraggedPoint = (point: SketchPoint2) => {
+    if (!draft || !draggingPointId) return false
     setCursor(point)
-    if (draft && draggingPointId) {
-      onDraftChange(
-        moveSketchPoint(draft, draggingPointId, point),
-        dragRecordedRef.current ? "replace" : "record",
-      )
-      dragRecordedRef.current = true
-    }
+    setInference(null)
+    onDraftChange(
+      moveSketchPoint(draft, draggingPointId, point),
+      dragRecordedRef.current ? "replace" : "record",
+    )
+    dragRecordedRef.current = true
+    return true
+  }
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (updatePanFromPointer(event)) return
+    const point = eventPoint(event)
+    if (!point || updateDraggedPoint(point)) return
+    const rectangle = svgRef.current?.getBoundingClientRect()
+    const nextInference = rectangle ? inferredPlacement(point, rectangle) : null
+    setInference(nextInference)
+    setCursor(nextInference?.point ?? point)
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
     if (consumeSketchHistoryShortcut(event, onUndo, onRedo)) return
@@ -937,7 +1214,11 @@ function SketchDrawing({
       return
     }
     const point = eventPoint(event)
-    if (point) appendAt({ kind: "new", point })
+    const rectangle = event.currentTarget.getBoundingClientRect()
+    if (point) {
+      const nextInference = inferredPlacement(point, rectangle)
+      appendAt(nextInference.target, nextInference.axis)
+    }
   }
   const handlePointerUp = () => {
     setDraggingPointId(null)
@@ -946,6 +1227,7 @@ function SketchDrawing({
   }
   const handlePointerLeave = () => {
     setCursor(null)
+    setInference(null)
     handlePointerUp()
   }
   const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
@@ -1017,7 +1299,9 @@ function SketchDrawing({
         onSelect={handleSelection}
         onTarget={appendAt}
       />
+      <ConstraintGlyphs bounds={bounds} sketch={sketch} solution={solution} />
       <PendingPreview cursor={cursor} pending={pending} sketch={sketch} />
+      <InferenceGlyph bounds={bounds} inference={inference} />
     </svg>
   )
 }

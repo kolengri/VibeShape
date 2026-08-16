@@ -75,7 +75,7 @@ export async function addDimension(
   expression: string,
 ) {
   await page.getByRole("combobox", { name: "Dimension type" }).selectOption({ label: type })
-  const input = page.getByRole("textbox", { name: "Driving expression" })
+  const input = page.getByRole("combobox", { name: "Driving expression" })
   await input.fill(expression)
   await page.getByRole("button", { name: "Add constraint" }).click()
 }

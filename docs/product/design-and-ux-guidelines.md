@@ -225,10 +225,11 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - Geometry tools MUST call shared pure domain editing operations. React components do not assemble unvalidated entity or constraint records ad hoc.
 - A completed placement MUST leave a schema-valid draft. Degenerate placement stays transient and does not create hidden entities.
 - Rectangle corners share point identities and receive explicit horizontal and vertical constraints; visual alignment is never the only design intent.
+- Point and line placement use deterministic screen-tolerance inference. Existing-point snaps reuse the stable point identity, while horizontal or vertical line inference shows a preview glyph and persists the matching geometric constraint when the segment is accepted.
 - Construction state is explicit per entity. Construction curves participate in solving but never create selectable solid profiles.
 - Selected geometry, construction geometry, closed regions, solver conflicts, and under-constrained geometry require distinct non-color cues.
 - Constraint actions are enabled from compatible selections only. Repeating the same semantic constraint is idempotent.
-- A driving dimension uses a state-agnostic field primitive and a separate TanStack Form adapter. Authored unit or `#variable` expressions remain visible in the constraint list and survive save, edit, rename refactor, and reload.
+- A driving dimension uses a state-agnostic field primitive and a separate TanStack Form adapter. A selected line exposes its endpoint distance directly. Existing dimensions can be edited without replacing their constraint identity or references. Authored unit or `#variable` expressions remain visible in the constraint list and viewport and survive save, edit, rename refactor, and reload.
 - The worker owns live solving. The main thread sends a complete validated transient draft against the exact rebuilt revision and ignores stale responses; preview requests never enter document history.
 - Solver status, degrees of freedom, and profile measurements remain visible without covering the geometry being edited. An over-constrained result preserves the draft and names or marks every failed constraint the solver can identify.
 - Closed regions render behind entity strokes. Region activation stores a stable boundary-entity selector; transient profile indices are display-only.

@@ -6,15 +6,19 @@ import {
   evaluateVariableDefinitions,
   removeSketchConstraints,
   type SketchConstraintDefinition,
+  type SketchDimensionValue,
   type SketchEntity,
   type SketchEntityId,
   type SketchProfileSelector,
   type SketchRecord,
+  setSketchDimensionValue,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
+import { Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useMemo, useState } from "react"
 import { createBrowserSketchConstraintId } from "../../document/document-controller"
@@ -49,6 +53,7 @@ type SketchEditorPanelCopy = Readonly<{
   dimensionInvalid: string
   dimensions: string
   distance: string
+  editConstraint: string
   equal: string
   finish: string
   fixed: string
@@ -67,6 +72,7 @@ type SketchEditorPanelCopy = Readonly<{
   profiles: string
   radius: string
   remove: string
+  saveDimension: string
   selectionHint: string
   tangent: string
   vertical: string
@@ -251,6 +257,7 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
           { kind: "radius", label: copy.radius },
           { kind: "diameter", label: copy.diameter },
         ],
+        line: [{ kind: "distance", label: copy.distance }],
         "line:line": [{ kind: "angle", label: copy.angle }],
         "point:point": [
           { kind: "distance", label: copy.distance },
@@ -277,6 +284,16 @@ function angleDimensionDefinition(
   } as const
 }
 
+function distancePointIds(
+  kind: Exclude<DimensionKind, "angle">,
+  entities: readonly SketchEntity[],
+) {
+  const pointsPair = pair(entitiesOfType(entities, "point"))
+  if (pointsPair) return [pointsPair[0].id, pointsPair[1].id] as const
+  const line = entitiesOfType(entities, "line")[0]
+  return kind === "distance" && line ? ([line.startPointId, line.endPointId] as const) : null
+}
+
 function lengthDimensionDefinition(
   kind: Exclude<DimensionKind, "angle">,
   expression: string,
@@ -289,14 +306,38 @@ function lengthDimensionDefinition(
     const curve = curves(entities)[0]
     return curve ? ({ type: kind, curveId: curve.id, value } as const) : null
   }
-  const pointsPair = pair(entitiesOfType(entities, "point"))
-  return pointsPair
+  const pointIds = distancePointIds(kind, entities)
+  return pointIds
     ? ({
         type: kind,
-        firstPointId: pointsPair[0].id,
-        secondPointId: pointsPair[1].id,
+        firstPointId: pointIds[0],
+        secondPointId: pointIds[1],
         value,
       } as const)
+    : null
+}
+
+function evaluateDimensionValue(
+  kind: DimensionKind,
+  expression: string,
+  variables: readonly VariableDefinition[],
+  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
+): SketchDimensionValue | null {
+  const evaluatedVariables = evaluateVariableDefinitions(variables)
+  if (!evaluatedVariables.ok) return null
+  const normalizedExpression = normalizeExpressionWithDisplayUnit(
+    expression,
+    kind === "angle" ? displayUnits.angle : displayUnits.length,
+  )
+  const evaluated = evaluateExpression(normalizedExpression, evaluatedVariables.valuesByName)
+  if (!evaluated.ok) return null
+  if (kind === "angle") {
+    return evaluated.value.dimension === "angle"
+      ? createAngleQuantity(evaluated.value.value, "rad", normalizedExpression)
+      : null
+  }
+  return evaluated.value.dimension === "length" && evaluated.value.value > 0
+    ? createLengthQuantity(evaluated.value.value, "mm", normalizedExpression)
     : null
 }
 
@@ -307,17 +348,12 @@ function dimensionDefinition(
   variables: readonly VariableDefinition[],
   displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
 ) {
-  const evaluatedVariables = evaluateVariableDefinitions(variables)
-  if (!evaluatedVariables.ok) return null
-  const normalizedExpression = normalizeExpressionWithDisplayUnit(
-    expression,
-    kind === "angle" ? displayUnits.angle : displayUnits.length,
-  )
-  const evaluated = evaluateExpression(normalizedExpression, evaluatedVariables.valuesByName)
-  if (!evaluated.ok) return null
+  const value = evaluateDimensionValue(kind, expression, variables, displayUnits)
+  if (!value) return null
+  const normalizedExpression = value.source.expression ?? expression.trim()
   return kind === "angle"
-    ? angleDimensionDefinition(normalizedExpression, entities, evaluated.value)
-    : lengthDimensionDefinition(kind, normalizedExpression, entities, evaluated.value)
+    ? angleDimensionDefinition(normalizedExpression, entities, value)
+    : lengthDimensionDefinition(kind, normalizedExpression, entities, value)
 }
 
 function SketchDimensionForm({
@@ -534,32 +570,163 @@ function SketchConstraintSection({
   )
 }
 
+function ConstraintRowActions({
+  copy,
+  editable,
+  isEditing,
+  onEdit,
+  onRemove,
+}: {
+  copy: SketchEditorPanelCopy
+  editable: boolean
+  isEditing: boolean
+  onEdit: (editing: boolean) => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      {editable ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-xs"
+              variant={isEditing ? "secondary" : "ghost"}
+              aria-label={isEditing ? copy.cancel : copy.editConstraint}
+              aria-pressed={isEditing}
+              onClick={() => onEdit(!isEditing)}
+            >
+              {isEditing ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isEditing ? copy.cancel : copy.editConstraint}</TooltipContent>
+        </Tooltip>
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label={copy.remove}
+            onClick={onRemove}
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.remove}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
 function AppliedConstraintRow({
   constraint,
   copy,
   failed,
+  isEditing,
+  onEdit,
   onRemove,
+  onSave,
+  variables,
 }: {
   constraint: SketchRecord["constraints"][number]
   copy: SketchEditorPanelCopy
   failed: boolean
+  isEditing: boolean
+  onEdit: (editing: boolean) => void
   onRemove: () => void
+  onSave: (value: SketchDimensionValue) => void
+  variables: readonly VariableDefinition[]
 }) {
   const value = constraintValue(constraint)
   return (
     <li
       aria-invalid={failed || undefined}
-      className="flex min-w-0 items-center justify-between gap-2 rounded-sm border px-2 py-1 aria-invalid:border-destructive aria-invalid:text-destructive"
+      className="grid min-w-0 gap-2 rounded-sm border px-2 py-1 aria-invalid:border-destructive aria-invalid:text-destructive"
     >
-      <span className="min-w-0 truncate text-xs">
-        {constraintName(constraint.type, copy)}
-        {value ? ` · ${value}` : ""}
-        {failed ? ` · ${copy.conflict}` : ""}
-      </span>
-      <Button type="button" size="xs" variant="ghost" onClick={onRemove}>
-        {copy.remove}
-      </Button>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-xs">
+          {constraintName(constraint.type, copy)}
+          {value ? ` · ${value}` : ""}
+          {failed ? ` · ${copy.conflict}` : ""}
+        </span>
+        <ConstraintRowActions
+          copy={copy}
+          editable={value !== null}
+          isEditing={isEditing}
+          onEdit={onEdit}
+          onRemove={onRemove}
+        />
+      </div>
+      {isEditing && "value" in constraint ? (
+        <SketchDimensionEditForm
+          constraint={constraint}
+          copy={copy}
+          variables={variables}
+          onSave={onSave}
+        />
+      ) : null}
     </li>
+  )
+}
+
+function SketchDimensionEditForm({
+  constraint,
+  copy,
+  onSave,
+  variables,
+}: {
+  constraint: Extract<SketchRecord["constraints"][number], { value: unknown }>
+  copy: SketchEditorPanelCopy
+  onSave: (value: SketchDimensionValue) => void
+  variables: readonly VariableDefinition[]
+}) {
+  const displayUnits = useDocumentDisplayUnits()
+  const [message, setMessage] = useState<string | null>(null)
+  const suggestions = variableExpressionSuggestions(variables)
+  const expressionId = `sketch-dimension-expression-${constraint.id}`
+  const form = useAppForm({
+    defaultValues: { expression: constraintValue(constraint) ?? "" },
+    onSubmit: ({ value }) => {
+      const nextValue = evaluateDimensionValue(
+        constraint.type,
+        value.expression,
+        variables,
+        displayUnits,
+      )
+      if (!nextValue) {
+        setMessage(copy.dimensionInvalid)
+        return
+      }
+      setMessage(null)
+      onSave(nextValue)
+    },
+  })
+  return (
+    <Form form={form} aria-label={copy.editConstraint} className="gap-2 border-t pt-2">
+      <form.Field name="expression">
+        {(field) => (
+          <VariableExpressionField
+            id={expressionId}
+            name={field.name}
+            label={copy.dimensionExpression}
+            value={field.state.value}
+            error={message ?? undefined}
+            suggestions={suggestions}
+            inputClassName="font-mono tabular-nums"
+            onBlur={field.handleBlur}
+            onValueChange={(nextValue) => {
+              setMessage(null)
+              field.handleChange(nextValue)
+            }}
+          />
+        )}
+      </form.Field>
+      <form.SubmitButton size="xs" requireDirty>
+        {copy.saveDimension}
+      </form.SubmitButton>
+    </Form>
   )
 }
 
@@ -568,12 +735,15 @@ function AppliedConstraintsSection({
   draft,
   failedConstraintIds,
   onDraftChange,
+  variables,
 }: {
   copy: SketchEditorPanelCopy
   draft: SketchRecord
   failedConstraintIds: readonly string[]
   onDraftChange: (draft: SketchRecord) => void
+  variables: readonly VariableDefinition[]
 }) {
+  const [editingConstraintId, setEditingConstraintId] = useState<string | null>(null)
   return (
     <section className="grid gap-2 border-t pt-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -587,7 +757,14 @@ function AppliedConstraintsSection({
               constraint={constraint}
               copy={copy}
               failed={failedConstraintIds.includes(constraint.id)}
+              isEditing={editingConstraintId === constraint.id}
+              variables={variables}
+              onEdit={(editing) => setEditingConstraintId(editing ? constraint.id : null)}
               onRemove={() => onDraftChange(removeSketchConstraints(draft, [constraint.id]))}
+              onSave={(value) => {
+                onDraftChange(setSketchDimensionValue(draft, constraint.id, value))
+                setEditingConstraintId(null)
+              }}
             />
           ))}
         </ul>
@@ -727,6 +904,7 @@ export function SketchEditorPanel({
         copy={copy}
         draft={draft}
         failedConstraintIds={failedConstraintIds}
+        variables={variables}
         onDraftChange={onDraftChange}
       />
       <SketchProfilesSection

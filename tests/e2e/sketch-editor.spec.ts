@@ -8,6 +8,28 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("adds and edits a driving dimension from a selected line", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    await addDimension(page, "Distance", "30 mm")
+    const distanceConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 30 mm" })
+    await expect(distanceConstraint).toBeVisible()
+
+    await distanceConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await distanceConstraint.getByRole("combobox", { name: "Driving expression" }).fill("35 mm")
+    await distanceConstraint.getByRole("button", { name: "Save dimension" }).click()
+
+    await expect(page.getByText("Distance · 35 mm", { exact: true })).toBeVisible()
+  })
+
   test("authors every alpha analytical primitive on the canvas", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -98,10 +120,9 @@ test.describe("full sketch editor", () => {
     const verticalConstraint = page
       .getByRole("listitem")
       .filter({ hasText: "Vertical distance · 20 mm" })
-    await verticalConstraint.getByRole("button", { name: "Remove" }).click()
-    const editableDrawing = page.getByRole("img", { name: "Editable sketch geometry" })
-    await selectSketchEntities(page, editableDrawing, "point", [1, 2])
-    await addDimension(page, "Vertical distance", "25 mm")
+    await verticalConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await verticalConstraint.getByRole("combobox", { name: "Driving expression" }).fill("25 mm")
+    await verticalConstraint.getByRole("button", { name: "Save dimension" }).click()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
