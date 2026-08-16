@@ -1,6 +1,6 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
-import type { DocumentId, SessionId, SketchId } from "@vibeshape/domain/identifiers"
+import type { DocumentId, SessionId, SketchEntityId, SketchId } from "@vibeshape/domain/identifiers"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
@@ -17,6 +17,7 @@ const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac" as DocumentId
 const sessionA = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad" as SessionId
 const sessionB = "0195b5ac-b220-7a2c-8c33-67a36a7f21ae" as SessionId
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21af" as SketchId
+const sketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b0" as SketchEntityId
 const timestamp = "2026-08-09T00:00:00Z"
 const mesh = { chordTolerance: 0.05, angularTolerance: 0.1 } as const
 
@@ -115,6 +116,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   exportedFormats: string[] = []
   solvedSketchIds: string[] = []
   solvedSketchDrafts: Array<SketchRecord | null> = []
+  solvedSketchInputs: Array<Parameters<DocumentRebuildPort["solveSketch"]>[0]> = []
 
   async rebuild(input: Parameters<DocumentRebuildPort["rebuild"]>[0]) {
     if (this.failNextRebuild) {
@@ -157,6 +159,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
   async solveSketch(input: Parameters<DocumentRebuildPort["solveSketch"]>[0]) {
     this.solvedSketchIds.push(input.sketchId)
     this.solvedSketchDrafts.push(input.draftSketch ?? null)
+    this.solvedSketchInputs.push(input)
     return {
       protocolVersion: DOCUMENT_PROTOCOL_VERSION,
       requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f21fd",
@@ -305,13 +308,35 @@ describe("persistent document session", () => {
       id: sketchId,
       label: "Unsaved profile",
       plane: "xy",
-      entities: [],
+      entities: [
+        {
+          schemaVersion: 0,
+          id: sketchPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+      ],
       constraints: [],
     } as const satisfies SketchRecord
+    const continuation = {
+      schemaVersion: 0 as const,
+      sketchId,
+      sourceRevision: 1,
+      points: [{ entityId: sketchPointId, x: 0, y: 0 }],
+      circles: [],
+    }
+    const draggedPoints = [{ entityId: sketchPointId, x: 10, y: 20 }]
 
-    await expect(created.session.solveSketch(sketchId, draft)).resolves.toMatchObject({ ok: true })
+    await expect(
+      created.session.solveSketch(sketchId, draft, { continuation, draggedPoints }),
+    ).resolves.toMatchObject({ ok: true })
 
     expect(state.rebuildPorts[0]?.solvedSketchDrafts).toEqual([draft])
+    expect(state.rebuildPorts[0]?.solvedSketchInputs).toEqual([
+      { sketchId, draftSketch: draft, continuation, draggedPoints },
+    ])
     expect(created.session.snapshot).toMatchObject({ revision: 1, sketches: [] })
     expect(state.repository.commitCount).toBe(1)
   })

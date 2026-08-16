@@ -115,6 +115,7 @@ async function initializeViewport(
     viewportRef.current = viewport
     viewport.setMeshes(latestMeshesRef.current)
     viewport.setOriginPlaneSelection(latestOriginPlaneRef.current)
+    viewport.fit()
     setRendererFailed(false)
   } catch {
     if (!mount.cancelled) setRendererFailed(true)

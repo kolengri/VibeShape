@@ -12,6 +12,7 @@ import {
 } from "@vibeshape/domain/identifiers"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import {
+  type DocumentWorkerRequest,
   type DocumentWorkerTerminalResponse,
   type FeatureMeshPolicy,
   featureMeshPolicySchema,
@@ -49,6 +50,17 @@ const draftCommitInputSchema = z
 type DocumentRebuildResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentRebuilt" }>
 type DocumentExportResponse = Extract<DocumentWorkerTerminalResponse, { type: "documentExported" }>
 type SketchSolveResponse = Extract<DocumentWorkerTerminalResponse, { type: "sketchSolved" }>
+type SketchSolveRequest = Extract<DocumentWorkerRequest, { type: "solveSketch" }>
+
+export type PersistentSketchSolveOptions = Readonly<
+  Partial<Pick<SketchSolveRequest, "continuation" | "draggedPoints">>
+>
+
+export type DocumentSketchSolveInput = Readonly<{
+  sketchId: SketchId
+  draftSketch?: SketchRecord
+}> &
+  PersistentSketchSolveOptions
 
 export type SessionPortDiagnostic = Readonly<{
   code: string
@@ -128,10 +140,7 @@ export type DocumentRebuildPort = Readonly<{
     mesh: FeatureMeshPolicy
   }) => Promise<DocumentRebuildResponse>
   exportDocument: (format: GeometryExportFormat) => Promise<DocumentExportResponse>
-  solveSketch: (input: {
-    sketchId: SketchId
-    draftSketch?: SketchRecord
-  }) => Promise<SketchSolveResponse>
+  solveSketch: (input: DocumentSketchSolveInput) => Promise<SketchSolveResponse>
   dispose: (revision?: number) => Promise<unknown>
   terminate: () => void
 }>
@@ -390,8 +399,9 @@ export class PersistentDocumentSession {
   solveSketch(
     sketchId: SketchId,
     draftSketch?: SketchRecord,
+    options: PersistentSketchSolveOptions = {},
   ): Promise<PersistentSketchSolveResult> {
-    return this.#enqueue(() => this.#solveSketch(sketchId, draftSketch))
+    return this.#enqueue(() => this.#solveSketch(sketchId, draftSketch, options))
   }
 
   close(): Promise<SessionPortResult<void>> {
@@ -545,6 +555,7 @@ export class PersistentDocumentSession {
   async #solveSketch(
     sketchId: SketchId,
     draftSketch?: SketchRecord,
+    options: PersistentSketchSolveOptions = {},
   ): Promise<PersistentSketchSolveResult> {
     if (this.#closed) {
       return {
@@ -553,7 +564,11 @@ export class PersistentDocumentSession {
       }
     }
     try {
-      const input = draftSketch ? { sketchId, draftSketch } : { sketchId }
+      const input: DocumentSketchSolveInput = {
+        sketchId,
+        ...(draftSketch ? { draftSketch } : {}),
+        ...options,
+      }
       return {
         ok: true,
         response: await this.#rebuildPort.solveSketch(input),

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
   createLengthQuantity,
   createRectangleSketch,
+  moveSketchPoint,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
@@ -47,7 +48,9 @@ const controller = {
   },
 } as unknown as DocumentControllerState
 
-function solveResult(): ActiveSketchSolveResult {
+function solveResult(
+  pointOverrides: ReadonlyMap<string, Readonly<{ x: number; y: number }>> = new Map(),
+): ActiveSketchSolveResult {
   return {
     ok: true,
     response: {
@@ -64,7 +67,10 @@ function solveResult(): ActiveSketchSolveResult {
         status: "fully-constrained",
         degreesOfFreedom: 0,
         maximumResidual: 0,
-        points: pointEntities.map(({ id, x, y }) => ({ entityId: id, x, y })),
+        points: pointEntities.map(({ id, x, y }) => ({
+          entityId: id,
+          ...(pointOverrides.get(id) ?? { x, y }),
+        })),
         circles: [],
         failedConstraintIds: [],
         profileResult: {
@@ -114,19 +120,19 @@ function solveResult(): ActiveSketchSolveResult {
 
 const noOperation = () => undefined
 
-function renderViewport(
-  props: Readonly<{
-    draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
-    editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
-    onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
-    onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
-    onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
-    sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
-    solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
-    displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
-  }>,
-) {
-  render(
+type SketchViewportTestProps = Readonly<{
+  draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
+  editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+  onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
+  onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
+  onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+  sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
+  solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
+  displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
+}>
+
+function viewportElement(props: SketchViewportTestProps) {
+  return (
     <I18nProvider i18n={i18n} initialLocale="en">
       <DocumentDisplayUnitsProvider
         displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
@@ -153,8 +159,12 @@ function renderViewport(
           }}
         />
       </DocumentDisplayUnitsProvider>
-    </I18nProvider>,
+    </I18nProvider>
   )
+}
+
+function renderViewport(props: SketchViewportTestProps) {
+  return render(viewportElement(props))
 }
 
 afterEach(cleanup)
@@ -170,7 +180,10 @@ describe("SketchViewport", () => {
     expect(await screen.findByText("Fully constrained")).toBeTruthy()
     expect(screen.getByText("Degrees of freedom: 0")).toBeTruthy()
     expect(screen.getByText("Profile: 360 mm² · 84 mm perimeter")).toBeTruthy()
-    expect(solveSketch).toHaveBeenCalledWith(7, sketch)
+    expect(solveSketch).toHaveBeenCalledWith(7, sketch, {
+      continuation: null,
+      draggedPoints: [],
+    })
     await waitFor(() => expect(onProfilesChange).toHaveBeenLastCalledWith([expect.any(Object)]))
     fireEvent.pointerDown(document.querySelector('[data-sketch-profile-index="0"]') as Element)
     expect(onProfileSelect).toHaveBeenCalledWith(expect.objectContaining({ sketchId }))
@@ -186,7 +199,12 @@ describe("SketchViewport", () => {
     })
 
     expect(screen.getByRole("img", { name: "Editable sketch geometry" })).toBeTruthy()
-    await waitFor(() => expect(solveSketch).toHaveBeenCalledWith(7, sketch))
+    await waitFor(() =>
+      expect(solveSketch).toHaveBeenCalledWith(7, sketch, {
+        continuation: null,
+        draggedPoints: [],
+      }),
+    )
   })
 
   it("formats solved profile measurements in the selected project unit", async () => {
@@ -360,5 +378,75 @@ describe("SketchViewport", () => {
 
     expect(document.querySelector('[data-sketch-constraint-kind="geometric"]')).toBeTruthy()
     expect(document.querySelector('[data-sketch-constraint-kind="dimension"]')).toBeTruthy()
+  })
+
+  it("forwards the previous exact solution and active point drag to the solver", async () => {
+    const solveSketch = vi.fn(async () => solveResult())
+    renderViewport({ draft: sketch, sketch, solveSketch })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)
+    if (!pointElement) throw new Error("The first sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      sketch,
+      expect.objectContaining({
+        continuation: expect.objectContaining({
+          sketchId,
+          points: expect.arrayContaining([expect.objectContaining({ entityId: firstPoint.id })]),
+        }),
+        draggedPoints: [expect.objectContaining({ entityId: firstPoint.id })],
+      }),
+    )
+  })
+
+  it("keeps the last exact geometry visible while a changed draft is solving", async () => {
+    const firstPoint = pointEntities[0]
+    if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
+    let resolveChangedDraft: ((result: ActiveSketchSolveResult) => void) | null = null
+    const solveSketch = vi
+      .fn<NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>>()
+      .mockResolvedValueOnce(solveResult())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ActiveSketchSolveResult>((resolve) => {
+            resolveChangedDraft = resolve
+          }),
+      )
+    const result = renderViewport({ draft: sketch, sketch, solveSketch })
+    await screen.findByText("Fully constrained")
+    const pointSelector = `[data-sketch-entity-id="${firstPoint.id}"]`
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe(String(firstPoint.x))
+    const movedDraft = moveSketchPoint(sketch, firstPoint.id, { x: 80, y: 80 })
+
+    result.rerender(viewportElement({ draft: movedDraft, sketch, solveSketch }))
+
+    await screen.findByText("Solving the saved sketch locally…")
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe(String(firstPoint.x))
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      resolveChangedDraft?.(solveResult(new Map([[firstPoint.id, { x: 12, y: 8 }]])))
+    })
+    await waitFor(() =>
+      expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("12"),
+    )
   })
 })

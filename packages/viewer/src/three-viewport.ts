@@ -321,7 +321,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       edges.name = `${source.featureId}:edges`
       this.#modelGroup.add(edges)
     }
-    this.fit()
+    this.#render()
   }
 
   setOriginPlaneSelection(selectedPlane: ViewerOriginPlane | null) {

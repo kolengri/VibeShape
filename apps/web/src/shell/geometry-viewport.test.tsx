@@ -57,19 +57,27 @@ function renderViewport(
   const createViewport = vi.fn(
     (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
   )
-  const result = render(
+  const element = (nextController: DocumentControllerState) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <GeometryViewport
-        controller={controller}
+        controller={nextController}
         createViewport={createViewport}
         selection={selection}
         onSelectionChange={onSelectionChange}
         {...(extrusionPreview ? { extrusionPreview } : {})}
         {...(originPlaneSelection ? { originPlaneSelection } : {})}
       />
-    </I18nProvider>,
+    </I18nProvider>
   )
-  return { ...result, createViewport, onSelectionChange, port }
+  const result = render(element(controller))
+  return {
+    ...result,
+    createViewport,
+    onSelectionChange,
+    port,
+    rerenderController: (nextController: DocumentControllerState) =>
+      result.rerender(element(nextController)),
+  }
 }
 
 afterEach(cleanup)
@@ -112,14 +120,40 @@ describe("GeometryViewport", () => {
         .getByRole("region", { name: "3D viewport" })
         .getAttribute("data-rendered-feature-count"),
     ).toBe("1")
+    expect(port.fit).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))
-    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }))
     expect(port.clearSelection).toHaveBeenCalledOnce()
 
     unmount()
     expect(port.dispose).toHaveBeenCalledOnce()
+  })
+
+  it("preserves the camera when rebuilt geometry replaces the displayed mesh", async () => {
+    const firstController = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const updatedMesh = {
+      ...mesh,
+      positions: new Float32Array([0, 0, 0, 30, 0, 0, 0, 30, 0]),
+    }
+    const { port, rerenderController } = renderViewport(firstController)
+
+    await waitFor(() => expect(port.fit).toHaveBeenCalledOnce())
+    rerenderController(
+      readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh: updatedMesh } }],
+      ),
+    )
+
+    await waitFor(() =>
+      expect(port.setMeshes).toHaveBeenLastCalledWith([{ featureId: boxId, ...updatedMesh }]),
+    )
+    expect(port.fit).toHaveBeenCalledOnce()
   })
 
   it("renders only terminal feature geometry and reports an empty model", () => {

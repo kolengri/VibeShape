@@ -35,6 +35,7 @@ import {
   type WheelEvent,
 } from "react"
 import {
+  type ActiveSketchSolveOptions,
   type ActiveSketchSolveResult,
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
@@ -51,13 +52,21 @@ import type { SketchDraftChangeMode, SketchEditorTool } from "./sketch-tool"
 type SketchSolveFunction = (
   baseRevision: number,
   sketch: SketchRecord["id"] | SketchRecord,
+  options?: ActiveSketchSolveOptions,
 ) => Promise<ActiveSketchSolveResult>
 
 type SolveState =
   | { kind: "idle" }
-  | { kind: "loading"; sourceSketch: SketchRecord }
+  | {
+      kind: "loading"
+      previousSolution: SolvedSketchWire | null
+      sourceSketch: SketchRecord
+    }
   | { kind: "solved"; solution: SolvedSketchWire; sourceSketch: SketchRecord }
   | { kind: "error"; sourceSketch: SketchRecord }
+
+type SketchDragTarget = SolvedSketchWire["points"][number]
+type SketchDragState = Readonly<{ sketchId: SketchRecord["id"]; target: SketchDragTarget }>
 
 type SketchBounds = Readonly<{
   height: number
@@ -100,21 +109,33 @@ function useSketchSolution(
   controller: DocumentControllerState,
   sketch: SketchRecord | null,
   solveSketch: SketchSolveFunction,
+  dragTarget: SketchDragTarget | null,
 ): SolveState {
   const [state, setState] = useState<SolveState>({ kind: "idle" })
+  const latestSolutionRef = useRef<SolvedSketchWire | null>(null)
   const revision = controller.report?.snapshot.revision
   const rebuildOk = controller.report?.rebuild.ok === true
 
   useEffect(() => {
     if (!sketch || revision === undefined || !rebuildOk) {
+      if (!sketch) latestSolutionRef.current = null
       setState({ kind: "idle" })
       return
     }
     let cancelled = false
-    setState({ kind: "loading", sourceSketch: sketch })
+    setState((current) => ({
+      kind: "loading",
+      previousSolution: solutionForSketch(current, sketch.id),
+      sourceSketch: sketch,
+    }))
+    const continuation = continuationForSketch(latestSolutionRef.current, sketch)
     const timeout = window.setTimeout(() => {
-      void solveSketch(revision, sketch).then((result) => {
+      void solveSketch(revision, sketch, {
+        continuation,
+        draggedPoints: dragTarget ? [dragTarget] : [],
+      }).then((result) => {
         if (cancelled) return
+        if (result.ok) latestSolutionRef.current = result.response.solution
         setState(
           result.ok
             ? { kind: "solved", solution: result.response.solution, sourceSketch: sketch }
@@ -126,9 +147,32 @@ function useSketchSolution(
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [rebuildOk, revision, sketch, solveSketch])
+  }, [dragTarget, rebuildOk, revision, sketch, solveSketch])
 
   return state
+}
+
+function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"]) {
+  if (solveState.kind === "idle" || solveState.kind === "error") return null
+  if (solveState.sourceSketch.id !== sketchId) return null
+  return solveState.kind === "solved" ? solveState.solution : solveState.previousSolution
+}
+
+function continuationForSketch(solution: SolvedSketchWire | null, sketch: SketchRecord) {
+  if (!solution || solution.sketchId !== sketch.id) return null
+  const pointIds = new Set<string>(
+    sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
+  )
+  const circleIds = new Set<string>(
+    sketch.entities.flatMap((entity) => (entity.type === "circle" ? [entity.id] : [])),
+  )
+  return {
+    schemaVersion: 0 as const,
+    sketchId: solution.sketchId,
+    sourceRevision: solution.sourceRevision,
+    points: solution.points.filter(({ entityId }) => pointIds.has(entityId)),
+    circles: solution.circles.filter(({ entityId }) => circleIds.has(entityId)),
+  }
 }
 
 function authoredPoints(sketch: SketchRecord) {
@@ -1198,6 +1242,7 @@ function SketchDrawing({
     construction,
     draft,
     editorTool,
+    onDragTargetChange,
     onDraftChange,
     onProfileSelect,
     onRedo,
@@ -1262,6 +1307,7 @@ function SketchDrawing({
     if (!draft || !draggingPointId) return false
     setCursor(point)
     setInference(null)
+    onDragTargetChange({ entityId: draggingPointId, x: point.x, y: point.y })
     onDraftChange(
       moveSketchPoint(draft, draggingPointId, point),
       dragRecordedRef.current ? "replace" : "record",
@@ -1313,6 +1359,7 @@ function SketchDrawing({
     }
   }
   const handlePointerUp = () => {
+    if (draggingPointId) onDragTargetChange(null)
     setDraggingPointId(null)
     dragRecordedRef.current = false
     setPanGesture(null)
@@ -1476,6 +1523,7 @@ type SketchDrawingConfiguration = Readonly<{
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onDragTargetChange: (target: SketchDragTarget | null) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -1588,11 +1636,14 @@ export function SketchViewport({
   const t = useTranslations("app.sketch.viewport")
   const formatter = useFormatter()
   const displayUnits = useDocumentDisplayUnits()
+  const [dragState, setDragState] = useState<SketchDragState | null>(null)
   const number = (value: number) => formatter.number(value, { maximumFractionDigits: 6 })
   const activeSketch = draft ?? sketch
-  const solveState = useSketchSolution(controller, activeSketch, solveSketch)
+  const dragTarget = dragState && dragState.sketchId === activeSketch?.id ? dragState.target : null
+  const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
   const activeSolveState = currentSolveState(solveState, activeSketch)
   const solution = activeSolveState.kind === "solved" ? activeSolveState.solution : null
+  const displaySolution = activeSketch ? solutionForSketch(solveState, activeSketch.id) : null
   const profiles = useMemo(() => (solution ? profileSelectors(solution) : []), [solution])
   const { degreesOfFreedom, profileText, statusText } = sketchSolvePresentation({
     copy: {
@@ -1635,9 +1686,11 @@ export function SketchViewport({
           construction,
           draft,
           editorTool,
+          onDragTargetChange: (target) =>
+            setDragState(target && activeSketch ? { sketchId: activeSketch.id, target } : null),
           selectedProfile,
           selectedEntityIds,
-          solution,
+          solution: displaySolution,
           onDraftChange,
           onProfileSelect,
           onRedo,
