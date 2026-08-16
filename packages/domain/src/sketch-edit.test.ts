@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
+import type { SketchEntity } from "./sketch"
 import {
   appendSketchArc,
   appendSketchCircle,
@@ -8,6 +9,7 @@ import {
   appendSketchLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchThreePointArc,
   createEmptySketch,
   moveSketchPoint,
   removeSketchConstraints,
@@ -96,7 +98,9 @@ describe("sketch editing", () => {
       createConstraintId: constraintId,
       createEntityId: entityId,
     })
-    const points = result.sketch.entities.filter(({ type }) => type === "point")
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
     const lines = result.sketch.entities.filter(({ type }) => type === "line")
 
     expect(points).toHaveLength(5)
@@ -154,6 +158,60 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("creates a three-point arc whose positive sweep passes through the third pick", () => {
+    const result = appendSketchThreePointArc(empty(), {
+      createEntityId: entityId,
+      firstEndpoint: { kind: "new", point: { x: -10, y: 0 } },
+      secondEndpoint: { kind: "new", point: { x: 10, y: 0 } },
+      pointOnArc: { x: 0, y: 5 },
+    })
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+    const arc = result.sketch.entities.find(({ type }) => type === "arc")
+
+    expect(points).toHaveLength(3)
+    expect(points).toEqual(expect.arrayContaining([expect.objectContaining({ x: 0, y: -7.5 })]))
+    expect(arc).toMatchObject({
+      startPointId: points.find(({ x }) => x === 10)?.id,
+      endPointId: points.find(({ x }) => x === -10)?.id,
+    })
+  })
+
+  it("reuses inferred three-point arc endpoints and rejects collinear picks", () => {
+    const first = appendSketchPoint(empty(), {
+      createEntityId: entityId,
+      point: { x: -10, y: 0 },
+    })
+    const second = appendSketchPoint(first.sketch, {
+      createEntityId: entityId,
+      point: { x: 10, y: 0 },
+    })
+    const [firstId, secondId] = second.sketch.entities.map(({ id }) => id)
+    expect(firstId && secondId).toBeTruthy()
+    if (!firstId || !secondId) return
+
+    const result = appendSketchThreePointArc(second.sketch, {
+      createEntityId: entityId,
+      firstEndpoint: { kind: "existing", pointId: firstId },
+      secondEndpoint: { kind: "existing", pointId: secondId },
+      pointOnArc: { x: 0, y: -5 },
+    })
+
+    expect(result.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(3)
+    expect(
+      result.sketch.entities.filter(({ id }) => id === firstId || id === secondId),
+    ).toHaveLength(2)
+    expect(() =>
+      appendSketchThreePointArc(empty(), {
+        createEntityId: entityId,
+        firstEndpoint: { kind: "new", point: { x: 0, y: 0 } },
+        secondEndpoint: { kind: "new", point: { x: 10, y: 0 } },
+        pointOnArc: { x: 5, y: 0 },
+      }),
+    ).toThrow("non-collinear")
   })
 
   it("adds validated constraints and rejects incompatible selections", () => {

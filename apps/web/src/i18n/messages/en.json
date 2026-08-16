@@ -258,6 +258,10 @@
           "keywords": "boolean cut|remove solid|difference"
         },
         "sketchArc": { "label": "Center-point arc", "keywords": "arc|curve|center start end" },
+        "sketchThreePointArc": {
+          "label": "Three-point arc",
+          "keywords": "three point arc|arc through point|start end curve"
+        },
         "sketchCenterRectangle": {
           "label": "Center rectangle",
           "keywords": "center rectangle|symmetric box profile|rectangle from center"

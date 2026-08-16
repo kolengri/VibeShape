@@ -128,6 +128,9 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Center rectangle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
 
+    await user.click(screen.getByRole("button", { name: "Three-point arc" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
+
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)
 

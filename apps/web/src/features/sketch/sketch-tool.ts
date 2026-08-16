@@ -21,4 +21,5 @@ export type SketchEditorTool =
   | "center-rectangle"
   | "circle"
   | "arc"
+  | "three-point-arc"
 export type SketchDraftChangeMode = "record" | "replace"

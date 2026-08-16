@@ -400,6 +400,114 @@ export function appendSketchArc(
   }
 }
 
+function positiveArcSweep(start: SketchPoint2, end: SketchPoint2, center: SketchPoint2) {
+  const fullTurn = Math.PI * 2
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x)
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x)
+  return (((endAngle - startAngle) % fullTurn) + fullTurn) % fullTurn
+}
+
+export type ThreePointArcGeometry = Readonly<{
+  center: SketchPoint2
+  end: SketchPoint2
+  reversed: boolean
+  start: SketchPoint2
+}>
+
+export function threePointArcGeometry(
+  firstEndpoint: SketchPoint2,
+  secondEndpoint: SketchPoint2,
+  pointOnArc: SketchPoint2,
+): ThreePointArcGeometry | null {
+  const denominator =
+    2 *
+    (firstEndpoint.x * (secondEndpoint.y - pointOnArc.y) +
+      secondEndpoint.x * (pointOnArc.y - firstEndpoint.y) +
+      pointOnArc.x * (firstEndpoint.y - secondEndpoint.y))
+  const scale = Math.max(
+    distance(firstEndpoint, secondEndpoint),
+    distance(secondEndpoint, pointOnArc),
+    distance(pointOnArc, firstEndpoint),
+    1,
+  )
+  if (Math.abs(denominator) <= MIN_GEOMETRY_DISTANCE * scale * scale) return null
+  const firstSquared = firstEndpoint.x ** 2 + firstEndpoint.y ** 2
+  const secondSquared = secondEndpoint.x ** 2 + secondEndpoint.y ** 2
+  const pointSquared = pointOnArc.x ** 2 + pointOnArc.y ** 2
+  const center = {
+    x:
+      (firstSquared * (secondEndpoint.y - pointOnArc.y) +
+        secondSquared * (pointOnArc.y - firstEndpoint.y) +
+        pointSquared * (firstEndpoint.y - secondEndpoint.y)) /
+      denominator,
+    y:
+      (firstSquared * (pointOnArc.x - secondEndpoint.x) +
+        secondSquared * (firstEndpoint.x - pointOnArc.x) +
+        pointSquared * (secondEndpoint.x - firstEndpoint.x)) /
+      denominator,
+  }
+  const endpointSweep = positiveArcSweep(firstEndpoint, secondEndpoint, center)
+  const pointSweep = positiveArcSweep(firstEndpoint, pointOnArc, center)
+  const reversed = pointSweep >= endpointSweep
+  return {
+    center,
+    end: reversed ? firstEndpoint : secondEndpoint,
+    reversed,
+    start: reversed ? secondEndpoint : firstEndpoint,
+  }
+}
+
+export function appendSketchThreePointArc(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    firstEndpoint: SketchPointTarget
+    pointOnArc: SketchPoint2
+    secondEndpoint: SketchPointTarget
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const first = resolvePointTarget(sketch, input.firstEndpoint, construction, input.createEntityId)
+  const sketchWithFirst = first.entity
+    ? parsedSketch(sketch, [...sketch.entities, first.entity])
+    : sketch
+  const second = resolvePointTarget(
+    sketchWithFirst,
+    input.secondEndpoint,
+    construction,
+    input.createEntityId,
+  )
+  if (first.id === second.id) {
+    throw new RangeError("A three-point arc requires distinct endpoints.")
+  }
+  const geometry = threePointArcGeometry(first.point, second.point, input.pointOnArc)
+  if (!geometry) {
+    throw new RangeError("A three-point arc requires three non-collinear positions.")
+  }
+  const centerPointId = input.createEntityId()
+  const arcId = input.createEntityId()
+  const arc = {
+    schemaVersion: 0,
+    id: arcId,
+    type: "arc",
+    centerPointId,
+    startPointId: geometry.reversed ? second.id : first.id,
+    endPointId: geometry.reversed ? first.id : second.id,
+    construction,
+  } as const
+  const additions: SketchEntity[] = [
+    ...(first.entity ? [first.entity] : []),
+    ...(second.entity ? [second.entity] : []),
+    { schemaVersion: 0, id: centerPointId, type: "point", ...geometry.center, construction },
+    arc,
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 export function appendSketchConstraint(
   sketch: SketchRecord,
   definition: SketchConstraintDefinition,
