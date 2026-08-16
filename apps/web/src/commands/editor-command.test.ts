@@ -173,18 +173,24 @@ describe("editor command registry", () => {
     const mirror = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchMirror,
     )
+    const offset = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchOffset,
+    )
     const split = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchSplit)
 
     expect(trim?.descriptor.shortcut).toEqual({ key: "m" })
     expect(trim?.toolbarVisible).toBe(true)
+    expect(offset?.descriptor.shortcut).toEqual({ key: "o" })
     trim?.invoke()
     extend?.invoke()
     mirror?.invoke()
+    offset?.invoke()
     split?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(1, "trim")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(2, "extend")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "mirror")
-    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(4, "split")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(4, "offset")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(5, "split")
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {

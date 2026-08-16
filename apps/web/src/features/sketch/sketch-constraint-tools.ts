@@ -13,6 +13,7 @@ export type SketchDimensionKind =
   | "angle"
   | "radius"
   | "diameter"
+  | "offset"
 
 export type SketchConstraintToolKind =
   | "coincident"
@@ -223,6 +224,7 @@ export function createSketchDimensionConstraint(
   entities: readonly SketchEntity[],
   value: SketchDimensionValue,
 ): SketchConstraintDefinition | null {
+  if (kind === "offset") return null
   if (!compatibleSketchDimensionTools(entities).includes(kind)) return null
   if (kind === "angle") return createAngleDimensionConstraint(entities, value)
   if (kind === "radius" || kind === "diameter") {

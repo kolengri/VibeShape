@@ -304,6 +304,10 @@
           "label": "Mirror",
           "keywords": "mirror sketch geometry|reflect entities|symmetry line|copy across axis"
         },
+        "sketchOffset": {
+          "label": "Offset",
+          "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
+        },
         "sketchInscribedPolygon": {
           "label": "Inscribed polygon",
           "keywords": "inscribed polygon|polygon around circle|regular polygon|center polygon"
@@ -573,9 +577,10 @@
           "pointOnCurve": "Point on curve",
           "dimension": "Dimension type",
           "dimensionExpression": "Driving expression",
-          "dimensionInvalid": "Enter a positive length or a valid angle expression using available variables.",
+          "dimensionInvalid": "Enter a positive length, a nonzero signed offset, or a valid angle expression using available variables.",
           "distance": "Distance",
           "horizontalDistance": "Horizontal distance",
+          "offset": "Offset",
           "verticalDistance": "Vertical distance",
           "angle": "Angle",
           "radius": "Radius",
@@ -661,6 +666,8 @@
         "mirrorSelectAxis": "Select a mirror line, then select geometry to mirror.",
         "mirrorSelectAxisForSelection": "Select a mirror line for the selected geometry.",
         "mirrorSelectSources": "Select geometry to mirror. Press Escape when finished.",
+        "offsetSelectSource": "Select a line or connected line chain to offset.",
+        "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
         "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
       }

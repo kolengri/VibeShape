@@ -606,6 +606,7 @@ type DistanceConstraint = Extract<
   { type: "horizontal-distance" | "vertical-distance" | "distance" }
 >
 type RadialConstraint = Extract<DimensionConstraint, { type: "radius" | "diameter" }>
+type OffsetConstraint = Extract<DimensionConstraint, { type: "offset" }>
 
 function addDistanceConstraint(
   builder: ProductionSketchBuilder,
@@ -647,6 +648,38 @@ function addAngleConstraint(
   return true
 }
 
+function addOffsetConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: OffsetConstraint,
+  variables: ReturnType<typeof evaluateVariableDefinitions>,
+) {
+  const value = resolveDimension(constraint, variables)
+  if (value?.dimension !== "length" || value.value === 0) return false
+  for (const pair of constraint.linePairs) {
+    const offsetLine = sketch.entities.find(({ id }) => id === pair.offsetLineId)
+    if (offsetLine?.type !== "line") return false
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
+      entityA: builder.entity(pair.sourceLineId),
+      entityB: builder.entity(pair.offsetLineId),
+    })
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance, {
+      pointA: builder.entity(offsetLine.startPointId),
+      entityA: builder.entity(pair.sourceLineId),
+      // SolveSpace's signed point-to-line convention is opposite to the sketch cross product.
+      value: -value.value * pair.distanceScale,
+    })
+  }
+  for (const pair of constraint.endpointPairs) {
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance, {
+      pointA: builder.entity(pair.sourcePointId),
+      pointB: builder.entity(pair.offsetPointId),
+      value: Math.abs(value.value),
+    })
+  }
+  return true
+}
+
 function addRadialConstraint(
   builder: ProductionSketchBuilder,
   constraint: RadialConstraint,
@@ -664,6 +697,7 @@ function addRadialConstraint(
 
 function addDimensionConstraint(
   builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
   constraint: DimensionConstraint,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
 ) {
@@ -673,6 +707,9 @@ function addDimensionConstraint(
     constraint.type === "distance"
   ) {
     return addDistanceConstraint(builder, constraint, variables)
+  }
+  if (constraint.type === "offset") {
+    return addOffsetConstraint(builder, sketch, constraint, variables)
   }
   if (constraint.type === "angle") return addAngleConstraint(builder, constraint, variables)
   return addRadialConstraint(builder, constraint, variables)
@@ -692,7 +729,7 @@ function addConstraint(
     addRelationshipConstraint(builder, sketch, constraint)
     return true
   }
-  return addDimensionConstraint(builder, constraint, variables)
+  return addDimensionConstraint(builder, sketch, constraint, variables)
 }
 
 function addSketchEntities(
@@ -838,10 +875,14 @@ export function solveSketchRecord(
   const circles = [...bindings.circleRadiusParameters].map(([entityId, index]) =>
     circleSolutionSchema.parse({ entityId, radius: result.parameterValues[index] }),
   )
-  const failedConstraintIds = [...result.failedConstraintHandles].flatMap((handle) => {
-    const constraintId = bindings.constraintIdsByHandle.get(handle)
-    return constraintId ? [constraintId] : []
-  })
+  const failedConstraintIds = [
+    ...new Set(
+      [...result.failedConstraintHandles].flatMap((handle) => {
+        const constraintId = bindings.constraintIdsByHandle.get(handle)
+        return constraintId ? [constraintId] : []
+      }),
+    ),
+  ]
   return {
     ok: true,
     solution: {

@@ -193,6 +193,56 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...constraintEnvelope,
+      type: z.literal("offset"),
+      linePairs: z
+        .array(
+          z
+            .object({
+              sourceLineId: sketchEntityIdSchema,
+              offsetLineId: sketchEntityIdSchema,
+              distanceScale: z.union([z.literal(-1), z.literal(1)]),
+            })
+            .strict()
+            .refine((pair) => pair.sourceLineId !== pair.offsetLineId),
+        )
+        .min(1)
+        .max(4_990),
+      endpointPairs: z
+        .array(
+          z
+            .object({
+              sourcePointId: sketchEntityIdSchema,
+              offsetPointId: sketchEntityIdSchema,
+            })
+            .strict()
+            .refine((pair) => pair.sourcePointId !== pair.offsetPointId),
+        )
+        .max(2),
+      value: lengthQuantitySchema,
+    })
+    .strict()
+    .refine((constraint) => constraint.value.value !== 0)
+    .refine(
+      (constraint) =>
+        new Set(constraint.linePairs.map(({ sourceLineId }) => sourceLineId)).size ===
+          constraint.linePairs.length &&
+        new Set(constraint.linePairs.map(({ offsetLineId }) => offsetLineId)).size ===
+          constraint.linePairs.length,
+    )
+    .refine(
+      (constraint) =>
+        constraint.endpointPairs.length === 0 || constraint.endpointPairs.length === 2,
+    )
+    .refine(
+      (constraint) =>
+        new Set(constraint.endpointPairs.map(({ sourcePointId }) => sourcePointId)).size ===
+          constraint.endpointPairs.length &&
+        new Set(constraint.endpointPairs.map(({ offsetPointId }) => offsetPointId)).size ===
+          constraint.endpointPairs.length,
+    ),
+  z
+    .object({
+      ...constraintEnvelope,
       type: z.literal("angle"),
       ...entityPair,
       value: angleQuantitySchema,
@@ -261,9 +311,21 @@ const constraintReferenceFields = {
   angle: ["firstEntityId", "secondEntityId"],
   radius: ["curveId"],
   diameter: ["curveId"],
-} as const satisfies Record<SketchWireConstraint["type"], readonly string[]>
+} as const satisfies Record<Exclude<SketchWireConstraint["type"], "offset">, readonly string[]>
 
 function constraintReferences(constraint: SketchWireConstraint) {
+  if (constraint.type === "offset") {
+    return [
+      ...constraint.linePairs.flatMap(({ sourceLineId, offsetLineId }) => [
+        sourceLineId,
+        offsetLineId,
+      ]),
+      ...constraint.endpointPairs.flatMap(({ sourcePointId, offsetPointId }) => [
+        sourcePointId,
+        offsetPointId,
+      ]),
+    ]
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   return constraintReferenceFields[constraint.type].map((field) => {
     const reference = constraintRecord[field]
@@ -271,6 +333,107 @@ function constraintReferences(constraint: SketchWireConstraint) {
       throw new Error(`Sketch constraint reference ${field} is not a string.`)
     }
     return reference
+  })
+}
+
+type SketchWireStructure = Readonly<{
+  constraints: readonly SketchWireConstraint[]
+  entities: readonly WireEntity[]
+}>
+
+function indexWireEntities(sketch: SketchWireStructure, context: z.RefinementCtx) {
+  const entities = new Map<string, WireEntity>()
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (entities.has(entity.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["entities", index, "id"],
+        message: "Sketch entity IDs must be unique.",
+      })
+    }
+    entities.set(entity.id, entity)
+  }
+  return entities
+}
+
+function validateWireEntityTable(
+  sketch: SketchWireStructure,
+  entities: ReadonlyMap<string, WireEntity>,
+  context: z.RefinementCtx,
+) {
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (validEntityReferences(entity, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["entities", index],
+      message: "Sketch entity references must target compatible entities.",
+    })
+  }
+}
+
+function offsetTargetsAreValid(
+  constraint: Extract<SketchWireConstraint, { type: "offset" }>,
+  entities: ReadonlyMap<string, WireEntity>,
+) {
+  return (
+    constraint.linePairs.every(
+      ({ sourceLineId, offsetLineId }) =>
+        entityIs(entities, sourceLineId, ["line"]) && entityIs(entities, offsetLineId, ["line"]),
+    ) &&
+    constraint.endpointPairs.every(
+      ({ sourcePointId, offsetPointId }) =>
+        entityIs(entities, sourcePointId, ["point"]) &&
+        entityIs(entities, offsetPointId, ["point"]),
+    )
+  )
+}
+
+function wireConstraintReferencesAreValid(
+  constraint: SketchWireConstraint,
+  entities: ReadonlyMap<string, WireEntity>,
+) {
+  if (constraint.type === "offset" && !offsetTargetsAreValid(constraint, entities)) return false
+  return constraintReferences(constraint).every((id) => entities.has(id))
+}
+
+function nativeWireConstraintCount(constraints: readonly SketchWireConstraint[]) {
+  return constraints.reduce(
+    (count, constraint) =>
+      count +
+      (constraint.type === "offset"
+        ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
+        : 1),
+    0,
+  )
+}
+
+function validateWireConstraintTable(
+  sketch: SketchWireStructure,
+  entities: ReadonlyMap<string, WireEntity>,
+  context: z.RefinementCtx,
+) {
+  const constraintIds = new Set<string>()
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (constraintIds.has(constraint.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["constraints", index, "id"],
+        message: "Sketch constraint IDs must be unique.",
+      })
+    }
+    constraintIds.add(constraint.id)
+    if (wireConstraintReferencesAreValid(constraint, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message: "Sketch constraints must reference existing entities.",
+    })
+  }
+  if (nativeWireConstraintCount(sketch.constraints) <= 10_000) return
+  context.addIssue({
+    code: "custom",
+    path: ["constraints"],
+    message: "Sketch constraints exceed the native solver safety limit.",
   })
 }
 
@@ -289,44 +452,9 @@ export const sketchWireRecordSchema = z
   })
   .strict()
   .superRefine((sketch, context) => {
-    const entities = new Map<string, WireEntity>()
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (entities.has(entity.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index, "id"],
-          message: "Sketch entity IDs must be unique.",
-        })
-      }
-      entities.set(entity.id, entity)
-    }
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (!validEntityReferences(entity, entities)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index],
-          message: "Sketch entity references must target compatible entities.",
-        })
-      }
-    }
-    const constraintIds = new Set<string>()
-    for (const [index, constraint] of sketch.constraints.entries()) {
-      if (constraintIds.has(constraint.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index, "id"],
-          message: "Sketch constraint IDs must be unique.",
-        })
-      }
-      constraintIds.add(constraint.id)
-      if (constraintReferences(constraint).some((id) => !entities.has(id))) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index],
-          message: "Sketch constraints must reference existing entities.",
-        })
-      }
-    }
+    const entities = indexWireEntities(sketch, context)
+    validateWireEntityTable(sketch, entities, context)
+    validateWireConstraintTable(sketch, entities, context)
   })
 
 const pointSolutionSchema = z

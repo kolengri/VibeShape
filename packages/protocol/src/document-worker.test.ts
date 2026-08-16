@@ -11,6 +11,12 @@ const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const sketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3202"
+const secondSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3203"
+const thirdSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3204"
+const fourthSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3205"
+const sourceLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3206"
+const offsetLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
+const offsetConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
 
 function sketch() {
   return {
@@ -29,6 +35,71 @@ function sketch() {
       },
     ],
     constraints: [],
+  } as const
+}
+
+function offsetSketch() {
+  return {
+    ...sketch(),
+    entities: [
+      ...sketch().entities,
+      {
+        schemaVersion: 0,
+        id: secondSketchPointId,
+        type: "point",
+        x: 20,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: thirdSketchPointId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: fourthSketchPointId,
+        type: "point",
+        x: 20,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: sourceLineId,
+        type: "line",
+        startPointId: sketchPointId,
+        endPointId: secondSketchPointId,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: offsetLineId,
+        type: "line",
+        startPointId: thirdSketchPointId,
+        endPointId: fourthSketchPointId,
+        construction: false,
+      },
+    ],
+    constraints: [
+      {
+        schemaVersion: 0,
+        id: offsetConstraintId,
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [{ sourceLineId, offsetLineId, distanceScale: 1 }],
+        value: {
+          schemaVersion: 0,
+          dimension: "length",
+          value: 5,
+          unit: "mm",
+          source: { value: 5, unit: "mm", expression: "5 mm" },
+        },
+      },
+    ],
   } as const
 }
 
@@ -234,6 +305,56 @@ describe("document worker protocol", () => {
         },
       }),
     ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
+  })
+
+  it("accepts a bounded signed line-chain offset and rejects unsafe pairs", () => {
+    expect(
+      documentRebuildSnapshotSchema.parse({ ...document(), sketches: [offsetSketch()] }),
+    ).toMatchObject({
+      sketches: [
+        {
+          constraints: [
+            {
+              type: "offset",
+              endpointPairs: [],
+              linePairs: [{ sourceLineId, offsetLineId, distanceScale: 1 }],
+            },
+          ],
+        },
+      ],
+    })
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...offsetSketch(),
+            constraints: [
+              {
+                ...offsetSketch().constraints[0],
+                linePairs: [{ sourceLineId, offsetLineId: sourceLineId, distanceScale: 1 }],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...offsetSketch(),
+            constraints: [
+              {
+                ...offsetSketch().constraints[0],
+                linePairs: [{ sourceLineId: sketchPointId, offsetLineId, distanceScale: 1 }],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
   })
 
   it("validates bounded deterministic profile results", () => {

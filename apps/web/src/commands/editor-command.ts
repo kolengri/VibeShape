@@ -19,6 +19,7 @@ export const editorCommandIds = {
   sketchExtend: "org.vibeshape.editor.sketch.modify.extend",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
   sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
+  sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
@@ -63,6 +64,7 @@ export type EditorCommandIcon =
   | "extend"
   | "line"
   | "mirror"
+  | "offset"
   | "inscribed-polygon"
   | "midpoint-line"
   | "model"
@@ -101,6 +103,7 @@ export type EditorCommandLabelKey =
   | "sketchExtend"
   | "sketchLine"
   | "sketchMirror"
+  | "sketchOffset"
   | "sketchInscribedPolygon"
   | "sketchPoint"
   | "sketchRectangle"

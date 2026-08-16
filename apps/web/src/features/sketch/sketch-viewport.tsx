@@ -49,7 +49,14 @@ import {
   threePointCircleGeometry,
   trimSketchCurve,
 } from "@vibeshape/domain"
+import {
+  appendSketchLineOffset,
+  connectedSketchOffsetLineIds,
+  sketchLineOffsetGeometry,
+  sketchLineSignedDistance,
+} from "@vibeshape/domain/sketch-offset-edit"
 import { mirrorSketchEntities } from "@vibeshape/domain/sketch-transform-edit"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
@@ -238,6 +245,11 @@ type PendingGeometry =
       kind: "split-circle-second"
     }>
   | Readonly<{ axisLineId: SketchEntityId; kind: "mirror-sources" }>
+  | Readonly<{
+      kind: "offset-distance"
+      lineIds: readonly SketchEntityId[]
+      referenceLineId: SketchEntityId
+    }>
   | Readonly<{ kind: "slot-end"; start: SketchPointTarget }>
   | Readonly<{
       end: SketchPointTarget
@@ -1080,6 +1092,7 @@ function supportsSketchCurveModification(
   pending: PendingGeometry | null,
 ) {
   if (tool === "mirror") return pending?.kind === "mirror-sources" || curve.type === "line"
+  if (tool === "offset") return pending?.kind !== "offset-distance" && curve.type === "line"
   return tool !== "extend" || curve.type !== "circle"
 }
 
@@ -1312,6 +1325,10 @@ function constraintAnchor(
   if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
   if ("arcId" in constraint) {
     return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
+  }
+  if (constraint.type === "offset") {
+    const pair = constraint.linePairs[0]
+    return pair ? midpointForIds(pair.sourceLineId, pair.offsetLineId, geometryAnchor) : null
   }
   if ("lineId" in constraint) return geometryAnchor(constraint.lineId)
   return null
@@ -2022,6 +2039,32 @@ function PendingPreview({
   sketch: SketchRecord
 }) {
   if (!pending || !cursor || pending.kind === "mirror-sources") return null
+  if (pending.kind === "offset-distance") {
+    const preview = safeSketchLineOffsetPreview(sketch, pending, cursor)
+    if (!preview) return null
+    return (
+      <g
+        transform="scale(1 -1)"
+        className="pointer-events-none stroke-muted-foreground"
+        data-sketch-offset-distance={preview.distance}
+        data-sketch-preview-tool={pending.kind}
+        fill="none"
+        strokeDasharray="5 4"
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      >
+        {preview.lines.map((line) => (
+          <line
+            key={line.sourceLineId}
+            x1={line.start.x}
+            y1={line.start.y}
+            x2={line.end.x}
+            y2={line.end.y}
+          />
+        ))}
+      </g>
+    )
+  }
   const start = pendingStart(pending, sketch)
   return (
     <g
@@ -2681,7 +2724,23 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
   }
 }
 
-type DirectSketchModificationTool = Exclude<SketchModificationTool, "mirror">
+type DirectSketchModificationTool = Exclude<SketchModificationTool, "mirror" | "offset">
+type SketchCurveActionKind = "direct" | "mirror" | "offset" | "split-circle"
+
+function isDirectSketchModificationTool(
+  tool: SketchEditorTool,
+): tool is DirectSketchModificationTool {
+  return isSketchModificationTool(tool) && tool !== "mirror" && tool !== "offset"
+}
+
+function sketchCurveActionKind(
+  tool: SketchEditorTool,
+  entity: SketchEntity | undefined,
+): SketchCurveActionKind | null {
+  if (!isSketchModificationTool(tool)) return null
+  if (tool === "mirror" || tool === "offset") return tool
+  return tool === "split" && entity?.type === "circle" ? "split-circle" : "direct"
+}
 
 function sketchModificationUpdate(
   tool: DirectSketchModificationTool,
@@ -2765,6 +2824,43 @@ function safeMirrorSketchEntities(
       createConstraintId: createBrowserSketchConstraintId,
       createEntityId: createBrowserSketchEntityId,
       entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+function safeSketchLineOffsetPreview(
+  draft: SketchRecord,
+  pending: Extract<PendingGeometry, { kind: "offset-distance" }>,
+  point: SketchPoint2,
+) {
+  try {
+    const distance = sketchLineSignedDistance(draft, pending.referenceLineId, point)
+    const geometry = sketchLineOffsetGeometry(draft, {
+      distance,
+      lineIds: pending.lineIds,
+      referenceLineId: pending.referenceLineId,
+    })
+    return { distance, lines: geometry.lines }
+  } catch {
+    return null
+  }
+}
+
+function safeAppendSketchLineOffset(
+  draft: SketchRecord,
+  pending: Extract<PendingGeometry, { kind: "offset-distance" }>,
+  point: SketchPoint2,
+) {
+  try {
+    const distance = sketchLineSignedDistance(draft, pending.referenceLineId, point)
+    return appendSketchLineOffset(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      lineIds: pending.lineIds,
+      referenceLineId: pending.referenceLineId,
+      value: createLengthQuantity(distance),
     })
   } catch {
     return null
@@ -2927,6 +3023,7 @@ const pointInferenceSupport = {
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
   mirror: neverSupportsPointInference,
+  offset: neverSupportsPointInference,
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
@@ -3557,6 +3654,7 @@ function SketchDrawingView({
         pending={state.pending}
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
+      <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
     </div>
   )
 }
@@ -3579,6 +3677,28 @@ function SketchMirrorInstruction({
     <div
       className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
       data-sketch-mirror-instruction
+      role="status"
+    >
+      {instruction}
+    </div>
+  )
+}
+
+function SketchOffsetInstruction({
+  editorTool,
+  pending,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "offset") return null
+  const instruction =
+    pending?.kind === "offset-distance" ? t("offsetSetDistance") : t("offsetSelectSource")
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-offset-instruction
       role="status"
     >
       {instruction}
@@ -3616,6 +3736,25 @@ function useSketchPlacementPresentation({
     )
     setInference(null)
   }, [editorTool, slotFromSelectionLineId])
+
+  const offsetSourceLineIds = useMemo(() => {
+    if (editorTool !== "offset" || !draft || selectedEntityIds.length === 0) return []
+    const selected = selectedSketchEntities(draft, selectedEntityIds)
+    return selected.length === selectedEntityIds.length &&
+      selected.every(({ type }) => type === "line")
+      ? selected.map(({ id }) => id)
+      : []
+  }, [draft, editorTool, selectedEntityIds])
+  useEffect(() => {
+    const referenceLineId = offsetSourceLineIds[0]
+    if (editorTool !== "offset" || !referenceLineId) return
+    setPending((current) =>
+      current?.kind === "offset-distance"
+        ? current
+        : { kind: "offset-distance", lineIds: offsetSourceLineIds, referenceLineId },
+    )
+    setInference(null)
+  }, [editorTool, offsetSourceLineIds])
 
   return { cursor, inference, pending, setCursor, setInference, setPending }
 }
@@ -3759,6 +3898,17 @@ function SketchDrawing({
     })
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (
+      editorTool === "offset" &&
+      pending?.kind === "offset-distance" &&
+      event.button === 0 &&
+      event.target === event.currentTarget
+    ) {
+      const point = eventPoint(event)
+      const result = draft && point ? safeAppendSketchLineOffset(draft, pending, point) : null
+      if (result) publishModificationDraft(result.sketch)
+      return
+    }
     handleSketchCanvasPointerDown({
       appendAt,
       bounds,
@@ -3815,21 +3965,35 @@ function SketchDrawing({
     }
     if (resolution) publishMirrorDraft(resolution.result, resolution.keepSelectingSources)
   }
-  const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
-    if (!draft || !isSketchModificationTool(editorTool)) return
-    if (editorTool === "mirror") {
-      handleMirrorAction(entityId)
-      return
-    }
-    const point = eventPoint(event)
-    if (!point) return
+  const handleOffsetSourceAction = (entityId: SketchEntityId) => {
+    if (!draft) return
     const entity = draft.entities.find(({ id }) => id === entityId)
-    if (editorTool === "split" && entity?.type === "circle") {
-      handleCircleSplitAction(entity, point)
-      return
-    }
-    const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
-    if (nextDraft) publishModificationDraft(nextDraft)
+    if (entity?.type !== "line") return
+    const lineIds = connectedSketchOffsetLineIds(draft, entity.id)
+    onSelectionChange(lineIds)
+    setInference(null)
+    setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
+  }
+  const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (!draft) return
+    const entity = draft.entities.find(({ id }) => id === entityId)
+    const actionKind = sketchCurveActionKind(editorTool, entity)
+    if (!actionKind) return
+    const actions = {
+      mirror: () => handleMirrorAction(entityId),
+      offset: () => handleOffsetSourceAction(entityId),
+      "split-circle": () => {
+        const point = eventPoint(event)
+        if (point && entity?.type === "circle") handleCircleSplitAction(entity, point)
+      },
+      direct: () => {
+        const point = eventPoint(event)
+        if (!point || !isDirectSketchModificationTool(editorTool)) return
+        const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
+        if (nextDraft) publishModificationDraft(nextDraft)
+      },
+    } satisfies Record<SketchCurveActionKind, () => void>
+    actions[actionKind]()
   }
   const handlePointerUp = () => {
     finishPointDrag()

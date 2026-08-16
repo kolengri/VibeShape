@@ -27,6 +27,12 @@ const fixedId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-00000000
 const variableId = variableIdSchema.parse("018f0000-0000-7000-8000-000000000009")
 const midpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000010")
 const symmetricId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000011")
+const pointC = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000012")
+const pointD = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000013")
+const offsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000014")
+const offsetId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000015")
+const secondSourceLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000016")
+const secondOffsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000017")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -37,12 +43,38 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
     entities: [
       { schemaVersion: 0, id: pointA, type: "point", x: 1, y: 2, construction: false },
       { schemaVersion: 0, id: pointB, type: "point", x: 11, y: 2, construction: false },
+      { schemaVersion: 0, id: pointC, type: "point", x: 1, y: 7, construction: false },
+      { schemaVersion: 0, id: pointD, type: "point", x: 11, y: 7, construction: false },
+      {
+        schemaVersion: 0,
+        id: offsetLineId,
+        type: "line",
+        startPointId: pointC,
+        endPointId: pointD,
+        construction: false,
+      },
       {
         schemaVersion: 0,
         id: lineId,
         type: "line",
         startPointId: pointA,
         endPointId: pointB,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondSourceLineId,
+        type: "line",
+        startPointId: pointB,
+        endPointId: pointD,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondOffsetLineId,
+        type: "line",
+        startPointId: pointC,
+        endPointId: pointA,
         construction: false,
       },
       {
@@ -80,6 +112,21 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
         lineId,
       },
       { schemaVersion: 0, id: fixedId, type: "fixed", pointId: pointA },
+      {
+        schemaVersion: 0,
+        id: offsetId,
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [
+          { sourceLineId: lineId, offsetLineId, distanceScale: 1 },
+          {
+            sourceLineId: secondSourceLineId,
+            offsetLineId: secondOffsetLineId,
+            distanceScale: -1,
+          },
+        ],
+        value: createLengthQuantity(-5),
+      },
     ],
   })
 }
@@ -138,8 +185,12 @@ describe("production sketch compilation", () => {
       SOLVESPACE_CONSTRAINT_TYPE.atMidpoint,
       SOLVESPACE_CONSTRAINT_TYPE.symmetricLine,
       SOLVESPACE_CONSTRAINT_TYPE.whereDragged,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance,
     ])
-    expect(constraintValues).toEqual(new Float64Array([25, 8, 0, 0, 0]))
+    expect(constraintValues).toEqual(new Float64Array([25, 8, 0, 0, 0, 0, 5, 0, -5]))
     expect(entityTypes).toContain(80_000)
     expect(entityTypes).toContain(80_001)
     expect(result.compiled.system.solveGroup).toBe(2)

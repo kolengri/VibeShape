@@ -1,6 +1,11 @@
 import type { SketchConstraintId, SketchEntityId } from "./identifiers"
 import { type SketchEntity, type SketchRecord, sketchRecordSchema } from "./sketch"
-import { appendSketchConstraint, type SketchAppendResult, type SketchPoint2 } from "./sketch-edit"
+import {
+  appendSketchConstraint,
+  requireSketchPoint,
+  type SketchAppendResult,
+  type SketchPoint2,
+} from "./sketch-edit"
 
 type EntityIdFactory = () => SketchEntityId
 type ConstraintIdFactory = () => SketchConstraintId
@@ -10,11 +15,11 @@ type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
 const TRANSFORM_EPSILON = 1e-9
 
 function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
-  const point = sketch.entities.find(
-    (entity): entity is SketchPointEntity => entity.id === pointId && entity.type === "point",
+  return requireSketchPoint(
+    sketch,
+    pointId,
+    "A sketch transform requires an existing point entity.",
   )
-  if (!point) throw new TypeError("A sketch transform requires an existing point entity.")
-  return point
 }
 
 function lineById(sketch: SketchRecord, lineId: SketchEntityId) {
