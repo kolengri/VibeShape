@@ -35,6 +35,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   cancel: X,
   circle: Circle,
   "center-rectangle": Scan,
+  "centered-aligned-rectangle": Scan,
   construction: Construction,
   cylinder: Circle,
   extrude: BoxIcon,

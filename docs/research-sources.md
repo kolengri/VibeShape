@@ -212,6 +212,7 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 | [Onshape Midpoint Line](https://cad.onshape.com/help/Content/Sketch/midpoint_line.htm) | Midpoint-first symmetric segment authoring and persistent midpoint relation |
 | [Onshape Center Point Rectangle](https://cad.onshape.com/help/Content/Sketch/center_point_rectangle.htm) | Center-first symmetric rectangle workflow and construction diagonals |
 | [Onshape Aligned Rectangle](https://cad.onshape.com/help/Content/Sketch/aligned_rectangle.htm) | First-side definition, third perpendicular-width pick, and persistent aligned rectangle intent |
+| [Autodesk Inventor 2026 rectangle tools](https://help.autodesk.com/cloudhelp/2026/ENU/Inventor-Help/files/GUID-D489CE6D-7299-4211-A43A-F3580A4BA357.htm) | Three-point center rectangle interaction: center, direction/half-length, and adjacent half-width |
 | [Onshape 3 Point Circle](https://cad.onshape.com/help/Content/Sketch/3_point_circle.htm) | Exact circle placement through three circumference points |
 | [Onshape Center Point Arc](https://cad.onshape.com/help/Content/Sketch/center_point_arc.htm) | Center, start, and endpoint arc workflow |
 | [Onshape Tangent Arc](https://cad.onshape.com/help/Content/Sketch/arc_tangent.htm) | Line-endpoint continuation, tangent intent, `Shift+A`, and return to Line after completion |

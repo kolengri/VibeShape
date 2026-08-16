@@ -11,6 +11,7 @@ export const editorCommandIds = {
   sketchThreePointArc: "org.vibeshape.editor.sketch.tool.three-point-arc",
   sketchThreePointCircle: "org.vibeshape.editor.sketch.tool.three-point-circle",
   sketchCenterRectangle: "org.vibeshape.editor.sketch.tool.center-rectangle",
+  sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
@@ -43,6 +44,7 @@ export type EditorCommandIcon =
   | "cancel"
   | "circle"
   | "center-rectangle"
+  | "centered-aligned-rectangle"
   | "construction"
   | "cylinder"
   | "extrude"
@@ -73,6 +75,7 @@ export type EditorCommandLabelKey =
   | "sketchThreePointArc"
   | "sketchThreePointCircle"
   | "sketchCenterRectangle"
+  | "sketchCenteredAlignedRectangle"
   | "sketchCircle"
   | "sketchConstruction"
   | "sketchLine"

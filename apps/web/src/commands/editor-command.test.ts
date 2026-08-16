@@ -159,7 +159,7 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
-  it("routes aligned rectangle and tangent arc through trusted sketch tool handlers", () => {
+  it("routes aligned rectangle variants and tangent arc through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
       workspace: "sketch",
@@ -168,6 +168,9 @@ describe("editor command registry", () => {
     const alignedRectangle = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchAlignedRectangle,
     )
+    const centeredAlignedRectangle = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchCenteredAlignedRectangle,
+    )
     const tangentArc = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchTangentArc,
     )
@@ -175,6 +178,9 @@ describe("editor command registry", () => {
     expect(alignedRectangle?.toolbarVisible).toBe(true)
     alignedRectangle?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("aligned-rectangle")
+    expect(centeredAlignedRectangle?.toolbarVisible).toBe(true)
+    centeredAlignedRectangle?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("centered-aligned-rectangle")
     expect(tangentArc?.descriptor.shortcut).toEqual({ key: "a", modifiers: ["shift"] })
     tangentArc?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")

@@ -3,6 +3,7 @@ import {
   appendSketchAlignedRectangle,
   appendSketchArc,
   appendSketchCenterRectangle,
+  appendSketchCenteredAlignedRectangle,
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchLine,
@@ -12,6 +13,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   appendSketchTangentArc,
+  centeredAlignedRectangleGeometry,
   inferSketchPoint,
   moveSketchPoint,
   removeSketchEntities,
@@ -154,6 +156,12 @@ type PendingGeometry =
       end: SketchPointTarget
       kind: "aligned-rectangle-width"
       start: SketchPointTarget
+    }>
+  | Readonly<{ center: SketchPointTarget; kind: "centered-aligned-rectangle-side" }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "centered-aligned-rectangle-width"
+      side: SketchPointTarget
     }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
   | Readonly<{ kind: "arc-start"; center: SketchPoint2 }>
@@ -1246,6 +1254,12 @@ function pendingTargetStart(pending: PendingGeometry): SketchPointTarget | null 
   if (hasPendingTargetStart(pending)) return pending.start
   if (pending.kind === "midpoint-line") return pending.midpoint
   if (pending.kind === "center-rectangle" || pending.kind === "circle") return pending.center
+  if (
+    pending.kind === "centered-aligned-rectangle-side" ||
+    pending.kind === "centered-aligned-rectangle-width"
+  ) {
+    return pending.center
+  }
   if ("first" in pending) return pending.first
   return pending.kind === "tangent-arc" ? { kind: "existing", pointId: pending.startPointId } : null
 }
@@ -1268,6 +1282,8 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
 type PendingRectangle =
   | Extract<PendingGeometry, { kind: "aligned-rectangle-end" }>
   | Extract<PendingGeometry, { kind: "aligned-rectangle-width" }>
+  | Extract<PendingGeometry, { kind: "centered-aligned-rectangle-side" }>
+  | Extract<PendingGeometry, { kind: "centered-aligned-rectangle-width" }>
   | Extract<PendingGeometry, { kind: "rectangle" }>
   | Extract<PendingGeometry, { kind: "center-rectangle" }>
 
@@ -1294,6 +1310,28 @@ function PendingRectangleShape({
       />
     ) : (
       <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+    )
+  }
+  if (pending.kind === "centered-aligned-rectangle-side") {
+    const opposite = { x: start.x * 2 - cursor.x, y: start.y * 2 - cursor.y }
+    return <line x1={opposite.x} y1={opposite.y} x2={cursor.x} y2={cursor.y} />
+  }
+  if (pending.kind === "centered-aligned-rectangle-width") {
+    const side = pointForTarget(sketch, pending.side)
+    const geometry = centeredAlignedRectangleGeometry(start, side, cursor)
+    const opposite = { x: start.x * 2 - side.x, y: start.y * 2 - side.y }
+    return geometry ? (
+      <>
+        <polygon points={geometry.corners.map(({ x, y }) => `${x},${y}`).join(" ")} />
+        <line
+          x1={geometry.oppositeSidePoint.x}
+          y1={geometry.oppositeSidePoint.y}
+          x2={side.x}
+          y2={side.y}
+        />
+      </>
+    ) : (
+      <line x1={opposite.x} y1={opposite.y} x2={side.x} y2={side.y} />
     )
   }
   if (pending.kind === "rectangle") {
@@ -1487,7 +1525,9 @@ function PendingShape({
     pending.kind === "rectangle" ||
     pending.kind === "center-rectangle" ||
     pending.kind === "aligned-rectangle-end" ||
-    pending.kind === "aligned-rectangle-width"
+    pending.kind === "aligned-rectangle-width" ||
+    pending.kind === "centered-aligned-rectangle-side" ||
+    pending.kind === "centered-aligned-rectangle-width"
   return rectanglePending ? (
     <PendingRectangleShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
   ) : (
@@ -1842,6 +1882,39 @@ function placeAlignedRectangle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeCenteredAlignedRectangle(input: PlacementInput): PlacementUpdate {
+  if (
+    input.pending?.kind !== "centered-aligned-rectangle-side" &&
+    input.pending?.kind !== "centered-aligned-rectangle-width"
+  ) {
+    return {
+      draft: null,
+      pending: { center: input.target, kind: "centered-aligned-rectangle-side" },
+    }
+  }
+  if (input.pending.kind === "centered-aligned-rectangle-side") {
+    return {
+      draft: null,
+      pending: {
+        center: input.pending.center,
+        kind: "centered-aligned-rectangle-width",
+        side: input.target,
+      },
+    }
+  }
+  return {
+    draft: appendSketchCenteredAlignedRectangle(input.draft, {
+      center: input.pending.center,
+      construction: input.construction,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      sidePoint: input.pending.side,
+      widthPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
 function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
     return { draft: null, pending: { kind: "circle", center: input.target } }
@@ -1964,6 +2037,7 @@ const placementBuilders = {
   "aligned-rectangle": placeAlignedRectangle,
   arc: placeArc,
   "center-rectangle": placeCenterRectangle,
+  "centered-aligned-rectangle": placeCenteredAlignedRectangle,
   circle: placeCircle,
   line: placeLine,
   "midpoint-line": placeMidpointLine,
@@ -2102,6 +2176,7 @@ const pointInferenceSupport = {
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
+  "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
   line: alwaysSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
   point: alwaysSupportsPointInference,

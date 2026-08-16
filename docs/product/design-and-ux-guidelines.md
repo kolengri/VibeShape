@@ -226,6 +226,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - A completed placement MUST leave a schema-valid draft. Degenerate placement stays transient and does not create hidden entities.
 - Rectangle corners share point identities and receive explicit horizontal and vertical constraints; visual alignment is never the only design intent.
 - Center Rectangle shows a symmetric preview from the picked center, stores non-profile construction spokes, and uses only the nonredundant equal/parallel diagonal intent required to keep the center stable.
+- Centered Aligned Rectangle shows a symmetric construction axis after its second pick, derives a signed perpendicular half-width from the third pick, and persists the center plus both opposite side midpoints instead of relying on initial coordinates.
 - Midpoint Line shows the complete mirrored segment after its midpoint pick and persists one Midpoint constraint instead of baking symmetry into display coordinates only.
 - Three-point Circle previews the exact circumcircle after two circumference picks, reuses inferred point identities, rejects repeated or collinear input, and persists each point-on-curve relation.
 - Three-point Arc previews the exact circumcircle after two endpoint picks, reuses inferred endpoint identities, rejects collinear input without hidden geometry, and preserves the sweep passing through the third pick.
