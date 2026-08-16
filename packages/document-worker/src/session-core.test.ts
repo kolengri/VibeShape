@@ -1,3 +1,4 @@
+import { documentSnapshotSchema } from "@vibeshape/domain"
 import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerRequest,
@@ -22,6 +23,7 @@ function document(revision: number) {
     id: documentId,
     revision,
     name: "Session recovery test",
+    displayUnits: { length: "mm", angle: "deg" },
     variables: [
       {
         schemaVersion: 0,
@@ -170,6 +172,21 @@ function createHarness(
 }
 
 describe("DocumentWorkerSession", () => {
+  it("accepts a complete domain snapshot with project display units", async () => {
+    const { clients, session } = createHarness()
+    const snapshot = documentSnapshotSchema.parse({
+      ...document(1),
+      displayUnits: { length: "in", angle: "rad" },
+    })
+
+    await session.rebuild({ document: snapshot, mesh })
+
+    expect(clients[0]?.requests[0]).toMatchObject({
+      type: "rebuildDocument",
+      document: { displayUnits: { length: "in", angle: "rad" } },
+    })
+  })
+
   it("restarts from the last successfully rebuilt committed snapshot", async () => {
     const { clients, session } = createHarness([], { initialGeneration: 7 })
 

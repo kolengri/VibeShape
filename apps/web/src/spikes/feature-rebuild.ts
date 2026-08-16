@@ -122,6 +122,7 @@ function documentSnapshot(cylinderHeightExpression: string, revision: number) {
     id: documentId,
     revision,
     name: "Feature rebuild harness",
+    displayUnits: { length: "mm", angle: "deg" },
     variables: [
       {
         schemaVersion: 0,

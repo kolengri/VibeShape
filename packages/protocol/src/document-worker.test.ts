@@ -38,6 +38,7 @@ function document(revision = 1) {
     id: documentId,
     revision,
     name: "Protocol test",
+    displayUnits: { length: "mm", angle: "deg" },
     features: [
       {
         schemaVersion: 0,
@@ -135,6 +136,21 @@ describe("document worker protocol", () => {
       documentRebuildSnapshotSchema.safeParse({
         ...document(),
         variables: [{ ...variable, name: "wall thickness" }],
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts project display units and rejects unsupported units", () => {
+    expect(
+      documentRebuildSnapshotSchema.parse({
+        ...document(),
+        displayUnits: { length: "in", angle: "rad" },
+      }),
+    ).toMatchObject({ displayUnits: { length: "in", angle: "rad" } })
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        displayUnits: { length: "px", angle: "deg" },
       }).success,
     ).toBe(false)
   })
