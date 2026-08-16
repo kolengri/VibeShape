@@ -229,6 +229,59 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("authors aligned rectangle and tangent arc design intent", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Rectangle tools", "Aligned rectangle")
+    await page.mouse.click(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.62)
+    await page.mouse.move(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.5)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="aligned-rectangle-end"]'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.5)
+    await page.mouse.move(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.3)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="aligned-rectangle-width"] polygon'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.3)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
+    await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
+
+    await selectSketchTool(page, "Arc tools", /^Tangent arc (?:Shift\+A|⇧A)$/)
+    const tangentStart = drawing.locator('[data-sketch-entity-type="point"]').last()
+    await tangentStart.dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+    })
+    await page.mouse.move(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.5)
+    await expect(drawing.locator('[data-sketch-preview-tool="tangent-arc"]')).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.5)
+
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+    await expect(page.getByText("Tangent", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Line", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+  })
+
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({
     page,
   }) => {

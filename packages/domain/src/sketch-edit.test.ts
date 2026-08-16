@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
 import type { SketchEntity } from "./sketch"
 import {
+  appendSketchAlignedRectangle,
   appendSketchArc,
   appendSketchCenterRectangle,
   appendSketchCircle,
@@ -10,6 +11,7 @@ import {
   appendSketchMidpointLine,
   appendSketchPoint,
   appendSketchRectangle,
+  appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   createEmptySketch,
@@ -18,6 +20,7 @@ import {
   removeSketchEntities,
   setSketchDimensionValue,
   setSketchEntityConstruction,
+  tangentArcGeometry,
 } from "./sketch-edit"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
@@ -152,6 +155,45 @@ describe("sketch editing", () => {
     ])
   })
 
+  it("adds an aligned rectangle with perpendicular and parallel design intent", () => {
+    const result = appendSketchAlignedRectangle(empty(), {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      firstSideStart: { kind: "new", point: { x: 0, y: 0 } },
+      firstSideEnd: { kind: "new", point: { x: 10, y: 10 } },
+      widthPoint: { x: 5, y: 15 },
+    })
+    const points = result.sketch.entities.filter(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+    )
+
+    expect(points).toHaveLength(4)
+    expect(points[0]).toMatchObject({ x: 0, y: 0 })
+    expect(points[1]).toMatchObject({ x: 10, y: 10 })
+    expect(points[2]?.x).toBeCloseTo(5)
+    expect(points[2]?.y).toBeCloseTo(15)
+    expect(points[3]?.x).toBeCloseTo(-5)
+    expect(points[3]?.y).toBeCloseTo(5)
+    expect(result.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(4)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "perpendicular",
+      "parallel",
+      "parallel",
+    ])
+  })
+
+  it("rejects a degenerate aligned rectangle width", () => {
+    expect(() =>
+      appendSketchAlignedRectangle(empty(), {
+        createConstraintId: constraintId,
+        createEntityId: entityId,
+        firstSideStart: { kind: "new", point: { x: 0, y: 0 } },
+        firstSideEnd: { kind: "new", point: { x: 10, y: 10 } },
+        widthPoint: { x: 5, y: 5 },
+      }),
+    ).toThrow("perpendicular width")
+  })
+
   it("reuses an inferred center point without duplicating its identity", () => {
     const withCenter = appendSketchPoint(empty(), {
       createEntityId: entityId,
@@ -188,6 +230,43 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("adds an arc tangent to a shared line endpoint", () => {
+    const lineResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const line = lineResult.sketch.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The line fixture must create a line.")
+    const result = appendSketchTangentArc(lineResult.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      end: { kind: "new", point: { x: 20, y: 10 } },
+      lineId: line.id,
+      startPointId: line.endPointId,
+    })
+    const arc = result.sketch.entities.find((entity) => entity.type === "arc")
+    const center = result.sketch.entities.find(
+      (entity): entity is Extract<SketchEntity, { type: "point" }> =>
+        entity.id === arc?.centerPointId && entity.type === "point",
+    )
+
+    expect(center).toMatchObject({ type: "point", construction: true })
+    expect(center?.x).toBeCloseTo(10)
+    expect(center?.y).toBeCloseTo(10)
+    expect(arc).toMatchObject({ startPointId: line.endPointId })
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({ type: "tangent", arcId: arc?.id, lineId: line.id }),
+    ])
+  })
+
+  it("orients a tangent arc below the reference line without creating a major sweep", () => {
+    const geometry = tangentArcGeometry({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: -10 })
+    expect(geometry?.center.x).toBeCloseTo(10)
+    expect(geometry?.center.y).toBeCloseTo(-10)
+    expect(geometry?.sharedEndpoint).toBe("end")
   })
 
   it("adds a circle through three points and preserves each circumference relation", () => {

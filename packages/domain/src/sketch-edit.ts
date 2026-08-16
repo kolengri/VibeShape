@@ -295,6 +295,146 @@ export function appendSketchRectangle(
   }
 }
 
+export type AlignedRectangleGeometry = Readonly<{
+  fourth: SketchPoint2
+  third: SketchPoint2
+}>
+
+export function alignedRectangleGeometry(
+  first: SketchPoint2,
+  second: SketchPoint2,
+  widthPoint: SketchPoint2,
+): AlignedRectangleGeometry | null {
+  const sideX = second.x - first.x
+  const sideY = second.y - first.y
+  const sideLength = Math.hypot(sideX, sideY)
+  if (sideLength <= MIN_GEOMETRY_DISTANCE) return null
+  const signedWidth =
+    (sideX * (widthPoint.y - first.y) - sideY * (widthPoint.x - first.x)) / sideLength
+  if (Math.abs(signedWidth) <= MIN_GEOMETRY_DISTANCE) return null
+  const offset = {
+    x: (-sideY * signedWidth) / sideLength,
+    y: (sideX * signedWidth) / sideLength,
+  }
+  return {
+    third: { x: second.x + offset.x, y: second.y + offset.y },
+    fourth: { x: first.x + offset.x, y: first.y + offset.y },
+  }
+}
+
+function alignedRectangleEntities(
+  first: ReturnType<typeof resolvePointTarget>,
+  second: ReturnType<typeof resolvePointTarget>,
+  geometry: AlignedRectangleGeometry,
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+) {
+  const thirdPointId = createEntityId()
+  const fourthPointId = createEntityId()
+  const cornerIds = [first.id, second.id, thirdPointId, fourthPointId] as const
+  const points: SketchEntity[] = [
+    { id: thirdPointId, point: geometry.third },
+    { id: fourthPointId, point: geometry.fourth },
+  ].map(({ id, point }) => ({
+    schemaVersion: 0,
+    id,
+    type: "point",
+    ...point,
+    construction,
+  }))
+  const lineIds = allocateFourEntityIds(createEntityId)
+  const lines = lineIds.map(
+    (id, index): SketchEntity => ({
+      schemaVersion: 0,
+      id,
+      type: "line",
+      startPointId: cornerIds[index] as SketchEntityId,
+      endPointId: cornerIds[(index + 1) % cornerIds.length] as SketchEntityId,
+      construction,
+    }),
+  )
+  return {
+    additions: [
+      ...(first.entity ? [first.entity] : []),
+      ...(second.entity ? [second.entity] : []),
+      ...points,
+      ...lines,
+    ],
+    lineIds,
+  }
+}
+
+function alignedRectangleConstraints(
+  lineIds: readonly [SketchEntityId, SketchEntityId, SketchEntityId, SketchEntityId],
+  createConstraintId: ConstraintIdFactory,
+) {
+  const [firstLineId, secondLineId, thirdLineId, fourthLineId] = lineIds
+  const definitions = [
+    { type: "perpendicular", firstEntityId: firstLineId, secondEntityId: secondLineId },
+    { type: "parallel", firstEntityId: firstLineId, secondEntityId: thirdLineId },
+    { type: "parallel", firstEntityId: secondLineId, secondEntityId: fourthLineId },
+  ] as const
+  return definitions.map(
+    ({ type, firstEntityId, secondEntityId }): SketchConstraint => ({
+      schemaVersion: 0,
+      id: createConstraintId(),
+      type,
+      firstEntityId,
+      secondEntityId,
+    }),
+  )
+}
+
+export function appendSketchAlignedRectangle(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    firstSideEnd: SketchPointTarget
+    firstSideStart: SketchPointTarget
+    widthPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const first = resolvePointTarget(sketch, input.firstSideStart, construction, input.createEntityId)
+  const sketchWithFirst = first.entity
+    ? parsedSketch(sketch, [...sketch.entities, first.entity])
+    : sketch
+  const second = resolvePointTarget(
+    sketchWithFirst,
+    input.firstSideEnd,
+    construction,
+    input.createEntityId,
+  )
+  const sideX = second.point.x - first.point.x
+  const sideY = second.point.y - first.point.y
+  const sideLength = Math.hypot(sideX, sideY)
+  if (first.id === second.id || sideLength <= MIN_GEOMETRY_DISTANCE) {
+    throw new RangeError("An aligned rectangle requires a nonzero first side.")
+  }
+  const geometry = alignedRectangleGeometry(first.point, second.point, input.widthPoint)
+  if (!geometry) {
+    throw new RangeError("An aligned rectangle requires a nonzero perpendicular width.")
+  }
+  const { additions, lineIds } = alignedRectangleEntities(
+    first,
+    second,
+    geometry,
+    construction,
+    input.createEntityId,
+  )
+  const constraints = alignedRectangleConstraints(lineIds, input.createConstraintId)
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, ...constraints],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 function centerRectangleSpokes(
   centerId: SketchEntityId,
   cornerIds: readonly [SketchEntityId, SketchEntityId, SketchEntityId, SketchEntityId],
@@ -465,6 +605,104 @@ export function appendSketchArc(
   return {
     sketch: parsedSketch(sketch, [...sketch.entities, ...entities]),
     createdEntityIds: entities.map(({ id }) => id),
+  }
+}
+
+export type TangentArcGeometry = Readonly<{
+  center: SketchPoint2
+  sharedEndpoint: "end" | "start"
+}>
+
+export function tangentArcGeometry(
+  lineInterior: SketchPoint2,
+  sharedEndpoint: SketchPoint2,
+  requestedEnd: SketchPoint2,
+): TangentArcGeometry | null {
+  const tangentX = sharedEndpoint.x - lineInterior.x
+  const tangentY = sharedEndpoint.y - lineInterior.y
+  const tangentLength = Math.hypot(tangentX, tangentY)
+  const chordX = requestedEnd.x - sharedEndpoint.x
+  const chordY = requestedEnd.y - sharedEndpoint.y
+  const chordLength = Math.hypot(chordX, chordY)
+  if (tangentLength <= MIN_GEOMETRY_DISTANCE || chordLength <= MIN_GEOMETRY_DISTANCE) return null
+  const normalX = -tangentY / tangentLength
+  const normalY = tangentX / tangentLength
+  const normalProjection = chordX * normalX + chordY * normalY
+  if (Math.abs(normalProjection) <= MIN_GEOMETRY_DISTANCE * Math.max(chordLength, 1)) return null
+  const centerDistance = chordLength ** 2 / (2 * normalProjection)
+  return {
+    center: {
+      x: sharedEndpoint.x + normalX * centerDistance,
+      y: sharedEndpoint.y + normalY * centerDistance,
+    },
+    sharedEndpoint: centerDistance > 0 ? "start" : "end",
+  }
+}
+
+export function appendSketchTangentArc(
+  sketch: SketchRecord,
+  input: {
+    construction?: boolean
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    end: SketchPointTarget
+    lineId: SketchEntityId
+    startPointId: SketchEntityId
+  },
+): SketchAppendResult {
+  const line = sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "line" }> =>
+      entity.id === input.lineId && entity.type === "line",
+  )
+  if (!line) throw new TypeError("A tangent arc must reference an existing line.")
+  const startsAtFirst = line.startPointId === input.startPointId
+  if (!startsAtFirst && line.endPointId !== input.startPointId) {
+    throw new TypeError("A tangent arc must start at an endpoint of its reference line.")
+  }
+  const construction = input.construction ?? false
+  const start = pointById(sketch, input.startPointId)
+  const interior = pointById(sketch, startsAtFirst ? line.endPointId : line.startPointId)
+  const end = resolvePointTarget(sketch, input.end, construction, input.createEntityId)
+  if (end.id === start.id) throw new RangeError("A tangent arc requires a distinct endpoint.")
+  const geometry = tangentArcGeometry(interior, start, end.point)
+  if (!geometry) {
+    throw new RangeError("A tangent arc requires an endpoint away from the tangent line.")
+  }
+  const centerPointId = input.createEntityId()
+  const arcId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(end.entity ? [end.entity] : []),
+    {
+      schemaVersion: 0,
+      id: centerPointId,
+      type: "point",
+      ...geometry.center,
+      construction: true,
+    },
+    {
+      schemaVersion: 0,
+      id: arcId,
+      type: "arc",
+      centerPointId,
+      startPointId: geometry.sharedEndpoint === "start" ? start.id : end.id,
+      endPointId: geometry.sharedEndpoint === "end" ? start.id : end.id,
+      construction,
+    },
+  ]
+  const tangent: SketchConstraint = {
+    schemaVersion: 0,
+    id: input.createConstraintId(),
+    type: "tangent",
+    arcId,
+    lineId: line.id,
+  }
+  return {
+    sketch: sketchRecordSchema.parse({
+      ...sketch,
+      entities: [...sketch.entities, ...additions],
+      constraints: [...sketch.constraints, tangent],
+    }),
+    createdEntityIds: additions.map(({ id }) => id),
   }
 }
 

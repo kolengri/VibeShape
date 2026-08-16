@@ -12,9 +12,9 @@ export async function drawRectangle(page: Page) {
   return drawing
 }
 
-export async function selectSketchTool(page: Page, family: string, tool: string) {
+export async function selectSketchTool(page: Page, family: string, tool: string | RegExp) {
   await page.getByRole("button", { name: family, exact: true }).click()
-  await page.getByRole("menuitemradio", { name: tool, exact: true }).click()
+  await page.getByRole("menuitemradio", { name: tool, exact: typeof tool === "string" }).click()
 }
 
 export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" = "xy") {

@@ -5,6 +5,7 @@ export const editorCommandIds = {
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
+  sketchAlignedRectangle: "org.vibeshape.editor.sketch.tool.aligned-rectangle",
   sketchArc: "org.vibeshape.editor.sketch.tool.arc",
   sketchMidpointLine: "org.vibeshape.editor.sketch.tool.midpoint-line",
   sketchThreePointArc: "org.vibeshape.editor.sketch.tool.three-point-arc",
@@ -17,6 +18,7 @@ export const editorCommandIds = {
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
   sketchRedo: "org.vibeshape.editor.sketch.redo",
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
+  sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
   sketchUndo: "org.vibeshape.editor.sketch.undo",
   workspaceModel: "org.vibeshape.editor.workspace.model",
   workspaceSketch: "org.vibeshape.editor.workspace.sketch",
@@ -35,6 +37,7 @@ export type EditorCommandToolbarGroup =
   | "history"
 
 export type EditorCommandIcon =
+  | "aligned-rectangle"
   | "arc"
   | "box"
   | "cancel"
@@ -52,6 +55,7 @@ export type EditorCommandIcon =
   | "select"
   | "sketch"
   | "subtract"
+  | "tangent-arc"
   | "undo"
   | "three-point-arc"
   | "three-point-circle"
@@ -63,6 +67,7 @@ export type EditorCommandLabelKey =
   | "createExtrusion"
   | "createSketch"
   | "createSubtract"
+  | "sketchAlignedRectangle"
   | "sketchArc"
   | "sketchMidpointLine"
   | "sketchThreePointArc"
@@ -75,6 +80,7 @@ export type EditorCommandLabelKey =
   | "sketchRectangle"
   | "sketchRedo"
   | "sketchSelect"
+  | "sketchTangentArc"
   | "sketchUndo"
   | "workspaceModel"
   | "workspaceSketch"
