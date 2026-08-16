@@ -18,7 +18,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   centeredAlignedRectangleGeometry,
-  extendSketchLine,
+  extendSketchCurve,
   inferSketchPoint,
   MAX_REGULAR_POLYGON_SIDES,
   MIN_REGULAR_POLYGON_SIDES,
@@ -41,12 +41,13 @@ import {
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchProfileSelectorSchema,
-  splitSketchLine,
+  splitSketchCircle,
+  splitSketchCurve,
   straightSlotGeometry,
   tangentArcGeometry,
   threePointArcGeometry,
   threePointCircleGeometry,
-  trimSketchLine,
+  trimSketchCurve,
 } from "@vibeshape/domain"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -229,6 +230,11 @@ type PendingGeometry =
       kind: "tangent-arc"
       lineId: SketchEntityId
       startPointId: SketchEntityId
+    }>
+  | Readonly<{
+      circleId: SketchEntityId
+      firstPoint: SketchPoint2
+      kind: "split-circle-second"
     }>
   | Readonly<{ kind: "slot-end"; start: SketchPointTarget }>
   | Readonly<{
@@ -1052,6 +1058,10 @@ const SketchPoint = memo(
   },
 )
 
+function supportsSketchCurveModification(tool: SketchModificationTool, curve: SketchCurveEntity) {
+  return tool !== "extend" || curve.type !== "circle"
+}
+
 function SketchGeometry({
   draggingPointId,
   editable,
@@ -1094,7 +1104,10 @@ function SketchGeometry({
           hidden={Boolean(
             draggingPointId && curvePointIds(entity).some((pointId) => pointId === draggingPointId),
           )}
-          interactive={!modifiable || entity.type === "line"}
+          interactive={
+            !modifiable ||
+            (isSketchModificationTool(tool) && supportsSketchCurveModification(tool, entity))
+          }
           points={presentation.pointsById}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
@@ -1471,6 +1484,8 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
         ? pointForTarget(sketch, { kind: "existing", pointId: line.startPointId })
         : { x: 0, y: 0 }
     }
+    case "split-circle-second":
+      return pending.firstPoint
     default:
       return { x: 0, y: 0 }
   }
@@ -1883,6 +1898,32 @@ function PendingRegularPolygonShape({
   )
 }
 
+type PendingCircleSplit = Extract<PendingGeometry, { kind: "split-circle-second" }>
+
+function PendingCircleSplitShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingCircleSplit
+  sketch: SketchRecord
+}) {
+  const circle = sketch.entities.find(({ id }) => id === pending.circleId)
+  if (circle?.type !== "circle") return null
+  const center = sketch.entities.find(({ id }) => id === circle.centerPointId)
+  const secondPoint = projectedCirclePoint(sketch, circle, cursor)
+  if (center?.type !== "point" || !secondPoint) return null
+  return (
+    <>
+      <polyline points={arcPolyline(center, pending.firstPoint, secondPoint)} />
+      <polyline points={arcPolyline(center, secondPoint, pending.firstPoint)} />
+      <circle cx={pending.firstPoint.x} cy={pending.firstPoint.y} r={3} />
+      <circle cx={secondPoint.x} cy={secondPoint.y} r={3} />
+    </>
+  )
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -1903,6 +1944,9 @@ function PendingCurveShape({
   }
   if (pending.kind === "regular-polygon-radius" || pending.kind === "regular-polygon-sides") {
     return <PendingRegularPolygonShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (pending.kind === "split-circle-second") {
+    return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
   }
   if (isPendingRoundCurve(pending)) {
     return (
@@ -2615,16 +2659,52 @@ function sketchModificationUpdate(
   const input = {
     createConstraintId: createBrowserSketchConstraintId,
     createEntityId: createBrowserSketchEntityId,
-    lineId: entityId,
+    curveId: entityId,
     point,
   }
   switch (tool) {
     case "trim":
-      return trimSketchLine(draft, input).sketch
+      return trimSketchCurve(draft, input).sketch
     case "extend":
-      return extendSketchLine(draft, input).sketch
+      return extendSketchCurve(draft, input).sketch
     case "split":
-      return splitSketchLine(draft, input).sketch
+      return splitSketchCurve(draft, input).sketch
+  }
+}
+
+function safeCircleSplitUpdate(
+  draft: SketchRecord,
+  circleId: SketchEntityId,
+  firstPoint: SketchPoint2,
+  secondPoint: SketchPoint2,
+) {
+  try {
+    return splitSketchCircle(draft, {
+      circleId,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      firstPoint,
+      secondPoint,
+    }).sketch
+  } catch {
+    return null
+  }
+}
+
+function projectedCirclePoint(
+  draft: SketchRecord,
+  circle: Extract<SketchEntity, { type: "circle" }>,
+  point: SketchPoint2,
+) {
+  const center = draft.entities.find(({ id }) => id === circle.centerPointId)
+  if (center?.type !== "point") return null
+  const offsetX = point.x - center.x
+  const offsetY = point.y - center.y
+  const offsetLength = Math.hypot(offsetX, offsetY)
+  if (offsetLength <= Number.EPSILON) return null
+  return {
+    x: center.x + (offsetX / offsetLength) * circle.radius,
+    y: center.y + (offsetY / offsetLength) * circle.radius,
   }
 }
 
@@ -3574,15 +3654,39 @@ function SketchDrawing({
       setPanGesture,
     })
   }
+  const publishModificationDraft = (nextDraft: SketchRecord) => {
+    onDraftChange(nextDraft)
+    onSelectionChange([])
+    setPending(null)
+    setInference(null)
+  }
+  const handleCircleSplitAction = (
+    circle: Extract<SketchEntity, { type: "circle" }>,
+    point: SketchPoint2,
+  ) => {
+    const projectedPoint = projectedCirclePoint(draft ?? sketch, circle, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-circle-second" || pending.circleId !== circle.id) {
+      setPending({ kind: "split-circle-second", circleId: circle.id, firstPoint: projectedPoint })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeCircleSplitUpdate(draft, circle.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publishModificationDraft(nextDraft)
+  }
   const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
     if (!draft || !isSketchModificationTool(editorTool)) return
     const point = eventPoint(event)
     if (!point) return
+    const entity = draft.entities.find(({ id }) => id === entityId)
+    if (editorTool === "split" && entity?.type === "circle") {
+      handleCircleSplitAction(entity, point)
+      return
+    }
     const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
-    if (!nextDraft) return
-    onDraftChange(nextDraft)
-    onSelectionChange([])
-    setInference(null)
+    if (nextDraft) publishModificationDraft(nextDraft)
   }
   const handlePointerUp = () => {
     finishPointDrag()

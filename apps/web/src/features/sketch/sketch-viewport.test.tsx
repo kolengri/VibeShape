@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
   appendSketchArc,
+  appendSketchCircle,
   appendSketchLine,
   createLengthQuantity,
   createRectangleSketch,
@@ -339,6 +340,89 @@ describe("SketchViewport", () => {
     const extended = nextDraft.entities.find(({ id }: { id: string }) => id === target.id)
     const endPoint = nextDraft.entities.find(({ id }: { id: string }) => id === extended.endPointId)
     expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
+  })
+
+  it("splits a circle after two curve clicks with an analytical preview", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchCircle(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b254"),
+      perimeterPoint: { x: 5, y: 0 },
+    }).sketch
+    const circle = fixture.entities.find((entity) => entity.type === "circle")
+    if (!circle) throw new Error("The circle split fixture must contain a circle.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "split",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const circleElement = document.querySelector(`[data-sketch-entity-id="${circle.id}"]`)
+    if (!circleElement) throw new Error("The circle split target must be rendered.")
+
+    fireEvent.pointerDown(circleElement, { clientX: 420, clientY: 300 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-preview-tool="split-circle-second"]')).toBeTruthy()
+
+    fireEvent.pointerDown(circleElement, { clientX: 400, clientY: 280 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "circle"),
+    ).toHaveLength(0)
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
+      2,
+    )
+  })
+
+  it("trims a clicked arc between neighboring line boundaries", () => {
+    const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b255")
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcFixture = appendSketchArc(emptySketch, {
+      center: { x: 0, y: 0 },
+      createEntityId,
+      start: { x: 5, y: 0 },
+      end: { x: -5, y: 0 },
+    }).sketch
+    const arc = arcFixture.entities.find((entity) => entity.type === "arc")
+    if (!arc) throw new Error("The arc trim fixture must contain an arc.")
+    const firstBoundary = appendSketchLine(arcFixture, {
+      createEntityId,
+      start: { kind: "new", point: { x: 3, y: 0 } },
+      end: { kind: "new", point: { x: 3, y: 6 } },
+    }).sketch
+    const fixture = appendSketchLine(firstBoundary, {
+      createEntityId,
+      start: { kind: "new", point: { x: -3, y: 0 } },
+      end: { kind: "new", point: { x: -3, y: 6 } },
+    }).sketch
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const arcElement = document.querySelector(`[data-sketch-entity-id="${arc.id}"]`)
+    if (!arcElement) throw new Error("The arc trim target must be rendered.")
+
+    fireEvent.pointerDown(arcElement, { clientX: 400, clientY: 280 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
+      2,
+    )
+    expect(
+      nextDraft.constraints.filter(({ type }: { type: string }) => type === "point-on-line"),
+    ).toHaveLength(2)
   })
 
   it("renders production solver state and exact profile measurements", async () => {
