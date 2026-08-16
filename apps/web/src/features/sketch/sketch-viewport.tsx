@@ -153,6 +153,16 @@ type DisplayPoint = Readonly<{
   y: number
 }>
 
+type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
+type SketchPointLookup = Pick<ReadonlyMap<string, DisplayPoint>, "get">
+type SketchGeometryPresentation = Readonly<{
+  curves: readonly SketchCurveEntity[]
+  curvesByPointId: ReadonlyMap<string, readonly SketchCurveEntity[]>
+  points: readonly DisplayPoint[]
+  pointsById: ReadonlyMap<string, DisplayPoint>
+  solvedCircles: ReadonlyMap<string, number>
+}>
+
 type PendingGeometry =
   | Readonly<{
       kind: "line"
@@ -372,20 +382,6 @@ function solvedSolution(solveState: SolveState): SolvedSketchWire | null {
   return solveState.kind === "solved" ? solveState.solution : null
 }
 
-function solutionWithDragTarget(
-  solution: SolvedSketchWire | null,
-  dragTarget: SketchDragTarget | null,
-) {
-  if (!solution || !dragTarget) return solution
-  let replaced = false
-  const points = solution.points.map((point) => {
-    if (point.entityId !== dragTarget.entityId) return point
-    replaced = true
-    return dragTarget
-  })
-  return replaced ? { ...solution, points } : solution
-}
-
 function dragTargetForSketch(
   activeSketch: SketchRecord | null,
   dragState: SketchDragState | null,
@@ -434,14 +430,8 @@ function useDraggingPointChange(
   )
 }
 
-function useSketchDisplaySolutions(
-  activeSketch: SketchRecord | null,
-  solveState: SolveState,
-  dragTarget: SketchDragTarget | null,
-) {
-  const exact = activeSketch ? solutionForSketch(solveState, activeSketch.id) : null
-  const display = useMemo(() => solutionWithDragTarget(exact, dragTarget), [dragTarget, exact])
-  return { display, exact }
+function sketchDisplaySolution(activeSketch: SketchRecord | null, solveState: SolveState) {
+  return activeSketch ? solutionForSketch(solveState, activeSketch.id) : null
 }
 
 function continuationForSketch(solution: SolvedSketchWire | null, sketch: SketchRecord) {
@@ -478,6 +468,32 @@ function displayPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) 
       y: solved?.y ?? point.y,
     }
   })
+}
+
+function createSketchGeometryPresentation(
+  sketch: SketchRecord,
+  solution: SolvedSketchWire | null,
+): SketchGeometryPresentation {
+  const points = displayPoints(sketch, solution)
+  const pointsById = new Map(points.map((point) => [point.id, point]))
+  const curves = sketch.entities.filter(
+    (entity): entity is SketchCurveEntity => entity.type !== "point",
+  )
+  const curvesByPointId = new Map<string, SketchCurveEntity[]>()
+  for (const curve of curves) {
+    for (const pointId of curvePointIds(curve)) {
+      const incident = curvesByPointId.get(pointId)
+      if (incident) incident.push(curve)
+      else curvesByPointId.set(pointId, [curve])
+    }
+  }
+  return {
+    curves,
+    curvesByPointId,
+    points,
+    pointsById,
+    solvedCircles: new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius])),
+  }
 }
 
 function sketchBounds(points: readonly SketchPoint2[]): SketchBounds {
@@ -766,14 +782,18 @@ function ProfileRegions({
 const StableProfileRegions = memo(ProfileRegions)
 
 type CurveDrawingProps = Readonly<{
+  hidden: boolean
+  interactive: boolean
   onPointerDown: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
-  points: ReadonlyMap<string, DisplayPoint>
+  points: SketchPointLookup
   selected: boolean
   solvedRadius: number | undefined
 }>
 
 function curveDrawingProps(
   entity: Exclude<SketchEntity, { type: "point" }>,
+  hidden: boolean,
+  interactive: boolean,
   selected: boolean,
   onPointerDown: CurveDrawingProps["onPointerDown"],
 ) {
@@ -782,19 +802,30 @@ function curveDrawingProps(
   if (selected) className = "stroke-ring"
   return {
     className,
-    "data-sketch-entity-id": entity.id,
-    "data-sketch-entity-type": entity.type,
     fill: "none",
+    opacity: hidden ? 0 : undefined,
+    ...(interactive
+      ? {
+          "data-sketch-entity-id": entity.id,
+          "data-sketch-entity-type": entity.type,
+        }
+      : {}),
+    ...(interactive && !hidden
+      ? {
+          onPointerDown: (event: PointerEvent<SVGElement>) => onPointerDown(event, entity.id),
+        }
+      : { pointerEvents: "none" as const }),
     strokeDasharray: entity.construction ? "6 4" : undefined,
     strokeLinecap: "round" as const,
     strokeWidth: selected ? 3 : 2,
     vectorEffect: "non-scaling-stroke" as const,
-    onPointerDown: (event: PointerEvent<SVGElement>) => onPointerDown(event, entity.id),
   }
 }
 
 function SketchLine({
   entity,
+  hidden,
+  interactive,
   onPointerDown,
   points,
   selected,
@@ -806,7 +837,7 @@ function SketchLine({
   if (!start || !end) return null
   return (
     <line
-      {...curveDrawingProps(entity, selected, onPointerDown)}
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
       x1={start.x}
       y1={start.y}
       x2={end.x}
@@ -817,6 +848,8 @@ function SketchLine({
 
 function SketchCircle({
   entity,
+  hidden,
+  interactive,
   onPointerDown,
   points,
   selected,
@@ -826,7 +859,7 @@ function SketchCircle({
   if (!center) return null
   return (
     <circle
-      {...curveDrawingProps(entity, selected, onPointerDown)}
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
       cx={center.x}
       cy={center.y}
       r={solvedRadius ?? entity.radius}
@@ -836,6 +869,8 @@ function SketchCircle({
 
 function SketchArc({
   entity,
+  hidden,
+  interactive,
   onPointerDown,
   points,
   selected,
@@ -848,7 +883,7 @@ function SketchArc({
   if (!center || !start || !end) return null
   return (
     <polyline
-      {...curveDrawingProps(entity, selected, onPointerDown)}
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
       points={arcPolyline(center, start, end)}
     />
   )
@@ -893,6 +928,8 @@ const SketchCurve = memo(
   (previous, next) => {
     if (
       previous.entity !== next.entity ||
+      previous.hidden !== next.hidden ||
+      previous.interactive !== next.interactive ||
       previous.selected !== next.selected ||
       previous.solvedRadius !== next.solvedRadius ||
       previous.onPointerDown !== next.onPointerDown
@@ -906,6 +943,7 @@ const SketchCurve = memo(
 )
 
 type SketchPointDrawingProps = Readonly<{
+  dragging: boolean
   editable: boolean
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
@@ -917,6 +955,7 @@ type SketchPointDrawingProps = Readonly<{
 
 const SketchPoint = memo(
   function SketchPoint({
+    dragging,
     editable,
     onPointPointerDown,
     onSelect,
@@ -928,8 +967,8 @@ const SketchPoint = memo(
     return (
       <>
         <circle
-          data-sketch-entity-id={point.id}
-          data-sketch-entity-type="point"
+          data-sketch-entity-id={dragging ? undefined : point.id}
+          data-sketch-entity-type={dragging ? undefined : "point"}
           cx={point.x}
           cy={point.y}
           r={7}
@@ -957,6 +996,7 @@ const SketchPoint = memo(
                 ? "pointer-events-none fill-background stroke-muted-foreground"
                 : "pointer-events-none fill-background stroke-primary"
           }
+          opacity={dragging ? 0 : undefined}
           strokeWidth={2}
           vectorEffect="non-scaling-stroke"
         />
@@ -965,6 +1005,7 @@ const SketchPoint = memo(
   },
   (previous, next) => {
     return (
+      previous.dragging === next.dragging &&
       previous.editable === next.editable &&
       previous.onPointPointerDown === next.onPointPointerDown &&
       previous.onSelect === next.onSelect &&
@@ -977,28 +1018,26 @@ const SketchPoint = memo(
 )
 
 function SketchGeometry({
+  draggingPointId,
   editable,
   onPointPointerDown,
   onSelect,
   onTarget,
   selectedEntityIds,
-  sketch,
-  solution,
+  presentation,
   tool,
 }: {
+  draggingPointId: SketchDragTarget["entityId"] | null
   editable: boolean
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
   selectedEntityIds: readonly SketchEntityId[]
-  sketch: SketchRecord
-  solution: SolvedSketchWire | null
+  presentation: SketchGeometryPresentation
   tool: SketchEditorTool
 }) {
-  const points = displayPoints(sketch, solution)
-  const pointsById = new Map(points.map((point) => [point.id, point]))
-  const solvedCircles = new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius]))
   const selectable = editable && tool === "select"
+  const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
   const geometryPointerDown = useCallback(
     (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
       if (!selectable) return
@@ -1009,27 +1048,28 @@ function SketchGeometry({
   )
   return (
     <g transform="scale(1 -1)">
-      {sketch.entities
-        .filter(
-          (entity): entity is Exclude<SketchEntity, { type: "point" }> => entity.type !== "point",
-        )
-        .map((entity) => (
-          <SketchCurve
-            key={entity.id}
-            entity={entity}
-            points={pointsById}
-            selected={selectedEntityIds.includes(entity.id)}
-            solvedRadius={solvedCircles.get(entity.id)}
-            onPointerDown={geometryPointerDown}
-          />
-        ))}
-      {points.map((point) => (
+      {presentation.curves.map((entity) => (
+        <SketchCurve
+          key={entity.id}
+          entity={entity}
+          hidden={Boolean(
+            draggingPointId && curvePointIds(entity).some((pointId) => pointId === draggingPointId),
+          )}
+          interactive
+          points={presentation.pointsById}
+          selected={selectedIds.has(entity.id)}
+          solvedRadius={presentation.solvedCircles.get(entity.id)}
+          onPointerDown={geometryPointerDown}
+        />
+      ))}
+      {presentation.points.map((point) => (
         <SketchPoint
           key={point.id}
+          dragging={point.id === draggingPointId}
           editable={editable}
           point={point}
           selectable={selectable}
-          selected={selectedEntityIds.includes(point.id)}
+          selected={selectedIds.has(point.id)}
           onPointPointerDown={onPointPointerDown}
           onSelect={onSelect}
           onTarget={onTarget}
@@ -1040,6 +1080,67 @@ function SketchGeometry({
 }
 
 const StableSketchGeometry = memo(SketchGeometry)
+
+const ignoreCurvePointerDown = () => undefined
+
+function DraggedSketchGeometry({
+  dragTarget,
+  presentation,
+  selectedEntityIds,
+}: {
+  dragTarget: SketchDragTarget | null
+  presentation: SketchGeometryPresentation
+  selectedEntityIds: readonly SketchEntityId[]
+}) {
+  const authoredPoint = dragTarget ? presentation.pointsById.get(dragTarget.entityId) : undefined
+  const draggedPoint = useMemo(
+    () =>
+      authoredPoint && dragTarget ? { ...authoredPoint, x: dragTarget.x, y: dragTarget.y } : null,
+    [authoredPoint, dragTarget],
+  )
+  const points = useMemo<SketchPointLookup>(
+    () => ({
+      get: (pointId) =>
+        draggedPoint?.id === pointId ? draggedPoint : presentation.pointsById.get(pointId),
+    }),
+    [draggedPoint, presentation.pointsById],
+  )
+  if (!draggedPoint) return null
+  const selectedIds = new Set(selectedEntityIds)
+  const curves = presentation.curvesByPointId.get(draggedPoint.id) ?? []
+  return (
+    <g data-sketch-drag-overlay={draggedPoint.id} pointerEvents="none" transform="scale(1 -1)">
+      {curves.map((entity) => (
+        <SketchCurve
+          key={entity.id}
+          entity={entity}
+          hidden={false}
+          interactive={false}
+          points={points}
+          selected={selectedIds.has(entity.id)}
+          solvedRadius={presentation.solvedCircles.get(entity.id)}
+          onPointerDown={ignoreCurvePointerDown}
+        />
+      ))}
+      <circle
+        data-sketch-entity-id={draggedPoint.id}
+        data-sketch-entity-type="point"
+        cx={draggedPoint.x}
+        cy={draggedPoint.y}
+        r={3}
+        className={
+          selectedIds.has(draggedPoint.id)
+            ? "fill-ring stroke-background"
+            : draggedPoint.construction
+              ? "fill-background stroke-muted-foreground"
+              : "fill-background stroke-primary"
+        }
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+    </g>
+  )
+}
 
 type ConstraintGlyph = Readonly<{
   id: SketchConstraintId
@@ -2461,17 +2562,14 @@ const EMPTY_INFERENCE_REFERENCES: SketchInferenceReferences = {
 }
 
 function sketchInferenceReferences(
-  sketch: SketchRecord,
-  solution: SolvedSketchWire | null,
+  presentation: SketchGeometryPresentation,
 ): SketchInferenceReferences {
-  const points = displayPoints(sketch, solution)
-  const pointsById = new Map(points.map((point) => [point.id, point]))
   const lines: SketchInferenceLine[] = []
   const arcs: SketchInferenceArc[] = []
-  for (const entity of sketch.entities) {
+  for (const entity of presentation.curves) {
     if (entity.type === "line") {
-      const start = pointsById.get(entity.startPointId)
-      const end = pointsById.get(entity.endPointId)
+      const start = presentation.pointsById.get(entity.startPointId)
+      const end = presentation.pointsById.get(entity.endPointId)
       if (start && end) {
         lines.push({
           id: entity.id,
@@ -2483,7 +2581,7 @@ function sketchInferenceReferences(
       }
     }
     if (entity.type === "arc") {
-      const center = pointsById.get(entity.centerPointId)
+      const center = presentation.pointsById.get(entity.centerPointId)
       if (center) {
         arcs.push({
           id: entity.id,
@@ -2494,7 +2592,7 @@ function sketchInferenceReferences(
       }
     }
   }
-  return { arcs, lines, points }
+  return { arcs, lines, points: presentation.points }
 }
 
 function supportsPersistentPointRelations(editorTool: SketchEditorTool) {
@@ -2848,6 +2946,7 @@ type SketchDrawingViewProps = Readonly<{
     cursor: SketchPoint2 | null
     draggingPointId: SketchEntityId | null
     editable: boolean
+    geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
     pending: PendingGeometry | null
     viewportSize: ReturnType<typeof useSketchViewportSize>
@@ -2908,14 +3007,19 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <StableSketchGeometry
+          draggingPointId={configuration.dragTarget?.entityId ?? null}
           editable={state.editable}
           selectedEntityIds={configuration.selectedEntityIds}
-          sketch={sketch}
-          solution={configuration.solution}
+          presentation={state.geometry}
           tool={configuration.editorTool}
           onPointPointerDown={handlers.onPointPointerDown}
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
+        />
+        <DraggedSketchGeometry
+          dragTarget={configuration.dragTarget}
+          presentation={state.geometry}
+          selectedEntityIds={configuration.selectedEntityIds}
         />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
@@ -2989,7 +3093,11 @@ function SketchDrawing({
     solution,
     annotationSolution,
   } = configuration
-  const [bounds, setBounds] = useState(() => sketchBounds(displayPoints(sketch, solution)))
+  const geometry = useMemo(
+    () => createSketchGeometryPresentation(sketch, solution),
+    [sketch, solution],
+  )
+  const [bounds, setBounds] = useState(() => sketchBounds(geometry.points))
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
@@ -3001,8 +3109,8 @@ function SketchDrawing({
     [annotationSolution],
   )
   const inferenceReferences = useMemo(
-    () => (draft ? sketchInferenceReferences(draft, solution) : EMPTY_INFERENCE_REFERENCES),
-    [draft, solution],
+    () => (draft ? sketchInferenceReferences(geometry) : EMPTY_INFERENCE_REFERENCES),
+    [draft, geometry],
   )
   const handleDragPreview = useCallback((preview: SketchPointDragPreview) => {
     setCursor(preview.point)
@@ -3149,6 +3257,7 @@ function SketchDrawing({
         cursor,
         draggingPointId,
         editable,
+        geometry,
         inference,
         pending,
         viewportSize,
@@ -3296,6 +3405,7 @@ type SketchDrawingConfiguration = Readonly<{
   annotationSolution: SolvedSketchWire | null
   construction: boolean
   draft: SketchRecord | null
+  dragTarget: SketchDragTarget | null
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
@@ -3578,7 +3688,7 @@ export function SketchViewport({
   useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
   const activeSolveState = currentSolveState(solveState, activeSketch)
   const solution = solvedSolution(activeSolveState)
-  const displaySolutions = useSketchDisplaySolutions(activeSketch, solveState, dragTarget)
+  const displaySolution = sketchDisplaySolution(activeSketch, solveState)
   const profiles = useSolvedProfiles(solution)
   useSketchSolutionNotifications(solution, profiles, onProfilesChange, onFailedConstraintsChange)
   const presentation = useSketchViewportPresentation(
@@ -3598,9 +3708,10 @@ export function SketchViewport({
         emptyMessage={presentation.emptyMessage}
         configuration={{
           ariaLabel: presentation.drawingLabel,
-          annotationSolution: displaySolutions.exact,
+          annotationSolution: displaySolution,
           construction,
           draft,
+          dragTarget,
           editDimensionLabel: presentation.editDimensionLabel,
           editorTool,
           onConstraintSelectionChange,
@@ -3610,7 +3721,7 @@ export function SketchViewport({
           selectedConstraintId,
           selectedEntityIds,
           selectConstraintLabel: presentation.selectConstraintLabel,
-          solution: displaySolutions.display,
+          solution: displaySolution,
           onDraftChange,
           onProfileSelect,
           onRedo,
