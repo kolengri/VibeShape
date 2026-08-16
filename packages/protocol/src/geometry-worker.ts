@@ -128,7 +128,7 @@ export const extrusionFeatureContentParametersSchema = z
     holes: z.array(extrusionProfileLoopSchema).max(2_000),
     distance: cadLengthSchema,
     symmetric: z.boolean(),
-    operation: z.literal("new"),
+    operation: z.enum(["new", "add", "remove", "intersect"]),
   })
   .strict()
   .refine(

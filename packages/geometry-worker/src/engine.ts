@@ -62,6 +62,8 @@ import {
   cutOcctShapesWithLineage,
   filletOcctEdgesAtZWithHistory,
   filletOcctEdgesAtZWithLineage,
+  fuseOcctShapes,
+  intersectOcctShapes,
 } from "./occt-shapes"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
 import {
@@ -130,6 +132,8 @@ const BOOLEAN_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
 const EXTRUSION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
+const EXTRUSION_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
@@ -551,13 +555,22 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
 
 function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
-    return invalidInputCardinality("A new-body extrusion cannot declare feature dependency inputs.")
-  }
   const parameters = extrusionFeatureContentParametersSchema.safeParse(feature.parameters)
-  return parameters.success
-    ? { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
-    : featureFailure("invalid-feature-parameters", "Extrusion content parameters are invalid.")
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Extrusion content parameters are invalid.")
+  }
+  const expectedInputCount = parameters.data.operation === "new" ? 0 : 1
+  if (
+    feature.inputs.length !== expectedInputCount ||
+    input.dependencies.length !== expectedInputCount
+  ) {
+    return invalidInputCardinality(
+      parameters.data.operation === "new"
+        ? "A new-body extrusion cannot declare feature dependency inputs."
+        : `A ${parameters.data.operation} extrusion requires one target dependency input.`,
+    )
+  }
+  return { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
 }
 
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
@@ -565,6 +578,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
+  [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
 ])
 
 function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -586,6 +600,43 @@ function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
   )
 }
 
+function applyExtrusionOperation(
+  opencascade: OpenCascadeInstance,
+  parameters: ExtrusionContentParameters,
+  target: Shape3D,
+  tool: Shape3D,
+) {
+  switch (parameters.operation) {
+    case "add":
+      return fuseOcctShapes(opencascade, target, tool)
+    case "remove":
+      return cutOcctShapes(opencascade, target, tool)
+    case "intersect":
+      return intersectOcctShapes(opencascade, target, tool)
+    case "new":
+      throw new Error("A new-body extrusion cannot modify a target shape.")
+  }
+}
+
+function createExtrusionFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: ExtrusionContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const tool = createExtrusionShape(opencascade, parameters)
+  if (parameters.operation === "new") return tool
+  const target = dependencyShapes[0]
+  if (!target) {
+    tool.delete()
+    throw new Error("Extrusion target dependency shape is unavailable.")
+  }
+  try {
+    return applyExtrusionOperation(opencascade, parameters, target, tool)
+  } finally {
+    tool.delete()
+  }
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: ParsedFeature,
@@ -602,7 +653,7 @@ function createFeatureShape(
   }
 
   if (feature.kind === "extrusion") {
-    return createExtrusionShape(opencascade, feature.parameters)
+    return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
   }
 
   const [target, tool] = dependencyShapes

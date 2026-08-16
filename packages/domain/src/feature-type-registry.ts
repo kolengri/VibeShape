@@ -30,6 +30,9 @@ export type TrustedFeatureTypeHandler = Readonly<{
   type: FeatureTypeIdentity
   parametersSchema: z.ZodType
   contentParameters: (parameters: FeatureParameters) => unknown
+  validateFeature?: (
+    feature: FeatureRecord,
+  ) => readonly Readonly<{ path: string; message: string }>[]
   resolveParameters?: (
     parameters: FeatureParameters,
     variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
@@ -114,6 +117,14 @@ function zodIssues(error: z.ZodError, prefix = "") {
   }))
 }
 
+function hasValidTrustedHandlerMethods(handler: TrustedFeatureTypeHandler) {
+  return (
+    isFunction(handler.parametersSchema?.safeParse) &&
+    isFunction(handler.contentParameters) &&
+    (handler.validateFeature === undefined || isFunction(handler.validateFeature))
+  )
+}
+
 function indexHandlers(
   moduleRegistry: ModuleRegistry,
   handlers: readonly TrustedFeatureTypeHandler[],
@@ -122,11 +133,7 @@ function indexHandlers(
 
   for (const handler of handlers) {
     const parsedType = featureTypeSchema.safeParse(handler.type)
-    if (
-      !parsedType.success ||
-      !isFunction(handler.parametersSchema?.safeParse) ||
-      !isFunction(handler.contentParameters)
-    ) {
+    if (!parsedType.success || !hasValidTrustedHandlerMethods(handler)) {
       return registryFailure(
         "invalid-feature-type-handler",
         "A trusted feature type handler is invalid.",
@@ -220,6 +227,29 @@ function normalizedParameters(
       )
 }
 
+function validateFeatureInvariants(
+  handler: TrustedFeatureTypeHandler,
+  feature: FeatureRecord,
+): FeatureValidationResult | null {
+  if (!handler.validateFeature) return null
+
+  try {
+    const issues = handler.validateFeature(feature).slice(0, 8)
+    return issues.length === 0
+      ? null
+      : validationFailure(
+          "invalid-feature-parameters",
+          "The feature record violates a registered feature invariant.",
+          issues,
+        )
+  } catch {
+    return validationFailure(
+      "invalid-feature-parameters",
+      "The trusted feature invariant validator failed.",
+    )
+  }
+}
+
 function normalizedContentParameters(
   handler: TrustedFeatureTypeHandler,
   parameters: FeatureParameters,
@@ -277,6 +307,8 @@ function validateRegisteredFeature(
   if (!parameters.ok) return parameters
 
   const feature = { ...parsed.data, parameters: parameters.parameters }
+  const invariant = validateFeatureInvariants(handler, feature)
+  if (invariant) return invariant
   const contentParameters = normalizedContentParameters(handler, feature.parameters)
   return contentParameters.ok
     ? { ok: true, feature, descriptor, contentParameters: contentParameters.contentParameters }

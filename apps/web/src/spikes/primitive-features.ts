@@ -37,6 +37,9 @@ interface FeatureEvaluationHarnessState {
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
+  extrusionAdd: FeatureResponse | null
+  extrusionIntersect: FeatureResponse | null
+  extrusionRemove: FeatureResponse | null
   boolean: FeatureResponse | null
   cachedBoolean: FeatureResponse | null
   invalidBooleanDiagnostic: string | null
@@ -60,6 +63,9 @@ const booleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f
 const identicalToolFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104")
 const missingBooleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3105")
 const extrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3106")
+const extrusionAddFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3107")
+const extrusionRemoveFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3108")
+const extrusionIntersectFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3109")
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
@@ -74,6 +80,9 @@ const state: FeatureEvaluationHarnessState = {
   cachedBox: null,
   cylinder: null,
   extrusion: null,
+  extrusionAdd: null,
+  extrusionIntersect: null,
+  extrusionRemove: null,
   boolean: null,
   cachedBoolean: null,
   invalidBooleanDiagnostic: null,
@@ -84,10 +93,14 @@ const state: FeatureEvaluationHarnessState = {
   error: null,
 }
 
-function extrusionFeature() {
+function extrusionFeature(
+  featureId: FeatureId,
+  operation: "add" | "intersect" | "new" | "remove",
+  dependencies: readonly FeatureId[],
+) {
   return {
     schemaVersion: 0,
-    id: extrusionFeatureId,
+    id: featureId,
     type: extrusionFeatureType.type,
     parameters: {
       profile: {
@@ -98,9 +111,9 @@ function extrusionFeature() {
       },
       distance: createLengthQuantity(18),
       symmetric: true,
-      operation: "new",
+      operation,
     },
-    dependencies: [],
+    dependencies,
     references: [],
     suppressed: false,
   }
@@ -246,14 +259,24 @@ async function evaluate(
   )
 }
 
-async function evaluateExtrusion(client: GeometryWorkerClient, environment: unknown) {
+async function evaluateExtrusion(
+  client: GeometryWorkerClient,
+  environment: unknown,
+  featureId: FeatureId,
+  operation: "add" | "intersect" | "new" | "remove",
+  dependencies: readonly { featureId: FeatureId; contentHash: string }[],
+) {
   const content = await computeFeatureContentHash(
     featureRegistry(),
     {
-      feature: extrusionFeature(),
-      dependencies: [],
+      feature: extrusionFeature(
+        featureId,
+        operation,
+        dependencies.map(({ featureId: dependencyId }) => dependencyId),
+      ),
+      dependencies,
       environment,
-      contentParameters: extrusionContentParameters,
+      contentParameters: { ...extrusionContentParameters, operation },
     },
     sha256,
   )
@@ -263,10 +286,10 @@ async function evaluateExtrusion(client: GeometryWorkerClient, environment: unkn
       {
         ...createGeometryRequestEnvelope(documentId, generation, 1),
         type: "evaluateFeature",
-        featureId: extrusionFeatureId,
+        featureId,
         content: featureContentIdentitySchema.parse(content.identity),
         contentHash: content.contentHash,
-        dependencies: [],
+        dependencies: [...dependencies],
         mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
       },
       {
@@ -317,7 +340,29 @@ async function run() {
     state.cachedBox = await evaluate(client, "box", boxFeatureId, environment)
     const cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
     state.cylinder = cylinder
-    state.extrusion = await evaluateExtrusion(client, environment)
+    state.extrusion = await evaluateExtrusion(client, environment, extrusionFeatureId, "new", [])
+    const extrusionTarget = [{ featureId: boxFeatureId, contentHash: box.contentHash }]
+    state.extrusionAdd = await evaluateExtrusion(
+      client,
+      environment,
+      extrusionAddFeatureId,
+      "add",
+      extrusionTarget,
+    )
+    state.extrusionRemove = await evaluateExtrusion(
+      client,
+      environment,
+      extrusionRemoveFeatureId,
+      "remove",
+      extrusionTarget,
+    )
+    state.extrusionIntersect = await evaluateExtrusion(
+      client,
+      environment,
+      extrusionIntersectFeatureId,
+      "intersect",
+      extrusionTarget,
+    )
     const booleanDependencies = [
       { featureId: boxFeatureId, contentHash: box.contentHash },
       { featureId: cylinderFeatureId, contentHash: cylinder.contentHash },

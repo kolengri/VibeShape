@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-09
+- Extended by: [ADR-0023](0023-explicit-target-extrusion-operations.md)
 
 ## Context
 

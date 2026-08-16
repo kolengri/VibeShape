@@ -163,6 +163,10 @@ describe("geometry worker protocol", () => {
 
     expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
     expect(
+      extrusionFeatureContentParametersSchema.safeParse({ ...parameters, operation: "intersect" })
+        .success,
+    ).toBe(true)
+    expect(
       extrusionFeatureContentParametersSchema.safeParse({
         ...parameters,
         outer: { ...parameters.outer, sourceEntityIds: parameters.outer.sourceEntityIds.slice(1) },

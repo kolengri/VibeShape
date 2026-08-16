@@ -3,6 +3,7 @@ import {
   boxFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
+  legacyExtrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
   type SketchProfileSelector,
@@ -40,7 +41,10 @@ export function isBooleanFeature(feature: FeatureRecord) {
 }
 
 export function isExtrusionFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, extrusionFeatureType.type)
+  return (
+    hasFeatureType(feature, extrusionFeatureType.type) ||
+    hasFeatureType(feature, legacyExtrusionFeatureType.type)
+  )
 }
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
@@ -84,6 +88,24 @@ export function booleanInputFeatures(
     (feature) =>
       !feature.suppressed && !excludedIds.has(feature.id) && isPartDesignSolidFeature(feature),
   )
+}
+
+export function extrusionTargetFeatures(
+  features: readonly FeatureRecord[],
+  editingFeatureId?: FeatureId,
+) {
+  const excludedIds = editingFeatureId
+    ? dependentFeatureIds(features, editingFeatureId)
+    : new Set<FeatureId>()
+  const available = features.filter(
+    (feature) =>
+      !feature.suppressed && !excludedIds.has(feature.id) && isPartDesignSolidFeature(feature),
+  )
+  const dependedOnIds = new Set(available.flatMap(({ dependencies }) => dependencies))
+  const currentTargetIds = new Set(
+    features.find(({ id }) => id === editingFeatureId)?.dependencies ?? [],
+  )
+  return available.filter(({ id }) => !dependedOnIds.has(id) || currentTargetIds.has(id))
 }
 
 export function activeFeatureId(activeTool: ActivePartDesignTool | null) {
