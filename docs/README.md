@@ -6,7 +6,7 @@
 2. [Feature matrix](product/feature-matrix.md).
 3. [Design and UX guidelines](product/design-and-ux-guidelines.md), [core flows](product/ux-flows.md), the [editor experience plan](product/editor-experience-plan.md), the [sketch precision toolset](product/sketch-toolset.md), and the [sketch-first modeling plan](product/sketch-first-modeling-plan.md).
 4. [Architecture overview](architecture/overview.md).
-5. [Technology stack](architecture/technology-stack.md).
+5. [Technology stack](architecture/technology-stack.md) and [Codex agent team](codex-agent-team.md).
 6. [UI system](architecture/ui-system.md), [UI component contracts](architecture/ui-component-contracts.md), [internationalization](architecture/internationalization.md), and [geometry/parametrics](architecture/geometry-and-parametrics.md).
 7. [Extension architecture](architecture/extensions.md), [automation and MCP](architecture/automation-and-mcp.md), and [data model/native format](architecture/data-model-and-file-format.md).
 8. [Roadmap](roadmap.md), [initial experiments](implementation-blueprint.md), [SPK-001 OCCT worker evidence](spikes/spk-001-occt-worker.md), [SPK-002 solver evidence](spikes/spk-002-sketch-solver.md), [SPK-003 stable topology evidence](spikes/spk-003-toporef.md), [SPK-004 3MF evidence](spikes/spk-004-3mf.md), [SPK-005 local-first evidence](spikes/spk-005-local-first.md), [SPK-006 extension evidence](spikes/spk-006-extension-sandbox.md), and [testing strategy](testing-strategy.md).
