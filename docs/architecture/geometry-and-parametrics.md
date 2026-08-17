@@ -73,7 +73,8 @@ Sketch schema v0 stores analytical entities, not sampled polylines:
 - line segment;
 - circle;
 - arc;
-- exact full ellipse through three stable axis points; Elliptical Arc and B-spline later;
+- exact full ellipse through three stable axis points;
+- exact elliptical arc through stable center, axis, start, and end points; B-spline later;
 - construction flag;
 - constraint records referencing entities and sub-elements;
 - dimensional constraints linked to variables or expressions.
@@ -88,9 +89,17 @@ ADR-0014 selects the pinned SolveSpace v3.2 subset behind a Zod-validated flat t
 
 ## Sketch profiles
 
+Elliptical Arc is a first-class analytical entity. Because SolveSpace has no native ellipse locus,
+each visible endpoint is constrained by a solver-owned Archimedes-trammel construction composed of
+native points, lines, point-on-line, equal-length, and parallel equations. Auxiliary identities do
+not enter the document or protocol. Profile extraction computes exact endpoint connectivity, area,
+bounds, intersections, and sampled perimeter, while extrusion transports validated on-ellipse
+endpoints and preserves axis handedness, authored sweep, major/minor-axis selection, and reversed
+hole traversal when creating the OCCT edge.
+
 After every valid solve, the implemented pure topology builder:
 
-1. Collects non-construction analytical lines, arcs, circles, and ellipses from stable solved identities.
+1. Collects non-construction analytical lines, circular arcs, circles, full ellipses, and elliptical arcs from stable solved identities.
 2. Sorts curves by stable entity ID and snaps endpoints within `1e-7 mm`.
 3. Rejects coincident overlaps and curves with unsplit interior intersections.
 4. Builds a planar half-edge graph and extracts positive closed loops.

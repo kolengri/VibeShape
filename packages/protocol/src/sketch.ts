@@ -110,12 +110,32 @@ const ellipseEntitySchema = z
         .size === 3,
   )
 
+const ellipticalArcEntitySchema = z
+  .object({
+    ...entityEnvelope,
+    type: z.literal("elliptical-arc"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (arc) =>
+      new Set([arc.centerPointId, arc.primaryAxisPointId, arc.secondaryAxisPointId]).size === 3 &&
+      arc.startPointId !== arc.endPointId &&
+      arc.startPointId !== arc.centerPointId &&
+      arc.endPointId !== arc.centerPointId,
+  )
+
 const sketchEntitySchema = z.discriminatedUnion("type", [
   pointEntitySchema,
   lineEntitySchema,
   circleEntitySchema,
   arcEntitySchema,
   ellipseEntitySchema,
+  ellipticalArcEntitySchema,
 ])
 
 const constraintEnvelope = { schemaVersion: z.literal(0), id: sketchConstraintIdSchema }
@@ -305,6 +325,14 @@ function wireEntityPointReferenceIds(entity: WireEntity): readonly string[] {
       return [entity.centerPointId, entity.startPointId, entity.endPointId]
     case "ellipse":
       return [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId]
+    case "elliptical-arc":
+      return [
+        entity.centerPointId,
+        entity.primaryAxisPointId,
+        entity.secondaryAxisPointId,
+        entity.startPointId,
+        entity.endPointId,
+      ]
   }
 }
 
@@ -423,8 +451,8 @@ function wireConstraintReferencesAreValid(
   })
 }
 
-function nativeWireConstraintCount(constraints: readonly SketchWireConstraint[]) {
-  return constraints.reduce(
+function nativeWireConstraintCount(sketch: SketchWireStructure) {
+  const authored = sketch.constraints.reduce(
     (count, constraint) =>
       count +
       (constraint.type === "offset"
@@ -432,6 +460,37 @@ function nativeWireConstraintCount(constraints: readonly SketchWireConstraint[])
         : 1),
     0,
   )
+  const internal = sketch.entities.reduce((count, entity) => {
+    if (entity.type === "ellipse") return count + 1
+    return entity.type === "elliptical-arc" ? count + 11 : count
+  }, 0)
+  return authored + internal
+}
+
+const nativeWireEntityCapacity = {
+  arc: { entities: 1, parameters: 0 },
+  circle: { entities: 2, parameters: 1 },
+  ellipse: { entities: 2, parameters: 0 },
+  "elliptical-arc": { entities: 10, parameters: 8 },
+  line: { entities: 1, parameters: 0 },
+  point: { entities: 1, parameters: 2 },
+} as const satisfies Record<WireEntity["type"], Readonly<{ entities: number; parameters: number }>>
+
+function nativeWireCapacity(sketch: SketchWireStructure) {
+  const authored = sketch.entities.reduce(
+    (capacity, entity) => ({
+      entities: capacity.entities + nativeWireEntityCapacity[entity.type].entities,
+      parameters: capacity.parameters + nativeWireEntityCapacity[entity.type].parameters,
+    }),
+    { entities: 3, parameters: 7 },
+  )
+  const projectionCount =
+    Number(sketch.constraints.some(({ type }) => type === "horizontal-distance")) +
+    Number(sketch.constraints.some(({ type }) => type === "vertical-distance"))
+  return {
+    entities: authored.entities + projectionCount * 3,
+    parameters: authored.parameters + projectionCount * 4,
+  }
 }
 
 function validateWireConstraintTable(
@@ -456,12 +515,30 @@ function validateWireConstraintTable(
       message: "Sketch constraints must reference compatible entities.",
     })
   }
-  if (nativeWireConstraintCount(sketch.constraints) <= 10_000) return
+  if (nativeWireConstraintCount(sketch) <= 10_000) return
   context.addIssue({
     code: "custom",
     path: ["constraints"],
     message: "Sketch constraints exceed the native solver safety limit.",
   })
+}
+
+function validateNativeWireCapacity(sketch: SketchWireStructure, context: z.RefinementCtx) {
+  const capacity = nativeWireCapacity(sketch)
+  if (capacity.entities > 5_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch entities exceed the native solver safety limit.",
+    })
+  }
+  if (capacity.parameters > 10_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch parameters exceed the native solver safety limit.",
+    })
+  }
 }
 
 export const sketchWireRecordSchema = z
@@ -482,6 +559,7 @@ export const sketchWireRecordSchema = z
     const entities = indexWireEntities(sketch, context)
     validateWireEntityTable(sketch, entities, context)
     validateWireConstraintTable(sketch, entities, context)
+    validateNativeWireCapacity(sketch, context)
   })
 
 const pointSolutionSchema = z
@@ -516,7 +594,7 @@ const profileBoundsWireSchema = z
 const profileLoopSegmentWireSchema = z
   .object({
     entityId: sketchEntityIdSchema,
-    type: z.enum(["line", "arc", "circle", "ellipse"]),
+    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc"]),
     reversed: z.boolean(),
   })
   .strict()

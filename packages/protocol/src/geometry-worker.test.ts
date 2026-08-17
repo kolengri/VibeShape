@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+  extrusionFeatureContentParametersSchema,
   GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
-  extrusionFeatureContentParametersSchema,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
@@ -216,6 +216,54 @@ describe("geometry worker protocol", () => {
         outer: {
           ...parameters.outer,
           segments: [{ ...parameters.outer.segments[0], primaryAxisPoint: [2, 3] }],
+        },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts exact elliptical-arc extrusion geometry and rejects off-ellipse endpoints", () => {
+    const parameters = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      plane: "xy",
+      outer: {
+        sourceEntityIds: [
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+        ],
+        segments: [
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+            type: "elliptical-arc",
+            center: [0, 0],
+            primaryAxisPoint: [10, 0],
+            secondaryAxisPoint: [0, 5],
+            start: [10, 0],
+            end: [-10, 0],
+          },
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+            type: "line",
+            start: [-10, 0],
+            end: [10, 0],
+          },
+        ],
+      },
+      holes: [],
+      distance: 12,
+      symmetric: false,
+      operation: "new",
+    } as const
+
+    expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [
+            { ...parameters.outer.segments[0], end: [-9, 0] },
+            parameters.outer.segments[1],
+          ],
         },
       }).success,
     ).toBe(false)

@@ -211,6 +211,44 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
   })
 
+  test("authors an elliptical arc with construction-ellipse preview and local history", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Arc tools", "Elliptical arc")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.move(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.35)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="elliptical-arc-start"] ellipse'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.35)
+    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+    const preview = drawing.locator('[data-sketch-preview-tool="elliptical-arc-end"]')
+    await expect(preview.locator("ellipse")).toBeVisible()
+    await expect(preview.locator("polyline")).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(5)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(0)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+  })
+
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

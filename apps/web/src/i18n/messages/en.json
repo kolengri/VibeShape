@@ -291,6 +291,10 @@
           "label": "Center-point ellipse",
           "keywords": "sketch ellipse|center point ellipse|oval|major axis|minor axis"
         },
+        "sketchEllipticalArc": {
+          "label": "Elliptical arc",
+          "keywords": "elliptical arc|ellipse segment|center axis start end|oval arc"
+        },
         "sketchCircularPattern": {
           "label": "Circular pattern",
           "keywords": "circular sketch pattern|radial array|repeat around center|polar copies"
@@ -566,6 +570,7 @@
           "rectangle": "Rectangle",
           "circle": "Circle",
           "ellipse": "Ellipse",
+          "ellipticalArc": "Elliptical arc",
           "arc": "Center-point arc",
           "construction": "Construction geometry",
           "undo": "Undo",

@@ -10,6 +10,7 @@ import {
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -30,6 +31,8 @@ import {
   setSketchDimensionValue,
   setSketchEntityConstruction,
   sketchLineIntersection,
+  sketchEllipticalArcGeometry,
+  sketchEllipticalArcStartGeometry,
   splitSketchLine,
   tangentArcGeometry,
   trimSketchLine,
@@ -502,6 +505,78 @@ describe("sketch editing", () => {
       secondaryAxisPointId: result.createdEntityIds[2],
     })
     expect(secondary).toMatchObject({ type: "point", x: 2, y: -1 })
+  })
+
+  it("derives and appends an exact center-origin elliptical arc", () => {
+    const startGeometry = sketchEllipticalArcStartGeometry(
+      { x: 2, y: 3 },
+      { x: 8, y: 3 },
+      { x: 5, y: -1 },
+    )
+    if (!startGeometry) throw new Error("The elliptical-arc start fixture must be valid.")
+    const geometry = sketchEllipticalArcGeometry(
+      startGeometry.center,
+      startGeometry.primaryAxisPoint,
+      startGeometry.secondaryAxisPoint,
+      startGeometry.startPoint,
+      { x: 2, y: 7 },
+    )
+    if (!geometry) throw new Error("The elliptical-arc fixture must be valid.")
+
+    expect(startGeometry.primaryRadius).toBe(6)
+    expect(startGeometry.secondaryRadius).toBeCloseTo(4.6188021535)
+    expect(startGeometry.startPoint.x).toBeCloseTo(5)
+    expect(startGeometry.startPoint.y).toBeCloseTo(-1)
+    expect(geometry.endPoint.x).toBeCloseTo(2)
+    expect(geometry.endPoint.y).toBeCloseTo(7.6188021535)
+    expect(geometry.sweep).toBeGreaterThan(0)
+
+    const result = appendSketchEllipticalArc(empty(), {
+      center: { kind: "new", point: geometry.center },
+      createEntityId: entityId,
+      endPoint: { kind: "new", point: geometry.endPoint },
+      primaryAxisPoint: { kind: "new", point: geometry.primaryAxisPoint },
+      secondaryAxisPoint: geometry.secondaryAxisPoint,
+      startPoint: { kind: "new", point: geometry.startPoint },
+    })
+    const arc = result.sketch.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!arc) throw new Error("The sketch must contain the appended elliptical arc.")
+
+    expect(result.createdEntityIds).toHaveLength(6)
+    expect(arc).toMatchObject({
+      centerPointId: result.createdEntityIds[0],
+      primaryAxisPointId: result.createdEntityIds[1],
+      secondaryAxisPointId: result.createdEntityIds[2],
+      startPointId: result.createdEntityIds[3],
+      endPointId: result.createdEntityIds[4],
+    })
+  })
+
+  it("reuses an elliptical-arc quadrant axis point and rejects a full sweep", () => {
+    const result = appendSketchEllipticalArc(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      endPoint: { kind: "new", point: { x: 0, y: 4 } },
+      primaryAxisPoint: { kind: "new", point: { x: 6, y: 0 } },
+      secondaryAxisPoint: { x: 0, y: 4 },
+      startPoint: { kind: "new", point: { x: 6, y: 0 } },
+    })
+    const arc = result.sketch.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!arc) throw new Error("The quadrant fixture must contain an elliptical arc.")
+    expect(arc.startPointId).toBe(arc.primaryAxisPointId)
+    expect(arc.endPointId).toBe(arc.secondaryAxisPointId)
+    expect(result.createdEntityIds).toHaveLength(4)
+
+    expect(() =>
+      appendSketchEllipticalArc(empty(), {
+        center: { kind: "new", point: { x: 0, y: 0 } },
+        createEntityId: entityId,
+        endPoint: { kind: "new", point: { x: 6, y: 0 } },
+        primaryAxisPoint: { kind: "new", point: { x: 6, y: 0 } },
+        secondaryAxisPoint: { x: 0, y: 4 },
+        startPoint: { kind: "new", point: { x: 6, y: 0 } },
+      }),
+    ).toThrow("distinct endpoints")
   })
 
   it("constructs Onshape-compatible regular polygon geometry from a center and radius", () => {

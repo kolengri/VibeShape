@@ -120,6 +120,7 @@ const sketchToolFamilies = [
       editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchTangentArc,
       editorCommandIds.sketchArc,
+      editorCommandIds.sketchEllipticalArc,
     ],
     id: "arc",
     labelKey: "arcToolsLabel",

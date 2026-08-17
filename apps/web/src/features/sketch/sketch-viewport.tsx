@@ -8,6 +8,7 @@ import {
   appendSketchCircle,
   appendSketchConstraint,
   appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -52,6 +53,9 @@ import {
   sketchConstraintIdSchema,
   sketchCurvePointIds,
   sketchEllipseGeometry,
+  sketchEllipsePointAt,
+  sketchEllipticalArcGeometry,
+  sketchEllipticalArcStartGeometry,
   sketchEntityTransformOrigin,
   sketchProfileSelectorSchema,
   splitSketchCircle,
@@ -261,6 +265,19 @@ type PendingGeometry =
       center: SketchPointTarget
       kind: "ellipse-secondary"
       primaryAxisPoint: SketchPointTarget
+    }>
+  | Readonly<{ center: SketchPointTarget; kind: "elliptical-arc-primary" }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "elliptical-arc-start"
+      primaryAxisPoint: SketchPointTarget
+    }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "elliptical-arc-end"
+      primaryAxisPoint: SketchPointTarget
+      secondaryAxisPoint: SketchPoint2
+      startPoint: SketchPointTarget
     }>
   | Readonly<{
       center: SketchPointTarget
@@ -850,6 +867,49 @@ function ellipseSamples(
   return reversed ? samples.reverse() : samples
 }
 
+function ellipticalArcGeometry(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: SketchPointLookup,
+) {
+  const center = points.get(entity.centerPointId)
+  const primaryAxisPoint = points.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = points.get(entity.secondaryAxisPointId)
+  const startPoint = points.get(entity.startPointId)
+  const endPoint = points.get(entity.endPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint && startPoint && endPoint
+    ? sketchEllipticalArcGeometry(
+        center,
+        primaryAxisPoint,
+        secondaryAxisPoint,
+        startPoint,
+        endPoint,
+      )
+    : null
+}
+
+function ellipticalArcGeometrySamples(
+  geometry: NonNullable<ReturnType<typeof sketchEllipticalArcGeometry>>,
+) {
+  const segmentCount = Math.max(8, Math.ceil((geometry.sweep / (Math.PI * 2)) * 64))
+  return Array.from({ length: segmentCount + 1 }, (_, index) =>
+    sketchEllipsePointAt(
+      geometry,
+      geometry.startParameter + (geometry.sweep * index) / segmentCount,
+    ),
+  )
+}
+
+function ellipticalArcSamples(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+  reversed: boolean,
+) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  if (!geometry) return null
+  const samples = ellipticalArcGeometrySamples(geometry)
+  return reversed ? samples.reverse() : samples
+}
+
 function segmentSamples(
   entity: SketchEntity,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -865,6 +925,8 @@ function segmentSamples(
       return circleSamples(entity, points, solvedCircles, reversed)
     case "ellipse":
       return ellipseSamples(entity, points, reversed)
+    case "elliptical-arc":
+      return ellipticalArcSamples(entity, points, reversed)
     case "point":
       return null
   }
@@ -1111,6 +1173,28 @@ function SketchEllipse({
   )
 }
 
+function SketchEllipticalArc({
+  entity,
+  hidden,
+  interactive,
+  onPointerDown,
+  points,
+  selected,
+}: Omit<CurveDrawingProps, "solvedRadius"> & {
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>
+}) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  if (!geometry) return null
+  return (
+    <polyline
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+      points={ellipticalArcGeometrySamples(geometry)
+        .map(({ x, y }) => `${x},${y}`)
+        .join(" ")}
+    />
+  )
+}
+
 function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | undefined) {
   return (
     left === right ||
@@ -1136,6 +1220,8 @@ const SketchCurve = memo(
         return <SketchArc {...props} entity={props.entity} />
       case "ellipse":
         return <SketchEllipse {...props} entity={props.entity} />
+      case "elliptical-arc":
+        return <SketchEllipticalArc {...props} entity={props.entity} />
     }
   },
   (previous, next) => {
@@ -1524,6 +1610,16 @@ function ellipseEntityAnchor(
     : (points.get(entity.centerPointId) ?? null)
 }
 
+function ellipticalArcEntityAnchor(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  return geometry
+    ? sketchEllipsePointAt(geometry, geometry.startParameter + geometry.sweep / 2)
+    : (points.get(entity.centerPointId) ?? null)
+}
+
 function entityAnchor(
   entity: SketchEntity | undefined,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -1544,6 +1640,8 @@ function entityAnchor(
       )
     case "ellipse":
       return ellipseEntityAnchor(entity, points)
+    case "elliptical-arc":
+      return ellipticalArcEntityAnchor(entity, points)
   }
 }
 
@@ -1745,6 +1843,9 @@ type PendingWithTargetCenter = Extract<
   | { kind: "circle" }
   | { kind: "ellipse-primary" }
   | { kind: "ellipse-secondary" }
+  | { kind: "elliptical-arc-primary" }
+  | { kind: "elliptical-arc-start" }
+  | { kind: "elliptical-arc-end" }
   | { kind: "regular-polygon-radius" }
   | { kind: "regular-polygon-sides" }
 >
@@ -1758,6 +1859,9 @@ const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
   "circle",
   "ellipse-primary",
   "ellipse-secondary",
+  "elliptical-arc-primary",
+  "elliptical-arc-start",
+  "elliptical-arc-end",
   "regular-polygon-radius",
   "regular-polygon-sides",
 ])
@@ -2019,6 +2123,83 @@ function PendingEllipseShape({
         x2={geometry.secondaryAxisPoint.x}
         y2={geometry.secondaryAxisPoint.y}
       />
+    </>
+  )
+}
+
+type PendingEllipticalArc = Extract<
+  PendingGeometry,
+  { kind: "elliptical-arc-primary" | "elliptical-arc-start" | "elliptical-arc-end" }
+>
+
+function isPendingEllipticalArc(pending: PendingGeometry | null): pending is PendingEllipticalArc {
+  return (
+    pending?.kind === "elliptical-arc-primary" ||
+    pending?.kind === "elliptical-arc-start" ||
+    pending?.kind === "elliptical-arc-end"
+  )
+}
+
+function PendingEllipticalArcShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingEllipticalArc
+  sketch: SketchRecord
+}) {
+  const center = pointForTarget(sketch, pending.center)
+  if (pending.kind === "elliptical-arc-primary") {
+    return <line x1={center.x} y1={center.y} x2={cursor.x} y2={cursor.y} />
+  }
+  const primaryAxisPoint = pointForTarget(sketch, pending.primaryAxisPoint)
+  const geometry =
+    pending.kind === "elliptical-arc-start"
+      ? sketchEllipticalArcStartGeometry(center, primaryAxisPoint, cursor)
+      : sketchEllipticalArcGeometry(
+          center,
+          primaryAxisPoint,
+          pending.secondaryAxisPoint,
+          pointForTarget(sketch, pending.startPoint),
+          cursor,
+        )
+  if (!geometry) {
+    return <line x1={center.x} y1={center.y} x2={primaryAxisPoint.x} y2={primaryAxisPoint.y} />
+  }
+  return (
+    <>
+      <ellipse
+        cx={geometry.center.x}
+        cy={geometry.center.y}
+        opacity={0.55}
+        rx={geometry.primaryRadius}
+        ry={geometry.secondaryRadius}
+        transform={ellipseSvgTransform(geometry)}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.primaryAxisPoint.x}
+        y2={geometry.primaryAxisPoint.y}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.secondaryAxisPoint.x}
+        y2={geometry.secondaryAxisPoint.y}
+      />
+      {"sweep" in geometry ? (
+        <polyline
+          strokeDasharray="none"
+          strokeWidth={2}
+          points={ellipticalArcGeometrySamples(geometry)
+            .map(({ x, y }) => `${x},${y}`)
+            .join(" ")}
+        />
+      ) : (
+        <circle cx={geometry.startPoint.x} cy={geometry.startPoint.y} r={2.5} />
+      )}
     </>
   )
 }
@@ -2293,6 +2474,42 @@ function PendingCircleSplitShape({
   )
 }
 
+type PendingAnalyticalCurve = Extract<
+  PendingGeometry,
+  | { kind: "ellipse-primary" | "ellipse-secondary" }
+  | { kind: "elliptical-arc-primary" | "elliptical-arc-start" | "elliptical-arc-end" }
+  | { kind: PendingRoundCurve["kind"] }
+>
+
+function isPendingAnalyticalCurve(pending: PendingGeometry): pending is PendingAnalyticalCurve {
+  return (
+    pending.kind === "ellipse-primary" ||
+    pending.kind === "ellipse-secondary" ||
+    isPendingEllipticalArc(pending) ||
+    isPendingRoundCurve(pending)
+  )
+}
+
+function PendingAnalyticalCurveShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: PendingAnalyticalCurve
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  if (pending.kind === "ellipse-primary" || pending.kind === "ellipse-secondary") {
+    return <PendingEllipseShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (isPendingEllipticalArc(pending)) {
+    return <PendingEllipticalArcShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  return <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -2317,12 +2534,14 @@ function PendingCurveShape({
   if (pending.kind === "split-circle-second") {
     return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
   }
-  if (pending.kind === "ellipse-primary" || pending.kind === "ellipse-secondary") {
-    return <PendingEllipseShape cursor={cursor} pending={pending} sketch={sketch} />
-  }
-  if (isPendingRoundCurve(pending)) {
+  if (isPendingAnalyticalCurve(pending)) {
     return (
-      <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+      <PendingAnalyticalCurveShape
+        cursor={cursor}
+        pending={pending}
+        sketch={sketch}
+        start={start}
+      />
     )
   }
   return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
@@ -2870,6 +3089,74 @@ function placeEllipse(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeEllipticalArcPrimary(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-primary" }>,
+): PlacementUpdate {
+  return {
+    draft: null,
+    pending: {
+      center: pending.center,
+      kind: "elliptical-arc-start",
+      primaryAxisPoint: input.target,
+    },
+  }
+}
+
+function placeEllipticalArcStart(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-start" }>,
+): PlacementUpdate {
+  const geometry = sketchEllipticalArcStartGeometry(
+    pointForTarget(input.draft, pending.center),
+    pointForTarget(input.draft, pending.primaryAxisPoint),
+    input.point,
+  )
+  return geometry
+    ? {
+        draft: null,
+        pending: {
+          center: pending.center,
+          kind: "elliptical-arc-end",
+          primaryAxisPoint: pending.primaryAxisPoint,
+          secondaryAxisPoint: geometry.secondaryAxisPoint,
+          startPoint: { kind: "new", point: geometry.startPoint },
+        },
+      }
+    : { draft: null, pending }
+}
+
+function placeEllipticalArcEnd(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-end" }>,
+): PlacementUpdate {
+  return {
+    draft: appendSketchEllipticalArc(input.draft, {
+      center: pending.center,
+      construction: input.construction,
+      createEntityId: createBrowserSketchEntityId,
+      endPoint: { kind: "new", point: input.point },
+      primaryAxisPoint: pending.primaryAxisPoint,
+      secondaryAxisPoint: pending.secondaryAxisPoint,
+      startPoint: pending.startPoint,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeEllipticalArc(input: PlacementInput): PlacementUpdate {
+  const pending = input.pending
+  if (!isPendingEllipticalArc(pending)) {
+    return { draft: null, pending: { center: input.target, kind: "elliptical-arc-primary" } }
+  }
+  if (pending.kind === "elliptical-arc-primary") {
+    return placeEllipticalArcPrimary(input, pending)
+  }
+  return pending.kind === "elliptical-arc-start"
+    ? placeEllipticalArcStart(input, pending)
+    : placeEllipticalArcEnd(input, pending)
+}
+
 function placeRegularPolygonRadius(
   mode: RegularPolygonMode,
   input: PlacementInput,
@@ -3047,6 +3334,7 @@ const placementBuilders = {
   "centered-slot": placeCenteredSlot,
   circle: placeCircle,
   ellipse: placeEllipse,
+  "elliptical-arc": placeEllipticalArc,
   "circumscribed-polygon": placeCircumscribedPolygon,
   "inscribed-polygon": placeInscribedPolygon,
   line: placeLine,
@@ -3450,6 +3738,8 @@ const pointInferenceSupport = {
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
   ellipse: (pending) => pending?.kind !== "ellipse-secondary",
+  "elliptical-arc": (pending) =>
+    pending?.kind !== "elliptical-arc-start" && pending?.kind !== "elliptical-arc-end",
   "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",

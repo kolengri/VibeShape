@@ -65,9 +65,30 @@ function ellipse(
   }
 }
 
+function ellipticalArc(
+  index: number,
+  centerIndex: number,
+  primaryAxisIndex: number,
+  secondaryAxisIndex: number,
+  startIndex: number,
+  endIndex: number,
+) {
+  return {
+    schemaVersion: 0 as const,
+    id: id(index),
+    type: "elliptical-arc" as const,
+    centerPointId: id(centerIndex),
+    primaryAxisPointId: id(primaryAxisIndex),
+    secondaryAxisPointId: id(secondaryAxisIndex),
+    startPointId: id(startIndex),
+    endPointId: id(endIndex),
+    construction: false,
+  }
+}
+
 function sketch(
   entities: readonly ReturnType<
-    typeof point | typeof line | typeof circle | typeof arc | typeof ellipse
+    typeof point | typeof line | typeof circle | typeof arc | typeof ellipse | typeof ellipticalArc
   >[],
 ) {
   return sketchRecordSchema.parse({
@@ -185,6 +206,47 @@ describe("sketch profile detection", () => {
     expect(detectSketchProfiles(value, authoredSolution(value))).toMatchObject({
       profiles: [],
       diagnostics: [{ code: "intersecting-entities", entityIds: [id(101), id(102)] }],
+    })
+  })
+
+  it("joins an exact elliptical arc and diameter into a half-ellipse profile", () => {
+    const value = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, 0, 5),
+      point(4, -10, 0),
+      ellipticalArc(101, 1, 2, 3, 2, 4),
+      line(102, 4, 2),
+    ])
+
+    const result = detectSketchProfiles(value, authoredSolution(value))
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.profiles).toHaveLength(1)
+    expect(result.profiles[0]?.area).toBeCloseTo(Math.PI * 25, 6)
+    expect(result.profiles[0]?.perimeter).toBeCloseTo(44.221_12, 5)
+    expect(result.profiles[0]?.bounds).toEqual({ minX: -10, minY: 0, maxX: 10, maxY: 5 })
+    expect(result.loops[0]?.segments.map(({ type }) => type).sort()).toEqual([
+      "elliptical-arc",
+      "line",
+    ])
+  })
+
+  it("fails closed when an elliptical-arc endpoint is outside its ellipse", () => {
+    const value = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, 0, 5),
+      point(4, -9, 0),
+      ellipticalArc(101, 1, 2, 3, 2, 4),
+      line(102, 4, 2),
+    ])
+
+    expect(detectSketchProfiles(value, authoredSolution(value))).toMatchObject({
+      profiles: [],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "degenerate-entity", entityIds: [id(101)] }),
+      ]),
     })
   })
 
@@ -306,13 +368,13 @@ describe("sketch profile detection", () => {
       }),
     ).toMatchObject({ profiles: [], diagnostics: [{ code: "invalid-solution" }] })
 
-    const centers = Array.from({ length: MAX_PROFILE_CURVES + 1 }, (_, index) =>
+    const chainPoints = Array.from({ length: MAX_PROFILE_CURVES + 2 }, (_, index) =>
       point(index + 1, index * 3, 0),
     )
-    const circles = Array.from({ length: MAX_PROFILE_CURVES + 1 }, (_, index) =>
-      circle(index + 10_000, index + 1, 1),
+    const chainLines = Array.from({ length: MAX_PROFILE_CURVES + 1 }, (_, index) =>
+      line(index + 10_000, index + 1, index + 2),
     )
-    const oversized = sketch([...centers, ...circles])
+    const oversized = sketch([...chainPoints, ...chainLines])
     const result = detectSketchProfiles(oversized, authoredSolution(oversized))
 
     expect(result.profiles).toEqual([])

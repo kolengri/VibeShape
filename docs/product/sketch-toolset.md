@@ -24,6 +24,7 @@ and selection are presentation state; they never replace stable entity and const
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
 | Center-point Ellipse | Define a center, first axis endpoint, and perpendicular second-axis radius as one exact analytical curve | Implemented; ellipse-specific driving dimensions and direct curve modification remain open |
+| Elliptical Arc | Define a center, primary-axis endpoint, secondary radius and start point, then the endpoint along a temporary construction ellipse | Implemented as one exact analytical curve with solver-owned trammel constraints; direct Trim/Extend/Split remains open |
 | Circumscribed Polygon | Define a center, vertex radius, and 3–50 sides; keep every vertex on one construction circle with equal side intent | Implemented |
 | Inscribed Polygon | Define a center, tangent-circle radius, and 3–50 sides; keep side midpoints on the construction circle with equal side intent | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
@@ -45,7 +46,7 @@ and selection are presentation state; they never replace stable entity and const
 
 The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
 Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle plus Center-point Ellipse; Inscribed and
-Circumscribed Polygon; Three-point, Tangent, and Center-point Arc; and Straight, Centered, and
+Circumscribed Polygon; Elliptical, Three-point, Tangent, and Center-point Arc; and Straight, Centered, and
 selection-driven Slot. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
 the standard shortcut when one exists. Every family exposes a center-origin variant when its
@@ -81,19 +82,20 @@ baseline is derived from the official
 [Offset](https://cad.onshape.com/help/Content/Sketch/offset.htm), and
 [Sketch Transform](https://cad.onshape.com/help/Content/Sketch/sketch_transform.htm),
 [Linear Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_linear_pattern.htm), and
-[Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm)
+[Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm), and
+[Elliptical Arc](https://cad.onshape.com/help/Content/Sketch/elliptical_arc.htm)
 documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
 | Line | Line and center-origin Midpoint Line in one remembered split family | Infinite construction line and richer wake-up inference |
 | Rectangle | Corner, Center, Aligned, and Centered Aligned variants | Selection-driven conversion and numeric placement |
-| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse | Tangent circle, ellipse-specific dimensions, and Elliptical Arc |
+| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse | Tangent circle and ellipse-specific dimensions |
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
-| Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
+| Arc | Elliptical, Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
 | Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline direct modification, draggable circular-pattern center, and associative pattern editing |
-| Curves | Analytical lines, circles, arcs, and full ellipses | Elliptical Arc, spline, other conics, and projected/external geometry |
+| Curves | Analytical lines, circles, circular arcs, full ellipses, and elliptical arcs | Spline, other conics, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
 stages: select the center, select the vertex radius or tangent-circle radius, then adjust the side
@@ -221,7 +223,7 @@ active support plane and display unit.
 1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
    quadrant candidates, and projected/external geometry inference.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
-   Elliptical Arc and splines through exact analytical or solver-backed entities.
+   splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
    relocatable manipulator origin.
 4. Add reference dimensions and a driving/reference conversion command.
