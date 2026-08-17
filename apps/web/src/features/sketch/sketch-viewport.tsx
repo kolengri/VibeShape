@@ -7,6 +7,7 @@ import {
   appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchEllipse,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -49,6 +50,8 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
   sketchConstraintIdSchema,
+  sketchCurvePointIds,
+  sketchEllipseGeometry,
   sketchEntityTransformOrigin,
   sketchProfileSelectorSchema,
   splitSketchCircle,
@@ -253,6 +256,12 @@ type PendingGeometry =
       side: SketchPointTarget
     }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
+  | Readonly<{ kind: "ellipse-primary"; center: SketchPointTarget }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "ellipse-secondary"
+      primaryAxisPoint: SketchPointTarget
+    }>
   | Readonly<{
       center: SketchPointTarget
       kind: "regular-polygon-radius"
@@ -621,7 +630,7 @@ function createSketchGeometryPresentation(
   )
   const curvesByPointId = new Map<string, SketchCurveEntity[]>()
   for (const curve of curves) {
-    for (const pointId of curvePointIds(curve)) {
+    for (const pointId of sketchCurvePointIds(curve)) {
       const incident = curvesByPointId.get(pointId)
       if (incident) incident.push(curve)
       else curvesByPointId.set(pointId, [curve])
@@ -794,6 +803,49 @@ function circleSamples(
   return reversed ? samples.reverse() : samples
 }
 
+function ellipseGeometry(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: SketchPointLookup,
+) {
+  const center = points.get(entity.centerPointId)
+  const primaryAxisPoint = points.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = points.get(entity.secondaryAxisPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint
+    ? sketchEllipseGeometry(center, primaryAxisPoint, secondaryAxisPoint)
+    : null
+}
+
+function ellipseSamples(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+  reversed: boolean,
+) {
+  const geometry = ellipseGeometry(entity, points)
+  if (!geometry) return null
+  const primaryDirection = {
+    x: (geometry.primaryAxisPoint.x - geometry.center.x) / geometry.primaryRadius,
+    y: (geometry.primaryAxisPoint.y - geometry.center.y) / geometry.primaryRadius,
+  }
+  const secondaryDirection = {
+    x: (geometry.secondaryAxisPoint.x - geometry.center.x) / geometry.secondaryRadius,
+    y: (geometry.secondaryAxisPoint.y - geometry.center.y) / geometry.secondaryRadius,
+  }
+  const samples = Array.from({ length: 65 }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / 64
+    return {
+      x:
+        geometry.center.x +
+        Math.cos(angle) * geometry.primaryRadius * primaryDirection.x +
+        Math.sin(angle) * geometry.secondaryRadius * secondaryDirection.x,
+      y:
+        geometry.center.y +
+        Math.cos(angle) * geometry.primaryRadius * primaryDirection.y +
+        Math.sin(angle) * geometry.secondaryRadius * secondaryDirection.y,
+    }
+  })
+  return reversed ? samples.reverse() : samples
+}
+
 function segmentSamples(
   entity: SketchEntity,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -807,6 +859,8 @@ function segmentSamples(
       return arcSamples(entity, points, reversed)
     case "circle":
       return circleSamples(entity, points, solvedCircles, reversed)
+    case "ellipse":
+      return ellipseSamples(entity, points, reversed)
     case "point":
       return null
   }
@@ -1029,6 +1083,30 @@ function SketchArc({
   )
 }
 
+function SketchEllipse({
+  entity,
+  hidden,
+  interactive,
+  onPointerDown,
+  points,
+  selected,
+}: Omit<CurveDrawingProps, "solvedRadius"> & {
+  entity: Extract<SketchEntity, { type: "ellipse" }>
+}) {
+  const geometry = ellipseGeometry(entity, points)
+  if (!geometry) return null
+  return (
+    <ellipse
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+      cx={geometry.center.x}
+      cy={geometry.center.y}
+      rx={geometry.primaryRadius}
+      ry={geometry.secondaryRadius}
+      transform={ellipseSvgTransform(geometry)}
+    />
+  )
+}
+
 function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | undefined) {
   return (
     left === right ||
@@ -1039,17 +1117,6 @@ function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | 
       left.y === right.y &&
       left.construction === right.construction)
   )
-}
-
-function curvePointIds(entity: Exclude<SketchEntity, { type: "point" }>) {
-  switch (entity.type) {
-    case "line":
-      return [entity.startPointId, entity.endPointId]
-    case "circle":
-      return [entity.centerPointId]
-    case "arc":
-      return [entity.centerPointId, entity.startPointId, entity.endPointId]
-  }
 }
 
 const SketchCurve = memo(
@@ -1063,6 +1130,8 @@ const SketchCurve = memo(
         return <SketchCircle {...props} entity={props.entity} />
       case "arc":
         return <SketchArc {...props} entity={props.entity} />
+      case "ellipse":
+        return <SketchEllipse {...props} entity={props.entity} />
     }
   },
   (previous, next) => {
@@ -1076,7 +1145,7 @@ const SketchCurve = memo(
     ) {
       return false
     }
-    return curvePointIds(next.entity).every((pointId) =>
+    return sketchCurvePointIds(next.entity).every((pointId) =>
       sameDisplayPoint(previous.points.get(pointId), next.points.get(pointId)),
     )
   },
@@ -1171,15 +1240,35 @@ function sameSketchPointDrawingProps(
   )
 }
 
+type SketchCurveModificationSupport = (
+  curve: SketchCurveEntity,
+  pending: PendingGeometry | null,
+) => boolean
+
+const directModificationCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set([
+  "arc",
+  "circle",
+  "line",
+])
+const extendCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set(["arc", "line"])
+const supportsEverySketchCurve: SketchCurveModificationSupport = () => true
+const sketchCurveModificationSupport = {
+  "circular-pattern": supportsEverySketchCurve,
+  extend: (curve) => extendCurveTypes.has(curve.type),
+  "linear-pattern": supportsEverySketchCurve,
+  mirror: (curve, pending) => pending?.kind === "mirror-sources" || curve.type === "line",
+  offset: (curve, pending) => pending?.kind !== "offset-distance" && curve.type === "line",
+  split: (curve) => directModificationCurveTypes.has(curve.type),
+  transform: supportsEverySketchCurve,
+  trim: (curve) => directModificationCurveTypes.has(curve.type),
+} satisfies Record<SketchModificationTool, SketchCurveModificationSupport>
+
 function supportsSketchCurveModification(
   tool: SketchModificationTool,
   curve: SketchCurveEntity,
   pending: PendingGeometry | null,
 ) {
-  if (tool === "mirror") return pending?.kind === "mirror-sources" || curve.type === "line"
-  if (tool === "offset") return pending?.kind !== "offset-distance" && curve.type === "line"
-  if (tool === "transform") return true
-  return tool !== "extend" || curve.type !== "circle"
+  return sketchCurveModificationSupport[tool](curve, pending)
 }
 
 function SketchGeometry({
@@ -1230,7 +1319,8 @@ function SketchGeometry({
           key={entity.id}
           entity={entity}
           hidden={Boolean(
-            draggingPointId && curvePointIds(entity).some((pointId) => pointId === draggingPointId),
+            draggingPointId &&
+              sketchCurvePointIds(entity).some((pointId) => pointId === draggingPointId),
           )}
           interactive={
             !modifiable ||
@@ -1347,7 +1437,7 @@ function SketchTransformGeometry({
       if (selectedIds.has(point.id)) ids.add(point.id)
     }
     for (const curve of curves) {
-      for (const pointId of curvePointIds(curve)) ids.add(pointId)
+      for (const pointId of sketchCurvePointIds(curve)) ids.add(pointId)
     }
     return ids
   }, [curves, presentation.points, selectedIds])
@@ -1406,6 +1496,30 @@ function midpointForIds(
   return first && second ? midpoint(first, second) : null
 }
 
+function circleEntityAnchor(
+  entity: Extract<SketchEntity, { type: "circle" }>,
+  point: (id: SketchEntityId) => SketchPoint2 | null,
+  solvedCircles: ReadonlyMap<string, number>,
+) {
+  const center = point(entity.centerPointId)
+  if (!center) return null
+  const radius = solvedCircles.get(entity.id) ?? entity.radius
+  return { x: center.x + radius * 0.7, y: center.y + radius * 0.7 }
+}
+
+function ellipseEntityAnchor(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+) {
+  const geometry = ellipseGeometry(entity, points)
+  return geometry
+    ? {
+        x: geometry.center.x + geometry.primaryRadius * 0.7,
+        y: geometry.center.y + geometry.secondaryRadius * 0.7,
+      }
+    : (points.get(entity.centerPointId) ?? null)
+}
+
 function entityAnchor(
   entity: SketchEntity | undefined,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -1418,16 +1532,14 @@ function entityAnchor(
       return point(entity.id)
     case "line":
       return midpointForIds(entity.startPointId, entity.endPointId, point)
-    case "circle": {
-      const center = point(entity.centerPointId)
-      if (!center) return null
-      const radius = solvedCircles.get(entity.id) ?? entity.radius
-      return { x: center.x + radius * 0.7, y: center.y + radius * 0.7 }
-    }
+    case "circle":
+      return circleEntityAnchor(entity, point, solvedCircles)
     case "arc":
       return (
         midpointForIds(entity.startPointId, entity.endPointId, point) ?? point(entity.centerPointId)
       )
+    case "ellipse":
+      return ellipseEntityAnchor(entity, points)
   }
 }
 
@@ -1627,6 +1739,8 @@ type PendingWithTargetCenter = Extract<
   | { kind: "centered-slot-end" }
   | { kind: "centered-slot-width" }
   | { kind: "circle" }
+  | { kind: "ellipse-primary" }
+  | { kind: "ellipse-secondary" }
   | { kind: "regular-polygon-radius" }
   | { kind: "regular-polygon-sides" }
 >
@@ -1638,6 +1752,8 @@ const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
   "centered-slot-end",
   "centered-slot-width",
   "circle",
+  "ellipse-primary",
+  "ellipse-secondary",
   "regular-polygon-radius",
   "regular-polygon-sides",
 ])
@@ -1846,6 +1962,60 @@ function PendingThreePointCircleShape({
     <circle cx={geometry.center.x} cy={geometry.center.y} r={geometry.radius} />
   ) : (
     <polyline points={`${start.x},${start.y} ${second.x},${second.y} ${cursor.x},${cursor.y}`} />
+  )
+}
+
+function ellipseSvgTransform(geometry: NonNullable<ReturnType<typeof sketchEllipseGeometry>>) {
+  const angle =
+    (Math.atan2(
+      geometry.primaryAxisPoint.y - geometry.center.y,
+      geometry.primaryAxisPoint.x - geometry.center.x,
+    ) *
+      180) /
+    Math.PI
+  return `rotate(${angle} ${geometry.center.x} ${geometry.center.y})`
+}
+
+function PendingEllipseShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "ellipse-primary" | "ellipse-secondary" }>
+  sketch: SketchRecord
+}) {
+  const center = pointForTarget(sketch, pending.center)
+  if (pending.kind === "ellipse-primary") {
+    return <line x1={center.x} y1={center.y} x2={cursor.x} y2={cursor.y} />
+  }
+  const primaryAxisPoint = pointForTarget(sketch, pending.primaryAxisPoint)
+  const geometry = sketchEllipseGeometry(center, primaryAxisPoint, cursor)
+  if (!geometry) {
+    return <line x1={center.x} y1={center.y} x2={primaryAxisPoint.x} y2={primaryAxisPoint.y} />
+  }
+  return (
+    <>
+      <ellipse
+        cx={geometry.center.x}
+        cy={geometry.center.y}
+        rx={geometry.primaryRadius}
+        ry={geometry.secondaryRadius}
+        transform={ellipseSvgTransform(geometry)}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.primaryAxisPoint.x}
+        y2={geometry.primaryAxisPoint.y}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.secondaryAxisPoint.x}
+        y2={geometry.secondaryAxisPoint.y}
+      />
+    </>
   )
 }
 
@@ -2142,6 +2312,9 @@ function PendingCurveShape({
   }
   if (pending.kind === "split-circle-second") {
     return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (pending.kind === "ellipse-primary" || pending.kind === "ellipse-secondary") {
+    return <PendingEllipseShape cursor={cursor} pending={pending} sketch={sketch} />
   }
   if (isPendingRoundCurve(pending)) {
     return (
@@ -2667,6 +2840,32 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeEllipse(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "ellipse-primary" && input.pending?.kind !== "ellipse-secondary") {
+    return { draft: null, pending: { center: input.target, kind: "ellipse-primary" } }
+  }
+  if (input.pending.kind === "ellipse-primary") {
+    return {
+      draft: null,
+      pending: {
+        center: input.pending.center,
+        kind: "ellipse-secondary",
+        primaryAxisPoint: input.target,
+      },
+    }
+  }
+  return {
+    draft: appendSketchEllipse(input.draft, {
+      center: input.pending.center,
+      construction: input.construction,
+      createEntityId: createBrowserSketchEntityId,
+      primaryAxisPoint: input.pending.primaryAxisPoint,
+      secondaryRadiusPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
 function placeRegularPolygonRadius(
   mode: RegularPolygonMode,
   input: PlacementInput,
@@ -2843,6 +3042,7 @@ const placementBuilders = {
   "centered-aligned-rectangle": placeCenteredAlignedRectangle,
   "centered-slot": placeCenteredSlot,
   circle: placeCircle,
+  ellipse: placeEllipse,
   "circumscribed-polygon": placeCircumscribedPolygon,
   "inscribed-polygon": placeInscribedPolygon,
   line: placeLine,
@@ -3245,6 +3445,7 @@ const pointInferenceSupport = {
   "aligned-rectangle": alwaysSupportsPointInference,
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
+  ellipse: (pending) => pending?.kind !== "ellipse-secondary",
   "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",

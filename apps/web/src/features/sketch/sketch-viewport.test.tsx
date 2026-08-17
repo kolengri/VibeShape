@@ -9,6 +9,7 @@ import {
   createLengthQuantity,
   createRectangleSketch,
   moveSketchPoint,
+  type SketchEntity,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -36,6 +37,24 @@ function sequentialIdFactory<Value>(parse: (value: string) => Value, group: stri
     index += 1
     return parse(`0195b5ac-${group}-7a2c-8c33-${index.toString(16).padStart(12, "0")}`)
   }
+}
+
+function sketchEntitiesOfType<Type extends SketchEntity["type"]>(sketch: SketchRecord, type: Type) {
+  return sketch.entities.filter(
+    (entity): entity is Extract<SketchEntity, { type: Type }> => entity.type === type,
+  )
+}
+
+function requiredSketchEntity<Type extends SketchEntity["type"]>(
+  sketch: SketchRecord,
+  type: Type,
+  id?: string,
+) {
+  const entity = sketchEntitiesOfType(sketch, type).find(
+    (candidate) => candidate.id === (id ?? candidate.id),
+  )
+  if (!entity) throw new Error(`The fixture requires a ${type} entity.`)
+  return entity
 }
 
 const sketch = createRectangleSketch({
@@ -1496,6 +1515,66 @@ describe("SketchViewport", () => {
         expect.objectContaining({ type: "point-on-curve" }),
       ]),
     )
+  })
+
+  it("previews and creates an exact center-point ellipse as one draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "ellipse",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 100 })
+    const preview = document.querySelector('[data-sketch-preview-tool="ellipse-secondary"]')
+    expect(preview?.querySelector("ellipse")).toBeTruthy()
+    expect(preview?.querySelectorAll("line")).toHaveLength(2)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const ellipse = requiredSketchEntity(draft, "ellipse")
+    expect(sketchEntitiesOfType(draft, "point")).toHaveLength(3)
+    expect(draft.constraints).toHaveLength(0)
+    const center = requiredSketchEntity(draft, "point", ellipse.centerPointId)
+    const primary = requiredSketchEntity(draft, "point", ellipse.primaryAxisPointId)
+    const secondary = requiredSketchEntity(draft, "point", ellipse.secondaryAxisPointId)
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    expect(primaryVector.x * secondaryVector.x + primaryVector.y * secondaryVector.y).toBeCloseTo(0)
+    expect(Math.hypot(primaryVector.x, primaryVector.y)).toBeGreaterThan(0)
+    expect(Math.hypot(secondaryVector.x, secondaryVector.y)).toBeGreaterThan(0)
+
+    cleanup()
+    renderViewport({
+      draft,
+      editorTool: "select",
+      sketch: draft,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const rendered = document.querySelector(
+      `[data-sketch-entity-id="${ellipse.id}"][data-sketch-entity-type="ellipse"]`,
+    )
+    expect(rendered?.tagName.toLowerCase()).toBe("ellipse")
+    expect(rendered?.getAttribute("transform")).toContain("rotate(")
   })
 
   it("previews horizontal inference before applying the automatic constraint", () => {

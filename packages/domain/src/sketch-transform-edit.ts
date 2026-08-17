@@ -349,6 +349,24 @@ function reflectedArc(
   }
 }
 
+function reflectedEllipse(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReflectedPointMap,
+  createEntityId: EntityIdFactory,
+): ReflectedCurveResult {
+  return {
+    auxiliaryPoints: [],
+    entity: {
+      ...entity,
+      id: createEntityId(),
+      centerPointId: reflectedPointId(points, entity.centerPointId),
+      primaryAxisPointId: reflectedPointId(points, entity.primaryAxisPointId),
+      secondaryAxisPointId: reflectedPointId(points, entity.secondaryAxisPointId),
+    },
+    requiresEqual: false,
+  }
+}
+
 function reflectedEntity(
   sketch: SketchRecord,
   entity: SketchEntity,
@@ -363,6 +381,8 @@ function reflectedEntity(
       return reflectedCircle(entity, points, createEntityId)
     case "arc":
       return reflectedArc(sketch, entity, points, createEntityId)
+    case "ellipse":
+      return reflectedEllipse(entity, points, createEntityId)
   }
 }
 

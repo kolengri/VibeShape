@@ -7,6 +7,7 @@ import {
   curveLength,
   curveStartAngle,
   distance,
+  ellipseBounds,
   isCurveEndpoint,
   type ProfileBounds,
   type ProfileCurve,
@@ -40,7 +41,7 @@ export type SketchProfileDiagnostic = Readonly<{
 
 export type SketchProfileLoopSegment = Readonly<{
   entityId: SketchEntityId
-  type: "line" | "arc" | "circle"
+  type: "line" | "arc" | "circle" | "ellipse"
   reversed: boolean
 }>
 
@@ -86,7 +87,7 @@ type RawLoop = Readonly<{
 }>
 
 type GraphEdge = Readonly<{
-  curve: Exclude<ProfileCurve, { type: "circle" }>
+  curve: Exclude<ProfileCurve, { type: "circle" | "ellipse" }>
   startVertex: number
   endVertex: number
 }>
@@ -188,6 +189,42 @@ function arcCurve(
   } satisfies ProfileCurve
 }
 
+function ellipseCurve(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<SketchEntityId, ProfilePoint>,
+  tolerance: number,
+) {
+  const center = pointFor(points, entity.centerPointId)
+  const primaryAxisPoint = pointFor(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = pointFor(points, entity.secondaryAxisPointId)
+  if (!center || !primaryAxisPoint || !secondaryAxisPoint) return null
+  const primaryRadius = distance(center, primaryAxisPoint)
+  const secondaryRadius = distance(center, secondaryAxisPoint)
+  if (primaryRadius <= tolerance || secondaryRadius <= tolerance) return null
+  const primaryX = primaryAxisPoint.x - center.x
+  const primaryY = primaryAxisPoint.y - center.y
+  const secondaryX = secondaryAxisPoint.x - center.x
+  const secondaryY = secondaryAxisPoint.y - center.y
+  if (
+    Math.abs(primaryX * secondaryX + primaryY * secondaryY) >
+    tolerance * Math.max(primaryRadius * secondaryRadius, 1)
+  ) {
+    return null
+  }
+  const rotationRadians = Math.atan2(primaryY, primaryX)
+  return {
+    entityId: entity.id,
+    type: "ellipse",
+    center,
+    primaryRadius,
+    secondaryRadius,
+    rotationRadians,
+    start: primaryAxisPoint,
+    end: primaryAxisPoint,
+    bounds: ellipseBounds(center, primaryRadius, secondaryRadius, rotationRadians),
+  } satisfies ProfileCurve
+}
+
 function entityCurve(
   entity: Exclude<SketchEntity, { type: "point" }>,
   points: ReadonlyMap<SketchEntityId, ProfilePoint>,
@@ -196,7 +233,8 @@ function entityCurve(
 ) {
   if (entity.type === "line") return lineCurve(entity, points)
   if (entity.type === "circle") return circleCurve(entity, points, radii)
-  return arcCurve(entity, points, tolerance)
+  if (entity.type === "arc") return arcCurve(entity, points, tolerance)
+  return ellipseCurve(entity, points, tolerance)
 }
 
 function collectCurves(sketch: SketchRecord, solution: SketchProfileSolution, tolerance: number) {
@@ -241,6 +279,7 @@ function coincidentCurvesOverlap(
   right: Exclude<ProfileCurve, { type: "line" }>,
   tolerance: number,
 ) {
+  if (left.type === "ellipse" || right.type === "ellipse") return true
   if (left.type === "circle" || right.type === "circle") return true
   const leftMiddle = pointOnRoundCurveAt(left, 0.5)
   const rightMiddle = pointOnRoundCurveAt(right, 0.5)
@@ -273,6 +312,7 @@ function curvesHaveAmbiguousCoincidence(
 ) {
   if (!coincident) return false
   if (left.type === "line" || right.type === "line") return true
+  if (left.type === "ellipse" || right.type === "ellipse") return true
   return coincidentCurvesOverlap(left, right, tolerance)
 }
 
@@ -335,7 +375,7 @@ function classifyCurvePairs(curves: readonly ProfileCurve[], tolerance: number) 
 }
 
 function assignVertices(
-  curves: readonly Exclude<ProfileCurve, { type: "circle" }>[],
+  curves: readonly Exclude<ProfileCurve, { type: "circle" | "ellipse" }>[],
   tolerance: number,
 ) {
   const endpointVertices = new Map<string, number>()
@@ -378,7 +418,7 @@ function assignVertices(
 }
 
 function buildGraphEdges(
-  curves: readonly Exclude<ProfileCurve, { type: "circle" }>[],
+  curves: readonly Exclude<ProfileCurve, { type: "circle" | "ellipse" }>[],
   tolerance: number,
 ) {
   const { endpointVertices } = assignVertices(curves, tolerance)
@@ -503,14 +543,14 @@ function extractGraphLoops(edges: readonly GraphEdge[], tolerance: number) {
   return { loops, openEntityIds }
 }
 
-function circleLoop(curve: Extract<ProfileCurve, { type: "circle" }>): RawLoop {
+function closedCurveLoop(curve: Extract<ProfileCurve, { type: "circle" | "ellipse" }>): RawLoop {
   const samples = sampleCurve(curve, false)
   return {
     signedArea: curveAreaContribution(curve, false),
     perimeter: curveLength(curve),
-    bounds: pointBounds(samples),
+    bounds: curve.bounds,
     sourceEntityIds: [curve.entityId],
-    segments: [{ entityId: curve.entityId, type: "circle", reversed: false }],
+    segments: [{ entityId: curve.entityId, type: curve.type, reversed: false }],
     samples,
   }
 }
@@ -536,8 +576,9 @@ function pointInPolygon(point: ProfilePoint, polygon: readonly ProfilePoint[]) {
   return inside
 }
 
-function circleInteriorPoint(loop: RawLoop) {
-  if (loop.segments.length !== 1 || loop.segments[0]?.type !== "circle") return null
+function closedCurveInteriorPoint(loop: RawLoop) {
+  const type = loop.segments[0]?.type
+  if (loop.segments.length !== 1 || (type !== "circle" && type !== "ellipse")) return null
   const first = loop.samples[0]
   const opposite = loop.samples[Math.floor(loop.samples.length / 2)]
   return first && opposite ? { x: (first.x + opposite.x) / 2, y: (first.y + opposite.y) / 2 } : null
@@ -569,8 +610,8 @@ function edgeInteriorPoint(
 }
 
 function loopInteriorPoint(loop: RawLoop, tolerance: number) {
-  const circlePoint = circleInteriorPoint(loop)
-  if (circlePoint) return circlePoint
+  const closedCurvePoint = closedCurveInteriorPoint(loop)
+  if (closedCurvePoint) return closedCurvePoint
   for (let index = 0; index < loop.samples.length; index += 1) {
     const start = loop.samples[index]
     const end = loop.samples[(index + 1) % loop.samples.length]
@@ -671,11 +712,13 @@ export function detectSketchProfiles(
   }
   const classified = classifyCurvePairs(collected.curves, tolerance)
   const available = collected.curves.filter((_, index) => !classified.blocked.has(index))
-  const circles = available.filter(
-    (curve): curve is Extract<ProfileCurve, { type: "circle" }> => curve.type === "circle",
+  const closedCurves = available.filter(
+    (curve): curve is Extract<ProfileCurve, { type: "circle" | "ellipse" }> =>
+      curve.type === "circle" || curve.type === "ellipse",
   )
   const openCurves = available.filter(
-    (curve): curve is Exclude<ProfileCurve, { type: "circle" }> => curve.type !== "circle",
+    (curve): curve is Exclude<ProfileCurve, { type: "circle" | "ellipse" }> =>
+      curve.type !== "circle" && curve.type !== "ellipse",
   )
   const graph = buildGraphEdges(openCurves, tolerance)
   const extracted = extractGraphLoops(graph.edges, tolerance)
@@ -689,7 +732,10 @@ export function detectSketchProfiles(
       ),
     )
   }
-  const finalized = finalizeProfiles([...extracted.loops, ...circles.map(circleLoop)], tolerance)
+  const finalized = finalizeProfiles(
+    [...extracted.loops, ...closedCurves.map(closedCurveLoop)],
+    tolerance,
+  )
   return {
     schemaVersion: 0,
     profiles: finalized.profiles,

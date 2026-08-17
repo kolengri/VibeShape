@@ -90,7 +90,11 @@ const sketchToolFamilies = [
     labelKey: "rectangleToolsLabel",
   },
   {
-    commandIds: [editorCommandIds.sketchCircle, editorCommandIds.sketchThreePointCircle],
+    commandIds: [
+      editorCommandIds.sketchCircle,
+      editorCommandIds.sketchThreePointCircle,
+      editorCommandIds.sketchEllipse,
+    ],
     id: "circle",
     labelKey: "circleToolsLabel",
   },

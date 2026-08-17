@@ -287,6 +287,10 @@
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"
         },
+        "sketchEllipse": {
+          "label": "Center-point ellipse",
+          "keywords": "sketch ellipse|center point ellipse|oval|major axis|minor axis"
+        },
         "sketchCircularPattern": {
           "label": "Circular pattern",
           "keywords": "circular sketch pattern|radial array|repeat around center|polar copies"
@@ -541,7 +545,7 @@
         "sketch": {
           "taskAriaLabel": "Sketch task panel",
           "workspaceTitle": "Sketch workspace",
-          "workspaceDescription": "Create and constrain points, lines, rectangles, circles, and arcs on an origin plane. Sketches are solved locally and can use document variables.",
+          "workspaceDescription": "Create and constrain points, lines, rectangles, circles, ellipses, and arcs on an origin plane. Sketches are solved locally and can use document variables.",
           "savedDescription": "Saved on the {plane} origin plane. Edit its geometry and constraints or select a closed profile for a downstream feature.",
           "title": "Create sketch",
           "description": "Create analytical geometry, apply design intent, and finish one or more closed profiles.",
@@ -561,6 +565,7 @@
           "line": "Line",
           "rectangle": "Rectangle",
           "circle": "Circle",
+          "ellipse": "Ellipse",
           "arc": "Center-point arc",
           "construction": "Construction geometry",
           "undo": "Undo",

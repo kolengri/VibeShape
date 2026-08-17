@@ -18,7 +18,7 @@ import {
 
 type EntityIdFactory = () => SketchEntityId
 type ConstraintIdFactory = () => SketchConstraintId
-type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
+type SketchCurveEntity = Extract<SketchEntity, { type: "arc" | "circle" | "line" }>
 type SketchArcEntity = Extract<SketchEntity, { type: "arc" }>
 type SketchCircleEntity = Extract<SketchEntity, { type: "circle" }>
 type SketchPointEntity = Extract<SketchEntity, { type: "point" }>
@@ -65,7 +65,9 @@ function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
 
 function curveById(sketch: SketchRecord, curveId: SketchEntityId) {
   const curve = sketch.entities.find(
-    (entity): entity is SketchCurveEntity => entity.id === curveId && entity.type !== "point",
+    (entity): entity is SketchCurveEntity =>
+      entity.id === curveId &&
+      (entity.type === "line" || entity.type === "circle" || entity.type === "arc"),
   )
   if (!curve) throw new TypeError("A curve operation must reference an existing curve entity.")
   return curve
@@ -250,7 +252,7 @@ function curveParameter(sketch: SketchRecord, curve: SketchCurveEntity, point: S
 
 function curveIntersections(sketch: SketchRecord, target: SketchCurveEntity) {
   const intersections = sketch.entities.flatMap((entity): CurveIntersection[] => {
-    if (entity.type === "point" || entity.id === target.id) return []
+    if (entity.type === "point" || entity.type === "ellipse" || entity.id === target.id) return []
     return supportingIntersections(sketch, target, entity).map((point) => ({
       boundary: entity,
       parameter: curveParameter(sketch, target, point),

@@ -5,6 +5,7 @@ import {
   appendSketchArc,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchEllipse,
   appendSketchLine,
   createEmptySketch,
 } from "./sketch-edit"
@@ -158,6 +159,73 @@ describe("analytical sketch transforms", () => {
     })
     expect(mirrored.radius).toBe(4)
     expect(result.sketch.constraints.map(({ type }) => type).sort()).toEqual(["equal", "symmetric"])
+  })
+
+  it("mirrors and translates an ellipse through its three stable axis points", () => {
+    const axisResult = appendSketchLine(empty(), {
+      construction: true,
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: -10, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const axis = lastCreatedCurve(axisResult, "line")
+    const ellipseResult = appendSketchEllipse(axisResult.sketch, {
+      center: { kind: "new", point: { x: 2, y: 3 } },
+      createEntityId: entityId,
+      primaryAxisPoint: { kind: "new", point: { x: 7, y: 3 } },
+      secondaryRadiusPoint: { x: 2, y: 5 },
+    })
+    const ellipse = entityById(
+      ellipseResult.sketch,
+      ellipseResult.createdEntityIds.at(-1) as SketchEntityId,
+      "ellipse",
+    )
+
+    const mirroredResult = mirrorSketchEntities(ellipseResult.sketch, {
+      axisLineId: axis.id,
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      entityIds: [ellipse.id],
+    })
+    const mirrored = mirroredResult.sketch.entities.find(
+      (entity): entity is Extract<SketchEntity, { type: "ellipse" }> =>
+        entity.type === "ellipse" && entity.id !== ellipse.id,
+    )
+    if (!mirrored) throw new Error("Sketch Mirror must create an ellipse.")
+    expect(
+      [mirrored.centerPointId, mirrored.primaryAxisPointId, mirrored.secondaryAxisPointId].map(
+        (id) => {
+          const point = entityById(mirroredResult.sketch, id, "point")
+          return [point.x, point.y]
+        },
+      ),
+    ).toEqual([
+      [2, -3],
+      [7, -3],
+      [2, -5],
+    ])
+    expect(mirroredResult.sketch.constraints.map(({ type }) => type)).toEqual([
+      "symmetric",
+      "symmetric",
+      "symmetric",
+    ])
+
+    const translated = transformSketchEntities(ellipseResult.sketch, {
+      entityIds: [ellipse.id],
+      transform: { origin: { x: 0, y: 0 }, translation: { x: 10, y: -2 } },
+    })
+    expect(
+      [ellipse.centerPointId, ellipse.primaryAxisPointId, ellipse.secondaryAxisPointId].map(
+        (id) => {
+          const point = entityById(translated, id, "point")
+          return [point.x, point.y]
+        },
+      ),
+    ).toEqual([
+      [12, 1],
+      [17, 1],
+      [12, 3],
+    ])
   })
 
   it("uses a distinct center for a semicircle mirrored across its diameter", () => {

@@ -9,6 +9,7 @@ import {
   appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchEllipse,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -478,6 +479,29 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("adds an exact ellipse from center, primary radius, and projected secondary radius", () => {
+    const result = appendSketchEllipse(empty(), {
+      center: { kind: "new", point: { x: 2, y: 3 } },
+      createEntityId: entityId,
+      primaryAxisPoint: { kind: "new", point: { x: 8, y: 3 } },
+      secondaryRadiusPoint: { x: 5, y: -1 },
+    })
+    const ellipse = result.sketch.entities.find((entity) => entity.type === "ellipse")
+    if (!ellipse) throw new Error("The ellipse fixture requires an ellipse entity.")
+    const secondary = result.sketch.entities.find(
+      (entity) => entity.id === ellipse.secondaryAxisPointId,
+    )
+
+    expect(result.createdEntityIds).toHaveLength(4)
+    expect(ellipse).toMatchObject({
+      type: "ellipse",
+      centerPointId: result.createdEntityIds[0],
+      primaryAxisPointId: result.createdEntityIds[1],
+      secondaryAxisPointId: result.createdEntityIds[2],
+    })
+    expect(secondary).toMatchObject({ type: "point", x: 2, y: -1 })
   })
 
   it("constructs Onshape-compatible regular polygon geometry from a center and radius", () => {

@@ -13,6 +13,7 @@ import {
   type NativeSketchSolverModule,
   SKETCH_SOLVER_ABI,
   SOLVESPACE_CONSTRAINT_TYPE,
+  SOLVESPACE_ENTITY_TYPE,
 } from "./abi"
 import { compileSketchSystem, solveSketchRecord } from "./production"
 
@@ -33,6 +34,10 @@ const offsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-0000000
 const offsetId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000015")
 const secondSourceLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000016")
 const secondOffsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000017")
+const ellipseCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000018")
+const ellipsePrimaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000019")
+const ellipseSecondaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000020")
+const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000021")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -131,6 +136,51 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   })
 }
 
+function ellipseSketch() {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Ellipse solver fixture",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: ellipseCenterId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipsePrimaryId,
+        type: "point",
+        x: 10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseSecondaryId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseId,
+        type: "ellipse",
+        centerPointId: ellipseCenterId,
+        primaryAxisPointId: ellipsePrimaryId,
+        secondaryAxisPointId: ellipseSecondaryId,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  })
+}
+
 const variables = variableDefinitionsSchema.parse([
   { schemaVersion: 0, id: variableId, name: "width", expression: "25 mm" },
 ])
@@ -164,6 +214,29 @@ function createModule(
 }
 
 describe("production sketch compilation", () => {
+  test("compiles an ellipse as perpendicular solver-owned axis lines", () => {
+    const result = compileSketchSystem({ revision: 4, sketch: ellipseSketch(), variables: [] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      2,
+    )
+    expect(constraintTypes).toEqual([SOLVESPACE_CONSTRAINT_TYPE.perpendicular])
+    expect(constraintValues).toEqual(new Float64Array([0]))
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
   test("maps semantic records and resolved dimensions to the private flat ABI", () => {
     const result = compileSketchSystem({ revision: 4, sketch: sketch(), variables })
     expect(result.ok).toBe(true)

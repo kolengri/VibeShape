@@ -84,10 +84,48 @@ const extrusionCircleSegmentSchema = z
   })
   .strict()
 
+const extrusionEllipseSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("ellipse"),
+    center: vector2Schema,
+    primaryAxisPoint: vector2Schema,
+    secondaryAxisPoint: vector2Schema,
+  })
+  .strict()
+  .superRefine((segment, context) => {
+    const primary = [
+      segment.primaryAxisPoint[0] - segment.center[0],
+      segment.primaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const secondary = [
+      segment.secondaryAxisPoint[0] - segment.center[0],
+      segment.secondaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const primaryRadius = Math.hypot(...primary)
+    const secondaryRadius = Math.hypot(...secondary)
+    if (primaryRadius < 0.001 || secondaryRadius < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion ellipse axes must have positive CAD-scale radii.",
+      })
+      return
+    }
+    const normalizedDot =
+      (primary[0] * secondary[0] + primary[1] * secondary[1]) / (primaryRadius * secondaryRadius)
+    if (Math.abs(normalizedDot) > 1e-6) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion ellipse axes must be perpendicular.",
+      })
+    }
+  })
+
 export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
   extrusionLineSegmentSchema,
   extrusionArcSegmentSchema,
   extrusionCircleSegmentSchema,
+  extrusionEllipseSegmentSchema,
 ])
 
 const extrusionProfileLoopSchema = z
