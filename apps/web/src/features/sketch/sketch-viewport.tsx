@@ -17,10 +17,11 @@ import {
   appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
-  centeredAlignedRectangleGeometry,
   type CircularSketchPatternDefinition,
+  centeredAlignedRectangleGeometry,
   circularPatternSketchEntities,
   circularSketchPatternTransforms,
+  createSketchInferenceCandidateQuery,
   extendSketchCurve,
   inferSketchPoint,
   type LinearSketchPatternDefinition,
@@ -39,6 +40,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
   type SketchInferenceArc,
+  type SketchInferenceCandidateQuery,
   type SketchInferenceLine,
   type SketchPoint2,
   type SketchPointInference,
@@ -102,16 +104,16 @@ import {
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import {
+  defaultCircularSketchPatternDefinition,
+  SketchCircularPatternForm,
+} from "./sketch-circular-pattern-form"
+import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
   type SketchConstraintToolKind,
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
-import {
-  defaultCircularSketchPatternDefinition,
-  SketchCircularPatternForm,
-} from "./sketch-circular-pattern-form"
 import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
@@ -3677,17 +3679,15 @@ function useSketchPointDrag({
   const dragFrameRef = useRef<number | null>(null)
   const dragRectangleRef = useRef<SketchViewportRectangle | null>(null)
   const dragSolveTimerRef = useRef<number | null>(null)
+  const inferenceCandidateQueryRef = useRef<SketchInferenceCandidateQuery<DisplayPoint> | null>(
+    null,
+  )
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
   const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
   const queuedDragSolveTargetRef = useRef<Readonly<{
     point: SketchPoint2
     pointId: SketchEntityId
   }> | null>(null)
-  const references = useMemo(
-    () => draggedPointReferences(inferenceReferences, draggingPointId),
-    [draggingPointId, inferenceReferences],
-  )
-
   useEffect(
     () => () => {
       if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
@@ -3718,11 +3718,16 @@ function useSketchPointDrag({
       const rectangle = dragRectangleRef.current
       if (!rectangle) return null
       const point = pointerToSketchPoint(input, rectangle, bounds)
+      const tolerance = sketchInferenceTolerance(bounds, rectangle)
+      const references = inferenceCandidateQueryRef.current?.(point, tolerance) ?? {
+        lines: [],
+        points: [],
+      }
       const inference = draggedPointInference({
         bounds,
         point,
         rectangle,
-        references,
+        references: { arcs: [], ...references },
         suppressed: input.suppressed,
       })
       const next = { inference, point: inference.point }
@@ -3731,7 +3736,7 @@ function useSketchPointDrag({
       if (supportsLiveDragSolve(draft)) scheduleLiveSolve(draggingPointId, next.point)
       return next
     },
-    [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve, svgRef],
+    [bounds, draft, draggingPointId, onPreview, scheduleLiveSolve, svgRef],
   )
   const flush = useCallback(() => {
     if (dragFrameRef.current !== null) {
@@ -3776,6 +3781,7 @@ function useSketchPointDrag({
     if (draggingPointId) onDraggingPointChange(null)
     setDraggingPointId(null)
     dragRectangleRef.current = null
+    inferenceCandidateQueryRef.current = null
     lastDragPreviewRef.current = null
   }, [draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
   const start = useCallback(
@@ -3789,6 +3795,12 @@ function useSketchPointDrag({
         top: rectangle.top,
         width: rectangle.width,
       }
+      const references = draggedPointReferences(inferenceReferences, pointId)
+      inferenceCandidateQueryRef.current = createSketchInferenceCandidateQuery({
+        cellSize: sketchInferenceTolerance(bounds, rectangle),
+        lines: references.lines,
+        points: references.points,
+      })
       lastDragPreviewRef.current = null
       queuedDragInputRef.current = null
       queuedDragSolveTargetRef.current = null
@@ -3798,7 +3810,7 @@ function useSketchPointDrag({
       }
       setDraggingPointId(pointId)
     },
-    [svgRef],
+    [bounds, inferenceReferences, svgRef],
   )
   return { draggingPointId, finish, start, update }
 }
