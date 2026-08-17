@@ -73,6 +73,7 @@ import {
   type PointerEvent,
   type RefObject,
   type SetStateAction,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -300,7 +301,7 @@ type PanGesture = Readonly<{
 
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
-const LIVE_DRAG_SOLVE_INTERVAL_MS = 48
+const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
@@ -3609,13 +3610,15 @@ function useSketchPointDrag({
   const scheduleLiveSolve = useCallback(
     (pointId: SketchEntityId, point: SketchPoint2) => {
       queuedDragSolveTargetRef.current = { point, pointId }
-      if (dragSolveTimerRef.current !== null) return
+      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
       dragSolveTimerRef.current = window.setTimeout(() => {
         dragSolveTimerRef.current = null
         const target = queuedDragSolveTargetRef.current
         queuedDragSolveTargetRef.current = null
-        if (target) onDraggingPointChange(target.pointId, target.point)
-      }, LIVE_DRAG_SOLVE_INTERVAL_MS)
+        if (target) {
+          startTransition(() => onDraggingPointChange(target.pointId, target.point))
+        }
+      }, LIVE_DRAG_SOLVE_IDLE_DELAY_MS)
     },
     [onDraggingPointChange],
   )

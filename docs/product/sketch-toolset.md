@@ -150,8 +150,8 @@ adding solver constraints.
    exactly one global draft and one undo checkpoint when the gesture ends. Raw pointer samples are
    reduced to the latest sample per animation frame before sketch-coordinate conversion, inference,
    and viewport-local React state. Drag start MUST snapshot the viewport rectangle once; subsequent
-   drag frames MUST NOT force layout. Continuous movement replaces the latest scheduled solver target
-   without postponing the bounded exact-feedback cadence or publishing through the parent workspace
+   drag frames MUST NOT force layout. Continuous movement replaces and postpones the scheduled exact
+   solver target until a brief pointer pause, without publishing through the parent workspace
    on every frame. The scheduler sends the original schema-valid sketch plus the latest separate drag
    target, permits one request in flight, and retains only the newest pending target. Release keeps
    the final overlay visible until the exact result settles. No drag-frame path may clone or
