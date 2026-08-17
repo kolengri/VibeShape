@@ -580,6 +580,38 @@ test.describe("full sketch editor", () => {
       .toEqual(initialFirstLine)
   })
 
+  test("creates a two-direction linear sketch pattern with one undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    await page.getByRole("button", { name: "Linear pattern", exact: true }).click()
+    const pattern = page.getByRole("form", { name: "Linear pattern" })
+    await expect(pattern).toBeVisible()
+    await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(2)
+
+    await pattern.getByRole("combobox", { name: "First spacing" }).fill("15 mm")
+    await pattern.getByRole("checkbox", { name: "Add second direction" }).check()
+    await pattern.getByRole("combobox", { name: "Second spacing" }).fill("10 mm")
+    await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(5)
+    await pattern.getByRole("button", { name: "Apply linear pattern" }).click()
+
+    await expect(lines).toHaveCount(9)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+  })
+
   test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

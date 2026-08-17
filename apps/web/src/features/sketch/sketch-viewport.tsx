@@ -20,7 +20,11 @@ import {
   centeredAlignedRectangleGeometry,
   extendSketchCurve,
   inferSketchPoint,
+  type LinearSketchPatternDefinition,
+  linearPatternSketchEntities,
+  linearSketchPatternTransforms,
   MAX_REGULAR_POLYGON_SIDES,
+  MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
   type RegularPolygonMode,
@@ -101,6 +105,10 @@ import {
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
+import {
+  defaultLinearSketchPatternDefinition,
+  SketchLinearPatternForm,
+} from "./sketch-linear-pattern-form"
 import {
   isSketchModificationTool,
   type SketchDraftChangeMode,
@@ -2855,15 +2863,25 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
 
 type DirectSketchModificationTool = Exclude<
   SketchModificationTool,
-  "mirror" | "offset" | "transform"
+  "linear-pattern" | "mirror" | "offset" | "transform"
 >
-type SketchCurveActionKind = "direct" | "mirror" | "offset" | "split-circle" | "transform"
+type SketchCurveActionKind =
+  | "direct"
+  | "linear-pattern"
+  | "mirror"
+  | "offset"
+  | "split-circle"
+  | "transform"
 
 function isDirectSketchModificationTool(
   tool: SketchEditorTool,
 ): tool is DirectSketchModificationTool {
   return (
-    isSketchModificationTool(tool) && tool !== "mirror" && tool !== "offset" && tool !== "transform"
+    isSketchModificationTool(tool) &&
+    tool !== "linear-pattern" &&
+    tool !== "mirror" &&
+    tool !== "offset" &&
+    tool !== "transform"
   )
 }
 
@@ -2873,6 +2891,7 @@ function sketchCurveActionKind(
 ): SketchCurveActionKind | null {
   if (!isSketchModificationTool(tool)) return null
   if (tool === "mirror" || tool === "offset") return tool
+  if (tool === "linear-pattern") return "linear-pattern"
   if (tool === "transform") return "transform"
   return tool === "split" && entity?.type === "circle" ? "split-circle" : "direct"
 }
@@ -2972,6 +2991,23 @@ function safeSketchTransformOrigin(
   if (!draft || entityIds.length === 0) return null
   try {
     return sketchEntityTransformOrigin(draft, entityIds)
+  } catch {
+    return null
+  }
+}
+
+function safeLinearPatternSketchEntities(
+  draft: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+  definition: LinearSketchPatternDefinition,
+) {
+  try {
+    return linearPatternSketchEntities(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      definition,
+      entityIds,
+    })
   } catch {
     return null
   }
@@ -3187,6 +3223,7 @@ const pointInferenceSupport = {
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
+  "linear-pattern": neverSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
   mirror: neverSupportsPointInference,
   offset: neverSupportsPointInference,
@@ -3570,6 +3607,26 @@ function isPrimaryEmptyCanvasPointer(event: PointerEvent<SVGSVGElement>) {
   return event.button === 0 && event.target === event.currentTarget
 }
 
+function offsetDraftFromCanvasPointer(input: {
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  event: PointerEvent<SVGSVGElement>
+  eventPoint: (event: PointerEvent<SVGSVGElement>) => SketchPoint2 | null
+  pending: PendingGeometry | null
+}) {
+  if (
+    input.editorTool !== "offset" ||
+    input.pending?.kind !== "offset-distance" ||
+    !isPrimaryEmptyCanvasPointer(input.event)
+  ) {
+    return undefined
+  }
+  const point = input.eventPoint(input.event)
+  const result =
+    input.draft && point ? safeAppendSketchLineOffset(input.draft, input.pending, point) : null
+  return result?.sketch ?? null
+}
+
 function useSketchPointDrag({
   bounds,
   draft,
@@ -3721,6 +3778,9 @@ type SketchDrawingViewProps = Readonly<{
     onCanvasPointerDown: (event: PointerEvent<SVGSVGElement>) => void
     onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
+    onLinearPatternApply: (value: LinearSketchPatternDefinition) => void
+    onLinearPatternCancel: () => void
+    onLinearPatternPreview: (value: LinearSketchPatternDefinition | null) => void
     onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
     onPointerLeave: () => void
     onPointerMove: (event: PointerEvent<SVGSVGElement>) => void
@@ -3741,6 +3801,10 @@ type SketchDrawingViewProps = Readonly<{
     editable: boolean
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
+    linearPattern: Readonly<{
+      definition: LinearSketchPatternDefinition | null
+      selectionKey: string
+    }> | null
     pending: PendingGeometry | null
     transform: Readonly<{
       origin: SketchPoint2
@@ -3784,6 +3848,65 @@ function SketchTransformPresentation({
         onStart={onStart}
       />
     </>
+  )
+}
+
+function SketchLinearPatternPresentation({
+  entityIds,
+  geometry,
+  pattern,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  pattern: SketchDrawingViewProps["state"]["linearPattern"]
+}>) {
+  if (!pattern?.definition) return null
+  let transforms: readonly ReturnType<typeof linearSketchPatternTransforms>[number][]
+  try {
+    transforms = linearSketchPatternTransforms(pattern.definition).slice(
+      0,
+      MAX_SKETCH_PATTERN_PREVIEW_INSTANCES - 1,
+    )
+  } catch {
+    return null
+  }
+  return (
+    <g data-sketch-linear-pattern-preview>
+      {transforms.map((transform, index) => (
+        <SketchTransformGeometry
+          key={`${transform.translation.x}:${transform.translation.y}:${index}`}
+          entityIds={entityIds}
+          origin={{ x: 0, y: 0 }}
+          presentation={geometry}
+          preview={{
+            rotationRadians: transform.rotationRadians,
+            scale: 1,
+            translation: transform.translation,
+          }}
+        />
+      ))}
+    </g>
+  )
+}
+
+function SketchLinearPatternPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["linearPattern"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchLinearPatternForm
+      key={value.selectionKey}
+      variables={configuration.variables}
+      onApply={handlers.onLinearPatternApply}
+      onCancel={handlers.onLinearPatternCancel}
+      onPreview={handlers.onLinearPatternPreview}
+    />
   )
 }
 
@@ -3891,6 +4014,11 @@ function SketchDrawingView({
           viewportSize={state.viewportSize}
           onStart={handlers.onTransformStart}
         />
+        <SketchLinearPatternPresentation
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          pattern={state.linearPattern}
+        />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
       </svg>
@@ -3913,6 +4041,15 @@ function SketchDrawingView({
       <SketchTransformInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchLinearPatternInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchLinearPatternPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.linearPattern}
       />
       <SketchTransformPanel
         configuration={configuration}
@@ -3990,6 +4127,26 @@ function SketchTransformInstruction({
   )
 }
 
+function SketchLinearPatternInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "linear-pattern") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-linear-pattern-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "linearPatternAdjust" : "linearPatternSelectGeometry")}
+    </div>
+  )
+}
+
 function useSketchPlacementPresentation({
   draft,
   editorTool,
@@ -4041,6 +4198,91 @@ function useSketchPlacementPresentation({
   }, [editorTool, offsetSourceLineIds])
 
   return { cursor, inference, pending, setCursor, setInference, setPending }
+}
+
+function useSketchLinearPatternInteraction({
+  draft,
+  editorTool,
+  onDraftChange,
+  onEditorToolChange,
+  onSelectionChange,
+  selectedEntityIds,
+  sketchId,
+}: Pick<
+  SketchDrawingConfiguration,
+  | "draft"
+  | "editorTool"
+  | "onDraftChange"
+  | "onEditorToolChange"
+  | "onSelectionChange"
+  | "selectedEntityIds"
+> & { sketchId: SketchRecord["id"] }) {
+  const [definition, setDefinition] = useState<LinearSketchPatternDefinition | null>(
+    defaultLinearSketchPatternDefinition,
+  )
+  const selectionKey = selectedEntityIds.join(":")
+
+  const reset = () => setDefinition(defaultLinearSketchPatternDefinition)
+
+  useEffect(() => {
+    reset()
+  }, [editorTool, sketchId])
+
+  const commit = (value = definition) => {
+    if (!draft || !value || selectedEntityIds.length === 0) return false
+    const result = safeLinearPatternSketchEntities(draft, selectedEntityIds, value)
+    if (!result) return false
+    onDraftChange(result.sketch, "record")
+    onSelectionChange([])
+    reset()
+    onEditorToolChange("select")
+    return true
+  }
+
+  const cancel = () => {
+    reset()
+    onEditorToolChange("select")
+  }
+
+  const consumeKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (editorTool !== "linear-pattern") return false
+    if (event.key === "Escape") {
+      event.preventDefault()
+      cancel()
+      return true
+    }
+    if (event.key === "Enter") {
+      event.preventDefault()
+      commit()
+      return true
+    }
+    return false
+  }
+
+  const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (editorTool !== "linear-pattern" || !isPrimaryEmptyCanvasPointer(event)) return false
+    if (selectedEntityIds.length === 0) onSelectionChange([])
+    else commit()
+    return true
+  }
+
+  const selectEntity = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey
+    onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
+  }
+
+  return {
+    apply: commit,
+    cancel,
+    consumeCanvasPointerDown,
+    consumeKeyDown,
+    preview: setDefinition,
+    presentation:
+      editorTool === "linear-pattern" && selectedEntityIds.length > 0
+        ? { definition, selectionKey }
+        : null,
+    selectEntity,
+  }
 }
 
 function useSketchTransformInteraction({
@@ -4224,6 +4466,27 @@ function useSketchTransformInteraction({
   }
 }
 
+function useSketchModificationInteractions(
+  input: Pick<
+    SketchDrawingConfiguration,
+    | "draft"
+    | "editorTool"
+    | "onDraftChange"
+    | "onEditorToolChange"
+    | "onSelectionChange"
+    | "selectedEntityIds"
+  > & {
+    bounds: SketchBounds
+    sketchId: SketchRecord["id"]
+    svgRef: RefObject<SVGSVGElement | null>
+  },
+) {
+  return {
+    linearPattern: useSketchLinearPatternInteraction(input),
+    transform: useSketchTransformInteraction(input),
+  }
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -4256,7 +4519,7 @@ function SketchDrawing({
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
-  const transform = useSketchTransformInteraction({
+  const { linearPattern, transform } = useSketchModificationInteractions({
     bounds,
     draft,
     editorTool,
@@ -4358,6 +4621,7 @@ function SketchDrawing({
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
     if (transform.consumeKeyDown(event)) return
+    if (linearPattern.consumeKeyDown(event)) return
     handleSketchKeyDown({
       appendAt,
       cursor,
@@ -4377,11 +4641,16 @@ function SketchDrawing({
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (transform.consumeCanvasPointerDown(event)) return
-    const primaryEmptyCanvas = isPrimaryEmptyCanvasPointer(event)
-    if (editorTool === "offset" && pending?.kind === "offset-distance" && primaryEmptyCanvas) {
-      const point = eventPoint(event)
-      const result = draft && point ? safeAppendSketchLineOffset(draft, pending, point) : null
-      if (result) publishModificationDraft(result.sketch)
+    if (linearPattern.consumeCanvasPointerDown(event)) return
+    const offsetDraft = offsetDraftFromCanvasPointer({
+      draft,
+      editorTool,
+      event,
+      eventPoint,
+      pending,
+    })
+    if (offsetDraft !== undefined) {
+      if (offsetDraft) publishModificationDraft(offsetDraft)
       return
     }
     handleSketchCanvasPointerDown({
@@ -4455,6 +4724,7 @@ function SketchDrawing({
     const actionKind = sketchCurveActionKind(editorTool, entity)
     if (!actionKind) return
     const actions = {
+      "linear-pattern": () => linearPattern.selectEntity(event, entityId),
       mirror: () => handleMirrorAction(entityId),
       offset: () => handleOffsetSourceAction(entityId),
       transform: () => transform.selectEntity(event, entityId),
@@ -4506,6 +4776,9 @@ function SketchDrawing({
         onCanvasPointerDown: handleCanvasPointerDown,
         onCurveAction: handleCurveAction,
         onKeyDown: handleKeyDown,
+        onLinearPatternApply: linearPattern.apply,
+        onLinearPatternCancel: linearPattern.cancel,
+        onLinearPatternPreview: linearPattern.preview,
         onPointPointerDown: handlePointPointerDown,
         onPointerLeave: handlePointerLeave,
         onPointerMove: handlePointerMove,
@@ -4526,6 +4799,7 @@ function SketchDrawing({
         editable,
         geometry,
         inference,
+        linearPattern: linearPattern.presentation,
         pending,
         transform: transform.presentation,
         viewportSize,

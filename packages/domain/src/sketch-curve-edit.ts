@@ -11,6 +11,7 @@ import {
   requireSketchPoint,
   type SketchAppendResult,
   type SketchPoint2,
+  sketchCurvePointIds,
   sketchLineIntersection,
   splitSketchLine,
 } from "./sketch-edit"
@@ -68,17 +69,6 @@ function curveById(sketch: SketchRecord, curveId: SketchEntityId) {
   )
   if (!curve) throw new TypeError("A curve operation must reference an existing curve entity.")
   return curve
-}
-
-function curvePointIds(curve: SketchCurveEntity) {
-  switch (curve.type) {
-    case "line":
-      return [curve.startPointId, curve.endPointId]
-    case "circle":
-      return [curve.centerPointId]
-    case "arc":
-      return [curve.centerPointId, curve.startPointId, curve.endPointId]
-  }
 }
 
 function linePoints(sketch: SketchRecord, line: Extract<SketchEntity, { type: "line" }>) {
@@ -292,7 +282,10 @@ function matchingOperationPoint(
   target: SketchCurveEntity,
   intersection: CurveIntersection,
 ) {
-  const candidateIds = [...curvePointIds(target), ...curvePointIds(intersection.boundary)]
+  const candidateIds = [
+    ...sketchCurvePointIds(target),
+    ...sketchCurvePointIds(intersection.boundary),
+  ]
   return candidateIds
     .map((pointId) => pointById(sketch, pointId))
     .find((point) => distance(point, intersection.point) <= OPERATION_EPSILON)
@@ -307,7 +300,7 @@ function resolveIntersectionPoint(
   const existing = matchingOperationPoint(sketch, target, intersection)
   if (existing) {
     return {
-      constrainToBoundary: !curvePointIds(intersection.boundary).includes(existing.id),
+      constrainToBoundary: !sketchCurvePointIds(intersection.boundary).includes(existing.id),
       entity: null,
       id: existing.id,
       point: existing,
@@ -380,7 +373,7 @@ function removeDetachedPoints(sketch: SketchRecord, pointIds: readonly SketchEnt
   const retainedByGeometry = new Set<string>(
     sketch.entities
       .filter((entity): entity is SketchCurveEntity => entity.type !== "point")
-      .flatMap(curvePointIds),
+      .flatMap(sketchCurvePointIds),
   )
   const removableIds = new Set<string>(
     pointIds.filter((pointId) => !retainedByGeometry.has(pointId)),

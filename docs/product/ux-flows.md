@@ -71,6 +71,15 @@ preview and snaps to authored points within a screen-space tolerance. The exact-
 origin, translation, rotation, and positive scale expressions, reuses project display units and
 committed `#variables`, and applies through the same single draft edit.
 
+Linear Pattern accepts the same preselection or post-selection grammar. Its TanStack Form panel
+defines a required first direction and optional second direction; each direction has an integer
+count including the seed, positive spacing, and angle. Length and angle fields normalize bare values
+to project units and suggest committed `#variables`. The viewport renders at most ten total seed and
+copy instances while editing, then one Apply materializes at most 100 total instances as one local
+history edit. Shared points stay shared inside each occurrence, internal compatible constraints are
+cloned, and crossing, fixed, or rotation-incompatible constraints are omitted. The copies are
+independent after commit until associative pattern metadata is introduced.
+
 ## Flow 1: create a printable part
 
 1. Create a project and choose a printer profile or no profile.

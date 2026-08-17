@@ -17,6 +17,11 @@ the draft unchanged. A TanStack Form panel accepts variable-aware, project-unit-
 translation, rotation, and scale expressions. The manipulator origin can be relocated or snapped to
 an authored point without changing the current affine preview.
 
+Linear Sketch Pattern supports preselection and post-selection, one or two exact directions,
+project-unit and `#variable` expressions for spacing and angle, a bounded SVG-only preview, and one
+undoable commit. The initial implementation materializes independent analytical copies while
+cloning internal constraints; editable associative pattern metadata remains open.
+
 The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, local-first verification gates, Vite application shell, typed ICU localization, Tailwind tokens, and source-owned shadcn primitives are operational.
 
 The pure domain layer provides UUIDv7 identities, canonical quantities, revisioned project display-unit preferences, revisioned document, sketch, variable, and feature commands, deterministic events and replay, actor-bound drafts, validated module and feature-type registries, atomic whole-DAG mutations, canonical feature-content identity, and sequential asynchronous rebuild scheduling. Sketch schema v0 stores bounded analytical point, line, circle, and arc entities on an origin plane plus every P0 constraint family; dimensional constraints retain authored Quantity expressions such as `#width`. The first-party part-design module contributes unit-aware box, cylinder, ordered Boolean/Subtract, and selector-backed extrusion with explicit new/add/remove/intersect body semantics. `@vibeshape/application` accepts a committed `DocumentSnapshot`, validates its DAG, derives changed roots from the previous revision, and composes the scheduler, injected SHA-256 hashing, validated derived state, transient feature-content preparation, and a serializable geometry port into a fail-closed rebuild use case.

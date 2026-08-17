@@ -176,6 +176,9 @@ describe("editor command registry", () => {
     const offset = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchOffset,
     )
+    const linearPattern = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchLinearPattern,
+    )
     const split = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchSplit)
     const transform = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchTransform,
@@ -188,14 +191,16 @@ describe("editor command registry", () => {
     extend?.invoke()
     mirror?.invoke()
     offset?.invoke()
+    linearPattern?.invoke()
     split?.invoke()
     transform?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(1, "trim")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(2, "extend")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "mirror")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(4, "offset")
-    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(5, "split")
-    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(6, "transform")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(5, "linear-pattern")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(6, "split")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(7, "transform")
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {

@@ -18,6 +18,7 @@ export const editorCommandIds = {
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchExtend: "org.vibeshape.editor.sketch.modify.extend",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
+  sketchLinearPattern: "org.vibeshape.editor.sketch.modify.linear-pattern",
   sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
   sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
@@ -64,6 +65,7 @@ export type EditorCommandIcon =
   | "extrude"
   | "extend"
   | "line"
+  | "linear-pattern"
   | "mirror"
   | "offset"
   | "inscribed-polygon"
@@ -104,6 +106,7 @@ export type EditorCommandLabelKey =
   | "sketchConstruction"
   | "sketchExtend"
   | "sketchLine"
+  | "sketchLinearPattern"
   | "sketchMirror"
   | "sketchOffset"
   | "sketchInscribedPolygon"
