@@ -350,7 +350,7 @@ function reflectedArc(
 }
 
 function reflectedEllipse(
-  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  entity: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>,
   points: ReflectedPointMap,
   createEntityId: EntityIdFactory,
 ): ReflectedCurveResult {
@@ -362,6 +362,12 @@ function reflectedEllipse(
       centerPointId: reflectedPointId(points, entity.centerPointId),
       primaryAxisPointId: reflectedPointId(points, entity.primaryAxisPointId),
       secondaryAxisPointId: reflectedPointId(points, entity.secondaryAxisPointId),
+      ...(entity.type === "elliptical-arc"
+        ? {
+            startPointId: reflectedPointId(points, entity.startPointId),
+            endPointId: reflectedPointId(points, entity.endPointId),
+          }
+        : {}),
     },
     requiresEqual: false,
   }
@@ -382,6 +388,8 @@ function reflectedEntity(
     case "arc":
       return reflectedArc(sketch, entity, points, createEntityId)
     case "ellipse":
+      return reflectedEllipse(entity, points, createEntityId)
+    case "elliptical-arc":
       return reflectedEllipse(entity, points, createEntityId)
   }
 }

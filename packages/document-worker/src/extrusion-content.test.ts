@@ -148,6 +148,71 @@ function ellipseFixture() {
   )
 }
 
+function ellipticalArcFixture() {
+  return extrusionFixture(
+    sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchId,
+      label: "Elliptical arc profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003411",
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003412",
+          type: "point",
+          x: 10,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003413",
+          type: "point",
+          x: 0,
+          y: 5,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003414",
+          type: "point",
+          x: -10,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003415",
+          type: "elliptical-arc",
+          centerPointId: "0195b5ac-b220-7a2c-8c33-000000003411",
+          primaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          secondaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003413",
+          startPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          endPointId: "0195b5ac-b220-7a2c-8c33-000000003414",
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003416",
+          type: "line",
+          startPointId: "0195b5ac-b220-7a2c-8c33-000000003414",
+          endPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          construction: false,
+        },
+      ],
+      constraints: [],
+    }),
+  )
+}
+
 describe("document extrusion content preparation", () => {
   it("resolves a stable selector into ordered exact profile geometry", async () => {
     const { document, feature, solution } = fixture()
@@ -190,6 +255,30 @@ describe("document extrusion content preparation", () => {
               secondaryAxisPoint: [2, 8],
             },
           ],
+        },
+      },
+    })
+  })
+
+  it("materializes an ordered exact elliptical arc for the geometry worker", async () => {
+    const { document, feature, solution } = ellipticalArcFixture()
+    const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        outer: {
+          segments: expect.arrayContaining([
+            {
+              entityId: "0195b5ac-b220-7a2c-8c33-000000003415",
+              type: "elliptical-arc",
+              center: [0, 0],
+              primaryAxisPoint: [10, 0],
+              secondaryAxisPoint: [0, 5],
+              start: expect.any(Array),
+              end: expect.any(Array),
+            },
+          ]),
         },
       },
     })

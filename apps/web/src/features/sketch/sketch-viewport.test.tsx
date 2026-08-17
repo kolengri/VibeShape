@@ -1592,6 +1592,64 @@ describe("SketchViewport", () => {
     expect(rendered?.getAttribute("transform")).toContain("rotate(")
   })
 
+  it("previews and creates an exact elliptical arc with the four-pick workflow", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "elliptical-arc",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 500, clientY: 200 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="elliptical-arc-start"] ellipse'),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(drawing, { clientX: 500, clientY: 200 })
+    fireEvent.pointerMove(drawing, { clientX: 200, clientY: 300 })
+    const arcPreview = document.querySelector('[data-sketch-preview-tool="elliptical-arc-end"]')
+    expect(arcPreview?.querySelector("ellipse")).toBeTruthy()
+    expect(arcPreview?.querySelector("polyline")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const ellipticalArc = requiredSketchEntity(draft, "elliptical-arc")
+    expect(sketchEntitiesOfType(draft, "point")).toHaveLength(5)
+    expect(draft.constraints).toHaveLength(0)
+
+    cleanup()
+    renderViewport({
+      draft,
+      editorTool: "select",
+      sketch: draft,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const rendered = document.querySelector(
+      `[data-sketch-entity-id="${ellipticalArc.id}"][data-sketch-entity-type="elliptical-arc"]`,
+    )
+    expect(rendered?.tagName.toLowerCase()).toBe("polyline")
+    expect(rendered?.getAttribute("points")?.split(" ").length).toBeGreaterThan(8)
+  })
+
   it("previews horizontal inference before applying the automatic constraint", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     renderViewport({

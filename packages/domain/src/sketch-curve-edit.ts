@@ -252,7 +252,14 @@ function curveParameter(sketch: SketchRecord, curve: SketchCurveEntity, point: S
 
 function curveIntersections(sketch: SketchRecord, target: SketchCurveEntity) {
   const intersections = sketch.entities.flatMap((entity): CurveIntersection[] => {
-    if (entity.type === "point" || entity.type === "ellipse" || entity.id === target.id) return []
+    if (
+      entity.type === "point" ||
+      entity.type === "ellipse" ||
+      entity.type === "elliptical-arc" ||
+      entity.id === target.id
+    ) {
+      return []
+    }
     return supportingIntersections(sketch, target, entity).map((point) => ({
       boundary: entity,
       parameter: curveParameter(sketch, target, point),

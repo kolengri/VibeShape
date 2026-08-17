@@ -23,11 +23,12 @@ import {
   cast,
   makeCircle,
   makeEllipse,
+  makeEllipseArc,
   makeFace,
   makeLine,
   makeThreePointArc,
-  type SimplePoint,
   type Shape3D,
+  type SimplePoint,
   setOC,
   type Wire,
 } from "replicad"
@@ -46,6 +47,10 @@ import {
   REPLICAD_OPENCASCADE_VERSION,
   REPLICAD_VERSION,
 } from "./build-info"
+import {
+  ellipticalArcKernelParameters,
+  normalizedExtrusionDirection,
+} from "./extrusion-curve-geometry"
 import {
   createMemoryProfile,
   getWasmHeapBytes,
@@ -751,15 +756,6 @@ function extrusionFeatureSemanticRole(
   )
 }
 
-function normalizedPointDirection(start: SimplePoint, end: SimplePoint): SimplePoint {
-  const direction = [end[0] - start[0], end[1] - start[1], end[2] - start[2]] as SimplePoint
-  const magnitude = Math.hypot(...direction)
-  if (!Number.isFinite(magnitude) || magnitude <= Number.EPSILON) {
-    throw new Error("Extrusion ellipse axis direction is degenerate.")
-  }
-  return direction.map((coordinate) => coordinate / magnitude) as SimplePoint
-}
-
 type ExtrusionPlane = ReturnType<typeof extrusionPlane>
 type ExtrusionSegment = ExtrusionContentParameters["outer"]["segments"][number]
 
@@ -790,7 +786,36 @@ function extrusionEllipseEdge(
     primaryIsMajor ? secondaryRadius : primaryRadius,
     center,
     extrusionNormal(plane, reverse),
-    normalizedPointDirection(center, primaryIsMajor ? primaryAxisPoint : secondaryAxisPoint),
+    normalizedExtrusionDirection(center, primaryIsMajor ? primaryAxisPoint : secondaryAxisPoint),
+  )
+}
+
+function extrusionEllipticalArcEdge(
+  plane: ExtrusionPlane,
+  segment: Extract<ExtrusionSegment, { type: "elliptical-arc" }>,
+  offset: number,
+  reverse: boolean,
+) {
+  const center = plane.point(segment.center, offset)
+  const primaryAxisPoint = plane.point(segment.primaryAxisPoint, offset)
+  const secondaryAxisPoint = plane.point(segment.secondaryAxisPoint, offset)
+  const parameters = ellipticalArcKernelParameters({
+    center,
+    end: plane.point(segment.end, offset),
+    normal: plane.normal,
+    primaryAxisPoint,
+    reverse,
+    secondaryAxisPoint,
+    start: plane.point(segment.start, offset),
+  })
+  return makeEllipseArc(
+    parameters.majorRadius,
+    parameters.minorRadius,
+    parameters.startParameter,
+    parameters.endParameter,
+    parameters.center,
+    parameters.normal,
+    parameters.xDirection,
   )
 }
 
@@ -827,6 +852,9 @@ function extrusionSegmentEdge(
   }
   if (segment.type === "ellipse") {
     return extrusionEllipseEdge(plane, segment, offset, reverse)
+  }
+  if (segment.type === "elliptical-arc") {
+    return extrusionEllipticalArcEdge(plane, segment, offset, reverse)
   }
   return extrusionOpenCurveEdge(plane, segment, offset, reverse)
 }

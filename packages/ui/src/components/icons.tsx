@@ -87,3 +87,23 @@ export function EllipseIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export function EllipticalArcIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      {...props}
+    >
+      <path d="M3.6 13.7c1.4 4.1 6.8 6.1 12 4.4s8.2-6.4 6.8-10.5" />
+      <path d="m3.6 13.7 18.8-6.1M13 10.7l2.1 4.2" strokeDasharray="1.5 2" />
+      <circle cx="3.6" cy="13.7" r="1" fill="currentColor" stroke="none" />
+      <circle cx="22.4" cy="7.6" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}

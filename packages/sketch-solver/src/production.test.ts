@@ -38,6 +38,9 @@ const ellipseCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-0000
 const ellipsePrimaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000019")
 const ellipseSecondaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000020")
 const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000021")
+const ellipticalArcStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000022")
+const ellipticalArcEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000023")
+const ellipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000024")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -181,6 +184,69 @@ function ellipseSketch() {
   })
 }
 
+function ellipticalArcSketch() {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Elliptical arc solver fixture",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: ellipseCenterId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipsePrimaryId,
+        type: "point",
+        x: 10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseSecondaryId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcStartId,
+        type: "point",
+        x: 6,
+        y: 4,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcEndId,
+        type: "point",
+        x: -10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcId,
+        type: "elliptical-arc",
+        centerPointId: ellipseCenterId,
+        primaryAxisPointId: ellipsePrimaryId,
+        secondaryAxisPointId: ellipseSecondaryId,
+        startPointId: ellipticalArcStartId,
+        endPointId: ellipticalArcEndId,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  })
+}
+
 const variables = variableDefinitionsSchema.parse([
   { schemaVersion: 0, id: variableId, name: "width", expression: "25 mm" },
 ])
@@ -234,6 +300,48 @@ describe("production sketch compilation", () => {
     )
     expect(constraintTypes).toEqual([SOLVESPACE_CONSTRAINT_TYPE.perpendicular])
     expect(constraintValues).toEqual(new Float64Array([0]))
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
+  test("compiles exact elliptical-arc endpoint loci through solver-owned trammels", () => {
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: ellipticalArcSketch(),
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords, parameterValues } =
+      result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      6,
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.pointIn2d)).toHaveLength(9)
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+    ])
+    expect(parameterValues).toHaveLength(25)
+    expect(result.compiled.bindings.pointParameters.size).toBe(5)
     expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
   })
 

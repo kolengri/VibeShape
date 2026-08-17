@@ -266,6 +266,88 @@ class ProductionSketchBuilder {
     })
   }
 
+  addEllipticalArc(
+    entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  ) {
+    const center = pointValues.get(entity.centerPointId)
+    const primary = pointValues.get(entity.primaryAxisPointId)
+    const secondary = pointValues.get(entity.secondaryAxisPointId)
+    if (!center || !primary || !secondary) {
+      throw new Error(`Sketch elliptical arc ${entity.id} is missing initial axis points.`)
+    }
+    const primaryAxis = this.#addAuxiliaryLine(
+      this.entity(entity.centerPointId),
+      this.entity(entity.primaryAxisPointId),
+    )
+    const secondaryAxis = this.#addAuxiliaryLine(
+      this.entity(entity.centerPointId),
+      this.entity(entity.secondaryAxisPointId),
+    )
+    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
+      entityA: primaryAxis,
+      entityB: secondaryAxis,
+    })
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
+    const secondaryRadius = Math.max(Math.hypot(secondaryVector.x, secondaryVector.y), 1e-6)
+    const primaryDirection = {
+      x: primaryVector.x / primaryRadius,
+      y: primaryVector.y / primaryRadius,
+    }
+    const secondaryDirection = {
+      x: secondaryVector.x / secondaryRadius,
+      y: secondaryVector.y / secondaryRadius,
+    }
+    for (const endpointId of [entity.startPointId, entity.endPointId]) {
+      const endpoint = pointValues.get(endpointId)
+      if (!endpoint) {
+        throw new Error(`Sketch elliptical arc ${entity.id} is missing an endpoint value.`)
+      }
+      const offset = { x: endpoint.x - center.x, y: endpoint.y - center.y }
+      const rawCosine =
+        (offset.x * primaryDirection.x + offset.y * primaryDirection.y) / primaryRadius
+      const rawSine =
+        (offset.x * secondaryDirection.x + offset.y * secondaryDirection.y) / secondaryRadius
+      const parameterScale = Math.hypot(rawCosine, rawSine) || 1
+      const cosine = rawCosine / parameterScale
+      const sine = rawSine / parameterScale
+      const trammelRadius = primaryRadius + secondaryRadius
+      const primarySlider = this.#addAuxiliaryPoint({
+        x: center.x + primaryDirection.x * trammelRadius * cosine,
+        y: center.y + primaryDirection.y * trammelRadius * cosine,
+      })
+      const secondarySlider = this.#addAuxiliaryPoint({
+        x: center.x + secondaryDirection.x * trammelRadius * sine,
+        y: center.y + secondaryDirection.y * trammelRadius * sine,
+      })
+      const endpointHandle = this.entity(endpointId)
+      const secondaryRadiusLine = this.#addAuxiliaryLine(primarySlider, endpointHandle)
+      const primaryRadiusLine = this.#addAuxiliaryLine(endpointHandle, secondarySlider)
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+        pointA: primarySlider,
+        entityA: primaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+        pointA: secondarySlider,
+        entityA: secondaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+        entityA: secondaryRadiusLine,
+        entityB: secondaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+        entityA: primaryRadiusLine,
+        entityB: primaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
+        entityA: secondaryRadiusLine,
+        entityB: primaryRadiusLine,
+      })
+    }
+  }
+
   addConstraint(id: SketchConstraintId | null, type: number, fields: ConstraintFields = {}) {
     const {
       entityA = 0,
@@ -371,6 +453,26 @@ class ProductionSketchBuilder {
     this.#parameterMetadata.push(handle, group)
     this.#parameterValues.push(value)
     return { handle, index }
+  }
+
+  #addAuxiliaryPoint(point: { x: number; y: number }) {
+    const x = this.#addParameter(point.x).handle
+    const y = this.#addParameter(point.y).handle
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.pointIn2d, {
+      parameters: [x, y],
+      workplane: 200,
+    })
+    return handle
+  }
+
+  #addAuxiliaryLine(start: number, end: number) {
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
+      points: [start, end],
+      workplane: 200,
+    })
+    return handle
   }
 
   #addEntity(handle: number, group: number, type: number, fields: EntityFields = {}) {
@@ -762,11 +864,13 @@ function addSketchPointEntity(
 function addSketchCurveEntity(
   builder: ProductionSketchBuilder,
   entity: Exclude<SketchEntity, { type: "point" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
   circleRadii: ReadonlyMap<SketchEntityId, number>,
 ) {
   if (entity.type === "line") return builder.addLine(entity)
   if (entity.type === "arc") return builder.addArc(entity)
   if (entity.type === "ellipse") return builder.addEllipse(entity)
+  if (entity.type === "elliptical-arc") return builder.addEllipticalArc(entity, pointValues)
   const radius = circleRadii.get(entity.id)
   if (!radius) throw new Error(`Sketch circle ${entity.id} is missing an initial radius.`)
   return builder.addCircle(entity, radius)
@@ -783,7 +887,7 @@ function addSketchEntities(
     addSketchPointEntity(builder, entity, pointValues)
   }
   for (const entity of sketch.entities) {
-    if (entity.type !== "point") addSketchCurveEntity(builder, entity, circleRadii)
+    if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
   }
 }
 

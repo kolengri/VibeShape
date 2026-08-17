@@ -30,18 +30,32 @@ export type ProfileArcCurve = ProfileRoundFields & Readonly<{ type: "arc" }>
 export type ProfileCircleCurve = ProfileRoundFields & Readonly<{ type: "circle" }>
 export type ProfileRoundCurve = ProfileArcCurve | ProfileCircleCurve
 
-export type ProfileEllipseCurve = CurveEnvelope &
+type ProfileEllipseFields = CurveEnvelope &
   Readonly<{
     center: ProfilePoint
     primaryRadius: number
+    secondarySign: -1 | 1
     secondaryRadius: number
     rotationRadians: number
     start: ProfilePoint
     end: ProfilePoint
+  }>
+
+export type ProfileEllipseCurve = ProfileEllipseFields &
+  Readonly<{
     type: "ellipse"
   }>
 
-export type ProfileCurve = ProfileEllipseCurve | ProfileLineCurve | ProfileRoundCurve
+export type ProfileEllipticalArcCurve = ProfileEllipseFields &
+  Readonly<{
+    startParameter: number
+    sweep: number
+    type: "elliptical-arc"
+  }>
+
+export type ProfileEllipseLikeCurve = ProfileEllipseCurve | ProfileEllipticalArcCurve
+
+export type ProfileCurve = ProfileEllipseLikeCurve | ProfileLineCurve | ProfileRoundCurve
 
 export type ProfileBounds = Readonly<{
   minX: number
@@ -98,6 +112,40 @@ export function ellipseBounds(
     maxX: center.x + extentX,
     maxY: center.y + extentY,
   }
+}
+
+function parameterOnEllipticalArc(
+  curve: ProfileEllipticalArcCurve,
+  parameter: number,
+  tolerance: number,
+) {
+  const relative = normalizeAngle(parameter - curve.startParameter)
+  const angularTolerance =
+    tolerance / Math.max(curve.primaryRadius, curve.secondaryRadius, tolerance)
+  return relative <= curve.sweep + angularTolerance
+}
+
+export function ellipticalArcBounds(curve: Omit<ProfileEllipticalArcCurve, "bounds">) {
+  const xExtremum = Math.atan2(
+    -curve.secondarySign * curve.secondaryRadius * Math.sin(curve.rotationRadians),
+    curve.primaryRadius * Math.cos(curve.rotationRadians),
+  )
+  const yExtremum = Math.atan2(
+    curve.secondarySign * curve.secondaryRadius * Math.cos(curve.rotationRadians),
+    curve.primaryRadius * Math.sin(curve.rotationRadians),
+  )
+  const parameters = [
+    curve.startParameter,
+    curve.startParameter + curve.sweep,
+    xExtremum,
+    xExtremum + Math.PI,
+    yExtremum,
+    yExtremum + Math.PI,
+  ].filter(
+    (parameter, index) =>
+      index < 2 || parameterOnEllipticalArc(curve as ProfileEllipticalArcCurve, parameter, 0),
+  )
+  return pointBounds(parameters.map((parameter) => pointOnEllipseAt(curve, parameter)))
 }
 
 export function boundsOverlap(left: ProfileBounds, right: ProfileBounds, tolerance: number) {
@@ -231,20 +279,37 @@ function lineRoundIntersections(
   return { coincident: false, points: uniquePoints(points, tolerance) } as const
 }
 
-function pointOnEllipseAt(curve: ProfileEllipseCurve, angle: number) {
+function pointOnEllipseAt(
+  curve: Pick<
+    ProfileEllipseLikeCurve,
+    "center" | "primaryRadius" | "rotationRadians" | "secondaryRadius" | "secondarySign"
+  >,
+  angle: number,
+) {
   const cosine = Math.cos(curve.rotationRadians)
   const sine = Math.sin(curve.rotationRadians)
   const primary = curve.primaryRadius * Math.cos(angle)
-  const secondary = curve.secondaryRadius * Math.sin(angle)
+  const secondary = curve.secondarySign * curve.secondaryRadius * Math.sin(angle)
   return {
     x: curve.center.x + primary * cosine - secondary * sine,
     y: curve.center.y + primary * sine + secondary * cosine,
   }
 }
 
+function ellipseParameterAt(curve: ProfileEllipseLikeCurve, point: ProfilePoint) {
+  const cosine = Math.cos(curve.rotationRadians)
+  const sine = Math.sin(curve.rotationRadians)
+  const x = point.x - curve.center.x
+  const y = point.y - curve.center.y
+  return Math.atan2(
+    ((-x * sine + y * cosine) * curve.secondarySign) / curve.secondaryRadius,
+    (x * cosine + y * sine) / curve.primaryRadius,
+  )
+}
+
 function lineEllipseIntersections(
   line: ProfileLineCurve,
-  ellipse: ProfileEllipseCurve,
+  ellipse: ProfileEllipseLikeCurve,
   tolerance: number,
 ) {
   const cosine = Math.cos(ellipse.rotationRadians)
@@ -252,7 +317,10 @@ function lineEllipseIntersections(
   const local = (point: ProfilePoint) => {
     const x = point.x - ellipse.center.x
     const y = point.y - ellipse.center.y
-    return { x: x * cosine + y * sine, y: -x * sine + y * cosine }
+    return {
+      x: x * cosine + y * sine,
+      y: (-x * sine + y * cosine) * ellipse.secondarySign,
+    }
   }
   const start = local(line.start)
   const end = local(line.end)
@@ -275,10 +343,15 @@ function lineEllipseIntersections(
   const points = parameters
     .filter((parameter) => parameter >= -parameterTolerance && parameter <= 1 + parameterTolerance)
     .map((parameter) => addScaled(line.start, subtract(line.end, line.start), parameter))
+    .filter(
+      (point) =>
+        ellipse.type === "ellipse" ||
+        parameterOnEllipticalArc(ellipse, ellipseParameterAt(ellipse, point), tolerance),
+    )
   return { coincident: false, points: uniquePoints(points, tolerance) } as const
 }
 
-function ellipseQuadratic(curve: ProfileEllipseCurve) {
+function ellipseQuadratic(curve: ProfileEllipseLikeCurve) {
   const cosine = Math.cos(curve.rotationRadians)
   const sine = Math.sin(curve.rotationRadians)
   const primary = 1 / curve.primaryRadius ** 2
@@ -291,8 +364,8 @@ function ellipseQuadratic(curve: ProfileEllipseCurve) {
 }
 
 function ellipsesCoincident(
-  left: ProfileEllipseCurve,
-  right: ProfileEllipseCurve,
+  left: ProfileEllipseLikeCurve,
+  right: ProfileEllipseLikeCurve,
   tolerance: number,
 ) {
   if (distance(left.center, right.center) > tolerance) return false
@@ -314,17 +387,22 @@ function ellipsesCoincident(
   )
 }
 
-function sampledCurvePoints(curve: ProfileEllipseCurve | ProfileRoundCurve) {
+function sampledCurvePoints(curve: ProfileEllipseLikeCurve | ProfileRoundCurve) {
   const count = 256
   if (curve.type === "ellipse") {
     return Array.from({ length: count + 1 }, (_, index) =>
       pointOnEllipseAt(curve, (TWO_PI * index) / count),
     )
   }
+  if (curve.type === "elliptical-arc") {
+    return Array.from({ length: count + 1 }, (_, index) =>
+      pointOnEllipseAt(curve, curve.startParameter + curve.sweep * (index / count)),
+    )
+  }
   return Array.from({ length: count + 1 }, (_, index) => pointOnRoundCurveAt(curve, index / count))
 }
 
-function sampledCurveSegments(curve: ProfileEllipseCurve | ProfileRoundCurve) {
+function sampledCurveSegments(curve: ProfileEllipseLikeCurve | ProfileRoundCurve) {
   const points = sampledCurvePoints(curve)
   const segments: ProfileLineCurve[] = []
   for (let index = 1; index < points.length; index += 1) {
@@ -367,16 +445,41 @@ function sampledSegmentIntersections(
 }
 
 function sampledCurveIntersections(
-  left: ProfileEllipseCurve | ProfileRoundCurve,
-  right: ProfileEllipseCurve | ProfileRoundCurve,
+  left: ProfileEllipseLikeCurve | ProfileRoundCurve,
+  right: ProfileEllipseLikeCurve | ProfileRoundCurve,
   tolerance: number,
 ) {
   if (
-    left.type === "ellipse" &&
-    right.type === "ellipse" &&
+    (left.type === "ellipse" || left.type === "elliptical-arc") &&
+    (right.type === "ellipse" || right.type === "elliptical-arc") &&
     ellipsesCoincident(left, right, tolerance)
   ) {
-    return { coincident: true, points: [] } as const
+    if (left.type === "ellipse" || right.type === "ellipse") {
+      return { coincident: true, points: [] } as const
+    }
+    const angularTolerance =
+      tolerance /
+      Math.max(
+        left.primaryRadius,
+        left.secondaryRadius,
+        right.primaryRadius,
+        right.secondaryRadius,
+        tolerance,
+      )
+    const leftStart = normalizeAngle(left.startParameter)
+    const rightStart = normalizeAngle(right.startParameter)
+    const overlaps = [-TWO_PI, 0, TWO_PI].some((shift) => {
+      const start = Math.max(leftStart, rightStart + shift)
+      const end = Math.min(leftStart + left.sweep, rightStart + shift + right.sweep)
+      return end - start > angularTolerance
+    })
+    if (overlaps) return { coincident: true, points: [] } as const
+    const endpoints = [left.start, left.end, right.start, right.end].filter((point, index) =>
+      index < 2
+        ? parameterOnEllipticalArc(right, ellipseParameterAt(right, point), tolerance)
+        : parameterOnEllipticalArc(left, ellipseParameterAt(left, point), tolerance),
+    )
+    return { coincident: false, points: uniquePoints(endpoints, tolerance) } as const
   }
   return {
     coincident: false,
@@ -421,12 +524,14 @@ function roundRoundIntersections(
 
 function lineCurveIntersections(line: ProfileLineCurve, curve: ProfileCurve, tolerance: number) {
   if (curve.type === "line") return lineLineIntersections(line, curve, tolerance)
-  if (curve.type === "ellipse") return lineEllipseIntersections(line, curve, tolerance)
+  if (curve.type === "ellipse" || curve.type === "elliptical-arc") {
+    return lineEllipseIntersections(line, curve, tolerance)
+  }
   return lineRoundIntersections(line, curve, tolerance)
 }
 
 function ellipseCurveIntersections(
-  ellipse: ProfileEllipseCurve,
+  ellipse: ProfileEllipseLikeCurve,
   curve: Exclude<ProfileCurve, { type: "line" }>,
   tolerance: number,
 ) {
@@ -436,8 +541,12 @@ function ellipseCurveIntersections(
 export function curveIntersections(left: ProfileCurve, right: ProfileCurve, tolerance: number) {
   if (left.type === "line") return lineCurveIntersections(left, right, tolerance)
   if (right.type === "line") return lineCurveIntersections(right, left, tolerance)
-  if (left.type === "ellipse") return ellipseCurveIntersections(left, right, tolerance)
-  if (right.type === "ellipse") return ellipseCurveIntersections(right, left, tolerance)
+  if (left.type === "ellipse" || left.type === "elliptical-arc") {
+    return ellipseCurveIntersections(left, right, tolerance)
+  }
+  if (right.type === "ellipse" || right.type === "elliptical-arc") {
+    return ellipseCurveIntersections(right, left, tolerance)
+  }
   return roundRoundIntersections(left, right, tolerance)
 }
 
@@ -458,6 +567,18 @@ export function curveStartAngle(
     const end = reversed ? curve.start : curve.end
     return Math.atan2(end.y - start.y, end.x - start.x)
   }
+  if (curve.type === "elliptical-arc") {
+    const parameter = reversed ? curve.startParameter + curve.sweep : curve.startParameter
+    const cosine = Math.cos(curve.rotationRadians)
+    const sine = Math.sin(curve.rotationRadians)
+    const localX = -curve.primaryRadius * Math.sin(parameter)
+    const localY = curve.secondarySign * curve.secondaryRadius * Math.cos(parameter)
+    const direction = reversed ? -1 : 1
+    return Math.atan2(
+      direction * (localX * sine + localY * cosine),
+      direction * (localX * cosine - localY * sine),
+    )
+  }
   const angle = reversed ? curve.startAngle + curve.sweep : curve.startAngle
   return angle + (reversed ? -Math.PI / 2 : Math.PI / 2)
 }
@@ -471,6 +592,27 @@ export function curveAreaContribution(curve: ProfileCurve, reversed: boolean) {
   if (curve.type === "ellipse") {
     return Math.PI * curve.primaryRadius * curve.secondaryRadius * (reversed ? -1 : 1)
   }
+  if (curve.type === "elliptical-arc") {
+    const start = reversed ? curve.startParameter + curve.sweep : curve.startParameter
+    const delta = reversed ? -curve.sweep : curve.sweep
+    const end = start + delta
+    const cosine = Math.cos(curve.rotationRadians)
+    const sine = Math.sin(curve.rotationRadians)
+    const primaryDirection = { x: cosine, y: sine }
+    const secondaryDirection = {
+      x: -curve.secondarySign * sine,
+      y: curve.secondarySign * cosine,
+    }
+    const integral =
+      curve.primaryRadius *
+        cross(curve.center, primaryDirection) *
+        (Math.cos(end) - Math.cos(start)) +
+      curve.secondaryRadius *
+        cross(curve.center, secondaryDirection) *
+        (Math.sin(end) - Math.sin(start)) +
+      curve.primaryRadius * curve.secondaryRadius * curve.secondarySign * delta
+    return integral / 2
+  }
   const start = reversed ? curve.startAngle + curve.sweep : curve.startAngle
   const delta = reversed ? -curve.sweep : curve.sweep
   const end = start + delta
@@ -483,12 +625,16 @@ export function curveAreaContribution(curve: ProfileCurve, reversed: boolean) {
 
 export function curveLength(curve: ProfileCurve) {
   if (curve.type === "line") return distance(curve.start, curve.end)
-  if (curve.type !== "ellipse") return curve.radius * curve.sweep
+  if (curve.type !== "ellipse" && curve.type !== "elliptical-arc") {
+    return curve.radius * curve.sweep
+  }
   const segments = 256
-  const step = TWO_PI / segments
+  const sweep = curve.type === "ellipse" ? TWO_PI : curve.sweep
+  const start = curve.type === "ellipse" ? 0 : curve.startParameter
+  const step = sweep / segments
   let total = 0
   for (let index = 0; index < segments; index += 1) {
-    const angle = (index + 0.5) * step
+    const angle = start + (index + 0.5) * step
     total += Math.hypot(
       curve.primaryRadius * Math.sin(angle),
       curve.secondaryRadius * Math.cos(angle),
@@ -503,6 +649,14 @@ export function sampleCurve(curve: ProfileCurve, reversed: boolean) {
     const segmentCount = 96
     return Array.from({ length: segmentCount }, (_, index) =>
       pointOnEllipseAt(curve, ((reversed ? -1 : 1) * TWO_PI * index) / segmentCount),
+    )
+  }
+  if (curve.type === "elliptical-arc") {
+    const segmentCount = Math.max(4, Math.ceil((curve.sweep / TWO_PI) * 96))
+    const start = reversed ? curve.startParameter + curve.sweep : curve.startParameter
+    const delta = (reversed ? -curve.sweep : curve.sweep) / segmentCount
+    return Array.from({ length: segmentCount }, (_, index) =>
+      pointOnEllipseAt(curve, start + delta * index),
     )
   }
   const segmentCount = Math.max(4, Math.ceil((curve.sweep / TWO_PI) * 64))

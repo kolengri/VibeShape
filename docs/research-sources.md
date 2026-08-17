@@ -217,6 +217,7 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 | [Autodesk Inventor 2026 rectangle tools](https://help.autodesk.com/cloudhelp/2026/ENU/Inventor-Help/files/GUID-D489CE6D-7299-4211-A43A-F3580A4BA357.htm) | Three-point center rectangle interaction: center, direction/half-length, and adjacent half-width |
 | [Onshape 3 Point Circle](https://cad.onshape.com/help/Content/Sketch/3_point_circle.htm) | Exact circle placement through three circumference points |
 | [Onshape Center Point Arc](https://cad.onshape.com/help/Content/Sketch/center_point_arc.htm) | Center, start, and endpoint arc workflow |
+| [Onshape Elliptical Arc](https://cad.onshape.com/help/Content/Sketch/elliptical_arc.htm) | Center, primary-axis radius, secondary-radius/start point, temporary construction ellipse, endpoint, and quadrant snapping workflow |
 | [Onshape Tangent Arc](https://cad.onshape.com/help/Content/Sketch/arc_tangent.htm) | Line-endpoint continuation, tangent intent, `Shift+A`, and return to Line after completion |
 | [Onshape Slot](https://cad.onshape.com/help/Content/Sketch/slot.htm) | Selection-first or tool-first slot creation around sketch curves, explicit width control, and chain-selection follow-up behavior |
 | [Onshape dialogs](https://cad.onshape.com/help/Content/Home/dialogs.htm) | Distinct selection and keyboard-input fields plus feature editing in historical context |

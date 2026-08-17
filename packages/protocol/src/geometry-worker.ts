@@ -121,11 +121,74 @@ const extrusionEllipseSegmentSchema = z
     }
   })
 
+const extrusionEllipticalArcSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("elliptical-arc"),
+    center: vector2Schema,
+    primaryAxisPoint: vector2Schema,
+    secondaryAxisPoint: vector2Schema,
+    start: vector2Schema,
+    end: vector2Schema,
+  })
+  .strict()
+  .superRefine((segment, context) => {
+    const primary = [
+      segment.primaryAxisPoint[0] - segment.center[0],
+      segment.primaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const secondary = [
+      segment.secondaryAxisPoint[0] - segment.center[0],
+      segment.secondaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const primaryRadius = Math.hypot(...primary)
+    const secondaryRadius = Math.hypot(...secondary)
+    if (primaryRadius < 0.001 || secondaryRadius < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc axes must have positive CAD-scale radii.",
+      })
+      return
+    }
+    const normalizedDot =
+      (primary[0] * secondary[0] + primary[1] * secondary[1]) / (primaryRadius * secondaryRadius)
+    if (Math.abs(normalizedDot) > 1e-6) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc axes must be perpendicular.",
+      })
+    }
+    for (const [path, point] of [
+      ["start", segment.start],
+      ["end", segment.end],
+    ] as const) {
+      const offset = [point[0] - segment.center[0], point[1] - segment.center[1]] as const
+      const primaryCoordinate =
+        (offset[0] * primary[0] + offset[1] * primary[1]) / primaryRadius ** 2
+      const secondaryCoordinate =
+        (offset[0] * secondary[0] + offset[1] * secondary[1]) / secondaryRadius ** 2
+      if (Math.abs(primaryCoordinate ** 2 + secondaryCoordinate ** 2 - 1) > 1e-6) {
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "Extrusion elliptical-arc endpoints must lie on the ellipse.",
+        })
+      }
+    }
+    if (Math.hypot(segment.end[0] - segment.start[0], segment.end[1] - segment.start[1]) < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc endpoints must be distinct.",
+      })
+    }
+  })
+
 export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
   extrusionLineSegmentSchema,
   extrusionArcSegmentSchema,
   extrusionCircleSegmentSchema,
   extrusionEllipseSegmentSchema,
+  extrusionEllipticalArcSegmentSchema,
 ])
 
 const extrusionProfileLoopSchema = z

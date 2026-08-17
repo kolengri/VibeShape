@@ -82,12 +82,35 @@ export const sketchEllipseEntitySchema = sketchEntityEnvelopeSchema
     { message: "A sketch ellipse requires distinct center and axis point entities." },
   )
 
+export const sketchEllipticalArcEntitySchema = sketchEntityEnvelopeSchema
+  .extend({
+    type: z.literal("elliptical-arc"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (arc) =>
+      new Set([arc.centerPointId, arc.primaryAxisPointId, arc.secondaryAxisPointId]).size === 3 &&
+      arc.startPointId !== arc.endPointId &&
+      arc.startPointId !== arc.centerPointId &&
+      arc.endPointId !== arc.centerPointId,
+    {
+      message:
+        "A sketch elliptical arc requires distinct axes, distinct endpoints, and endpoints away from the center.",
+    },
+  )
+
 export const sketchEntitySchema = z.discriminatedUnion("type", [
   sketchPointEntitySchema,
   sketchLineEntitySchema,
   sketchCircleEntitySchema,
   sketchArcEntitySchema,
   sketchEllipseEntitySchema,
+  sketchEllipticalArcEntitySchema,
 ])
 
 const sketchConstraintEnvelopeSchema = z.object({
@@ -297,6 +320,14 @@ function entityPointReferenceIds(entity: SketchEntity): readonly SketchEntityId[
       return [entity.centerPointId, entity.startPointId, entity.endPointId]
     case "ellipse":
       return [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId]
+    case "elliptical-arc":
+      return [
+        entity.centerPointId,
+        entity.primaryAxisPointId,
+        entity.secondaryAxisPointId,
+        entity.startPointId,
+        entity.endPointId,
+      ]
   }
 }
 
@@ -408,8 +439,8 @@ function validateSketchEntityTable(
   }
 }
 
-function nativeConstraintCount(constraints: readonly SketchConstraint[]) {
-  return constraints.reduce(
+function nativeConstraintCount(structure: SketchStructure) {
+  const authored = structure.constraints.reduce(
     (count, constraint) =>
       count +
       (constraint.type === "offset"
@@ -417,6 +448,40 @@ function nativeConstraintCount(constraints: readonly SketchConstraint[]) {
         : 1),
     0,
   )
+  const internal = structure.entities.reduce((count, entity) => {
+    if (entity.type === "ellipse") return count + 1
+    return entity.type === "elliptical-arc" ? count + 11 : count
+  }, 0)
+  return authored + internal
+}
+
+const nativeEntityCapacity = {
+  arc: { entities: 1, parameters: 0 },
+  circle: { entities: 2, parameters: 1 },
+  ellipse: { entities: 2, parameters: 0 },
+  "elliptical-arc": { entities: 10, parameters: 8 },
+  line: { entities: 1, parameters: 0 },
+  point: { entities: 1, parameters: 2 },
+} as const satisfies Record<
+  SketchEntity["type"],
+  Readonly<{ entities: number; parameters: number }>
+>
+
+function nativeSketchCapacity(structure: SketchStructure) {
+  const authored = structure.entities.reduce(
+    (capacity, entity) => ({
+      entities: capacity.entities + nativeEntityCapacity[entity.type].entities,
+      parameters: capacity.parameters + nativeEntityCapacity[entity.type].parameters,
+    }),
+    { entities: 3, parameters: 7 },
+  )
+  const projectionCount =
+    Number(structure.constraints.some(({ type }) => type === "horizontal-distance")) +
+    Number(structure.constraints.some(({ type }) => type === "vertical-distance"))
+  return {
+    entities: authored.entities + projectionCount * 3,
+    parameters: authored.parameters + projectionCount * 4,
+  }
 }
 
 function validateSketchConstraintTable(
@@ -441,12 +506,30 @@ function validateSketchConstraintTable(
       message: "A sketch constraint reference has an incompatible or missing target.",
     })
   }
-  if (nativeConstraintCount(sketch.constraints) <= MAX_SKETCH_CONSTRAINTS) return
+  if (nativeConstraintCount(sketch) <= MAX_SKETCH_CONSTRAINTS) return
   context.addIssue({
     code: "custom",
     path: ["constraints"],
     message: "Sketch constraints exceed the native solver safety limit.",
   })
+}
+
+function validateNativeSketchCapacity(sketch: SketchStructure, context: z.RefinementCtx) {
+  const capacity = nativeSketchCapacity(sketch)
+  if (capacity.entities > 5_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch entities exceed the native solver safety limit.",
+    })
+  }
+  if (capacity.parameters > 10_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch parameters exceed the native solver safety limit.",
+    })
+  }
 }
 
 export const sketchRecordSchema = z
@@ -467,6 +550,7 @@ export const sketchRecordSchema = z
     const entities = indexSketchEntities(sketch, context)
     validateSketchEntityTable(sketch, entities, context)
     validateSketchConstraintTable(sketch, entities, context)
+    validateNativeSketchCapacity(sketch, context)
   })
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)

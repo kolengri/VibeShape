@@ -121,6 +121,30 @@ function ellipseSegment(
     : null
 }
 
+function ellipticalArcSegment(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  reversed: boolean,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const primaryAxisPoint = solvedPoint(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = solvedPoint(points, entity.secondaryAxisPointId)
+  const first = solvedPoint(points, entity.startPointId)
+  const second = solvedPoint(points, entity.endPointId)
+  if (!center || !primaryAxisPoint || !secondaryAxisPoint || !first || !second) return null
+  const start = reversed ? second : first
+  const end = reversed ? first : second
+  return {
+    entityId: entity.id,
+    type: "elliptical-arc" as const,
+    center: [center.x, center.y] as const,
+    primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
+    secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
+    start: [start.x, start.y] as const,
+    end: [end.x, end.y] as const,
+  }
+}
+
 function materializeLoop(
   loop: SketchProfileLoop,
   sketch: SketchRecord,
@@ -136,6 +160,9 @@ function materializeLoop(
     if (entity.type === "arc") return arcSegment(entity, segment.reversed, points)
     if (entity.type === "circle") return circleSegment(entity, points, radii)
     if (entity.type === "ellipse") return ellipseSegment(entity, points)
+    if (entity.type === "elliptical-arc") {
+      return ellipticalArcSegment(entity, segment.reversed, points)
+    }
     return null
   })
   if (segments.some((segment) => segment === null)) return null

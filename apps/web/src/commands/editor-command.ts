@@ -15,6 +15,7 @@ export const editorCommandIds = {
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
   sketchEllipse: "org.vibeshape.editor.sketch.tool.ellipse",
+  sketchEllipticalArc: "org.vibeshape.editor.sketch.tool.elliptical-arc",
   sketchCircularPattern: "org.vibeshape.editor.sketch.modify.circular-pattern",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
@@ -59,6 +60,7 @@ export type EditorCommandIcon =
   | "cancel"
   | "circle"
   | "ellipse"
+  | "elliptical-arc"
   | "circular-pattern"
   | "circumscribed-polygon"
   | "center-rectangle"
@@ -107,6 +109,7 @@ export type EditorCommandLabelKey =
   | "sketchCenteredSlot"
   | "sketchCircle"
   | "sketchEllipse"
+  | "sketchEllipticalArc"
   | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"

@@ -8,6 +8,7 @@ import {
   curveStartAngle,
   distance,
   ellipseBounds,
+  ellipticalArcBounds,
   isCurveEndpoint,
   type ProfileBounds,
   type ProfileCurve,
@@ -41,7 +42,7 @@ export type SketchProfileDiagnostic = Readonly<{
 
 export type SketchProfileLoopSegment = Readonly<{
   entityId: SketchEntityId
-  type: "line" | "arc" | "circle" | "ellipse"
+  type: "line" | "arc" | "circle" | "ellipse" | "elliptical-arc"
   reversed: boolean
 }>
 
@@ -206,8 +207,8 @@ function ellipseCurve(
   const secondaryX = secondaryAxisPoint.x - center.x
   const secondaryY = secondaryAxisPoint.y - center.y
   if (
-    Math.abs(primaryX * secondaryX + primaryY * secondaryY) >
-    tolerance * Math.max(primaryRadius * secondaryRadius, 1)
+    Math.abs((primaryX * secondaryX + primaryY * secondaryY) / (primaryRadius * secondaryRadius)) >
+    tolerance
   ) {
     return null
   }
@@ -217,11 +218,121 @@ function ellipseCurve(
     type: "ellipse",
     center,
     primaryRadius,
+    secondarySign: 1,
     secondaryRadius,
     rotationRadians,
     start: primaryAxisPoint,
     end: primaryAxisPoint,
     bounds: ellipseBounds(center, primaryRadius, secondaryRadius, rotationRadians),
+  } satisfies ProfileCurve
+}
+
+type EllipticalArcProfilePoints = Readonly<{
+  center: ProfilePoint
+  end: ProfilePoint
+  primaryAxisPoint: ProfilePoint
+  secondaryAxisPoint: ProfilePoint
+  start: ProfilePoint
+}>
+
+function ellipticalArcProfilePoints(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<SketchEntityId, ProfilePoint>,
+): EllipticalArcProfilePoints | null {
+  const center = pointFor(points, entity.centerPointId)
+  const primaryAxisPoint = pointFor(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = pointFor(points, entity.secondaryAxisPointId)
+  const start = pointFor(points, entity.startPointId)
+  const end = pointFor(points, entity.endPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint && start && end
+    ? { center, end, primaryAxisPoint, secondaryAxisPoint, start }
+    : null
+}
+
+function ellipticalArcProfileFrame(points: EllipticalArcProfilePoints, tolerance: number) {
+  const primaryRadius = distance(points.center, points.primaryAxisPoint)
+  const secondaryRadius = distance(points.center, points.secondaryAxisPoint)
+  if (Math.min(primaryRadius, secondaryRadius) <= tolerance) return null
+  const primary = {
+    x: (points.primaryAxisPoint.x - points.center.x) / primaryRadius,
+    y: (points.primaryAxisPoint.y - points.center.y) / primaryRadius,
+  }
+  const secondary = {
+    x: (points.secondaryAxisPoint.x - points.center.x) / secondaryRadius,
+    y: (points.secondaryAxisPoint.y - points.center.y) / secondaryRadius,
+  }
+  if (Math.abs(primary.x * secondary.x + primary.y * secondary.y) > tolerance) return null
+  return {
+    primary,
+    primaryRadius,
+    rotationRadians: Math.atan2(primary.y, primary.x),
+    secondary,
+    secondaryRadius,
+    secondarySign: (primary.x * secondary.y - primary.y * secondary.x < 0 ? -1 : 1) as -1 | 1,
+  }
+}
+
+function ellipticalArcProfileParameter(
+  center: ProfilePoint,
+  frame: NonNullable<ReturnType<typeof ellipticalArcProfileFrame>>,
+  point: ProfilePoint,
+) {
+  const offset = { x: point.x - center.x, y: point.y - center.y }
+  return Math.atan2(
+    (offset.x * frame.secondary.x + offset.y * frame.secondary.y) / frame.secondaryRadius,
+    (offset.x * frame.primary.x + offset.y * frame.primary.y) / frame.primaryRadius,
+  )
+}
+
+function ellipticalArcProfilePointAt(
+  center: ProfilePoint,
+  frame: NonNullable<ReturnType<typeof ellipticalArcProfileFrame>>,
+  parameter: number,
+) {
+  return {
+    x:
+      center.x +
+      frame.primaryRadius * Math.cos(parameter) * frame.primary.x +
+      frame.secondaryRadius * Math.sin(parameter) * frame.secondary.x,
+    y:
+      center.y +
+      frame.primaryRadius * Math.cos(parameter) * frame.primary.y +
+      frame.secondaryRadius * Math.sin(parameter) * frame.secondary.y,
+  }
+}
+
+function ellipticalArcCurve(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<SketchEntityId, ProfilePoint>,
+  tolerance: number,
+) {
+  const resolved = ellipticalArcProfilePoints(entity, points)
+  if (!resolved || distance(resolved.start, resolved.end) <= tolerance) return null
+  const frame = ellipticalArcProfileFrame(resolved, tolerance)
+  if (!frame) return null
+  const startParameter = ellipticalArcProfileParameter(resolved.center, frame, resolved.start)
+  const endParameter = ellipticalArcProfileParameter(resolved.center, frame, resolved.end)
+  const endpointResidual = Math.max(
+    distance(resolved.start, ellipticalArcProfilePointAt(resolved.center, frame, startParameter)),
+    distance(resolved.end, ellipticalArcProfilePointAt(resolved.center, frame, endParameter)),
+  )
+  if (endpointResidual > tolerance) return null
+  const curveWithoutBounds = {
+    entityId: entity.id,
+    type: "elliptical-arc",
+    center: resolved.center,
+    primaryRadius: frame.primaryRadius,
+    secondaryRadius: frame.secondaryRadius,
+    secondarySign: frame.secondarySign,
+    rotationRadians: frame.rotationRadians,
+    startParameter,
+    sweep: positiveSweep(startParameter, endParameter),
+    start: resolved.start,
+    end: resolved.end,
+  } as const
+  return {
+    ...curveWithoutBounds,
+    bounds: ellipticalArcBounds(curveWithoutBounds),
   } satisfies ProfileCurve
 }
 
@@ -234,7 +345,8 @@ function entityCurve(
   if (entity.type === "line") return lineCurve(entity, points)
   if (entity.type === "circle") return circleCurve(entity, points, radii)
   if (entity.type === "arc") return arcCurve(entity, points, tolerance)
-  return ellipseCurve(entity, points, tolerance)
+  if (entity.type === "ellipse") return ellipseCurve(entity, points, tolerance)
+  return ellipticalArcCurve(entity, points, tolerance)
 }
 
 function collectCurves(sketch: SketchRecord, solution: SketchProfileSolution, tolerance: number) {
@@ -279,7 +391,14 @@ function coincidentCurvesOverlap(
   right: Exclude<ProfileCurve, { type: "line" }>,
   tolerance: number,
 ) {
-  if (left.type === "ellipse" || right.type === "ellipse") return true
+  if (
+    left.type === "ellipse" ||
+    left.type === "elliptical-arc" ||
+    right.type === "ellipse" ||
+    right.type === "elliptical-arc"
+  ) {
+    return true
+  }
   if (left.type === "circle" || right.type === "circle") return true
   const leftMiddle = pointOnRoundCurveAt(left, 0.5)
   const rightMiddle = pointOnRoundCurveAt(right, 0.5)
@@ -312,7 +431,14 @@ function curvesHaveAmbiguousCoincidence(
 ) {
   if (!coincident) return false
   if (left.type === "line" || right.type === "line") return true
-  if (left.type === "ellipse" || right.type === "ellipse") return true
+  if (
+    left.type === "ellipse" ||
+    left.type === "elliptical-arc" ||
+    right.type === "ellipse" ||
+    right.type === "elliptical-arc"
+  ) {
+    return true
+  }
   return coincidentCurvesOverlap(left, right, tolerance)
 }
 
