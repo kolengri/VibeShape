@@ -3,6 +3,8 @@ import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers
 import type { SketchEntity, SketchRecord } from "./sketch"
 import { appendSketchConstraint, appendSketchLine, createEmptySketch } from "./sketch-edit"
 import {
+  circularPatternSketchEntities,
+  circularSketchPatternTransforms,
   linearPatternSketchEntities,
   linearSketchPatternTransforms,
   patternSketchEntities,
@@ -45,6 +47,48 @@ function requiredId(id: SketchEntityId | undefined) {
 }
 
 describe("analytical sketch patterns", () => {
+  it("builds closed and open circular transforms around an arbitrary center", () => {
+    expect(
+      circularSketchPatternTransforms({
+        angleRadians: Math.PI * 2,
+        center: { x: 5, y: 5 },
+        closed: true,
+        count: 4,
+      }),
+    ).toEqual([
+      { rotationRadians: Math.PI / 2, translation: { x: 10, y: 0 } },
+      { rotationRadians: Math.PI, translation: { x: 10, y: 10 } },
+      { rotationRadians: (Math.PI * 3) / 2, translation: { x: 0, y: 10 } },
+    ])
+    expect(
+      circularSketchPatternTransforms({
+        angleRadians: Math.PI,
+        center: { x: 0, y: 0 },
+        closed: false,
+        count: 3,
+      }).map(({ rotationRadians }) => rotationRadians),
+    ).toEqual([Math.PI / 2, Math.PI])
+  })
+
+  it("rejects invalid circular counts and overlapping open sweeps", () => {
+    expect(() =>
+      circularSketchPatternTransforms({
+        angleRadians: Math.PI * 2,
+        center: { x: 0, y: 0 },
+        closed: false,
+        count: 3,
+      }),
+    ).toThrow("between 0 and 360")
+    expect(() =>
+      circularSketchPatternTransforms({
+        angleRadians: Math.PI * 2,
+        center: { x: 0, y: 0 },
+        closed: true,
+        count: 101,
+      }),
+    ).toThrow("between 2 and 100")
+  })
+
   it("builds bounded one- and two-direction linear transforms", () => {
     expect(
       linearSketchPatternTransforms({
@@ -168,5 +212,50 @@ describe("analytical sketch patterns", () => {
       transforms: [{ rotationRadians: Math.PI / 3, translation: { x: 0, y: 0 } }],
     })
     expect(arbitrary.sketch.constraints).toHaveLength(2)
+  })
+
+  it("materializes circular occurrences and rotates compatible orientation constraints", () => {
+    const lineResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 10, y: 0 } },
+      end: { kind: "new", point: { x: 14, y: 0 } },
+    })
+    const line = entityById(
+      lineResult.sketch,
+      requiredId(lineResult.createdEntityIds.at(-1)),
+      "line",
+    )
+    const source = appendSketchConstraint(
+      lineResult.sketch,
+      { type: "horizontal", lineId: line.id },
+      constraintId,
+    )
+    const result = circularPatternSketchEntities(source, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      definition: {
+        angleRadians: Math.PI * 2,
+        center: { x: 0, y: 0 },
+        closed: true,
+        count: 4,
+      },
+      entityIds: [line.id],
+    })
+
+    expect(result.createdEntityIds).toHaveLength(9)
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "horizontal",
+      "vertical",
+      "horizontal",
+      "vertical",
+    ])
+    const createdLine = result.createdEntityIds
+      .map((id) => result.sketch.entities.find((entity) => entity.id === id))
+      .find((entity): entity is Extract<SketchEntity, { type: "line" }> => entity?.type === "line")
+    if (!createdLine) throw new Error("The circular pattern fixture requires a created line.")
+    expect(entityById(result.sketch, createdLine.startPointId, "point")).toMatchObject({
+      x: 0,
+      y: 10,
+    })
   })
 })

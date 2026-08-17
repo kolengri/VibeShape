@@ -38,6 +38,7 @@ and selection are presentation state; they never replace stable entity and const
 | Offset | Offset one line or a connected non-branching line chain/loop with live signed preview and one variable-ready driving dimension | Implemented for lines |
 | Transform | Move, axis-translate, rotate, or uniformly scale preselected or subsequently selected sketch geometry with one transient manipulator, relocatable point-snapping origin, variable-aware exact values, and one local history commit | Implemented |
 | Linear Pattern | Repeat preselected or subsequently selected sketch geometry in one or two exact directions with count, spacing, and angle controls; preview at most ten total instances and commit once | Implemented as bounded analytical copies; associative pattern editing remains open |
+| Circular Pattern | Repeat preselected or subsequently selected geometry around an exact center as a closed 360° distribution or an open signed sweep; preview at most ten total instances and commit once | Implemented as bounded analytical copies; draggable center and associative pattern editing remain open |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -56,10 +57,13 @@ reflects points or analytical curves through shared pure domain operations. Offs
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
 every line pair plus both open-chain endpoints. Ellipse, spline, drag-through Trim, free-end Extend,
-round-curve Offset, circular and associative pattern authoring, curve-chain slots, and projected
+round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
-fixed, and rotation-incompatible projected constraints. These capabilities require exact domain and
+fixed, and rotation-incompatible projected constraints. Circular Pattern follows the same
+materialized-copy contract, supports an exact project-unit-aware center and a closed or open angular
+distribution, and rotates orientation constraints only when their exact quarter-turn meaning is
+preserved. These capabilities require exact domain and
 solver behavior and MUST NOT be simulated only in the toolbar.
 
 ## Onshape-oriented parity baseline
@@ -87,7 +91,7 @@ documentation.
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, exact or manipulator-driven move/rotate/uniform-scale Transform with a relocatable origin, and one/two-direction Linear Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, Circular Pattern, and associative pattern editing |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, exact or manipulator-driven move/rotate/uniform-scale Transform with a relocatable origin, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, draggable circular-pattern center, and associative pattern editing |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -156,9 +160,11 @@ adding solver constraints.
    exactly one global draft and one undo checkpoint when the gesture ends. Raw pointer samples are
    reduced to the latest sample per animation frame before sketch-coordinate conversion, inference,
    and viewport-local React state. Drag start MUST snapshot the viewport rectangle once; subsequent
-   drag frames MUST NOT force layout. Continuous movement replaces and postpones the scheduled exact
-   solver target until a brief pointer pause, without publishing through the parent workspace
-   on every frame. The scheduler sends the original schema-valid sketch plus the latest separate drag
+   drag frames MUST NOT force layout. Below the bounded interactive-complexity limit, continuous
+   movement replaces and postpones the scheduled exact solver target until a brief pointer pause.
+   Denser drafts retain the last exact base and solve only after pointer release. Neither path
+   publishes through the parent workspace on every frame. The scheduler sends the original
+   schema-valid sketch plus the latest separate drag
    target, permits one request in flight, and retains only the newest pending target. Release keeps
    the final overlay visible until the exact result settles. No drag-frame path may clone or
    schema-parse the complete sketch.

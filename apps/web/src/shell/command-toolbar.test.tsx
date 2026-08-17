@@ -192,6 +192,9 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Linear pattern" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("linear-pattern")
 
+    await user.click(screen.getByRole("button", { name: "Circular pattern" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("circular-pattern")
+
     await user.click(screen.getByRole("button", { name: "Split" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("split")
 

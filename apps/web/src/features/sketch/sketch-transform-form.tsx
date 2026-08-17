@@ -8,7 +8,6 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useMemo, useState } from "react"
 import {
@@ -19,6 +18,7 @@ import {
 } from "../../document/document-display-units"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import { SketchExpressionFormField } from "./sketch-expression-form-field"
+import { SketchFormActions } from "./sketch-form-actions"
 import type { SketchTransformPreview } from "./sketch-transform-manipulator"
 
 export type SketchTransformExactValue = Readonly<{
@@ -182,14 +182,15 @@ export function SketchTransformForm({
           {message}
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          {t("cancel")}
-        </Button>
-        <form.SubmitButton requireDirty={false} size="sm">
-          {t("apply")}
-        </form.SubmitButton>
-      </div>
+      <SketchFormActions
+        cancelLabel={t("cancel")}
+        submit={
+          <form.SubmitButton requireDirty={false} size="sm">
+            {t("apply")}
+          </form.SubmitButton>
+        }
+        onCancel={onCancel}
+      />
     </Form>
   )
 }

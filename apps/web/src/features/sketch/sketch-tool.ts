@@ -37,15 +37,24 @@ export type SketchEditorTool =
   | "mirror"
   | "offset"
   | "linear-pattern"
+  | "circular-pattern"
   | "split"
   | "transform"
 export type SketchModificationTool = Extract<
   SketchEditorTool,
-  "extend" | "linear-pattern" | "mirror" | "offset" | "split" | "transform" | "trim"
+  | "circular-pattern"
+  | "extend"
+  | "linear-pattern"
+  | "mirror"
+  | "offset"
+  | "split"
+  | "transform"
+  | "trim"
 >
 export type SketchDraftChangeMode = "record" | "replace"
 
 const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
+  "circular-pattern",
   "extend",
   "linear-pattern",
   "mirror",

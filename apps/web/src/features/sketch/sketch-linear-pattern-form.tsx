@@ -2,25 +2,27 @@ import {
   type DocumentDisplayUnits,
   type EvaluatedVariable,
   type ExpressionValue,
-  evaluateExpression,
   evaluateVariableDefinitions,
   type LinearSketchPatternDefinition,
   MAX_SKETCH_PATTERN_INSTANCES,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
-import { Button } from "@vibeshape/ui/components/button"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useMemo, useState } from "react"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
-  normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import { SketchExpressionFormField } from "./sketch-expression-form-field"
+import { SketchFormActions } from "./sketch-form-actions"
+import {
+  evaluateSketchPatternExpression,
+  stableSketchPatternScalar,
+} from "./sketch-pattern-form-values"
 
 type LinearSketchPatternFormValues = Readonly<{
   firstAngle: string
@@ -37,10 +39,6 @@ export const defaultLinearSketchPatternDefinition: LinearSketchPatternDefinition
   second: null,
 }
 
-function stableScalarExpression(value: number) {
-  return Number(value.toPrecision(12)).toString()
-}
-
 function defaultValues(
   value: LinearSketchPatternDefinition,
   displayUnits: DocumentDisplayUnits,
@@ -52,10 +50,10 @@ function defaultValues(
   }
   return {
     firstAngle: defaultAngleExpression(value.first.angleRadians, displayUnits.angle),
-    firstCount: stableScalarExpression(value.first.count),
+    firstCount: stableSketchPatternScalar(value.first.count),
     firstSpacing: defaultLengthExpression(value.first.spacing, displayUnits.length),
     secondAngle: defaultAngleExpression(second.angleRadians, displayUnits.angle),
-    secondCount: stableScalarExpression(second.count),
+    secondCount: stableSketchPatternScalar(second.count),
     secondDirection: value.second !== null,
     secondSpacing: defaultLengthExpression(second.spacing, displayUnits.length),
   }
@@ -66,16 +64,6 @@ type PatternDirectionExpressions = Readonly<{
   count: string
   spacing: string
 }>
-
-function evaluatedPatternValue(
-  expression: string,
-  variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
-  unit?: DocumentDisplayUnits["angle" | "length"],
-) {
-  const source = unit ? normalizeExpressionWithDisplayUnit(expression, unit) : expression.trim()
-  const result = evaluateExpression(source, variables)
-  return result.ok ? result.value : null
-}
 
 function patternCount(value: ExpressionValue | null) {
   return value?.dimension === "scalar" && Number.isInteger(value.value) && value.value >= 2
@@ -96,12 +84,12 @@ function evaluatedPatternDirection(
   variables: ReadonlyMap<string, ExpressionValue | EvaluatedVariable>,
   displayUnits: DocumentDisplayUnits,
 ) {
-  const count = patternCount(evaluatedPatternValue(expressions.count, variables))
+  const count = patternCount(evaluateSketchPatternExpression(expressions.count, variables))
   const spacing = patternSpacing(
-    evaluatedPatternValue(expressions.spacing, variables, displayUnits.length),
+    evaluateSketchPatternExpression(expressions.spacing, variables, displayUnits.length),
   )
   const angle = patternAngle(
-    evaluatedPatternValue(expressions.angle, variables, displayUnits.angle),
+    evaluateSketchPatternExpression(expressions.angle, variables, displayUnits.angle),
   )
   return count === null || spacing === null || angle === null
     ? null
@@ -188,6 +176,22 @@ export function SketchLinearPatternForm({
     { label: t("secondSpacing"), name: "secondSpacing" },
     { label: t("secondAngle"), name: "secondAngle" },
   ] as const
+  const renderFields = (items: readonly (typeof fields)[number][]) =>
+    items.map(({ label, name }) => (
+      <form.Field key={name} name={name}>
+        {(field) => (
+          <SketchExpressionFormField
+            field={field}
+            id={`sketch-linear-pattern-${name}`}
+            label={label}
+            suggestions={suggestions}
+            onValueChange={(nextValue) => {
+              updatePreview(name, nextValue)
+            }}
+          />
+        )}
+      </form.Field>
+    ))
   return (
     <Form
       aria-label={t("title")}
@@ -195,23 +199,7 @@ export function SketchLinearPatternForm({
       form={form}
       variant="panel"
     >
-      <div className="grid grid-cols-2 gap-2">
-        {fields.slice(0, 3).map(({ label, name }) => (
-          <form.Field key={name} name={name}>
-            {(field) => (
-              <SketchExpressionFormField
-                field={field}
-                id={`sketch-linear-pattern-${name}`}
-                label={label}
-                suggestions={suggestions}
-                onValueChange={(nextValue) => {
-                  updatePreview(name, nextValue)
-                }}
-              />
-            )}
-          </form.Field>
-        ))}
-      </div>
+      <div className="grid grid-cols-2 gap-2">{renderFields(fields.slice(0, 3))}</div>
       <form.Field name="secondDirection">
         {(field) => (
           <TanStackBooleanParameterField
@@ -226,23 +214,7 @@ export function SketchLinearPatternForm({
       <form.Subscribe selector={(state) => state.values.secondDirection}>
         {(secondDirection) =>
           secondDirection ? (
-            <div className="grid grid-cols-2 gap-2">
-              {fields.slice(3).map(({ label, name }) => (
-                <form.Field key={name} name={name}>
-                  {(field) => (
-                    <SketchExpressionFormField
-                      field={field}
-                      id={`sketch-linear-pattern-${name}`}
-                      label={label}
-                      suggestions={suggestions}
-                      onValueChange={(nextValue) => {
-                        updatePreview(name, nextValue)
-                      }}
-                    />
-                  )}
-                </form.Field>
-              ))}
-            </div>
+            <div className="grid grid-cols-2 gap-2">{renderFields(fields.slice(3))}</div>
           ) : null
         }
       </form.Subscribe>
@@ -251,14 +223,15 @@ export function SketchLinearPatternForm({
           {message}
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          {t("cancel")}
-        </Button>
-        <form.SubmitButton requireDirty={false} size="sm">
-          {t("apply")}
-        </form.SubmitButton>
-      </div>
+      <SketchFormActions
+        cancelLabel={t("cancel")}
+        submit={
+          <form.SubmitButton requireDirty={false} size="sm">
+            {t("apply")}
+          </form.SubmitButton>
+        }
+        onCancel={onCancel}
+      />
     </Form>
   )
 }

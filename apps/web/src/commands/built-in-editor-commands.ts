@@ -306,6 +306,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "circular-pattern",
+    id: editorCommandIds.sketchCircularPattern,
+    labelKey: "sketchCircularPattern",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "split",
     id: editorCommandIds.sketchSplit,
     labelKey: "sketchSplit",
@@ -385,6 +393,7 @@ function sketchToolHandler(
     | "sketchCenteredAlignedRectangle"
     | "sketchCenteredSlot"
     | "sketchCircle"
+    | "sketchCircularPattern"
     | "sketchCircumscribedPolygon"
     | "sketchExtend"
     | "sketchInscribedPolygon"
@@ -523,6 +532,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
   sketchToolHandler(editorCommandIds.sketchOffset, "offset"),
   sketchToolHandler(editorCommandIds.sketchLinearPattern, "linear-pattern"),
+  sketchToolHandler(editorCommandIds.sketchCircularPattern, "circular-pattern"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
   sketchToolHandler(editorCommandIds.sketchTransform, "transform"),
   {

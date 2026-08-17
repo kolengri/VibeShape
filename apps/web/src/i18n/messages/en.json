@@ -287,6 +287,10 @@
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"
         },
+        "sketchCircularPattern": {
+          "label": "Circular pattern",
+          "keywords": "circular sketch pattern|radial array|repeat around center|polar copies"
+        },
         "sketchCircumscribedPolygon": {
           "label": "Circumscribed polygon",
           "keywords": "circumscribed polygon|polygon inside circle|regular polygon|center polygon"
@@ -678,6 +682,8 @@
         "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
         "linearPatternSelectGeometry": "Select sketch geometry to pattern.",
         "linearPatternAdjust": "Set count, spacing, and angle for one or two directions. Enter or empty space applies; Escape cancels.",
+        "circularPatternSelectGeometry": "Select sketch geometry to pattern around a center.",
+        "circularPatternAdjust": "Set the center, count, and closed or open sweep. Enter or empty space applies; Escape cancels.",
         "transformSelectGeometry": "Select sketch geometry to transform.",
         "transformAdjust": "Drag to move, rotate, or scale; drag the dashed origin ring to relocate the pivot. Arrow keys move; [ and ] rotate; - and = scale. Exact fields accept units and #variables. Enter or empty space applies; Escape cancels.",
         "transformMove": "Move selection",
@@ -712,6 +718,17 @@
         "secondAngle": "Second angle",
         "invalid": "Enter valid counts, positive spacing, and angle expressions. A pattern supports at most 100 total instances.",
         "apply": "Apply linear pattern",
+        "cancel": "Cancel"
+      },
+      "circularPattern": {
+        "title": "Circular pattern",
+        "centerX": "Center X",
+        "centerY": "Center Y",
+        "count": "Instance count",
+        "closed": "Closed 360° pattern",
+        "angle": "Open sweep angle",
+        "invalid": "Enter a valid center, a count from 2 to 100, and an open angle between 0° and 360°.",
+        "apply": "Apply circular pattern",
         "cancel": "Cancel"
       }
     },

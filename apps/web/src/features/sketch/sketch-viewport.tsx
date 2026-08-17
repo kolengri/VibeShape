@@ -18,6 +18,9 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   centeredAlignedRectangleGeometry,
+  type CircularSketchPatternDefinition,
+  circularPatternSketchEntities,
+  circularSketchPatternTransforms,
   extendSketchCurve,
   inferSketchPoint,
   type LinearSketchPatternDefinition,
@@ -105,6 +108,10 @@ import {
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
+import {
+  defaultCircularSketchPatternDefinition,
+  SketchCircularPatternForm,
+} from "./sketch-circular-pattern-form"
 import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
@@ -2864,9 +2871,10 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
 
 type DirectSketchModificationTool = Exclude<
   SketchModificationTool,
-  "linear-pattern" | "mirror" | "offset" | "transform"
+  "circular-pattern" | "linear-pattern" | "mirror" | "offset" | "transform"
 >
 type SketchCurveActionKind =
+  | "circular-pattern"
   | "direct"
   | "linear-pattern"
   | "mirror"
@@ -2874,16 +2882,18 @@ type SketchCurveActionKind =
   | "split-circle"
   | "transform"
 
+const indirectSketchCurveActions = new Map<SketchModificationTool, SketchCurveActionKind>([
+  ["circular-pattern", "circular-pattern"],
+  ["linear-pattern", "linear-pattern"],
+  ["mirror", "mirror"],
+  ["offset", "offset"],
+  ["transform", "transform"],
+])
+
 function isDirectSketchModificationTool(
   tool: SketchEditorTool,
 ): tool is DirectSketchModificationTool {
-  return (
-    isSketchModificationTool(tool) &&
-    tool !== "linear-pattern" &&
-    tool !== "mirror" &&
-    tool !== "offset" &&
-    tool !== "transform"
-  )
+  return isSketchModificationTool(tool) && !indirectSketchCurveActions.has(tool)
 }
 
 function sketchCurveActionKind(
@@ -2891,9 +2901,8 @@ function sketchCurveActionKind(
   entity: SketchEntity | undefined,
 ): SketchCurveActionKind | null {
   if (!isSketchModificationTool(tool)) return null
-  if (tool === "mirror" || tool === "offset") return tool
-  if (tool === "linear-pattern") return "linear-pattern"
-  if (tool === "transform") return "transform"
+  const indirectAction = indirectSketchCurveActions.get(tool)
+  if (indirectAction) return indirectAction
   return tool === "split" && entity?.type === "circle" ? "split-circle" : "direct"
 }
 
@@ -3004,6 +3013,23 @@ function safeLinearPatternSketchEntities(
 ) {
   try {
     return linearPatternSketchEntities(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      definition,
+      entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+function safeCircularPatternSketchEntities(
+  draft: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+  definition: CircularSketchPatternDefinition,
+) {
+  try {
+    return circularPatternSketchEntities(draft, {
       createConstraintId: createBrowserSketchConstraintId,
       createEntityId: createBrowserSketchEntityId,
       definition,
@@ -3217,6 +3243,7 @@ const pointInferenceSupport = {
   "aligned-rectangle": alwaysSupportsPointInference,
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
+  "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
@@ -3781,6 +3808,9 @@ type SketchDrawingViewProps = Readonly<{
   handlers: Readonly<{
     appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
     onCanvasPointerDown: (event: PointerEvent<SVGSVGElement>) => void
+    onCircularPatternApply: (value: CircularSketchPatternDefinition) => void
+    onCircularPatternCancel: () => void
+    onCircularPatternPreview: (value: CircularSketchPatternDefinition | null) => void
     onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
     onLinearPatternApply: (value: LinearSketchPatternDefinition) => void
@@ -3806,6 +3836,10 @@ type SketchDrawingViewProps = Readonly<{
     editable: boolean
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
+    circularPattern: Readonly<{
+      definition: CircularSketchPatternDefinition | null
+      selectionKey: string
+    }> | null
     linearPattern: Readonly<{
       definition: LinearSketchPatternDefinition | null
       selectionKey: string
@@ -3894,6 +3928,69 @@ function SketchLinearPatternPresentation({
   )
 }
 
+function SketchCircularPatternPresentation({
+  entityIds,
+  geometry,
+  pattern,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  pattern: SketchDrawingViewProps["state"]["circularPattern"]
+}>) {
+  if (!pattern?.definition) return null
+  let transforms: readonly ReturnType<typeof circularSketchPatternTransforms>[number][]
+  try {
+    transforms = circularSketchPatternTransforms(pattern.definition).slice(
+      0,
+      MAX_SKETCH_PATTERN_PREVIEW_INSTANCES - 1,
+    )
+  } catch {
+    return null
+  }
+  const { center } = pattern.definition
+  return (
+    <g data-sketch-circular-pattern-preview>
+      {transforms.map((transform, index) => (
+        <SketchTransformGeometry
+          key={`${transform.rotationRadians}:${index}`}
+          entityIds={entityIds}
+          origin={{ x: 0, y: 0 }}
+          presentation={geometry}
+          preview={{
+            rotationRadians: transform.rotationRadians,
+            scale: 1,
+            translation: transform.translation,
+          }}
+        />
+      ))}
+      <g className="pointer-events-none stroke-ring" transform="scale(1 -1)">
+        <circle
+          cx={center.x}
+          cy={center.y}
+          fill="none"
+          r={5}
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={center.x - 8}
+          y1={center.y}
+          x2={center.x + 8}
+          y2={center.y}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={center.x}
+          y1={center.y - 8}
+          x2={center.x}
+          y2={center.y + 8}
+          vectorEffect="non-scaling-stroke"
+        />
+      </g>
+    </g>
+  )
+}
+
 function SketchLinearPatternPanel({
   configuration,
   handlers,
@@ -3911,6 +4008,27 @@ function SketchLinearPatternPanel({
       onApply={handlers.onLinearPatternApply}
       onCancel={handlers.onLinearPatternCancel}
       onPreview={handlers.onLinearPatternPreview}
+    />
+  )
+}
+
+function SketchCircularPatternPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["circularPattern"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchCircularPatternForm
+      key={value.selectionKey}
+      variables={configuration.variables}
+      onApply={handlers.onCircularPatternApply}
+      onCancel={handlers.onCircularPatternCancel}
+      onPreview={handlers.onCircularPatternPreview}
     />
   )
 }
@@ -4024,6 +4142,11 @@ function SketchDrawingView({
           geometry={state.geometry}
           pattern={state.linearPattern}
         />
+        <SketchCircularPatternPresentation
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          pattern={state.circularPattern}
+        />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
       </svg>
@@ -4051,10 +4174,19 @@ function SketchDrawingView({
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
+      <SketchCircularPatternInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
       <SketchLinearPatternPanel
         configuration={configuration}
         handlers={handlers}
         value={state.linearPattern}
+      />
+      <SketchCircularPatternPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.circularPattern}
       />
       <SketchTransformPanel
         configuration={configuration}
@@ -4152,6 +4284,26 @@ function SketchLinearPatternInstruction({
   )
 }
 
+function SketchCircularPatternInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "circular-pattern") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-circular-pattern-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "circularPatternAdjust" : "circularPatternSelectGeometry")}
+    </div>
+  )
+}
+
 function useSketchPlacementPresentation({
   draft,
   editorTool,
@@ -4205,14 +4357,17 @@ function useSketchPlacementPresentation({
   return { cursor, inference, pending, setCursor, setInference, setPending }
 }
 
-function useSketchLinearPatternInteraction({
+function useSketchPatternInteraction<Definition>({
+  defaultDefinition,
   draft,
   editorTool,
+  materialize,
   onDraftChange,
   onEditorToolChange,
   onSelectionChange,
   selectedEntityIds,
   sketchId,
+  tool,
 }: Pick<
   SketchDrawingConfiguration,
   | "draft"
@@ -4221,13 +4376,20 @@ function useSketchLinearPatternInteraction({
   | "onEditorToolChange"
   | "onSelectionChange"
   | "selectedEntityIds"
-> & { sketchId: SketchRecord["id"] }) {
-  const [definition, setDefinition] = useState<LinearSketchPatternDefinition | null>(
-    defaultLinearSketchPatternDefinition,
-  )
+> & {
+  defaultDefinition: Definition
+  materialize: (
+    draft: SketchRecord,
+    entityIds: readonly SketchEntityId[],
+    definition: Definition,
+  ) => Readonly<{ sketch: SketchRecord }> | null
+  sketchId: SketchRecord["id"]
+  tool: "circular-pattern" | "linear-pattern"
+}) {
+  const [definition, setDefinition] = useState<Definition | null>(defaultDefinition)
   const selectionKey = selectedEntityIds.join(":")
 
-  const reset = () => setDefinition(defaultLinearSketchPatternDefinition)
+  const reset = () => setDefinition(defaultDefinition)
 
   useEffect(() => {
     reset()
@@ -4235,7 +4397,7 @@ function useSketchLinearPatternInteraction({
 
   const commit = (value = definition) => {
     if (!draft || !value || selectedEntityIds.length === 0) return false
-    const result = safeLinearPatternSketchEntities(draft, selectedEntityIds, value)
+    const result = materialize(draft, selectedEntityIds, value)
     if (!result) return false
     onDraftChange(result.sketch, "record")
     onSelectionChange([])
@@ -4250,7 +4412,7 @@ function useSketchLinearPatternInteraction({
   }
 
   const consumeKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
-    if (editorTool !== "linear-pattern") return false
+    if (editorTool !== tool) return false
     if (event.key === "Escape") {
       event.preventDefault()
       cancel()
@@ -4265,7 +4427,7 @@ function useSketchLinearPatternInteraction({
   }
 
   const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (editorTool !== "linear-pattern" || !isPrimaryEmptyCanvasPointer(event)) return false
+    if (editorTool !== tool || !isPrimaryEmptyCanvasPointer(event)) return false
     if (selectedEntityIds.length === 0) onSelectionChange([])
     else commit()
     return true
@@ -4283,9 +4445,7 @@ function useSketchLinearPatternInteraction({
     consumeKeyDown,
     preview: setDefinition,
     presentation:
-      editorTool === "linear-pattern" && selectedEntityIds.length > 0
-        ? { definition, selectionKey }
-        : null,
+      editorTool === tool && selectedEntityIds.length > 0 ? { definition, selectionKey } : null,
     selectEntity,
   }
 }
@@ -4487,7 +4647,18 @@ function useSketchModificationInteractions(
   },
 ) {
   return {
-    linearPattern: useSketchLinearPatternInteraction(input),
+    circularPattern: useSketchPatternInteraction({
+      ...input,
+      defaultDefinition: defaultCircularSketchPatternDefinition,
+      materialize: safeCircularPatternSketchEntities,
+      tool: "circular-pattern",
+    }),
+    linearPattern: useSketchPatternInteraction({
+      ...input,
+      defaultDefinition: defaultLinearSketchPatternDefinition,
+      materialize: safeLinearPatternSketchEntities,
+      tool: "linear-pattern",
+    }),
     transform: useSketchTransformInteraction(input),
   }
 }
@@ -4524,7 +4695,7 @@ function SketchDrawing({
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
-  const { linearPattern, transform } = useSketchModificationInteractions({
+  const { circularPattern, linearPattern, transform } = useSketchModificationInteractions({
     bounds,
     draft,
     editorTool,
@@ -4626,6 +4797,7 @@ function SketchDrawing({
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
     if (transform.consumeKeyDown(event)) return
+    if (circularPattern.consumeKeyDown(event)) return
     if (linearPattern.consumeKeyDown(event)) return
     handleSketchKeyDown({
       appendAt,
@@ -4646,6 +4818,7 @@ function SketchDrawing({
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (transform.consumeCanvasPointerDown(event)) return
+    if (circularPattern.consumeCanvasPointerDown(event)) return
     if (linearPattern.consumeCanvasPointerDown(event)) return
     const offsetDraft = offsetDraftFromCanvasPointer({
       draft,
@@ -4729,6 +4902,7 @@ function SketchDrawing({
     const actionKind = sketchCurveActionKind(editorTool, entity)
     if (!actionKind) return
     const actions = {
+      "circular-pattern": () => circularPattern.selectEntity(event, entityId),
       "linear-pattern": () => linearPattern.selectEntity(event, entityId),
       mirror: () => handleMirrorAction(entityId),
       offset: () => handleOffsetSourceAction(entityId),
@@ -4779,6 +4953,9 @@ function SketchDrawing({
       handlers={{
         appendAt,
         onCanvasPointerDown: handleCanvasPointerDown,
+        onCircularPatternApply: circularPattern.apply,
+        onCircularPatternCancel: circularPattern.cancel,
+        onCircularPatternPreview: circularPattern.preview,
         onCurveAction: handleCurveAction,
         onKeyDown: handleKeyDown,
         onLinearPatternApply: linearPattern.apply,
@@ -4798,6 +4975,7 @@ function SketchDrawing({
       state={{
         annotationProfiles,
         bounds,
+        circularPattern: circularPattern.presentation,
         cursor,
         dragTarget,
         draggingPointId,
