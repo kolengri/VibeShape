@@ -5,6 +5,7 @@ import {
   appendSketchArc,
   appendSketchCircle,
   appendSketchLine,
+  appendSketchRectangle,
   createLengthQuantity,
   createRectangleSketch,
   moveSketchPoint,
@@ -209,6 +210,26 @@ function lineSketchFixture(
       createEntityId,
       end: { kind: "new", point: segment.end },
       start: { kind: "new", point: segment.start },
+    }).sketch
+  }
+  return result
+}
+
+function denseRectangleSketchFixture(rectangleCount = 24) {
+  const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b261")
+  const createConstraintId = sequentialIdFactory(
+    (value) => sketchConstraintIdSchema.parse(value),
+    "b262",
+  )
+  let result = sketch
+  for (let index = 0; index < rectangleCount; index += 1) {
+    const column = index % 6
+    const row = Math.floor(index / 6)
+    result = appendSketchRectangle(result, {
+      createConstraintId,
+      createEntityId,
+      firstCorner: { x: 40 + column * 12, y: row * 10 },
+      oppositeCorner: { x: 48 + column * 12, y: 6 + row * 10 },
     }).sketch
   }
   return result
@@ -1767,6 +1788,52 @@ describe("SketchViewport", () => {
       }),
       "record",
     )
+  })
+
+  it("defers exact solving until release when a dense sketch point is dragged", async () => {
+    const denseSketch = denseRectangleSketchFixture()
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      controller: {
+        ...controller,
+        report: {
+          snapshot: { revision: 7, sketches: [denseSketch] },
+          rebuild: { ok: true },
+        },
+      } as unknown as DocumentControllerState,
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch,
+      onDraftChange,
+    })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The dense sketch fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The dense sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The dense point drag must schedule an animation frame.")
+    act(() => frame(0))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 180)))
+
+    expect(solveSketch).toHaveBeenCalledTimes(1)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
   })
 
   it("limits drag-frame rendering to the point and its incident curves", async () => {
