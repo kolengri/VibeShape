@@ -300,6 +300,10 @@
           "keywords": "extend sketch line|lengthen to boundary|modify geometry"
         },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchLinearPattern": {
+          "label": "Linear pattern",
+          "keywords": "linear sketch pattern|array geometry|repeat selection|grid copies"
+        },
         "sketchMirror": {
           "label": "Mirror",
           "keywords": "mirror sketch geometry|reflect entities|symmetry line|copy across axis"
@@ -672,6 +676,8 @@
         "mirrorSelectSources": "Select geometry to mirror. Press Escape when finished.",
         "offsetSelectSource": "Select a line or connected line chain to offset.",
         "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
+        "linearPatternSelectGeometry": "Select sketch geometry to pattern.",
+        "linearPatternAdjust": "Set count, spacing, and angle for one or two directions. Enter or empty space applies; Escape cancels.",
         "transformSelectGeometry": "Select sketch geometry to transform.",
         "transformAdjust": "Drag to move, rotate, or scale; drag the dashed origin ring to relocate the pivot. Arrow keys move; [ and ] rotate; - and = scale. Exact fields accept units and #variables. Enter or empty space applies; Escape cancels.",
         "transformMove": "Move selection",
@@ -693,6 +699,19 @@
         "scale": "Scale",
         "invalid": "Enter valid length, angle, and positive scalar expressions.",
         "apply": "Apply transform",
+        "cancel": "Cancel"
+      },
+      "linearPattern": {
+        "title": "Linear pattern",
+        "firstCount": "First count",
+        "firstSpacing": "First spacing",
+        "firstAngle": "First angle",
+        "secondDirection": "Add second direction",
+        "secondCount": "Second count",
+        "secondSpacing": "Second spacing",
+        "secondAngle": "Second angle",
+        "invalid": "Enter valid counts, positive spacing, and angle expressions. A pattern supports at most 100 total instances.",
+        "apply": "Apply linear pattern",
         "cancel": "Cancel"
       }
     },

@@ -298,6 +298,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "linear-pattern",
+    id: editorCommandIds.sketchLinearPattern,
+    labelKey: "sketchLinearPattern",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "split",
     id: editorCommandIds.sketchSplit,
     labelKey: "sketchSplit",
@@ -381,6 +389,7 @@ function sketchToolHandler(
     | "sketchExtend"
     | "sketchInscribedPolygon"
     | "sketchLine"
+    | "sketchLinearPattern"
     | "sketchMirror"
     | "sketchOffset"
     | "sketchPoint"
@@ -513,6 +522,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
   sketchToolHandler(editorCommandIds.sketchOffset, "offset"),
+  sketchToolHandler(editorCommandIds.sketchLinearPattern, "linear-pattern"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
   sketchToolHandler(editorCommandIds.sketchTransform, "transform"),
   {

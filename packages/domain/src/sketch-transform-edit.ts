@@ -11,6 +11,7 @@ import {
   type SketchAppendResult,
   type SketchPoint2,
   sketchConstraintEntityIds,
+  sketchSourcePointIds,
 } from "./sketch-edit"
 
 type EntityIdFactory = () => SketchEntityId
@@ -76,26 +77,6 @@ function selectedEntities(sketch: SketchRecord, entityIds: readonly SketchEntity
     throw new TypeError("A sketch transform cannot reference missing source entities.")
   }
   return entities
-}
-
-function curvePointIds(curve: SketchCurveEntity) {
-  switch (curve.type) {
-    case "line":
-      return [curve.startPointId, curve.endPointId]
-    case "circle":
-      return [curve.centerPointId]
-    case "arc":
-      return [curve.centerPointId, curve.startPointId, curve.endPointId]
-  }
-}
-
-function sourcePointIds(entities: readonly SketchEntity[]) {
-  const pointIds = new Set<SketchEntityId>()
-  for (const entity of entities) {
-    if (entity.type === "point") pointIds.add(entity.id)
-    else for (const pointId of curvePointIds(entity)) pointIds.add(pointId)
-  }
-  return [...pointIds]
 }
 
 function transformPoint(point: SketchPoint2, transform: SketchEntityTransform) {
@@ -200,7 +181,7 @@ export function sketchEntityTransformOrigin(
   if (entities.length === 0) {
     throw new RangeError("Sketch Transform requires at least one selected entity.")
   }
-  const points = sourcePointIds(entities).map((pointId) => pointById(sketch, pointId))
+  const points = sketchSourcePointIds(entities).map((pointId) => pointById(sketch, pointId))
   if (points.length === 0) {
     throw new RangeError("Sketch Transform requires transformable sketch geometry.")
   }
@@ -233,7 +214,7 @@ export function transformSketchEntities(
   if (entities.length === 0) {
     throw new RangeError("Sketch Transform requires at least one selected entity.")
   }
-  const pointIds = new Set(sourcePointIds(entities))
+  const pointIds = new Set(sketchSourcePointIds(entities))
   const curveIds = new Set(
     entities.flatMap((entity) => (entity.type === "point" ? [] : [entity.id])),
   )
@@ -441,7 +422,7 @@ export function mirrorSketchEntities(
   const axisEnd = pointById(sketch, axis.endPointId)
   const points = reflectedPoints(
     sketch,
-    sourcePointIds(sourceEntities),
+    sketchSourcePointIds(sourceEntities),
     axisStart,
     axisEnd,
     input.createEntityId,

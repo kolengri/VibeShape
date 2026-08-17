@@ -37,6 +37,7 @@ and selection are presentation state; they never replace stable entity and const
 | Mirror | Reflect selected or subsequently picked points, lines, arcs, and circles across a sketch line while preserving shared-point and symmetry intent | Implemented |
 | Offset | Offset one line or a connected non-branching line chain/loop with live signed preview and one variable-ready driving dimension | Implemented for lines |
 | Transform | Move, axis-translate, rotate, or uniformly scale preselected or subsequently selected sketch geometry with one transient manipulator, relocatable point-snapping origin, variable-aware exact values, and one local history commit | Implemented |
+| Linear Pattern | Repeat preselected or subsequently selected sketch geometry in one or two exact directions with count, spacing, and angle controls; preview at most ten total instances and commit once | Implemented as bounded analytical copies; associative pattern editing remains open |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -55,9 +56,11 @@ reflects points or analytical curves through shared pure domain operations. Offs
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
 every line pair plus both open-chain endpoints. Ellipse, spline, drag-through Trim, free-end Extend,
-round-curve Offset, pattern authoring, curve-chain slots, and projected external geometry remain
-follow-up work. These capabilities require exact domain and solver behavior and MUST NOT be simulated
-only in the toolbar.
+round-curve Offset, circular and associative pattern authoring, curve-chain slots, and projected
+external geometry remain follow-up work. Linear Pattern currently materializes independent copies
+and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
+fixed, and rotation-incompatible projected constraints. These capabilities require exact domain and
+solver behavior and MUST NOT be simulated only in the toolbar.
 
 ## Onshape-oriented parity baseline
 
@@ -71,7 +74,10 @@ baseline is derived from the official
 [Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm), and
 [Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm), and
 [Offset](https://cad.onshape.com/help/Content/Sketch/offset.htm), and
-[Sketch Transform](https://cad.onshape.com/help/Content/Sketch/sketch_transform.htm) documentation.
+[Sketch Transform](https://cad.onshape.com/help/Content/Sketch/sketch_transform.htm),
+[Linear Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_linear_pattern.htm), and
+[Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm)
+documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
@@ -81,7 +87,7 @@ baseline is derived from the official
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, and exact or manipulator-driven move/rotate/uniform-scale Transform with a relocatable origin | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, and patterns |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, exact or manipulator-driven move/rotate/uniform-scale Transform with a relocatable origin, and one/two-direction Linear Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, Circular Pattern, and associative pattern editing |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible

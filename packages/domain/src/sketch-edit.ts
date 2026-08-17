@@ -1710,17 +1710,28 @@ export function sketchConstraintEntityIds(constraint: SketchConstraint) {
     .map(([, value]) => value as string)
 }
 
-function geometryPointIds(entity: SketchEntity) {
-  switch (entity.type) {
-    case "point":
-      return []
+export function sketchCurvePointIds(curve: Exclude<SketchEntity, { type: "point" }>) {
+  switch (curve.type) {
     case "line":
-      return [entity.startPointId, entity.endPointId]
+      return [curve.startPointId, curve.endPointId]
     case "circle":
-      return [entity.centerPointId]
+      return [curve.centerPointId]
     case "arc":
-      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+      return [curve.centerPointId, curve.startPointId, curve.endPointId]
   }
+}
+
+export function sketchSourcePointIds(entities: readonly SketchEntity[]) {
+  const pointIds = new Set<SketchEntityId>()
+  for (const entity of entities) {
+    if (entity.type === "point") pointIds.add(entity.id)
+    else for (const pointId of sketchCurvePointIds(entity)) pointIds.add(pointId)
+  }
+  return [...pointIds]
+}
+
+function geometryPointIds(entity: SketchEntity) {
+  return entity.type === "point" ? [] : sketchCurvePointIds(entity)
 }
 
 type SketchLineEntity = Extract<SketchEntity, { type: "line" }>

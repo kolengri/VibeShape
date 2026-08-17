@@ -17,8 +17,8 @@ import {
   normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
+import { SketchExpressionFormField } from "./sketch-expression-form-field"
 import type { SketchTransformPreview } from "./sketch-transform-manipulator"
 
 export type SketchTransformExactValue = Readonly<{
@@ -166,18 +166,12 @@ export function SketchTransformForm({
         {fields.map(({ label, name }) => (
           <form.Field key={name} name={name}>
             {(field) => (
-              <VariableExpressionField
+              <SketchExpressionFormField
+                field={field}
                 id={`sketch-transform-${name}`}
-                inputClassName="font-mono tabular-nums"
                 label={label}
-                name={field.name}
                 suggestions={suggestions}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onValueChange={(nextValue) => {
-                  setMessage(null)
-                  field.handleChange(nextValue)
-                }}
+                onValueChange={() => setMessage(null)}
               />
             )}
           </form.Field>

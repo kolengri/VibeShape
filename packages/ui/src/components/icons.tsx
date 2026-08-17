@@ -12,6 +12,7 @@ export {
   DraftingCompass,
   FlipHorizontal2,
   FolderOpen,
+  Grid2X2,
   Minus,
   MousePointer2,
   Move,
