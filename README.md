@@ -13,8 +13,9 @@ By default, all computation, files, and model history remain on the user's devic
 Sketch Transform supports preselection and post-selection with a canvas manipulator for free or
 axis-constrained translation, rotation, and positive uniform scale. Its live SVG overlay stays local
 to the viewport and commits one schema-validated domain edit only on explicit apply; cancel leaves
-the draft unchanged. Variable-aware numeric transform entry and relocatable manipulator origins
-remain open.
+the draft unchanged. A TanStack Form panel accepts variable-aware, project-unit-aware origin,
+translation, rotation, and scale expressions. The manipulator origin can be relocated or snapped to
+an authored point without changing the current affine preview.
 
 The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, local-first verification gates, Vite application shell, typed ICU localization, Tailwind tokens, and source-owned shadcn primitives are operational.
 

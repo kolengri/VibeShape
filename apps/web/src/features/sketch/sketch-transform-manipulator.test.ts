@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest"
 import {
   identitySketchTransform,
   isIdentitySketchTransform,
+  relocateSketchTransformOrigin,
   sketchEntityTransformFromPreview,
   sketchTransformCenter,
   sketchTransformSvgValue,
+  transformSketchPoint,
   updateSketchTransformFromKeyboard,
   updateSketchTransformGesture,
 } from "./sketch-transform-manipulator"
@@ -16,6 +18,7 @@ describe("sketch transform interaction", () => {
       base,
       center: { x: 2, y: 3 },
       handle: "move-x" as const,
+      origin: { x: 0, y: 0 },
       pointerId: 1,
       start: { x: 10, y: 10 },
     }
@@ -34,6 +37,7 @@ describe("sketch transform interaction", () => {
         base: identitySketchTransform,
         center: { x: 0, y: 0 },
         handle: "rotate",
+        origin: { x: 0, y: 0 },
         pointerId: 1,
         start: { x: 10, y: 0 },
       },
@@ -46,6 +50,7 @@ describe("sketch transform interaction", () => {
         base: identitySketchTransform,
         center: { x: 0, y: 0 },
         handle: "scale",
+        origin: { x: 0, y: 0 },
         pointerId: 1,
         start: { x: 10, y: 0 },
       },
@@ -71,6 +76,22 @@ describe("sketch transform interaction", () => {
     expect(sketchTransformSvgValue({ x: 5, y: 6 }, preview)).toContain("rotate(90)")
     expect(isIdentitySketchTransform(identitySketchTransform)).toBe(true)
     expect(isIdentitySketchTransform(preview)).toBe(false)
+  })
+
+  it("relocates the manipulator origin without changing the affine preview", () => {
+    const origin = { x: 2, y: 3 }
+    const preview = {
+      rotationRadians: Math.PI / 3,
+      scale: 1.5,
+      translation: { x: 4, y: -2 },
+    }
+    const point = { x: 8, y: -1 }
+    const before = transformSketchPoint(point, origin, preview)
+    const relocated = relocateSketchTransformOrigin(origin, preview, { x: 11, y: 7 })
+
+    expect(sketchTransformCenter(relocated.origin, relocated.preview)).toEqual({ x: 11, y: 7 })
+    expect(transformSketchPoint(point, relocated.origin, relocated.preview).x).toBeCloseTo(before.x)
+    expect(transformSketchPoint(point, relocated.origin, relocated.preview).y).toBeCloseTo(before.y)
   })
 
   it("provides a complete keyboard path for manipulator adjustments", () => {

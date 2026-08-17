@@ -12,6 +12,7 @@ import {
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
@@ -127,6 +128,7 @@ function solveResult(
 const noOperation = () => undefined
 
 type SketchViewportTestProps = Readonly<{
+  controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
@@ -149,7 +151,7 @@ type SketchViewportTestProps = Readonly<{
 function viewportState(props: SketchViewportTestProps) {
   return {
     construction: false,
-    controller,
+    controller: props.controller ?? controller,
     draft: props.draft ?? null,
     editorTool: props.editorTool ?? "select",
     selectedConstraintId: props.selectedConstraintId ?? null,
@@ -576,6 +578,79 @@ describe("SketchViewport", () => {
 
     expect(onDraftChange).not.toHaveBeenCalled()
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
+  it("snaps a relocated transform origin to authored sketch points without editing geometry", async () => {
+    const fixture = lineSketchFixture("b25c", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const origin = document.querySelector('[data-sketch-transform-handle="origin"]')
+    if (!origin) throw new Error("The transform manipulator must expose its origin handle.")
+
+    fireEvent.pointerDown(origin, { clientX: 400, clientY: 300, pointerId: 3 })
+    fireEvent.pointerMove(drawing, { clientX: 439, clientY: 300, pointerId: 3 })
+    fireEvent.pointerUp(drawing, { clientX: 439, clientY: 300, pointerId: 3 })
+
+    await waitFor(() => {
+      const input = screen.getByRole("combobox", { name: "Origin X" }) as HTMLInputElement
+      expect(input.value).toBe("10 mm")
+    })
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it("applies variable-aware exact transform values as one recorded edit", async () => {
+    const fixture = lineSketchFixture("b25d", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const variableController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: {
+          ...controller.report?.snapshot,
+          variables: [
+            {
+              schemaVersion: 0,
+              id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3292"),
+              name: "spacing",
+              expression: "12 mm",
+            },
+          ],
+        },
+      },
+    } as unknown as DocumentControllerState
+    renderViewport({
+      controller: variableController,
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation X" }), {
+      target: { value: "#spacing" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Apply transform" }))
+
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.find(({ id }) => id === line.startPointId)).toMatchObject({ x: 2 })
+    expect(nextDraft.entities.find(({ id }) => id === line.endPointId)).toMatchObject({ x: 22 })
   })
 
   it("splits a circle after two curve clicks with an analytical preview", () => {

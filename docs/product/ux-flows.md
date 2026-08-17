@@ -66,8 +66,10 @@ subsequent point and curve picks, then exposes a canvas manipulator for free mov
 rotation, and positive uniform scale. Pointer movement updates only a selected-geometry SVG overlay;
 it does not publish a draft, parse the complete sketch, or request a solve. `Shift` snaps rotation
 and scale. `Enter` or an empty-canvas primary click applies one domain transform and one local undo
-entry; `Escape` cancels it. Numeric values and relocating the manipulator origin remain follow-up
-work.
+entry; `Escape` cancels it. The origin ring relocates the pivot without changing the current affine
+preview and snaps to authored points within a screen-space tolerance. The exact-value panel accepts
+origin, translation, rotation, and positive scale expressions, reuses project display units and
+committed `#variables`, and applies through the same single draft edit.
 
 ## Flow 1: create a printable part
 
