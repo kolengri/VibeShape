@@ -540,14 +540,16 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText(/Arrow keys move/)).toBeVisible()
 
     await drawing.press("ArrowRight")
-    await drawing.press("]")
-    await drawing.press("=")
     await expect(drawing.locator("[data-sketch-transform-preview]")).toBeVisible()
     await expect(drawing.locator("[data-sketch-transform-preview] > g")).toHaveAttribute(
       "transform",
-      /rotate\(14\.999/,
+      /translate\(1 0\)/,
     )
-    await drawing.press("Enter")
+    const exactTransform = page.getByRole("form", { name: "Precise transform" })
+    await exactTransform.getByRole("combobox", { name: "Translation X" }).fill("5 mm")
+    await exactTransform.getByRole("combobox", { name: "Rotation" }).fill("15 deg")
+    await exactTransform.getByRole("combobox", { name: "Scale" }).fill("1.1")
+    await exactTransform.getByRole("button", { name: "Apply transform" }).click()
 
     await expect(drawing.locator("[data-sketch-transform-manipulator]")).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(

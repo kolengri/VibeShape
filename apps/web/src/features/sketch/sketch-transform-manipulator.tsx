@@ -2,7 +2,7 @@ import type { SketchEntityTransform, SketchPoint2 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { PointerEvent } from "react"
 
-export type SketchTransformHandle = "move" | "move-x" | "move-y" | "rotate" | "scale"
+export type SketchTransformHandle = "move" | "move-x" | "move-y" | "origin" | "rotate" | "scale"
 
 export type SketchTransformPreview = Readonly<{
   rotationRadians: number
@@ -14,6 +14,7 @@ export type SketchTransformGesture = Readonly<{
   base: SketchTransformPreview
   center: SketchPoint2
   handle: SketchTransformHandle
+  origin: SketchPoint2
   pointerId: number
   start: SketchPoint2
 }>
@@ -65,6 +66,7 @@ export function updateSketchTransformGesture(
       rotationRadians: snapped ? snap(rotation, SNAP_ROTATION_RADIANS) : rotation,
     }
   }
+  if (gesture.handle === "origin") return gesture.base
   const startRadius = pointerRadius(gesture.start, gesture.center)
   const factor =
     startRadius > Number.EPSILON ? pointerRadius(point, gesture.center) / startRadius : 1
@@ -89,6 +91,45 @@ export function sketchEntityTransformFromPreview(
 
 export function sketchTransformCenter(origin: SketchPoint2, preview: SketchTransformPreview) {
   return { x: origin.x + preview.translation.x, y: origin.y + preview.translation.y }
+}
+
+export function transformSketchPoint(
+  point: SketchPoint2,
+  origin: SketchPoint2,
+  preview: SketchTransformPreview,
+) {
+  const offset = { x: point.x - origin.x, y: point.y - origin.y }
+  const cosine = Math.cos(preview.rotationRadians)
+  const sine = Math.sin(preview.rotationRadians)
+  return {
+    x: origin.x + preview.translation.x + preview.scale * (offset.x * cosine - offset.y * sine),
+    y: origin.y + preview.translation.y + preview.scale * (offset.x * sine + offset.y * cosine),
+  }
+}
+
+export function relocateSketchTransformOrigin(
+  origin: SketchPoint2,
+  preview: SketchTransformPreview,
+  displayedOrigin: SketchPoint2,
+): Readonly<{ origin: SketchPoint2; preview: SketchTransformPreview }> {
+  const cosine = Math.cos(preview.rotationRadians)
+  const sine = Math.sin(preview.rotationRadians)
+  const relativeX = displayedOrigin.x - origin.x - preview.translation.x
+  const relativeY = displayedOrigin.y - origin.y - preview.translation.y
+  const nextOrigin = {
+    x: origin.x + (relativeX * cosine + relativeY * sine) / preview.scale,
+    y: origin.y + (-relativeX * sine + relativeY * cosine) / preview.scale,
+  }
+  return {
+    origin: nextOrigin,
+    preview: {
+      ...preview,
+      translation: {
+        x: displayedOrigin.x - nextOrigin.x,
+        y: displayedOrigin.y - nextOrigin.y,
+      },
+    },
+  }
 }
 
 export function isIdentitySketchTransform(preview: SketchTransformPreview) {
@@ -203,6 +244,21 @@ export function SketchTransformManipulator({
         strokeWidth={1.5}
         vectorEffect="non-scaling-stroke"
       />
+      <circle
+        className="cursor-crosshair fill-background stroke-amber-500"
+        cx={0}
+        cy={0}
+        data-sketch-transform-handle="origin"
+        fillOpacity={0.9}
+        pointerEvents="stroke"
+        r={unit * 11}
+        strokeDasharray="3 2"
+        strokeWidth={5}
+        vectorEffect="non-scaling-stroke"
+        onPointerDown={handleStart("origin")}
+      >
+        <title>{t("transformOrigin")}</title>
+      </circle>
       <line
         className="cursor-ew-resize stroke-red-500"
         data-sketch-transform-handle="move-x"

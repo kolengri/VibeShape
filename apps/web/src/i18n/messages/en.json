@@ -673,14 +673,27 @@
         "offsetSelectSource": "Select a line or connected line chain to offset.",
         "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
         "transformSelectGeometry": "Select sketch geometry to transform.",
-        "transformAdjust": "Drag to move, rotate, or scale. Arrow keys move; [ and ] rotate; - and = scale. Enter or empty space applies; Escape cancels.",
+        "transformAdjust": "Drag to move, rotate, or scale; drag the dashed origin ring to relocate the pivot. Arrow keys move; [ and ] rotate; - and = scale. Exact fields accept units and #variables. Enter or empty space applies; Escape cancels.",
         "transformMove": "Move selection",
         "transformMoveX": "Move selection horizontally",
         "transformMoveY": "Move selection vertically",
+        "transformOrigin": "Move transform origin",
         "transformRotate": "Rotate selection",
         "transformScale": "Scale selection uniformly",
         "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
+      },
+      "transform": {
+        "title": "Precise transform",
+        "originX": "Origin X",
+        "originY": "Origin Y",
+        "translationX": "Translation X",
+        "translationY": "Translation Y",
+        "rotation": "Rotation",
+        "scale": "Scale",
+        "invalid": "Enter valid length, angle, and positive scalar expressions.",
+        "apply": "Apply transform",
+        "cancel": "Cancel"
       }
     },
     "variables": {

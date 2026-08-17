@@ -50,6 +50,7 @@ import {
   threePointCircleGeometry,
   transformSketchEntities,
   trimSketchCurve,
+  type VariableDefinition,
 } from "@vibeshape/domain"
 import {
   appendSketchLineOffset,
@@ -105,9 +106,11 @@ import {
   type SketchEditorTool,
   type SketchModificationTool,
 } from "./sketch-tool"
+import { type SketchTransformExactValue, SketchTransformForm } from "./sketch-transform-form"
 import {
   identitySketchTransform,
   isIdentitySketchTransform,
+  relocateSketchTransformOrigin,
   type SketchTransformGesture,
   type SketchTransformHandle,
   SketchTransformManipulator,
@@ -115,6 +118,7 @@ import {
   sketchEntityTransformFromPreview,
   sketchTransformCenter,
   sketchTransformSvgValue,
+  transformSketchPoint,
   updateSketchTransformFromKeyboard,
   updateSketchTransformGesture,
 } from "./sketch-transform-manipulator"
@@ -2972,6 +2976,25 @@ function safeSketchTransformOrigin(
   }
 }
 
+function nearestDisplayedSketchPoint(
+  draft: SketchRecord,
+  target: SketchPoint2,
+  origin: SketchPoint2,
+  preview: SketchTransformPreview,
+  tolerance: number,
+) {
+  let result: Readonly<{ distance: number; point: SketchPoint2 }> | null = null
+  for (const entity of draft.entities) {
+    if (entity.type !== "point") continue
+    const point = transformSketchPoint(entity, origin, preview)
+    const distance = Math.hypot(point.x - target.x, point.y - target.y)
+    if (distance <= tolerance && (!result || distance < result.distance)) {
+      result = { distance, point }
+    }
+  }
+  return result?.point ?? null
+}
+
 function safeSketchLineOffsetPreview(
   draft: SketchRecord,
   pending: Extract<PendingGeometry, { kind: "offset-distance" }>,
@@ -3701,6 +3724,8 @@ type SketchDrawingViewProps = Readonly<{
     onPointerUp: (event: PointerEvent<SVGSVGElement>) => void
     onSelection: (entityId: SketchEntityId, additive: boolean) => void
     onTransformStart: (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => void
+    onTransformApply: (value: SketchTransformExactValue) => void
+    onTransformCancel: () => void
     onWheel: (event: WheelEvent<SVGSVGElement>) => void
   }>
   sketch: SketchRecord
@@ -3756,6 +3781,26 @@ function SketchTransformPresentation({
         onStart={onStart}
       />
     </>
+  )
+}
+
+function SketchTransformPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["transform"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchTransformForm
+      value={value}
+      variables={configuration.variables}
+      onApply={handlers.onTransformApply}
+      onCancel={handlers.onTransformCancel}
+    />
   )
 }
 
@@ -3865,6 +3910,11 @@ function SketchDrawingView({
       <SketchTransformInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchTransformPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.transform}
       />
     </div>
   )
@@ -4014,16 +4064,19 @@ function useSketchTransformInteraction({
   svgRef: RefObject<SVGSVGElement | null>
 }) {
   const [gesture, setGesture] = useState<SketchTransformGesture | null>(null)
+  const [originOverride, setOriginOverride] = useState<SketchPoint2 | null>(null)
   const [preview, setPreview] = useState<SketchTransformPreview>(identitySketchTransform)
   const rectangleRef = useRef<SketchViewportRectangle | null>(null)
   const selectionKey = selectedEntityIds.join(":")
-  const origin = useMemo(
+  const defaultOrigin = useMemo(
     () => (editorTool === "transform" ? safeSketchTransformOrigin(draft, selectedEntityIds) : null),
     [draft, editorTool, selectedEntityIds],
   )
+  const origin = originOverride ?? defaultOrigin
 
   const reset = () => {
     setGesture(null)
+    setOriginOverride(null)
     setPreview(identitySketchTransform)
     rectangleRef.current = null
   }
@@ -4032,14 +4085,20 @@ function useSketchTransformInteraction({
     reset()
   }, [editorTool, selectionKey, sketchId])
 
-  const commit = () => {
-    if (!draft || !origin || selectedEntityIds.length === 0 || isIdentitySketchTransform(preview)) {
+  const commit = (value?: SketchTransformExactValue) => {
+    const transform = value ?? (origin ? { origin, preview } : null)
+    if (
+      !draft ||
+      !transform ||
+      selectedEntityIds.length === 0 ||
+      isIdentitySketchTransform(transform.preview)
+    ) {
       return false
     }
     try {
       const transformed = transformSketchEntities(draft, {
         entityIds: selectedEntityIds,
-        transform: sketchEntityTransformFromPreview(origin, preview),
+        transform: sketchEntityTransformFromPreview(transform.origin, transform.preview),
       })
       onDraftChange(transformed, "record")
       onSelectionChange([])
@@ -4054,14 +4113,31 @@ function useSketchTransformInteraction({
   const consumePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (gesture?.pointerId !== event.pointerId) return false
     const rectangle = rectangleRef.current
-    if (rectangle) {
-      setPreview(
-        updateSketchTransformGesture(
-          gesture,
-          pointerToSketchPoint(event, rectangle, bounds),
-          event.shiftKey,
-        ),
-      )
+    if (rectangle && draft) {
+      const point = pointerToSketchPoint(event, rectangle, bounds)
+      if (gesture.handle === "origin") {
+        const worldPerPixel = Math.max(
+          bounds.width / rectangle.width,
+          bounds.height / rectangle.height,
+        )
+        const snapTolerance = worldPerPixel * 10
+        const snappedPoint = nearestDisplayedSketchPoint(
+          draft,
+          point,
+          gesture.origin,
+          gesture.base,
+          snapTolerance,
+        )
+        const relocated = relocateSketchTransformOrigin(
+          gesture.origin,
+          gesture.base,
+          snappedPoint ?? point,
+        )
+        setOriginOverride(relocated.origin)
+        setPreview(relocated.preview)
+        return true
+      }
+      setPreview(updateSketchTransformGesture(gesture, point, event.shiftKey))
     }
     return true
   }
@@ -4087,6 +4163,11 @@ function useSketchTransformInteraction({
     return true
   }
 
+  const cancel = () => {
+    reset()
+    onEditorToolChange("select")
+  }
+
   const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (editorTool !== "transform" || !isPrimaryEmptyCanvasPointer(event)) return false
     if (!commit()) onSelectionChange([])
@@ -4108,7 +4189,7 @@ function useSketchTransformInteraction({
 
   const start = (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => {
     const rectangle = svgRef.current?.getBoundingClientRect()
-    if (!rectangle || !origin) return
+    if (!rectangle || rectangle.width <= 0 || rectangle.height <= 0 || !origin) return
     if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
     const viewportRectangle = {
       height: rectangle.height,
@@ -4121,6 +4202,7 @@ function useSketchTransformInteraction({
       base: preview,
       center: sketchTransformCenter(origin, preview),
       handle,
+      origin,
       pointerId: event.pointerId,
       start: pointerToSketchPoint(event, viewportRectangle, bounds),
     })
@@ -4131,6 +4213,8 @@ function useSketchTransformInteraction({
     consumeKeyDown,
     consumePointerMove,
     consumePointerUp,
+    applyExact: commit,
+    cancel,
     presentation: editorTool === "transform" && origin ? { origin, preview } : null,
     selectEntity,
     start,
@@ -4425,6 +4509,8 @@ function SketchDrawing({
         onPointerUp: handlePointerUp,
         onSelection: handleSelection,
         onTransformStart: transform.start,
+        onTransformApply: transform.applyExact,
+        onTransformCancel: transform.cancel,
         onWheel: handleWheel,
       }}
       sketch={sketch}
@@ -4600,6 +4686,7 @@ type SketchDrawingConfiguration = Readonly<{
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   solution: SolvedSketchWire | null
+  variables: readonly VariableDefinition[]
 }>
 
 function SketchViewportContent({
@@ -4898,6 +4985,7 @@ export function SketchViewport({
       selectedEntityIds,
       selectConstraintLabel: presentation.selectConstraintLabel,
       solution: displaySolution,
+      variables: controller.report?.snapshot.variables ?? [],
       onDraftChange,
       onProfileSelect,
       onRedo,
@@ -4907,6 +4995,7 @@ export function SketchViewport({
     }),
     [
       construction,
+      controller.report?.snapshot.variables,
       displaySolution,
       draft,
       editorTool,
