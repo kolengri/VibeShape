@@ -329,6 +329,7 @@ const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
 const LIVE_DRAG_SOLVE_COMPLEXITY_LIMIT = 128
+const DRAG_INFERENCE_FALLBACK_VIEWPORT = { height: 600, width: 800 } as const
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
@@ -3598,18 +3599,23 @@ function draggedPointInference(input: {
   })
 }
 
-function draggedPointReferences(
-  references: SketchInferenceReferences,
-  pointId: SketchEntityId | null,
-): SketchInferenceReferences {
-  if (!pointId) return EMPTY_INFERENCE_REFERENCES
+function draggedPointCandidates(
+  candidates: ReturnType<SketchInferenceCandidateQuery<DisplayPoint>>,
+  pointId: SketchEntityId,
+): Omit<SketchInferenceReferences, "arcs"> {
   return {
-    arcs: [],
-    lines: references.lines.filter(
+    lines: candidates.lines.filter(
       (line) => line.startPointId !== pointId && line.endPointId !== pointId,
     ),
-    points: references.points.filter(({ id }) => id !== pointId),
+    points: candidates.points.filter(({ id }) => id !== pointId),
   }
+}
+
+function dragInferenceCellSize(bounds: SketchBounds, viewport: SketchViewportSize) {
+  const measuredViewport =
+    viewport.width > 0 && viewport.height > 0 ? viewport : DRAG_INFERENCE_FALLBACK_VIEWPORT
+  const tolerance = sketchInferenceTolerance(bounds, measuredViewport)
+  return 2 ** Math.round(Math.log2(tolerance))
 }
 
 function supportsLiveDragSolve(sketch: SketchRecord) {
@@ -3865,14 +3871,14 @@ function offsetDraftFromCanvasPointer(input: {
 function useSketchPointDrag({
   bounds,
   draft,
-  inferenceReferences,
+  inferenceCandidateQuery,
   onDraftChange,
   onDraggingPointChange,
   onPreview,
   svgRef,
 }: Pick<SketchDrawingConfiguration, "draft" | "onDraftChange" | "onDraggingPointChange"> & {
   bounds: SketchBounds
-  inferenceReferences: SketchInferenceReferences
+  inferenceCandidateQuery: SketchInferenceCandidateQuery<DisplayPoint>
   onPreview: (preview: SketchPointDragPreview) => void
   svgRef: RefObject<SVGSVGElement | null>
 }) {
@@ -3880,9 +3886,6 @@ function useSketchPointDrag({
   const dragFrameRef = useRef<number | null>(null)
   const dragRectangleRef = useRef<SketchViewportRectangle | null>(null)
   const dragSolveTimerRef = useRef<number | null>(null)
-  const inferenceCandidateQueryRef = useRef<SketchInferenceCandidateQuery<DisplayPoint> | null>(
-    null,
-  )
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
   const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
   const queuedDragSolveTargetRef = useRef<Readonly<{
@@ -3920,15 +3923,15 @@ function useSketchPointDrag({
       if (!rectangle) return null
       const point = pointerToSketchPoint(input, rectangle, bounds)
       const tolerance = sketchInferenceTolerance(bounds, rectangle)
-      const references = inferenceCandidateQueryRef.current?.(point, tolerance) ?? {
-        lines: [],
-        points: [],
-      }
+      const candidates = draggedPointCandidates(
+        inferenceCandidateQuery(point, tolerance),
+        draggingPointId,
+      )
       const inference = draggedPointInference({
         bounds,
         point,
         rectangle,
-        references: { arcs: [], ...references },
+        references: { arcs: [], ...candidates },
         suppressed: input.suppressed,
       })
       const next = { inference, point: inference.point }
@@ -3937,7 +3940,7 @@ function useSketchPointDrag({
       if (supportsLiveDragSolve(draft)) scheduleLiveSolve(draggingPointId, next.point)
       return next
     },
-    [bounds, draft, draggingPointId, onPreview, scheduleLiveSolve, svgRef],
+    [bounds, draft, draggingPointId, inferenceCandidateQuery, onPreview, scheduleLiveSolve],
   )
   const flush = useCallback(() => {
     if (dragFrameRef.current !== null) {
@@ -3982,7 +3985,6 @@ function useSketchPointDrag({
     if (draggingPointId) onDraggingPointChange(null)
     setDraggingPointId(null)
     dragRectangleRef.current = null
-    inferenceCandidateQueryRef.current = null
     lastDragPreviewRef.current = null
   }, [draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
   const start = useCallback(
@@ -3996,12 +3998,6 @@ function useSketchPointDrag({
         top: rectangle.top,
         width: rectangle.width,
       }
-      const references = draggedPointReferences(inferenceReferences, pointId)
-      inferenceCandidateQueryRef.current = createSketchInferenceCandidateQuery({
-        cellSize: sketchInferenceTolerance(bounds, rectangle),
-        lines: references.lines,
-        points: references.points,
-      })
       lastDragPreviewRef.current = null
       queuedDragInputRef.current = null
       queuedDragSolveTargetRef.current = null
@@ -4011,7 +4007,7 @@ function useSketchPointDrag({
       }
       setDraggingPointId(pointId)
     },
-    [bounds, inferenceReferences, svgRef],
+    [svgRef],
   )
   return { draggingPointId, finish, start, update }
 }
@@ -4876,6 +4872,27 @@ function useSketchModificationInteractions(
   }
 }
 
+function useSketchInferencePresentation(input: {
+  cellSize: number
+  draft: SketchRecord | null
+  geometry: SketchGeometryPresentation
+}) {
+  const references = useMemo(
+    () => (input.draft ? sketchInferenceReferences(input.geometry) : EMPTY_INFERENCE_REFERENCES),
+    [input.draft, input.geometry],
+  )
+  const candidateQuery = useMemo(
+    () =>
+      createSketchInferenceCandidateQuery({
+        cellSize: input.cellSize,
+        lines: references.lines,
+        points: references.points,
+      }),
+    [input.cellSize, references],
+  )
+  return { candidateQuery, references }
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -4923,10 +4940,11 @@ function SketchDrawing({
     () => (annotationSolution ? profileSelectors(annotationSolution) : []),
     [annotationSolution],
   )
-  const inferenceReferences = useMemo(
-    () => (draft ? sketchInferenceReferences(geometry) : EMPTY_INFERENCE_REFERENCES),
-    [draft, geometry],
-  )
+  const inferencePresentation = useSketchInferencePresentation({
+    cellSize: dragInferenceCellSize(bounds, viewportSize),
+    draft,
+    geometry,
+  })
   const handleDragPreview = useCallback((preview: SketchPointDragPreview) => {
     setCursor(preview.point)
     setInference(preview.inference)
@@ -4939,7 +4957,7 @@ function SketchDrawing({
   } = useSketchPointDrag({
     bounds,
     draft,
-    inferenceReferences,
+    inferenceCandidateQuery: inferencePresentation.candidateQuery,
     onDraftChange,
     onDraggingPointChange,
     onPreview: handleDragPreview,
@@ -4969,7 +4987,7 @@ function SketchDrawing({
       pending,
       point,
       rectangle,
-      references: inferenceReferences,
+      references: inferencePresentation.references,
       suppressed,
     })
   const appendAt = useCallback(
