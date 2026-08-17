@@ -1652,7 +1652,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("keeps drag frames local, streams bounded exact feedback, and commits the final point", async () => {
+  it("keeps drag frames local, defers exact feedback during motion, and commits the final point", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
@@ -1698,6 +1698,14 @@ describe("SketchViewport", () => {
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
     ).toBe("36")
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+    expect(solveSketch).toHaveBeenCalledTimes(1)
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const continuingFrame = frames.shift()
+    if (!continuingFrame) throw new Error("Continued movement must schedule another drag frame.")
+    act(() => continuingFrame(80))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+    expect(solveSketch).toHaveBeenCalledTimes(1)
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
     expect(solveSketch).toHaveBeenCalledTimes(2)
     expect(solveSketch).toHaveBeenLastCalledWith(
       7,
