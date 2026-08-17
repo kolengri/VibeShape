@@ -40,6 +40,13 @@ export type LinearSketchPatternDefinition = Readonly<{
   second: LinearSketchPatternDirection | null
 }>
 
+export type CircularSketchPatternDefinition = Readonly<{
+  angleRadians: number
+  center: SketchPoint2
+  closed: boolean
+  count: number
+}>
+
 function selectedEntities(sketch: SketchRecord, entityIds: readonly SketchEntityId[]) {
   const selectedIds = new Set<string>(entityIds)
   const entities = sketch.entities.filter(({ id }) => selectedIds.has(id))
@@ -56,8 +63,8 @@ function transformedPoint(point: SketchPoint2, transform: SketchPatternTransform
   const cosine = Math.cos(transform.rotationRadians)
   const sine = Math.sin(transform.rotationRadians)
   return {
-    x: point.x * cosine - point.y * sine + transform.translation.x,
-    y: point.x * sine + point.y * cosine + transform.translation.y,
+    x: normalizedPatternCoordinate(point.x * cosine - point.y * sine + transform.translation.x),
+    y: normalizedPatternCoordinate(point.x * sine + point.y * cosine + transform.translation.y),
   }
 }
 
@@ -177,7 +184,9 @@ function validateTransforms(transforms: readonly SketchPatternTransform[]) {
       throw new RangeError("Sketch pattern transforms must be finite.")
     }
     if (
-      Math.abs(transform.rotationRadians) <= PATTERN_EPSILON &&
+      Math.abs(
+        Math.atan2(Math.sin(transform.rotationRadians), Math.cos(transform.rotationRadians)),
+      ) <= PATTERN_EPSILON &&
       Math.hypot(transform.translation.x, transform.translation.y) <= PATTERN_EPSILON
     ) {
       throw new RangeError("A sketch pattern cannot duplicate the seed in place.")
@@ -347,5 +356,74 @@ export function linearPatternSketchEntities(
     createEntityId: input.createEntityId,
     entityIds: input.entityIds,
     transforms: linearSketchPatternTransforms(input.definition),
+  })
+}
+
+function validateCircularPattern(definition: CircularSketchPatternDefinition) {
+  if (
+    !Number.isInteger(definition.count) ||
+    definition.count < 2 ||
+    definition.count > MAX_SKETCH_PATTERN_INSTANCES
+  ) {
+    throw new RangeError(
+      `A circular sketch pattern requires between 2 and ${MAX_SKETCH_PATTERN_INSTANCES} total instances.`,
+    )
+  }
+  const values = [definition.angleRadians, definition.center.x, definition.center.y]
+  if (values.some((value) => !Number.isFinite(value))) {
+    throw new RangeError("A circular sketch pattern requires finite center and angle values.")
+  }
+  const angle = Math.abs(definition.angleRadians)
+  if (definition.closed) {
+    if (Math.abs(angle - Math.PI * 2) > PATTERN_EPSILON) {
+      throw new RangeError("A closed circular sketch pattern must span one full turn.")
+    }
+    return
+  }
+  if (angle <= PATTERN_EPSILON || angle >= Math.PI * 2 - PATTERN_EPSILON) {
+    throw new RangeError("An open circular sketch pattern angle must be between 0 and 360 degrees.")
+  }
+}
+
+function normalizedPatternCoordinate(value: number) {
+  return Math.abs(value) <= PATTERN_EPSILON ? 0 : value
+}
+
+function circularPatternTransform(center: SketchPoint2, rotationRadians: number) {
+  const cosine = Math.cos(rotationRadians)
+  const sine = Math.sin(rotationRadians)
+  return {
+    rotationRadians,
+    translation: {
+      x: normalizedPatternCoordinate(center.x - (center.x * cosine - center.y * sine)),
+      y: normalizedPatternCoordinate(center.y - (center.x * sine + center.y * cosine)),
+    },
+  }
+}
+
+export function circularSketchPatternTransforms(
+  definition: CircularSketchPatternDefinition,
+): readonly SketchPatternTransform[] {
+  validateCircularPattern(definition)
+  const divisor = definition.closed ? definition.count : definition.count - 1
+  return Array.from({ length: definition.count - 1 }, (_, index) =>
+    circularPatternTransform(definition.center, (definition.angleRadians * (index + 1)) / divisor),
+  )
+}
+
+export function circularPatternSketchEntities(
+  sketch: SketchRecord,
+  input: Readonly<{
+    createConstraintId: ConstraintIdFactory
+    createEntityId: EntityIdFactory
+    definition: CircularSketchPatternDefinition
+    entityIds: readonly SketchEntityId[]
+  }>,
+) {
+  return patternSketchEntities(sketch, {
+    createConstraintId: input.createConstraintId,
+    createEntityId: input.createEntityId,
+    entityIds: input.entityIds,
+    transforms: circularSketchPatternTransforms(input.definition),
   })
 }

@@ -715,6 +715,47 @@ describe("SketchViewport", () => {
     expect(onEditorToolChange).toHaveBeenCalledWith("select")
   })
 
+  it("previews and applies a center-based circular sketch pattern as one recorded edit", async () => {
+    const fixture = lineSketchFixture("b25f", [{ start: { x: 10, y: 0 }, end: { x: 20, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The circular-pattern fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "circular-pattern",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(screen.getByRole("form", { name: "Circular pattern" })).toBeTruthy()
+    expect(
+      document.querySelectorAll(
+        "[data-sketch-circular-pattern-preview] > [data-sketch-transform-preview]",
+      ),
+    ).toHaveLength(2)
+    fireEvent.change(screen.getByRole("combobox", { name: "Instance count" }), {
+      target: { value: "4" },
+    })
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          "[data-sketch-circular-pattern-preview] > [data-sketch-transform-preview]",
+        ),
+      ).toHaveLength(3),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Apply circular pattern" }))
+
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(4)
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
   it("splits a circle after two curve clicks with an analytical preview", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const fixture = appendSketchCircle(emptySketch, {

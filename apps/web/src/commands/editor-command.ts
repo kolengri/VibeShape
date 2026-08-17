@@ -14,6 +14,7 @@ export const editorCommandIds = {
   sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
+  sketchCircularPattern: "org.vibeshape.editor.sketch.modify.circular-pattern",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
   sketchExtend: "org.vibeshape.editor.sketch.modify.extend",
@@ -56,6 +57,7 @@ export type EditorCommandIcon =
   | "box"
   | "cancel"
   | "circle"
+  | "circular-pattern"
   | "circumscribed-polygon"
   | "center-rectangle"
   | "centered-aligned-rectangle"
@@ -102,6 +104,7 @@ export type EditorCommandLabelKey =
   | "sketchCenteredAlignedRectangle"
   | "sketchCenteredSlot"
   | "sketchCircle"
+  | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"
   | "sketchExtend"

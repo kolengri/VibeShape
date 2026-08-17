@@ -80,6 +80,15 @@ history edit. Shared points stay shared inside each occurrence, internal compati
 cloned, and crossing, fixed, or rotation-incompatible constraints are omitted. The copies are
 independent after commit until associative pattern metadata is introduced.
 
+Circular Pattern reuses that selection grammar and materialization boundary. Its TanStack Form
+panel exposes a project-unit-aware center, an integer count including the seed, and either a closed
+360° distribution or an open signed sweep below one full turn. Length and angle inputs accept
+committed `#variables`. A center glyph remains visible with the bounded SVG copy preview. `Enter`,
+empty canvas, or Apply commits at most 100 total instances as one local history edit; `Escape`
+cancels. Shared seed points and compatible internal constraints are cloned per occurrence, with
+orientation intent retained only for exact quarter turns. Copies remain independent, and dragging
+the center directly on the canvas remains open until associative pattern metadata is introduced.
+
 ## Flow 1: create a printable part
 
 1. Create a project and choose a printer profile or no profile.

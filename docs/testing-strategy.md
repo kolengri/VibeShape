@@ -60,6 +60,13 @@ and fixed-constraint omission. Component coverage proves variable-aware TanStack
 bounded SVG preview, and one recorded commit. The product Playwright scenario creates a
 two-direction pattern and reverses the complete operation with one Undo in every target browser.
 
+The Circular Pattern slice adds pure domain coverage for arbitrary-center transforms, closed and
+open angular distributions, count and overlap bounds, materialized entity identity, and compatible
+orientation-constraint rotation. Component coverage proves variable-aware TanStack Form parsing,
+the visible center and bounded SVG preview, and one recorded commit. The product Playwright
+scenario changes the exact center and count, applies the pattern, and reverses every occurrence with
+one Undo in every target browser.
+
 ## TopoRef matrix
 
 For every reference-heavy fixture:

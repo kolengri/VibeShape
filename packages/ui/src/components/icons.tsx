@@ -20,6 +20,7 @@ export {
   PenLine,
   RectangleHorizontal,
   Redo2,
+  RotateCw,
   Ruler,
   Scan,
   Scissors,

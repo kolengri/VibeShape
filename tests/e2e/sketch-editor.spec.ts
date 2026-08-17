@@ -612,6 +612,37 @@ test.describe("full sketch editor", () => {
     await expect(lines).toHaveCount(4)
   })
 
+  test("creates a center-based circular sketch pattern with one undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    await page.getByRole("button", { name: "Circular pattern", exact: true }).click()
+    const pattern = page.getByRole("form", { name: "Circular pattern" })
+    await expect(pattern).toBeVisible()
+    await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(3)
+
+    await pattern.getByRole("combobox", { name: "Center X" }).fill("10 mm")
+    await pattern.getByRole("combobox", { name: "Instance count" }).fill("4")
+    await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(4)
+    await pattern.getByRole("button", { name: "Apply circular pattern" }).click()
+
+    await expect(lines).toHaveCount(7)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+  })
+
   test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
