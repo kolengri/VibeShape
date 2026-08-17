@@ -10,6 +10,12 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
+Sketch Transform supports preselection and post-selection with a canvas manipulator for free or
+axis-constrained translation, rotation, and positive uniform scale. Its live SVG overlay stays local
+to the viewport and commits one schema-validated domain edit only on explicit apply; cancel leaves
+the draft unchanged. Variable-aware numeric transform entry and relocatable manipulator origins
+remain open.
+
 The repository contains the **research and specification** plus an executable Phase 1 foundation scaffold. The Bun monorepo, shared TypeScript environments, local-first verification gates, Vite application shell, typed ICU localization, Tailwind tokens, and source-owned shadcn primitives are operational.
 
 The pure domain layer provides UUIDv7 identities, canonical quantities, revisioned project display-unit preferences, revisioned document, sketch, variable, and feature commands, deterministic events and replay, actor-bound drafts, validated module and feature-type registries, atomic whole-DAG mutations, canonical feature-content identity, and sequential asynchronous rebuild scheduling. Sketch schema v0 stores bounded analytical point, line, circle, and arc entities on an origin plane plus every P0 constraint family; dimensional constraints retain authored Quantity expressions such as `#width`. The first-party part-design module contributes unit-aware box, cylinder, ordered Boolean/Subtract, and selector-backed extrusion with explicit new/add/remove/intersect body semantics. `@vibeshape/application` accepts a committed `DocumentSnapshot`, validates its DAG, derives changed roots from the previous revision, and composes the scheduler, injected SHA-256 hashing, validated derived state, transient feature-content preparation, and a serializable geometry port into a fail-closed rebuild use case.

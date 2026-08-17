@@ -517,6 +517,67 @@ test.describe("full sketch editor", () => {
     )
   })
 
+  test("transforms selected sketch geometry with one preview and undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+    const initialFirstLine = await lines.first().evaluate((line) => ({
+      x1: line.getAttribute("x1"),
+      x2: line.getAttribute("x2"),
+      y1: line.getAttribute("y1"),
+      y2: line.getAttribute("y2"),
+    }))
+
+    await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+    await page.getByRole("button", { name: "Transform", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-transform-manipulator]")).toBeVisible()
+    await expect(page.getByText(/Arrow keys move/)).toBeVisible()
+
+    await drawing.press("ArrowRight")
+    await drawing.press("]")
+    await drawing.press("=")
+    await expect(drawing.locator("[data-sketch-transform-preview]")).toBeVisible()
+    await expect(drawing.locator("[data-sketch-transform-preview] > g")).toHaveAttribute(
+      "transform",
+      /rotate\(14\.999/,
+    )
+    await drawing.press("Enter")
+
+    await expect(drawing.locator("[data-sketch-transform-manipulator]")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect
+      .poll(() =>
+        lines.first().evaluate((line) => ({
+          x1: line.getAttribute("x1"),
+          x2: line.getAttribute("x2"),
+          y1: line.getAttribute("y1"),
+          y2: line.getAttribute("y2"),
+        })),
+      )
+      .not.toEqual(initialFirstLine)
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect
+      .poll(() =>
+        lines.first().evaluate((line) => ({
+          x1: line.getAttribute("x1"),
+          x2: line.getAttribute("x2"),
+          y1: line.getAttribute("y1"),
+          y2: line.getAttribute("y2"),
+        })),
+      )
+      .toEqual(initialFirstLine)
+  })
+
   test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

@@ -1692,7 +1692,7 @@ export function appendSketchConstraint(
   })
 }
 
-function referencedEntityIds(constraint: SketchConstraint) {
+export function sketchConstraintEntityIds(constraint: SketchConstraint) {
   if (constraint.type === "offset") {
     return [
       ...constraint.linePairs.flatMap(({ sourceLineId, offsetLineId }) => [
@@ -1862,7 +1862,7 @@ function removeDetachedOperationPoints(sketch: SketchRecord, pointIds: readonly 
     : sketchRecordSchema.parse({
         ...sketch,
         constraints: sketch.constraints.filter((constraint) =>
-          referencedEntityIds(constraint).every((id) => !removableIds.has(id)),
+          sketchConstraintEntityIds(constraint).every((id) => !removableIds.has(id)),
         ),
         entities: sketch.entities.filter(({ id }) => !removableIds.has(id)),
       })
@@ -2134,7 +2134,7 @@ export function removeSketchEntities(
 
   const entities = sketch.entities.filter(({ id }) => !removedIds.has(id))
   const constraints = sketch.constraints.filter((constraint) =>
-    referencedEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
+    sketchConstraintEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
   )
   return sketchRecordSchema.parse({ ...sketch, entities, constraints })
 }

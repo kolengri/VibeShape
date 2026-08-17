@@ -14,6 +14,7 @@ export {
   FolderOpen,
   Minus,
   MousePointer2,
+  Move,
   Pencil,
   PenLine,
   RectangleHorizontal,

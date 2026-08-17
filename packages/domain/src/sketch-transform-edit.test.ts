@@ -4,10 +4,17 @@ import type { SketchEntity, SketchRecord } from "./sketch"
 import {
   appendSketchArc,
   appendSketchCircle,
+  appendSketchConstraint,
   appendSketchLine,
   createEmptySketch,
 } from "./sketch-edit"
-import { mirrorSketchEntities, reflectSketchPoint } from "./sketch-transform-edit"
+import {
+  mirrorSketchEntities,
+  reflectSketchPoint,
+  sketchEntityTransformOrigin,
+  transformSketchEntities,
+} from "./sketch-transform-edit"
+import { createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000041" as SketchId
 let nextEntityId = 1
@@ -188,5 +195,166 @@ describe("analytical sketch transforms", () => {
     expect(mirrored.endPointId).toBe(arc.startPointId)
     expect(entityById(result.sketch, mirrored.centerPointId, "point")).toMatchObject({ x: 0, y: 0 })
     expect(result.sketch.constraints).toEqual([expect.objectContaining({ type: "equal" })])
+  })
+
+  it("translates connected selected geometry once per shared point", () => {
+    const firstResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 4, y: 0 } },
+    })
+    const first = lastCreatedCurve(firstResult, "line")
+    const secondResult = appendSketchLine(firstResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "existing", pointId: first.endPointId },
+      end: { kind: "new", point: { x: 4, y: 3 } },
+    })
+    const second = lastCreatedCurve(secondResult, "line")
+    const constrained = appendSketchConstraint(
+      secondResult.sketch,
+      { type: "perpendicular", firstEntityId: first.id, secondEntityId: second.id },
+      constraintId,
+    )
+
+    const transformed = transformSketchEntities(constrained, {
+      entityIds: [first.id, second.id],
+      transform: {
+        origin: sketchEntityTransformOrigin(constrained, [first.id, second.id]),
+        translation: { x: 10, y: -2 },
+      },
+    })
+
+    expect(
+      [first.startPointId, first.endPointId, second.endPointId].map((pointId) => {
+        const point = entityById(transformed, pointId, "point")
+        return [point.x, point.y]
+      }),
+    ).toEqual([
+      [10, -2],
+      [14, -2],
+      [14, 1],
+    ])
+    expect(transformed.constraints).toEqual(constrained.constraints)
+  })
+
+  it("rotates orientation constraints through exact quarter turns", () => {
+    const lineResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 4, y: 0 } },
+    })
+    const line = lastCreatedCurve(lineResult, "line")
+    const horizontal = appendSketchConstraint(
+      lineResult.sketch,
+      { type: "horizontal", lineId: line.id },
+      constraintId,
+    )
+    const fixed = appendSketchConstraint(
+      horizontal,
+      { type: "fixed", pointId: line.startPointId },
+      constraintId,
+    )
+    const directed = appendSketchConstraint(
+      fixed,
+      {
+        type: "horizontal-distance",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+        value: createLengthQuantity(4),
+      },
+      constraintId,
+    )
+
+    const transformed = transformSketchEntities(directed, {
+      entityIds: [line.id],
+      transform: { origin: { x: 0, y: 0 }, rotationRadians: Math.PI / 2 },
+    })
+
+    const transformedEnd = entityById(transformed, line.endPointId, "point")
+    expect(transformedEnd.x).toBeCloseTo(0)
+    expect(transformedEnd.y).toBeCloseTo(4)
+    expect(transformed.constraints).toEqual([
+      expect.objectContaining({ id: horizontal.constraints[0]?.id, type: "vertical" }),
+    ])
+  })
+
+  it("scales selected circles and removes dimensions that would block the result", () => {
+    const circleResult = appendSketchCircle(empty(), {
+      center: { kind: "new", point: { x: 2, y: 3 } },
+      createEntityId: entityId,
+      perimeterPoint: { x: 6, y: 3 },
+    })
+    const circleId = circleResult.createdEntityIds.at(-1)
+    if (!circleId) throw new Error("The fixture must create a circle.")
+    const circle = entityById(circleResult.sketch, circleId, "circle")
+    const constrained = appendSketchConstraint(
+      circleResult.sketch,
+      {
+        type: "radius",
+        curveId: circle.id,
+        value: createLengthQuantity(4),
+      },
+      constraintId,
+    )
+
+    const transformed = transformSketchEntities(constrained, {
+      entityIds: [circle.id],
+      transform: { origin: { x: 0, y: 0 }, scale: 1.5 },
+    })
+
+    expect(entityById(transformed, circle.centerPointId, "point")).toMatchObject({ x: 3, y: 4.5 })
+    expect(entityById(transformed, circle.id, "circle").radius).toBe(6)
+    expect(transformed.constraints).toEqual([])
+  })
+
+  it("removes constraints that cross the transformed selection boundary", () => {
+    const firstResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 4, y: 0 } },
+    })
+    const first = lastCreatedCurve(firstResult, "line")
+    const secondResult = appendSketchLine(firstResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 2 } },
+      end: { kind: "new", point: { x: 4, y: 2 } },
+    })
+    const second = lastCreatedCurve(secondResult, "line")
+    const constrained = appendSketchConstraint(
+      secondResult.sketch,
+      { type: "parallel", firstEntityId: first.id, secondEntityId: second.id },
+      constraintId,
+    )
+
+    const transformed = transformSketchEntities(constrained, {
+      entityIds: [first.id],
+      transform: { origin: { x: 0, y: 0 }, translation: { x: 1, y: 1 } },
+    })
+
+    expect(transformed.constraints).toEqual([])
+  })
+
+  it("rejects empty selections and invalid transform parameters", () => {
+    const sketch = empty()
+    expect(() => sketchEntityTransformOrigin(sketch, [])).toThrow("at least one")
+    expect(() =>
+      transformSketchEntities(sketch, {
+        entityIds: [],
+        transform: { origin: { x: 0, y: 0 } },
+      }),
+    ).toThrow("at least one")
+
+    const lineResult = appendSketchLine(sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 1, y: 0 } },
+    })
+    const line = lastCreatedCurve(lineResult, "line")
+    expect(() =>
+      transformSketchEntities(lineResult.sketch, {
+        entityIds: [line.id],
+        transform: { origin: { x: 0, y: 0 }, scale: 0 },
+      }),
+    ).toThrow("positive scale")
   })
 })

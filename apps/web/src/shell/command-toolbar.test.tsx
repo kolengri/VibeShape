@@ -192,6 +192,9 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Split" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("split")
 
+    await user.click(screen.getByRole("button", { name: "Transform" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("transform")
+
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)
 
