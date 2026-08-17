@@ -11,6 +11,7 @@ const lineA = "018f0000-0000-7000-8000-000000000006"
 const lineB = "018f0000-0000-7000-8000-000000000007"
 const circle = "018f0000-0000-7000-8000-000000000008"
 const arc = "018f0000-0000-7000-8000-000000000009"
+const ellipse = "018f0000-0000-7000-8000-000000000010"
 
 function constraintId(index: number) {
   return `018f0000-0000-7000-8000-${String(index).padStart(12, "0")}`
@@ -58,6 +59,15 @@ function validSketch() {
         centerPointId: pointA,
         startPointId: pointB,
         endPointId: pointC,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipse,
+        type: "ellipse",
+        centerPointId: pointA,
+        primaryAxisPointId: pointB,
+        secondaryAxisPointId: pointC,
         construction: false,
       },
     ],
@@ -190,6 +200,20 @@ function validSketch() {
         curveId: arc,
         value: createLengthQuantity(40),
       },
+      {
+        schemaVersion: 0,
+        id: constraintId(121),
+        type: "primary-axis-diameter",
+        curveId: ellipse,
+        value: createLengthQuantity(40),
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(122),
+        type: "secondary-axis-diameter",
+        curveId: ellipse,
+        value: createLengthQuantity(40),
+      },
     ],
   } as const
 }
@@ -198,7 +222,7 @@ describe("sketchRecordSchema", () => {
   test("accepts analytical P0 entities, construction state, and every P0 constraint family", () => {
     const parsed = sketchRecordSchema.parse(validSketch())
 
-    expect(parsed.entities).toHaveLength(8)
+    expect(parsed.entities).toHaveLength(9)
     expect(parsed.constraints.map((constraint) => constraint.type)).toEqual([
       "coincident",
       "horizontal",
@@ -220,6 +244,8 @@ describe("sketchRecordSchema", () => {
       "angle",
       "radius",
       "diameter",
+      "primary-axis-diameter",
+      "secondary-axis-diameter",
     ])
   })
 
@@ -237,6 +263,18 @@ describe("sketchRecordSchema", () => {
           id: constraintId(200),
           type: "horizontal",
           lineId: circle,
+        },
+      ],
+    }
+    const wrongEllipseDimensionTarget = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(204),
+          type: "primary-axis-diameter",
+          curveId: circle,
+          value: createLengthQuantity(10),
         },
       ],
     }
@@ -287,6 +325,7 @@ describe("sketchRecordSchema", () => {
 
     expect(sketchRecordSchema.safeParse(duplicate).success).toBe(false)
     expect(sketchRecordSchema.safeParse(wrongConstraintTarget).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(wrongEllipseDimensionTarget).success).toBe(false)
     expect(sketchRecordSchema.safeParse(missingEntityTarget).success).toBe(false)
     expect(sketchRecordSchema.safeParse(sameOffsetLine).success).toBe(false)
     expect(sketchRecordSchema.safeParse(incompleteOffsetEndpoints).success).toBe(false)

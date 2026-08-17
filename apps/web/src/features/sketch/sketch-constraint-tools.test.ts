@@ -55,6 +55,22 @@ const arc = {
   endPointId: entityId(6),
   construction: false,
 } as const satisfies SketchEntity
+const ellipse = {
+  schemaVersion: 0,
+  id: entityId(7),
+  type: "ellipse",
+  centerPointId: firstPoint.id,
+  primaryAxisPointId: secondPoint.id,
+  secondaryAxisPointId: entityId(8),
+  construction: false,
+} as const satisfies SketchEntity
+const ellipticalArc = {
+  ...ellipse,
+  id: entityId(9),
+  type: "elliptical-arc",
+  startPointId: entityId(10),
+  endPointId: entityId(11),
+} as const satisfies SketchEntity
 
 describe("sketch constraint tools", () => {
   it("offers only constraints compatible with the current semantic selection", () => {
@@ -82,8 +98,16 @@ describe("sketch constraint tools", () => {
       "horizontal-distance",
       "vertical-distance",
     ])
-    expect(compatibleSketchDimensionTools([line, { ...line, id: entityId(7) }])).toEqual(["angle"])
+    expect(compatibleSketchDimensionTools([line, { ...line, id: entityId(12) }])).toEqual(["angle"])
     expect(compatibleSketchDimensionTools([circle])).toEqual(["radius", "diameter"])
+    expect(compatibleSketchDimensionTools([ellipse])).toEqual([
+      "primary-axis-diameter",
+      "secondary-axis-diameter",
+    ])
+    expect(compatibleSketchDimensionTools([ellipticalArc])).toEqual([
+      "primary-axis-diameter",
+      "secondary-axis-diameter",
+    ])
 
     expect(
       createSketchDimensionConstraint("distance", [line], createLengthQuantity(10)),
@@ -95,9 +119,12 @@ describe("sketch constraint tools", () => {
     expect(
       createSketchDimensionConstraint(
         "angle",
-        [line, { ...line, id: entityId(7) }],
+        [line, { ...line, id: entityId(12) }],
         createAngleQuantity(Math.PI / 2),
       ),
-    ).toMatchObject({ type: "angle", firstEntityId: line.id, secondEntityId: entityId(7) })
+    ).toMatchObject({ type: "angle", firstEntityId: line.id, secondEntityId: entityId(12) })
+    expect(
+      createSketchDimensionConstraint("primary-axis-diameter", [ellipse], createLengthQuantity(30)),
+    ).toMatchObject({ type: "primary-axis-diameter", curveId: ellipse.id })
   })
 })

@@ -309,7 +309,7 @@ describe("document worker protocol", () => {
     ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
   })
 
-  it("accepts analytical ellipses but rejects unsupported ellipse constraints", () => {
+  it("accepts ellipse axis diameters but rejects radial ellipse constraints", () => {
     const ellipseSketch = {
       ...sketch(),
       entities: [
@@ -341,7 +341,29 @@ describe("document worker protocol", () => {
         },
       ],
     } as const
-    const parsed = documentRebuildSnapshotSchema.parse({ ...document(), sketches: [ellipseSketch] })
+    const length = {
+      schemaVersion: 0,
+      dimension: "length",
+      value: 20,
+      unit: "mm",
+      source: { value: 20, unit: "mm", expression: "20 mm" },
+    } as const
+    const constrainedEllipseSketch = {
+      ...ellipseSketch,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: ellipseConstraintId,
+          type: "primary-axis-diameter",
+          curveId: ellipseId,
+          value: length,
+        },
+      ],
+    } as const
+    const parsed = documentRebuildSnapshotSchema.parse({
+      ...document(),
+      sketches: [constrainedEllipseSketch],
+    })
     expect(parsed.sketches[0]?.entities).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: "ellipse" })]),
     )
@@ -357,13 +379,7 @@ describe("document worker protocol", () => {
                 id: ellipseConstraintId,
                 type: "radius",
                 curveId: ellipseId,
-                value: {
-                  schemaVersion: 0,
-                  dimension: "length",
-                  value: 10,
-                  unit: "mm",
-                  source: { value: 10, unit: "mm" },
-                },
+                value: length,
               },
             ],
           },

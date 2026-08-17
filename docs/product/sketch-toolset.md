@@ -23,7 +23,7 @@ and selection are presentation state; they never replace stable entity and const
 | Centered Aligned Rectangle | Define the center, symmetric direction/half-length, and perpendicular half-width with a persistent construction axis and midpoint intent | Implemented |
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
-| Center-point Ellipse | Define a center, first axis endpoint, and perpendicular second-axis radius as one exact analytical curve | Implemented; ellipse-specific driving dimensions and direct curve modification remain open |
+| Center-point Ellipse | Define a center, first axis endpoint, and perpendicular second-axis radius as one exact analytical curve | Implemented with stable primary- and secondary-axis diameter dimensions; direct curve modification remains open |
 | Elliptical Arc | Define a center, primary-axis endpoint, secondary radius and start point, then the endpoint along a temporary construction ellipse | Implemented as one exact analytical curve with solver-owned trammel constraints; direct Trim/Extend/Split remains open |
 | Circumscribed Polygon | Define a center, vertex radius, and 3–50 sides; keep every vertex on one construction circle with equal side intent | Implemented |
 | Inscribed Polygon | Define a center, tangent-circle radius, and 3–50 sides; keep side midpoints on the construction circle with equal side intent | Implemented |
@@ -58,7 +58,7 @@ lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch 
 reflects points or analytical curves through shared pure domain operations. Offset accepts a
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
-every line pair plus both open-chain endpoints. Ellipse-specific constraints and direct modification, spline, drag-through Trim, free-end Extend,
+every line pair plus both open-chain endpoints. Direct ellipse modification, spline, drag-through Trim, free-end Extend,
 round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
@@ -83,6 +83,7 @@ baseline is derived from the official
 [Sketch Transform](https://cad.onshape.com/help/Content/Sketch/sketch_transform.htm),
 [Linear Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_linear_pattern.htm), and
 [Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm), and
+[Ellipse](https://cad.onshape.com/help/Content/Sketch/ellipse.htm), and
 [Elliptical Arc](https://cad.onshape.com/help/Content/Sketch/elliptical_arc.htm)
 documentation.
 
@@ -90,7 +91,7 @@ documentation.
 |---|---|---|
 | Line | Line and center-origin Midpoint Line in one remembered split family | Infinite construction line and richer wake-up inference |
 | Rectangle | Corner, Center, Aligned, and Centered Aligned variants | Selection-driven conversion and numeric placement |
-| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse | Tangent circle and ellipse-specific dimensions |
+| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse with primary- and secondary-axis diameter dimensions | Tangent circle and direct ellipse modification |
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Elliptical, Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
@@ -134,6 +135,8 @@ silently apply a constraint to a subset of selected entities.
 | Angle | Exactly two lines | Angle | Implemented |
 | Radius | Exactly one circle/arc | Length | Implemented |
 | Diameter | Exactly one circle/arc | Length | Implemented |
+| Primary axis diameter | Exactly one ellipse/elliptical arc | Length | Implemented |
+| Secondary axis diameter | Exactly one ellipse/elliptical arc | Length | Implemented |
 
 Dimensions accept an explicit unit, a bare value in the active project display unit, or a committed
 `#variable` expression. Authored text is preserved while solving uses canonical millimeters and

@@ -300,6 +300,22 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
       value: lengthQuantitySchema,
     })
     .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("primary-axis-diameter"),
+      curveId: sketchEntityIdSchema,
+      value: lengthQuantitySchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("secondary-axis-diameter"),
+      curveId: sketchEntityIdSchema,
+      value: lengthQuantitySchema,
+    })
+    .strict(),
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>
@@ -366,6 +382,8 @@ const wireConstraintEntityReferenceRules = {
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
   diameter: { curveId: ["circle", "arc"] },
+  "primary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
+  "secondary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
 } as const satisfies Record<
   Exclude<SketchWireConstraint["type"], "equal" | "offset">,
   WireEntityReferenceRules

@@ -607,6 +607,8 @@
           "angle": "Angle",
           "radius": "Radius",
           "diameter": "Diameter",
+          "primaryAxisDiameter": "Primary axis diameter",
+          "secondaryAxisDiameter": "Secondary axis diameter",
           "profiles": "Closed profiles",
           "profile": "Profile {number}",
           "width": "Width",
