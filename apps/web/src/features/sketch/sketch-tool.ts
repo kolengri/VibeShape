@@ -37,9 +37,10 @@ export type SketchEditorTool =
   | "mirror"
   | "offset"
   | "split"
+  | "transform"
 export type SketchModificationTool = Extract<
   SketchEditorTool,
-  "extend" | "mirror" | "offset" | "split" | "trim"
+  "extend" | "mirror" | "offset" | "split" | "transform" | "trim"
 >
 export type SketchDraftChangeMode = "record" | "replace"
 
@@ -48,6 +49,7 @@ const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
   "mirror",
   "offset",
   "split",
+  "transform",
   "trim",
 ])
 

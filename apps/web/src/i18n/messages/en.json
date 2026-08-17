@@ -308,6 +308,10 @@
           "label": "Offset",
           "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
         },
+        "sketchTransform": {
+          "label": "Transform",
+          "keywords": "transform sketch geometry|move selection|rotate selection|scale selection"
+        },
         "sketchInscribedPolygon": {
           "label": "Inscribed polygon",
           "keywords": "inscribed polygon|polygon around circle|regular polygon|center polygon"
@@ -668,6 +672,13 @@
         "mirrorSelectSources": "Select geometry to mirror. Press Escape when finished.",
         "offsetSelectSource": "Select a line or connected line chain to offset.",
         "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
+        "transformSelectGeometry": "Select sketch geometry to transform.",
+        "transformAdjust": "Drag to move, rotate, or scale. Arrow keys move; [ and ] rotate; - and = scale. Enter or empty space applies; Escape cancels.",
+        "transformMove": "Move selection",
+        "transformMoveX": "Move selection horizontally",
+        "transformMoveY": "Move selection vertically",
+        "transformRotate": "Rotate selection",
+        "transformScale": "Scale selection uniformly",
         "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
       }

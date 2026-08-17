@@ -306,6 +306,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "transform",
+    id: editorCommandIds.sketchTransform,
+    labelKey: "sketchTransform",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "construction",
     id: editorCommandIds.sketchConstruction,
     labelKey: "sketchConstruction",
@@ -380,6 +388,7 @@ function sketchToolHandler(
     | "sketchSelect"
     | "sketchSlot"
     | "sketchSplit"
+    | "sketchTransform"
     | "sketchTangentArc"
     | "sketchTrim"],
   tool: SketchEditorTool,
@@ -505,6 +514,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
   sketchToolHandler(editorCommandIds.sketchOffset, "offset"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
+  sketchToolHandler(editorCommandIds.sketchTransform, "transform"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
     getEligibility: requiresSketch,

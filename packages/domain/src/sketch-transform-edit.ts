@@ -1,10 +1,16 @@
 import type { SketchConstraintId, SketchEntityId } from "./identifiers"
-import { type SketchEntity, type SketchRecord, sketchRecordSchema } from "./sketch"
+import {
+  type SketchConstraint,
+  type SketchEntity,
+  type SketchRecord,
+  sketchRecordSchema,
+} from "./sketch"
 import {
   appendSketchConstraint,
   requireSketchPoint,
   type SketchAppendResult,
   type SketchPoint2,
+  sketchConstraintEntityIds,
 } from "./sketch-edit"
 
 type EntityIdFactory = () => SketchEntityId
@@ -13,6 +19,13 @@ type SketchPointEntity = Extract<SketchEntity, { type: "point" }>
 type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
 
 const TRANSFORM_EPSILON = 1e-9
+
+export type SketchEntityTransform = Readonly<{
+  origin: SketchPoint2
+  rotationRadians?: number
+  scale?: number
+  translation?: SketchPoint2
+}>
 
 function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
   return requireSketchPoint(
@@ -60,7 +73,7 @@ function selectedEntities(sketch: SketchRecord, entityIds: readonly SketchEntity
   const selectedIds = new Set<string>(entityIds)
   const entities = sketch.entities.filter(({ id }) => selectedIds.has(id))
   if (entities.length !== selectedIds.size) {
-    throw new TypeError("Sketch Mirror cannot reference missing source entities.")
+    throw new TypeError("A sketch transform cannot reference missing source entities.")
   }
   return entities
 }
@@ -83,6 +96,165 @@ function sourcePointIds(entities: readonly SketchEntity[]) {
     else for (const pointId of curvePointIds(entity)) pointIds.add(pointId)
   }
   return [...pointIds]
+}
+
+function transformPoint(point: SketchPoint2, transform: SketchEntityTransform) {
+  const scale = transform.scale ?? 1
+  const rotation = transform.rotationRadians ?? 0
+  const translation = transform.translation ?? { x: 0, y: 0 }
+  const cosine = Math.cos(rotation)
+  const sine = Math.sin(rotation)
+  const localX = (point.x - transform.origin.x) * scale
+  const localY = (point.y - transform.origin.y) * scale
+  return {
+    x: transform.origin.x + localX * cosine - localY * sine + translation.x,
+    y: transform.origin.y + localX * sine + localY * cosine + translation.y,
+  }
+}
+
+function quarterTurns(rotation: number) {
+  const turns = rotation / (Math.PI / 2)
+  const nearest = Math.round(turns)
+  return Math.abs(turns - nearest) <= TRANSFORM_EPSILON ? nearest : null
+}
+
+function transformOrientationConstraint(
+  constraint: Extract<SketchConstraint, { type: "horizontal" | "vertical" }>,
+  rotation: number,
+): SketchConstraint | null {
+  const turns = quarterTurns(rotation)
+  if (turns === null) return null
+  if (Math.abs(turns) % 2 === 0) return constraint
+  return {
+    ...constraint,
+    type: constraint.type === "horizontal" ? "vertical" : "horizontal",
+  }
+}
+
+const scaleInvalidatedConstraintTypes: ReadonlySet<SketchConstraint["type"]> = new Set([
+  "diameter",
+  "distance",
+  "horizontal-distance",
+  "offset",
+  "radius",
+  "vertical-distance",
+])
+
+function constraintSelectionRelation(
+  constraint: SketchConstraint,
+  transformedIds: ReadonlySet<string>,
+) {
+  const references = sketchConstraintEntityIds(constraint)
+  const selectedCount = references.filter((id) => transformedIds.has(id)).length
+  if (selectedCount === 0) return "outside" as const
+  return selectedCount === references.length ? ("internal" as const) : ("crossing" as const)
+}
+
+function rotatedConstraint(constraint: SketchConstraint, rotation: number) {
+  if (Math.abs(rotation) <= TRANSFORM_EPSILON) return constraint
+  if (constraint.type === "horizontal" || constraint.type === "vertical") {
+    return transformOrientationConstraint(constraint, rotation)
+  }
+  if (constraint.type === "horizontal-distance" || constraint.type === "vertical-distance") {
+    return null
+  }
+  return constraint
+}
+
+function transformedInternalConstraint(
+  constraint: SketchConstraint,
+  transform: SketchEntityTransform,
+) {
+  if (constraint.type === "fixed") return null
+  const scaled = Math.abs((transform.scale ?? 1) - 1) > TRANSFORM_EPSILON
+  if (scaled && scaleInvalidatedConstraintTypes.has(constraint.type)) return null
+  return rotatedConstraint(constraint, transform.rotationRadians ?? 0)
+}
+
+function transformedConstraint(
+  constraint: SketchConstraint,
+  transformedIds: ReadonlySet<string>,
+  transform: SketchEntityTransform,
+): SketchConstraint | null {
+  const relation = constraintSelectionRelation(constraint, transformedIds)
+  if (relation === "outside") return constraint
+  return relation === "crossing" ? null : transformedInternalConstraint(constraint, transform)
+}
+
+function validateEntityTransform(transform: SketchEntityTransform) {
+  const { origin, rotationRadians = 0, scale = 1, translation = { x: 0, y: 0 } } = transform
+  const values = [origin.x, origin.y, rotationRadians, scale, translation.x, translation.y]
+  if (values.some((value) => !Number.isFinite(value))) {
+    throw new RangeError("Sketch Transform requires finite parameters.")
+  }
+  if (scale <= TRANSFORM_EPSILON) {
+    throw new RangeError("Sketch Transform requires a positive scale factor.")
+  }
+}
+
+export function sketchEntityTransformOrigin(
+  sketch: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+): SketchPoint2 {
+  const entities = selectedEntities(sketch, entityIds)
+  if (entities.length === 0) {
+    throw new RangeError("Sketch Transform requires at least one selected entity.")
+  }
+  const points = sourcePointIds(entities).map((pointId) => pointById(sketch, pointId))
+  if (points.length === 0) {
+    throw new RangeError("Sketch Transform requires transformable sketch geometry.")
+  }
+  const bounds = points.reduce(
+    (current, point) => ({
+      maxX: Math.max(current.maxX, point.x),
+      maxY: Math.max(current.maxY, point.y),
+      minX: Math.min(current.minX, point.x),
+      minY: Math.min(current.minY, point.y),
+    }),
+    {
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+    },
+  )
+  return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 }
+}
+
+export function transformSketchEntities(
+  sketch: SketchRecord,
+  input: Readonly<{
+    entityIds: readonly SketchEntityId[]
+    transform: SketchEntityTransform
+  }>,
+): SketchRecord {
+  validateEntityTransform(input.transform)
+  const entities = selectedEntities(sketch, input.entityIds)
+  if (entities.length === 0) {
+    throw new RangeError("Sketch Transform requires at least one selected entity.")
+  }
+  const pointIds = new Set(sourcePointIds(entities))
+  const curveIds = new Set(
+    entities.flatMap((entity) => (entity.type === "point" ? [] : [entity.id])),
+  )
+  const transformedIds = new Set<string>([...pointIds, ...curveIds])
+  const scale = input.transform.scale ?? 1
+  return sketchRecordSchema.parse({
+    ...sketch,
+    constraints: sketch.constraints.flatMap((constraint) => {
+      const next = transformedConstraint(constraint, transformedIds, input.transform)
+      return next ? [next] : []
+    }),
+    entities: sketch.entities.map((entity): SketchEntity => {
+      if (entity.type === "point" && pointIds.has(entity.id)) {
+        return { ...entity, ...transformPoint(entity, input.transform) }
+      }
+      if (entity.type === "circle" && curveIds.has(entity.id)) {
+        return { ...entity, radius: entity.radius * scale }
+      }
+      return entity
+    }),
+  })
 }
 
 type ReflectedPointMap = Readonly<{

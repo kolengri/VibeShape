@@ -136,6 +136,7 @@ type SketchViewportTestProps = Readonly<{
   >["actions"]["onConstraintSelectionChange"]
   onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+  onSelectionChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onSelectionChange"]
   selectedConstraintId?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["selectedConstraintId"]
@@ -167,7 +168,7 @@ function viewportActions(props: SketchViewportTestProps) {
     onProfileSelect: props.onProfileSelect ?? noOperation,
     onProfilesChange: props.onProfilesChange ?? noOperation,
     onRedo: noOperation,
-    onSelectionChange: noOperation,
+    onSelectionChange: props.onSelectionChange ?? noOperation,
     onUndo: noOperation,
   } satisfies React.ComponentProps<typeof SketchViewport>["actions"]
 }
@@ -486,6 +487,95 @@ describe("SketchViewport", () => {
     expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
       "Select a line or connected line chain to offset.",
     )
+  })
+
+  it("previews a selected geometry transform and commits it as one draft edit", () => {
+    const fixture = lineSketchFixture("b25a", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    expect(document.querySelector("[data-sketch-transform-manipulator]")).toBeTruthy()
+    expect(document.querySelector("[data-sketch-transform-instruction]")?.textContent).toContain(
+      "Drag to move",
+    )
+    const moveX = document.querySelector('[data-sketch-transform-handle="move-x"]')
+    if (!moveX) throw new Error("The transform manipulator must expose its horizontal handle.")
+
+    fireEvent.pointerDown(moveX, { clientX: 400, clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 480, clientY: 300, pointerId: 1 })
+
+    expect(document.querySelector("[data-sketch-transform-preview]")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(drawing, { key: "Enter" })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const start = nextDraft.entities.find(({ id }) => id === line.startPointId)
+    const end = nextDraft.entities.find(({ id }) => id === line.endPointId)
+    expect(start).toMatchObject({ type: "point", x: 10, y: 0 })
+    expect(end).toMatchObject({ type: "point", x: 30, y: 0 })
+  })
+
+  it("supports post-selection and cancels a pending transform without changing the draft", () => {
+    const fixture = lineSketchFixture("b25b", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      onEditorToolChange,
+      onSelectionChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    expect(document.querySelector("[data-sketch-transform-instruction]")?.textContent).toBe(
+      "Select sketch geometry to transform.",
+    )
+    const lineElement = document.querySelector(`[data-sketch-entity-id="${line.id}"]`)
+    if (!lineElement) throw new Error("The transform source must be rendered.")
+    fireEvent.pointerDown(lineElement)
+    expect(onSelectionChange).toHaveBeenCalledWith([line.id])
+
+    view.rerender(
+      viewportElement({
+        draft: fixture,
+        editorTool: "transform",
+        onDraftChange,
+        onEditorToolChange,
+        onSelectionChange,
+        selectedEntityIds: [line.id],
+        sketch: fixture,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const scale = document.querySelector('[data-sketch-transform-handle="scale"]')
+    if (!scale) throw new Error("The transform manipulator must expose its scale handle.")
+    fireEvent.pointerDown(scale, { clientX: 430, clientY: 270, pointerId: 2 })
+    fireEvent.pointerMove(drawing, { clientX: 460, clientY: 240, pointerId: 2 })
+    fireEvent.keyDown(drawing, { key: "Escape" })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
   })
 
   it("splits a circle after two curve clicks with an analytical preview", () => {
@@ -1879,7 +1969,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
-  it("keeps the last exact geometry visible while a changed draft is solving", async () => {
+  it("shows changed authored geometry immediately and resets stale solver continuation", async () => {
     const firstPoint = pointEntities[0]
     if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
     let resolveChangedDraft: ((result: ActiveSketchSolveResult) => void) | null = null
@@ -1901,8 +1991,9 @@ describe("SketchViewport", () => {
     result.rerender(viewportElement({ draft: movedDraft, sketch, solveSketch }))
 
     await screen.findByText("Solving the saved sketch locally…")
-    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe(String(firstPoint.x))
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("80")
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(solveSketch.mock.calls[1]?.[2]?.continuation).toBeNull()
     await act(async () => {
       resolveChangedDraft?.(solveResult(new Map([[firstPoint.id, { x: 12, y: 8 }]])))
     })

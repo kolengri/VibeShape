@@ -40,6 +40,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
   sketchConstraintIdSchema,
+  sketchEntityTransformOrigin,
   sketchProfileSelectorSchema,
   splitSketchCircle,
   splitSketchCurve,
@@ -47,6 +48,7 @@ import {
   tangentArcGeometry,
   threePointArcGeometry,
   threePointCircleGeometry,
+  transformSketchEntities,
   trimSketchCurve,
 } from "@vibeshape/domain"
 import {
@@ -103,6 +105,19 @@ import {
   type SketchEditorTool,
   type SketchModificationTool,
 } from "./sketch-tool"
+import {
+  identitySketchTransform,
+  isIdentitySketchTransform,
+  type SketchTransformGesture,
+  type SketchTransformHandle,
+  SketchTransformManipulator,
+  type SketchTransformPreview,
+  sketchEntityTransformFromPreview,
+  sketchTransformCenter,
+  sketchTransformSvgValue,
+  updateSketchTransformFromKeyboard,
+  updateSketchTransformGesture,
+} from "./sketch-transform-manipulator"
 
 type SketchSolveFunction = (
   baseRevision: number,
@@ -155,6 +170,7 @@ type SketchPointDragPreview = Readonly<{
 type SketchSolveRequest = Readonly<{
   dragTarget: SketchDragTarget | null
   requestId: number
+  resetContinuation: boolean
   revision: number
   sketch: SketchRecord
 }>
@@ -163,6 +179,7 @@ type SketchSolveScheduler = {
   disposed: boolean
   inFlight: boolean
   latestRequest: SketchSolveRequest | null
+  latestSketch: SketchRecord | null
   latestSolution: SolvedSketchWire | null
   nextRequestId: number
   solveSketch: SketchSolveFunction
@@ -287,6 +304,7 @@ function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSol
     disposed: false,
     inFlight: false,
     latestRequest: null,
+    latestSketch: null,
     latestSolution: null,
     nextRequestId: 1,
     solveSketch,
@@ -300,7 +318,9 @@ async function executeSketchSolveRequest(
 ) {
   try {
     return await scheduler.solveSketch(request.revision, request.sketch, {
-      continuation: continuationForSketch(scheduler.latestSolution, request.sketch),
+      continuation: request.resetContinuation
+        ? null
+        : continuationForSketch(scheduler.latestSolution, request.sketch),
       draggedPoints: request.dragTarget ? [request.dragTarget] : [],
     })
   } catch {
@@ -355,6 +375,48 @@ async function drainLatestSketchSolve(
   }
 }
 
+function resetInactiveSketchSolveScheduler(
+  scheduler: SketchSolveScheduler,
+  clearSolution: boolean,
+) {
+  if (clearSolution) {
+    scheduler.latestSketch = null
+    scheduler.latestSolution = null
+  }
+  scheduler.latestRequest = null
+  scheduler.nextRequestId += 1
+  clearSketchSolveTimer(scheduler)
+}
+
+function loadingSolveState(current: SolveState, request: SketchSolveRequest): SolveState {
+  if (current.kind === "loading" && current.sourceSketch.id === request.sketch.id) return current
+  return {
+    dragTarget: request.dragTarget,
+    kind: "loading",
+    previousSolution: request.resetContinuation
+      ? null
+      : solutionForSketch(current, request.sketch.id),
+    sourceSketch: request.sketch,
+  }
+}
+
+function scheduleSketchSolve(
+  scheduler: SketchSolveScheduler,
+  request: SketchSolveRequest,
+  publish: (state: SolveState) => void,
+) {
+  if (request.dragTarget) {
+    clearSketchSolveTimer(scheduler)
+    void drainLatestSketchSolve(scheduler, publish)
+    return
+  }
+  clearSketchSolveTimer(scheduler)
+  scheduler.timer = window.setTimeout(() => {
+    scheduler.timer = null
+    void drainLatestSketchSolve(scheduler, publish)
+  }, 30)
+}
+
 function useSketchSolution(
   controller: DocumentControllerState,
   sketch: SketchRecord | null,
@@ -380,51 +442,28 @@ function useSketchSolution(
 
   useEffect(() => {
     if (!sketch || revision === undefined || !rebuildOk) {
-      if (!sketch) scheduler.latestSolution = null
-      scheduler.latestRequest = null
-      scheduler.nextRequestId += 1
-      if (scheduler.timer !== null) {
-        window.clearTimeout(scheduler.timer)
-        scheduler.timer = null
-      }
+      resetInactiveSketchSolveScheduler(scheduler, sketch === null)
       setState((current) => (current.kind === "idle" ? current : { kind: "idle" }))
       return
     }
 
+    const resetContinuation =
+      dragTarget === null && authoredSketchGeometryChanged(scheduler.latestSketch, sketch)
+    scheduler.latestSketch = sketch
+    if (resetContinuation) scheduler.latestSolution = null
     const request: SketchSolveRequest = {
       dragTarget,
       requestId: scheduler.nextRequestId,
+      resetContinuation,
       revision,
       sketch,
     }
     scheduler.nextRequestId += 1
     scheduler.latestRequest = request
-    setState((current) =>
-      current.kind === "loading" && current.sourceSketch.id === sketch.id
-        ? current
-        : {
-            dragTarget,
-            kind: "loading",
-            previousSolution: solutionForSketch(current, sketch.id),
-            sourceSketch: sketch,
-          },
-    )
-
-    if (dragTarget) {
-      clearSketchSolveTimer(scheduler)
-      void drainLatestSketchSolve(scheduler, setState)
-    } else {
-      if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
-      scheduler.timer = window.setTimeout(() => {
-        scheduler.timer = null
-        void drainLatestSketchSolve(scheduler, setState)
-      }, 30)
-    }
+    setState((current) => loadingSolveState(current, request))
+    scheduleSketchSolve(scheduler, request, setState)
     return () => {
-      if (scheduler.timer !== null) {
-        window.clearTimeout(scheduler.timer)
-        scheduler.timer = null
-      }
+      clearSketchSolveTimer(scheduler)
     }
   }, [dragTarget, rebuildOk, revision, scheduler, sketch, solveSketch])
 
@@ -435,6 +474,18 @@ function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"])
   if (solveState.kind === "idle" || solveState.kind === "error") return null
   if (solveState.sourceSketch.id !== sketchId) return null
   return solveState.kind === "solved" ? solveState.solution : solveState.previousSolution
+}
+
+function authoredSketchGeometryChanged(previous: SketchRecord | null, next: SketchRecord) {
+  if (!previous || previous.id !== next.id) return false
+  const previousEntities = new Map(previous.entities.map((entity) => [entity.id, entity]))
+  return next.entities.some((entity) => {
+    const prior = previousEntities.get(entity.id)
+    if (entity.type === "point" && prior?.type === "point") {
+      return entity.x !== prior.x || entity.y !== prior.y
+    }
+    return entity.type === "circle" && prior?.type === "circle" && entity.radius !== prior.radius
+  })
 }
 
 function solvedSolution(solveState: SolveState): SolvedSketchWire | null {
@@ -1104,6 +1155,7 @@ function supportsSketchCurveModification(
 ) {
   if (tool === "mirror") return pending?.kind === "mirror-sources" || curve.type === "line"
   if (tool === "offset") return pending?.kind !== "offset-distance" && curve.type === "line"
+  if (tool === "transform") return true
   return tool !== "extend" || curve.type !== "circle"
 }
 
@@ -1133,6 +1185,7 @@ function SketchGeometry({
   const selectable = editable && tool === "select"
   const modifiable = editable && isSketchModificationTool(tool)
   const mirrorSourceSelection = tool === "mirror" && pending?.kind === "mirror-sources"
+  const transformSourceSelection = tool === "transform"
   const selectedIds = useMemo(() => {
     const ids = new Set(selectedEntityIds)
     if (pending?.kind === "mirror-sources") ids.add(pending.axisLineId)
@@ -1171,8 +1224,8 @@ function SketchGeometry({
         <SketchPoint
           key={point.id}
           dragging={point.id === draggingPointId}
-          editable={editable && (!modifiable || mirrorSourceSelection)}
-          modificationTarget={mirrorSourceSelection}
+          editable={editable && (!modifiable || mirrorSourceSelection || transformSourceSelection)}
+          modificationTarget={mirrorSourceSelection || transformSourceSelection}
           onEntityAction={geometryPointerDown}
           point={point}
           selectable={selectable}
@@ -1245,6 +1298,66 @@ function DraggedSketchGeometry({
         strokeWidth={2}
         vectorEffect="non-scaling-stroke"
       />
+    </g>
+  )
+}
+
+function SketchTransformGeometry({
+  entityIds,
+  origin,
+  presentation,
+  preview,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  origin: SketchPoint2
+  presentation: SketchGeometryPresentation
+  preview: SketchTransformPreview
+}>) {
+  const selectedIds = useMemo(() => new Set(entityIds), [entityIds])
+  const curves = useMemo(
+    () => presentation.curves.filter(({ id }) => selectedIds.has(id)),
+    [presentation.curves, selectedIds],
+  )
+  const pointIds = useMemo(() => {
+    const ids = new Set<SketchEntityId>()
+    for (const point of presentation.points) {
+      if (selectedIds.has(point.id)) ids.add(point.id)
+    }
+    for (const curve of curves) {
+      for (const pointId of curvePointIds(curve)) ids.add(pointId)
+    }
+    return ids
+  }, [curves, presentation.points, selectedIds])
+  if (isIdentitySketchTransform(preview)) return null
+  return (
+    <g data-sketch-transform-preview pointerEvents="none" transform={`scale(1 -1)`}>
+      <g transform={sketchTransformSvgValue(origin, preview)}>
+        {curves.map((entity) => (
+          <SketchCurve
+            key={entity.id}
+            entity={entity}
+            hidden={false}
+            interactive={false}
+            points={presentation.pointsById}
+            selected
+            solvedRadius={presentation.solvedCircles.get(entity.id)}
+            onPointerDown={ignoreCurveAction}
+          />
+        ))}
+        {presentation.points
+          .filter(({ id }) => pointIds.has(id))
+          .map((point) => (
+            <circle
+              key={point.id}
+              cx={point.x}
+              cy={point.y}
+              r={3}
+              className="fill-ring stroke-background"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+      </g>
     </g>
   )
 }
@@ -2735,13 +2848,18 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
   }
 }
 
-type DirectSketchModificationTool = Exclude<SketchModificationTool, "mirror" | "offset">
-type SketchCurveActionKind = "direct" | "mirror" | "offset" | "split-circle"
+type DirectSketchModificationTool = Exclude<
+  SketchModificationTool,
+  "mirror" | "offset" | "transform"
+>
+type SketchCurveActionKind = "direct" | "mirror" | "offset" | "split-circle" | "transform"
 
 function isDirectSketchModificationTool(
   tool: SketchEditorTool,
 ): tool is DirectSketchModificationTool {
-  return isSketchModificationTool(tool) && tool !== "mirror" && tool !== "offset"
+  return (
+    isSketchModificationTool(tool) && tool !== "mirror" && tool !== "offset" && tool !== "transform"
+  )
 }
 
 function sketchCurveActionKind(
@@ -2750,6 +2868,7 @@ function sketchCurveActionKind(
 ): SketchCurveActionKind | null {
   if (!isSketchModificationTool(tool)) return null
   if (tool === "mirror" || tool === "offset") return tool
+  if (tool === "transform") return "transform"
   return tool === "split" && entity?.type === "circle" ? "split-circle" : "direct"
 }
 
@@ -2836,6 +2955,18 @@ function safeMirrorSketchEntities(
       createEntityId: createBrowserSketchEntityId,
       entityIds,
     })
+  } catch {
+    return null
+  }
+}
+
+function safeSketchTransformOrigin(
+  draft: SketchRecord | null,
+  entityIds: readonly SketchEntityId[],
+) {
+  if (!draft || entityIds.length === 0) return null
+  try {
+    return sketchEntityTransformOrigin(draft, entityIds)
   } catch {
     return null
   }
@@ -3044,6 +3175,7 @@ const pointInferenceSupport = {
   "tangent-arc": alwaysSupportsPointInference,
   "three-point-arc": alwaysSupportsPointInference,
   "three-point-circle": alwaysSupportsPointInference,
+  transform: neverSupportsPointInference,
   trim: neverSupportsPointInference,
 } satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
 
@@ -3410,6 +3542,10 @@ function handleSketchCanvasPointerDown(input: {
   input.appendAt(inference.target, inference)
 }
 
+function isPrimaryEmptyCanvasPointer(event: PointerEvent<SVGSVGElement>) {
+  return event.button === 0 && event.target === event.currentTarget
+}
+
 function useSketchPointDrag({
   bounds,
   draft,
@@ -3562,8 +3698,9 @@ type SketchDrawingViewProps = Readonly<{
     onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
     onPointerLeave: () => void
     onPointerMove: (event: PointerEvent<SVGSVGElement>) => void
-    onPointerUp: () => void
+    onPointerUp: (event: PointerEvent<SVGSVGElement>) => void
     onSelection: (entityId: SketchEntityId, additive: boolean) => void
+    onTransformStart: (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => void
     onWheel: (event: WheelEvent<SVGSVGElement>) => void
   }>
   sketch: SketchRecord
@@ -3577,10 +3714,50 @@ type SketchDrawingViewProps = Readonly<{
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
     pending: PendingGeometry | null
+    transform: Readonly<{
+      origin: SketchPoint2
+      preview: SketchTransformPreview
+    }> | null
     viewportSize: ReturnType<typeof useSketchViewportSize>
   }>
   svgRef: RefObject<SVGSVGElement | null>
 }>
+
+function SketchTransformPresentation({
+  bounds,
+  entityIds,
+  geometry,
+  transform,
+  viewportSize,
+  onStart,
+}: Readonly<{
+  bounds: SketchBounds
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  transform: SketchDrawingViewProps["state"]["transform"]
+  viewportSize: SketchViewportSize
+  onStart: SketchDrawingViewProps["handlers"]["onTransformStart"]
+}>) {
+  if (!transform) return null
+  const horizontalScale = viewportSize.width > 0 ? bounds.width / viewportSize.width : 0
+  const verticalScale = viewportSize.height > 0 ? bounds.height / viewportSize.height : 0
+  return (
+    <>
+      <SketchTransformGeometry
+        entityIds={entityIds}
+        origin={transform.origin}
+        presentation={geometry}
+        preview={transform.preview}
+      />
+      <SketchTransformManipulator
+        origin={transform.origin}
+        preview={transform.preview}
+        worldPerPixel={Math.max(horizontalScale, verticalScale)}
+        onStart={onStart}
+      />
+    </>
+  )
+}
 
 function SketchDrawingView({
   configuration,
@@ -3658,6 +3835,14 @@ function SketchDrawingView({
           presentation={state.geometry}
           selectedEntityIds={configuration.selectedEntityIds}
         />
+        <SketchTransformPresentation
+          bounds={state.bounds}
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          transform={state.transform}
+          viewportSize={state.viewportSize}
+          onStart={handlers.onTransformStart}
+        />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
       </svg>
@@ -3677,6 +3862,10 @@ function SketchDrawingView({
         selectedEntityCount={configuration.selectedEntityIds.length}
       />
       <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
+      <SketchTransformInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
     </div>
   )
 }
@@ -3724,6 +3913,26 @@ function SketchOffsetInstruction({
       role="status"
     >
       {instruction}
+    </div>
+  )
+}
+
+function SketchTransformInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "transform") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-transform-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "transformAdjust" : "transformSelectGeometry")}
     </div>
   )
 }
@@ -3781,6 +3990,153 @@ function useSketchPlacementPresentation({
   return { cursor, inference, pending, setCursor, setInference, setPending }
 }
 
+function useSketchTransformInteraction({
+  bounds,
+  draft,
+  editorTool,
+  onDraftChange,
+  onEditorToolChange,
+  onSelectionChange,
+  selectedEntityIds,
+  sketchId,
+  svgRef,
+}: Pick<
+  SketchDrawingConfiguration,
+  | "draft"
+  | "editorTool"
+  | "onDraftChange"
+  | "onEditorToolChange"
+  | "onSelectionChange"
+  | "selectedEntityIds"
+> & {
+  bounds: SketchBounds
+  sketchId: SketchRecord["id"]
+  svgRef: RefObject<SVGSVGElement | null>
+}) {
+  const [gesture, setGesture] = useState<SketchTransformGesture | null>(null)
+  const [preview, setPreview] = useState<SketchTransformPreview>(identitySketchTransform)
+  const rectangleRef = useRef<SketchViewportRectangle | null>(null)
+  const selectionKey = selectedEntityIds.join(":")
+  const origin = useMemo(
+    () => (editorTool === "transform" ? safeSketchTransformOrigin(draft, selectedEntityIds) : null),
+    [draft, editorTool, selectedEntityIds],
+  )
+
+  const reset = () => {
+    setGesture(null)
+    setPreview(identitySketchTransform)
+    rectangleRef.current = null
+  }
+
+  useEffect(() => {
+    reset()
+  }, [editorTool, selectionKey, sketchId])
+
+  const commit = () => {
+    if (!draft || !origin || selectedEntityIds.length === 0 || isIdentitySketchTransform(preview)) {
+      return false
+    }
+    try {
+      const transformed = transformSketchEntities(draft, {
+        entityIds: selectedEntityIds,
+        transform: sketchEntityTransformFromPreview(origin, preview),
+      })
+      onDraftChange(transformed, "record")
+      onSelectionChange([])
+      reset()
+      onEditorToolChange("select")
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const consumePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (gesture?.pointerId !== event.pointerId) return false
+    const rectangle = rectangleRef.current
+    if (rectangle) {
+      setPreview(
+        updateSketchTransformGesture(
+          gesture,
+          pointerToSketchPoint(event, rectangle, bounds),
+          event.shiftKey,
+        ),
+      )
+    }
+    return true
+  }
+
+  const consumeKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (editorTool !== "transform") return false
+    if (event.key === "Escape") {
+      event.preventDefault()
+      reset()
+      onEditorToolChange("select")
+      return true
+    }
+    if (event.key === "Enter") {
+      event.preventDefault()
+      if (!commit()) onEditorToolChange("select")
+      return true
+    }
+    if (!origin) return false
+    const nextTransform = updateSketchTransformFromKeyboard(preview, event.key, event.shiftKey)
+    if (!nextTransform) return false
+    event.preventDefault()
+    setPreview(nextTransform)
+    return true
+  }
+
+  const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (editorTool !== "transform" || !isPrimaryEmptyCanvasPointer(event)) return false
+    if (!commit()) onSelectionChange([])
+    return true
+  }
+
+  const consumePointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    if (gesture?.pointerId !== event.pointerId) return false
+    setGesture(null)
+    rectangleRef.current = null
+    return true
+  }
+
+  const selectEntity = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (!isIdentitySketchTransform(preview)) return
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey
+    onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
+  }
+
+  const start = (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => {
+    const rectangle = svgRef.current?.getBoundingClientRect()
+    if (!rectangle || !origin) return
+    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    const viewportRectangle = {
+      height: rectangle.height,
+      left: rectangle.left,
+      top: rectangle.top,
+      width: rectangle.width,
+    }
+    rectangleRef.current = viewportRectangle
+    setGesture({
+      base: preview,
+      center: sketchTransformCenter(origin, preview),
+      handle,
+      pointerId: event.pointerId,
+      start: pointerToSketchPoint(event, viewportRectangle, bounds),
+    })
+  }
+
+  return {
+    consumeCanvasPointerDown,
+    consumeKeyDown,
+    consumePointerMove,
+    consumePointerUp,
+    presentation: editorTool === "transform" && origin ? { origin, preview } : null,
+    selectEntity,
+    start,
+  }
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -3813,6 +4169,17 @@ function SketchDrawing({
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
+  const transform = useSketchTransformInteraction({
+    bounds,
+    draft,
+    editorTool,
+    onDraftChange,
+    onEditorToolChange,
+    onSelectionChange,
+    selectedEntityIds,
+    sketchId: sketch.id,
+    svgRef,
+  })
   const annotationProfiles = useMemo(
     () => (annotationSolution ? profileSelectors(annotationSolution) : []),
     [annotationSolution],
@@ -3888,6 +4255,7 @@ function SketchDrawing({
     [construction, draft, editorTool, onDraftChange, onEditorToolChange, pending],
   )
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (transform.consumePointerMove(event)) return
     handleSketchPointerMove({
       bounds,
       draggingPointId,
@@ -3902,6 +4270,7 @@ function SketchDrawing({
     })
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (transform.consumeKeyDown(event)) return
     handleSketchKeyDown({
       appendAt,
       cursor,
@@ -3920,12 +4289,9 @@ function SketchDrawing({
     })
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (
-      editorTool === "offset" &&
-      pending?.kind === "offset-distance" &&
-      event.button === 0 &&
-      event.target === event.currentTarget
-    ) {
+    if (transform.consumeCanvasPointerDown(event)) return
+    const primaryEmptyCanvas = isPrimaryEmptyCanvasPointer(event)
+    if (editorTool === "offset" && pending?.kind === "offset-distance" && primaryEmptyCanvas) {
       const point = eventPoint(event)
       const result = draft && point ? safeAppendSketchLineOffset(draft, pending, point) : null
       if (result) publishModificationDraft(result.sketch)
@@ -4004,6 +4370,7 @@ function SketchDrawing({
     const actions = {
       mirror: () => handleMirrorAction(entityId),
       offset: () => handleOffsetSourceAction(entityId),
+      transform: () => transform.selectEntity(event, entityId),
       "split-circle": () => {
         const point = eventPoint(event)
         if (point && entity?.type === "circle") handleCircleSplitAction(entity, point)
@@ -4017,7 +4384,8 @@ function SketchDrawing({
     } satisfies Record<SketchCurveActionKind, () => void>
     actions[actionKind]()
   }
-  const handlePointerUp = () => {
+  const handlePointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    if (transform.consumePointerUp(event)) return
     finishPointDrag()
     setInference(null)
     setPanGesture(null)
@@ -4056,6 +4424,7 @@ function SketchDrawing({
         onPointerMove: handlePointerMove,
         onPointerUp: handlePointerUp,
         onSelection: handleSelection,
+        onTransformStart: transform.start,
         onWheel: handleWheel,
       }}
       sketch={sketch}
@@ -4069,6 +4438,7 @@ function SketchDrawing({
         geometry,
         inference,
         pending,
+        transform: transform.presentation,
         viewportSize,
       }}
       svgRef={svgRef}

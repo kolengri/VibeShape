@@ -29,6 +29,7 @@ export const editorCommandIds = {
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
   sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
   sketchSplit: "org.vibeshape.editor.sketch.modify.split",
+  sketchTransform: "org.vibeshape.editor.sketch.modify.transform",
   sketchTrim: "org.vibeshape.editor.sketch.modify.trim",
   sketchUndo: "org.vibeshape.editor.sketch.undo",
   workspaceModel: "org.vibeshape.editor.workspace.model",
@@ -75,6 +76,7 @@ export type EditorCommandIcon =
   | "sketch"
   | "slot"
   | "split"
+  | "transform"
   | "subtract"
   | "tangent-arc"
   | "trim"
@@ -112,6 +114,7 @@ export type EditorCommandLabelKey =
   | "sketchRedo"
   | "sketchSelect"
   | "sketchSplit"
+  | "sketchTransform"
   | "sketchTangentArc"
   | "sketchTrim"
   | "sketchUndo"

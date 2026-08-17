@@ -36,6 +36,7 @@ and selection are presentation state; they never replace stable entity and const
 | Split curve | Divide a line or arc at one projected point; divide a circle at two projected points into complementary equal-radius arcs | Implemented |
 | Mirror | Reflect selected or subsequently picked points, lines, arcs, and circles across a sketch line while preserving shared-point and symmetry intent | Implemented |
 | Offset | Offset one line or a connected non-branching line chain/loop with live signed preview and one variable-ready driving dimension | Implemented for lines |
+| Transform | Move, axis-translate, rotate, or uniformly scale preselected or subsequently selected sketch geometry with one transient manipulator and one local history commit | Implemented; numeric entry and relocatable origin remain open |
 | Construction | Mark reference geometry that participates in constraints but not profiles | Implemented |
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
@@ -69,7 +70,8 @@ baseline is derived from the official
 [Extend](https://cad.onshape.com/help/Content/Sketch/extend.htm), and
 [Sketch Split](https://cad.onshape.com/help/Content/Sketch/sketch_split.htm), and
 [Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm), and
-[Offset](https://cad.onshape.com/help/Content/Sketch/offset.htm) documentation.
+[Offset](https://cad.onshape.com/help/Content/Sketch/offset.htm), and
+[Sketch Transform](https://cad.onshape.com/help/Content/Sketch/sketch_transform.htm) documentation.
 
 | Family | Current parity | Remaining production gap |
 |---|---|---|
@@ -79,7 +81,7 @@ baseline is derived from the official
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, and signed connected-line Offset | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, Transform, and patterns |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, and manipulator-driven move/rotate/uniform-scale Transform | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, numeric/relocatable-origin Transform, and patterns |
 | Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -181,6 +183,18 @@ adding solver constraints.
     on the axis retain their identity, off-axis point pairs receive Symmetric intent, and mirrored
     round geometry retains equal-radius intent without redundant solver equations. Invalid axes,
     missing sources, and attempts to mirror the axis itself leave the draft unchanged.
+14. Transform supports preselection and post-selection of points, lines, arcs, and circles. A
+    center manipulator exposes free translation, sketch-X and sketch-Y translation, rotation, and
+    positive uniform scale. The overlay transforms only selected presentation geometry while the
+    pointer moves; it does not clone, schema-parse, solve, or publish the complete sketch on a drag
+    frame. `Shift` snaps rotation to 15-degree increments and scale to tenths. `Enter` or a primary
+    click on empty canvas applies the current transform as one schema-validated draft and one local
+    undo entry; `Escape` cancels without mutating the draft. Internal transform-invariant
+    constraints remain. Exact quarter turns swap Horizontal and Vertical intent, while fixed,
+    directed, scaled dimensional, and selection-boundary-crossing constraints are removed when
+    retaining them would block or misstate the transformed result. With canvas focus, arrow keys
+    move by 1 mm, `Shift` plus an arrow moves by 10 mm, brackets rotate by 15 degrees, and minus or
+    equals changes uniform scale by one tenth, providing a keyboard path without pointer handles.
 
 ## View orientation
 
@@ -195,7 +209,8 @@ active support plane and display unit.
    quadrant candidates, and projected/external geometry inference.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
    ellipses and splines through exact analytical or solver-backed entities.
-3. Add numeric point placement and coordinate editing.
+3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
+   relocatable manipulator origin.
 4. Add reference dimensions and a driving/reference conversion command.
 5. Extend Trim, Extend, Split, and Mirror to future ellipse and spline entities, then add
    drag-through Trim and explicit free-end Extend behavior.

@@ -61,6 +61,14 @@ The first extrusion slice starts from a selected saved sketch profile. `Extrude 
 
 Feature removal is available from an active edit task. A feature with direct dependents keeps the destructive action disabled and names the downstream features that must be removed first; the initial implementation never guesses a cascade. A removable leaf opens the shared accessible `AlertDialog`, names the feature, warns that undo is not implemented, blocks repeated activation while the asynchronous commit is pending, remains open with a persistent error after failure, and closes only after semantic persistence and rebuild succeed. Successful removal closes the edit task, clears an invalid viewport selection, updates terminal geometry, and survives reload.
 
+Transform extends the direct analytical modify group. It accepts either an existing selection or
+subsequent point and curve picks, then exposes a canvas manipulator for free move, sketch-axis move,
+rotation, and positive uniform scale. Pointer movement updates only a selected-geometry SVG overlay;
+it does not publish a draft, parse the complete sketch, or request a solve. `Shift` snaps rotation
+and scale. `Enter` or an empty-canvas primary click applies one domain transform and one local undo
+entry; `Escape` cancels it. Numeric values and relocating the manipulator origin remain follow-up
+work.
+
 ## Flow 1: create a printable part
 
 1. Create a project and choose a printer profile or no profile.
