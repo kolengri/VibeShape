@@ -29,6 +29,21 @@ import { DocumentDisplayUnitsProvider } from "../../document/document-display-un
 import { i18n } from "../../i18n"
 import { SketchViewport } from "./sketch-viewport"
 
+const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
+
+vi.mock("@vibeshape/domain", async (importOriginal) => {
+  const domain = await importOriginal<typeof import("@vibeshape/domain")>()
+  return {
+    ...domain,
+    createSketchInferenceCandidateQuery: (
+      input: Parameters<typeof domain.createSketchInferenceCandidateQuery>[0],
+    ) => {
+      sketchInferenceIndexBuilds()
+      return domain.createSketchInferenceCandidateQuery(input)
+    },
+  }
+})
+
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 
 function sequentialIdFactory<Value>(parse: (value: string) => Value, group: string) {
@@ -1954,6 +1969,38 @@ describe("SketchViewport", () => {
 
     expect(onDraftChange).toHaveBeenCalledOnce()
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+  })
+
+  it("reuses the prewarmed inference index across incremental zoom and point drag", () => {
+    const denseSketch = denseRectangleSketchFixture()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The dense sketch fixture must contain a point.")
+    const pointSelector = `[data-sketch-entity-id="${draggedPoint.id}"]`
+    const pointElement = document.querySelector(pointSelector)
+    if (!pointElement) throw new Error("The dense sketch point must be rendered.")
+    const buildsBeforeDrag = sketchInferenceIndexBuilds.mock.calls.length
+
+    fireEvent.wheel(drawing, { clientX: 400, clientY: 300, deltaY: 10 })
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must schedule an animation frame.")
+    act(() => frame(0))
+
+    expect(buildsBeforeDrag).toBeGreaterThan(0)
+    expect(sketchInferenceIndexBuilds).toHaveBeenCalledTimes(buildsBeforeDrag)
   })
 
   it("limits drag-frame rendering to the point and its incident curves", async () => {
