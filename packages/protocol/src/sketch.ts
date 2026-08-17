@@ -95,11 +95,27 @@ const arcEntitySchema = z
   .strict()
   .refine((arc) => new Set([arc.centerPointId, arc.startPointId, arc.endPointId]).size === 3)
 
+const ellipseEntitySchema = z
+  .object({
+    ...entityEnvelope,
+    type: z.literal("ellipse"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (ellipse) =>
+      new Set([ellipse.centerPointId, ellipse.primaryAxisPointId, ellipse.secondaryAxisPointId])
+        .size === 3,
+  )
+
 const sketchEntitySchema = z.discriminatedUnion("type", [
   pointEntitySchema,
   lineEntitySchema,
   circleEntitySchema,
   arcEntitySchema,
+  ellipseEntitySchema,
 ])
 
 const constraintEnvelope = { schemaVersion: z.literal(0), id: sketchConstraintIdSchema }
@@ -274,67 +290,58 @@ function entityIs(entities: ReadonlyMap<string, WireEntity>, id: string, types: 
 }
 
 function validEntityReferences(entity: WireEntity, entities: ReadonlyMap<string, WireEntity>) {
-  if (entity.type === "point") return true
-  if (entity.type === "line") {
-    return (
-      entityIs(entities, entity.startPointId, ["point"]) &&
-      entityIs(entities, entity.endPointId, ["point"])
-    )
+  return wireEntityPointReferenceIds(entity).every((id) => entityIs(entities, id, ["point"]))
+}
+
+function wireEntityPointReferenceIds(entity: WireEntity): readonly string[] {
+  switch (entity.type) {
+    case "point":
+      return []
+    case "line":
+      return [entity.startPointId, entity.endPointId]
+    case "circle":
+      return [entity.centerPointId]
+    case "arc":
+      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+    case "ellipse":
+      return [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId]
   }
-  if (entity.type === "circle") return entityIs(entities, entity.centerPointId, ["point"])
-  return (
-    entityIs(entities, entity.centerPointId, ["point"]) &&
-    entityIs(entities, entity.startPointId, ["point"]) &&
-    entityIs(entities, entity.endPointId, ["point"])
-  )
 }
 
 type SketchWireConstraint = z.infer<typeof sketchConstraintSchema>
 
-const constraintReferenceFields = {
-  coincident: ["firstPointId", "secondPointId"],
-  horizontal: ["lineId"],
-  vertical: ["lineId"],
-  parallel: ["firstEntityId", "secondEntityId"],
-  perpendicular: ["firstEntityId", "secondEntityId"],
-  equal: ["firstEntityId", "secondEntityId"],
-  tangent: ["arcId", "lineId"],
-  concentric: ["firstEntityId", "secondEntityId"],
-  "point-on-line": ["pointId", "lineId"],
-  "point-on-curve": ["pointId", "curveId"],
-  midpoint: ["pointId", "lineId"],
-  symmetric: ["firstPointId", "secondPointId", "lineId"],
-  fixed: ["pointId"],
-  "horizontal-distance": ["firstPointId", "secondPointId"],
-  "vertical-distance": ["firstPointId", "secondPointId"],
-  distance: ["firstPointId", "secondPointId"],
-  angle: ["firstEntityId", "secondEntityId"],
-  radius: ["curveId"],
-  diameter: ["curveId"],
-} as const satisfies Record<Exclude<SketchWireConstraint["type"], "offset">, readonly string[]>
+type WireEntityReferenceRules = Readonly<Record<string, readonly WireEntity["type"][]>>
 
-function constraintReferences(constraint: SketchWireConstraint) {
-  if (constraint.type === "offset") {
-    return [
-      ...constraint.linePairs.flatMap(({ sourceLineId, offsetLineId }) => [
-        sourceLineId,
-        offsetLineId,
-      ]),
-      ...constraint.endpointPairs.flatMap(({ sourcePointId, offsetPointId }) => [
-        sourcePointId,
-        offsetPointId,
-      ]),
-    ]
-  }
-  const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
-  return constraintReferenceFields[constraint.type].map((field) => {
-    const reference = constraintRecord[field]
-    if (!isString(reference)) {
-      throw new Error(`Sketch constraint reference ${field} is not a string.`)
-    }
-    return reference
-  })
-}
+const wireConstraintEntityReferenceRules = {
+  coincident: { firstPointId: ["point"], secondPointId: ["point"] },
+  horizontal: { lineId: ["line"] },
+  vertical: { lineId: ["line"] },
+  parallel: { firstEntityId: ["line"], secondEntityId: ["line"] },
+  perpendicular: { firstEntityId: ["line"], secondEntityId: ["line"] },
+  tangent: { arcId: ["arc"], lineId: ["line"] },
+  concentric: {
+    firstEntityId: ["circle", "arc"],
+    secondEntityId: ["circle", "arc"],
+  },
+  "point-on-line": { pointId: ["point"], lineId: ["line"] },
+  "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
+  midpoint: { pointId: ["point"], lineId: ["line"] },
+  symmetric: {
+    firstPointId: ["point"],
+    secondPointId: ["point"],
+    lineId: ["line"],
+  },
+  fixed: { pointId: ["point"] },
+  "horizontal-distance": { firstPointId: ["point"], secondPointId: ["point"] },
+  "vertical-distance": { firstPointId: ["point"], secondPointId: ["point"] },
+  distance: { firstPointId: ["point"], secondPointId: ["point"] },
+  angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
+  radius: { curveId: ["circle", "arc"] },
+  diameter: { curveId: ["circle", "arc"] },
+} as const satisfies Record<
+  Exclude<SketchWireConstraint["type"], "equal" | "offset">,
+  WireEntityReferenceRules
+>
 
 type SketchWireStructure = Readonly<{
   constraints: readonly SketchWireConstraint[]
@@ -388,12 +395,32 @@ function offsetTargetsAreValid(
   )
 }
 
+function equalTargetsAreValid(
+  constraint: Extract<SketchWireConstraint, { type: "equal" }>,
+  entities: ReadonlyMap<string, WireEntity>,
+) {
+  const first = entities.get(constraint.firstEntityId)
+  const second = entities.get(constraint.secondEntityId)
+  if (!first || !second) return false
+  if (first.type === "line" || second.type === "line") {
+    return first.type === "line" && second.type === "line"
+  }
+  const roundTypes: readonly WireEntity["type"][] = ["circle", "arc"]
+  return roundTypes.includes(first.type) && roundTypes.includes(second.type)
+}
+
 function wireConstraintReferencesAreValid(
   constraint: SketchWireConstraint,
   entities: ReadonlyMap<string, WireEntity>,
 ) {
-  if (constraint.type === "offset" && !offsetTargetsAreValid(constraint, entities)) return false
-  return constraintReferences(constraint).every((id) => entities.has(id))
+  if (constraint.type === "offset") return offsetTargetsAreValid(constraint, entities)
+  if (constraint.type === "equal") return equalTargetsAreValid(constraint, entities)
+  const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
+  const rules: WireEntityReferenceRules = wireConstraintEntityReferenceRules[constraint.type]
+  return Object.entries(rules).every(([field, entityTypes]) => {
+    const entityId = constraintRecord[field]
+    return isString(entityId) && entityIs(entities, entityId, entityTypes)
+  })
 }
 
 function nativeWireConstraintCount(constraints: readonly SketchWireConstraint[]) {
@@ -426,7 +453,7 @@ function validateWireConstraintTable(
     context.addIssue({
       code: "custom",
       path: ["constraints", index],
-      message: "Sketch constraints must reference existing entities.",
+      message: "Sketch constraints must reference compatible entities.",
     })
   }
   if (nativeWireConstraintCount(sketch.constraints) <= 10_000) return
@@ -489,7 +516,7 @@ const profileBoundsWireSchema = z
 const profileLoopSegmentWireSchema = z
   .object({
     entityId: sketchEntityIdSchema,
-    type: z.enum(["line", "arc", "circle"]),
+    type: z.enum(["line", "arc", "circle", "ellipse"]),
     reversed: z.boolean(),
   })
   .strict()

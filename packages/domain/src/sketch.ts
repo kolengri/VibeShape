@@ -1,6 +1,11 @@
 import { isString } from "is-what"
 import { z } from "zod"
-import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
+import {
+  type SketchEntityId,
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "./identifiers"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 
 export const MAX_SKETCHES_PER_DOCUMENT = 256
@@ -62,11 +67,27 @@ export const sketchArcEntitySchema = sketchEntityEnvelopeSchema
     message: "A sketch arc requires distinct center, start, and end point entities.",
   })
 
+export const sketchEllipseEntitySchema = sketchEntityEnvelopeSchema
+  .extend({
+    type: z.literal("ellipse"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (ellipse) =>
+      new Set([ellipse.centerPointId, ellipse.primaryAxisPointId, ellipse.secondaryAxisPointId])
+        .size === 3,
+    { message: "A sketch ellipse requires distinct center and axis point entities." },
+  )
+
 export const sketchEntitySchema = z.discriminatedUnion("type", [
   sketchPointEntitySchema,
   sketchLineEntitySchema,
   sketchCircleEntitySchema,
   sketchArcEntitySchema,
+  sketchEllipseEntitySchema,
 ])
 
 const sketchConstraintEnvelopeSchema = z.object({
@@ -261,22 +282,21 @@ function validateEntityReferences(
   entity: SketchEntity,
   entities: ReadonlyMap<string, SketchEntity>,
 ) {
+  return entityPointReferenceIds(entity).every((id) => entityIs(entities, id, ["point"]))
+}
+
+function entityPointReferenceIds(entity: SketchEntity): readonly SketchEntityId[] {
   switch (entity.type) {
     case "point":
-      return true
+      return []
     case "line":
-      return (
-        entityIs(entities, entity.startPointId, ["point"]) &&
-        entityIs(entities, entity.endPointId, ["point"])
-      )
+      return [entity.startPointId, entity.endPointId]
     case "circle":
-      return entityIs(entities, entity.centerPointId, ["point"])
+      return [entity.centerPointId]
     case "arc":
-      return (
-        entityIs(entities, entity.centerPointId, ["point"]) &&
-        entityIs(entities, entity.startPointId, ["point"]) &&
-        entityIs(entities, entity.endPointId, ["point"])
-      )
+      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+    case "ellipse":
+      return [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId]
   }
 }
 

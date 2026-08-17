@@ -69,3 +69,21 @@ export function CircumscribedPolygonIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export function EllipseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      {...props}
+    >
+      <ellipse cx="12" cy="12" rx="9" ry="5.5" transform="rotate(-25 12 12)" />
+      <path d="M4.1 15.8 19.9 8.2M12 12l2.1 4.3" strokeDasharray="1.5 2" />
+    </svg>
+  )
+}

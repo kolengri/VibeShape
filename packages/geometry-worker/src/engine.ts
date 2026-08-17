@@ -22,10 +22,11 @@ import {
   assembleWire,
   cast,
   makeCircle,
+  makeEllipse,
   makeFace,
   makeLine,
   makeThreePointArc,
-  type Point,
+  type SimplePoint,
   type Shape3D,
   setOC,
   type Wire,
@@ -666,19 +667,19 @@ function extrusionPlane(parameters: ExtrusionContentParameters) {
     case "xy":
       return {
         normal: [0, 0, 1] as [number, number, number],
-        point: ([x, y]: readonly [number, number], offset = 0): Point => [x, y, offset],
+        point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [x, y, offset],
         local: ([x, y]: readonly [number, number, number]) => [x, y] as const,
       }
     case "xz":
       return {
         normal: [0, -1, 0] as [number, number, number],
-        point: ([x, y]: readonly [number, number], offset = 0): Point => [x, -offset, y],
+        point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [x, -offset, y],
         local: ([x, _y, z]: readonly [number, number, number]) => [x, z] as const,
       }
     case "yz":
       return {
         normal: [1, 0, 0] as [number, number, number],
-        point: ([x, y]: readonly [number, number], offset = 0): Point => [offset, x, y],
+        point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [offset, x, y],
         local: ([_x, y, z]: readonly [number, number, number]) => [y, z] as const,
       }
   }
@@ -729,14 +730,14 @@ function extrusionLineSideRole(
   return lineMatches.length === 1 ? `extrusion.side.${lineMatches[0]?.entityId}` : undefined
 }
 
-function extrusionRoundSideRole(
+function extrusionCurvedSideRole(
   context: TopologyCandidateContext,
   parameters: ExtrusionContentParameters,
 ) {
-  if (context.kind !== "face" || context.signature.geometryClass !== "CYLINDRE") return undefined
+  if (context.kind !== "face" || context.signature.geometryClass === "PLANE") return undefined
   const segments = [parameters.outer, ...parameters.holes].flatMap(({ segments }) => segments)
-  const roundSegments = segments.filter((segment) => segment.type !== "line")
-  return roundSegments.length === 1 ? `extrusion.side.${roundSegments[0]?.entityId}` : undefined
+  const curvedSegments = segments.filter((segment) => segment.type !== "line")
+  return curvedSegments.length === 1 ? `extrusion.side.${curvedSegments[0]?.entityId}` : undefined
 }
 
 function extrusionFeatureSemanticRole(
@@ -746,8 +747,88 @@ function extrusionFeatureSemanticRole(
   return (
     extrusionCapRole(context, parameters) ??
     extrusionLineSideRole(context, parameters) ??
-    extrusionRoundSideRole(context, parameters)
+    extrusionCurvedSideRole(context, parameters)
   )
+}
+
+function normalizedPointDirection(start: SimplePoint, end: SimplePoint): SimplePoint {
+  const direction = [end[0] - start[0], end[1] - start[1], end[2] - start[2]] as SimplePoint
+  const magnitude = Math.hypot(...direction)
+  if (!Number.isFinite(magnitude) || magnitude <= Number.EPSILON) {
+    throw new Error("Extrusion ellipse axis direction is degenerate.")
+  }
+  return direction.map((coordinate) => coordinate / magnitude) as SimplePoint
+}
+
+type ExtrusionPlane = ReturnType<typeof extrusionPlane>
+type ExtrusionSegment = ExtrusionContentParameters["outer"]["segments"][number]
+
+function extrusionNormal(plane: ExtrusionPlane, reverse: boolean): SimplePoint {
+  return reverse ? (plane.normal.map((coordinate) => -coordinate) as SimplePoint) : plane.normal
+}
+
+function extrusionEllipseEdge(
+  plane: ExtrusionPlane,
+  segment: Extract<ExtrusionSegment, { type: "ellipse" }>,
+  offset: number,
+  reverse: boolean,
+) {
+  const center = plane.point(segment.center, offset)
+  const primaryAxisPoint = plane.point(segment.primaryAxisPoint, offset)
+  const secondaryAxisPoint = plane.point(segment.secondaryAxisPoint, offset)
+  const primaryRadius = Math.hypot(
+    segment.primaryAxisPoint[0] - segment.center[0],
+    segment.primaryAxisPoint[1] - segment.center[1],
+  )
+  const secondaryRadius = Math.hypot(
+    segment.secondaryAxisPoint[0] - segment.center[0],
+    segment.secondaryAxisPoint[1] - segment.center[1],
+  )
+  const primaryIsMajor = primaryRadius >= secondaryRadius
+  return makeEllipse(
+    primaryIsMajor ? primaryRadius : secondaryRadius,
+    primaryIsMajor ? secondaryRadius : primaryRadius,
+    center,
+    extrusionNormal(plane, reverse),
+    normalizedPointDirection(center, primaryIsMajor ? primaryAxisPoint : secondaryAxisPoint),
+  )
+}
+
+function extrusionOpenCurveEdge(
+  plane: ExtrusionPlane,
+  segment: Extract<ExtrusionSegment, { type: "arc" | "line" }>,
+  offset: number,
+  reverse: boolean,
+) {
+  const start = reverse ? segment.end : segment.start
+  const end = reverse ? segment.start : segment.end
+  if (segment.type === "line") {
+    return makeLine(plane.point(start, offset), plane.point(end, offset))
+  }
+  return makeThreePointArc(
+    plane.point(start, offset),
+    plane.point(segment.middle, offset),
+    plane.point(end, offset),
+  )
+}
+
+function extrusionSegmentEdge(
+  plane: ExtrusionPlane,
+  segment: ExtrusionSegment,
+  offset: number,
+  reverse: boolean,
+) {
+  if (segment.type === "circle") {
+    return makeCircle(
+      segment.radius,
+      plane.point(segment.center, offset),
+      extrusionNormal(plane, reverse),
+    )
+  }
+  if (segment.type === "ellipse") {
+    return extrusionEllipseEdge(plane, segment, offset, reverse)
+  }
+  return extrusionOpenCurveEdge(plane, segment, offset, reverse)
 }
 
 function extrusionLoopWire(
@@ -758,24 +839,9 @@ function extrusionLoopWire(
 ) {
   const plane = extrusionPlane(parameters)
   const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
-  const edges = orderedSegments.map((segment) => {
-    if (segment.type === "circle") {
-      const normal = reverse
-        ? (plane.normal.map((coordinate) => -coordinate) as [number, number, number])
-        : plane.normal
-      return makeCircle(segment.radius, plane.point(segment.center, offset), normal)
-    }
-    const start = reverse ? segment.end : segment.start
-    const end = reverse ? segment.start : segment.end
-    if (segment.type === "line") {
-      return makeLine(plane.point(start, offset), plane.point(end, offset))
-    }
-    return makeThreePointArc(
-      plane.point(start, offset),
-      plane.point(segment.middle, offset),
-      plane.point(end, offset),
-    )
-  })
+  const edges = orderedSegments.map((segment) =>
+    extrusionSegmentEdge(plane, segment, offset, reverse),
+  )
   try {
     return assembleWire(edges)
   } finally {

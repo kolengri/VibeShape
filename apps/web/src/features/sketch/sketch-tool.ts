@@ -23,6 +23,7 @@ export type SketchEditorTool =
   | "aligned-rectangle"
   | "centered-aligned-rectangle"
   | "circle"
+  | "ellipse"
   | "three-point-circle"
   | "inscribed-polygon"
   | "circumscribed-polygon"

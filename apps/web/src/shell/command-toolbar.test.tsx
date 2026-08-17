@@ -148,6 +148,10 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-circle")
 
+    await user.click(screen.getByRole("button", { name: "Circle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Center-point ellipse" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("ellipse")
+
     await user.click(screen.getByRole("button", { name: "Polygon tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Circumscribed polygon" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("circumscribed-polygon")

@@ -97,6 +97,14 @@ function clonedCurve(
         startPointId: mappedPointId(pointIds, curve.startPointId),
         endPointId: mappedPointId(pointIds, curve.endPointId),
       }
+    case "ellipse":
+      return {
+        ...curve,
+        id,
+        centerPointId: mappedPointId(pointIds, curve.centerPointId),
+        primaryAxisPointId: mappedPointId(pointIds, curve.primaryAxisPointId),
+        secondaryAxisPointId: mappedPointId(pointIds, curve.secondaryAxisPointId),
+      }
   }
 }
 

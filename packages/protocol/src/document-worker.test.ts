@@ -17,6 +17,8 @@ const fourthSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3205"
 const sourceLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3206"
 const offsetLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
 const offsetConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
+const ellipseId = "0195b5ac-b220-7a2c-8c33-67a36a7f3209"
+const ellipseConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3210"
 
 function sketch() {
   return {
@@ -307,6 +309,69 @@ describe("document worker protocol", () => {
     ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
   })
 
+  it("accepts analytical ellipses but rejects unsupported ellipse constraints", () => {
+    const ellipseSketch = {
+      ...sketch(),
+      entities: [
+        ...sketch().entities,
+        {
+          schemaVersion: 0,
+          id: secondSketchPointId,
+          type: "point",
+          x: 20,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: thirdSketchPointId,
+          type: "point",
+          x: 0,
+          y: 10,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: ellipseId,
+          type: "ellipse",
+          centerPointId: sketchPointId,
+          primaryAxisPointId: secondSketchPointId,
+          secondaryAxisPointId: thirdSketchPointId,
+          construction: false,
+        },
+      ],
+    } as const
+    const parsed = documentRebuildSnapshotSchema.parse({ ...document(), sketches: [ellipseSketch] })
+    expect(parsed.sketches[0]?.entities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "ellipse" })]),
+    )
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...ellipseSketch,
+            constraints: [
+              {
+                schemaVersion: 0,
+                id: ellipseConstraintId,
+                type: "radius",
+                curveId: ellipseId,
+                value: {
+                  schemaVersion: 0,
+                  dimension: "length",
+                  value: 10,
+                  unit: "mm",
+                  source: { value: 10, unit: "mm" },
+                },
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts a bounded signed line-chain offset and rejects unsafe pairs", () => {
     expect(
       documentRebuildSnapshotSchema.parse({ ...document(), sketches: [offsetSketch()] }),
@@ -388,6 +453,18 @@ describe("document worker protocol", () => {
     expect(sketchProfileResultWireSchema.parse(profile)).toMatchObject({
       profiles: [{ area: 100 }],
     })
+    expect(
+      sketchProfileResultWireSchema.parse({
+        ...profile,
+        loops: [
+          {
+            ...profile.loops[0],
+            sourceEntityIds: [ellipseId],
+            segments: [{ entityId: ellipseId, type: "ellipse", reversed: false }],
+          },
+        ],
+      }),
+    ).toMatchObject({ loops: [{ segments: [{ type: "ellipse" }] }] })
     expect(
       sketchProfileResultWireSchema.safeParse({
         ...profile,

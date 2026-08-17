@@ -178,6 +178,49 @@ describe("geometry worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts exact ellipse extrusion geometry and rejects invalid axes", () => {
+    const parameters = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      plane: "xy",
+      outer: {
+        sourceEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
+        segments: [
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+            type: "ellipse",
+            center: [2, 3],
+            primaryAxisPoint: [12, 3],
+            secondaryAxisPoint: [2, 8],
+          },
+        ],
+      },
+      holes: [],
+      distance: 12,
+      symmetric: false,
+      operation: "new",
+    } as const
+
+    expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [{ ...parameters.outer.segments[0], secondaryAxisPoint: [7, 8] }],
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [{ ...parameters.outer.segments[0], primaryAxisPoint: [2, 3] }],
+        },
+      }).success,
+    ).toBe(false)
+  })
+
   it("binds dependent evaluation slots to ordered feature hashes", () => {
     const inputHashes = ["a".repeat(64), "b".repeat(64)]
     const request = {

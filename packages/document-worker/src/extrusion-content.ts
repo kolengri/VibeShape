@@ -103,6 +103,24 @@ function circleSegment(
     : null
 }
 
+function ellipseSegment(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const primaryAxisPoint = solvedPoint(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = solvedPoint(points, entity.secondaryAxisPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint
+    ? {
+        entityId: entity.id,
+        type: "ellipse" as const,
+        center: [center.x, center.y] as const,
+        primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
+        secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
+      }
+    : null
+}
+
 function materializeLoop(
   loop: SketchProfileLoop,
   sketch: SketchRecord,
@@ -117,6 +135,7 @@ function materializeLoop(
     if (entity.type === "line") return lineSegment(entity, segment.reversed, points)
     if (entity.type === "arc") return arcSegment(entity, segment.reversed, points)
     if (entity.type === "circle") return circleSegment(entity, points, radii)
+    if (entity.type === "ellipse") return ellipseSegment(entity, points)
     return null
   })
   if (segments.some((segment) => segment === null)) return null

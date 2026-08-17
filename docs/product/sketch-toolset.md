@@ -23,6 +23,7 @@ and selection are presentation state; they never replace stable entity and const
 | Centered Aligned Rectangle | Define the center, symmetric direction/half-length, and perpendicular half-width with a persistent construction axis and midpoint intent | Implemented |
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
+| Center-point Ellipse | Define a center, first axis endpoint, and perpendicular second-axis radius as one exact analytical curve | Implemented; ellipse-specific driving dimensions and direct curve modification remain open |
 | Circumscribed Polygon | Define a center, vertex radius, and 3–50 sides; keep every vertex on one construction circle with equal side intent | Implemented |
 | Inscribed Polygon | Define a center, tangent-circle radius, and 3–50 sides; keep side midpoints on the construction circle with equal side intent | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
@@ -34,7 +35,7 @@ and selection are presentation state; they never replace stable entity and const
 | Trim curve | Remove the clicked line, arc, or circle portion bounded by neighboring analytical curve intersections while preserving the original identity on one retained remainder | Implemented |
 | Extend open curve | Move the clicked-near line or arc endpoint to the nearest reachable bounded line, arc, or circle intersection while preserving the curve identity | Implemented |
 | Split curve | Divide a line or arc at one projected point; divide a circle at two projected points into complementary equal-radius arcs | Implemented |
-| Mirror | Reflect selected or subsequently picked points, lines, arcs, and circles across a sketch line while preserving shared-point and symmetry intent | Implemented |
+| Mirror | Reflect selected or subsequently picked points, lines, arcs, circles, and ellipses across a sketch line while preserving shared-point and symmetry intent | Implemented |
 | Offset | Offset one line or a connected non-branching line chain/loop with live signed preview and one variable-ready driving dimension | Implemented for lines |
 | Transform | Move, axis-translate, rotate, or uniformly scale preselected or subsequently selected sketch geometry with one transient manipulator, relocatable point-snapping origin, variable-aware exact values, and one local history commit | Implemented |
 | Linear Pattern | Repeat preselected or subsequently selected sketch geometry in one or two exact directions with count, spacing, and angle controls; preview at most ten total instances and commit once | Implemented as bounded analytical copies; associative pattern editing remains open |
@@ -43,7 +44,7 @@ and selection are presentation state; they never replace stable entity and const
 | Local Undo/Redo | Reverse or restore one authored draft operation without a document revision | Implemented |
 
 The command toolbar groups related variants like Onshape: Line and Midpoint Line; Corner, Center,
-Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle; Inscribed and
+Aligned, and Centered Aligned Rectangle; Center-point and Three-point Circle plus Center-point Ellipse; Inscribed and
 Circumscribed Polygon; Three-point, Tangent, and Center-point Arc; and Straight, Centered, and
 selection-driven Slot. The family
 button invokes the active or last-used variant, while its adjacent menu exposes every variant with
@@ -56,7 +57,7 @@ lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch 
 reflects points or analytical curves through shared pure domain operations. Offset accepts a
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
-every line pair plus both open-chain endpoints. Ellipse, spline, drag-through Trim, free-end Extend,
+every line pair plus both open-chain endpoints. Ellipse-specific constraints and direct modification, spline, drag-through Trim, free-end Extend,
 round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
@@ -87,12 +88,12 @@ documentation.
 |---|---|---|
 | Line | Line and center-origin Midpoint Line in one remembered split family | Infinite construction line and richer wake-up inference |
 | Rectangle | Corner, Center, Aligned, and Centered Aligned variants | Selection-driven conversion and numeric placement |
-| Circle | Center-point and Three-point variants | Tangent circle and ellipse require exact solver entities |
+| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse | Tangent circle, ellipse-specific dimensions, and Elliptical Arc |
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle Mirror, signed connected-line Offset, exact or manipulator-driven move/rotate/uniform-scale Transform with a relocatable origin, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline modification, draggable circular-pattern center, and associative pattern editing |
-| Curves | Analytical lines, circles, and arcs | Ellipse, spline, conic, and projected/external geometry |
+| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline direct modification, draggable circular-pattern center, and associative pattern editing |
+| Curves | Analytical lines, circles, arcs, and full ellipses | Elliptical Arc, spline, other conics, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
 stages: select the center, select the vertex radius or tangent-circle radius, then adjust the side
@@ -195,7 +196,7 @@ adding solver constraints.
     on the axis retain their identity, off-axis point pairs receive Symmetric intent, and mirrored
     round geometry retains equal-radius intent without redundant solver equations. Invalid axes,
     missing sources, and attempts to mirror the axis itself leave the draft unchanged.
-14. Transform supports preselection and post-selection of points, lines, arcs, and circles. A
+14. Transform supports preselection and post-selection of points, lines, arcs, circles, and ellipses. A
     center manipulator exposes free translation, sketch-X and sketch-Y translation, rotation, and
     positive uniform scale. The overlay transforms only selected presentation geometry while the
     pointer moves; it does not clone, schema-parse, solve, or publish the complete sketch on a drag
@@ -220,11 +221,11 @@ active support plane and display unit.
 1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
    quadrant candidates, and projected/external geometry inference.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
-   ellipses and splines through exact analytical or solver-backed entities.
+   Elliptical Arc and splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
    relocatable manipulator origin.
 4. Add reference dimensions and a driving/reference conversion command.
-5. Extend Trim, Extend, Split, and Mirror to future ellipse and spline entities, then add
+5. Extend Trim, Extend, and Split to ellipse and future spline entities, then add
    drag-through Trim and explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

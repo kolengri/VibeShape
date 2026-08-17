@@ -190,6 +190,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "ellipse",
+    id: editorCommandIds.sketchEllipse,
+    labelKey: "sketchEllipse",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "inscribed-polygon",
     id: editorCommandIds.sketchInscribedPolygon,
     labelKey: "sketchInscribedPolygon",
@@ -393,6 +401,7 @@ function sketchToolHandler(
     | "sketchCenteredAlignedRectangle"
     | "sketchCenteredSlot"
     | "sketchCircle"
+    | "sketchEllipse"
     | "sketchCircularPattern"
     | "sketchCircumscribedPolygon"
     | "sketchExtend"
@@ -505,6 +514,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchAlignedRectangle, "aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCenteredAlignedRectangle, "centered-aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
+  sketchToolHandler(editorCommandIds.sketchEllipse, "ellipse"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchInscribedPolygon, "inscribed-polygon"),
   sketchToolHandler(editorCommandIds.sketchCircumscribedPolygon, "circumscribed-polygon"),

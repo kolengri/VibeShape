@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
 import type { SketchEntity, SketchRecord } from "./sketch"
-import { appendSketchConstraint, appendSketchLine, createEmptySketch } from "./sketch-edit"
+import {
+  appendSketchConstraint,
+  appendSketchEllipse,
+  appendSketchLine,
+  createEmptySketch,
+} from "./sketch-edit"
 import {
   circularPatternSketchEntities,
   circularSketchPatternTransforms,
@@ -257,5 +262,45 @@ describe("analytical sketch patterns", () => {
       x: 0,
       y: 10,
     })
+  })
+
+  it("materializes exact ellipse occurrences with independent stable axis points", () => {
+    const ellipseResult = appendSketchEllipse(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      primaryAxisPoint: { kind: "new", point: { x: 5, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 2 },
+    })
+    const ellipse = entityById(
+      ellipseResult.sketch,
+      requiredId(ellipseResult.createdEntityIds.at(-1)),
+      "ellipse",
+    )
+    const result = linearPatternSketchEntities(ellipseResult.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      definition: { first: { angleRadians: 0, count: 2, spacing: 10 }, second: null },
+      entityIds: [ellipse.id],
+    })
+    const created = result.createdEntityIds
+      .map((id) => result.sketch.entities.find((entity) => entity.id === id))
+      .find(
+        (entity): entity is Extract<SketchEntity, { type: "ellipse" }> =>
+          entity?.type === "ellipse",
+      )
+    if (!created) throw new Error("The pattern fixture requires a created ellipse.")
+    expect(result.createdEntityIds).toHaveLength(4)
+    expect(
+      [created.centerPointId, created.primaryAxisPointId, created.secondaryAxisPointId].map(
+        (id) => {
+          const point = entityById(result.sketch, id, "point")
+          return [point.x, point.y]
+        },
+      ),
+    ).toEqual([
+      [10, 0],
+      [15, 0],
+      [10, 2],
+    ])
   })
 })

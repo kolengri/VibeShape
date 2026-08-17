@@ -249,7 +249,24 @@ class ProductionSketchBuilder {
     this.#entityHandles.set(entity.id, handle)
   }
 
-  addConstraint(id: SketchConstraintId, type: number, fields: ConstraintFields = {}) {
+  addEllipse(entity: Extract<SketchEntity, { type: "ellipse" }>) {
+    const primaryAxis = this.#nextEntity++
+    this.#addEntity(primaryAxis, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
+      points: [this.entity(entity.centerPointId), this.entity(entity.primaryAxisPointId)],
+      workplane: 200,
+    })
+    const secondaryAxis = this.#nextEntity++
+    this.#addEntity(secondaryAxis, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
+      points: [this.entity(entity.centerPointId), this.entity(entity.secondaryAxisPointId)],
+      workplane: 200,
+    })
+    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
+      entityA: primaryAxis,
+      entityB: secondaryAxis,
+    })
+  }
+
+  addConstraint(id: SketchConstraintId | null, type: number, fields: ConstraintFields = {}) {
     const {
       entityA = 0,
       entityB = 0,
@@ -278,7 +295,7 @@ class ProductionSketchBuilder {
       other2,
     )
     this.#constraintValues.push(value)
-    this.#constraintIdsByHandle.set(handle, id)
+    if (id) this.#constraintIdsByHandle.set(handle, id)
   }
 
   entity(id: SketchEntityId) {
@@ -732,6 +749,29 @@ function addConstraint(
   return addDimensionConstraint(builder, sketch, constraint, variables)
 }
 
+function addSketchPointEntity(
+  builder: ProductionSketchBuilder,
+  entity: Extract<SketchEntity, { type: "point" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const point = pointValues.get(entity.id)
+  if (!point) throw new Error(`Sketch point ${entity.id} is missing initial values.`)
+  builder.addPoint(entity.id, point.x, point.y)
+}
+
+function addSketchCurveEntity(
+  builder: ProductionSketchBuilder,
+  entity: Exclude<SketchEntity, { type: "point" }>,
+  circleRadii: ReadonlyMap<SketchEntityId, number>,
+) {
+  if (entity.type === "line") return builder.addLine(entity)
+  if (entity.type === "arc") return builder.addArc(entity)
+  if (entity.type === "ellipse") return builder.addEllipse(entity)
+  const radius = circleRadii.get(entity.id)
+  if (!radius) throw new Error(`Sketch circle ${entity.id} is missing an initial radius.`)
+  return builder.addCircle(entity, radius)
+}
+
 function addSketchEntities(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
@@ -740,18 +780,10 @@ function addSketchEntities(
 ) {
   for (const entity of sketch.entities) {
     if (entity.type !== "point") continue
-    const point = pointValues.get(entity.id)
-    if (!point) throw new Error(`Sketch point ${entity.id} is missing initial values.`)
-    builder.addPoint(entity.id, point.x, point.y)
+    addSketchPointEntity(builder, entity, pointValues)
   }
   for (const entity of sketch.entities) {
-    if (entity.type === "line") builder.addLine(entity)
-    if (entity.type === "circle") {
-      const radius = circleRadii.get(entity.id)
-      if (!radius) throw new Error(`Sketch circle ${entity.id} is missing an initial radius.`)
-      builder.addCircle(entity, radius)
-    }
-    if (entity.type === "arc") builder.addArc(entity)
+    if (entity.type !== "point") addSketchCurveEntity(builder, entity, circleRadii)
   }
 }
 

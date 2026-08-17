@@ -976,6 +976,97 @@ export function appendSketchCircle(
   }
 }
 
+export type SketchEllipseGeometry = Readonly<{
+  center: SketchPoint2
+  primaryAxisPoint: SketchPoint2
+  primaryRadius: number
+  secondaryAxisPoint: SketchPoint2
+  secondaryRadius: number
+}>
+
+export function sketchEllipseGeometry(
+  center: SketchPoint2,
+  primaryAxisPoint: SketchPoint2,
+  secondaryRadiusPoint: SketchPoint2,
+): SketchEllipseGeometry | null {
+  const primaryX = primaryAxisPoint.x - center.x
+  const primaryY = primaryAxisPoint.y - center.y
+  const primaryRadius = Math.hypot(primaryX, primaryY)
+  if (!Number.isFinite(primaryRadius) || primaryRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const perpendicular = { x: -primaryY / primaryRadius, y: primaryX / primaryRadius }
+  const pointerX = secondaryRadiusPoint.x - center.x
+  const pointerY = secondaryRadiusPoint.y - center.y
+  const signedSecondaryRadius = pointerX * perpendicular.x + pointerY * perpendicular.y
+  const secondaryRadius = Math.abs(signedSecondaryRadius)
+  if (!Number.isFinite(secondaryRadius) || secondaryRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const direction = signedSecondaryRadius < 0 ? -1 : 1
+  return {
+    center,
+    primaryAxisPoint,
+    primaryRadius,
+    secondaryAxisPoint: {
+      x: center.x + perpendicular.x * secondaryRadius * direction,
+      y: center.y + perpendicular.y * secondaryRadius * direction,
+    },
+    secondaryRadius,
+  }
+}
+
+export function appendSketchEllipse(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    primaryAxisPoint: SketchPointTarget
+    secondaryRadiusPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, construction, input.createEntityId)
+  const primaryAxisPoint = resolvePointTarget(
+    sketch,
+    input.primaryAxisPoint,
+    construction,
+    input.createEntityId,
+  )
+  if (center.id === primaryAxisPoint.id) {
+    throw new RangeError("A sketch ellipse requires a nonzero primary radius.")
+  }
+  const geometry = sketchEllipseGeometry(
+    center.point,
+    primaryAxisPoint.point,
+    input.secondaryRadiusPoint,
+  )
+  if (!geometry) throw new RangeError("A sketch ellipse requires two positive axis radii.")
+  const secondaryAxisPointId = input.createEntityId()
+  const ellipseId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(center.entity ? [center.entity] : []),
+    ...(primaryAxisPoint.entity ? [primaryAxisPoint.entity] : []),
+    {
+      schemaVersion: 0,
+      id: secondaryAxisPointId,
+      type: "point",
+      ...geometry.secondaryAxisPoint,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: ellipseId,
+      type: "ellipse",
+      centerPointId: center.id,
+      primaryAxisPointId: primaryAxisPoint.id,
+      secondaryAxisPointId,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 export type RegularPolygonGeometry = Readonly<{
   constructionRadius: number
   mode: RegularPolygonMode
@@ -1718,6 +1809,8 @@ export function sketchCurvePointIds(curve: Exclude<SketchEntity, { type: "point"
       return [curve.centerPointId]
     case "arc":
       return [curve.centerPointId, curve.startPointId, curve.endPointId]
+    case "ellipse":
+      return [curve.centerPointId, curve.primaryAxisPointId, curve.secondaryAxisPointId]
   }
 }
 

@@ -4,9 +4,11 @@ import {
   documentSnapshotSchema,
   extrusionFeatureType,
   featureRecordSchema,
+  type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import {
   createSketchProfileSelector,
@@ -47,6 +49,10 @@ function fixture() {
     createEntityId: nextEntityId,
     createConstraintId: nextConstraintId,
   })
+  return extrusionFixture(sketch)
+}
+
+function extrusionFixture(sketch: SketchRecord) {
   const points = sketch.entities.flatMap((entity) =>
     entity.type === "point" ? [{ entityId: entity.id, x: entity.x, y: entity.y }] : [],
   )
@@ -95,6 +101,53 @@ function fixture() {
   return { document, feature, solution }
 }
 
+function ellipseFixture() {
+  return extrusionFixture(
+    sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchId,
+      label: "Ellipse profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003401",
+          type: "point",
+          x: 2,
+          y: 3,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003402",
+          type: "point",
+          x: 12,
+          y: 3,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003403",
+          type: "point",
+          x: 2,
+          y: 8,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003404",
+          type: "ellipse",
+          centerPointId: "0195b5ac-b220-7a2c-8c33-000000003401",
+          primaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003402",
+          secondaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003403",
+          construction: false,
+        },
+      ],
+      constraints: [],
+    }),
+  )
+}
+
 describe("document extrusion content preparation", () => {
   it("resolves a stable selector into ordered exact profile geometry", async () => {
     const { document, feature, solution } = fixture()
@@ -118,6 +171,28 @@ describe("document extrusion content preparation", () => {
     })
     expect(second).toEqual(first)
     expect(solve).toHaveBeenCalledTimes(1)
+  })
+
+  it("materializes an exact solved ellipse for the geometry worker", async () => {
+    const { document, feature, solution } = ellipseFixture()
+    const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        outer: {
+          segments: [
+            {
+              entityId: "0195b5ac-b220-7a2c-8c33-000000003404",
+              type: "ellipse",
+              center: [2, 3],
+              primaryAxisPoint: [12, 3],
+              secondaryAxisPoint: [2, 8],
+            },
+          ],
+        },
+      },
+    })
   })
 
   it("fails closed when the selected boundary disappears", async () => {

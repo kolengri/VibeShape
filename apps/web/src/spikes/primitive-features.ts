@@ -37,6 +37,7 @@ interface FeatureEvaluationHarnessState {
   cachedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
+  ellipseExtrusion: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
@@ -66,6 +67,7 @@ const extrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a
 const extrusionAddFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3107")
 const extrusionRemoveFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3108")
 const extrusionIntersectFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3109")
+const ellipseExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3110")
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
@@ -73,6 +75,7 @@ const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3303",
   "0195b5ac-b220-7a2c-8c33-67a36a7f3304",
 ] as const
+const ellipseProfileEntityId = "0195b5ac-b220-7a2c-8c33-67a36a7f3310"
 const generation = 1
 const state: FeatureEvaluationHarnessState = {
   state: "running",
@@ -80,6 +83,7 @@ const state: FeatureEvaluationHarnessState = {
   cachedBox: null,
   cylinder: null,
   extrusion: null,
+  ellipseExtrusion: null,
   extrusionAdd: null,
   extrusionIntersect: null,
   extrusionRemove: null,
@@ -97,6 +101,7 @@ function extrusionFeature(
   featureId: FeatureId,
   operation: "add" | "intersect" | "new" | "remove",
   dependencies: readonly FeatureId[],
+  contentParameters: ReturnType<typeof extrusionFeatureContentParametersSchema.parse>,
 ) {
   return {
     schemaVersion: 0,
@@ -106,11 +111,13 @@ function extrusionFeature(
       profile: {
         schemaVersion: 0,
         sketchId,
-        outerBoundaryEntityIds: profileEntityIds,
-        holeBoundaryEntityIds: [],
+        outerBoundaryEntityIds: contentParameters.outer.sourceEntityIds,
+        holeBoundaryEntityIds: contentParameters.holes.map(
+          ({ sourceEntityIds }) => sourceEntityIds,
+        ),
       },
-      distance: createLengthQuantity(18),
-      symmetric: true,
+      distance: createLengthQuantity(contentParameters.distance),
+      symmetric: contentParameters.symmetric,
       operation,
     },
     dependencies,
@@ -134,6 +141,27 @@ const extrusionContentParameters = extrusionFeatureContentParametersSchema.parse
   holes: [],
   distance: 18,
   symmetric: true,
+  operation: "new",
+})
+
+const ellipseExtrusionContentParameters = extrusionFeatureContentParametersSchema.parse({
+  sketchId,
+  plane: "xy",
+  outer: {
+    sourceEntityIds: [ellipseProfileEntityId],
+    segments: [
+      {
+        entityId: ellipseProfileEntityId,
+        type: "ellipse",
+        center: [0, 0],
+        primaryAxisPoint: [5, 0],
+        secondaryAxisPoint: [0, 10],
+      },
+    ],
+  },
+  holes: [],
+  distance: 12,
+  symmetric: false,
   operation: "new",
 })
 
@@ -265,6 +293,7 @@ async function evaluateExtrusion(
   featureId: FeatureId,
   operation: "add" | "intersect" | "new" | "remove",
   dependencies: readonly { featureId: FeatureId; contentHash: string }[],
+  contentParameters = extrusionContentParameters,
 ) {
   const content = await computeFeatureContentHash(
     featureRegistry(),
@@ -273,10 +302,11 @@ async function evaluateExtrusion(
         featureId,
         operation,
         dependencies.map(({ featureId: dependencyId }) => dependencyId),
+        contentParameters,
       ),
       dependencies,
       environment,
-      contentParameters: { ...extrusionContentParameters, operation },
+      contentParameters: { ...contentParameters, operation },
     },
     sha256,
   )
@@ -341,6 +371,14 @@ async function run() {
     const cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
     state.cylinder = cylinder
     state.extrusion = await evaluateExtrusion(client, environment, extrusionFeatureId, "new", [])
+    state.ellipseExtrusion = await evaluateExtrusion(
+      client,
+      environment,
+      ellipseExtrusionFeatureId,
+      "new",
+      [],
+      ellipseExtrusionContentParameters,
+    )
     const extrusionTarget = [{ featureId: boxFeatureId, contentHash: box.contentHash }]
     state.extrusionAdd = await evaluateExtrusion(
       client,

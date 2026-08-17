@@ -48,8 +48,27 @@ function arc(index: number, centerIndex: number, startIndex: number, endIndex: n
   }
 }
 
+function ellipse(
+  index: number,
+  centerIndex: number,
+  primaryAxisIndex: number,
+  secondaryAxisIndex: number,
+) {
+  return {
+    schemaVersion: 0 as const,
+    id: id(index),
+    type: "ellipse" as const,
+    centerPointId: id(centerIndex),
+    primaryAxisPointId: id(primaryAxisIndex),
+    secondaryAxisPointId: id(secondaryAxisIndex),
+    construction: false,
+  }
+}
+
 function sketch(
-  entities: readonly ReturnType<typeof point | typeof line | typeof circle | typeof arc>[],
+  entities: readonly ReturnType<
+    typeof point | typeof line | typeof circle | typeof arc | typeof ellipse
+  >[],
 ) {
   return sketchRecordSchema.parse({
     schemaVersion: 0,
@@ -114,6 +133,59 @@ describe("sketch profile detection", () => {
     expect(result.profiles[0]?.holeLoopIndices).toEqual([1])
     expect(result.profiles[0]?.area).toBeCloseTo(Math.PI * (10 ** 2 - 6 ** 2), 6)
     expect(result.profiles[1]?.area).toBeCloseTo(Math.PI * 2 ** 2, 6)
+  })
+
+  it("extracts exact axis-aligned and rotated ellipse profiles", () => {
+    const axisAligned = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, 0, 5),
+      ellipse(101, 1, 2, 3),
+    ])
+    const diagonal = Math.SQRT1_2
+    const rotated = sketch([
+      point(1, 2, -3),
+      point(2, 2 + 10 * diagonal, -3 + 10 * diagonal),
+      point(3, 2 - 5 * diagonal, -3 + 5 * diagonal),
+      ellipse(101, 1, 2, 3),
+    ])
+
+    const alignedResult = detectSketchProfiles(axisAligned, authoredSolution(axisAligned))
+    const rotatedResult = detectSketchProfiles(rotated, authoredSolution(rotated))
+
+    expect(alignedResult.diagnostics).toEqual([])
+    expect(alignedResult.profiles).toHaveLength(1)
+    expect(alignedResult.profiles[0]).toMatchObject({
+      area: Math.PI * 50,
+      bounds: { minX: -10, minY: -5, maxX: 10, maxY: 5 },
+    })
+    expect(alignedResult.profiles[0]?.perimeter).toBeCloseTo(48.442_241, 5)
+    expect(alignedResult.loops[0]?.segments).toEqual([
+      { entityId: id(101), type: "ellipse", reversed: false },
+    ])
+    const extent = Math.sqrt(62.5)
+    expect(rotatedResult.diagnostics).toEqual([])
+    expect(rotatedResult.profiles[0]?.bounds.minX).toBeCloseTo(2 - extent, 12)
+    expect(rotatedResult.profiles[0]?.bounds.minY).toBeCloseTo(-3 - extent, 12)
+    expect(rotatedResult.profiles[0]?.bounds.maxX).toBeCloseTo(2 + extent, 12)
+    expect(rotatedResult.profiles[0]?.bounds.maxY).toBeCloseTo(-3 + extent, 12)
+  })
+
+  it("detects an exact line crossing an ellipse", () => {
+    const value = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, 0, 5),
+      point(4, -12, 0),
+      point(5, 12, 0),
+      ellipse(101, 1, 2, 3),
+      line(102, 4, 5),
+    ])
+
+    expect(detectSketchProfiles(value, authoredSolution(value))).toMatchObject({
+      profiles: [],
+      diagnostics: [{ code: "intersecting-entities", entityIds: [id(101), id(102)] }],
+    })
   })
 
   it("joins two compatible semicircular arcs into one profile", () => {
