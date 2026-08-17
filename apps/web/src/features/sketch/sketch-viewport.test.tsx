@@ -1487,7 +1487,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("keeps drag frames local, defers live solving during motion, and commits the final point", async () => {
+  it("keeps drag frames local, streams bounded exact feedback, and commits the final point", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
@@ -1515,11 +1515,12 @@ describe("SketchViewport", () => {
     if (!pointElement) throw new Error("The first sketch point must be rendered.")
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     fireEvent.pointerMove(drawing, { clientX: 500, clientY: 240, pointerId: 1 })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
 
     expect(onDraftChange).not.toHaveBeenCalled()
-    expect(readViewportRectangle).not.toHaveBeenCalled()
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
     act(() => frame(0))
@@ -1531,8 +1532,15 @@ describe("SketchViewport", () => {
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
     ).toBe("36")
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
-    expect(solveSketch).toHaveBeenCalledTimes(1)
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+    expect(solveSketch).toHaveBeenCalledTimes(2)
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      sketch,
+      expect.objectContaining({
+        draggedPoints: [expect.objectContaining({ entityId: firstPoint.id, x: 65, y: 36 })],
+      }),
+    )
 
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 

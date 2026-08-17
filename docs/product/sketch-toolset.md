@@ -146,13 +146,14 @@ adding solver constraints.
    weakens constraints automatically.
 8. Pointer-drag previews remain local to the viewport and solver scheduler. The editor publishes
    exactly one global draft and one undo checkpoint when the gesture ends. Raw pointer samples are
-   reduced to the latest sample per animation frame before layout measurement, sketch-coordinate
-   conversion, inference, and viewport-local React state.
-   Continuous movement MUST restart a short solver idle delay instead of publishing through the
-   parent workspace on every frame. A pause or release sends the original schema-valid sketch plus
-   the latest separate drag target; release keeps that final overlay visible until the exact result
-   settles. No drag-frame path may clone or schema-parse the complete sketch, and raw pointer events
-   MUST NOT read viewport layout before they are coalesced.
+   reduced to the latest sample per animation frame before sketch-coordinate conversion, inference,
+   and viewport-local React state. Drag start MUST snapshot the viewport rectangle once; subsequent
+   drag frames MUST NOT force layout. Continuous movement replaces the latest scheduled solver target
+   without postponing the bounded exact-feedback cadence or publishing through the parent workspace
+   on every frame. The scheduler sends the original schema-valid sketch plus the latest separate drag
+   target, permits one request in flight, and retains only the newest pending target. Release keeps
+   the final overlay visible until the exact result settles. No drag-frame path may clone or
+   schema-parse the complete sketch.
 9. Large constraint lists scroll inside the fixed-height task panel. They never increase the CAD
    workspace row height or move sketch geometry outside the visible viewport.
 10. Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, horizontal,

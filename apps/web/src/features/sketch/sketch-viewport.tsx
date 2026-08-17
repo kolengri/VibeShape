@@ -70,7 +70,6 @@ import {
   type PointerEvent,
   type RefObject,
   type SetStateAction,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -139,6 +138,13 @@ type SketchPointDragInput = Readonly<{
   clientX: number
   clientY: number
   suppressed: boolean
+}>
+
+type SketchViewportRectangle = Readonly<{
+  height: number
+  left: number
+  top: number
+  width: number
 }>
 
 type SketchPointDragPreview = Readonly<{
@@ -273,7 +279,7 @@ type PanGesture = Readonly<{
 
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
-const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
+const LIVE_DRAG_SOLVE_INTERVAL_MS = 48
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
@@ -404,11 +410,16 @@ function useSketchSolution(
           },
     )
 
-    if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
-    scheduler.timer = window.setTimeout(() => {
-      scheduler.timer = null
+    if (dragTarget) {
+      clearSketchSolveTimer(scheduler)
       void drainLatestSketchSolve(scheduler, setState)
-    }, 30)
+    } else {
+      if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
+      scheduler.timer = window.setTimeout(() => {
+        scheduler.timer = null
+        void drainLatestSketchSolve(scheduler, setState)
+      }, 30)
+    }
     return () => {
       if (scheduler.timer !== null) {
         window.clearTimeout(scheduler.timer)
@@ -3415,6 +3426,7 @@ function useSketchPointDrag({
 }) {
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
   const dragFrameRef = useRef<number | null>(null)
+  const dragRectangleRef = useRef<SketchViewportRectangle | null>(null)
   const dragSolveTimerRef = useRef<number | null>(null)
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
   const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
@@ -3438,15 +3450,13 @@ function useSketchPointDrag({
   const scheduleLiveSolve = useCallback(
     (pointId: SketchEntityId, point: SketchPoint2) => {
       queuedDragSolveTargetRef.current = { point, pointId }
-      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
+      if (dragSolveTimerRef.current !== null) return
       dragSolveTimerRef.current = window.setTimeout(() => {
         dragSolveTimerRef.current = null
         const target = queuedDragSolveTargetRef.current
         queuedDragSolveTargetRef.current = null
-        if (target) {
-          startTransition(() => onDraggingPointChange(target.pointId, target.point))
-        }
-      }, LIVE_DRAG_SOLVE_IDLE_DELAY_MS)
+        if (target) onDraggingPointChange(target.pointId, target.point)
+      }, LIVE_DRAG_SOLVE_INTERVAL_MS)
     },
     [onDraggingPointChange],
   )
@@ -3454,7 +3464,7 @@ function useSketchPointDrag({
   const preview = useCallback(
     (input: SketchPointDragInput): SketchPointDragPreview | null => {
       if (!draft || !draggingPointId) return null
-      const rectangle = svgRef.current?.getBoundingClientRect()
+      const rectangle = dragRectangleRef.current
       if (!rectangle) return null
       const point = pointerToSketchPoint(input, rectangle, bounds)
       const inference = draggedPointInference({
@@ -3514,19 +3524,31 @@ function useSketchPointDrag({
     }
     if (draggingPointId) onDraggingPointChange(null)
     setDraggingPointId(null)
+    dragRectangleRef.current = null
     lastDragPreviewRef.current = null
   }, [draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
-  const start = useCallback((event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
-    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
-    lastDragPreviewRef.current = null
-    queuedDragInputRef.current = null
-    queuedDragSolveTargetRef.current = null
-    if (dragSolveTimerRef.current !== null) {
-      window.clearTimeout(dragSolveTimerRef.current)
-      dragSolveTimerRef.current = null
-    }
-    setDraggingPointId(pointId)
-  }, [])
+  const start = useCallback(
+    (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
+      const rectangle = svgRef.current?.getBoundingClientRect()
+      if (!rectangle) return
+      if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+      dragRectangleRef.current = {
+        height: rectangle.height,
+        left: rectangle.left,
+        top: rectangle.top,
+        width: rectangle.width,
+      }
+      lastDragPreviewRef.current = null
+      queuedDragInputRef.current = null
+      queuedDragSolveTargetRef.current = null
+      if (dragSolveTimerRef.current !== null) {
+        window.clearTimeout(dragSolveTimerRef.current)
+        dragSolveTimerRef.current = null
+      }
+      setDraggingPointId(pointId)
+    },
+    [svgRef],
+  )
   return { draggingPointId, finish, start, update }
 }
 
