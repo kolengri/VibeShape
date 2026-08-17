@@ -68,11 +68,15 @@ test.describe("full sketch editor", () => {
       .poll(() => drawing.locator('[data-sketch-entity-type="line"]').count())
       .toBeGreaterThanOrEqual(96)
     await page.getByRole("button", { name: "Select", exact: true }).click()
-    const endpoint = drawing.locator('[data-sketch-entity-type="point"]').last()
+    const points = drawing.locator('[data-sketch-entity-type="point"]')
+    const endpoint = points.last()
+    const dependentPoint = points.nth((await points.count()) - 2)
     const endpointBounds = await endpoint.boundingBox()
     if (!endpointBounds) throw new Error("The sketch endpoint is not visible.")
     const initialX = await endpoint.getAttribute("cx")
     const initialY = await endpoint.getAttribute("cy")
+    const dependentInitialX = await dependentPoint.getAttribute("cx")
+    const dependentInitialY = await dependentPoint.getAttribute("cy")
     const startX = endpointBounds.x + endpointBounds.width / 2
     const startY = endpointBounds.y + endpointBounds.height / 2
     const retainedBounds = await drawing.boundingBox()
@@ -90,6 +94,15 @@ test.describe("full sketch editor", () => {
         timeout: 1_000,
       })
       .not.toEqual([initialX, initialY])
+    await expect
+      .poll(
+        async () => [
+          await dependentPoint.getAttribute("cx"),
+          await dependentPoint.getAttribute("cy"),
+        ],
+        { timeout: 1_000 },
+      )
+      .not.toEqual([dependentInitialX, dependentInitialY])
     await page.mouse.up()
 
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()

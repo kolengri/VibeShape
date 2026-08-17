@@ -327,8 +327,11 @@ type PanGesture = Readonly<{
 
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
-const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
-const LIVE_DRAG_SOLVE_COMPLEXITY_LIMIT = 128
+const LIVE_DRAG_SOLVE_INTERVAL_MS = 32
+const DENSE_DRAG_SOLVE_INTERVAL_MS = 64
+const VERY_DENSE_DRAG_SOLVE_INTERVAL_MS = 96
+const DENSE_DRAG_SOLVE_COMPLEXITY = 128
+const VERY_DENSE_DRAG_SOLVE_COMPLEXITY = 512
 const DRAG_INFERENCE_FALLBACK_VIEWPORT = { height: 600, width: 800 } as const
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
@@ -3618,8 +3621,12 @@ function dragInferenceCellSize(bounds: SketchBounds, viewport: SketchViewportSiz
   return 2 ** Math.round(Math.log2(tolerance))
 }
 
-function supportsLiveDragSolve(sketch: SketchRecord) {
-  return sketch.entities.length + sketch.constraints.length <= LIVE_DRAG_SOLVE_COMPLEXITY_LIMIT
+function liveDragSolveInterval(sketch: SketchRecord) {
+  const complexity = sketch.entities.length + sketch.constraints.length
+  if (complexity > VERY_DENSE_DRAG_SOLVE_COMPLEXITY) return VERY_DENSE_DRAG_SOLVE_INTERVAL_MS
+  return complexity > DENSE_DRAG_SOLVE_COMPLEXITY
+    ? DENSE_DRAG_SOLVE_INTERVAL_MS
+    : LIVE_DRAG_SOLVE_INTERVAL_MS
 }
 
 function updateDraggedPointFromPointer(input: {
@@ -3901,9 +3908,9 @@ function useSketchPointDrag({
   )
 
   const scheduleLiveSolve = useCallback(
-    (pointId: SketchEntityId, point: SketchPoint2) => {
+    (pointId: SketchEntityId, point: SketchPoint2, intervalMs: number) => {
       queuedDragSolveTargetRef.current = { point, pointId }
-      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
+      if (dragSolveTimerRef.current !== null) return
       dragSolveTimerRef.current = window.setTimeout(() => {
         dragSolveTimerRef.current = null
         const target = queuedDragSolveTargetRef.current
@@ -3911,7 +3918,7 @@ function useSketchPointDrag({
         if (target) {
           startTransition(() => onDraggingPointChange(target.pointId, target.point))
         }
-      }, LIVE_DRAG_SOLVE_IDLE_DELAY_MS)
+      }, intervalMs)
     },
     [onDraggingPointChange],
   )
@@ -3937,7 +3944,7 @@ function useSketchPointDrag({
       const next = { inference, point: inference.point }
       lastDragPreviewRef.current = next
       onPreview(next)
-      if (supportsLiveDragSolve(draft)) scheduleLiveSolve(draggingPointId, next.point)
+      scheduleLiveSolve(draggingPointId, next.point, liveDragSolveInterval(draft))
       return next
     },
     [bounds, draft, draggingPointId, inferenceCandidateQuery, onPreview, scheduleLiveSolve],
