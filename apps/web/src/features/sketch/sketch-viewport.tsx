@@ -310,6 +310,7 @@ type PanGesture = Readonly<{
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
+const LIVE_DRAG_SOLVE_COMPLEXITY_LIMIT = 128
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
@@ -3381,6 +3382,10 @@ function draggedPointReferences(
   }
 }
 
+function supportsLiveDragSolve(sketch: SketchRecord) {
+  return sketch.entities.length + sketch.constraints.length <= LIVE_DRAG_SOLVE_COMPLEXITY_LIMIT
+}
+
 function updateDraggedPointFromPointer(input: {
   draggingPointId: SketchEntityId | null
   event: PointerEvent<SVGSVGElement>
@@ -3696,7 +3701,7 @@ function useSketchPointDrag({
       const next = { inference, point: inference.point }
       lastDragPreviewRef.current = next
       onPreview(next)
-      scheduleLiveSolve(draggingPointId, next.point)
+      if (supportsLiveDragSolve(draft)) scheduleLiveSolve(draggingPointId, next.point)
       return next
     },
     [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve, svgRef],
