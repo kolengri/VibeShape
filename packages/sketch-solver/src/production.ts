@@ -725,6 +725,10 @@ type DistanceConstraint = Extract<
   { type: "horizontal-distance" | "vertical-distance" | "distance" }
 >
 type RadialConstraint = Extract<DimensionConstraint, { type: "radius" | "diameter" }>
+type EllipseAxisDiameterConstraint = Extract<
+  DimensionConstraint,
+  { type: "primary-axis-diameter" | "secondary-axis-diameter" }
+>
 type OffsetConstraint = Extract<DimensionConstraint, { type: "offset" }>
 
 function addDistanceConstraint(
@@ -814,6 +818,28 @@ function addRadialConstraint(
   return true
 }
 
+function addEllipseAxisDiameterConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: EllipseAxisDiameterConstraint,
+  variables: ReturnType<typeof evaluateVariableDefinitions>,
+) {
+  const value = resolveDimension(constraint, variables)
+  if (value?.dimension !== "length") return false
+  const curve = sketch.entities.find(({ id }) => id === constraint.curveId)
+  if (curve?.type !== "ellipse" && curve?.type !== "elliptical-arc") return false
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance, {
+    pointA: builder.entity(curve.centerPointId),
+    pointB: builder.entity(
+      constraint.type === "primary-axis-diameter"
+        ? curve.primaryAxisPointId
+        : curve.secondaryAxisPointId,
+    ),
+    value: value.value / 2,
+  })
+  return true
+}
+
 function addDimensionConstraint(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
@@ -831,6 +857,12 @@ function addDimensionConstraint(
     return addOffsetConstraint(builder, sketch, constraint, variables)
   }
   if (constraint.type === "angle") return addAngleConstraint(builder, constraint, variables)
+  if (
+    constraint.type === "primary-axis-diameter" ||
+    constraint.type === "secondary-axis-diameter"
+  ) {
+    return addEllipseAxisDiameterConstraint(builder, sketch, constraint, variables)
+  }
   return addRadialConstraint(builder, constraint, variables)
 }
 

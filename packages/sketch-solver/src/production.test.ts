@@ -41,6 +41,10 @@ const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-0000000000
 const ellipticalArcStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000022")
 const ellipticalArcEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000023")
 const ellipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000024")
+const primaryAxisDiameterId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000025")
+const secondaryAxisDiameterId = sketchConstraintIdSchema.parse(
+  "018f0000-0000-7000-8000-000000000026",
+)
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -301,6 +305,51 @@ describe("production sketch compilation", () => {
     expect(constraintTypes).toEqual([SOLVESPACE_CONSTRAINT_TYPE.perpendicular])
     expect(constraintValues).toEqual(new Float64Array([0]))
     expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
+  test("compiles primary and secondary ellipse diameters as axis radii", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: primaryAxisDiameterId,
+            type: "primary-axis-diameter",
+            curveId: ellipseId,
+            value: createLengthQuantity(30),
+          },
+          {
+            schemaVersion: 0,
+            id: secondaryAxisDiameterId,
+            type: "secondary-axis-diameter",
+            curveId: ellipseId,
+            value: createLengthQuantity(12),
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance,
+      SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance,
+    ])
+    expect(constraintValues).toEqual(new Float64Array([0, 15, 6]))
+    expect(Array.from(result.compiled.bindings.constraintIdsByHandle.values())).toEqual([
+      primaryAxisDiameterId,
+      secondaryAxisDiameterId,
+    ])
   })
 
   test("compiles exact elliptical-arc endpoint loci through solver-owned trammels", () => {

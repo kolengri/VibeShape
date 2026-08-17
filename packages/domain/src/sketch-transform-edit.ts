@@ -117,7 +117,9 @@ const scaleInvalidatedConstraintTypes: ReadonlySet<SketchConstraint["type"]> = n
   "distance",
   "horizontal-distance",
   "offset",
+  "primary-axis-diameter",
   "radius",
+  "secondary-axis-diameter",
   "vertical-distance",
 ])
 

@@ -249,6 +249,45 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
   })
 
+  test("drives both stable axes of a selected ellipse by diameter", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
+
+    await selectSketchEntities(page, drawing, "ellipse", [0])
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await addDimension(page, "Primary axis diameter", "40 mm")
+    await expect(
+      page.getByRole("listitem").filter({ hasText: "Primary axis diameter · 40 mm" }),
+    ).toBeVisible()
+
+    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await addDimension(page, "Secondary axis diameter", "18 mm")
+    await expect(
+      page.getByRole("listitem").filter({ hasText: "Secondary axis diameter · 18 mm" }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-sketch-constraint-kind="dimension"]').filter({ hasText: "40 mm" }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-sketch-constraint-kind="dimension"]').filter({ hasText: "18 mm" }),
+    ).toBeVisible()
+  })
+
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

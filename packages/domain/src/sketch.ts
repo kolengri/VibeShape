@@ -265,6 +265,20 @@ const diameterConstraintSchema = sketchConstraintEnvelopeSchema
     value: lengthQuantitySchema,
   })
   .strict()
+const primaryAxisDiameterConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("primary-axis-diameter"),
+    curveId: sketchEntityIdSchema,
+    value: lengthQuantitySchema,
+  })
+  .strict()
+const secondaryAxisDiameterConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("secondary-axis-diameter"),
+    curveId: sketchEntityIdSchema,
+    value: lengthQuantitySchema,
+  })
+  .strict()
 
 export const sketchConstraintSchema = z.discriminatedUnion("type", [
   coincidenceConstraintSchema,
@@ -287,6 +301,8 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   angleConstraintSchema,
   radiusConstraintSchema,
   diameterConstraintSchema,
+  primaryAxisDiameterConstraintSchema,
+  secondaryAxisDiameterConstraintSchema,
 ])
 
 export type SketchEntity = Readonly<z.infer<typeof sketchEntitySchema>>
@@ -360,6 +376,8 @@ const constraintEntityReferenceRules = {
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
   diameter: { curveId: ["circle", "arc"] },
+  "primary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
+  "secondary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
 } as const satisfies Record<RuleValidatedConstraintType, EntityReferenceRules>
 
 function validateEqualConstraintReferences(

@@ -375,6 +375,53 @@ describe("analytical sketch transforms", () => {
     expect(transformed.constraints).toEqual([])
   })
 
+  it("scales selected ellipses without retaining stale axis diameters", () => {
+    const ellipseResult = appendSketchEllipse(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      primaryAxisPoint: { kind: "new", point: { x: 8, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 3 },
+    })
+    const ellipse = entityById(
+      ellipseResult.sketch,
+      ellipseResult.createdEntityIds.at(-1) as SketchEntityId,
+      "ellipse",
+    )
+    const primaryConstrained = appendSketchConstraint(
+      ellipseResult.sketch,
+      {
+        type: "primary-axis-diameter",
+        curveId: ellipse.id,
+        value: createLengthQuantity(16),
+      },
+      constraintId,
+    )
+    const constrained = appendSketchConstraint(
+      primaryConstrained,
+      {
+        type: "secondary-axis-diameter",
+        curveId: ellipse.id,
+        value: createLengthQuantity(6),
+      },
+      constraintId,
+    )
+
+    const transformed = transformSketchEntities(constrained, {
+      entityIds: [ellipse.id],
+      transform: { origin: { x: 0, y: 0 }, scale: 2 },
+    })
+
+    expect(entityById(transformed, ellipse.primaryAxisPointId, "point")).toMatchObject({
+      x: 16,
+      y: 0,
+    })
+    expect(entityById(transformed, ellipse.secondaryAxisPointId, "point")).toMatchObject({
+      x: 0,
+      y: 6,
+    })
+    expect(transformed.constraints).toEqual([])
+  })
+
   it("removes constraints that cross the transformed selection boundary", () => {
     const firstResult = appendSketchLine(empty(), {
       createEntityId: entityId,

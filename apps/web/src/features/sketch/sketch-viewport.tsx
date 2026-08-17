@@ -1671,18 +1671,51 @@ const geometricConstraintLabels: Partial<
   vertical: "V",
 }
 
-function constraintAnchor(
+const ellipseAxisDimensionAxes: Partial<
+  Record<SketchRecord["constraints"][number]["type"], "primary" | "secondary">
+> = {
+  "primary-axis-diameter": "primary",
+  "secondary-axis-diameter": "secondary",
+}
+
+type EllipseAxisDimensionConstraint = Extract<
+  SketchRecord["constraints"][number],
+  { type: "primary-axis-diameter" | "secondary-axis-diameter" }
+>
+
+function pairedConstraintAnchor(
   constraint: SketchRecord["constraints"][number],
   pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
 ) {
   if ("firstPointId" in constraint) {
-    return midpointForIds(constraint.firstPointId, constraint.secondPointId, pointAnchor)
+    return {
+      handled: true,
+      point: midpointForIds(constraint.firstPointId, constraint.secondPointId, pointAnchor),
+    } as const
   }
   if ("firstEntityId" in constraint) {
-    return midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor)
+    return {
+      handled: true,
+      point: midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor),
+    } as const
   }
+  return { handled: false } as const
+}
+
+function constraintAnchor(
+  constraint: SketchRecord["constraints"][number],
+  pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  ellipseAxisAnchor: (id: SketchEntityId, axis: "primary" | "secondary") => SketchPoint2 | null,
+) {
+  const pairedAnchor = pairedConstraintAnchor(constraint, pointAnchor, geometryAnchor)
+  if (pairedAnchor.handled) return pairedAnchor.point
   if ("pointId" in constraint) return pointAnchor(constraint.pointId)
+  const ellipseAxis = ellipseAxisDimensionAxes[constraint.type]
+  if (ellipseAxis) {
+    return ellipseAxisAnchor((constraint as EllipseAxisDimensionConstraint).curveId, ellipseAxis)
+  }
   if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
   if ("arcId" in constraint) {
     return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
@@ -1699,8 +1732,9 @@ function constraintGlyph(
   constraint: SketchRecord["constraints"][number],
   pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  ellipseAxisAnchor: (id: SketchEntityId, axis: "primary" | "secondary") => SketchPoint2 | null,
 ): ConstraintGlyph | null {
-  const point = constraintAnchor(constraint, pointAnchor, geometryAnchor)
+  const point = constraintAnchor(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor)
   const label = dimensionalLabel(constraint) ?? geometricConstraintLabels[constraint.type]
   return point && label
     ? { id: constraint.id, label, point, dimensional: "value" in constraint }
@@ -1714,9 +1748,19 @@ function constraintGlyphs(sketch: SketchRecord, solution: SolvedSketchWire | nul
   const pointAnchor = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
   const geometryAnchor = (id: SketchEntityId) =>
     entityAnchor(entities.get(id), points, solvedCircles)
+  const ellipseAxisAnchor = (id: SketchEntityId, axis: "primary" | "secondary") => {
+    const entity = entities.get(id)
+    if (entity?.type !== "ellipse" && entity?.type !== "elliptical-arc") return null
+    return (
+      points.get(axis === "primary" ? entity.primaryAxisPointId : entity.secondaryAxisPointId) ??
+      null
+    )
+  }
 
   return sketch.constraints
-    .map((constraint) => constraintGlyph(constraint, pointAnchor, geometryAnchor))
+    .map((constraint) =>
+      constraintGlyph(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor),
+    )
     .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
 }
 

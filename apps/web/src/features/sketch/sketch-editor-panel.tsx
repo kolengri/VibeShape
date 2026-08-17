@@ -72,10 +72,12 @@ type SketchEditorPanelCopy = Readonly<{
   pointOnLine: string
   profile: (number: number) => string
   profiles: string
+  primaryAxisDiameter: string
   radius: string
   remove: string
   saveDimension: string
   selectionHint: string
+  secondaryAxisDiameter: string
   symmetric: string
   tangent: string
   vertical: string
@@ -109,6 +111,8 @@ function constraintName(
     angle: copy.angle,
     radius: copy.radius,
     diameter: copy.diameter,
+    "primary-axis-diameter": copy.primaryAxisDiameter,
+    "secondary-axis-diameter": copy.secondaryAxisDiameter,
   }[type]
 }
 
@@ -127,7 +131,9 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
     distance: copy.distance,
     "horizontal-distance": copy.horizontalDistance,
     offset: copy.offset,
+    "primary-axis-diameter": copy.primaryAxisDiameter,
     radius: copy.radius,
+    "secondary-axis-diameter": copy.secondaryAxisDiameter,
     "vertical-distance": copy.verticalDistance,
   }
   return compatibleSketchDimensionTools(entities).map((kind) => ({ kind, label: labels[kind] }))
