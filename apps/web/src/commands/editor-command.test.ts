@@ -131,6 +131,22 @@ describe("editor command registry", () => {
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
   })
 
+  it("offers Extrude inside an active sketch when a closed profile is selected", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      extrusionAvailable: true,
+      workspace: "sketch",
+    })
+    const extrude = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.createExtrusion,
+    )
+
+    expect(extrude?.eligibility).toEqual({ enabled: true })
+    expect(extrude?.toolbarVisible).toBe(true)
+    extrude?.invoke()
+    expect(context.actions.createExtrusion).toHaveBeenCalledOnce()
+  })
+
   it("routes the center rectangle shortcut descriptor to the trusted sketch tool handler", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },

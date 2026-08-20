@@ -45,6 +45,7 @@ const primaryAxisDiameterId = sketchConstraintIdSchema.parse("018f0000-0000-7000
 const secondaryAxisDiameterId = sketchConstraintIdSchema.parse(
   "018f0000-0000-7000-8000-000000000026",
 )
+const secondEllipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000027")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -391,6 +392,43 @@ describe("production sketch compilation", () => {
     ])
     expect(parameterValues).toHaveLength(25)
     expect(result.compiled.bindings.pointParameters.size).toBe(5)
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
+  test("shares solver-owned ellipse axes and endpoint loci across complementary arcs", () => {
+    const fixture = ellipticalArcSketch()
+    const source = fixture.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!source) throw new Error("The fixture requires one elliptical arc.")
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            ...source,
+            id: secondEllipticalArcId,
+            startPointId: source.endPointId,
+            endPointId: source.startPointId,
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintValues, entityRecords, parameterValues } = result.compiled.system
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      6,
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.pointIn2d)).toHaveLength(9)
+    expect(constraintValues).toHaveLength(11)
+    expect(parameterValues).toHaveLength(25)
     expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
   })
 

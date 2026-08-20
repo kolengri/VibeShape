@@ -959,6 +959,89 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("trims and splits ellipses and extends elliptical arcs analytically", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const canvasPoint = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const clickPoint = (point: Readonly<{ x: number; y: number }>) =>
+      page.mouse.click(point.x, point.y)
+    const drawLine = async (
+      start: Readonly<{ x: number; y: number }>,
+      end: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: "Line", exact: true }).click()
+      await clickPoint(start)
+      await clickPoint(end)
+      await page.keyboard.press("Escape")
+    }
+    const dispatchCurvePoint = async (
+      curve: Locator,
+      point: Readonly<{ x: number; y: number }>,
+    ) => {
+      await curve.dispatchEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+        pointerId: 1,
+      })
+    }
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await clickPoint(canvasPoint(0.65, 0.4))
+    await clickPoint(canvasPoint(0.77, 0.4))
+    await clickPoint(canvasPoint(0.65, 0.24))
+    await drawLine(canvasPoint(0.6, 0.18), canvasPoint(0.6, 0.4))
+    await drawLine(canvasPoint(0.7, 0.18), canvasPoint(0.7, 0.4))
+    const ellipse = drawing.locator('[data-sketch-entity-type="ellipse"]')
+    await expect(ellipse).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Trim", exact: true }).click()
+    await dispatchCurvePoint(ellipse, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
+
+    const restoredEllipse = drawing.locator('[data-sketch-entity-type="ellipse"]')
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.77, 0.4))
+    await expect(drawing.locator('[data-sketch-preview-tool="split-ellipse-second"]')).toBeVisible()
+    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(2)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+
+    await selectSketchTool(page, "Arc tools", "Elliptical arc")
+    await clickPoint(canvasPoint(0.3, 0.72))
+    await clickPoint(canvasPoint(0.4, 0.72))
+    await clickPoint(canvasPoint(0.3, 0.59))
+    await clickPoint(canvasPoint(0.2, 0.72))
+    await drawLine(canvasPoint(0.25, 0.74), canvasPoint(0.25, 0.88))
+    const ellipticalArc = drawing.locator('[data-sketch-entity-type="elliptical-arc"]')
+    await expect(ellipticalArc).toHaveCount(1)
+    const originalArcPoints = await ellipticalArc.getAttribute("points")
+
+    await page.getByRole("button", { name: "Extend", exact: true }).click()
+    await dispatchCurvePoint(ellipticalArc, canvasPoint(0.2, 0.72))
+    await expect(ellipticalArc).not.toHaveAttribute("points", originalArcPoints ?? "")
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("persists automatic perpendicular and midpoint inference with Shift suppression", async ({
     page,
   }) => {
@@ -1053,7 +1136,9 @@ test.describe("full sketch editor", () => {
 
     await expect(page.getByText("Fully constrained", { exact: true })).toBeVisible()
     await expect(page.getByText("Profile: 960 mm² · 136 mm perimeter")).toBeVisible()
-    await page.getByRole("button", { name: "Finish sketch" }).dblclick()
+    await page.getByRole("button", { name: "Extrude selected profile" }).dblclick()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toBeVisible()
+    await page.getByRole("button", { name: "Cancel" }).click()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
@@ -1062,8 +1147,6 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
-    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     const verticalConstraint = page
       .getByRole("listitem")
@@ -1078,7 +1161,6 @@ test.describe("full sketch editor", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Cancel" }).click()

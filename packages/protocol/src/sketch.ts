@@ -1,5 +1,6 @@
 import { isString } from "is-what"
 import { z } from "zod"
+import { topologySignatureSchema } from "./geometry-worker"
 
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const sha256Pattern = /^[0-9a-f]{64}$/
@@ -7,6 +8,7 @@ export const sketchWireIdSchema = z.string().regex(uuidV7Pattern)
 const sketchEntityIdSchema = z.string().regex(uuidV7Pattern)
 const sketchConstraintIdSchema = z.string().regex(uuidV7Pattern)
 const revisionSchema = z.number().int().nonnegative().safe()
+const featureIdSchema = z.string().regex(uuidV7Pattern)
 const coordinateSchema = z.number().finite().min(-1_000_000).max(1_000_000)
 const radiusSchema = z.number().finite().positive().max(1_000_000)
 const expressionSchema = z
@@ -14,6 +16,36 @@ const expressionSchema = z
   .min(1)
   .max(256)
   .refine((expression) => expression.trim() === expression)
+
+const supportVectorSchema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()])
+const sketchFeatureFaceSupportWireSchema = z
+  .object({
+    kind: z.literal("feature-face"),
+    reference: z
+      .object({
+        schemaVersion: z.literal(0),
+        featureId: featureIdSchema,
+        kind: z.literal("face"),
+        semanticRole: z.string().min(1).max(256).optional(),
+        lineageToken: z.string().min(1).max(256).optional(),
+        signature: topologySignatureSchema.safeExtend({
+          kind: z.literal("face"),
+          geometryClass: z.literal("PLANE"),
+        }),
+        intent: z
+          .object({
+            nearPoint: supportVectorSchema.optional(),
+            expectedDirection: supportVectorSchema.optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .refine(({ reference }) => reference.signature.geometryClass === "PLANE", {
+    message: "A sketch feature-face support must be planar.",
+  })
 
 const lengthFactors = { um: 0.001, mm: 1, cm: 10, m: 1_000, in: 25.4, ft: 304.8 } as const
 const lengthQuantitySchema = z
@@ -569,6 +601,7 @@ export const sketchWireRecordSchema = z
       .max(120)
       .refine((label) => label.trim() === label),
     plane: z.enum(["xy", "xz", "yz"]),
+    support: sketchFeatureFaceSupportWireSchema.optional(),
     entities: z.array(sketchEntitySchema).max(4_990),
     constraints: z.array(sketchConstraintSchema).max(10_000),
   })

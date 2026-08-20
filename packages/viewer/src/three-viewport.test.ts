@@ -6,6 +6,7 @@ import {
   type ViewerMesh,
   viewerFaceOrdinal,
 } from "./three-viewport"
+import { viewerBodyColor } from "./viewer-appearance"
 
 const mesh: ViewerMesh = {
   featureId: "box",
@@ -16,6 +17,12 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  it("assigns stable display colors to independent terminal feature identities", () => {
+    expect(viewerBodyColor("body-a")).toBe(viewerBodyColor("body-a"))
+    expect(viewerBodyColor("body-a")).not.toBe(viewerBodyColor("body-b"))
+    expect(viewerBodyColor("body-a")).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
   it("binds transferred typed arrays without copying and retains face ownership metadata", () => {
     const geometry = createViewerGeometry(mesh)
 

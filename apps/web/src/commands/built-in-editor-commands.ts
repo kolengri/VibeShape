@@ -26,7 +26,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     cancelActive: () => void
     createBox: () => void
     createCylinder: () => void
-    createExtrusion: () => void
+    createExtrusion: () => unknown
     createSketch: () => void
     createSubtract: () => void
     redoSketch: () => void
@@ -472,6 +472,17 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   {
     execute: ({ actions }) => actions.createExtrusion(),
     getEligibility: (context) => {
+      const { activeSketchTool, controller } = context.state
+      if (isActiveSketchEditorTool(activeSketchTool)) {
+        if (controller.status !== "ready" || !controller.report) {
+          return editorCommandDisabled("documentUnavailable")
+        }
+        if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
+        if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
+        return context.state.extrusionAvailable
+          ? editorCommandEnabled()
+          : editorCommandDisabled("selectProfile")
+      }
       const eligibility = canCreateFeature(context)
       if (!eligibility.enabled) return eligibility
       return context.state.extrusionAvailable
@@ -480,7 +491,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     },
     id: editorCommandIds.createExtrusion,
     isActive: ({ state }) => state.activePartDesignCommand === "extrusion",
-    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
     ownerModuleId: partDesignOwner,
   },
   {

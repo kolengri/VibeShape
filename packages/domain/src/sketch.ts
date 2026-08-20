@@ -6,6 +6,7 @@ import {
   sketchEntityIdSchema,
   sketchIdSchema,
 } from "./identifiers"
+import { planarFaceTopoRefSchema } from "./topology"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 
 export const MAX_SKETCHES_PER_DOCUMENT = 256
@@ -21,6 +22,13 @@ const coordinateSchema = z
   .max(MAX_SKETCH_COORDINATE_MM)
 const radiusSchema = z.number().finite().positive().max(MAX_SKETCH_COORDINATE_MM)
 const constructionSchema = z.boolean().default(false)
+
+export const sketchFeatureFaceSupportSchema = z
+  .object({
+    kind: z.literal("feature-face"),
+    reference: planarFaceTopoRefSchema,
+  })
+  .strict()
 
 const sketchEntityEnvelopeSchema = z.object({
   schemaVersion: z.literal(0),
@@ -560,6 +568,7 @@ export const sketchRecordSchema = z
       .max(120)
       .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
     plane: z.enum(["xy", "xz", "yz"]),
+    support: sketchFeatureFaceSupportSchema.optional(),
     entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
     constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
   })
@@ -590,3 +599,4 @@ export const sketchRecordsSchema = structuralSketchRecordsSchema.superRefine(
 )
 
 export type SketchRecord = Readonly<z.infer<typeof sketchRecordSchema>>
+export type SketchFeatureFaceSupport = Readonly<z.infer<typeof sketchFeatureFaceSupportSchema>>

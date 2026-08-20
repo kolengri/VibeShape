@@ -10,6 +10,8 @@ export {
   Cuboid,
   Download,
   DraftingCompass,
+  Eye,
+  EyeOff,
   FlipHorizontal2,
   FolderOpen,
   Grid2X2,

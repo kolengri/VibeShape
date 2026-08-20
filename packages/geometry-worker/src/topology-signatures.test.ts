@@ -28,7 +28,7 @@ function sample(
 }
 
 describe("createTopologyCandidates", () => {
-  it("derives symmetric face and edge adjacency without persisting transient keys", () => {
+  it("derives adjacency and exposes only the bounded face-to-mesh selection join", () => {
     const candidates = createTopologyCandidates([
       sample("face:0", "face", 100, [10, 11], "PLANE"),
       sample("face:1", "face", 101, [11, 12], "CYLINDRE"),
@@ -38,6 +38,8 @@ describe("createTopologyCandidates", () => {
     expect(candidates[0]?.signature.adjacentGeometryClasses).toEqual(["CYLINDRE"])
     expect(candidates[1]?.signature.adjacentGeometryClasses).toEqual(["PLANE"])
     expect(candidates[2]?.signature.adjacentGeometryClasses).toEqual(["CYLINDRE", "PLANE"])
+    expect(candidates[0]?.meshFaceId).toBe(100)
+    expect(candidates[2]?.meshFaceId).toBeUndefined()
     expect(JSON.stringify(candidates)).not.toContain("ownKey")
     expect(JSON.stringify(candidates)).not.toContain("boundaryKeys")
   })

@@ -3,16 +3,23 @@ import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers
 import type { SketchEntity, SketchRecord } from "./sketch"
 import {
   extendSketchArc,
+  extendSketchEllipticalArc,
   splitSketchArc,
   splitSketchCircle,
+  splitSketchEllipse,
+  splitSketchEllipticalArc,
   trimSketchCurve,
 } from "./sketch-curve-edit"
 import {
   appendSketchArc,
   appendSketchCircle,
+  appendSketchConstraint,
+  appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   createEmptySketch,
 } from "./sketch-edit"
+import { createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000031" as SketchId
 let nextEntityId = 1
@@ -52,6 +59,26 @@ function appendUpperBoundaries(sketch: SketchRecord) {
     createEntityId: entityId,
     start: { kind: "new", point: { x: -3, y: 0 } },
     end: { kind: "new", point: { x: -3, y: 6 } },
+  }).sketch
+}
+
+function appendEllipse(sketch = empty()) {
+  return appendSketchEllipse(sketch, {
+    center: { kind: "new", point: { x: 0, y: 0 } },
+    createEntityId: entityId,
+    primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+    secondaryRadiusPoint: { x: 0, y: 5 },
+  }).sketch
+}
+
+function appendUpperEllipticalArc(sketch = empty()) {
+  return appendSketchEllipticalArc(sketch, {
+    center: { kind: "new", point: { x: 0, y: 0 } },
+    createEntityId: entityId,
+    endPoint: { kind: "new", point: { x: -10, y: 0 } },
+    primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+    secondaryAxisPoint: { x: 0, y: 5 },
+    startPoint: { kind: "new", point: { x: 10, y: 0 } },
   }).sketch
 }
 
@@ -108,6 +135,63 @@ describe("analytical sketch curve modification", () => {
     expect(result.sketch.constraints).toEqual([expect.objectContaining({ type: "equal" })])
   })
 
+  it("splits a full ellipse into complementary arcs with shared stable axes", () => {
+    const fixture = appendEllipse()
+    const ellipse = curveByType(fixture, "ellipse")
+    const constrained = appendSketchConstraint(
+      fixture,
+      {
+        type: "primary-axis-diameter",
+        curveId: ellipse.id,
+        value: createLengthQuantity(20),
+      },
+      constraintId,
+    )
+
+    const result = splitSketchEllipse(constrained, {
+      createEntityId: entityId,
+      ellipseId: ellipse.id,
+      firstPoint: { x: 12, y: 0 },
+      secondPoint: { x: 0, y: 8 },
+    })
+    const arcs = result.sketch.entities.filter((entity) => entity.type === "elliptical-arc")
+
+    expect(result.sketch.entities.filter((entity) => entity.type === "ellipse")).toEqual([])
+    expect(arcs).toHaveLength(2)
+    expect(arcs[0]).toMatchObject({
+      id: ellipse.id,
+      centerPointId: ellipse.centerPointId,
+      primaryAxisPointId: ellipse.primaryAxisPointId,
+      secondaryAxisPointId: ellipse.secondaryAxisPointId,
+    })
+    expect(arcs[0]?.startPointId).toBe(arcs[1]?.endPointId)
+    expect(arcs[0]?.endPointId).toBe(arcs[1]?.startPointId)
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({ type: "primary-axis-diameter", curveId: ellipse.id }),
+    ])
+  })
+
+  it("splits an elliptical arc at one projected point while retaining its identity", () => {
+    const fixture = appendUpperEllipticalArc()
+    const arc = curveByType(fixture, "elliptical-arc")
+
+    const result = splitSketchEllipticalArc(fixture, {
+      arcId: arc.id,
+      createEntityId: entityId,
+      point: { x: 0, y: 8 },
+    })
+    const arcs = result.sketch.entities.filter((entity) => entity.type === "elliptical-arc")
+    const retained = arcs.find(({ id }) => id === arc.id)
+    const splitPoint = result.sketch.entities.find(({ id }) => id === retained?.endPointId)
+    if (splitPoint?.type !== "point") throw new Error("The split must create a point entity.")
+
+    expect(arcs).toHaveLength(2)
+    expect(splitPoint.x).toBeCloseTo(0)
+    expect(splitPoint.y).toBeCloseTo(5)
+    expect(arcs[1]?.startPointId).toBe(splitPoint.id)
+    expect(arcs[0]?.centerPointId).toBe(arcs[1]?.centerPointId)
+  })
+
   it("trims the clicked interior arc portion between bounded intersections", () => {
     const arcFixture = appendSketchArc(empty(), {
       center: { x: 0, y: 0 },
@@ -150,6 +234,43 @@ describe("analytical sketch curve modification", () => {
 
     expect(result.sketch.entities.filter((entity) => entity.type === "circle")).toEqual([])
     expect(retained.id).toBe(circle.id)
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-line")).toHaveLength(2)
+  })
+
+  it("trims an ellipse into the complementary retained elliptical arc", () => {
+    const ellipseFixture = appendEllipse()
+    const ellipse = curveByType(ellipseFixture, "ellipse")
+    const fixture = appendUpperBoundaries(ellipseFixture)
+
+    const result = trimSketchCurve(fixture, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      curveId: ellipse.id,
+      point: { x: 0, y: 5 },
+    })
+    const retained = curveByType(result.sketch, "elliptical-arc")
+
+    expect(result.sketch.entities.filter((entity) => entity.type === "ellipse")).toEqual([])
+    expect(retained.id).toBe(ellipse.id)
+    expect(retained.centerPointId).toBe(ellipse.centerPointId)
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-line")).toHaveLength(2)
+  })
+
+  it("trims an elliptical-arc interior between line boundaries", () => {
+    const arcFixture = appendUpperEllipticalArc()
+    const arc = curveByType(arcFixture, "elliptical-arc")
+    const fixture = appendUpperBoundaries(arcFixture)
+
+    const result = trimSketchCurve(fixture, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      curveId: arc.id,
+      point: { x: 0, y: 5 },
+    })
+    const arcs = result.sketch.entities.filter((entity) => entity.type === "elliptical-arc")
+
+    expect(arcs).toHaveLength(2)
+    expect(arcs[0]?.centerPointId).toBe(arcs[1]?.centerPointId)
     expect(result.sketch.constraints.filter(({ type }) => type === "point-on-line")).toHaveLength(2)
   })
 
@@ -226,6 +347,41 @@ describe("analytical sketch curve modification", () => {
 
     expect(extended).toMatchObject({ type: "arc", id: arc.id })
     expect(endPoint).toMatchObject({ type: "point", x: -5, y: 0 })
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({ type: "point-on-line", pointId: endPoint?.id }),
+    ])
+  })
+
+  it("extends an elliptical-arc endpoint to a bounded line intersection", () => {
+    const arcFixture = appendSketchEllipticalArc(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      endPoint: { kind: "new", point: { x: 0, y: 5 } },
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryAxisPoint: { x: 0, y: 5 },
+      startPoint: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const arc = curveByType(arcFixture, "elliptical-arc")
+    const fixture = appendSketchLine(arcFixture, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: -10, y: -1 } },
+      end: { kind: "new", point: { x: -10, y: 1 } },
+    }).sketch
+
+    const result = extendSketchEllipticalArc(fixture, {
+      arcId: arc.id,
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      point: { x: 0, y: 5 },
+    })
+    const extended = result.sketch.entities.find(({ id }) => id === arc.id)
+    const endPoint =
+      extended?.type === "elliptical-arc"
+        ? result.sketch.entities.find(({ id }) => id === extended.endPointId)
+        : null
+
+    expect(extended).toMatchObject({ type: "elliptical-arc", id: arc.id })
+    expect(endPoint).toMatchObject({ type: "point", x: -10, y: 0 })
     expect(result.sketch.constraints).toEqual([
       expect.objectContaining({ type: "point-on-line", pointId: endPoint?.id }),
     ])

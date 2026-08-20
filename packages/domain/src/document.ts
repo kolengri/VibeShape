@@ -40,6 +40,18 @@ export const documentSnapshotSchema = z
     updatedAt: timestampSchema,
   })
   .strict()
+  .superRefine((document, context) => {
+    const featureIds = new Set(document.features.map(({ id }) => id))
+    for (const [index, sketch] of document.sketches.entries()) {
+      const supportFeatureId = sketch.support?.reference.featureId
+      if (!supportFeatureId || featureIds.has(supportFeatureId)) continue
+      context.addIssue({
+        code: "custom",
+        path: ["sketches", index, "support", "reference", "featureId"],
+        message: "A sketch support must reference an existing feature.",
+      })
+    }
+  })
 
 type ParsedDocumentSnapshot = z.infer<typeof documentSnapshotSchema>
 

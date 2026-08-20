@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import {
   appendSketchArc,
   appendSketchCircle,
+  appendSketchEllipse,
   appendSketchLine,
   appendSketchRectangle,
   createLengthQuantity,
@@ -166,12 +167,18 @@ type SketchViewportTestProps = Readonly<{
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+  originPlaneVisibility?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["originPlaneVisibility"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
   onEditorToolChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onEditorToolChange"]
   onConstraintSelectionChange?: React.ComponentProps<
     typeof SketchViewport
   >["actions"]["onConstraintSelectionChange"]
   onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
+  onOriginPlaneVisibilityChange?: React.ComponentProps<
+    typeof SketchViewport
+  >["actions"]["onOriginPlaneVisibilityChange"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
   onSelectionChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onSelectionChange"]
   selectedConstraintId?: React.ComponentProps<
@@ -189,6 +196,7 @@ function viewportState(props: SketchViewportTestProps) {
     controller: props.controller ?? controller,
     draft: props.draft ?? null,
     editorTool: props.editorTool ?? "select",
+    originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
     selectedConstraintId: props.selectedConstraintId ?? null,
     selectedEntityIds: props.selectedEntityIds ?? [],
     selectedProfile: null,
@@ -202,6 +210,7 @@ function viewportActions(props: SketchViewportTestProps) {
     onEditorToolChange: props.onEditorToolChange ?? noOperation,
     onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
     onFailedConstraintsChange: noOperation,
+    onOriginPlaneVisibilityChange: props.onOriginPlaneVisibilityChange ?? noOperation,
     onProfileSelect: props.onProfileSelect ?? noOperation,
     onProfilesChange: props.onProfilesChange ?? noOperation,
     onRedo: noOperation,
@@ -306,6 +315,29 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("keeps individually toggleable origin references visible while editing a sketch", () => {
+    const fixture = lineSketchFixture("b250", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const onOriginPlaneVisibilityChange = vi.fn()
+
+    renderViewport({
+      draft: fixture,
+      onOriginPlaneVisibilityChange,
+      originPlaneVisibility: { xy: true, xz: false, yz: true },
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(document.querySelector('[data-sketch-origin-plane="xy"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-origin-plane="xz"]')).toBeNull()
+    expect(document.querySelector('[data-sketch-origin-plane="yz"]')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
+    fireEvent.click(screen.getByRole("button", { name: "Show XZ plane" }))
+
+    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(1, "xy", false)
+    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(2, "xz", true)
+  })
+
   it("splits a clicked line at the pointer as one draft edit", () => {
     const fixture = lineSketchFixture("b251", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
     const target = fixture.entities.find((entity) => entity.type === "line")
@@ -825,6 +857,45 @@ describe("SketchViewport", () => {
     expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
       2,
     )
+  })
+
+  it("splits an ellipse after two curve clicks with complementary analytical previews", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchEllipse(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b25e"),
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 5 },
+    }).sketch
+    const ellipse = fixture.entities.find((entity) => entity.type === "ellipse")
+    if (!ellipse) throw new Error("The ellipse split fixture must contain an ellipse.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "split",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const ellipseElement = document.querySelector(`[data-sketch-entity-id="${ellipse.id}"]`)
+    if (!ellipseElement) throw new Error("The ellipse split target must be rendered.")
+
+    fireEvent.pointerDown(ellipseElement, { clientX: 440, clientY: 300 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    const preview = document.querySelector('[data-sketch-preview-tool="split-ellipse-second"]')
+    expect(preview?.querySelectorAll("polyline")).toHaveLength(2)
+
+    fireEvent.pointerDown(ellipseElement, { clientX: 400, clientY: 260 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "ellipse"),
+    ).toHaveLength(0)
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "elliptical-arc"),
+    ).toHaveLength(2)
   })
 
   it("trims a clicked arc between neighboring line boundaries", () => {
@@ -1983,7 +2054,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("streams throttled exact feedback before a dense sketch point is released", async () => {
+  it("defers dense exact feedback until the pointer pauses", async () => {
     const denseSketch = denseRectangleSketchFixture()
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
@@ -2018,7 +2089,18 @@ describe("SketchViewport", () => {
     const frame = frames.shift()
     if (!frame) throw new Error("The dense point drag must schedule an animation frame.")
     act(() => frame(0))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 180)))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+
+    fireEvent.pointerMove(drawing, { clientX: 620, clientY: 160, pointerId: 1 })
+    const continuedFrame = frames.shift()
+    if (!continuedFrame) throw new Error("Continued dense dragging must schedule another frame.")
+    act(() => continuedFrame(80))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+
+    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
 
     expect(solveSketch).toHaveBeenCalledTimes(2)
     expect(onDraftChange).not.toHaveBeenCalled()
@@ -2027,6 +2109,51 @@ describe("SketchViewport", () => {
 
     expect(onDraftChange).toHaveBeenCalledOnce()
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+  })
+
+  it("keeps very dense point dragging local until release", async () => {
+    const denseSketch = denseRectangleSketchFixture(48)
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      controller: {
+        ...controller,
+        report: {
+          snapshot: { revision: 7, sketches: [denseSketch] },
+          rebuild: { ok: true },
+        },
+      } as unknown as DocumentControllerState,
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch,
+      onDraftChange,
+    })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The very dense sketch fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The very dense sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The very dense point drag must schedule an animation frame.")
+    act(() => frame(0))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 180)))
+
+    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
   })
 
   it("reuses the prewarmed inference index across incremental zoom and point drag", () => {
