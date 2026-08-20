@@ -147,26 +147,47 @@ function SketchTreeItem({
   onActivate,
   onFeatureRename,
   onSketchRename,
+  onVisibilityChange,
   renameBlocked,
   sketch,
   unnamedSketch,
+  visible,
 }: {
   active: boolean
   controller: DocumentControllerState
   onActivate: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
   onSketchRename: SketchRenameHandler
+  onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
   sketch: SketchRecord
   unnamedSketch: string
+  visible: boolean
 }) {
+  const t = useTranslations("app.shell.modelTree")
   const [renameOpen, setRenameOpen] = useState(false)
   const label = sketch.label || unnamedSketch
   const renameDisabled =
     renameBlocked || controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const visibilityLabel = t(visible ? "hideSketch" : "showSketch", { sketch: label })
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={visibilityLabel}
+            aria-pressed={visible}
+            onClick={() => onVisibilityChange(sketch.id, !visible)}
+          >
+            {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{visibilityLabel}</TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         variant="ghost"
@@ -207,9 +228,11 @@ function SketchTreeItems({
   onActivate,
   onFeatureRename,
   onSketchRename,
+  onVisibilityChange,
   renameBlockedId,
   sketches,
   unnamedSketch,
+  hiddenSketchIds,
 }: {
   activeSketchId: SketchId | null
   controller: DocumentControllerState
@@ -217,9 +240,11 @@ function SketchTreeItems({
   onActivate: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
   onSketchRename: SketchRenameHandler
+  onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlockedId: SketchId | null
   sketches: readonly SketchRecord[]
   unnamedSketch: string
+  hiddenSketchIds: readonly SketchId[]
 }) {
   if (sketches.length === 0) return null
   return (
@@ -233,9 +258,11 @@ function SketchTreeItems({
           onActivate={onActivate}
           onFeatureRename={onFeatureRename}
           onSketchRename={onSketchRename}
+          onVisibilityChange={onVisibilityChange}
           renameBlocked={sketch.id === renameBlockedId}
           sketch={sketch}
           unnamedSketch={unnamedSketch}
+          visible={!hiddenSketchIds.includes(sketch.id)}
         />
       ))}
     </fieldset>
@@ -281,9 +308,11 @@ export function ModelTree({
   onFeatureVisibilityChange,
   onSketchActivate,
   onSketchRename,
+  onSketchVisibilityChange,
   onWorkspaceChange,
   sketchRenameBlockedId,
   hiddenFeatureIds,
+  hiddenSketchIds,
 }: {
   activeFeatureId: FeatureRecord["id"] | null
   activeSketchId: SketchId | null
@@ -294,9 +323,11 @@ export function ModelTree({
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
   onSketchRename: SketchRenameHandler
+  onSketchVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   onWorkspaceChange: (workspace: EditorWorkspaceName) => void
   sketchRenameBlockedId: SketchId | null
   hiddenFeatureIds: readonly FeatureRecord["id"][]
+  hiddenSketchIds: readonly SketchId[]
 }) {
   const t = useTranslations("app.shell.modelTree")
   const features = controller.report?.snapshot.features ?? []
@@ -332,8 +363,10 @@ export function ModelTree({
           onActivate={onSketchActivate}
           onFeatureRename={onFeatureRename}
           onSketchRename={onSketchRename}
+          onVisibilityChange={onSketchVisibilityChange}
           renameBlockedId={sketchRenameBlockedId}
           unnamedSketch={t("unnamedSketch")}
+          hiddenSketchIds={hiddenSketchIds}
         />
         <ModelTreeRootItem
           targetWorkspace="model"

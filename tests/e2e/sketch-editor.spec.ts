@@ -1156,6 +1156,11 @@ test.describe("full sketch editor", () => {
     await verticalConstraint.getByRole("button", { name: "Save dimension" }).click()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "1",
+    )
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
 
     await page.reload()

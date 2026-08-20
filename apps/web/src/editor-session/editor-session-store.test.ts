@@ -66,6 +66,18 @@ describe("editor session store", () => {
     expect(first.getState().hiddenFeatureIds).toEqual([])
   })
 
+  it("keeps saved sketch visibility local to the editor session", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+
+    first.getState().actions.setSketchVisibility(sketchId, false)
+    expect(first.getState().hiddenSketchIds).toEqual([sketchId])
+    expect(second.getState().hiddenSketchIds).toEqual([])
+
+    first.getState().actions.setSketchVisibility(sketchId, true)
+    expect(first.getState().hiddenSketchIds).toEqual([])
+  })
+
   it("owns the create-sketch support-selection lifecycle without committing a document", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch()
@@ -192,7 +204,8 @@ describe("editor session store", () => {
     store.getState().actions.beginSketchEdit(sketch)
     store.getState().actions.setSketchProfiles([profile])
 
-    store.getState().actions.saveSketch(sketch)
+    store.getState().actions.saveSketch(sketch, { profiles: [profile], selectedProfile: profile })
+    store.getState().actions.setSketchProfiles([])
 
     expect(store.getState().sketch).toMatchObject({
       activeSketchId: sketchId,
@@ -204,5 +217,6 @@ describe("editor session store", () => {
       undoStack: [],
       redoStack: [],
     })
+    expect(store.getState().workspace).toBe("model")
   })
 })

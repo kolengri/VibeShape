@@ -74,7 +74,13 @@ type TaskPanelProps = Readonly<{
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  onSketchSaved: (sketch: SketchRecord) => void
+  onSketchSaved: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
   sketchDraft: SketchRecord | null
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
@@ -1079,7 +1085,13 @@ type ActiveSketchTaskPanelActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  onSketchSaved: (sketch: SketchRecord) => void
+  onSketchSaved: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
 }>
 
 function sketchSaveFailureMessage(
@@ -1136,7 +1148,7 @@ function ActiveSketchTaskPanel({
       )
       return
     }
-    onSketchSaved(draft)
+    onSketchSaved(draft, { profiles, selectedProfile })
   }
   const extrude = async () => {
     setMessage(null)

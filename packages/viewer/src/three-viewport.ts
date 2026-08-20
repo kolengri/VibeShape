@@ -10,6 +10,7 @@ import {
   EdgesGeometry,
   Group,
   LineBasicMaterial,
+  LineDashedMaterial,
   LineSegments,
   Mesh,
   MeshBasicMaterial,
@@ -18,6 +19,8 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
+  Points,
+  PointsMaterial,
   Raycaster,
   Scene,
   Sphere,
@@ -57,6 +60,14 @@ export type ViewerMesh = Readonly<{
   triangleFaceIds: Uint32Array
 }>
 
+export type ViewerSketch = Readonly<{
+  sketchId: string
+  curvePositions: Float32Array
+  constructionCurvePositions: Float32Array
+  pointPositions: Float32Array
+  constructionPointPositions: Float32Array
+}>
+
 export type OrthographicFrustum = Readonly<{
   left: number
   right: number
@@ -66,6 +77,7 @@ export type OrthographicFrustum = Readonly<{
 
 export type GeometryViewport = Readonly<{
   setMeshes: (meshes: readonly ViewerMesh[]) => void
+  setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   fit: () => void
@@ -100,6 +112,14 @@ export function createViewerGeometry(mesh: ViewerMesh) {
   geometry.setAttribute("normal", new BufferAttribute(mesh.normals, 3))
   geometry.setIndex(new BufferAttribute(mesh.indices, 1))
   geometry.userData = { featureId: mesh.featureId, triangleFaceIds: mesh.triangleFaceIds }
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+export function createViewerSketchGeometry(positions: Float32Array) {
+  const geometry = new BufferGeometry()
+  geometry.setAttribute("position", new BufferAttribute(positions, 3))
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
   return geometry
@@ -173,7 +193,9 @@ function setCameraFrustum(camera: OrthographicCamera, viewHeight: number, aspect
 function disposeModelGroup(group: Group) {
   for (const child of [...group.children]) {
     group.remove(child)
-    if (child instanceof Mesh || child instanceof LineSegments) child.geometry.dispose()
+    if (child instanceof Mesh || child instanceof LineSegments || child instanceof Points) {
+      child.geometry.dispose()
+    }
   }
 }
 
@@ -206,6 +228,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #orientationAxes = new AxesHelper(1.05)
   readonly #controls: OrbitControls
   readonly #modelGroup = new Group()
+  readonly #sketchGroup = new Group()
   readonly #originPlaneGroup = new Group()
   readonly #preselectionGroup = new Group()
   readonly #selectionGroup = new Group()
@@ -221,6 +244,34 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #originPlaneEdgeMaterials: LineBasicMaterial[] = []
   readonly #modelSurfaceMaterials: MeshStandardMaterial[] = []
   readonly #modelEdgeMaterials: LineBasicMaterial[] = []
+  readonly #sketchCurveMaterial = new LineBasicMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.96,
+  })
+  readonly #sketchConstructionCurveMaterial = new LineDashedMaterial({
+    color: new Color("#65a9ee"),
+    dashSize: 4,
+    depthTest: false,
+    gapSize: 3,
+    transparent: true,
+    opacity: 0.55,
+  })
+  readonly #sketchPointMaterial = new PointsMaterial({
+    color: new Color("#d7ebff"),
+    depthTest: false,
+    size: 3,
+    sizeAttenuation: false,
+  })
+  readonly #sketchConstructionPointMaterial = new PointsMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    opacity: 0.55,
+    size: 2,
+    sizeAttenuation: false,
+    transparent: true,
+  })
   readonly #previewSurfaceMaterial = new MeshBasicMaterial({
     color: new Color("#4c8dff"),
     transparent: true,
@@ -294,6 +345,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setClearAlpha(0)
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.#scene.add(this.#modelGroup)
+    this.#scene.add(this.#sketchGroup)
     this.#createOriginPlanes()
     this.#scene.add(this.#originPlaneGroup)
     this.#scene.add(this.#preselectionGroup)
@@ -374,6 +426,39 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  setSketches(sketches: readonly ViewerSketch[]) {
+    if (this.#disposed) return
+    disposeModelGroup(this.#sketchGroup)
+    for (const sketch of sketches) {
+      this.#addSketchLines(
+        sketch.sketchId,
+        "curves",
+        sketch.curvePositions,
+        this.#sketchCurveMaterial,
+      )
+      this.#addSketchLines(
+        sketch.sketchId,
+        "construction-curves",
+        sketch.constructionCurvePositions,
+        this.#sketchConstructionCurveMaterial,
+        true,
+      )
+      this.#addSketchPoints(
+        sketch.sketchId,
+        "points",
+        sketch.pointPositions,
+        this.#sketchPointMaterial,
+      )
+      this.#addSketchPoints(
+        sketch.sketchId,
+        "construction-points",
+        sketch.constructionPointPositions,
+        this.#sketchConstructionPointMaterial,
+      )
+    }
+    this.#render()
+  }
+
   setOriginPlaneSelection(selectedPlane: ViewerOriginPlane | null) {
     if (this.#disposed || selectedPlane === this.#originPlaneSelection) return
     this.#originPlaneSelection = selectedPlane
@@ -395,7 +480,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   fit() {
     if (this.#disposed) return
-    const bounds = new Box3().setFromObject(this.#modelGroup)
+    const bounds = new Box3().setFromObject(this.#modelGroup).expandByObject(this.#sketchGroup)
     if (bounds.isEmpty()) {
       this.#viewHeight = DEFAULT_VIEW_HEIGHT
       this.#controls.target.set(0, 0, 0)
@@ -440,6 +525,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.removeEventListener("change", this.#render)
     this.#controls.dispose()
     disposeModelGroup(this.#modelGroup)
+    disposeModelGroup(this.#sketchGroup)
     disposeMaterials(this.#modelSurfaceMaterials)
     disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
@@ -449,6 +535,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#previewEdgeMaterial.dispose()
     this.#datumSurfaceMaterial.dispose()
     this.#datumEdgeMaterial.dispose()
+    this.#sketchCurveMaterial.dispose()
+    this.#sketchConstructionCurveMaterial.dispose()
+    this.#sketchPointMaterial.dispose()
+    this.#sketchConstructionPointMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
@@ -557,6 +647,34 @@ class ThreeGeometryViewport implements GeometryViewport {
     const material = new LineBasicMaterial({ color: new Color("#263746") })
     this.#modelEdgeMaterials.push(material)
     return material
+  }
+
+  #addSketchLines(
+    sketchId: string,
+    kind: string,
+    positions: Float32Array,
+    material: LineBasicMaterial | LineDashedMaterial,
+    dashed = false,
+  ) {
+    if (positions.length === 0) return
+    const lines = new LineSegments(createViewerSketchGeometry(positions), material)
+    lines.name = `sketch:${sketchId}:${kind}`
+    lines.renderOrder = 4
+    if (dashed) lines.computeLineDistances()
+    this.#sketchGroup.add(lines)
+  }
+
+  #addSketchPoints(
+    sketchId: string,
+    kind: string,
+    positions: Float32Array,
+    material: PointsMaterial,
+  ) {
+    if (positions.length === 0) return
+    const points = new Points(createViewerSketchGeometry(positions), material)
+    points.name = `sketch:${sketchId}:${kind}`
+    points.renderOrder = 5
+    this.#sketchGroup.add(points)
   }
 
   #setOriginPlanePreselection(plane: ViewerOriginPlane | null) {

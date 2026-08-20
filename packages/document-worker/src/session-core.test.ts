@@ -81,6 +81,7 @@ function successfulResponse(request: DocumentWorkerRequest): DocumentWorkerTermi
         reusedFeatureIds: [],
       },
       geometry: [],
+      sketches: [],
     }
   }
   if (request.type === "healthCheck") {

@@ -25,10 +25,20 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1", {
+      timeout: 120_000,
+    })
+    await expect(viewport.locator('[data-plane-symbol="XY"]')).toBeVisible()
+    await expect(viewport.locator('[data-plane-symbol="XZ"]')).toBeVisible()
+    await expect(viewport.locator('[data-plane-symbol="YZ"]')).toBeVisible()
+    await page.getByRole("button", { name: "Hide Sketch 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
+    await page.getByRole("button", { name: "Show Sketch 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
     await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
     await page.getByRole("button", { name: "Extrude selected profile" }).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("combobox", { name: "Distance" }).fill("#depth")
     await createForm.getByRole("checkbox", { name: "Extrude symmetrically" }).check()
