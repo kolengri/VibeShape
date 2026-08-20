@@ -69,7 +69,7 @@ type TaskPanelProps = Readonly<{
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
-  onExtrusionPreviewChange: (feature: FeatureRecord | null) => void
+  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
@@ -388,7 +388,7 @@ function ExtrusionTaskPanel({
 }: {
   mode: ExtrusionFormMode
   onCloseTool: () => void
-  onPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly ExtrusionTargetOption[]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -459,10 +459,12 @@ function BoxTaskPanel({
 function DatumPlaneTaskPanel({
   mode,
   onCloseTool,
+  onPreviewChange,
   report,
 }: {
   mode: DatumPlaneFormMode
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -479,6 +481,7 @@ function DatumPlaneTaskPanel({
         mode={mode}
         variables={snapshot.variables}
         onCancel={onCloseTool}
+        onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
       />
@@ -847,16 +850,25 @@ function ActiveCylinderTaskPanel({
 function ActiveDatumPlaneTaskPanel({
   activeTool,
   onCloseTool,
+  onPreviewChange,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.datumPlane")
   const datumCount = report.snapshot.features.filter(isDatumPlaneFeature).length
   const mode = datumPlaneFormMode(activeTool, report, t("featureLabel", { number: datumCount + 1 }))
-  return mode ? <DatumPlaneTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+  return mode ? (
+    <DatumPlaneTaskPanel
+      report={report}
+      mode={mode}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onPreviewChange}
+    />
+  ) : null
 }
 
 function ActiveExtrusionTaskPanel({
@@ -867,7 +879,7 @@ function ActiveExtrusionTaskPanel({
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
   onCloseTool: () => void
-  onPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
@@ -926,7 +938,7 @@ function ActiveSubtractTaskPanel({
 type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
   onCloseTool: () => void
-  onExtrusionPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }>
 
@@ -942,18 +954,28 @@ function CylinderToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPa
   )
 }
 
-function DatumPlaneToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
+function DatumPlaneToolTaskPanel({
+  activeTool,
+  onCloseTool,
+  onFeaturePreviewChange,
+  report,
+}: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-datum-plane" && activeTool.kind !== "edit-datum-plane")
     return null
   return (
-    <ActiveDatumPlaneTaskPanel activeTool={activeTool} onCloseTool={onCloseTool} report={report} />
+    <ActiveDatumPlaneTaskPanel
+      activeTool={activeTool}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onFeaturePreviewChange}
+      report={report}
+    />
   )
 }
 
 function ExtrusionToolTaskPanel({
   activeTool,
   onCloseTool,
-  onExtrusionPreviewChange,
+  onFeaturePreviewChange,
   report,
 }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-extrusion" && activeTool.kind !== "edit-extrusion") return null
@@ -961,7 +983,7 @@ function ExtrusionToolTaskPanel({
     <ActiveExtrusionTaskPanel
       activeTool={activeTool}
       onCloseTool={onCloseTool}
-      onPreviewChange={onExtrusionPreviewChange}
+      onPreviewChange={onFeaturePreviewChange}
       report={report}
     />
   )
@@ -1015,7 +1037,7 @@ function ModelTaskPanel({
   onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
-  onExtrusionPreviewChange,
+  onFeaturePreviewChange,
   sketchSelectedProfile,
 }: TaskPanelProps) {
   const report = controller.report
@@ -1025,7 +1047,7 @@ function ModelTaskPanel({
       activeTool={activeTool}
       report={report}
       onCloseTool={onCloseTool}
-      onExtrusionPreviewChange={onExtrusionPreviewChange}
+      onFeaturePreviewChange={onFeaturePreviewChange}
     />
   ) : (
     <StartTaskPanel

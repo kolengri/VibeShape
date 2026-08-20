@@ -18,11 +18,11 @@ import {
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
-import { useExtrusionPreview } from "../features/extrusion/use-extrusion-preview"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
+import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -42,15 +42,22 @@ function committedGeometry(controller: DocumentControllerState) {
   return rebuild?.ok ? rebuild.response.geometry : EMPTY_GEOMETRY
 }
 
-function isExtrusionToolActive(activeTool: ActivePartDesignTool | null) {
-  return activeTool?.kind === "create-extrusion" || activeTool?.kind === "edit-extrusion"
+const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = new Set([
+  "create-extrusion",
+  "edit-extrusion",
+  "create-datum-plane",
+  "edit-datum-plane",
+])
+
+function isPreviewedFeatureToolActive(activeTool: ActivePartDesignTool | null) {
+  return activeTool ? PREVIEWED_FEATURE_TOOL_KINDS.has(activeTool.kind) : false
 }
 
-function extrusionPreviewCandidate(
+function featurePreviewCandidate(
   activeTool: ActivePartDesignTool | null,
   candidate: FeatureRecord | null,
 ) {
-  return isExtrusionToolActive(activeTool) ? candidate : null
+  return isPreviewedFeatureToolActive(activeTool) ? candidate : null
 }
 
 type WorkspaceContentProps = Readonly<{
@@ -70,7 +77,7 @@ type WorkspaceContentProps = Readonly<{
   }>
   controller: DocumentControllerState
   model: Readonly<{
-    extrusionPreview: ReturnType<typeof useExtrusionPreview>
+    featurePreview: ReturnType<typeof useFeaturePreview>
     hiddenFeatureIds: readonly FeatureId[]
     originPlaneVisibility: ViewerOriginPlaneVisibility
     selection: ViewerSelection | null
@@ -132,7 +139,7 @@ function ModelingWorkspaceContent({
   return (
     <GeometryViewport
       controller={controller}
-      extrusionPreview={model.extrusionPreview}
+      featurePreview={model.featurePreview}
       hiddenFeatureIds={model.hiddenFeatureIds}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
@@ -221,17 +228,17 @@ type EditorWorkspaceProps = Readonly<{
   workspace: EditorWorkspaceName
 }>
 
-function useEditorExtrusionPreview(
+function useEditorFeaturePreview(
   controller: DocumentControllerState,
   activeTool: ActivePartDesignTool | null,
 ) {
-  const [extrusionPreviewFeature, setExtrusionPreviewFeature] = useState<FeatureRecord | null>(null)
-  const extrusionPreview = useExtrusionPreview(
+  const [previewFeature, setPreviewFeature] = useState<FeatureRecord | null>(null)
+  const featurePreview = useFeaturePreview(
     controller.report?.snapshot ?? null,
-    extrusionPreviewCandidate(activeTool, extrusionPreviewFeature),
+    featurePreviewCandidate(activeTool, previewFeature),
     committedGeometry(controller),
   )
-  return { extrusionPreview, setExtrusionPreviewFeature }
+  return { featurePreview, setPreviewFeature }
 }
 
 function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
@@ -257,10 +264,10 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
 }
 
 function EditorContent({
-  extrusionPreview,
+  featurePreview,
   props,
 }: {
-  extrusionPreview: ReturnType<typeof useExtrusionPreview>
+  featurePreview: ReturnType<typeof useFeaturePreview>
   props: EditorWorkspaceProps
 }) {
   const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
@@ -284,7 +291,7 @@ function EditorContent({
       }}
       controller={controller}
       model={{
-        extrusionPreview,
+        featurePreview,
         hiddenFeatureIds: props.hiddenFeatureIds,
         originPlaneVisibility: props.originPlaneVisibility,
         selection,
@@ -305,10 +312,10 @@ function EditorContent({
 }
 
 function EditorTaskPanel({
-  onExtrusionPreviewChange,
+  onFeaturePreviewChange,
   props,
 }: {
-  onExtrusionPreviewChange: (feature: FeatureRecord | null) => void
+  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   props: EditorWorkspaceProps
 }) {
   const { actions } = props
@@ -326,7 +333,7 @@ function EditorTaskPanel({
       onCreateSketch={actions.createSketch}
       onCreateSubtract={actions.createSubtract}
       onEditSketch={actions.editSketch}
-      onExtrusionPreviewChange={onExtrusionPreviewChange}
+      onFeaturePreviewChange={onFeaturePreviewChange}
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
@@ -343,15 +350,15 @@ function EditorTaskPanel({
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
-  const { extrusionPreview, setExtrusionPreviewFeature } = useEditorExtrusionPreview(
+  const { featurePreview, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
   return (
     <div className="cad-workspace-grid min-h-0">
       <EditorModelTree props={props} />
-      <EditorContent extrusionPreview={extrusionPreview} props={props} />
-      <EditorTaskPanel onExtrusionPreviewChange={setExtrusionPreviewFeature} props={props} />
+      <EditorContent featurePreview={featurePreview} props={props} />
+      <EditorTaskPanel onFeaturePreviewChange={setPreviewFeature} props={props} />
     </div>
   )
 }

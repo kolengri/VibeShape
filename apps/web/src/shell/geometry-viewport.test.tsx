@@ -11,7 +11,7 @@ import type {
 } from "@vibeshape/viewer"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
-import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
+import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { i18n } from "../i18n"
 import { GeometryViewport, viewerMeshes } from "./geometry-viewport"
 
@@ -64,7 +64,7 @@ function renderViewport(
     selectedPlane: "xy" | "xz" | "yz"
     onSelect: (plane: "xy" | "xz" | "yz") => void
   }>,
-  extrusionPreview?: ExtrusionPreviewState,
+  featurePreview?: FeaturePreviewState,
   originPlaneVisibility?: Readonly<{
     visibility: { xy: boolean; xz: boolean; yz: boolean }
     onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
@@ -90,7 +90,7 @@ function renderViewport(
           createViewport={createViewport}
           selection={selection}
           onSelectionChange={onSelectionChange}
-          {...(extrusionPreview ? { extrusionPreview } : {})}
+          {...(featurePreview ? { featurePreview } : {})}
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
           {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
         />

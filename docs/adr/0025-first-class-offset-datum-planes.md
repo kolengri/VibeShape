@@ -32,7 +32,7 @@ The plate is an implementation detail, not a body:
 - the viewport renders datum meshes with a distinct translucent appearance and retains normal picking;
 - model-tree visibility is independent presentation state and does not suppress the semantic feature.
 
-Create and edit use the ordinary revisioned feature command path. The command uses a currently selected supported planar face when available; otherwise the task panel exposes an accessible origin-plane select. Offset input uses the shared variable-aware length primitive and TanStack Form adapter, including single-flight asynchronous submission.
+Create and edit use the ordinary revisioned feature command path. The command uses a currently selected supported planar face when available; otherwise the task panel exposes an accessible origin-plane select. Offset input uses the shared variable-aware length primitive and TanStack Form adapter, including single-flight asynchronous submission. A debounced schema-valid draft rebuilds in an isolated worker session, reusing the generic feature-preview path so support or offset changes move the translucent plane before commit without changing the semantic revision or project thumbnail.
 
 ## Consequences
 

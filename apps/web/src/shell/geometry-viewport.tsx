@@ -29,8 +29,8 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
-import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
+import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 
 type ViewportFactory = (
   canvas: HTMLCanvasElement,
@@ -361,10 +361,40 @@ function OriginPlaneSelectionOverlay({
   )
 }
 
-function PreviewStatus({ status }: { status: ExtrusionPreviewState["status"] }) {
+type ActivePreviewStatus = Exclude<FeaturePreviewState["status"], "idle">
+type PreviewMessageKey =
+  | "datumPreviewFailed"
+  | "datumPreviewLoading"
+  | "datumPreviewReady"
+  | "previewFailed"
+  | "previewLoading"
+  | "previewReady"
+
+const PREVIEW_MESSAGE_KEYS: Readonly<
+  Record<"datum-plane" | "extrusion", Record<ActivePreviewStatus, PreviewMessageKey>>
+> = {
+  "datum-plane": {
+    error: "datumPreviewFailed",
+    loading: "datumPreviewLoading",
+    ready: "datumPreviewReady",
+  },
+  extrusion: {
+    error: "previewFailed",
+    loading: "previewLoading",
+    ready: "previewReady",
+  },
+}
+
+function previewMessageKey(preview: FeaturePreviewState | undefined) {
+  if (!preview || preview.status === "idle") return null
+  return PREVIEW_MESSAGE_KEYS[preview.kind ?? "extrusion"][preview.status]
+}
+
+function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }) {
   const t = useTranslations("app.shell.viewport")
-  if (status === "idle") return null
-  const failed = status === "error"
+  const messageKey = previewMessageKey(preview)
+  if (!messageKey) return null
+  const failed = preview?.status === "error"
   return (
     <div className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm">
       <p
@@ -372,7 +402,7 @@ function PreviewStatus({ status }: { status: ExtrusionPreviewState["status"] }) 
         role={failed ? "alert" : "status"}
         aria-live="polite"
       >
-        {t(failed ? "previewFailed" : status === "loading" ? "previewLoading" : "previewReady")}
+        {t(messageKey)}
       </p>
     </div>
   )
@@ -381,7 +411,7 @@ function PreviewStatus({ status }: { status: ExtrusionPreviewState["status"] }) 
 type GeometryViewportProps = Readonly<{
   controller: DocumentControllerState
   createViewport?: ViewportFactory
-  extrusionPreview?: ExtrusionPreviewState
+  featurePreview?: FeaturePreviewState
   hiddenFeatureIds?: readonly string[]
   originPlaneSelection?: Readonly<{
     selectedPlane: ViewerOriginPlane
@@ -396,7 +426,7 @@ type GeometryViewportProps = Readonly<{
 }>
 
 function previewMeshes(
-  preview: ExtrusionPreviewState | undefined,
+  preview: FeaturePreviewState | undefined,
   committedMeshes: readonly ViewerMesh[],
 ) {
   return preview?.status === "ready" ? preview.meshes : committedMeshes
@@ -422,7 +452,7 @@ function changeOriginPlaneVisibilityHandler(
   return originPlaneVisibility?.onChange ?? ignoreOriginPlaneVisibilityChange
 }
 
-function previewAllowsViewportMessage(preview: ExtrusionPreviewState | undefined) {
+function previewAllowsViewportMessage(preview: FeaturePreviewState | undefined) {
   return preview?.status !== "loading" && preview?.status !== "error"
 }
 
@@ -443,7 +473,7 @@ function translatedViewportMessage(
   rendererFailed: boolean,
   meshes: readonly ViewerMesh[],
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"],
-  preview: ExtrusionPreviewState | undefined,
+  preview: FeaturePreviewState | undefined,
   t: ReturnType<typeof useTranslations<"app.shell.viewport">>,
 ) {
   if (!previewAllowsViewportMessage(preview)) return null
@@ -466,7 +496,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   const {
     controller,
     createViewport = loadGeometryViewport,
-    extrusionPreview,
+    featurePreview,
     hiddenFeatureIds = [],
     originPlaneSelection,
     originPlaneVisibility,
@@ -484,10 +514,10 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   )
   const meshes = useMemo(() => {
     const hiddenIds = new Set(hiddenFeatureIds)
-    return previewMeshes(extrusionPreview, committedMeshes).filter(
+    return previewMeshes(featurePreview, committedMeshes).filter(
       ({ featureId }) => !hiddenIds.has(featureId),
     )
-  }, [committedMeshes, extrusionPreview, hiddenFeatureIds])
+  }, [committedMeshes, featurePreview, hiddenFeatureIds])
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
@@ -507,7 +537,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     rendererFailed,
     meshes,
     originPlaneSelection,
-    extrusionPreview,
+    featurePreview,
     t,
   )
   return {
@@ -573,7 +603,7 @@ function WorldAxesLegend() {
 }
 
 export function GeometryViewport(props: GeometryViewportProps) {
-  const { extrusionPreview, originPlaneSelection, selection } = props
+  const { featurePreview, originPlaneSelection, selection } = props
   const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
   const {
@@ -593,7 +623,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
       data-preview-feature-count={
         meshes.filter(({ appearance }) => appearance === "preview").length
       }
-      data-preview-status={extrusionPreview?.status ?? "idle"}
+      data-preview-status={featurePreview?.status ?? "idle"}
       data-origin-plane-selection={originPlaneSelection?.selectedPlane}
       data-origin-plane-preselection={originPlanePreselection ?? undefined}
       data-origin-plane-visibility={viewerOriginPlanes
@@ -602,7 +632,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
       <ViewportMessage message={message} title={t("title")} />
-      <PreviewStatus status={extrusionPreview?.status ?? "idle"} />
+      <PreviewStatus preview={featurePreview} />
       <ViewportControlsSlot
         meshes={meshes}
         originPlaneSelection={originPlaneSelection}

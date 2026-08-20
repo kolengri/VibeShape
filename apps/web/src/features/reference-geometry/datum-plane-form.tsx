@@ -7,6 +7,7 @@ import {
   type SketchFeatureFaceSupport,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useRef, useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -98,6 +99,7 @@ function supportFromMode(mode: DatumPlaneFormMode, originPlane: OriginPlane) {
 
 function datumPlaneRecord(
   mode: DatumPlaneFormMode,
+  featureId: FeatureId,
   parameters: ReturnType<typeof datumPlaneParametersSchema.parse>,
 ) {
   const supportReference =
@@ -112,7 +114,7 @@ function datumPlaneRecord(
   }
   return featureRecordSchema.parse({
     schemaVersion: 0,
-    id: mode.createFeatureId(),
+    id: featureId,
     type: datumPlaneFeatureType.type,
     parameters,
     dependencies: supportReference ? [supportReference.featureId] : [],
@@ -120,6 +122,68 @@ function datumPlaneRecord(
     suppressed: false,
     label: mode.featureLabel,
   })
+}
+
+function parsedDatumPlaneRecord(
+  values: DatumPlaneFormValues,
+  mode: DatumPlaneFormMode,
+  featureId: FeatureId,
+  variables: Parameters<typeof parsePrimitiveLengthExpression>[1],
+  copy: DatumPlaneFormCopy,
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"],
+) {
+  const offset = parsePrimitiveLengthExpression(
+    values.offset,
+    variables,
+    copy,
+    (quantity) => Math.abs(quantity.value) <= 1_000_000,
+    displayUnit,
+  )
+  if (!offset.ok) return { ok: false as const, message: offset.message }
+  const parameters = datumPlaneParametersSchema.parse({
+    mode: "offset",
+    support: supportFromMode(mode, values.originPlane),
+    offset: offset.quantity,
+  })
+  return { ok: true as const, feature: datumPlaneRecord(mode, featureId, parameters) }
+}
+
+function DatumPlanePreviewSync({
+  copy,
+  displayUnit,
+  featureId,
+  mode,
+  onPreviewChange,
+  values,
+  variables,
+}: Readonly<{
+  copy: DatumPlaneFormCopy
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  featureId: FeatureId
+  mode: DatumPlaneFormMode
+  onPreviewChange: (feature: FeatureRecord | null) => void
+  values: DatumPlaneFormValues
+  variables: Parameters<typeof parsePrimitiveLengthExpression>[1]
+}>) {
+  const inputRef = useRef({ copy, displayUnit, mode, variables })
+  inputRef.current = { copy, displayUnit, mode, variables }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const input = inputRef.current
+      const parsed = parsedDatumPlaneRecord(
+        values,
+        input.mode,
+        featureId,
+        input.variables,
+        input.copy,
+        input.displayUnit,
+      )
+      onPreviewChange(parsed.ok ? parsed.feature : null)
+    }, 180)
+    return () => window.clearTimeout(timeout)
+  }, [featureId, onPreviewChange, values])
+  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+  return null
 }
 
 export function DatumPlaneForm({
@@ -130,8 +194,10 @@ export function DatumPlaneForm({
   onCancel,
   onSave,
   onSaved,
+  onPreviewChange,
   variables,
-}: FeatureParameterFormProps<DatumPlaneFormMode, DatumPlaneFormCopy>) {
+}: FeatureParameterFormProps<DatumPlaneFormMode, DatumPlaneFormCopy> &
+  Readonly<{ onPreviewChange?: (feature: FeatureRecord | null) => void }>) {
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -144,36 +210,32 @@ export function DatumPlaneForm({
   } = useParameterFormState(variables)
   const parameters = parametersFromMode(mode)
   const faceSupported = parameters.support.kind === "feature-face"
+  const [featureId] = useState(() =>
+    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
+  )
   const form = useAppForm({
     defaultValues: defaultValues(mode, displayUnits.length),
     onSubmit: async ({ value }) => {
-      const offset = parsePrimitiveLengthExpression(
-        value.offset,
+      const parsed = parsedDatumPlaneRecord(
+        value,
+        mode,
+        featureId,
         variables,
         copy,
-        (quantity) => Math.abs(quantity.value) <= 1_000_000,
         displayUnits.length,
       )
-      if (!offset.ok) {
-        setIssues({ offset: offset.message })
+      if (!parsed.ok) {
+        setIssues({ offset: parsed.message })
         setMessage(copy.validationSummary)
         formElementRef.current?.querySelector<HTMLElement>('[name="offset"]')?.focus()
         return
       }
       setIssues({})
       setMessage(null)
-      const feature = datumPlaneRecord(
-        mode,
-        datumPlaneParametersSchema.parse({
-          mode: "offset",
-          support: supportFromMode(mode, value.originPlane),
-          offset: offset.quantity,
-        }),
-      )
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature,
+        feature: parsed.feature,
         onSave,
         onSaved,
         setMessage,
@@ -183,6 +245,21 @@ export function DatumPlaneForm({
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onPreviewChange ? (
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <DatumPlanePreviewSync
+              copy={copy}
+              displayUnit={displayUnits.length}
+              featureId={featureId}
+              mode={mode}
+              onPreviewChange={onPreviewChange}
+              values={values}
+              variables={variables}
+            />
+          )}
+        </form.Subscribe>
+      ) : null}
       <ParameterPanel
         copy={copy}
         disabled={disabled}

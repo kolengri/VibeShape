@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
+  type FeatureRecord,
   featureIdSchema,
   sketchFeatureFaceSupportSchema,
   variableIdSchema,
@@ -46,7 +47,10 @@ const copy = {
   saveFailed: "The datum plane could not be created.",
 } as const
 
-function renderForm(mode: DatumPlaneFormMode) {
+function renderForm(
+  mode: DatumPlaneFormMode,
+  onPreviewChange?: (feature: FeatureRecord | null) => void,
+) {
   const onSave = vi.fn(async () => ({ ok: true as const }))
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -56,6 +60,7 @@ function renderForm(mode: DatumPlaneFormMode) {
         mode={mode}
         variables={variables}
         onCancel={vi.fn()}
+        {...(onPreviewChange ? { onPreviewChange } : {})}
         onSave={onSave}
         onSaved={vi.fn()}
       />
@@ -137,6 +142,36 @@ describe("DatumPlaneForm", () => {
           support: { kind: "feature-face", reference: faceSupport.reference },
         }),
       }),
+    )
+  })
+
+  it("publishes one stable variable-aware feature identity for live preview", async () => {
+    const user = userEvent.setup()
+    const onPreviewChange = vi.fn()
+    renderForm(
+      {
+        kind: "create",
+        createFeatureId: () => datumId,
+        featureLabel: "Datum plane 1",
+      },
+      onPreviewChange,
+    )
+
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenCalledWith(
+        expect.objectContaining({ id: datumId, parameters: expect.objectContaining({}) }),
+      ),
+    )
+    const offset = screen.getByRole("combobox", { name: copy.offset })
+    await user.clear(offset)
+    await user.type(offset, "#planeOffset")
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: datumId,
+          parameters: expect.objectContaining({ offset: expect.objectContaining({ value: -12 }) }),
+        }),
+      ),
     )
   })
 })
