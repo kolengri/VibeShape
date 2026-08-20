@@ -49,7 +49,7 @@ export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz"
 export async function selectSketchEntities(
   page: Page,
   drawing: Locator,
-  type: "point" | "line" | "circle" | "arc",
+  type: "point" | "line" | "circle" | "arc" | "ellipse" | "elliptical-arc",
   indices: readonly number[],
 ) {
   await page.getByRole("button", { name: "Select", exact: true }).click()
@@ -76,7 +76,15 @@ export async function selectSketchEntities(
 
 export async function addDimension(
   page: Page,
-  type: "Distance" | "Horizontal distance" | "Vertical distance" | "Angle" | "Radius" | "Diameter",
+  type:
+    | "Distance"
+    | "Horizontal distance"
+    | "Vertical distance"
+    | "Angle"
+    | "Radius"
+    | "Diameter"
+    | "Primary axis diameter"
+    | "Secondary axis diameter",
   expression: string,
 ) {
   await page.getByRole("combobox", { name: "Dimension type" }).selectOption({ label: type })

@@ -46,6 +46,7 @@ function commandContext(
       cancelActive: vi.fn(),
       createBox: vi.fn(),
       createCylinder: vi.fn(),
+      createDatumPlane: vi.fn(),
       createExtrusion: vi.fn(),
       createSketch: vi.fn(),
       createSubtract: vi.fn(),
@@ -131,6 +132,22 @@ describe("editor command registry", () => {
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
   })
 
+  it("offers Extrude inside an active sketch when a closed profile is selected", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      extrusionAvailable: true,
+      workspace: "sketch",
+    })
+    const extrude = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.createExtrusion,
+    )
+
+    expect(extrude?.eligibility).toEqual({ enabled: true })
+    expect(extrude?.toolbarVisible).toBe(true)
+    extrude?.invoke()
+    expect(context.actions.createExtrusion).toHaveBeenCalledOnce()
+  })
+
   it("routes the center rectangle shortcut descriptor to the trusted sketch tool handler", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
@@ -160,7 +177,7 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("three-point-arc")
   })
 
-  it("routes line modification commands through trusted sketch tool handlers", () => {
+  it("routes sketch modification commands through trusted sketch tool handlers", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
       workspace: "sketch",
@@ -170,16 +187,42 @@ describe("editor command registry", () => {
     const extend = commands.find(
       ({ descriptor }) => descriptor.id === editorCommandIds.sketchExtend,
     )
+    const mirror = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchMirror,
+    )
+    const offset = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchOffset,
+    )
+    const linearPattern = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchLinearPattern,
+    )
+    const circularPattern = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchCircularPattern,
+    )
     const split = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.sketchSplit)
+    const transform = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchTransform,
+    )
 
     expect(trim?.descriptor.shortcut).toEqual({ key: "m" })
     expect(trim?.toolbarVisible).toBe(true)
+    expect(offset?.descriptor.shortcut).toEqual({ key: "o" })
     trim?.invoke()
     extend?.invoke()
+    mirror?.invoke()
+    offset?.invoke()
+    linearPattern?.invoke()
+    circularPattern?.invoke()
     split?.invoke()
+    transform?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(1, "trim")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(2, "extend")
-    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "split")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(3, "mirror")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(4, "offset")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(5, "linear-pattern")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(6, "circular-pattern")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(7, "split")
+    expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(8, "transform")
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {

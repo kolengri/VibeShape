@@ -24,6 +24,8 @@ import {
   generateUuidV7,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  referenceGeometryFeatureTypeHandlers,
+  referenceGeometryModule,
   type SketchConstraintId,
   type SketchEntityId,
   type SketchId,
@@ -161,9 +163,17 @@ function removeStoredId(storage: Storage, key: string) {
 }
 
 function coreCommandDispatcher() {
-  const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
+  const modules = createModuleRegistry([
+    documentCoreModule,
+    featureCoreModule,
+    partDesignModule,
+    referenceGeometryModule,
+  ])
   if (!modules.ok) throw new Error(modules.diagnostic.message)
-  const featureTypes = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
+  const featureTypes = createFeatureTypeRegistry(modules.registry, [
+    ...partDesignFeatureTypeHandlers,
+    ...referenceGeometryFeatureTypeHandlers,
+  ])
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
   const dispatcher = createCommandDispatcher(
     modules.registry,

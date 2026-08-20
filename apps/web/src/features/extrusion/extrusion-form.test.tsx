@@ -8,6 +8,7 @@ import {
   featureIdSchema,
   featureRecordSchema,
   sketchProfileSelectorSchema,
+  topoRefSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -16,6 +17,24 @@ import { i18n } from "../../i18n"
 import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3601")
+const supportFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3603")
+const supportReference = topoRefSchema.parse({
+  schemaVersion: 0,
+  featureId: supportFeatureId,
+  kind: "face",
+  semanticRole: "extrusion.cap.end",
+  signature: {
+    kind: "face",
+    geometryClass: "PLANE",
+    measure: 400,
+    centroid: [0, 0, 10],
+    bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+    direction: [0, 0, 1],
+    directionMode: "oriented",
+    boundaryCount: 4,
+    adjacentGeometryClasses: ["PLANE"],
+  },
+})
 const profile = sketchProfileSelectorSchema.parse({
   schemaVersion: 0,
   sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
@@ -235,6 +254,28 @@ describe("ExtrusionForm", () => {
         type: extrusionFeatureType.type,
         parameters: expect.objectContaining({ operation: "remove" }),
         dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3602"],
+      }),
+    )
+  })
+
+  it("persists a stable support reference and dependency for a face-supported sketch", async () => {
+    const user = userEvent.setup()
+    const mode: ExtrusionFormMode = {
+      kind: "create",
+      createFeatureId: () => featureId,
+      featureLabel: "Extrusion 1",
+      profile,
+      supportReference,
+    }
+    const { onSave } = renderForm(undefined, undefined, mode)
+
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        dependencies: [supportFeatureId],
+        references: [supportReference],
       }),
     )
   })

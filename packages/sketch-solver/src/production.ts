@@ -172,6 +172,8 @@ class ProductionSketchBuilder {
   readonly #pointParameters = new Map<SketchEntityId, PointBinding>()
   readonly #circleRadiusParameters = new Map<SketchEntityId, number>()
   readonly #constraintIdsByHandle = new Map<number, SketchConstraintId>()
+  readonly #ellipseAxes = new Map<string, Readonly<{ primary: number; secondary: number }>>()
+  readonly #ellipseEndpointLoci = new Set<string>()
   #nextParameter = 11
   #nextEntity = 301
   #nextConstraint = 1
@@ -249,7 +251,90 @@ class ProductionSketchBuilder {
     this.#entityHandles.set(entity.id, handle)
   }
 
-  addConstraint(id: SketchConstraintId, type: number, fields: ConstraintFields = {}) {
+  addEllipse(entity: Extract<SketchEntity, { type: "ellipse" }>) {
+    this.#ellipseAxisHandles(entity)
+  }
+
+  addEllipticalArc(
+    entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  ) {
+    const center = pointValues.get(entity.centerPointId)
+    const primary = pointValues.get(entity.primaryAxisPointId)
+    const secondary = pointValues.get(entity.secondaryAxisPointId)
+    if (!center || !primary || !secondary) {
+      throw new Error(`Sketch elliptical arc ${entity.id} is missing initial axis points.`)
+    }
+    const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(entity)
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
+    const secondaryRadius = Math.max(Math.hypot(secondaryVector.x, secondaryVector.y), 1e-6)
+    const primaryDirection = {
+      x: primaryVector.x / primaryRadius,
+      y: primaryVector.y / primaryRadius,
+    }
+    const secondaryDirection = {
+      x: secondaryVector.x / secondaryRadius,
+      y: secondaryVector.y / secondaryRadius,
+    }
+    for (const endpointId of [entity.startPointId, entity.endPointId]) {
+      const endpointLocusKey = [
+        entity.centerPointId,
+        entity.primaryAxisPointId,
+        entity.secondaryAxisPointId,
+        endpointId,
+      ].join(":")
+      if (this.#ellipseEndpointLoci.has(endpointLocusKey)) continue
+      const endpoint = pointValues.get(endpointId)
+      if (!endpoint) {
+        throw new Error(`Sketch elliptical arc ${entity.id} is missing an endpoint value.`)
+      }
+      const offset = { x: endpoint.x - center.x, y: endpoint.y - center.y }
+      const rawCosine =
+        (offset.x * primaryDirection.x + offset.y * primaryDirection.y) / primaryRadius
+      const rawSine =
+        (offset.x * secondaryDirection.x + offset.y * secondaryDirection.y) / secondaryRadius
+      const parameterScale = Math.hypot(rawCosine, rawSine) || 1
+      const cosine = rawCosine / parameterScale
+      const sine = rawSine / parameterScale
+      const trammelRadius = primaryRadius + secondaryRadius
+      const primarySlider = this.#addAuxiliaryPoint({
+        x: center.x + primaryDirection.x * trammelRadius * cosine,
+        y: center.y + primaryDirection.y * trammelRadius * cosine,
+      })
+      const secondarySlider = this.#addAuxiliaryPoint({
+        x: center.x + secondaryDirection.x * trammelRadius * sine,
+        y: center.y + secondaryDirection.y * trammelRadius * sine,
+      })
+      const endpointHandle = this.entity(endpointId)
+      const secondaryRadiusLine = this.#addAuxiliaryLine(primarySlider, endpointHandle)
+      const primaryRadiusLine = this.#addAuxiliaryLine(endpointHandle, secondarySlider)
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+        pointA: primarySlider,
+        entityA: primaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+        pointA: secondarySlider,
+        entityA: secondaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+        entityA: secondaryRadiusLine,
+        entityB: secondaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+        entityA: primaryRadiusLine,
+        entityB: primaryAxis,
+      })
+      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
+        entityA: secondaryRadiusLine,
+        entityB: primaryRadiusLine,
+      })
+      this.#ellipseEndpointLoci.add(endpointLocusKey)
+    }
+  }
+
+  addConstraint(id: SketchConstraintId | null, type: number, fields: ConstraintFields = {}) {
     const {
       entityA = 0,
       entityB = 0,
@@ -278,7 +363,7 @@ class ProductionSketchBuilder {
       other2,
     )
     this.#constraintValues.push(value)
-    this.#constraintIdsByHandle.set(handle, id)
+    if (id) this.#constraintIdsByHandle.set(handle, id)
   }
 
   entity(id: SketchEntityId) {
@@ -354,6 +439,50 @@ class ProductionSketchBuilder {
     this.#parameterMetadata.push(handle, group)
     this.#parameterValues.push(value)
     return { handle, index }
+  }
+
+  #addAuxiliaryPoint(point: { x: number; y: number }) {
+    const x = this.#addParameter(point.x).handle
+    const y = this.#addParameter(point.y).handle
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.pointIn2d, {
+      parameters: [x, y],
+      workplane: 200,
+    })
+    return handle
+  }
+
+  #addAuxiliaryLine(start: number, end: number) {
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
+      points: [start, end],
+      workplane: 200,
+    })
+    return handle
+  }
+
+  #ellipseAxisHandles(entity: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>) {
+    const key = [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId].join(
+      ":",
+    )
+    const existing = this.#ellipseAxes.get(key)
+    if (existing) return existing
+    const axes = {
+      primary: this.#addAuxiliaryLine(
+        this.entity(entity.centerPointId),
+        this.entity(entity.primaryAxisPointId),
+      ),
+      secondary: this.#addAuxiliaryLine(
+        this.entity(entity.centerPointId),
+        this.entity(entity.secondaryAxisPointId),
+      ),
+    }
+    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
+      entityA: axes.primary,
+      entityB: axes.secondary,
+    })
+    this.#ellipseAxes.set(key, axes)
+    return axes
   }
 
   #addEntity(handle: number, group: number, type: number, fields: EntityFields = {}) {
@@ -606,6 +735,11 @@ type DistanceConstraint = Extract<
   { type: "horizontal-distance" | "vertical-distance" | "distance" }
 >
 type RadialConstraint = Extract<DimensionConstraint, { type: "radius" | "diameter" }>
+type EllipseAxisDiameterConstraint = Extract<
+  DimensionConstraint,
+  { type: "primary-axis-diameter" | "secondary-axis-diameter" }
+>
+type OffsetConstraint = Extract<DimensionConstraint, { type: "offset" }>
 
 function addDistanceConstraint(
   builder: ProductionSketchBuilder,
@@ -647,6 +781,38 @@ function addAngleConstraint(
   return true
 }
 
+function addOffsetConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: OffsetConstraint,
+  variables: ReturnType<typeof evaluateVariableDefinitions>,
+) {
+  const value = resolveDimension(constraint, variables)
+  if (value?.dimension !== "length" || value.value === 0) return false
+  for (const pair of constraint.linePairs) {
+    const offsetLine = sketch.entities.find(({ id }) => id === pair.offsetLineId)
+    if (offsetLine?.type !== "line") return false
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
+      entityA: builder.entity(pair.sourceLineId),
+      entityB: builder.entity(pair.offsetLineId),
+    })
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance, {
+      pointA: builder.entity(offsetLine.startPointId),
+      entityA: builder.entity(pair.sourceLineId),
+      // SolveSpace's signed point-to-line convention is opposite to the sketch cross product.
+      value: -value.value * pair.distanceScale,
+    })
+  }
+  for (const pair of constraint.endpointPairs) {
+    builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance, {
+      pointA: builder.entity(pair.sourcePointId),
+      pointB: builder.entity(pair.offsetPointId),
+      value: Math.abs(value.value),
+    })
+  }
+  return true
+}
+
 function addRadialConstraint(
   builder: ProductionSketchBuilder,
   constraint: RadialConstraint,
@@ -662,8 +828,31 @@ function addRadialConstraint(
   return true
 }
 
+function addEllipseAxisDiameterConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: EllipseAxisDiameterConstraint,
+  variables: ReturnType<typeof evaluateVariableDefinitions>,
+) {
+  const value = resolveDimension(constraint, variables)
+  if (value?.dimension !== "length") return false
+  const curve = sketch.entities.find(({ id }) => id === constraint.curveId)
+  if (curve?.type !== "ellipse" && curve?.type !== "elliptical-arc") return false
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance, {
+    pointA: builder.entity(curve.centerPointId),
+    pointB: builder.entity(
+      constraint.type === "primary-axis-diameter"
+        ? curve.primaryAxisPointId
+        : curve.secondaryAxisPointId,
+    ),
+    value: value.value / 2,
+  })
+  return true
+}
+
 function addDimensionConstraint(
   builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
   constraint: DimensionConstraint,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
 ) {
@@ -674,7 +863,16 @@ function addDimensionConstraint(
   ) {
     return addDistanceConstraint(builder, constraint, variables)
   }
+  if (constraint.type === "offset") {
+    return addOffsetConstraint(builder, sketch, constraint, variables)
+  }
   if (constraint.type === "angle") return addAngleConstraint(builder, constraint, variables)
+  if (
+    constraint.type === "primary-axis-diameter" ||
+    constraint.type === "secondary-axis-diameter"
+  ) {
+    return addEllipseAxisDiameterConstraint(builder, sketch, constraint, variables)
+  }
   return addRadialConstraint(builder, constraint, variables)
 }
 
@@ -692,7 +890,32 @@ function addConstraint(
     addRelationshipConstraint(builder, sketch, constraint)
     return true
   }
-  return addDimensionConstraint(builder, constraint, variables)
+  return addDimensionConstraint(builder, sketch, constraint, variables)
+}
+
+function addSketchPointEntity(
+  builder: ProductionSketchBuilder,
+  entity: Extract<SketchEntity, { type: "point" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const point = pointValues.get(entity.id)
+  if (!point) throw new Error(`Sketch point ${entity.id} is missing initial values.`)
+  builder.addPoint(entity.id, point.x, point.y)
+}
+
+function addSketchCurveEntity(
+  builder: ProductionSketchBuilder,
+  entity: Exclude<SketchEntity, { type: "point" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  circleRadii: ReadonlyMap<SketchEntityId, number>,
+) {
+  if (entity.type === "line") return builder.addLine(entity)
+  if (entity.type === "arc") return builder.addArc(entity)
+  if (entity.type === "ellipse") return builder.addEllipse(entity)
+  if (entity.type === "elliptical-arc") return builder.addEllipticalArc(entity, pointValues)
+  const radius = circleRadii.get(entity.id)
+  if (!radius) throw new Error(`Sketch circle ${entity.id} is missing an initial radius.`)
+  return builder.addCircle(entity, radius)
 }
 
 function addSketchEntities(
@@ -703,18 +926,10 @@ function addSketchEntities(
 ) {
   for (const entity of sketch.entities) {
     if (entity.type !== "point") continue
-    const point = pointValues.get(entity.id)
-    if (!point) throw new Error(`Sketch point ${entity.id} is missing initial values.`)
-    builder.addPoint(entity.id, point.x, point.y)
+    addSketchPointEntity(builder, entity, pointValues)
   }
   for (const entity of sketch.entities) {
-    if (entity.type === "line") builder.addLine(entity)
-    if (entity.type === "circle") {
-      const radius = circleRadii.get(entity.id)
-      if (!radius) throw new Error(`Sketch circle ${entity.id} is missing an initial radius.`)
-      builder.addCircle(entity, radius)
-    }
-    if (entity.type === "arc") builder.addArc(entity)
+    if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
   }
 }
 
@@ -838,10 +1053,14 @@ export function solveSketchRecord(
   const circles = [...bindings.circleRadiusParameters].map(([entityId, index]) =>
     circleSolutionSchema.parse({ entityId, radius: result.parameterValues[index] }),
   )
-  const failedConstraintIds = [...result.failedConstraintHandles].flatMap((handle) => {
-    const constraintId = bindings.constraintIdsByHandle.get(handle)
-    return constraintId ? [constraintId] : []
-  })
+  const failedConstraintIds = [
+    ...new Set(
+      [...result.failedConstraintHandles].flatMap((handle) => {
+        const constraintId = bindings.constraintIdsByHandle.get(handle)
+        return constraintId ? [constraintId] : []
+      }),
+    ),
+  ]
   return {
     ok: true,
     solution: {

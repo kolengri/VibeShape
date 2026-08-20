@@ -25,10 +25,20 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1", {
+      timeout: 120_000,
+    })
+    await expect(viewport.locator('[data-plane-symbol="XY"]')).toBeVisible()
+    await expect(viewport.locator('[data-plane-symbol="XZ"]')).toBeVisible()
+    await expect(viewport.locator('[data-plane-symbol="YZ"]')).toBeVisible()
+    await page.getByRole("button", { name: "Hide Sketch 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
+    await page.getByRole("button", { name: "Show Sketch 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
     await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
     await page.getByRole("button", { name: "Extrude selected profile" }).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("combobox", { name: "Distance" }).fill("#depth")
     await createForm.getByRole("checkbox", { name: "Extrude symmetrically" }).check()
@@ -83,5 +93,62 @@ test.describe("selector-backed extrusion", () => {
     await expect(
       reopenedForm.getByRole("checkbox", { name: "Extrude symmetrically" }),
     ).toBeChecked()
+  })
+
+  test("creates a separate colored body from a selected planar model face", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    await boxForm.getByRole("button", { name: "Create box" }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const statusBar = page.locator("footer[role='status']")
+    const faceSamples = [
+      { x: bounds.width * 0.4, y: bounds.height * 0.55 },
+      { x: bounds.width * 0.6, y: bounds.height * 0.55 },
+      { x: bounds.width * 0.5, y: bounds.height * 0.3 },
+    ]
+    let sampleIndex = 0
+    await expect
+      .poll(async () => {
+        await canvas.click({
+          position: faceSamples[sampleIndex % faceSamples.length] as (typeof faceSamples)[number],
+        })
+        sampleIndex += 1
+        return statusBar.textContent()
+      })
+      .toMatch(/Selection: Box 1 · Face \d+/)
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toBeDisabled()
+
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
+    await expect(extrusionForm).toBeVisible()
+    await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()
+
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
+      timeout: 120_000,
+    })
+
+    await page.getByRole("button", { name: "Hide Box 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await page.getByRole("button", { name: "Show Box 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
   })
 })

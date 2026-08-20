@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest"
 import {
   createFaceHighlightGeometry,
   createViewerGeometry,
+  createViewerSketchGeometry,
   orthographicFrustum,
   type ViewerMesh,
   viewerFaceOrdinal,
 } from "./three-viewport"
+import { viewerBodyColor } from "./viewer-appearance"
 
 const mesh: ViewerMesh = {
   featureId: "box",
@@ -16,6 +18,12 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  it("assigns stable display colors to independent terminal feature identities", () => {
+    expect(viewerBodyColor("body-a")).toBe(viewerBodyColor("body-a"))
+    expect(viewerBodyColor("body-a")).not.toBe(viewerBodyColor("body-b"))
+    expect(viewerBodyColor("body-a")).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
   it("binds transferred typed arrays without copying and retains face ownership metadata", () => {
     const geometry = createViewerGeometry(mesh)
 
@@ -30,6 +38,17 @@ describe("Three viewport geometry", () => {
     geometry.addEventListener("dispose", disposed)
     geometry.dispose()
     expect(disposed).toHaveBeenCalledOnce()
+  })
+
+  it("binds transferred sketch positions without copying", () => {
+    const positions = new Float32Array([0, 0, 0, 12, 0, 0])
+    const geometry = createViewerSketchGeometry(positions)
+
+    expect(geometry.getAttribute("position").array).toBe(positions)
+    expect(geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
+    expect(geometry.boundingBox?.max.toArray()).toEqual([12, 0, 0])
+
+    geometry.dispose()
   })
 
   it("keeps a valid orthographic projection for measured and zero-sized viewports", () => {

@@ -7,7 +7,6 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -15,6 +14,7 @@ import {
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
+  type FeatureParameterFormProps,
   parsePrimitiveLengthExpression,
   quantityExpression,
   submitFeatureMutation,
@@ -154,16 +154,7 @@ export function BoxForm({
   onSave,
   onSaved,
   variables,
-}: {
-  baseRevision: number
-  copy: BoxFormCopy
-  disabled?: boolean
-  mode: BoxFormMode
-  onCancel: () => void
-  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
-  onSaved: () => void
-  variables: readonly VariableDefinition[]
-}) {
+}: FeatureParameterFormProps<BoxFormMode, BoxFormCopy>) {
   const {
     clearSubmissionErrors,
     displayUnits,

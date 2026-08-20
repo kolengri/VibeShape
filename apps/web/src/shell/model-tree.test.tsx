@@ -59,15 +59,28 @@ type ModelTreeProps = ComponentProps<typeof ModelTree>
 type RenderTreeOptions = Partial<
   Pick<
     ModelTreeProps,
-    "onFeatureActivate" | "onFeatureRename" | "onSketchRename" | "sketchRenameBlockedId"
+    | "onFeatureActivate"
+    | "onFeatureRename"
+    | "onFeatureVisibilityChange"
+    | "onSketchActivate"
+    | "onSketchRename"
+    | "onSketchVisibilityChange"
+    | "sketchRenameBlockedId"
+    | "hiddenFeatureIds"
+    | "hiddenSketchIds"
   >
 >
 
 function renderTree({
   onFeatureActivate = vi.fn(),
   onFeatureRename = vi.fn().mockResolvedValue({ ok: true }),
+  onFeatureVisibilityChange = vi.fn(),
+  onSketchActivate = vi.fn(),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
+  onSketchVisibilityChange = vi.fn(),
   sketchRenameBlockedId = null,
+  hiddenFeatureIds = [],
+  hiddenSketchIds = [],
 }: RenderTreeOptions = {}) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -77,10 +90,14 @@ function renderTree({
           activeSketchId={null}
           activeWorkspace="model"
           controller={controller}
+          hiddenFeatureIds={hiddenFeatureIds}
+          hiddenSketchIds={hiddenSketchIds}
           onFeatureActivate={onFeatureActivate}
           onFeatureRename={onFeatureRename}
-          onSketchActivate={vi.fn()}
+          onFeatureVisibilityChange={onFeatureVisibilityChange}
+          onSketchActivate={onSketchActivate}
           onSketchRename={onSketchRename}
+          onSketchVisibilityChange={onSketchVisibilityChange}
           onWorkspaceChange={vi.fn()}
           sketchRenameBlockedId={sketchRenameBlockedId}
         />
@@ -100,6 +117,48 @@ describe("ModelTree", () => {
     expect(featureItem.getAttribute("aria-selected")).toBe("true")
     await user.click(featureItem)
     expect(onFeatureActivate).toHaveBeenCalledWith(featureId)
+  })
+
+  it("enters the existing sketch editor from the model-tree sketch item", async () => {
+    const user = userEvent.setup()
+    const onSketchActivate = vi.fn()
+
+    renderTree({ onSketchActivate })
+
+    await user.click(screen.getByRole("treeitem", { name: "Profile" }))
+
+    expect(onSketchActivate).toHaveBeenCalledWith(sketchId)
+  })
+
+  it("toggles terminal feature visibility from an icon-only accessible action", async () => {
+    const user = userEvent.setup()
+    const onFeatureVisibilityChange = vi.fn()
+    const { unmount } = renderTree({ onFeatureVisibilityChange })
+
+    await user.click(screen.getByRole("button", { name: "Hide Box 1" }))
+    expect(onFeatureVisibilityChange).toHaveBeenCalledWith(featureId, false)
+
+    unmount()
+    renderTree({ hiddenFeatureIds: [featureId], onFeatureVisibilityChange })
+    await user.click(screen.getByRole("button", { name: "Show Box 1" }))
+    expect(onFeatureVisibilityChange).toHaveBeenLastCalledWith(featureId, true)
+  })
+
+  it("toggles saved sketch visibility without entering edit mode", async () => {
+    const user = userEvent.setup()
+    const onSketchActivate = vi.fn()
+    const onSketchVisibilityChange = vi.fn()
+    const { unmount } = renderTree({ onSketchActivate, onSketchVisibilityChange })
+
+    await user.click(screen.getByRole("button", { name: "Hide Profile" }))
+
+    expect(onSketchVisibilityChange).toHaveBeenCalledWith(sketchId, false)
+    expect(onSketchActivate).not.toHaveBeenCalled()
+
+    unmount()
+    renderTree({ hiddenSketchIds: [sketchId], onSketchVisibilityChange })
+    await user.click(screen.getByRole("button", { name: "Show Profile" }))
+    expect(onSketchVisibilityChange).toHaveBeenLastCalledWith(sketchId, true)
   })
 
   it("renames a feature once from its discoverable model-tree action", async () => {

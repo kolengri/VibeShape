@@ -5,17 +5,22 @@ import type {
 import {
   type DocumentSnapshot,
   type FeatureRecord,
+  readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
   type SketchEntity,
   type SketchRecord,
 } from "@vibeshape/domain"
-import { extrusionFeatureContentParametersSchema } from "@vibeshape/protocol"
+import {
+  datumPlaneFeatureContentParametersSchema,
+  extrusionFeatureContentParametersSchema,
+} from "@vibeshape/protocol"
 import {
   resolveSketchProfileSelector,
   type SketchProfileLoop,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
 import type { SketchSolvePort } from "./runtime"
+import { datumPlaneFrame, type SupportFrame, sketchFrame } from "./support-frame"
 
 const TWO_PI = Math.PI * 2
 
@@ -103,6 +108,48 @@ function circleSegment(
     : null
 }
 
+function ellipseSegment(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const primaryAxisPoint = solvedPoint(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = solvedPoint(points, entity.secondaryAxisPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint
+    ? {
+        entityId: entity.id,
+        type: "ellipse" as const,
+        center: [center.x, center.y] as const,
+        primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
+        secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
+      }
+    : null
+}
+
+function ellipticalArcSegment(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  reversed: boolean,
+  points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
+) {
+  const center = solvedPoint(points, entity.centerPointId)
+  const primaryAxisPoint = solvedPoint(points, entity.primaryAxisPointId)
+  const secondaryAxisPoint = solvedPoint(points, entity.secondaryAxisPointId)
+  const first = solvedPoint(points, entity.startPointId)
+  const second = solvedPoint(points, entity.endPointId)
+  if (!center || !primaryAxisPoint || !secondaryAxisPoint || !first || !second) return null
+  const start = reversed ? second : first
+  const end = reversed ? first : second
+  return {
+    entityId: entity.id,
+    type: "elliptical-arc" as const,
+    center: [center.x, center.y] as const,
+    primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
+    secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
+    start: [start.x, start.y] as const,
+    end: [end.x, end.y] as const,
+  }
+}
+
 function materializeLoop(
   loop: SketchProfileLoop,
   sketch: SketchRecord,
@@ -117,6 +164,10 @@ function materializeLoop(
     if (entity.type === "line") return lineSegment(entity, segment.reversed, points)
     if (entity.type === "arc") return arcSegment(entity, segment.reversed, points)
     if (entity.type === "circle") return circleSegment(entity, points, radii)
+    if (entity.type === "ellipse") return ellipseSegment(entity, points)
+    if (entity.type === "elliptical-arc") {
+      return ellipticalArcSegment(entity, segment.reversed, points)
+    }
     return null
   })
   if (segments.some((segment) => segment === null)) return null
@@ -130,6 +181,7 @@ function prepareExtrusion(
   sketch: SketchRecord,
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
   parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
+  frame: SupportFrame,
 ) {
   const resolution = resolveSketchProfileSelector(
     parameters.profile,
@@ -158,7 +210,8 @@ function prepareExtrusion(
   }
   const prepared = extrusionFeatureContentParametersSchema.safeParse({
     sketchId: sketch.id,
-    plane: sketch.plane,
+    ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
+    frame,
     outer,
     holes: holes.flatMap((hole) => (hole ? [hole] : [])),
     distance: parameters.distance.value,
@@ -170,8 +223,10 @@ function prepareExtrusion(
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
 }
 
-function solveSketchOnce(
-  solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
+export type SketchSolveCache = Map<string, Promise<SolveSketchRecordResult>>
+
+export function solveSketchOnce(
+  solvedBySketchId: SketchSolveCache,
   solveSketch: SketchSolvePort,
   document: DocumentSnapshot,
   sketch: SketchRecord,
@@ -212,13 +267,35 @@ function validatedSolution(
 async function prepareFeatureContent(
   document: DocumentSnapshot,
   feature: FeatureRecord,
+  features: readonly FeatureRecord[],
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
 ) {
+  const datumPlane = readDatumPlaneFeatureParameters(feature)
+  if (datumPlane) {
+    const frame = datumPlaneFrame(feature, document, features, new Set([feature.id]))
+    if (!frame) {
+      return failure("org.vibeshape.feature.datum-plane-support-missing", "support-unresolved")
+    }
+    return {
+      ok: true as const,
+      parameters: datumPlaneFeatureContentParametersSchema.parse({
+        frame,
+        size: 64,
+        ...(datumPlane.support.kind === "feature-face"
+          ? { supportFeatureId: datumPlane.support.reference.featureId }
+          : {}),
+      }),
+    }
+  }
   const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) return null
   const sketch = document.sketches.find(({ id }) => id === parameters.profile.sketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
+  const frame = sketchFrame(sketch, document, features)
+  if (!frame) {
+    return failure("org.vibeshape.feature.sketch-support-missing", "support-unresolved")
+  }
   if (!solveSketch) {
     return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
   }
@@ -227,13 +304,13 @@ async function prepareFeatureContent(
     document,
     sketch,
   )
-  return result.ok ? prepareExtrusion(sketch, result.solution, parameters) : result
+  return result.ok ? prepareExtrusion(sketch, result.solution, parameters, frame) : result
 }
 
 export function createDocumentFeatureContentPreparer(
   solveSketch: SketchSolvePort | null,
+  solvedBySketchId: SketchSolveCache = new Map(),
 ): DocumentFeatureContentPreparationPort {
-  const solvedBySketchId = new Map<string, Promise<SolveSketchRecordResult>>()
-  return ({ document, feature }) =>
-    prepareFeatureContent(document, feature, solveSketch, solvedBySketchId)
+  return ({ document, feature, features = document.features }) =>
+    prepareFeatureContent(document, feature, features, solveSketch, solvedBySketchId)
 }

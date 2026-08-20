@@ -3,14 +3,19 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import {
   appendSketchArc,
+  appendSketchCircle,
+  appendSketchEllipse,
   appendSketchLine,
+  appendSketchRectangle,
   createLengthQuantity,
   createRectangleSketch,
   moveSketchPoint,
+  type SketchEntity,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
@@ -25,6 +30,21 @@ import { DocumentDisplayUnitsProvider } from "../../document/document-display-un
 import { i18n } from "../../i18n"
 import { SketchViewport } from "./sketch-viewport"
 
+const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
+
+vi.mock("@vibeshape/domain", async (importOriginal) => {
+  const domain = await importOriginal<typeof import("@vibeshape/domain")>()
+  return {
+    ...domain,
+    createSketchInferenceCandidateQuery: (
+      input: Parameters<typeof domain.createSketchInferenceCandidateQuery>[0],
+    ) => {
+      sketchInferenceIndexBuilds()
+      return domain.createSketchInferenceCandidateQuery(input)
+    },
+  }
+})
+
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 
 function sequentialIdFactory<Value>(parse: (value: string) => Value, group: string) {
@@ -33,6 +53,24 @@ function sequentialIdFactory<Value>(parse: (value: string) => Value, group: stri
     index += 1
     return parse(`0195b5ac-${group}-7a2c-8c33-${index.toString(16).padStart(12, "0")}`)
   }
+}
+
+function sketchEntitiesOfType<Type extends SketchEntity["type"]>(sketch: SketchRecord, type: Type) {
+  return sketch.entities.filter(
+    (entity): entity is Extract<SketchEntity, { type: Type }> => entity.type === type,
+  )
+}
+
+function requiredSketchEntity<Type extends SketchEntity["type"]>(
+  sketch: SketchRecord,
+  type: Type,
+  id?: string,
+) {
+  const entity = sketchEntitiesOfType(sketch, type).find(
+    (candidate) => candidate.id === (id ?? candidate.id),
+  )
+  if (!entity) throw new Error(`The fixture requires a ${type} entity.`)
+  return entity
 }
 
 const sketch = createRectangleSketch({
@@ -126,15 +164,23 @@ function solveResult(
 const noOperation = () => undefined
 
 type SketchViewportTestProps = Readonly<{
+  controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+  originPlaneVisibility?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["originPlaneVisibility"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
   onEditorToolChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onEditorToolChange"]
   onConstraintSelectionChange?: React.ComponentProps<
     typeof SketchViewport
   >["actions"]["onConstraintSelectionChange"]
   onProfileSelect?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfileSelect"]
+  onOriginPlaneVisibilityChange?: React.ComponentProps<
+    typeof SketchViewport
+  >["actions"]["onOriginPlaneVisibilityChange"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+  onSelectionChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onSelectionChange"]
   selectedConstraintId?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["selectedConstraintId"]
@@ -147,9 +193,10 @@ type SketchViewportTestProps = Readonly<{
 function viewportState(props: SketchViewportTestProps) {
   return {
     construction: false,
-    controller,
+    controller: props.controller ?? controller,
     draft: props.draft ?? null,
     editorTool: props.editorTool ?? "select",
+    originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
     selectedConstraintId: props.selectedConstraintId ?? null,
     selectedEntityIds: props.selectedEntityIds ?? [],
     selectedProfile: null,
@@ -163,10 +210,11 @@ function viewportActions(props: SketchViewportTestProps) {
     onEditorToolChange: props.onEditorToolChange ?? noOperation,
     onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
     onFailedConstraintsChange: noOperation,
+    onOriginPlaneVisibilityChange: props.onOriginPlaneVisibilityChange ?? noOperation,
     onProfileSelect: props.onProfileSelect ?? noOperation,
     onProfilesChange: props.onProfilesChange ?? noOperation,
     onRedo: noOperation,
-    onSelectionChange: noOperation,
+    onSelectionChange: props.onSelectionChange ?? noOperation,
     onUndo: noOperation,
   } satisfies React.ComponentProps<typeof SketchViewport>["actions"]
 }
@@ -210,6 +258,26 @@ function lineSketchFixture(
   return result
 }
 
+function denseRectangleSketchFixture(rectangleCount = 24) {
+  const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b261")
+  const createConstraintId = sequentialIdFactory(
+    (value) => sketchConstraintIdSchema.parse(value),
+    "b262",
+  )
+  let result = sketch
+  for (let index = 0; index < rectangleCount; index += 1) {
+    const column = index % 6
+    const row = Math.floor(index / 6)
+    result = appendSketchRectangle(result, {
+      createConstraintId,
+      createEntityId,
+      firstCorner: { x: 40 + column * 12, y: row * 10 },
+      oppositeCorner: { x: 48 + column * 12, y: 6 + row * 10 },
+    }).sketch
+  }
+  return result
+}
+
 function mockDrawingRectangle(drawing: HTMLElement) {
   vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
     left: 0,
@@ -247,6 +315,29 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("keeps individually toggleable origin references visible while editing a sketch", () => {
+    const fixture = lineSketchFixture("b250", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const onOriginPlaneVisibilityChange = vi.fn()
+
+    renderViewport({
+      draft: fixture,
+      onOriginPlaneVisibilityChange,
+      originPlaneVisibility: { xy: true, xz: false, yz: true },
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(document.querySelector('[data-sketch-origin-plane="xy"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-origin-plane="xz"]')).toBeNull()
+    expect(document.querySelector('[data-sketch-origin-plane="yz"]')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
+    fireEvent.click(screen.getByRole("button", { name: "Show XZ plane" }))
+
+    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(1, "xy", false)
+    expect(onOriginPlaneVisibilityChange).toHaveBeenNthCalledWith(2, "xz", true)
+  })
+
   it("splits a clicked line at the pointer as one draft edit", () => {
     const fixture = lineSketchFixture("b251", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
     const target = fixture.entities.find((entity) => entity.type === "line")
@@ -339,6 +430,518 @@ describe("SketchViewport", () => {
     const extended = nextDraft.entities.find(({ id }: { id: string }) => id === target.id)
     const endPoint = nextDraft.entities.find(({ id }: { id: string }) => id === extended.endPointId)
     expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
+  })
+
+  it("mirrors a preselected line after selecting its axis", () => {
+    const fixture = lineSketchFixture("b256", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: 2, y: 3 }, end: { x: 7, y: 8 } },
+    ])
+    const [axis, source] = fixture.entities.filter((entity) => entity.type === "line")
+    if (!axis || !source) throw new Error("The mirror fixture must contain an axis and a source.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "mirror",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [source.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select a mirror line for the selected geometry.",
+    )
+    const axisElement = document.querySelector(`[data-sketch-entity-id="${axis.id}"]`)
+    if (!axisElement) throw new Error("The mirror axis must be rendered.")
+
+    fireEvent.pointerDown(axisElement)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const reflectedLine = nextDraft.entities.find(
+      (entity) => entity.type === "line" && entity.id !== axis.id && entity.id !== source.id,
+    )
+    if (reflectedLine?.type !== "line") throw new Error("Mirror must create a reflected line.")
+    const reflectedPoints = [reflectedLine.startPointId, reflectedLine.endPointId].map((pointId) =>
+      nextDraft.entities.find(({ id }) => id === pointId),
+    )
+    expect(reflectedPoints).toEqual([
+      expect.objectContaining({ type: "point", x: 2, y: -3 }),
+      expect.objectContaining({ type: "point", x: 7, y: -8 }),
+    ])
+    expect(nextDraft.constraints.filter(({ type }) => type === "symmetric")).toHaveLength(2)
+  })
+
+  it("keeps Mirror active while selecting sources after the axis", () => {
+    const fixture = lineSketchFixture("b257", [
+      { start: { x: 0, y: -10 }, end: { x: 0, y: 10 } },
+      { start: { x: 3, y: 2 }, end: { x: 8, y: 7 } },
+    ])
+    const [axis, source] = fixture.entities.filter((entity) => entity.type === "line")
+    if (!axis || !source) throw new Error("The mirror fixture must contain an axis and a source.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "mirror",
+      onDraftChange,
+      onEditorToolChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select a mirror line, then select geometry to mirror.",
+    )
+    const axisElement = document.querySelector(`[data-sketch-entity-id="${axis.id}"]`)
+    const sourceElement = document.querySelector(`[data-sketch-entity-id="${source.id}"]`)
+    if (!axisElement || !sourceElement) throw new Error("The mirror geometry must be rendered.")
+
+    fireEvent.pointerDown(axisElement)
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-mirror-instruction]")?.textContent).toBe(
+      "Select geometry to mirror. Press Escape when finished.",
+    )
+
+    fireEvent.pointerDown(sourceElement)
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onEditorToolChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
+  it("previews and commits a preselected connected line-chain offset", () => {
+    const fixture = sketch
+    const lines = fixture.entities.filter((entity) => entity.type === "line")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "offset",
+      onDraftChange,
+      selectedEntityIds: lines.map(({ id }) => id),
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Move the pointer to set the signed offset, then click.",
+    )
+
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 250 })
+    const preview = document.querySelector('[data-sketch-preview-tool="offset-distance"]')
+    expect(preview).toBeTruthy()
+    expect(preview?.querySelectorAll("line")).toHaveLength(4)
+    fireEvent.pointerDown(drawing, { button: 0, clientX: 400, clientY: 250 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(8)
+    expect(nextDraft.constraints.filter(({ type }) => type === "offset")).toHaveLength(1)
+  })
+
+  it("selects a connected offset source from the canvas and cancels only its distance step", () => {
+    const fixture = lineSketchFixture("b259", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The offset fixture must contain a source line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "offset",
+      onDraftChange,
+      onEditorToolChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    const lineElement = document.querySelector(`[data-sketch-entity-id="${line.id}"]`)
+    if (!lineElement) throw new Error("The offset source must be rendered.")
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Select a line or connected line chain to offset.",
+    )
+
+    fireEvent.pointerDown(lineElement)
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Move the pointer to set the signed offset, then click.",
+    )
+    fireEvent.keyDown(drawing, { key: "Escape" })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(onEditorToolChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-offset-instruction]")?.textContent).toBe(
+      "Select a line or connected line chain to offset.",
+    )
+  })
+
+  it("previews a selected geometry transform and commits it as one draft edit", () => {
+    const fixture = lineSketchFixture("b25a", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    expect(document.querySelector("[data-sketch-transform-manipulator]")).toBeTruthy()
+    expect(document.querySelector("[data-sketch-transform-instruction]")?.textContent).toContain(
+      "Drag to move",
+    )
+    const moveX = document.querySelector('[data-sketch-transform-handle="move-x"]')
+    if (!moveX) throw new Error("The transform manipulator must expose its horizontal handle.")
+
+    fireEvent.pointerDown(moveX, { clientX: 400, clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 480, clientY: 300, pointerId: 1 })
+
+    expect(document.querySelector("[data-sketch-transform-preview]")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(drawing, { key: "Enter" })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const start = nextDraft.entities.find(({ id }) => id === line.startPointId)
+    const end = nextDraft.entities.find(({ id }) => id === line.endPointId)
+    expect(start).toMatchObject({ type: "point", x: 10, y: 0 })
+    expect(end).toMatchObject({ type: "point", x: 30, y: 0 })
+  })
+
+  it("supports post-selection and cancels a pending transform without changing the draft", () => {
+    const fixture = lineSketchFixture("b25b", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      onEditorToolChange,
+      onSelectionChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    expect(document.querySelector("[data-sketch-transform-instruction]")?.textContent).toBe(
+      "Select sketch geometry to transform.",
+    )
+    const lineElement = document.querySelector(`[data-sketch-entity-id="${line.id}"]`)
+    if (!lineElement) throw new Error("The transform source must be rendered.")
+    fireEvent.pointerDown(lineElement)
+    expect(onSelectionChange).toHaveBeenCalledWith([line.id])
+
+    view.rerender(
+      viewportElement({
+        draft: fixture,
+        editorTool: "transform",
+        onDraftChange,
+        onEditorToolChange,
+        onSelectionChange,
+        selectedEntityIds: [line.id],
+        sketch: fixture,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const scale = document.querySelector('[data-sketch-transform-handle="scale"]')
+    if (!scale) throw new Error("The transform manipulator must expose its scale handle.")
+    fireEvent.pointerDown(scale, { clientX: 430, clientY: 270, pointerId: 2 })
+    fireEvent.pointerMove(drawing, { clientX: 460, clientY: 240, pointerId: 2 })
+    fireEvent.keyDown(drawing, { key: "Escape" })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
+  it("snaps a relocated transform origin to authored sketch points without editing geometry", async () => {
+    const fixture = lineSketchFixture("b25c", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const origin = document.querySelector('[data-sketch-transform-handle="origin"]')
+    if (!origin) throw new Error("The transform manipulator must expose its origin handle.")
+
+    fireEvent.pointerDown(origin, { clientX: 400, clientY: 300, pointerId: 3 })
+    fireEvent.pointerMove(drawing, { clientX: 439, clientY: 300, pointerId: 3 })
+    fireEvent.pointerUp(drawing, { clientX: 439, clientY: 300, pointerId: 3 })
+
+    await waitFor(() => {
+      const input = screen.getByRole("combobox", { name: "Origin X" }) as HTMLInputElement
+      expect(input.value).toBe("10 mm")
+    })
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
+  it("applies variable-aware exact transform values as one recorded edit", async () => {
+    const fixture = lineSketchFixture("b25d", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The transform fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const variableController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: {
+          ...controller.report?.snapshot,
+          variables: [
+            {
+              schemaVersion: 0,
+              id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3292"),
+              name: "spacing",
+              expression: "12 mm",
+            },
+          ],
+        },
+      },
+    } as unknown as DocumentControllerState
+    renderViewport({
+      controller: variableController,
+      draft: fixture,
+      editorTool: "transform",
+      onDraftChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation X" }), {
+      target: { value: "#spacing" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Apply transform" }))
+
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.find(({ id }) => id === line.startPointId)).toMatchObject({ x: 2 })
+    expect(nextDraft.entities.find(({ id }) => id === line.endPointId)).toMatchObject({ x: 22 })
+  })
+
+  it("previews and applies a linear sketch pattern as one recorded edit", async () => {
+    const fixture = lineSketchFixture("b25e", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The linear-pattern fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "linear-pattern",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(screen.getByRole("form", { name: "Linear pattern" })).toBeTruthy()
+    expect(
+      document.querySelectorAll(
+        "[data-sketch-linear-pattern-preview] > [data-sketch-transform-preview]",
+      ),
+    ).toHaveLength(2)
+    fireEvent.change(screen.getByRole("combobox", { name: "First count" }), {
+      target: { value: "4" },
+    })
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          "[data-sketch-linear-pattern-preview] > [data-sketch-transform-preview]",
+        ),
+      ).toHaveLength(3),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Apply linear pattern" }))
+
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(4)
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
+  it("previews and applies a center-based circular sketch pattern as one recorded edit", async () => {
+    const fixture = lineSketchFixture("b25f", [{ start: { x: 10, y: 0 }, end: { x: 20, y: 0 } }])
+    const line = fixture.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The circular-pattern fixture must contain a line.")
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "circular-pattern",
+      onDraftChange,
+      onEditorToolChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(screen.getByRole("form", { name: "Circular pattern" })).toBeTruthy()
+    expect(
+      document.querySelectorAll(
+        "[data-sketch-circular-pattern-preview] > [data-sketch-transform-preview]",
+      ),
+    ).toHaveLength(2)
+    fireEvent.change(screen.getByRole("combobox", { name: "Instance count" }), {
+      target: { value: "4" },
+    })
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll(
+          "[data-sketch-circular-pattern-preview] > [data-sketch-transform-preview]",
+        ),
+      ).toHaveLength(3),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Apply circular pattern" }))
+
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    expect(onDraftChange.mock.calls[0]?.[1]).toBe("record")
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.filter(({ type }) => type === "line")).toHaveLength(4)
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
+  })
+
+  it("splits a circle after two curve clicks with an analytical preview", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchCircle(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b254"),
+      perimeterPoint: { x: 5, y: 0 },
+    }).sketch
+    const circle = fixture.entities.find((entity) => entity.type === "circle")
+    if (!circle) throw new Error("The circle split fixture must contain a circle.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "split",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const circleElement = document.querySelector(`[data-sketch-entity-id="${circle.id}"]`)
+    if (!circleElement) throw new Error("The circle split target must be rendered.")
+
+    fireEvent.pointerDown(circleElement, { clientX: 420, clientY: 300 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-preview-tool="split-circle-second"]')).toBeTruthy()
+
+    fireEvent.pointerDown(circleElement, { clientX: 400, clientY: 280 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "circle"),
+    ).toHaveLength(0)
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
+      2,
+    )
+  })
+
+  it("splits an ellipse after two curve clicks with complementary analytical previews", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchEllipse(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b25e"),
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 5 },
+    }).sketch
+    const ellipse = fixture.entities.find((entity) => entity.type === "ellipse")
+    if (!ellipse) throw new Error("The ellipse split fixture must contain an ellipse.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "split",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const ellipseElement = document.querySelector(`[data-sketch-entity-id="${ellipse.id}"]`)
+    if (!ellipseElement) throw new Error("The ellipse split target must be rendered.")
+
+    fireEvent.pointerDown(ellipseElement, { clientX: 440, clientY: 300 })
+    expect(onDraftChange).not.toHaveBeenCalled()
+    const preview = document.querySelector('[data-sketch-preview-tool="split-ellipse-second"]')
+    expect(preview?.querySelectorAll("polyline")).toHaveLength(2)
+
+    fireEvent.pointerDown(ellipseElement, { clientX: 400, clientY: 260 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "ellipse"),
+    ).toHaveLength(0)
+    expect(
+      nextDraft.entities.filter(({ type }: { type: string }) => type === "elliptical-arc"),
+    ).toHaveLength(2)
+  })
+
+  it("trims a clicked arc between neighboring line boundaries", () => {
+    const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b255")
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcFixture = appendSketchArc(emptySketch, {
+      center: { x: 0, y: 0 },
+      createEntityId,
+      start: { x: 5, y: 0 },
+      end: { x: -5, y: 0 },
+    }).sketch
+    const arc = arcFixture.entities.find((entity) => entity.type === "arc")
+    if (!arc) throw new Error("The arc trim fixture must contain an arc.")
+    const firstBoundary = appendSketchLine(arcFixture, {
+      createEntityId,
+      start: { kind: "new", point: { x: 3, y: 0 } },
+      end: { kind: "new", point: { x: 3, y: 6 } },
+    }).sketch
+    const fixture = appendSketchLine(firstBoundary, {
+      createEntityId,
+      start: { kind: "new", point: { x: -3, y: 0 } },
+      end: { kind: "new", point: { x: -3, y: 6 } },
+    }).sketch
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const arcElement = document.querySelector(`[data-sketch-entity-id="${arc.id}"]`)
+    if (!arcElement) throw new Error("The arc trim target must be rendered.")
+
+    fireEvent.pointerDown(arcElement, { clientX: 400, clientY: 280 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(
+      2,
+    )
+    expect(
+      nextDraft.constraints.filter(({ type }: { type: string }) => type === "point-on-line"),
+    ).toHaveLength(2)
   })
 
   it("renders production solver state and exact profile measurements", async () => {
@@ -1000,6 +1603,124 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("previews and creates an exact center-point ellipse as one draft edit", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "ellipse",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 400, clientY: 100 })
+    const preview = document.querySelector('[data-sketch-preview-tool="ellipse-secondary"]')
+    expect(preview?.querySelector("ellipse")).toBeTruthy()
+    expect(preview?.querySelectorAll("line")).toHaveLength(2)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 100 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const ellipse = requiredSketchEntity(draft, "ellipse")
+    expect(sketchEntitiesOfType(draft, "point")).toHaveLength(3)
+    expect(draft.constraints).toHaveLength(0)
+    const center = requiredSketchEntity(draft, "point", ellipse.centerPointId)
+    const primary = requiredSketchEntity(draft, "point", ellipse.primaryAxisPointId)
+    const secondary = requiredSketchEntity(draft, "point", ellipse.secondaryAxisPointId)
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    expect(primaryVector.x * secondaryVector.x + primaryVector.y * secondaryVector.y).toBeCloseTo(0)
+    expect(Math.hypot(primaryVector.x, primaryVector.y)).toBeGreaterThan(0)
+    expect(Math.hypot(secondaryVector.x, secondaryVector.y)).toBeGreaterThan(0)
+
+    cleanup()
+    renderViewport({
+      draft,
+      editorTool: "select",
+      sketch: draft,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const rendered = document.querySelector(
+      `[data-sketch-entity-id="${ellipse.id}"][data-sketch-entity-type="ellipse"]`,
+    )
+    expect(rendered?.tagName.toLowerCase()).toBe("ellipse")
+    expect(rendered?.getAttribute("transform")).toContain("rotate(")
+  })
+
+  it("previews and creates an exact elliptical arc with the four-pick workflow", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "elliptical-arc",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 300 })
+    fireEvent.pointerMove(drawing, { clientX: 500, clientY: 200 })
+    expect(
+      document.querySelector('[data-sketch-preview-tool="elliptical-arc-start"] ellipse'),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(drawing, { clientX: 500, clientY: 200 })
+    fireEvent.pointerMove(drawing, { clientX: 200, clientY: 300 })
+    const arcPreview = document.querySelector('[data-sketch-preview-tool="elliptical-arc-end"]')
+    expect(arcPreview?.querySelector("ellipse")).toBeTruthy()
+    expect(arcPreview?.querySelector("polyline")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const draft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const ellipticalArc = requiredSketchEntity(draft, "elliptical-arc")
+    expect(sketchEntitiesOfType(draft, "point")).toHaveLength(5)
+    expect(draft.constraints).toHaveLength(0)
+
+    cleanup()
+    renderViewport({
+      draft,
+      editorTool: "select",
+      sketch: draft,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const rendered = document.querySelector(
+      `[data-sketch-entity-id="${ellipticalArc.id}"][data-sketch-entity-type="elliptical-arc"]`,
+    )
+    expect(rendered?.tagName.toLowerCase()).toBe("polyline")
+    expect(rendered?.getAttribute("points")?.split(" ").length).toBeGreaterThan(8)
+  })
+
   it("previews horizontal inference before applying the automatic constraint", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     renderViewport({
@@ -1257,7 +1978,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("keeps drag frames local, defers live solving during motion, and commits the final point", async () => {
+  it("keeps drag frames local, streams bounded exact feedback, and commits the final point", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
@@ -1268,7 +1989,7 @@ describe("SketchViewport", () => {
     renderViewport({ draft: sketch, sketch, solveSketch, onDraftChange })
     await screen.findByText("Fully constrained")
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
-    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+    const readViewportRectangle = vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
       left: 0,
       top: 0,
       width: 800,
@@ -1285,13 +2006,16 @@ describe("SketchViewport", () => {
     if (!pointElement) throw new Error("The first sketch point must be rendered.")
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     fireEvent.pointerMove(drawing, { clientX: 500, clientY: 240, pointerId: 1 })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
 
     expect(onDraftChange).not.toHaveBeenCalled()
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
     act(() => frame(0))
+    expect(readViewportRectangle).toHaveBeenCalledOnce()
     expect(onDraftChange).not.toHaveBeenCalled()
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cx"),
@@ -1299,8 +2023,23 @@ describe("SketchViewport", () => {
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
     ).toBe("36")
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)))
     expect(solveSketch).toHaveBeenCalledTimes(1)
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 30)))
+    expect(solveSketch).toHaveBeenCalledTimes(2)
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const continuingFrame = frames.shift()
+    if (!continuingFrame) throw new Error("Continued movement must schedule another drag frame.")
+    act(() => continuingFrame(50))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 50)))
+    expect(solveSketch).toHaveBeenCalledTimes(2)
+    expect(solveSketch).toHaveBeenLastCalledWith(
+      7,
+      sketch,
+      expect.objectContaining({
+        draggedPoints: [expect.objectContaining({ entityId: firstPoint.id, x: 65, y: 36 })],
+      }),
+    )
 
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
@@ -1315,15 +2054,176 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("limits drag-frame rendering to the point and its incident curves", async () => {
+  it("defers dense exact feedback until the pointer pauses", async () => {
+    const denseSketch = denseRectangleSketchFixture()
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
     const frames: FrameRequestCallback[] = []
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frames.push(callback)
       return frames.length
     })
     renderViewport({
-      draft: sketch,
-      sketch,
+      controller: {
+        ...controller,
+        report: {
+          snapshot: { revision: 7, sketches: [denseSketch] },
+          rebuild: { ok: true },
+        },
+      } as unknown as DocumentControllerState,
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch,
+      onDraftChange,
+    })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The dense sketch fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The dense sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The dense point drag must schedule an animation frame.")
+    act(() => frame(0))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+
+    fireEvent.pointerMove(drawing, { clientX: 620, clientY: 160, pointerId: 1 })
+    const continuedFrame = frames.shift()
+    if (!continuedFrame) throw new Error("Continued dense dragging must schedule another frame.")
+    act(() => continuedFrame(80))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+
+    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
+
+    expect(solveSketch).toHaveBeenCalledTimes(2)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+  })
+
+  it("keeps very dense point dragging local until release", async () => {
+    const denseSketch = denseRectangleSketchFixture(48)
+    const solveSketch = vi.fn(async () => solveResult())
+    const onDraftChange = vi.fn()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      controller: {
+        ...controller,
+        report: {
+          snapshot: { revision: 7, sketches: [denseSketch] },
+          rebuild: { ok: true },
+        },
+      } as unknown as DocumentControllerState,
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch,
+      onDraftChange,
+    })
+    await screen.findByText("Fully constrained")
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The very dense sketch fixture must contain a point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The very dense sketch point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The very dense point drag must schedule an animation frame.")
+    act(() => frame(0))
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 180)))
+
+    expect(solveSketch).toHaveBeenCalledOnce()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+  })
+
+  it("reuses the prewarmed inference index across incremental zoom and point drag", () => {
+    const denseSketch = denseRectangleSketchFixture()
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    renderViewport({
+      draft: denseSketch,
+      sketch: denseSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
+    if (!draggedPoint) throw new Error("The dense sketch fixture must contain a point.")
+    const pointSelector = `[data-sketch-entity-id="${draggedPoint.id}"]`
+    const pointElement = document.querySelector(pointSelector)
+    if (!pointElement) throw new Error("The dense sketch point must be rendered.")
+    const buildsBeforeDrag = sketchInferenceIndexBuilds.mock.calls.length
+
+    fireEvent.wheel(drawing, { clientX: 400, clientY: 300, deltaY: 10 })
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
+    const frame = frames.shift()
+    if (!frame) throw new Error("The point drag must schedule an animation frame.")
+    act(() => frame(0))
+
+    expect(buildsBeforeDrag).toBeGreaterThan(0)
+    expect(sketchInferenceIndexBuilds).toHaveBeenCalledTimes(buildsBeforeDrag)
+  })
+
+  it("limits drag-frame rendering to the point and its incident curves", async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const lines = sketch.entities.filter((entity) => entity.type === "line")
+    const draggedPoint = pointEntities[0]
+    if (!draggedPoint) throw new Error("The rectangle fixture must contain a point.")
+    const incidentLines = lines.filter(
+      (line) => line.startPointId === draggedPoint.id || line.endPointId === draggedPoint.id,
+    )
+    const unrelatedLine = lines.find(
+      (line) => line.startPointId !== draggedPoint.id && line.endPointId !== draggedPoint.id,
+    )
+    if (!unrelatedLine) throw new Error("The rectangle fixture must contain an unrelated line.")
+    const unrelatedStartPointId = unrelatedLine.startPointId
+    let unrelatedLineReads = 0
+    const trackedUnrelatedLine = { ...unrelatedLine }
+    Object.defineProperty(trackedUnrelatedLine, "startPointId", {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        unrelatedLineReads += 1
+        return unrelatedStartPointId
+      },
+    })
+    const trackedSketch = {
+      ...sketch,
+      entities: sketch.entities.map((entity) =>
+        entity.id === unrelatedLine.id ? trackedUnrelatedLine : entity,
+      ),
+    }
+    renderViewport({
+      draft: trackedSketch,
+      sketch: trackedSketch,
       solveSketch: vi.fn(async () => solveResult()),
     })
     await screen.findByText("Fully constrained")
@@ -1339,16 +2239,6 @@ describe("SketchViewport", () => {
       y: 0,
       toJSON: () => ({}),
     })
-    const draggedPoint = pointEntities[0]
-    if (!draggedPoint) throw new Error("The rectangle fixture must contain a point.")
-    const lines = sketch.entities.filter((entity) => entity.type === "line")
-    const incidentLines = lines.filter(
-      (line) => line.startPointId === draggedPoint.id || line.endPointId === draggedPoint.id,
-    )
-    const unrelatedLine = lines.find(
-      (line) => line.startPointId !== draggedPoint.id && line.endPointId !== draggedPoint.id,
-    )
-    if (!unrelatedLine) throw new Error("The rectangle fixture must contain an unrelated line.")
     const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
     const unrelatedElement = document.querySelector(`[data-sketch-entity-id="${unrelatedLine.id}"]`)
     if (!pointElement || !unrelatedElement) {
@@ -1356,6 +2246,7 @@ describe("SketchViewport", () => {
     }
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    const readsAfterDragStart = unrelatedLineReads
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
     const frame = frames.shift()
     if (!frame) throw new Error("The point drag must schedule an animation frame.")
@@ -1376,6 +2267,7 @@ describe("SketchViewport", () => {
       unrelatedElement,
     )
     expect(unrelatedElement.getAttribute("opacity")).toBeNull()
+    expect(unrelatedLineReads).toBe(readsAfterDragStart)
   })
 
   it("persists midpoint inference in the single point-drag commit", () => {
@@ -1620,7 +2512,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange).toHaveBeenCalledTimes(1)
   })
 
-  it("keeps the last exact geometry visible while a changed draft is solving", async () => {
+  it("shows changed authored geometry immediately and resets stale solver continuation", async () => {
     const firstPoint = pointEntities[0]
     if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")
     let resolveChangedDraft: ((result: ActiveSketchSolveResult) => void) | null = null
@@ -1642,8 +2534,9 @@ describe("SketchViewport", () => {
     result.rerender(viewportElement({ draft: movedDraft, sketch, solveSketch }))
 
     await screen.findByText("Solving the saved sketch locally…")
-    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe(String(firstPoint.x))
+    expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("80")
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(solveSketch.mock.calls[1]?.[2]?.continuation).toBeNull()
     await act(async () => {
       resolveChangedDraft?.(solveResult(new Map([[firstPoint.id, { x: 12, y: 8 }]])))
     })

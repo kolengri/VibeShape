@@ -72,13 +72,25 @@ export function sketchLineIntersection(
   }
 }
 
-function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
+export function requireSketchPoint(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  missingMessage = "A sketch operation requires an existing point entity.",
+) {
   const point = sketch.entities.find(
     (entity): entity is Extract<SketchEntity, { type: "point" }> =>
       entity.id === pointId && entity.type === "point",
   )
-  if (!point) throw new TypeError("A sketch point target must reference an existing point entity.")
+  if (!point) throw new TypeError(missingMessage)
   return point
+}
+
+function pointById(sketch: SketchRecord, pointId: SketchEntityId) {
+  return requireSketchPoint(
+    sketch,
+    pointId,
+    "A sketch point target must reference an existing point entity.",
+  )
 }
 
 function resolvePointTarget(
@@ -151,12 +163,14 @@ export function createEmptySketch(input: {
   id: SketchId
   label: string
   plane: SketchRecord["plane"]
+  support?: SketchRecord["support"]
 }): SketchRecord {
   return sketchRecordSchema.parse({
     schemaVersion: 0,
     id: input.id,
     label: input.label,
     plane: input.plane,
+    ...(input.support ? { support: input.support } : {}),
     entities: [],
     constraints: [],
   })
@@ -964,6 +978,334 @@ export function appendSketchCircle(
   }
 }
 
+export type SketchEllipseGeometry = Readonly<{
+  center: SketchPoint2
+  primaryAxisPoint: SketchPoint2
+  primaryRadius: number
+  secondaryAxisPoint: SketchPoint2
+  secondaryRadius: number
+}>
+
+export type SketchEllipticalArcGeometry = SketchEllipseGeometry &
+  Readonly<{
+    endParameter: number
+    endPoint: SketchPoint2
+    startParameter: number
+    startPoint: SketchPoint2
+    sweep: number
+  }>
+
+const TWO_PI = Math.PI * 2
+
+export function sketchEllipseGeometry(
+  center: SketchPoint2,
+  primaryAxisPoint: SketchPoint2,
+  secondaryRadiusPoint: SketchPoint2,
+): SketchEllipseGeometry | null {
+  const primaryX = primaryAxisPoint.x - center.x
+  const primaryY = primaryAxisPoint.y - center.y
+  const primaryRadius = Math.hypot(primaryX, primaryY)
+  if (!Number.isFinite(primaryRadius) || primaryRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const perpendicular = { x: -primaryY / primaryRadius, y: primaryX / primaryRadius }
+  const pointerX = secondaryRadiusPoint.x - center.x
+  const pointerY = secondaryRadiusPoint.y - center.y
+  const signedSecondaryRadius = pointerX * perpendicular.x + pointerY * perpendicular.y
+  const secondaryRadius = Math.abs(signedSecondaryRadius)
+  if (!Number.isFinite(secondaryRadius) || secondaryRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const direction = signedSecondaryRadius < 0 ? -1 : 1
+  return {
+    center,
+    primaryAxisPoint,
+    primaryRadius,
+    secondaryAxisPoint: {
+      x: center.x + perpendicular.x * secondaryRadius * direction,
+      y: center.y + perpendicular.y * secondaryRadius * direction,
+    },
+    secondaryRadius,
+  }
+}
+
+function sketchEllipseDirections(geometry: SketchEllipseGeometry) {
+  return {
+    primary: {
+      x: (geometry.primaryAxisPoint.x - geometry.center.x) / geometry.primaryRadius,
+      y: (geometry.primaryAxisPoint.y - geometry.center.y) / geometry.primaryRadius,
+    },
+    secondary: {
+      x: (geometry.secondaryAxisPoint.x - geometry.center.x) / geometry.secondaryRadius,
+      y: (geometry.secondaryAxisPoint.y - geometry.center.y) / geometry.secondaryRadius,
+    },
+  }
+}
+
+export function sketchEllipsePointAt(geometry: SketchEllipseGeometry, parameter: number) {
+  const directions = sketchEllipseDirections(geometry)
+  return {
+    x:
+      geometry.center.x +
+      Math.cos(parameter) * geometry.primaryRadius * directions.primary.x +
+      Math.sin(parameter) * geometry.secondaryRadius * directions.secondary.x,
+    y:
+      geometry.center.y +
+      Math.cos(parameter) * geometry.primaryRadius * directions.primary.y +
+      Math.sin(parameter) * geometry.secondaryRadius * directions.secondary.y,
+  }
+}
+
+export function sketchEllipseParameterForPoint(
+  geometry: SketchEllipseGeometry,
+  point: SketchPoint2,
+) {
+  const directions = sketchEllipseDirections(geometry)
+  const offset = { x: point.x - geometry.center.x, y: point.y - geometry.center.y }
+  const cosine =
+    (offset.x * directions.primary.x + offset.y * directions.primary.y) / geometry.primaryRadius
+  const sine =
+    (offset.x * directions.secondary.x + offset.y * directions.secondary.y) /
+    geometry.secondaryRadius
+  return Math.atan2(sine, cosine)
+}
+
+export function projectPointToSketchEllipse(geometry: SketchEllipseGeometry, point: SketchPoint2) {
+  const parameter = sketchEllipseParameterForPoint(geometry, point)
+  return { parameter, point: sketchEllipsePointAt(geometry, parameter) }
+}
+
+export function sketchEllipticalArcStartGeometry(
+  center: SketchPoint2,
+  primaryAxisPoint: SketchPoint2,
+  startRadiusPoint: SketchPoint2,
+  fallbackSecondaryRadius?: number,
+) {
+  const primaryX = primaryAxisPoint.x - center.x
+  const primaryY = primaryAxisPoint.y - center.y
+  const primaryRadius = Math.hypot(primaryX, primaryY)
+  if (!Number.isFinite(primaryRadius) || primaryRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const primaryDirection = { x: primaryX / primaryRadius, y: primaryY / primaryRadius }
+  const perpendicular = { x: -primaryDirection.y, y: primaryDirection.x }
+  const offset = { x: startRadiusPoint.x - center.x, y: startRadiusPoint.y - center.y }
+  const localX = offset.x * primaryDirection.x + offset.y * primaryDirection.y
+  const localY = offset.x * perpendicular.x + offset.y * perpendicular.y
+  const cosine = Math.max(-1, Math.min(1, localX / primaryRadius))
+  const sineMagnitude = Math.sqrt(Math.max(0, 1 - cosine * cosine))
+  const derivedRadius =
+    sineMagnitude > MIN_GEOMETRY_DISTANCE
+      ? Math.abs(localY) / sineMagnitude
+      : (fallbackSecondaryRadius ?? primaryRadius / 2)
+  if (!Number.isFinite(derivedRadius) || derivedRadius <= MIN_GEOMETRY_DISTANCE) return null
+  const direction = localY < 0 ? -1 : 1
+  const ellipse = sketchEllipseGeometry(center, primaryAxisPoint, {
+    x: center.x + perpendicular.x * derivedRadius * direction,
+    y: center.y + perpendicular.y * derivedRadius * direction,
+  })
+  if (!ellipse) return null
+  const start = projectPointToSketchEllipse(ellipse, startRadiusPoint)
+  return { ...ellipse, startParameter: start.parameter, startPoint: start.point }
+}
+
+function positiveParameterSweep(start: number, end: number) {
+  const sweep = (((end - start) % TWO_PI) + TWO_PI) % TWO_PI
+  return sweep <= MIN_GEOMETRY_DISTANCE ? 0 : sweep
+}
+
+export function sketchEllipticalArcGeometry(
+  center: SketchPoint2,
+  primaryAxisPoint: SketchPoint2,
+  secondaryAxisPoint: SketchPoint2,
+  startPoint: SketchPoint2,
+  endPoint: SketchPoint2,
+): SketchEllipticalArcGeometry | null {
+  const ellipse = sketchEllipseGeometry(center, primaryAxisPoint, secondaryAxisPoint)
+  if (!ellipse) return null
+  const start = projectPointToSketchEllipse(ellipse, startPoint)
+  const end = projectPointToSketchEllipse(ellipse, endPoint)
+  const sweep = positiveParameterSweep(start.parameter, end.parameter)
+  if (sweep === 0) return null
+  return {
+    ...ellipse,
+    endParameter: end.parameter,
+    endPoint: end.point,
+    startParameter: start.parameter,
+    startPoint: start.point,
+    sweep,
+  }
+}
+
+export function appendSketchEllipse(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    primaryAxisPoint: SketchPointTarget
+    secondaryRadiusPoint: SketchPoint2
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, construction, input.createEntityId)
+  const primaryAxisPoint = resolvePointTarget(
+    sketch,
+    input.primaryAxisPoint,
+    construction,
+    input.createEntityId,
+  )
+  if (center.id === primaryAxisPoint.id) {
+    throw new RangeError("A sketch ellipse requires a nonzero primary radius.")
+  }
+  const geometry = sketchEllipseGeometry(
+    center.point,
+    primaryAxisPoint.point,
+    input.secondaryRadiusPoint,
+  )
+  if (!geometry) throw new RangeError("A sketch ellipse requires two positive axis radii.")
+  const secondaryAxisPointId = input.createEntityId()
+  const ellipseId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(center.entity ? [center.entity] : []),
+    ...(primaryAxisPoint.entity ? [primaryAxisPoint.entity] : []),
+    {
+      schemaVersion: 0,
+      id: secondaryAxisPointId,
+      type: "point",
+      ...geometry.secondaryAxisPoint,
+      construction,
+    },
+    {
+      schemaVersion: 0,
+      id: ellipseId,
+      type: "ellipse",
+      centerPointId: center.id,
+      primaryAxisPointId: primaryAxisPoint.id,
+      secondaryAxisPointId,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
+function resolvedEllipseArcPoint(
+  sketch: SketchRecord,
+  target: SketchPointTarget,
+  projectedPoint: SketchPoint2,
+  construction: boolean,
+  createEntityId: EntityIdFactory,
+  reusablePoints: readonly Readonly<{ id: SketchEntityId; point: SketchPoint2 }>[],
+) {
+  const tolerance = MIN_GEOMETRY_DISTANCE * 100
+  if (target.kind === "existing") {
+    const point = pointById(sketch, target.pointId)
+    if (distance(point, projectedPoint) > tolerance) {
+      throw new RangeError("An existing elliptical-arc point must lie on the ellipse.")
+    }
+    return { entity: null, id: point.id, point }
+  }
+  const reusable = reusablePoints.find(({ point }) => distance(point, projectedPoint) <= tolerance)
+  if (reusable) return { entity: null, ...reusable }
+  const entity = {
+    schemaVersion: 0,
+    id: createEntityId(),
+    type: "point",
+    ...projectedPoint,
+    construction,
+  } as const
+  return { entity, id: entity.id, point: entity }
+}
+
+export function appendSketchEllipticalArc(
+  sketch: SketchRecord,
+  input: {
+    center: SketchPointTarget
+    construction?: boolean
+    createEntityId: EntityIdFactory
+    endPoint: SketchPointTarget
+    primaryAxisPoint: SketchPointTarget
+    secondaryAxisPoint: SketchPoint2
+    startPoint: SketchPointTarget
+  },
+): SketchAppendResult {
+  const construction = input.construction ?? false
+  const center = resolvePointTarget(sketch, input.center, construction, input.createEntityId)
+  const primaryAxisPoint = resolvePointTarget(
+    sketch,
+    input.primaryAxisPoint,
+    construction,
+    input.createEntityId,
+  )
+  if (center.id === primaryAxisPoint.id) {
+    throw new RangeError("A sketch elliptical arc requires a nonzero primary radius.")
+  }
+  const pointForInputTarget = (target: SketchPointTarget) =>
+    target.kind === "existing" ? pointById(sketch, target.pointId) : target.point
+  const geometry = sketchEllipticalArcGeometry(
+    center.point,
+    primaryAxisPoint.point,
+    input.secondaryAxisPoint,
+    pointForInputTarget(input.startPoint),
+    pointForInputTarget(input.endPoint),
+  )
+  if (!geometry) {
+    throw new RangeError("A sketch elliptical arc requires positive axes and distinct endpoints.")
+  }
+  const secondaryAxisPointId = input.createEntityId()
+  const secondaryAxisPoint = {
+    schemaVersion: 0,
+    id: secondaryAxisPointId,
+    type: "point",
+    ...geometry.secondaryAxisPoint,
+    construction,
+  } as const
+  const reusablePoints = [
+    { id: center.id, point: center.point },
+    { id: primaryAxisPoint.id, point: primaryAxisPoint.point },
+    { id: secondaryAxisPointId, point: secondaryAxisPoint },
+  ]
+  const start = resolvedEllipseArcPoint(
+    sketch,
+    input.startPoint,
+    geometry.startPoint,
+    construction,
+    input.createEntityId,
+    reusablePoints,
+  )
+  const end = resolvedEllipseArcPoint(
+    sketch,
+    input.endPoint,
+    geometry.endPoint,
+    construction,
+    input.createEntityId,
+    [...reusablePoints, { id: start.id, point: start.point }],
+  )
+  if (start.id === end.id) {
+    throw new RangeError("A sketch elliptical arc requires distinct endpoints.")
+  }
+  const arcId = input.createEntityId()
+  const additions: SketchEntity[] = [
+    ...(center.entity ? [center.entity] : []),
+    ...(primaryAxisPoint.entity ? [primaryAxisPoint.entity] : []),
+    secondaryAxisPoint,
+    ...(start.entity ? [start.entity] : []),
+    ...(end.entity ? [end.entity] : []),
+    {
+      schemaVersion: 0,
+      id: arcId,
+      type: "elliptical-arc",
+      centerPointId: center.id,
+      primaryAxisPointId: primaryAxisPoint.id,
+      secondaryAxisPointId,
+      startPointId: start.id,
+      endPointId: end.id,
+      construction,
+    },
+  ]
+  return {
+    sketch: parsedSketch(sketch, [...sketch.entities, ...additions]),
+    createdEntityIds: additions.map(({ id }) => id),
+  }
+}
+
 export type RegularPolygonGeometry = Readonly<{
   constructionRadius: number
   mode: RegularPolygonMode
@@ -1680,23 +2022,56 @@ export function appendSketchConstraint(
   })
 }
 
-function referencedEntityIds(constraint: SketchConstraint) {
+export function sketchConstraintEntityIds(constraint: SketchConstraint) {
+  if (constraint.type === "offset") {
+    return [
+      ...constraint.linePairs.flatMap(({ sourceLineId, offsetLineId }) => [
+        sourceLineId,
+        offsetLineId,
+      ]),
+      ...constraint.endpointPairs.flatMap(({ sourcePointId, offsetPointId }) => [
+        sourcePointId,
+        offsetPointId,
+      ]),
+    ]
+  }
   return Object.entries(constraint)
     .filter(([key, value]) => key !== "id" && key.endsWith("Id") && isString(value))
     .map(([, value]) => value as string)
 }
 
-function geometryPointIds(entity: SketchEntity) {
-  switch (entity.type) {
-    case "point":
-      return []
+export function sketchCurvePointIds(curve: Exclude<SketchEntity, { type: "point" }>) {
+  switch (curve.type) {
     case "line":
-      return [entity.startPointId, entity.endPointId]
+      return [curve.startPointId, curve.endPointId]
     case "circle":
-      return [entity.centerPointId]
+      return [curve.centerPointId]
     case "arc":
-      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+      return [curve.centerPointId, curve.startPointId, curve.endPointId]
+    case "ellipse":
+      return [curve.centerPointId, curve.primaryAxisPointId, curve.secondaryAxisPointId]
+    case "elliptical-arc":
+      return [
+        curve.centerPointId,
+        curve.primaryAxisPointId,
+        curve.secondaryAxisPointId,
+        curve.startPointId,
+        curve.endPointId,
+      ]
   }
+}
+
+export function sketchSourcePointIds(entities: readonly SketchEntity[]) {
+  const pointIds = new Set<SketchEntityId>()
+  for (const entity of entities) {
+    if (entity.type === "point") pointIds.add(entity.id)
+    else for (const pointId of sketchCurvePointIds(entity)) pointIds.add(pointId)
+  }
+  return [...pointIds]
+}
+
+function geometryPointIds(entity: SketchEntity) {
+  return entity.type === "point" ? [] : sketchCurvePointIds(entity)
 }
 
 type SketchLineEntity = Extract<SketchEntity, { type: "line" }>
@@ -1838,7 +2213,7 @@ function removeDetachedOperationPoints(sketch: SketchRecord, pointIds: readonly 
     : sketchRecordSchema.parse({
         ...sketch,
         constraints: sketch.constraints.filter((constraint) =>
-          referencedEntityIds(constraint).every((id) => !removableIds.has(id)),
+          sketchConstraintEntityIds(constraint).every((id) => !removableIds.has(id)),
         ),
         entities: sketch.entities.filter(({ id }) => !removableIds.has(id)),
       })
@@ -2110,7 +2485,7 @@ export function removeSketchEntities(
 
   const entities = sketch.entities.filter(({ id }) => !removedIds.has(id))
   const constraints = sketch.constraints.filter((constraint) =>
-    referencedEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
+    sketchConstraintEntityIds(constraint).every((entityId) => !removedIds.has(entityId)),
   )
   return sketchRecordSchema.parse({ ...sketch, entities, constraints })
 }

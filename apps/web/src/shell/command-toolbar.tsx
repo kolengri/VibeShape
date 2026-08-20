@@ -90,7 +90,11 @@ const sketchToolFamilies = [
     labelKey: "rectangleToolsLabel",
   },
   {
-    commandIds: [editorCommandIds.sketchCircle, editorCommandIds.sketchThreePointCircle],
+    commandIds: [
+      editorCommandIds.sketchCircle,
+      editorCommandIds.sketchThreePointCircle,
+      editorCommandIds.sketchEllipse,
+    ],
     id: "circle",
     labelKey: "circleToolsLabel",
   },
@@ -116,6 +120,7 @@ const sketchToolFamilies = [
       editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchTangentArc,
       editorCommandIds.sketchArc,
+      editorCommandIds.sketchEllipticalArc,
     ],
     id: "arc",
     labelKey: "arcToolsLabel",
@@ -321,6 +326,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         <ToolbarSeparator />
         {sketchMode ? (
           <>
+            <ToolbarCommandGroup
+              commands={modelPrimaryCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("modelPrimaryLabel")}
+            />
+            <ToolbarSeparator />
             <ToolbarCommandGroup
               commands={sketchToolCommands.filter(
                 ({ descriptor }) => !groupedSketchToolIds.has(descriptor.id),

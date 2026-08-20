@@ -8,10 +8,15 @@ import {
   createFeatureTypeRegistry,
   createModuleRegistry,
   documentCoreModule,
+  documentSnapshotSchema,
   type FeatureTypeRegistry,
+  featureBodyDependencyIds,
   featureCoreModule,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  readDatumPlaneFeatureParameters,
+  referenceGeometryFeatureTypeHandlers,
+  referenceGeometryModule,
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -28,7 +33,8 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
-import { createDocumentFeatureContentPreparer } from "./extrusion-content"
+import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
+import { createSketchDisplayRecords } from "./sketch-display"
 
 export interface DocumentWorkerEndpoint {
   postMessage(message: DocumentWorkerResponse, transfer?: Transferable[]): void
@@ -57,9 +63,17 @@ type SketchContextResult =
     }
 
 function createBuiltInFeatureRegistry() {
-  const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
+  const modules = createModuleRegistry([
+    documentCoreModule,
+    featureCoreModule,
+    partDesignModule,
+    referenceGeometryModule,
+  ])
   if (!modules.ok) throw new Error(modules.diagnostic.message)
-  const featureTypes = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
+  const featureTypes = createFeatureTypeRegistry(modules.registry, [
+    ...partDesignFeatureTypeHandlers,
+    ...referenceGeometryFeatureTypeHandlers,
+  ])
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
   return featureTypes.registry
 }
@@ -136,12 +150,20 @@ function transferablesFor(response: DocumentWorkerResponse) {
     return [response.file.buffer as ArrayBuffer]
   }
   if (response.type !== "documentRebuilt") return []
-  return response.geometry.flatMap(({ geometry }) => [
-    geometry.mesh.positions.buffer as ArrayBuffer,
-    geometry.mesh.normals.buffer as ArrayBuffer,
-    geometry.mesh.indices.buffer as ArrayBuffer,
-    geometry.mesh.triangleFaceIds.buffer as ArrayBuffer,
-  ])
+  return [
+    ...response.geometry.flatMap(({ geometry }) => [
+      geometry.mesh.positions.buffer as ArrayBuffer,
+      geometry.mesh.normals.buffer as ArrayBuffer,
+      geometry.mesh.indices.buffer as ArrayBuffer,
+      geometry.mesh.triangleFaceIds.buffer as ArrayBuffer,
+    ]),
+    ...response.sketches.flatMap((sketch) => [
+      sketch.curvePositions.buffer as ArrayBuffer,
+      sketch.constructionCurvePositions.buffer as ArrayBuffer,
+      sketch.pointPositions.buffer as ArrayBuffer,
+      sketch.constructionPointPositions.buffer as ArrayBuffer,
+    ]),
+  ]
 }
 
 async function exportThreeMfDocument(
@@ -177,7 +199,7 @@ function terminalExportFeatures(state: FeatureRebuildState) {
   const consumedFeatureIds = new Set<string>()
   for (const feature of state.features) {
     if (!successfulHashes.has(feature.id)) continue
-    for (const dependencyId of feature.dependencies) {
+    for (const dependencyId of featureBodyDependencyIds(feature)) {
       if (successfulHashes.has(dependencyId)) consumedFeatureIds.add(dependencyId)
     }
   }
@@ -189,7 +211,10 @@ function terminalExportFeatures(state: FeatureRebuildState) {
 
   return state.features.flatMap((feature) => {
     const contentHash = successfulHashes.get(feature.id)
-    return contentHash && solidFeatureIds.has(feature.id) && !consumedFeatureIds.has(feature.id)
+    return contentHash &&
+      solidFeatureIds.has(feature.id) &&
+      !consumedFeatureIds.has(feature.id) &&
+      readDatumPlaneFeatureParameters(feature) === null
       ? [{ featureId: feature.id, contentHash }]
       : []
   })
@@ -432,6 +457,7 @@ export class DocumentWorkerRuntime {
       this.#postFailure(request, "engine-initialization-failed", errorMessage(error), true)
       return
     }
+    const solvedBySketchId: SketchSolveCache = new Map()
     const result = await rebuildDocumentFeatures({
       document: request.document,
       generation: request.generation,
@@ -439,7 +465,10 @@ export class DocumentWorkerRuntime {
       environment: engine.featureContentEnvironment,
       mesh: request.mesh,
       hash: sha256,
-      prepareFeatureContent: createDocumentFeatureContentPreparer(this.solveSketch),
+      prepareFeatureContent: createDocumentFeatureContentPreparer(
+        this.solveSketch,
+        solvedBySketchId,
+      ),
       evaluateGeometry: async (evaluation) => {
         const evaluated = await this.engine.evaluateFeature(
           { ...evaluation, dependencies: [...evaluation.dependencies] },
@@ -468,6 +497,20 @@ export class DocumentWorkerRuntime {
       return
     }
 
+    const sketches = await createSketchDisplayRecords(
+      documentSnapshotSchema.parse(request.document),
+      this.solveSketch,
+      solvedBySketchId,
+    )
+    if (this.#isStale(request)) {
+      this.#postFailure(
+        request,
+        "stale-generation",
+        "The sketch display generation became stale.",
+        false,
+      )
+      return
+    }
     this.engine.synchronizeDocumentFeatures(request.documentId, retainedFeatureContent(result))
     this.#states.set(request.documentId, result)
     this.#documents.set(request.documentId, request.document)
@@ -476,6 +519,7 @@ export class DocumentWorkerRuntime {
       type: "documentRebuilt",
       evaluation: result.evaluation,
       geometry: result.geometry.map(cloneGeometry),
+      sketches,
     })
   }
 

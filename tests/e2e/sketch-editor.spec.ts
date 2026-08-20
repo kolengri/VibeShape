@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import {
   addDimension,
@@ -67,11 +68,15 @@ test.describe("full sketch editor", () => {
       .poll(() => drawing.locator('[data-sketch-entity-type="line"]').count())
       .toBeGreaterThanOrEqual(96)
     await page.getByRole("button", { name: "Select", exact: true }).click()
-    const endpoint = drawing.locator('[data-sketch-entity-type="point"]').last()
+    const points = drawing.locator('[data-sketch-entity-type="point"]')
+    const endpoint = points.last()
+    const dependentPoint = points.nth((await points.count()) - 2)
     const endpointBounds = await endpoint.boundingBox()
     if (!endpointBounds) throw new Error("The sketch endpoint is not visible.")
     const initialX = await endpoint.getAttribute("cx")
     const initialY = await endpoint.getAttribute("cy")
+    const dependentInitialX = await dependentPoint.getAttribute("cx")
+    const dependentInitialY = await dependentPoint.getAttribute("cy")
     const startX = endpointBounds.x + endpointBounds.width / 2
     const startY = endpointBounds.y + endpointBounds.height / 2
     const retainedBounds = await drawing.boundingBox()
@@ -89,6 +94,15 @@ test.describe("full sketch editor", () => {
         timeout: 1_000,
       })
       .not.toEqual([initialX, initialY])
+    await expect
+      .poll(
+        async () => [
+          await dependentPoint.getAttribute("cx"),
+          await dependentPoint.getAttribute("cy"),
+        ],
+        { timeout: 1_000 },
+      )
+      .not.toEqual([dependentInitialX, dependentInitialY])
     await page.mouse.up()
 
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
@@ -195,6 +209,83 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(0)
     await page.getByRole("button", { name: "Redo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+  })
+
+  test("authors an elliptical arc with construction-ellipse preview and local history", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Arc tools", "Elliptical arc")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.move(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.35)
+    await expect(
+      drawing.locator('[data-sketch-preview-tool="elliptical-arc-start"] ellipse'),
+    ).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.35)
+    await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+    const preview = drawing.locator('[data-sketch-preview-tool="elliptical-arc-end"]')
+    await expect(preview.locator("ellipse")).toBeVisible()
+    await expect(preview.locator("polyline")).toBeVisible()
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+
+    await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(5)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(0)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+  })
+
+  test("drives both stable axes of a selected ellipse by diameter", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
+
+    await selectSketchEntities(page, drawing, "ellipse", [0])
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await addDimension(page, "Primary axis diameter", "40 mm")
+    await expect(
+      page.getByRole("listitem").filter({ hasText: "Primary axis diameter · 40 mm" }),
+    ).toBeVisible()
+
+    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await addDimension(page, "Secondary axis diameter", "18 mm")
+    await expect(
+      page.getByRole("listitem").filter({ hasText: "Secondary axis diameter · 18 mm" }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-sketch-constraint-kind="dimension"]').filter({ hasText: "40 mm" }),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-sketch-constraint-kind="dimension"]').filter({ hasText: "18 mm" }),
+    ).toBeVisible()
   })
 
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
@@ -440,6 +531,283 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("mirrors selected or subsequently picked geometry across a sketch line", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const clickAt = (horizontal: number, vertical: number) =>
+      page.mouse.click(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * vertical)
+    const construction = page.getByRole("button", { name: "Construction geometry" })
+
+    await construction.click()
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await clickAt(0.5, 0.3)
+    await clickAt(0.5, 0.7)
+    await page.keyboard.press("Escape")
+    await construction.click()
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await clickAt(0.65, 0.42)
+    await clickAt(0.78, 0.58)
+    await page.keyboard.press("Escape")
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+    await expect(lines).toHaveCount(2)
+
+    await selectSketchEntities(page, drawing, "line", [1])
+    await page.getByRole("button", { name: "Mirror", exact: true }).click()
+    await expect(page.getByText("Select a mirror line for the selected geometry.")).toBeVisible()
+    await lines.first().dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+    })
+    await expect(lines).toHaveCount(3)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(2)
+    await page.getByRole("button", { name: "Mirror", exact: true }).click()
+    await lines.first().dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 2,
+    })
+    await expect(
+      page.getByText("Select geometry to mirror. Press Escape when finished."),
+    ).toBeVisible()
+    await lines.nth(1).dispatchEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      pointerId: 3,
+    })
+    await expect(lines).toHaveCount(3)
+    await expect(page.getByRole("button", { name: "Mirror", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await drawing.press("Escape")
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
+  test("transforms selected sketch geometry with one preview and undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+    const initialFirstLine = await lines.first().evaluate((line) => ({
+      x1: line.getAttribute("x1"),
+      x2: line.getAttribute("x2"),
+      y1: line.getAttribute("y1"),
+      y2: line.getAttribute("y2"),
+    }))
+
+    await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+    await page.getByRole("button", { name: "Transform", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-transform-manipulator]")).toBeVisible()
+    await expect(page.getByText(/Arrow keys move/)).toBeVisible()
+
+    await drawing.press("ArrowRight")
+    await expect(drawing.locator("[data-sketch-transform-preview]")).toBeVisible()
+    await expect(drawing.locator("[data-sketch-transform-preview] > g")).toHaveAttribute(
+      "transform",
+      /translate\(1 0\)/,
+    )
+    const exactTransform = page.getByRole("form", { name: "Precise transform" })
+    await exactTransform.getByRole("combobox", { name: "Translation X" }).fill("5 mm")
+    await exactTransform.getByRole("combobox", { name: "Rotation" }).fill("15 deg")
+    await exactTransform.getByRole("combobox", { name: "Scale" }).fill("1.1")
+    await exactTransform.getByRole("button", { name: "Apply transform" }).click()
+
+    await expect(drawing.locator("[data-sketch-transform-manipulator]")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect
+      .poll(() =>
+        lines.first().evaluate((line) => ({
+          x1: line.getAttribute("x1"),
+          x2: line.getAttribute("x2"),
+          y1: line.getAttribute("y1"),
+          y2: line.getAttribute("y2"),
+        })),
+      )
+      .not.toEqual(initialFirstLine)
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect
+      .poll(() =>
+        lines.first().evaluate((line) => ({
+          x1: line.getAttribute("x1"),
+          x2: line.getAttribute("x2"),
+          y1: line.getAttribute("y1"),
+          y2: line.getAttribute("y2"),
+        })),
+      )
+      .toEqual(initialFirstLine)
+  })
+
+  test("creates a two-direction linear sketch pattern with one undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    await page.getByRole("button", { name: "Linear pattern", exact: true }).click()
+    const pattern = page.getByRole("form", { name: "Linear pattern" })
+    await expect(pattern).toBeVisible()
+    await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(2)
+
+    await pattern.getByRole("combobox", { name: "First spacing" }).fill("15 mm")
+    await pattern.getByRole("checkbox", { name: "Add second direction" }).check()
+    await pattern.getByRole("combobox", { name: "Second spacing" }).fill("10 mm")
+    await expect(drawing.locator("[data-sketch-linear-pattern-preview] > g")).toHaveCount(5)
+    await pattern.getByRole("button", { name: "Apply linear pattern" }).click()
+
+    await expect(lines).toHaveCount(9)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+  })
+
+  test("creates a center-based circular sketch pattern with one undo entry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    await page.getByRole("button", { name: "Circular pattern", exact: true }).click()
+    const pattern = page.getByRole("form", { name: "Circular pattern" })
+    await expect(pattern).toBeVisible()
+    await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(3)
+
+    await pattern.getByRole("combobox", { name: "Center X" }).fill("10 mm")
+    await pattern.getByRole("combobox", { name: "Instance count" }).fill("4")
+    await expect(drawing.locator("[data-sketch-circular-pattern-preview] > g")).toHaveCount(4)
+    await pattern.getByRole("button", { name: "Apply circular pattern" }).click()
+
+    await expect(lines).toHaveCount(7)
+    await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+  })
+
+  test("offsets a connected line loop with one editable signed dimension", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const lines = drawing.locator('[data-sketch-entity-type="line"]')
+
+    await selectSketchEntities(page, drawing, "line", [0, 1, 2, 3])
+    await page.getByRole("button", { name: "Offset", exact: true }).click()
+    await expect(
+      page.getByText("Move the pointer to set the signed offset, then click."),
+    ).toBeVisible()
+    await page.mouse.move(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.52)
+    const preview = drawing.locator('[data-sketch-preview-tool="offset-distance"]')
+    await expect(preview).toBeVisible()
+    await expect(preview.locator("line")).toHaveCount(4)
+    const previewDistance = Number(await preview.getAttribute("data-sketch-offset-distance"))
+    expect(Math.abs(previewDistance)).toBeGreaterThan(0.01)
+    await page.mouse.click(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.52)
+
+    await expect(lines).toHaveCount(8)
+    const offsetConstraint = page.getByRole("listitem").filter({ hasText: /Offset ·/ })
+    await expect(offsetConstraint).toBeVisible()
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(lines).toHaveCount(4)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(lines).toHaveCount(8)
+
+    const signedDistance = async () => {
+      const values = await lines.evaluateAll((elements) =>
+        [elements[0], elements[4]].map((element) => ({
+          x1: Number(element.getAttribute("x1")),
+          y1: Number(element.getAttribute("y1")),
+          x2: Number(element.getAttribute("x2")),
+          y2: Number(element.getAttribute("y2")),
+        })),
+      )
+      const [source, offset] = values
+      if (!source || !offset) throw new Error("The offset line pair is not rendered.")
+      const directionX = source.x2 - source.x1
+      const directionY = source.y2 - source.y1
+      const length = Math.hypot(directionX, directionY)
+      return (
+        (directionX * ((offset.y1 + offset.y2) / 2 - source.y1) -
+          directionY * ((offset.x1 + offset.x2) / 2 - source.x1)) /
+        length
+      )
+    }
+    const initialDistance = await signedDistance()
+    expect(Math.sign(initialDistance)).toBe(Math.sign(previewDistance))
+    const oppositeExpression = initialDistance > 0 ? "-8 mm" : "8 mm"
+    await offsetConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await offsetConstraint
+      .getByRole("combobox", { name: "Driving expression" })
+      .fill(oppositeExpression)
+    await offsetConstraint.getByRole("button", { name: "Save dimension" }).click()
+
+    await expect(offsetConstraint).toContainText(`Offset · ${oppositeExpression}`)
+    await expect
+      .poll(async () => {
+        const distance = await signedDistance()
+        return Math.sign(distance) === -Math.sign(initialDistance) && Math.abs(distance) > 7.99
+      })
+      .toBe(true)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
   test("trims, splits, and extends lines as atomic sketch edits", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -507,6 +875,170 @@ test.describe("full sketch editor", () => {
     await activateLine("Extend", 3, canvasPoint(0.39, 0.75))
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
     await expect(extendTarget).not.toHaveAttribute("x2", originalEnd ?? "")
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
+  test("trims and splits circles and extends arcs with exact solver feedback", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const canvasPoint = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const clickPoint = (point: Readonly<{ x: number; y: number }>) =>
+      page.mouse.click(point.x, point.y)
+    const drawLine = async (
+      start: Readonly<{ x: number; y: number }>,
+      end: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: "Line", exact: true }).click()
+      await page.mouse.click(start.x, start.y)
+      await page.mouse.click(end.x, end.y)
+      await page.keyboard.press("Escape")
+    }
+    const dispatchCurvePoint = async (
+      curve: Locator,
+      point: Readonly<{ x: number; y: number }>,
+    ) => {
+      await curve.dispatchEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+        pointerId: 1,
+      })
+    }
+
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
+    await clickPoint(canvasPoint(0.65, 0.4))
+    await clickPoint(canvasPoint(0.77, 0.4))
+    await drawLine(canvasPoint(0.6, 0.2), canvasPoint(0.6, 0.4))
+    await drawLine(canvasPoint(0.7, 0.2), canvasPoint(0.7, 0.4))
+    const circle = drawing.locator('[data-sketch-entity-type="circle"]')
+    await expect(circle).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Trim", exact: true }).click()
+    await dispatchCurvePoint(circle, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+
+    const restoredCircle = drawing.locator('[data-sketch-entity-type="circle"]')
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await dispatchCurvePoint(restoredCircle, canvasPoint(0.77, 0.4))
+    await expect(drawing.locator('[data-sketch-preview-tool="split-circle-second"]')).toBeVisible()
+    await dispatchCurvePoint(restoredCircle, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+
+    await selectSketchTool(page, "Arc tools", "Center-point arc")
+    await clickPoint(canvasPoint(0.3, 0.72))
+    await clickPoint(canvasPoint(0.4, 0.72))
+    await clickPoint(canvasPoint(0.3, 0.59))
+    await drawLine(canvasPoint(0.2, 0.66), canvasPoint(0.2, 0.78))
+    const arc = drawing.locator('[data-sketch-entity-type="arc"]')
+    await expect(arc).toHaveCount(1)
+    const originalArcPoints = await arc.getAttribute("points")
+
+    await page.getByRole("button", { name: "Extend", exact: true }).click()
+    await dispatchCurvePoint(arc, canvasPoint(0.3, 0.59))
+    await expect(arc).not.toHaveAttribute("points", originalArcPoints ?? "")
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
+  test("trims and splits ellipses and extends elliptical arcs analytically", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const canvasPoint = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const clickPoint = (point: Readonly<{ x: number; y: number }>) =>
+      page.mouse.click(point.x, point.y)
+    const drawLine = async (
+      start: Readonly<{ x: number; y: number }>,
+      end: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: "Line", exact: true }).click()
+      await clickPoint(start)
+      await clickPoint(end)
+      await page.keyboard.press("Escape")
+    }
+    const dispatchCurvePoint = async (
+      curve: Locator,
+      point: Readonly<{ x: number; y: number }>,
+    ) => {
+      await curve.dispatchEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        buttons: 1,
+        clientX: point.x,
+        clientY: point.y,
+        pointerId: 1,
+      })
+    }
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await clickPoint(canvasPoint(0.65, 0.4))
+    await clickPoint(canvasPoint(0.77, 0.4))
+    await clickPoint(canvasPoint(0.65, 0.24))
+    await drawLine(canvasPoint(0.6, 0.18), canvasPoint(0.6, 0.4))
+    await drawLine(canvasPoint(0.7, 0.18), canvasPoint(0.7, 0.4))
+    const ellipse = drawing.locator('[data-sketch-entity-type="ellipse"]')
+    await expect(ellipse).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Trim", exact: true }).click()
+    await dispatchCurvePoint(ellipse, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
+
+    const restoredEllipse = drawing.locator('[data-sketch-entity-type="ellipse"]')
+    await page.getByRole("button", { name: "Split", exact: true }).click()
+    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.77, 0.4))
+    await expect(drawing.locator('[data-sketch-preview-tool="split-ellipse-second"]')).toBeVisible()
+    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.65, 0.24))
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(2)
+    await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+
+    await selectSketchTool(page, "Arc tools", "Elliptical arc")
+    await clickPoint(canvasPoint(0.3, 0.72))
+    await clickPoint(canvasPoint(0.4, 0.72))
+    await clickPoint(canvasPoint(0.3, 0.59))
+    await clickPoint(canvasPoint(0.2, 0.72))
+    await drawLine(canvasPoint(0.25, 0.74), canvasPoint(0.25, 0.88))
+    const ellipticalArc = drawing.locator('[data-sketch-entity-type="elliptical-arc"]')
+    await expect(ellipticalArc).toHaveCount(1)
+    const originalArcPoints = await ellipticalArc.getAttribute("points")
+
+    await page.getByRole("button", { name: "Extend", exact: true }).click()
+    await dispatchCurvePoint(ellipticalArc, canvasPoint(0.2, 0.72))
+    await expect(ellipticalArc).not.toHaveAttribute("points", originalArcPoints ?? "")
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
@@ -604,7 +1136,9 @@ test.describe("full sketch editor", () => {
 
     await expect(page.getByText("Fully constrained", { exact: true })).toBeVisible()
     await expect(page.getByText("Profile: 960 mm² · 136 mm perimeter")).toBeVisible()
-    await page.getByRole("button", { name: "Finish sketch" }).dblclick()
+    await page.getByRole("button", { name: "Extrude selected profile" }).dblclick()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toBeVisible()
+    await page.getByRole("button", { name: "Cancel" }).click()
 
     await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()
@@ -613,8 +1147,6 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
-    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     const verticalConstraint = page
       .getByRole("listitem")
@@ -624,12 +1156,16 @@ test.describe("full sketch editor", () => {
     await verticalConstraint.getByRole("button", { name: "Save dimension" }).click()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch" }).dblclick()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "1",
+    )
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(page.getByText("Profile: 1,200 mm² · 146 mm perimeter")).toBeVisible()
 
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await page.getByRole("button", { name: "Edit sketch" }).click()
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Cancel" }).click()

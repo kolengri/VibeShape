@@ -7,6 +7,8 @@ import {
   appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -17,12 +19,21 @@ import {
   appendSketchTangentArc,
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
+  type CircularSketchPatternDefinition,
   centeredAlignedRectangleGeometry,
-  extendSketchLine,
+  circularPatternSketchEntities,
+  circularSketchPatternTransforms,
+  createSketchInferenceCandidateQuery,
+  extendSketchCurve,
   inferSketchPoint,
+  type LinearSketchPatternDefinition,
+  linearPatternSketchEntities,
+  linearSketchPatternTransforms,
   MAX_REGULAR_POLYGON_SIDES,
+  MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
+  projectPointToSketchEllipse,
   type RegularPolygonMode,
   regularPolygonGeometry,
   removeSketchEntities,
@@ -32,6 +43,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
   type SketchInferenceArc,
+  type SketchInferenceCandidateQuery,
   type SketchInferenceLine,
   type SketchPoint2,
   type SketchPointInference,
@@ -40,19 +52,42 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
   sketchConstraintIdSchema,
+  sketchCurvePointIds,
+  sketchEllipseGeometry,
+  sketchEllipseParameterForPoint,
+  sketchEllipsePointAt,
+  sketchEllipticalArcGeometry,
+  sketchEllipticalArcStartGeometry,
+  sketchEntityTransformOrigin,
   sketchProfileSelectorSchema,
-  splitSketchLine,
+  splitSketchCircle,
+  splitSketchCurve,
+  splitSketchEllipse,
   straightSlotGeometry,
   tangentArcGeometry,
   threePointArcGeometry,
   threePointCircleGeometry,
-  trimSketchLine,
+  transformSketchEntities,
+  trimSketchCurve,
+  type VariableDefinition,
 } from "@vibeshape/domain"
+import {
+  appendSketchLineOffset,
+  connectedSketchOffsetLineIds,
+  sketchLineOffsetGeometry,
+  sketchLineSignedDistance,
+} from "@vibeshape/domain/sketch-offset-edit"
+import { mirrorSketchEntities } from "@vibeshape/domain/sketch-transform-edit"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import { Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import type {
+  ViewerOriginPlane,
+  ViewerOriginPlaneVisibility,
+} from "@vibeshape/viewer/origin-planes"
 import {
   type CSSProperties,
   type Dispatch,
@@ -69,6 +104,7 @@ import {
   useState,
   type WheelEvent,
 } from "react"
+import { OriginPlaneVisibilityControls } from "../../components/origin-plane-visibility-controls"
 import {
   type ActiveSketchSolveOptions,
   type ActiveSketchSolveResult,
@@ -83,6 +119,10 @@ import {
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import {
+  defaultCircularSketchPatternDefinition,
+  SketchCircularPatternForm,
+} from "./sketch-circular-pattern-form"
+import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
   type SketchConstraintToolKind,
@@ -90,11 +130,31 @@ import {
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
 import {
+  defaultLinearSketchPatternDefinition,
+  SketchLinearPatternForm,
+} from "./sketch-linear-pattern-form"
+import {
   isSketchModificationTool,
   type SketchDraftChangeMode,
   type SketchEditorTool,
   type SketchModificationTool,
 } from "./sketch-tool"
+import { type SketchTransformExactValue, SketchTransformForm } from "./sketch-transform-form"
+import {
+  identitySketchTransform,
+  isIdentitySketchTransform,
+  relocateSketchTransformOrigin,
+  type SketchTransformGesture,
+  type SketchTransformHandle,
+  SketchTransformManipulator,
+  type SketchTransformPreview,
+  sketchEntityTransformFromPreview,
+  sketchTransformCenter,
+  sketchTransformSvgValue,
+  transformSketchPoint,
+  updateSketchTransformFromKeyboard,
+  updateSketchTransformGesture,
+} from "./sketch-transform-manipulator"
 
 type SketchSolveFunction = (
   baseRevision: number,
@@ -127,9 +187,16 @@ type SketchDragState = Readonly<{
 }>
 
 type SketchPointDragInput = Readonly<{
-  point: SketchPoint2
-  rectangle: Readonly<{ width: number; height: number }>
+  clientX: number
+  clientY: number
   suppressed: boolean
+}>
+
+type SketchViewportRectangle = Readonly<{
+  height: number
+  left: number
+  top: number
+  width: number
 }>
 
 type SketchPointDragPreview = Readonly<{
@@ -140,6 +207,7 @@ type SketchPointDragPreview = Readonly<{
 type SketchSolveRequest = Readonly<{
   dragTarget: SketchDragTarget | null
   requestId: number
+  resetContinuation: boolean
   revision: number
   sketch: SketchRecord
 }>
@@ -148,6 +216,7 @@ type SketchSolveScheduler = {
   disposed: boolean
   inFlight: boolean
   latestRequest: SketchSolveRequest | null
+  latestSketch: SketchRecord | null
   latestSolution: SolvedSketchWire | null
   nextRequestId: number
   solveSketch: SketchSolveFunction
@@ -199,6 +268,25 @@ type PendingGeometry =
       side: SketchPointTarget
     }>
   | Readonly<{ kind: "circle"; center: SketchPointTarget }>
+  | Readonly<{ kind: "ellipse-primary"; center: SketchPointTarget }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "ellipse-secondary"
+      primaryAxisPoint: SketchPointTarget
+    }>
+  | Readonly<{ center: SketchPointTarget; kind: "elliptical-arc-primary" }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "elliptical-arc-start"
+      primaryAxisPoint: SketchPointTarget
+    }>
+  | Readonly<{
+      center: SketchPointTarget
+      kind: "elliptical-arc-end"
+      primaryAxisPoint: SketchPointTarget
+      secondaryAxisPoint: SketchPoint2
+      startPoint: SketchPointTarget
+    }>
   | Readonly<{
       center: SketchPointTarget
       kind: "regular-polygon-radius"
@@ -230,6 +318,22 @@ type PendingGeometry =
       lineId: SketchEntityId
       startPointId: SketchEntityId
     }>
+  | Readonly<{
+      circleId: SketchEntityId
+      firstPoint: SketchPoint2
+      kind: "split-circle-second"
+    }>
+  | Readonly<{
+      ellipseId: SketchEntityId
+      firstPoint: SketchPoint2
+      kind: "split-ellipse-second"
+    }>
+  | Readonly<{ axisLineId: SketchEntityId; kind: "mirror-sources" }>
+  | Readonly<{
+      kind: "offset-distance"
+      lineIds: readonly SketchEntityId[]
+      referenceLineId: SketchEntityId
+    }>
   | Readonly<{ kind: "slot-end"; start: SketchPointTarget }>
   | Readonly<{
       end: SketchPointTarget
@@ -253,7 +357,11 @@ type PanGesture = Readonly<{
 
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
-const LIVE_DRAG_SOLVE_IDLE_DELAY_MS = 120
+const LIVE_DRAG_SOLVE_INTERVAL_MS = 32
+const DENSE_DRAG_IDLE_SOLVE_DELAY_MS = 120
+const DENSE_DRAG_SOLVE_COMPLEXITY = 128
+const VERY_DENSE_DRAG_SOLVE_COMPLEXITY = 512
+const DRAG_INFERENCE_FALLBACK_VIEWPORT = { height: 600, width: 800 } as const
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
 function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSolveScheduler {
@@ -261,6 +369,7 @@ function createSketchSolveScheduler(solveSketch: SketchSolveFunction): SketchSol
     disposed: false,
     inFlight: false,
     latestRequest: null,
+    latestSketch: null,
     latestSolution: null,
     nextRequestId: 1,
     solveSketch,
@@ -274,7 +383,9 @@ async function executeSketchSolveRequest(
 ) {
   try {
     return await scheduler.solveSketch(request.revision, request.sketch, {
-      continuation: continuationForSketch(scheduler.latestSolution, request.sketch),
+      continuation: request.resetContinuation
+        ? null
+        : continuationForSketch(scheduler.latestSolution, request.sketch),
       draggedPoints: request.dragTarget ? [request.dragTarget] : [],
     })
   } catch {
@@ -329,6 +440,48 @@ async function drainLatestSketchSolve(
   }
 }
 
+function resetInactiveSketchSolveScheduler(
+  scheduler: SketchSolveScheduler,
+  clearSolution: boolean,
+) {
+  if (clearSolution) {
+    scheduler.latestSketch = null
+    scheduler.latestSolution = null
+  }
+  scheduler.latestRequest = null
+  scheduler.nextRequestId += 1
+  clearSketchSolveTimer(scheduler)
+}
+
+function loadingSolveState(current: SolveState, request: SketchSolveRequest): SolveState {
+  if (current.kind === "loading" && current.sourceSketch.id === request.sketch.id) return current
+  return {
+    dragTarget: request.dragTarget,
+    kind: "loading",
+    previousSolution: request.resetContinuation
+      ? null
+      : solutionForSketch(current, request.sketch.id),
+    sourceSketch: request.sketch,
+  }
+}
+
+function scheduleSketchSolve(
+  scheduler: SketchSolveScheduler,
+  request: SketchSolveRequest,
+  publish: (state: SolveState) => void,
+) {
+  if (request.dragTarget) {
+    clearSketchSolveTimer(scheduler)
+    void drainLatestSketchSolve(scheduler, publish)
+    return
+  }
+  clearSketchSolveTimer(scheduler)
+  scheduler.timer = window.setTimeout(() => {
+    scheduler.timer = null
+    void drainLatestSketchSolve(scheduler, publish)
+  }, 30)
+}
+
 function useSketchSolution(
   controller: DocumentControllerState,
   sketch: SketchRecord | null,
@@ -354,46 +507,28 @@ function useSketchSolution(
 
   useEffect(() => {
     if (!sketch || revision === undefined || !rebuildOk) {
-      if (!sketch) scheduler.latestSolution = null
-      scheduler.latestRequest = null
-      scheduler.nextRequestId += 1
-      if (scheduler.timer !== null) {
-        window.clearTimeout(scheduler.timer)
-        scheduler.timer = null
-      }
+      resetInactiveSketchSolveScheduler(scheduler, sketch === null)
       setState((current) => (current.kind === "idle" ? current : { kind: "idle" }))
       return
     }
 
+    const resetContinuation =
+      dragTarget === null && authoredSketchGeometryChanged(scheduler.latestSketch, sketch)
+    scheduler.latestSketch = sketch
+    if (resetContinuation) scheduler.latestSolution = null
     const request: SketchSolveRequest = {
       dragTarget,
       requestId: scheduler.nextRequestId,
+      resetContinuation,
       revision,
       sketch,
     }
     scheduler.nextRequestId += 1
     scheduler.latestRequest = request
-    setState((current) =>
-      current.kind === "loading" && current.sourceSketch.id === sketch.id
-        ? current
-        : {
-            dragTarget,
-            kind: "loading",
-            previousSolution: solutionForSketch(current, sketch.id),
-            sourceSketch: sketch,
-          },
-    )
-
-    if (scheduler.timer !== null) window.clearTimeout(scheduler.timer)
-    scheduler.timer = window.setTimeout(() => {
-      scheduler.timer = null
-      void drainLatestSketchSolve(scheduler, setState)
-    }, 30)
+    setState((current) => loadingSolveState(current, request))
+    scheduleSketchSolve(scheduler, request, setState)
     return () => {
-      if (scheduler.timer !== null) {
-        window.clearTimeout(scheduler.timer)
-        scheduler.timer = null
-      }
+      clearSketchSolveTimer(scheduler)
     }
   }, [dragTarget, rebuildOk, revision, scheduler, sketch, solveSketch])
 
@@ -404,6 +539,18 @@ function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"])
   if (solveState.kind === "idle" || solveState.kind === "error") return null
   if (solveState.sourceSketch.id !== sketchId) return null
   return solveState.kind === "solved" ? solveState.solution : solveState.previousSolution
+}
+
+function authoredSketchGeometryChanged(previous: SketchRecord | null, next: SketchRecord) {
+  if (!previous || previous.id !== next.id) return false
+  const previousEntities = new Map(previous.entities.map((entity) => [entity.id, entity]))
+  return next.entities.some((entity) => {
+    const prior = previousEntities.get(entity.id)
+    if (entity.type === "point" && prior?.type === "point") {
+      return entity.x !== prior.x || entity.y !== prior.y
+    }
+    return entity.type === "circle" && prior?.type === "circle" && entity.radius !== prior.radius
+  })
 }
 
 function solvedSolution(solveState: SolveState): SolvedSketchWire | null {
@@ -516,7 +663,7 @@ function createSketchGeometryPresentation(
   )
   const curvesByPointId = new Map<string, SketchCurveEntity[]>()
   for (const curve of curves) {
-    for (const pointId of curvePointIds(curve)) {
+    for (const pointId of sketchCurvePointIds(curve)) {
       const incident = curvesByPointId.get(pointId)
       if (incident) incident.push(curve)
       else curvesByPointId.set(pointId, [curve])
@@ -689,6 +836,92 @@ function circleSamples(
   return reversed ? samples.reverse() : samples
 }
 
+function ellipseGeometry(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: SketchPointLookup,
+) {
+  const center = points.get(entity.centerPointId)
+  const primaryAxisPoint = points.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = points.get(entity.secondaryAxisPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint
+    ? sketchEllipseGeometry(center, primaryAxisPoint, secondaryAxisPoint)
+    : null
+}
+
+function ellipseSamples(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+  reversed: boolean,
+) {
+  const geometry = ellipseGeometry(entity, points)
+  if (!geometry) return null
+  const primaryDirection = {
+    x: (geometry.primaryAxisPoint.x - geometry.center.x) / geometry.primaryRadius,
+    y: (geometry.primaryAxisPoint.y - geometry.center.y) / geometry.primaryRadius,
+  }
+  const secondaryDirection = {
+    x: (geometry.secondaryAxisPoint.x - geometry.center.x) / geometry.secondaryRadius,
+    y: (geometry.secondaryAxisPoint.y - geometry.center.y) / geometry.secondaryRadius,
+  }
+  const samples = Array.from({ length: 65 }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / 64
+    return {
+      x:
+        geometry.center.x +
+        Math.cos(angle) * geometry.primaryRadius * primaryDirection.x +
+        Math.sin(angle) * geometry.secondaryRadius * secondaryDirection.x,
+      y:
+        geometry.center.y +
+        Math.cos(angle) * geometry.primaryRadius * primaryDirection.y +
+        Math.sin(angle) * geometry.secondaryRadius * secondaryDirection.y,
+    }
+  })
+  return reversed ? samples.reverse() : samples
+}
+
+function ellipticalArcGeometry(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: SketchPointLookup,
+) {
+  const center = points.get(entity.centerPointId)
+  const primaryAxisPoint = points.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = points.get(entity.secondaryAxisPointId)
+  const startPoint = points.get(entity.startPointId)
+  const endPoint = points.get(entity.endPointId)
+  return center && primaryAxisPoint && secondaryAxisPoint && startPoint && endPoint
+    ? sketchEllipticalArcGeometry(
+        center,
+        primaryAxisPoint,
+        secondaryAxisPoint,
+        startPoint,
+        endPoint,
+      )
+    : null
+}
+
+function ellipticalArcGeometrySamples(
+  geometry: NonNullable<ReturnType<typeof sketchEllipticalArcGeometry>>,
+) {
+  const segmentCount = Math.max(8, Math.ceil((geometry.sweep / (Math.PI * 2)) * 64))
+  return Array.from({ length: segmentCount + 1 }, (_, index) =>
+    sketchEllipsePointAt(
+      geometry,
+      geometry.startParameter + (geometry.sweep * index) / segmentCount,
+    ),
+  )
+}
+
+function ellipticalArcSamples(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+  reversed: boolean,
+) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  if (!geometry) return null
+  const samples = ellipticalArcGeometrySamples(geometry)
+  return reversed ? samples.reverse() : samples
+}
+
 function segmentSamples(
   entity: SketchEntity,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -702,6 +935,10 @@ function segmentSamples(
       return arcSamples(entity, points, reversed)
     case "circle":
       return circleSamples(entity, points, solvedCircles, reversed)
+    case "ellipse":
+      return ellipseSamples(entity, points, reversed)
+    case "elliptical-arc":
+      return ellipticalArcSamples(entity, points, reversed)
     case "point":
       return null
   }
@@ -924,6 +1161,52 @@ function SketchArc({
   )
 }
 
+function SketchEllipse({
+  entity,
+  hidden,
+  interactive,
+  onPointerDown,
+  points,
+  selected,
+}: Omit<CurveDrawingProps, "solvedRadius"> & {
+  entity: Extract<SketchEntity, { type: "ellipse" }>
+}) {
+  const geometry = ellipseGeometry(entity, points)
+  if (!geometry) return null
+  return (
+    <ellipse
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+      cx={geometry.center.x}
+      cy={geometry.center.y}
+      rx={geometry.primaryRadius}
+      ry={geometry.secondaryRadius}
+      transform={ellipseSvgTransform(geometry)}
+    />
+  )
+}
+
+function SketchEllipticalArc({
+  entity,
+  hidden,
+  interactive,
+  onPointerDown,
+  points,
+  selected,
+}: Omit<CurveDrawingProps, "solvedRadius"> & {
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>
+}) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  if (!geometry) return null
+  return (
+    <polyline
+      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+      points={ellipticalArcGeometrySamples(geometry)
+        .map(({ x, y }) => `${x},${y}`)
+        .join(" ")}
+    />
+  )
+}
+
 function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | undefined) {
   return (
     left === right ||
@@ -934,17 +1217,6 @@ function sameDisplayPoint(left: DisplayPoint | undefined, right: DisplayPoint | 
       left.y === right.y &&
       left.construction === right.construction)
   )
-}
-
-function curvePointIds(entity: Exclude<SketchEntity, { type: "point" }>) {
-  switch (entity.type) {
-    case "line":
-      return [entity.startPointId, entity.endPointId]
-    case "circle":
-      return [entity.centerPointId]
-    case "arc":
-      return [entity.centerPointId, entity.startPointId, entity.endPointId]
-  }
 }
 
 const SketchCurve = memo(
@@ -958,6 +1230,10 @@ const SketchCurve = memo(
         return <SketchCircle {...props} entity={props.entity} />
       case "arc":
         return <SketchArc {...props} entity={props.entity} />
+      case "ellipse":
+        return <SketchEllipse {...props} entity={props.entity} />
+      case "elliptical-arc":
+        return <SketchEllipticalArc {...props} entity={props.entity} />
     }
   },
   (previous, next) => {
@@ -971,7 +1247,7 @@ const SketchCurve = memo(
     ) {
       return false
     }
-    return curvePointIds(next.entity).every((pointId) =>
+    return sketchCurvePointIds(next.entity).every((pointId) =>
       sameDisplayPoint(previous.points.get(pointId), next.points.get(pointId)),
     )
   },
@@ -980,6 +1256,8 @@ const SketchCurve = memo(
 type SketchPointDrawingProps = Readonly<{
   dragging: boolean
   editable: boolean
+  modificationTarget: boolean
+  onEntityAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
@@ -988,69 +1266,118 @@ type SketchPointDrawingProps = Readonly<{
   selected: boolean
 }>
 
-const SketchPoint = memo(
-  function SketchPoint({
-    dragging,
-    editable,
-    onPointPointerDown,
-    onSelect,
-    onTarget,
-    point,
-    selectable,
-    selected,
-  }: SketchPointDrawingProps) {
-    return (
-      <>
-        <circle
-          data-sketch-entity-id={dragging ? undefined : point.id}
-          data-sketch-entity-type={dragging ? undefined : "point"}
-          cx={point.x}
-          cy={point.y}
-          r={7}
-          fill="transparent"
-          pointerEvents="all"
-          stroke="none"
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            if (selectable) {
-              onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
-              onPointPointerDown(event, point.id)
-            } else if (editable) {
-              onTarget({ kind: "existing", pointId: point.id })
-            }
-          }}
-        />
-        <circle
-          cx={point.x}
-          cy={point.y}
-          r={3}
-          className={
-            selected
-              ? "pointer-events-none fill-ring stroke-background"
-              : point.construction
-                ? "pointer-events-none fill-background stroke-muted-foreground"
-                : "pointer-events-none fill-background stroke-primary"
+const SketchPoint = memo(function SketchPoint({
+  dragging,
+  editable,
+  modificationTarget,
+  onEntityAction,
+  onPointPointerDown,
+  onSelect,
+  onTarget,
+  point,
+  selectable,
+  selected,
+}: SketchPointDrawingProps) {
+  return (
+    <>
+      <circle
+        data-sketch-entity-id={dragging ? undefined : point.id}
+        data-sketch-entity-type={dragging ? undefined : "point"}
+        cx={point.x}
+        cy={point.y}
+        r={7}
+        fill="transparent"
+        pointerEvents="all"
+        stroke="none"
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          if (selectable) {
+            onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
+            onPointPointerDown(event, point.id)
+          } else if (modificationTarget) {
+            onEntityAction(event, point.id)
+          } else if (editable) {
+            onTarget({ kind: "existing", pointId: point.id })
           }
-          opacity={dragging ? 0 : undefined}
-          strokeWidth={2}
-          vectorEffect="non-scaling-stroke"
-        />
-      </>
-    )
-  },
-  (previous, next) => {
-    return (
-      previous.dragging === next.dragging &&
-      previous.editable === next.editable &&
-      previous.onPointPointerDown === next.onPointPointerDown &&
-      previous.onSelect === next.onSelect &&
-      previous.onTarget === next.onTarget &&
-      previous.selectable === next.selectable &&
-      previous.selected === next.selected &&
-      sameDisplayPoint(previous.point, next.point)
-    )
-  },
-)
+        }}
+      />
+      <circle
+        cx={point.x}
+        cy={point.y}
+        r={3}
+        className={
+          selected
+            ? "pointer-events-none fill-ring stroke-background"
+            : point.construction
+              ? "pointer-events-none fill-background stroke-muted-foreground"
+              : "pointer-events-none fill-background stroke-primary"
+        }
+        opacity={dragging ? 0 : undefined}
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+    </>
+  )
+}, sameSketchPointDrawingProps)
+
+const stableSketchPointDrawingKeys = [
+  "dragging",
+  "editable",
+  "modificationTarget",
+  "onEntityAction",
+  "onPointPointerDown",
+  "onSelect",
+  "onTarget",
+  "selectable",
+  "selected",
+] as const satisfies readonly (keyof SketchPointDrawingProps)[]
+
+function sameSketchPointDrawingProps(
+  previous: SketchPointDrawingProps,
+  next: SketchPointDrawingProps,
+) {
+  return (
+    sameDisplayPoint(previous.point, next.point) &&
+    stableSketchPointDrawingKeys.every((key) => previous[key] === next[key])
+  )
+}
+
+type SketchCurveModificationSupport = (
+  curve: SketchCurveEntity,
+  pending: PendingGeometry | null,
+) => boolean
+
+const directModificationCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set([
+  "arc",
+  "circle",
+  "ellipse",
+  "elliptical-arc",
+  "line",
+])
+const extendCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set([
+  "arc",
+  "elliptical-arc",
+  "line",
+])
+const supportsEverySketchCurve: SketchCurveModificationSupport = () => true
+const sketchCurveModificationSupport = {
+  "circular-pattern": supportsEverySketchCurve,
+  extend: (curve) => extendCurveTypes.has(curve.type),
+  "linear-pattern": supportsEverySketchCurve,
+  mirror: (curve, pending) => pending?.kind === "mirror-sources" || curve.type === "line",
+  offset: (curve, pending) => pending?.kind !== "offset-distance" && curve.type === "line",
+  split: (curve) => directModificationCurveTypes.has(curve.type),
+  transform: supportsEverySketchCurve,
+  trim: (curve) => directModificationCurveTypes.has(curve.type),
+} satisfies Record<SketchModificationTool, SketchCurveModificationSupport>
+
+function supportsSketchCurveModification(
+  tool: SketchModificationTool,
+  curve: SketchCurveEntity,
+  pending: PendingGeometry | null,
+) {
+  return sketchCurveModificationSupport[tool](curve, pending)
+}
 
 function SketchGeometry({
   draggingPointId,
@@ -1059,6 +1386,7 @@ function SketchGeometry({
   onPointPointerDown,
   onSelect,
   onTarget,
+  pending,
   selectedEntityIds,
   presentation,
   tool,
@@ -1069,13 +1397,20 @@ function SketchGeometry({
   onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
+  pending: PendingGeometry | null
   selectedEntityIds: readonly SketchEntityId[]
   presentation: SketchGeometryPresentation
   tool: SketchEditorTool
 }) {
   const selectable = editable && tool === "select"
   const modifiable = editable && isSketchModificationTool(tool)
-  const selectedIds = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
+  const mirrorSourceSelection = tool === "mirror" && pending?.kind === "mirror-sources"
+  const transformSourceSelection = tool === "transform"
+  const selectedIds = useMemo(() => {
+    const ids = new Set(selectedEntityIds)
+    if (pending?.kind === "mirror-sources") ids.add(pending.axisLineId)
+    return ids
+  }, [pending, selectedEntityIds])
   const geometryPointerDown = useCallback(
     (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
       if (!selectable && !modifiable) return
@@ -1092,9 +1427,14 @@ function SketchGeometry({
           key={entity.id}
           entity={entity}
           hidden={Boolean(
-            draggingPointId && curvePointIds(entity).some((pointId) => pointId === draggingPointId),
+            draggingPointId &&
+              sketchCurvePointIds(entity).some((pointId) => pointId === draggingPointId),
           )}
-          interactive={!modifiable || entity.type === "line"}
+          interactive={
+            !modifiable ||
+            (isSketchModificationTool(tool) &&
+              supportsSketchCurveModification(tool, entity, pending))
+          }
           points={presentation.pointsById}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
@@ -1105,7 +1445,9 @@ function SketchGeometry({
         <SketchPoint
           key={point.id}
           dragging={point.id === draggingPointId}
-          editable={editable && !modifiable}
+          editable={editable && (!modifiable || mirrorSourceSelection || transformSourceSelection)}
+          modificationTarget={mirrorSourceSelection || transformSourceSelection}
+          onEntityAction={geometryPointerDown}
           point={point}
           selectable={selectable}
           selected={selectedIds.has(point.id)}
@@ -1120,7 +1462,7 @@ function SketchGeometry({
 
 const StableSketchGeometry = memo(SketchGeometry)
 
-const ignoreCurvePointerDown = () => undefined
+const ignoreCurveAction = () => undefined
 
 function DraggedSketchGeometry({
   dragTarget,
@@ -1158,7 +1500,7 @@ function DraggedSketchGeometry({
           points={points}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
-          onPointerDown={ignoreCurvePointerDown}
+          onPointerDown={ignoreCurveAction}
         />
       ))}
       <circle
@@ -1177,6 +1519,66 @@ function DraggedSketchGeometry({
         strokeWidth={2}
         vectorEffect="non-scaling-stroke"
       />
+    </g>
+  )
+}
+
+function SketchTransformGeometry({
+  entityIds,
+  origin,
+  presentation,
+  preview,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  origin: SketchPoint2
+  presentation: SketchGeometryPresentation
+  preview: SketchTransformPreview
+}>) {
+  const selectedIds = useMemo(() => new Set(entityIds), [entityIds])
+  const curves = useMemo(
+    () => presentation.curves.filter(({ id }) => selectedIds.has(id)),
+    [presentation.curves, selectedIds],
+  )
+  const pointIds = useMemo(() => {
+    const ids = new Set<SketchEntityId>()
+    for (const point of presentation.points) {
+      if (selectedIds.has(point.id)) ids.add(point.id)
+    }
+    for (const curve of curves) {
+      for (const pointId of sketchCurvePointIds(curve)) ids.add(pointId)
+    }
+    return ids
+  }, [curves, presentation.points, selectedIds])
+  if (isIdentitySketchTransform(preview)) return null
+  return (
+    <g data-sketch-transform-preview pointerEvents="none" transform={`scale(1 -1)`}>
+      <g transform={sketchTransformSvgValue(origin, preview)}>
+        {curves.map((entity) => (
+          <SketchCurve
+            key={entity.id}
+            entity={entity}
+            hidden={false}
+            interactive={false}
+            points={presentation.pointsById}
+            selected
+            solvedRadius={presentation.solvedCircles.get(entity.id)}
+            onPointerDown={ignoreCurveAction}
+          />
+        ))}
+        {presentation.points
+          .filter(({ id }) => pointIds.has(id))
+          .map((point) => (
+            <circle
+              key={point.id}
+              cx={point.x}
+              cy={point.y}
+              r={3}
+              className="fill-ring stroke-background"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+      </g>
     </g>
   )
 }
@@ -1202,6 +1604,40 @@ function midpointForIds(
   return first && second ? midpoint(first, second) : null
 }
 
+function circleEntityAnchor(
+  entity: Extract<SketchEntity, { type: "circle" }>,
+  point: (id: SketchEntityId) => SketchPoint2 | null,
+  solvedCircles: ReadonlyMap<string, number>,
+) {
+  const center = point(entity.centerPointId)
+  if (!center) return null
+  const radius = solvedCircles.get(entity.id) ?? entity.radius
+  return { x: center.x + radius * 0.7, y: center.y + radius * 0.7 }
+}
+
+function ellipseEntityAnchor(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+) {
+  const geometry = ellipseGeometry(entity, points)
+  return geometry
+    ? {
+        x: geometry.center.x + geometry.primaryRadius * 0.7,
+        y: geometry.center.y + geometry.secondaryRadius * 0.7,
+      }
+    : (points.get(entity.centerPointId) ?? null)
+}
+
+function ellipticalArcEntityAnchor(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  points: ReadonlyMap<string, DisplayPoint>,
+) {
+  const geometry = ellipticalArcGeometry(entity, points)
+  return geometry
+    ? sketchEllipsePointAt(geometry, geometry.startParameter + geometry.sweep / 2)
+    : (points.get(entity.centerPointId) ?? null)
+}
+
 function entityAnchor(
   entity: SketchEntity | undefined,
   points: ReadonlyMap<string, DisplayPoint>,
@@ -1214,16 +1650,16 @@ function entityAnchor(
       return point(entity.id)
     case "line":
       return midpointForIds(entity.startPointId, entity.endPointId, point)
-    case "circle": {
-      const center = point(entity.centerPointId)
-      if (!center) return null
-      const radius = solvedCircles.get(entity.id) ?? entity.radius
-      return { x: center.x + radius * 0.7, y: center.y + radius * 0.7 }
-    }
+    case "circle":
+      return circleEntityAnchor(entity, point, solvedCircles)
     case "arc":
       return (
         midpointForIds(entity.startPointId, entity.endPointId, point) ?? point(entity.centerPointId)
       )
+    case "ellipse":
+      return ellipseEntityAnchor(entity, points)
+    case "elliptical-arc":
+      return ellipticalArcEntityAnchor(entity, points)
   }
 }
 
@@ -1253,21 +1689,58 @@ const geometricConstraintLabels: Partial<
   vertical: "V",
 }
 
-function constraintAnchor(
+const ellipseAxisDimensionAxes: Partial<
+  Record<SketchRecord["constraints"][number]["type"], "primary" | "secondary">
+> = {
+  "primary-axis-diameter": "primary",
+  "secondary-axis-diameter": "secondary",
+}
+
+type EllipseAxisDimensionConstraint = Extract<
+  SketchRecord["constraints"][number],
+  { type: "primary-axis-diameter" | "secondary-axis-diameter" }
+>
+
+function pairedConstraintAnchor(
   constraint: SketchRecord["constraints"][number],
   pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
 ) {
   if ("firstPointId" in constraint) {
-    return midpointForIds(constraint.firstPointId, constraint.secondPointId, pointAnchor)
+    return {
+      handled: true,
+      point: midpointForIds(constraint.firstPointId, constraint.secondPointId, pointAnchor),
+    } as const
   }
   if ("firstEntityId" in constraint) {
-    return midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor)
+    return {
+      handled: true,
+      point: midpointForIds(constraint.firstEntityId, constraint.secondEntityId, geometryAnchor),
+    } as const
   }
+  return { handled: false } as const
+}
+
+function constraintAnchor(
+  constraint: SketchRecord["constraints"][number],
+  pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  ellipseAxisAnchor: (id: SketchEntityId, axis: "primary" | "secondary") => SketchPoint2 | null,
+) {
+  const pairedAnchor = pairedConstraintAnchor(constraint, pointAnchor, geometryAnchor)
+  if (pairedAnchor.handled) return pairedAnchor.point
   if ("pointId" in constraint) return pointAnchor(constraint.pointId)
+  const ellipseAxis = ellipseAxisDimensionAxes[constraint.type]
+  if (ellipseAxis) {
+    return ellipseAxisAnchor((constraint as EllipseAxisDimensionConstraint).curveId, ellipseAxis)
+  }
   if ("curveId" in constraint) return geometryAnchor(constraint.curveId)
   if ("arcId" in constraint) {
     return midpointForIds(constraint.lineId, constraint.arcId, geometryAnchor)
+  }
+  if (constraint.type === "offset") {
+    const pair = constraint.linePairs[0]
+    return pair ? midpointForIds(pair.sourceLineId, pair.offsetLineId, geometryAnchor) : null
   }
   if ("lineId" in constraint) return geometryAnchor(constraint.lineId)
   return null
@@ -1277,8 +1750,9 @@ function constraintGlyph(
   constraint: SketchRecord["constraints"][number],
   pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
+  ellipseAxisAnchor: (id: SketchEntityId, axis: "primary" | "secondary") => SketchPoint2 | null,
 ): ConstraintGlyph | null {
-  const point = constraintAnchor(constraint, pointAnchor, geometryAnchor)
+  const point = constraintAnchor(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor)
   const label = dimensionalLabel(constraint) ?? geometricConstraintLabels[constraint.type]
   return point && label
     ? { id: constraint.id, label, point, dimensional: "value" in constraint }
@@ -1292,9 +1766,19 @@ function constraintGlyphs(sketch: SketchRecord, solution: SolvedSketchWire | nul
   const pointAnchor = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
   const geometryAnchor = (id: SketchEntityId) =>
     entityAnchor(entities.get(id), points, solvedCircles)
+  const ellipseAxisAnchor = (id: SketchEntityId, axis: "primary" | "secondary") => {
+    const entity = entities.get(id)
+    if (entity?.type !== "ellipse" && entity?.type !== "elliptical-arc") return null
+    return (
+      points.get(axis === "primary" ? entity.primaryAxisPointId : entity.secondaryAxisPointId) ??
+      null
+    )
+  }
 
   return sketch.constraints
-    .map((constraint) => constraintGlyph(constraint, pointAnchor, geometryAnchor))
+    .map((constraint) =>
+      constraintGlyph(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor),
+    )
     .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
 }
 
@@ -1419,6 +1903,11 @@ type PendingWithTargetCenter = Extract<
   | { kind: "centered-slot-end" }
   | { kind: "centered-slot-width" }
   | { kind: "circle" }
+  | { kind: "ellipse-primary" }
+  | { kind: "ellipse-secondary" }
+  | { kind: "elliptical-arc-primary" }
+  | { kind: "elliptical-arc-start" }
+  | { kind: "elliptical-arc-end" }
   | { kind: "regular-polygon-radius" }
   | { kind: "regular-polygon-sides" }
 >
@@ -1430,6 +1919,11 @@ const pendingTargetCenterKinds: ReadonlySet<PendingGeometry["kind"]> = new Set([
   "centered-slot-end",
   "centered-slot-width",
   "circle",
+  "ellipse-primary",
+  "ellipse-secondary",
+  "elliptical-arc-primary",
+  "elliptical-arc-start",
+  "elliptical-arc-end",
   "regular-polygon-radius",
   "regular-polygon-sides",
 ])
@@ -1471,6 +1965,10 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
         ? pointForTarget(sketch, { kind: "existing", pointId: line.startPointId })
         : { x: 0, y: 0 }
     }
+    case "split-circle-second":
+      return pending.firstPoint
+    case "split-ellipse-second":
+      return pending.firstPoint
     default:
       return { x: 0, y: 0 }
   }
@@ -1636,6 +2134,137 @@ function PendingThreePointCircleShape({
     <circle cx={geometry.center.x} cy={geometry.center.y} r={geometry.radius} />
   ) : (
     <polyline points={`${start.x},${start.y} ${second.x},${second.y} ${cursor.x},${cursor.y}`} />
+  )
+}
+
+function ellipseSvgTransform(geometry: NonNullable<ReturnType<typeof sketchEllipseGeometry>>) {
+  const angle =
+    (Math.atan2(
+      geometry.primaryAxisPoint.y - geometry.center.y,
+      geometry.primaryAxisPoint.x - geometry.center.x,
+    ) *
+      180) /
+    Math.PI
+  return `rotate(${angle} ${geometry.center.x} ${geometry.center.y})`
+}
+
+function PendingEllipseShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: Extract<PendingGeometry, { kind: "ellipse-primary" | "ellipse-secondary" }>
+  sketch: SketchRecord
+}) {
+  const center = pointForTarget(sketch, pending.center)
+  if (pending.kind === "ellipse-primary") {
+    return <line x1={center.x} y1={center.y} x2={cursor.x} y2={cursor.y} />
+  }
+  const primaryAxisPoint = pointForTarget(sketch, pending.primaryAxisPoint)
+  const geometry = sketchEllipseGeometry(center, primaryAxisPoint, cursor)
+  if (!geometry) {
+    return <line x1={center.x} y1={center.y} x2={primaryAxisPoint.x} y2={primaryAxisPoint.y} />
+  }
+  return (
+    <>
+      <ellipse
+        cx={geometry.center.x}
+        cy={geometry.center.y}
+        rx={geometry.primaryRadius}
+        ry={geometry.secondaryRadius}
+        transform={ellipseSvgTransform(geometry)}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.primaryAxisPoint.x}
+        y2={geometry.primaryAxisPoint.y}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.secondaryAxisPoint.x}
+        y2={geometry.secondaryAxisPoint.y}
+      />
+    </>
+  )
+}
+
+type PendingEllipticalArc = Extract<
+  PendingGeometry,
+  { kind: "elliptical-arc-primary" | "elliptical-arc-start" | "elliptical-arc-end" }
+>
+
+function isPendingEllipticalArc(pending: PendingGeometry | null): pending is PendingEllipticalArc {
+  return (
+    pending?.kind === "elliptical-arc-primary" ||
+    pending?.kind === "elliptical-arc-start" ||
+    pending?.kind === "elliptical-arc-end"
+  )
+}
+
+function PendingEllipticalArcShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingEllipticalArc
+  sketch: SketchRecord
+}) {
+  const center = pointForTarget(sketch, pending.center)
+  if (pending.kind === "elliptical-arc-primary") {
+    return <line x1={center.x} y1={center.y} x2={cursor.x} y2={cursor.y} />
+  }
+  const primaryAxisPoint = pointForTarget(sketch, pending.primaryAxisPoint)
+  const geometry =
+    pending.kind === "elliptical-arc-start"
+      ? sketchEllipticalArcStartGeometry(center, primaryAxisPoint, cursor)
+      : sketchEllipticalArcGeometry(
+          center,
+          primaryAxisPoint,
+          pending.secondaryAxisPoint,
+          pointForTarget(sketch, pending.startPoint),
+          cursor,
+        )
+  if (!geometry) {
+    return <line x1={center.x} y1={center.y} x2={primaryAxisPoint.x} y2={primaryAxisPoint.y} />
+  }
+  return (
+    <>
+      <ellipse
+        cx={geometry.center.x}
+        cy={geometry.center.y}
+        opacity={0.55}
+        rx={geometry.primaryRadius}
+        ry={geometry.secondaryRadius}
+        transform={ellipseSvgTransform(geometry)}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.primaryAxisPoint.x}
+        y2={geometry.primaryAxisPoint.y}
+      />
+      <line
+        x1={geometry.center.x}
+        y1={geometry.center.y}
+        x2={geometry.secondaryAxisPoint.x}
+        y2={geometry.secondaryAxisPoint.y}
+      />
+      {"sweep" in geometry ? (
+        <polyline
+          strokeDasharray="none"
+          strokeWidth={2}
+          points={ellipticalArcGeometrySamples(geometry)
+            .map(({ x, y }) => `${x},${y}`)
+            .join(" ")}
+        />
+      ) : (
+        <circle cx={geometry.startPoint.x} cy={geometry.startPoint.y} r={2.5} />
+      )}
+    </>
   )
 }
 
@@ -1883,6 +2512,113 @@ function PendingRegularPolygonShape({
   )
 }
 
+type PendingCircleSplit = Extract<PendingGeometry, { kind: "split-circle-second" }>
+
+function PendingCircleSplitShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingCircleSplit
+  sketch: SketchRecord
+}) {
+  const circle = sketch.entities.find(({ id }) => id === pending.circleId)
+  if (circle?.type !== "circle") return null
+  const center = sketch.entities.find(({ id }) => id === circle.centerPointId)
+  const secondPoint = projectedCirclePoint(sketch, circle, cursor)
+  if (center?.type !== "point" || !secondPoint) return null
+  return (
+    <>
+      <polyline points={arcPolyline(center, pending.firstPoint, secondPoint)} />
+      <polyline points={arcPolyline(center, secondPoint, pending.firstPoint)} />
+      <circle cx={pending.firstPoint.x} cy={pending.firstPoint.y} r={3} />
+      <circle cx={secondPoint.x} cy={secondPoint.y} r={3} />
+    </>
+  )
+}
+
+type PendingEllipseSplit = Extract<PendingGeometry, { kind: "split-ellipse-second" }>
+
+function ellipseArcPreviewPoints(
+  geometry: NonNullable<ReturnType<typeof sketchEllipseGeometry>>,
+  start: SketchPoint2,
+  end: SketchPoint2,
+) {
+  const startParameter = sketchEllipseParameterForPoint(geometry, start)
+  const endParameter = sketchEllipseParameterForPoint(geometry, end)
+  const sweep = (((endParameter - startParameter) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+  const segmentCount = Math.max(8, Math.ceil((sweep / (Math.PI * 2)) * 64))
+  return Array.from({ length: segmentCount + 1 }, (_, index) =>
+    sketchEllipsePointAt(geometry, startParameter + (sweep * index) / segmentCount),
+  )
+}
+
+function PendingEllipseSplitShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingEllipseSplit
+  sketch: SketchRecord
+}) {
+  const ellipse = sketch.entities.find(({ id }) => id === pending.ellipseId)
+  if (ellipse?.type !== "ellipse") return null
+  const points = new Map(
+    sketch.entities.flatMap((entity) => (entity.type === "point" ? [[entity.id, entity]] : [])),
+  )
+  const geometry = ellipseGeometry(ellipse, points)
+  if (!geometry) return null
+  const secondPoint = projectPointToSketchEllipse(geometry, cursor).point
+  const firstArc = ellipseArcPreviewPoints(geometry, pending.firstPoint, secondPoint)
+  const secondArc = ellipseArcPreviewPoints(geometry, secondPoint, pending.firstPoint)
+  return (
+    <>
+      <polyline points={firstArc.map(({ x, y }) => `${x},${y}`).join(" ")} />
+      <polyline points={secondArc.map(({ x, y }) => `${x},${y}`).join(" ")} />
+      <circle cx={pending.firstPoint.x} cy={pending.firstPoint.y} r={3} />
+      <circle cx={secondPoint.x} cy={secondPoint.y} r={3} />
+    </>
+  )
+}
+
+type PendingAnalyticalCurve = Extract<
+  PendingGeometry,
+  | { kind: "ellipse-primary" | "ellipse-secondary" }
+  | { kind: "elliptical-arc-primary" | "elliptical-arc-start" | "elliptical-arc-end" }
+  | { kind: PendingRoundCurve["kind"] }
+>
+
+function isPendingAnalyticalCurve(pending: PendingGeometry): pending is PendingAnalyticalCurve {
+  return (
+    pending.kind === "ellipse-primary" ||
+    pending.kind === "ellipse-secondary" ||
+    isPendingEllipticalArc(pending) ||
+    isPendingRoundCurve(pending)
+  )
+}
+
+function PendingAnalyticalCurveShape({
+  cursor,
+  pending,
+  sketch,
+  start,
+}: {
+  cursor: SketchPoint2
+  pending: PendingAnalyticalCurve
+  sketch: SketchRecord
+  start: SketchPoint2
+}) {
+  if (pending.kind === "ellipse-primary" || pending.kind === "ellipse-secondary") {
+    return <PendingEllipseShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (isPendingEllipticalArc(pending)) {
+    return <PendingEllipticalArcShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  return <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+}
+
 function PendingCurveShape({
   cursor,
   pending,
@@ -1904,9 +2640,20 @@ function PendingCurveShape({
   if (pending.kind === "regular-polygon-radius" || pending.kind === "regular-polygon-sides") {
     return <PendingRegularPolygonShape cursor={cursor} pending={pending} sketch={sketch} />
   }
-  if (isPendingRoundCurve(pending)) {
+  if (pending.kind === "split-circle-second") {
+    return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (pending.kind === "split-ellipse-second") {
+    return <PendingEllipseSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (isPendingAnalyticalCurve(pending)) {
     return (
-      <PendingRoundCurveShape cursor={cursor} pending={pending} sketch={sketch} start={start} />
+      <PendingAnalyticalCurveShape
+        cursor={cursor}
+        pending={pending}
+        sketch={sketch}
+        start={start}
+      />
     )
   }
   return <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} />
@@ -1946,7 +2693,33 @@ function PendingPreview({
   pending: PendingGeometry | null
   sketch: SketchRecord
 }) {
-  if (!pending || !cursor) return null
+  if (!pending || !cursor || pending.kind === "mirror-sources") return null
+  if (pending.kind === "offset-distance") {
+    const preview = safeSketchLineOffsetPreview(sketch, pending, cursor)
+    if (!preview) return null
+    return (
+      <g
+        transform="scale(1 -1)"
+        className="pointer-events-none stroke-muted-foreground"
+        data-sketch-offset-distance={preview.distance}
+        data-sketch-preview-tool={pending.kind}
+        fill="none"
+        strokeDasharray="5 4"
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      >
+        {preview.lines.map((line) => (
+          <line
+            key={line.sourceLineId}
+            x1={line.start.x}
+            y1={line.start.y}
+            x2={line.end.x}
+            y2={line.end.y}
+          />
+        ))}
+      </g>
+    )
+  }
   const start = pendingStart(pending, sketch)
   return (
     <g
@@ -2402,6 +3175,100 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   }
 }
 
+function placeEllipse(input: PlacementInput): PlacementUpdate {
+  if (input.pending?.kind !== "ellipse-primary" && input.pending?.kind !== "ellipse-secondary") {
+    return { draft: null, pending: { center: input.target, kind: "ellipse-primary" } }
+  }
+  if (input.pending.kind === "ellipse-primary") {
+    return {
+      draft: null,
+      pending: {
+        center: input.pending.center,
+        kind: "ellipse-secondary",
+        primaryAxisPoint: input.target,
+      },
+    }
+  }
+  return {
+    draft: appendSketchEllipse(input.draft, {
+      center: input.pending.center,
+      construction: input.construction,
+      createEntityId: createBrowserSketchEntityId,
+      primaryAxisPoint: input.pending.primaryAxisPoint,
+      secondaryRadiusPoint: input.point,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeEllipticalArcPrimary(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-primary" }>,
+): PlacementUpdate {
+  return {
+    draft: null,
+    pending: {
+      center: pending.center,
+      kind: "elliptical-arc-start",
+      primaryAxisPoint: input.target,
+    },
+  }
+}
+
+function placeEllipticalArcStart(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-start" }>,
+): PlacementUpdate {
+  const geometry = sketchEllipticalArcStartGeometry(
+    pointForTarget(input.draft, pending.center),
+    pointForTarget(input.draft, pending.primaryAxisPoint),
+    input.point,
+  )
+  return geometry
+    ? {
+        draft: null,
+        pending: {
+          center: pending.center,
+          kind: "elliptical-arc-end",
+          primaryAxisPoint: pending.primaryAxisPoint,
+          secondaryAxisPoint: geometry.secondaryAxisPoint,
+          startPoint: { kind: "new", point: geometry.startPoint },
+        },
+      }
+    : { draft: null, pending }
+}
+
+function placeEllipticalArcEnd(
+  input: PlacementInput,
+  pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-end" }>,
+): PlacementUpdate {
+  return {
+    draft: appendSketchEllipticalArc(input.draft, {
+      center: pending.center,
+      construction: input.construction,
+      createEntityId: createBrowserSketchEntityId,
+      endPoint: { kind: "new", point: input.point },
+      primaryAxisPoint: pending.primaryAxisPoint,
+      secondaryAxisPoint: pending.secondaryAxisPoint,
+      startPoint: pending.startPoint,
+    }).sketch,
+    pending: null,
+  }
+}
+
+function placeEllipticalArc(input: PlacementInput): PlacementUpdate {
+  const pending = input.pending
+  if (!isPendingEllipticalArc(pending)) {
+    return { draft: null, pending: { center: input.target, kind: "elliptical-arc-primary" } }
+  }
+  if (pending.kind === "elliptical-arc-primary") {
+    return placeEllipticalArcPrimary(input, pending)
+  }
+  return pending.kind === "elliptical-arc-start"
+    ? placeEllipticalArcStart(input, pending)
+    : placeEllipticalArcEnd(input, pending)
+}
+
 function placeRegularPolygonRadius(
   mode: RegularPolygonMode,
   input: PlacementInput,
@@ -2578,6 +3445,8 @@ const placementBuilders = {
   "centered-aligned-rectangle": placeCenteredAlignedRectangle,
   "centered-slot": placeCenteredSlot,
   circle: placeCircle,
+  ellipse: placeEllipse,
+  "elliptical-arc": placeEllipticalArc,
   "circumscribed-polygon": placeCircumscribedPolygon,
   "inscribed-polygon": placeInscribedPolygon,
   line: placeLine,
@@ -2606,8 +3475,48 @@ function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
   }
 }
 
+type DirectSketchModificationTool = Exclude<
+  SketchModificationTool,
+  "circular-pattern" | "linear-pattern" | "mirror" | "offset" | "transform"
+>
+type SketchCurveActionKind =
+  | "circular-pattern"
+  | "direct"
+  | "linear-pattern"
+  | "mirror"
+  | "offset"
+  | "split-circle"
+  | "split-ellipse"
+  | "transform"
+
+const indirectSketchCurveActions = new Map<SketchModificationTool, SketchCurveActionKind>([
+  ["circular-pattern", "circular-pattern"],
+  ["linear-pattern", "linear-pattern"],
+  ["mirror", "mirror"],
+  ["offset", "offset"],
+  ["transform", "transform"],
+])
+
+function isDirectSketchModificationTool(
+  tool: SketchEditorTool,
+): tool is DirectSketchModificationTool {
+  return isSketchModificationTool(tool) && !indirectSketchCurveActions.has(tool)
+}
+
+function sketchCurveActionKind(
+  tool: SketchEditorTool,
+  entity: SketchEntity | undefined,
+): SketchCurveActionKind | null {
+  if (!isSketchModificationTool(tool)) return null
+  const indirectAction = indirectSketchCurveActions.get(tool)
+  if (indirectAction) return indirectAction
+  if (tool !== "split") return "direct"
+  if (entity?.type === "circle") return "split-circle"
+  return entity?.type === "ellipse" ? "split-ellipse" : "direct"
+}
+
 function sketchModificationUpdate(
-  tool: SketchModificationTool,
+  tool: DirectSketchModificationTool,
   draft: SketchRecord,
   entityId: SketchEntityId,
   point: SketchPoint2,
@@ -2615,21 +3524,87 @@ function sketchModificationUpdate(
   const input = {
     createConstraintId: createBrowserSketchConstraintId,
     createEntityId: createBrowserSketchEntityId,
-    lineId: entityId,
+    curveId: entityId,
     point,
   }
   switch (tool) {
     case "trim":
-      return trimSketchLine(draft, input).sketch
+      return trimSketchCurve(draft, input).sketch
     case "extend":
-      return extendSketchLine(draft, input).sketch
+      return extendSketchCurve(draft, input).sketch
     case "split":
-      return splitSketchLine(draft, input).sketch
+      return splitSketchCurve(draft, input).sketch
   }
 }
 
+function safeCircleSplitUpdate(
+  draft: SketchRecord,
+  circleId: SketchEntityId,
+  firstPoint: SketchPoint2,
+  secondPoint: SketchPoint2,
+) {
+  try {
+    return splitSketchCircle(draft, {
+      circleId,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      firstPoint,
+      secondPoint,
+    }).sketch
+  } catch {
+    return null
+  }
+}
+
+function safeEllipseSplitUpdate(
+  draft: SketchRecord,
+  ellipseId: SketchEntityId,
+  firstPoint: SketchPoint2,
+  secondPoint: SketchPoint2,
+) {
+  try {
+    return splitSketchEllipse(draft, {
+      createEntityId: createBrowserSketchEntityId,
+      ellipseId,
+      firstPoint,
+      secondPoint,
+    }).sketch
+  } catch {
+    return null
+  }
+}
+
+function projectedCirclePoint(
+  draft: SketchRecord,
+  circle: Extract<SketchEntity, { type: "circle" }>,
+  point: SketchPoint2,
+) {
+  const center = draft.entities.find(({ id }) => id === circle.centerPointId)
+  if (center?.type !== "point") return null
+  const offsetX = point.x - center.x
+  const offsetY = point.y - center.y
+  const offsetLength = Math.hypot(offsetX, offsetY)
+  if (offsetLength <= Number.EPSILON) return null
+  return {
+    x: center.x + (offsetX / offsetLength) * circle.radius,
+    y: center.y + (offsetY / offsetLength) * circle.radius,
+  }
+}
+
+function projectedEllipsePoint(
+  draft: SketchRecord,
+  ellipse: Extract<SketchEntity, { type: "ellipse" }>,
+  point: SketchPoint2,
+) {
+  const points = new Map(
+    draft.entities.flatMap((entity) => (entity.type === "point" ? [[entity.id, entity]] : [])),
+  )
+  const geometry = ellipseGeometry(ellipse, points)
+  return geometry ? projectPointToSketchEllipse(geometry, point).point : null
+}
+
 function safeSketchModificationUpdate(
-  tool: SketchModificationTool,
+  tool: DirectSketchModificationTool,
   draft: SketchRecord,
   entityId: SketchEntityId,
   point: SketchPoint2,
@@ -2639,6 +3614,155 @@ function safeSketchModificationUpdate(
   } catch {
     return null
   }
+}
+
+function safeMirrorSketchEntities(
+  draft: SketchRecord,
+  axisLineId: SketchEntityId,
+  entityIds: readonly SketchEntityId[],
+) {
+  try {
+    return mirrorSketchEntities(draft, {
+      axisLineId,
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+function safeSketchTransformOrigin(
+  draft: SketchRecord | null,
+  entityIds: readonly SketchEntityId[],
+) {
+  if (!draft || entityIds.length === 0) return null
+  try {
+    return sketchEntityTransformOrigin(draft, entityIds)
+  } catch {
+    return null
+  }
+}
+
+function safeLinearPatternSketchEntities(
+  draft: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+  definition: LinearSketchPatternDefinition,
+) {
+  try {
+    return linearPatternSketchEntities(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      definition,
+      entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+function safeCircularPatternSketchEntities(
+  draft: SketchRecord,
+  entityIds: readonly SketchEntityId[],
+  definition: CircularSketchPatternDefinition,
+) {
+  try {
+    return circularPatternSketchEntities(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      definition,
+      entityIds,
+    })
+  } catch {
+    return null
+  }
+}
+
+function nearestDisplayedSketchPoint(
+  draft: SketchRecord,
+  target: SketchPoint2,
+  origin: SketchPoint2,
+  preview: SketchTransformPreview,
+  tolerance: number,
+) {
+  let result: Readonly<{ distance: number; point: SketchPoint2 }> | null = null
+  for (const entity of draft.entities) {
+    if (entity.type !== "point") continue
+    const point = transformSketchPoint(entity, origin, preview)
+    const distance = Math.hypot(point.x - target.x, point.y - target.y)
+    if (distance <= tolerance && (!result || distance < result.distance)) {
+      result = { distance, point }
+    }
+  }
+  return result?.point ?? null
+}
+
+function safeSketchLineOffsetPreview(
+  draft: SketchRecord,
+  pending: Extract<PendingGeometry, { kind: "offset-distance" }>,
+  point: SketchPoint2,
+) {
+  try {
+    const distance = sketchLineSignedDistance(draft, pending.referenceLineId, point)
+    const geometry = sketchLineOffsetGeometry(draft, {
+      distance,
+      lineIds: pending.lineIds,
+      referenceLineId: pending.referenceLineId,
+    })
+    return { distance, lines: geometry.lines }
+  } catch {
+    return null
+  }
+}
+
+function safeAppendSketchLineOffset(
+  draft: SketchRecord,
+  pending: Extract<PendingGeometry, { kind: "offset-distance" }>,
+  point: SketchPoint2,
+) {
+  try {
+    const distance = sketchLineSignedDistance(draft, pending.referenceLineId, point)
+    return appendSketchLineOffset(draft, {
+      createConstraintId: createBrowserSketchConstraintId,
+      createEntityId: createBrowserSketchEntityId,
+      lineIds: pending.lineIds,
+      referenceLineId: pending.referenceLineId,
+      value: createLengthQuantity(distance),
+    })
+  } catch {
+    return null
+  }
+}
+
+type MirrorActionResolution =
+  | Readonly<{
+      axisLineId: SketchEntityId
+      kind: "select-sources"
+    }>
+  | Readonly<{
+      keepSelectingSources: boolean
+      kind: "publish"
+      result: ReturnType<typeof mirrorSketchEntities>
+    }>
+
+function resolveMirrorAction(input: {
+  draft: SketchRecord
+  entityId: SketchEntityId
+  pending: PendingGeometry | null
+  selectedEntityIds: readonly SketchEntityId[]
+}): MirrorActionResolution | null {
+  if (input.pending?.kind === "mirror-sources") {
+    if (input.entityId === input.pending.axisLineId) return null
+    const result = safeMirrorSketchEntities(input.draft, input.pending.axisLineId, [input.entityId])
+    return result ? { keepSelectingSources: true, kind: "publish", result } : null
+  }
+  const axis = input.draft.entities.find(({ id }) => id === input.entityId)
+  if (axis?.type !== "line") return null
+  const sourceIds = input.selectedEntityIds.filter((selectedId) => selectedId !== axis.id)
+  if (sourceIds.length === 0) return { axisLineId: axis.id, kind: "select-sources" }
+  const result = safeMirrorSketchEntities(input.draft, axis.id, sourceIds)
+  return result ? { keepSelectingSources: false, kind: "publish", result } : null
 }
 
 function placementInputWithInference(input: {
@@ -2725,14 +3849,16 @@ function consumeSketchHistoryShortcut(
   return true
 }
 
-function consumePendingPlacementCancel(
-  event: KeyboardEvent<SVGSVGElement>,
-  hasPendingPlacement: boolean,
-  cancel: () => void,
-) {
-  if (event.key !== "Escape" || !hasPendingPlacement) return false
-  event.preventDefault()
-  cancel()
+function consumeSketchCancel(input: {
+  event: KeyboardEvent<SVGSVGElement>
+  onEditorToolChange: (tool: SketchEditorTool) => void
+  pending: PendingGeometry | null
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}) {
+  if (input.event.key !== "Escape" || input.pending === null) return false
+  input.event.preventDefault()
+  input.setPending(null)
+  if (input.pending.kind === "mirror-sources") input.onEditorToolChange("select")
   return true
 }
 
@@ -2756,6 +3882,10 @@ const pointInferenceSupport = {
   "aligned-rectangle": alwaysSupportsPointInference,
   arc: neverSupportsPointInference,
   circle: (pending) => pending?.kind !== "circle",
+  ellipse: (pending) => pending?.kind !== "ellipse-secondary",
+  "elliptical-arc": (pending) =>
+    pending?.kind !== "elliptical-arc-start" && pending?.kind !== "elliptical-arc-end",
+  "circular-pattern": neverSupportsPointInference,
   "circumscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
@@ -2763,7 +3893,10 @@ const pointInferenceSupport = {
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
+  "linear-pattern": neverSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
+  mirror: neverSupportsPointInference,
+  offset: neverSupportsPointInference,
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
@@ -2773,6 +3906,7 @@ const pointInferenceSupport = {
   "tangent-arc": alwaysSupportsPointInference,
   "three-point-arc": alwaysSupportsPointInference,
   "three-point-circle": alwaysSupportsPointInference,
+  transform: neverSupportsPointInference,
   trim: neverSupportsPointInference,
 } satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
 
@@ -2903,32 +4037,48 @@ function draggedPointInference(input: {
   })
 }
 
-function draggedPointReferences(
-  references: SketchInferenceReferences,
-  pointId: SketchEntityId | null,
-): SketchInferenceReferences {
-  if (!pointId) return EMPTY_INFERENCE_REFERENCES
+function draggedPointCandidates(
+  candidates: ReturnType<SketchInferenceCandidateQuery<DisplayPoint>>,
+  pointId: SketchEntityId,
+): Omit<SketchInferenceReferences, "arcs"> {
   return {
-    arcs: [],
-    lines: references.lines.filter(
+    lines: candidates.lines.filter(
       (line) => line.startPointId !== pointId && line.endPointId !== pointId,
     ),
-    points: references.points.filter(({ id }) => id !== pointId),
+    points: candidates.points.filter(({ id }) => id !== pointId),
   }
+}
+
+function dragInferenceCellSize(bounds: SketchBounds, viewport: SketchViewportSize) {
+  const measuredViewport =
+    viewport.width > 0 && viewport.height > 0 ? viewport : DRAG_INFERENCE_FALLBACK_VIEWPORT
+  const tolerance = sketchInferenceTolerance(bounds, measuredViewport)
+  return 2 ** Math.round(Math.log2(tolerance))
+}
+
+type LiveDragSolvePolicy = Readonly<{
+  delayMs: number
+  mode: "debounce" | "throttle"
+}>
+
+function liveDragSolvePolicy(sketch: SketchRecord): LiveDragSolvePolicy | null {
+  const complexity = sketch.entities.length + sketch.constraints.length
+  if (complexity > VERY_DENSE_DRAG_SOLVE_COMPLEXITY) return null
+  return complexity > DENSE_DRAG_SOLVE_COMPLEXITY
+    ? { delayMs: DENSE_DRAG_IDLE_SOLVE_DELAY_MS, mode: "debounce" }
+    : { delayMs: LIVE_DRAG_SOLVE_INTERVAL_MS, mode: "throttle" }
 }
 
 function updateDraggedPointFromPointer(input: {
   draggingPointId: SketchEntityId | null
-  point: SketchPoint2
-  rectangle: Readonly<{ width: number; height: number }> | undefined
-  suppressed: boolean
+  event: PointerEvent<SVGSVGElement>
   updatePointDrag: (input: SketchPointDragInput) => boolean
 }) {
-  if (!input.draggingPointId || !input.rectangle) return false
+  if (!input.draggingPointId) return false
   input.updatePointDrag({
-    point: input.point,
-    rectangle: input.rectangle,
-    suppressed: input.suppressed,
+    clientX: input.event.clientX,
+    clientY: input.event.clientY,
+    suppressed: input.event.shiftKey,
   })
   return true
 }
@@ -2951,7 +4101,6 @@ function handleSketchPointerMove(input: {
   bounds: SketchBounds
   draggingPointId: SketchEntityId | null
   event: PointerEvent<SVGSVGElement>
-  eventPoint: (event: PointerEvent<SVGSVGElement>) => SketchPoint2 | null
   inferredPlacement: (
     point: SketchPoint2,
     rectangle: Readonly<{ width: number; height: number }>,
@@ -2974,25 +4123,21 @@ function handleSketchPointerMove(input: {
   ) {
     return
   }
-  const point = input.eventPoint(input.event)
-  if (!point) return
-  const rectangle = input.svg?.getBoundingClientRect()
   if (
     updateDraggedPointFromPointer({
       draggingPointId: input.draggingPointId,
-      point,
-      rectangle,
-      suppressed: input.event.shiftKey,
+      event: input.event,
       updatePointDrag: input.updatePointDrag,
     })
   ) {
     return
   }
-  const inference = rectangle
-    ? input.inferredPlacement(point, rectangle, input.event.shiftKey)
-    : null
+  const rectangle = input.svg?.getBoundingClientRect()
+  if (!rectangle) return
+  const point = pointerToSketchPoint(input.event, rectangle, input.bounds)
+  const inference = input.inferredPlacement(point, rectangle, input.event.shiftKey)
   input.setInference(inference)
-  input.setCursor(inference ? inference.point : point)
+  input.setCursor(inference.point)
 }
 
 type RegularPolygonKeyInput = Readonly<{
@@ -3068,7 +4213,9 @@ function handleSketchKeyDown(input: {
   draft: SketchRecord | null
   event: KeyboardEvent<SVGSVGElement>
   inference: SketchPointInference | null
+  editorTool: SketchEditorTool
   onDraftChange: SketchDrawingConfiguration["onDraftChange"]
+  onEditorToolChange: (tool: SketchEditorTool) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
@@ -3077,11 +4224,7 @@ function handleSketchKeyDown(input: {
   setPending: Dispatch<SetStateAction<PendingGeometry | null>>
 }) {
   if (consumeSketchHistoryShortcut(input.event, input.onUndo, input.onRedo)) return
-  if (
-    consumePendingPlacementCancel(input.event, input.pending !== null, () => input.setPending(null))
-  ) {
-    return
-  }
+  if (consumeSketchCancel(input)) return
   if (
     input.pending?.kind === "regular-polygon-sides" &&
     consumeRegularPolygonSideCountKey(input, input.pending)
@@ -3148,20 +4291,47 @@ function handleSketchCanvasPointerDown(input: {
   input.appendAt(inference.target, inference)
 }
 
+function isPrimaryEmptyCanvasPointer(event: PointerEvent<SVGSVGElement>) {
+  return event.button === 0 && event.target === event.currentTarget
+}
+
+function offsetDraftFromCanvasPointer(input: {
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  event: PointerEvent<SVGSVGElement>
+  eventPoint: (event: PointerEvent<SVGSVGElement>) => SketchPoint2 | null
+  pending: PendingGeometry | null
+}) {
+  if (
+    input.editorTool !== "offset" ||
+    input.pending?.kind !== "offset-distance" ||
+    !isPrimaryEmptyCanvasPointer(input.event)
+  ) {
+    return undefined
+  }
+  const point = input.eventPoint(input.event)
+  const result =
+    input.draft && point ? safeAppendSketchLineOffset(input.draft, input.pending, point) : null
+  return result?.sketch ?? null
+}
+
 function useSketchPointDrag({
   bounds,
   draft,
-  inferenceReferences,
+  inferenceCandidateQuery,
   onDraftChange,
   onDraggingPointChange,
   onPreview,
+  svgRef,
 }: Pick<SketchDrawingConfiguration, "draft" | "onDraftChange" | "onDraggingPointChange"> & {
   bounds: SketchBounds
-  inferenceReferences: SketchInferenceReferences
+  inferenceCandidateQuery: SketchInferenceCandidateQuery<DisplayPoint>
   onPreview: (preview: SketchPointDragPreview) => void
+  svgRef: RefObject<SVGSVGElement | null>
 }) {
   const [draggingPointId, setDraggingPointId] = useState<SketchEntityId | null>(null)
   const dragFrameRef = useRef<number | null>(null)
+  const dragRectangleRef = useRef<SketchViewportRectangle | null>(null)
   const dragSolveTimerRef = useRef<number | null>(null)
   const lastDragPreviewRef = useRef<SketchPointDragPreview | null>(null)
   const queuedDragInputRef = useRef<SketchPointDragInput | null>(null)
@@ -3169,11 +4339,6 @@ function useSketchPointDrag({
     point: SketchPoint2
     pointId: SketchEntityId
   }> | null>(null)
-  const references = useMemo(
-    () => draggedPointReferences(inferenceReferences, draggingPointId),
-    [draggingPointId, inferenceReferences],
-  )
-
   useEffect(
     () => () => {
       if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current)
@@ -3183,9 +4348,13 @@ function useSketchPointDrag({
   )
 
   const scheduleLiveSolve = useCallback(
-    (pointId: SketchEntityId, point: SketchPoint2) => {
+    (pointId: SketchEntityId, point: SketchPoint2, policy: LiveDragSolvePolicy | null) => {
+      if (!policy) return
       queuedDragSolveTargetRef.current = { point, pointId }
-      if (dragSolveTimerRef.current !== null) window.clearTimeout(dragSolveTimerRef.current)
+      if (dragSolveTimerRef.current !== null) {
+        if (policy.mode === "throttle") return
+        window.clearTimeout(dragSolveTimerRef.current)
+      }
       dragSolveTimerRef.current = window.setTimeout(() => {
         dragSolveTimerRef.current = null
         const target = queuedDragSolveTargetRef.current
@@ -3193,7 +4362,7 @@ function useSketchPointDrag({
         if (target) {
           startTransition(() => onDraggingPointChange(target.pointId, target.point))
         }
-      }, LIVE_DRAG_SOLVE_IDLE_DELAY_MS)
+      }, policy.delayMs)
     },
     [onDraggingPointChange],
   )
@@ -3201,20 +4370,28 @@ function useSketchPointDrag({
   const preview = useCallback(
     (input: SketchPointDragInput): SketchPointDragPreview | null => {
       if (!draft || !draggingPointId) return null
+      const rectangle = dragRectangleRef.current
+      if (!rectangle) return null
+      const point = pointerToSketchPoint(input, rectangle, bounds)
+      const tolerance = sketchInferenceTolerance(bounds, rectangle)
+      const candidates = draggedPointCandidates(
+        inferenceCandidateQuery(point, tolerance),
+        draggingPointId,
+      )
       const inference = draggedPointInference({
         bounds,
-        point: input.point,
-        rectangle: input.rectangle,
-        references,
+        point,
+        rectangle,
+        references: { arcs: [], ...candidates },
         suppressed: input.suppressed,
       })
       const next = { inference, point: inference.point }
       lastDragPreviewRef.current = next
       onPreview(next)
-      scheduleLiveSolve(draggingPointId, next.point)
+      scheduleLiveSolve(draggingPointId, next.point, liveDragSolvePolicy(draft))
       return next
     },
-    [bounds, draft, draggingPointId, onPreview, references, scheduleLiveSolve],
+    [bounds, draft, draggingPointId, inferenceCandidateQuery, onPreview, scheduleLiveSolve],
   )
   const flush = useCallback(() => {
     if (dragFrameRef.current !== null) {
@@ -3258,19 +4435,31 @@ function useSketchPointDrag({
     }
     if (draggingPointId) onDraggingPointChange(null)
     setDraggingPointId(null)
+    dragRectangleRef.current = null
     lastDragPreviewRef.current = null
   }, [draft, draggingPointId, flush, onDraftChange, onDraggingPointChange])
-  const start = useCallback((event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
-    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
-    lastDragPreviewRef.current = null
-    queuedDragInputRef.current = null
-    queuedDragSolveTargetRef.current = null
-    if (dragSolveTimerRef.current !== null) {
-      window.clearTimeout(dragSolveTimerRef.current)
-      dragSolveTimerRef.current = null
-    }
-    setDraggingPointId(pointId)
-  }, [])
+  const start = useCallback(
+    (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => {
+      const rectangle = svgRef.current?.getBoundingClientRect()
+      if (!rectangle) return
+      if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+      dragRectangleRef.current = {
+        height: rectangle.height,
+        left: rectangle.left,
+        top: rectangle.top,
+        width: rectangle.width,
+      }
+      lastDragPreviewRef.current = null
+      queuedDragInputRef.current = null
+      queuedDragSolveTargetRef.current = null
+      if (dragSolveTimerRef.current !== null) {
+        window.clearTimeout(dragSolveTimerRef.current)
+        dragSolveTimerRef.current = null
+      }
+      setDraggingPointId(pointId)
+    },
+    [svgRef],
+  )
   return { draggingPointId, finish, start, update }
 }
 
@@ -3279,13 +4468,22 @@ type SketchDrawingViewProps = Readonly<{
   handlers: Readonly<{
     appendAt: (target: SketchPointTarget, inference?: SketchPointInference) => void
     onCanvasPointerDown: (event: PointerEvent<SVGSVGElement>) => void
+    onCircularPatternApply: (value: CircularSketchPatternDefinition) => void
+    onCircularPatternCancel: () => void
+    onCircularPatternPreview: (value: CircularSketchPatternDefinition | null) => void
     onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
+    onLinearPatternApply: (value: LinearSketchPatternDefinition) => void
+    onLinearPatternCancel: () => void
+    onLinearPatternPreview: (value: LinearSketchPatternDefinition | null) => void
     onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
     onPointerLeave: () => void
     onPointerMove: (event: PointerEvent<SVGSVGElement>) => void
-    onPointerUp: () => void
+    onPointerUp: (event: PointerEvent<SVGSVGElement>) => void
     onSelection: (entityId: SketchEntityId, additive: boolean) => void
+    onTransformStart: (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => void
+    onTransformApply: (value: SketchTransformExactValue) => void
+    onTransformCancel: () => void
     onWheel: (event: WheelEvent<SVGSVGElement>) => void
   }>
   sketch: SketchRecord
@@ -3298,11 +4496,222 @@ type SketchDrawingViewProps = Readonly<{
     editable: boolean
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
+    circularPattern: Readonly<{
+      definition: CircularSketchPatternDefinition | null
+      selectionKey: string
+    }> | null
+    linearPattern: Readonly<{
+      definition: LinearSketchPatternDefinition | null
+      selectionKey: string
+    }> | null
     pending: PendingGeometry | null
+    transform: Readonly<{
+      origin: SketchPoint2
+      preview: SketchTransformPreview
+    }> | null
     viewportSize: ReturnType<typeof useSketchViewportSize>
   }>
   svgRef: RefObject<SVGSVGElement | null>
 }>
+
+function SketchTransformPresentation({
+  bounds,
+  entityIds,
+  geometry,
+  transform,
+  viewportSize,
+  onStart,
+}: Readonly<{
+  bounds: SketchBounds
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  transform: SketchDrawingViewProps["state"]["transform"]
+  viewportSize: SketchViewportSize
+  onStart: SketchDrawingViewProps["handlers"]["onTransformStart"]
+}>) {
+  if (!transform) return null
+  const horizontalScale = viewportSize.width > 0 ? bounds.width / viewportSize.width : 0
+  const verticalScale = viewportSize.height > 0 ? bounds.height / viewportSize.height : 0
+  return (
+    <>
+      <SketchTransformGeometry
+        entityIds={entityIds}
+        origin={transform.origin}
+        presentation={geometry}
+        preview={transform.preview}
+      />
+      <SketchTransformManipulator
+        origin={transform.origin}
+        preview={transform.preview}
+        worldPerPixel={Math.max(horizontalScale, verticalScale)}
+        onStart={onStart}
+      />
+    </>
+  )
+}
+
+function SketchLinearPatternPresentation({
+  entityIds,
+  geometry,
+  pattern,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  pattern: SketchDrawingViewProps["state"]["linearPattern"]
+}>) {
+  if (!pattern?.definition) return null
+  let transforms: readonly ReturnType<typeof linearSketchPatternTransforms>[number][]
+  try {
+    transforms = linearSketchPatternTransforms(pattern.definition).slice(
+      0,
+      MAX_SKETCH_PATTERN_PREVIEW_INSTANCES - 1,
+    )
+  } catch {
+    return null
+  }
+  return (
+    <g data-sketch-linear-pattern-preview>
+      {transforms.map((transform, index) => (
+        <SketchTransformGeometry
+          key={`${transform.translation.x}:${transform.translation.y}:${index}`}
+          entityIds={entityIds}
+          origin={{ x: 0, y: 0 }}
+          presentation={geometry}
+          preview={{
+            rotationRadians: transform.rotationRadians,
+            scale: 1,
+            translation: transform.translation,
+          }}
+        />
+      ))}
+    </g>
+  )
+}
+
+function SketchCircularPatternPresentation({
+  entityIds,
+  geometry,
+  pattern,
+}: Readonly<{
+  entityIds: readonly SketchEntityId[]
+  geometry: SketchGeometryPresentation
+  pattern: SketchDrawingViewProps["state"]["circularPattern"]
+}>) {
+  if (!pattern?.definition) return null
+  let transforms: readonly ReturnType<typeof circularSketchPatternTransforms>[number][]
+  try {
+    transforms = circularSketchPatternTransforms(pattern.definition).slice(
+      0,
+      MAX_SKETCH_PATTERN_PREVIEW_INSTANCES - 1,
+    )
+  } catch {
+    return null
+  }
+  const { center } = pattern.definition
+  return (
+    <g data-sketch-circular-pattern-preview>
+      {transforms.map((transform, index) => (
+        <SketchTransformGeometry
+          key={`${transform.rotationRadians}:${index}`}
+          entityIds={entityIds}
+          origin={{ x: 0, y: 0 }}
+          presentation={geometry}
+          preview={{
+            rotationRadians: transform.rotationRadians,
+            scale: 1,
+            translation: transform.translation,
+          }}
+        />
+      ))}
+      <g className="pointer-events-none stroke-ring" transform="scale(1 -1)">
+        <circle
+          cx={center.x}
+          cy={center.y}
+          fill="none"
+          r={5}
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={center.x - 8}
+          y1={center.y}
+          x2={center.x + 8}
+          y2={center.y}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={center.x}
+          y1={center.y - 8}
+          x2={center.x}
+          y2={center.y + 8}
+          vectorEffect="non-scaling-stroke"
+        />
+      </g>
+    </g>
+  )
+}
+
+function SketchLinearPatternPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["linearPattern"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchLinearPatternForm
+      key={value.selectionKey}
+      variables={configuration.variables}
+      onApply={handlers.onLinearPatternApply}
+      onCancel={handlers.onLinearPatternCancel}
+      onPreview={handlers.onLinearPatternPreview}
+    />
+  )
+}
+
+function SketchCircularPatternPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["circularPattern"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchCircularPatternForm
+      key={value.selectionKey}
+      variables={configuration.variables}
+      onApply={handlers.onCircularPatternApply}
+      onCancel={handlers.onCircularPatternCancel}
+      onPreview={handlers.onCircularPatternPreview}
+    />
+  )
+}
+
+function SketchTransformPanel({
+  configuration,
+  handlers,
+  value,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  handlers: SketchDrawingViewProps["handlers"]
+  value: SketchDrawingViewProps["state"]["transform"]
+}>) {
+  if (!value) return null
+  return (
+    <SketchTransformForm
+      value={value}
+      variables={configuration.variables}
+      onApply={handlers.onTransformApply}
+      onCancel={handlers.onTransformCancel}
+    />
+  )
+}
 
 function SketchDrawingView({
   configuration,
@@ -3334,6 +4743,11 @@ function SketchDrawingView({
         onWheel={handlers.onWheel}
       >
         <title>{configuration.ariaLabel}</title>
+        <SketchOriginPlaneReferences
+          activePlane={sketch.plane}
+          bounds={state.bounds}
+          visibility={configuration.originPlaneVisibility}
+        />
         <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
           <line
             x1={state.bounds.minX}
@@ -3360,20 +4774,43 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <StableSketchGeometry
-          draggingPointId={state.dragTarget?.entityId ?? null}
+          draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
           editable={state.editable}
           selectedEntityIds={configuration.selectedEntityIds}
           presentation={state.geometry}
           tool={configuration.editorTool}
-          onCurveAction={handlers.onCurveAction}
+          onCurveAction={
+            isSketchModificationTool(configuration.editorTool)
+              ? handlers.onCurveAction
+              : ignoreCurveAction
+          }
           onPointPointerDown={handlers.onPointPointerDown}
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
+          pending={state.pending}
         />
         <DraggedSketchGeometry
           dragTarget={state.dragTarget}
           presentation={state.geometry}
           selectedEntityIds={configuration.selectedEntityIds}
+        />
+        <SketchTransformPresentation
+          bounds={state.bounds}
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          transform={state.transform}
+          viewportSize={state.viewportSize}
+          onStart={handlers.onTransformStart}
+        />
+        <SketchLinearPatternPresentation
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          pattern={state.linearPattern}
+        />
+        <SketchCircularPatternPresentation
+          entityIds={configuration.selectedEntityIds}
+          geometry={state.geometry}
+          pattern={state.circularPattern}
         />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
@@ -3388,6 +4825,226 @@ function SketchDrawingView({
         viewport={state.viewportSize}
         onSelect={configuration.onConstraintSelectionChange}
       />
+      <SketchMirrorInstruction
+        editorTool={configuration.editorTool}
+        pending={state.pending}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchOffsetInstruction editorTool={configuration.editorTool} pending={state.pending} />
+      <SketchTransformInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchLinearPatternInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchCircularPatternInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchLinearPatternPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.linearPattern}
+      />
+      <SketchCircularPatternPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.circularPattern}
+      />
+      <SketchTransformPanel
+        configuration={configuration}
+        handlers={handlers}
+        value={state.transform}
+      />
+    </div>
+  )
+}
+
+const sketchPlaneReferenceClass = {
+  xy: "stroke-axis-z",
+  xz: "stroke-axis-y",
+  yz: "stroke-axis-x",
+} satisfies Record<ViewerOriginPlane, string>
+
+/**
+ * Preserves the origin-reference context without making the SVG drawing plane interactive.
+ */
+function SketchOriginPlaneReferences({
+  activePlane,
+  bounds,
+  visibility,
+}: {
+  activePlane: SketchRecord["plane"]
+  bounds: SketchBounds
+  visibility: ViewerOriginPlaneVisibility
+}) {
+  const perpendicularPlanes = viewerOriginPlaneReferences(activePlane)
+  return (
+    <g transform="scale(1 -1)" className="pointer-events-none">
+      {visibility[activePlane] ? (
+        <rect
+          className={`${sketchPlaneReferenceClass[activePlane]} fill-primary/5 opacity-60`}
+          data-sketch-origin-plane={activePlane}
+          height={bounds.height}
+          width={bounds.width}
+          x={bounds.minX}
+          y={bounds.minY}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
+      {perpendicularPlanes.map(({ axis, plane }) =>
+        visibility[plane] ? (
+          <line
+            key={plane}
+            className={`${sketchPlaneReferenceClass[plane]} opacity-50`}
+            data-sketch-origin-plane={plane}
+            vectorEffect="non-scaling-stroke"
+            {...(axis === "horizontal"
+              ? {
+                  x1: bounds.minX,
+                  x2: bounds.minX + bounds.width,
+                  y1: 0,
+                  y2: 0,
+                }
+              : {
+                  x1: 0,
+                  x2: 0,
+                  y1: bounds.minY,
+                  y2: bounds.minY + bounds.height,
+                })}
+          />
+        ) : null,
+      )}
+    </g>
+  )
+}
+
+function viewerOriginPlaneReferences(activePlane: ViewerOriginPlane) {
+  const references: Record<
+    ViewerOriginPlane,
+    readonly { axis: "horizontal" | "vertical"; plane: ViewerOriginPlane }[]
+  > = {
+    xy: [
+      { plane: "xz", axis: "horizontal" },
+      { plane: "yz", axis: "vertical" },
+    ],
+    xz: [
+      { plane: "xy", axis: "horizontal" },
+      { plane: "yz", axis: "vertical" },
+    ],
+    yz: [
+      { plane: "xy", axis: "horizontal" },
+      { plane: "xz", axis: "vertical" },
+    ],
+  }
+  return references[activePlane]
+}
+
+function SketchMirrorInstruction({
+  editorTool,
+  pending,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "mirror") return null
+  let instruction = t("mirrorSelectAxis")
+  if (pending?.kind === "mirror-sources") instruction = t("mirrorSelectSources")
+  else if (selectedEntityCount > 0) instruction = t("mirrorSelectAxisForSelection")
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-mirror-instruction
+      role="status"
+    >
+      {instruction}
+    </div>
+  )
+}
+
+function SketchOffsetInstruction({
+  editorTool,
+  pending,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  pending: PendingGeometry | null
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "offset") return null
+  const instruction =
+    pending?.kind === "offset-distance" ? t("offsetSetDistance") : t("offsetSelectSource")
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-offset-instruction
+      role="status"
+    >
+      {instruction}
+    </div>
+  )
+}
+
+function SketchTransformInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "transform") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-transform-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "transformAdjust" : "transformSelectGeometry")}
+    </div>
+  )
+}
+
+function SketchLinearPatternInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "linear-pattern") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-linear-pattern-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "linearPatternAdjust" : "linearPatternSelectGeometry")}
+    </div>
+  )
+}
+
+function SketchCircularPatternInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (editorTool !== "circular-pattern") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-circular-pattern-instruction
+      role="status"
+    >
+      {t(selectedEntityCount > 0 ? "circularPatternAdjust" : "circularPatternSelectGeometry")}
     </div>
   )
 }
@@ -3423,7 +5080,353 @@ function useSketchPlacementPresentation({
     setInference(null)
   }, [editorTool, slotFromSelectionLineId])
 
+  const offsetSourceLineIds = useMemo(() => {
+    if (editorTool !== "offset" || !draft || selectedEntityIds.length === 0) return []
+    const selected = selectedSketchEntities(draft, selectedEntityIds)
+    return selected.length === selectedEntityIds.length &&
+      selected.every(({ type }) => type === "line")
+      ? selected.map(({ id }) => id)
+      : []
+  }, [draft, editorTool, selectedEntityIds])
+  useEffect(() => {
+    const referenceLineId = offsetSourceLineIds[0]
+    if (editorTool !== "offset" || !referenceLineId) return
+    setPending((current) =>
+      current?.kind === "offset-distance"
+        ? current
+        : { kind: "offset-distance", lineIds: offsetSourceLineIds, referenceLineId },
+    )
+    setInference(null)
+  }, [editorTool, offsetSourceLineIds])
+
   return { cursor, inference, pending, setCursor, setInference, setPending }
+}
+
+function useSketchPatternInteraction<Definition>({
+  defaultDefinition,
+  draft,
+  editorTool,
+  materialize,
+  onDraftChange,
+  onEditorToolChange,
+  onSelectionChange,
+  selectedEntityIds,
+  sketchId,
+  tool,
+}: Pick<
+  SketchDrawingConfiguration,
+  | "draft"
+  | "editorTool"
+  | "onDraftChange"
+  | "onEditorToolChange"
+  | "onSelectionChange"
+  | "selectedEntityIds"
+> & {
+  defaultDefinition: Definition
+  materialize: (
+    draft: SketchRecord,
+    entityIds: readonly SketchEntityId[],
+    definition: Definition,
+  ) => Readonly<{ sketch: SketchRecord }> | null
+  sketchId: SketchRecord["id"]
+  tool: "circular-pattern" | "linear-pattern"
+}) {
+  const [definition, setDefinition] = useState<Definition | null>(defaultDefinition)
+  const selectionKey = selectedEntityIds.join(":")
+
+  const reset = () => setDefinition(defaultDefinition)
+
+  useEffect(() => {
+    reset()
+  }, [editorTool, sketchId])
+
+  const commit = (value = definition) => {
+    if (!draft || !value || selectedEntityIds.length === 0) return false
+    const result = materialize(draft, selectedEntityIds, value)
+    if (!result) return false
+    onDraftChange(result.sketch, "record")
+    onSelectionChange([])
+    reset()
+    onEditorToolChange("select")
+    return true
+  }
+
+  const cancel = () => {
+    reset()
+    onEditorToolChange("select")
+  }
+
+  const consumeKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (editorTool !== tool) return false
+    if (event.key === "Escape") {
+      event.preventDefault()
+      cancel()
+      return true
+    }
+    if (event.key === "Enter") {
+      event.preventDefault()
+      commit()
+      return true
+    }
+    return false
+  }
+
+  const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (editorTool !== tool || !isPrimaryEmptyCanvasPointer(event)) return false
+    if (selectedEntityIds.length === 0) onSelectionChange([])
+    else commit()
+    return true
+  }
+
+  const selectEntity = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey
+    onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
+  }
+
+  return {
+    apply: commit,
+    cancel,
+    consumeCanvasPointerDown,
+    consumeKeyDown,
+    preview: setDefinition,
+    presentation:
+      editorTool === tool && selectedEntityIds.length > 0 ? { definition, selectionKey } : null,
+    selectEntity,
+  }
+}
+
+function useSketchTransformInteraction({
+  bounds,
+  draft,
+  editorTool,
+  onDraftChange,
+  onEditorToolChange,
+  onSelectionChange,
+  selectedEntityIds,
+  sketchId,
+  svgRef,
+}: Pick<
+  SketchDrawingConfiguration,
+  | "draft"
+  | "editorTool"
+  | "onDraftChange"
+  | "onEditorToolChange"
+  | "onSelectionChange"
+  | "selectedEntityIds"
+> & {
+  bounds: SketchBounds
+  sketchId: SketchRecord["id"]
+  svgRef: RefObject<SVGSVGElement | null>
+}) {
+  const [gesture, setGesture] = useState<SketchTransformGesture | null>(null)
+  const [originOverride, setOriginOverride] = useState<SketchPoint2 | null>(null)
+  const [preview, setPreview] = useState<SketchTransformPreview>(identitySketchTransform)
+  const rectangleRef = useRef<SketchViewportRectangle | null>(null)
+  const selectionKey = selectedEntityIds.join(":")
+  const defaultOrigin = useMemo(
+    () => (editorTool === "transform" ? safeSketchTransformOrigin(draft, selectedEntityIds) : null),
+    [draft, editorTool, selectedEntityIds],
+  )
+  const origin = originOverride ?? defaultOrigin
+
+  const reset = () => {
+    setGesture(null)
+    setOriginOverride(null)
+    setPreview(identitySketchTransform)
+    rectangleRef.current = null
+  }
+
+  useEffect(() => {
+    reset()
+  }, [editorTool, selectionKey, sketchId])
+
+  const commit = (value?: SketchTransformExactValue) => {
+    const transform = value ?? (origin ? { origin, preview } : null)
+    if (
+      !draft ||
+      !transform ||
+      selectedEntityIds.length === 0 ||
+      isIdentitySketchTransform(transform.preview)
+    ) {
+      return false
+    }
+    try {
+      const transformed = transformSketchEntities(draft, {
+        entityIds: selectedEntityIds,
+        transform: sketchEntityTransformFromPreview(transform.origin, transform.preview),
+      })
+      onDraftChange(transformed, "record")
+      onSelectionChange([])
+      reset()
+      onEditorToolChange("select")
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const consumePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (gesture?.pointerId !== event.pointerId) return false
+    const rectangle = rectangleRef.current
+    if (rectangle && draft) {
+      const point = pointerToSketchPoint(event, rectangle, bounds)
+      if (gesture.handle === "origin") {
+        const worldPerPixel = Math.max(
+          bounds.width / rectangle.width,
+          bounds.height / rectangle.height,
+        )
+        const snapTolerance = worldPerPixel * 10
+        const snappedPoint = nearestDisplayedSketchPoint(
+          draft,
+          point,
+          gesture.origin,
+          gesture.base,
+          snapTolerance,
+        )
+        const relocated = relocateSketchTransformOrigin(
+          gesture.origin,
+          gesture.base,
+          snappedPoint ?? point,
+        )
+        setOriginOverride(relocated.origin)
+        setPreview(relocated.preview)
+        return true
+      }
+      setPreview(updateSketchTransformGesture(gesture, point, event.shiftKey))
+    }
+    return true
+  }
+
+  const consumeKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (editorTool !== "transform") return false
+    if (event.key === "Escape") {
+      event.preventDefault()
+      reset()
+      onEditorToolChange("select")
+      return true
+    }
+    if (event.key === "Enter") {
+      event.preventDefault()
+      if (!commit()) onEditorToolChange("select")
+      return true
+    }
+    if (!origin) return false
+    const nextTransform = updateSketchTransformFromKeyboard(preview, event.key, event.shiftKey)
+    if (!nextTransform) return false
+    event.preventDefault()
+    setPreview(nextTransform)
+    return true
+  }
+
+  const cancel = () => {
+    reset()
+    onEditorToolChange("select")
+  }
+
+  const consumeCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (editorTool !== "transform" || !isPrimaryEmptyCanvasPointer(event)) return false
+    if (!commit()) onSelectionChange([])
+    return true
+  }
+
+  const consumePointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    if (gesture?.pointerId !== event.pointerId) return false
+    setGesture(null)
+    rectangleRef.current = null
+    return true
+  }
+
+  const selectEntity = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (!isIdentitySketchTransform(preview)) return
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey
+    onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
+  }
+
+  const start = (event: PointerEvent<SVGElement>, handle: SketchTransformHandle) => {
+    const rectangle = svgRef.current?.getBoundingClientRect()
+    if (!rectangle || rectangle.width <= 0 || rectangle.height <= 0 || !origin) return
+    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
+    const viewportRectangle = {
+      height: rectangle.height,
+      left: rectangle.left,
+      top: rectangle.top,
+      width: rectangle.width,
+    }
+    rectangleRef.current = viewportRectangle
+    setGesture({
+      base: preview,
+      center: sketchTransformCenter(origin, preview),
+      handle,
+      origin,
+      pointerId: event.pointerId,
+      start: pointerToSketchPoint(event, viewportRectangle, bounds),
+    })
+  }
+
+  return {
+    consumeCanvasPointerDown,
+    consumeKeyDown,
+    consumePointerMove,
+    consumePointerUp,
+    applyExact: commit,
+    cancel,
+    presentation: editorTool === "transform" && origin ? { origin, preview } : null,
+    selectEntity,
+    start,
+  }
+}
+
+function useSketchModificationInteractions(
+  input: Pick<
+    SketchDrawingConfiguration,
+    | "draft"
+    | "editorTool"
+    | "onDraftChange"
+    | "onEditorToolChange"
+    | "onSelectionChange"
+    | "selectedEntityIds"
+  > & {
+    bounds: SketchBounds
+    sketchId: SketchRecord["id"]
+    svgRef: RefObject<SVGSVGElement | null>
+  },
+) {
+  return {
+    circularPattern: useSketchPatternInteraction({
+      ...input,
+      defaultDefinition: defaultCircularSketchPatternDefinition,
+      materialize: safeCircularPatternSketchEntities,
+      tool: "circular-pattern",
+    }),
+    linearPattern: useSketchPatternInteraction({
+      ...input,
+      defaultDefinition: defaultLinearSketchPatternDefinition,
+      materialize: safeLinearPatternSketchEntities,
+      tool: "linear-pattern",
+    }),
+    transform: useSketchTransformInteraction(input),
+  }
+}
+
+function useSketchInferencePresentation(input: {
+  cellSize: number
+  draft: SketchRecord | null
+  geometry: SketchGeometryPresentation
+}) {
+  const references = useMemo(
+    () => (input.draft ? sketchInferenceReferences(input.geometry) : EMPTY_INFERENCE_REFERENCES),
+    [input.draft, input.geometry],
+  )
+  const candidateQuery = useMemo(
+    () =>
+      createSketchInferenceCandidateQuery({
+        cellSize: input.cellSize,
+        lines: references.lines,
+        points: references.points,
+      }),
+    [input.cellSize, references],
+  )
+  return { candidateQuery, references }
 }
 
 function SketchDrawing({
@@ -3458,14 +5461,26 @@ function SketchDrawing({
   const svgRef = useRef<SVGSVGElement>(null)
   const viewportSize = useSketchViewportSize(svgRef)
   const editable = draft !== null
+  const { circularPattern, linearPattern, transform } = useSketchModificationInteractions({
+    bounds,
+    draft,
+    editorTool,
+    onDraftChange,
+    onEditorToolChange,
+    onSelectionChange,
+    selectedEntityIds,
+    sketchId: sketch.id,
+    svgRef,
+  })
   const annotationProfiles = useMemo(
     () => (annotationSolution ? profileSelectors(annotationSolution) : []),
     [annotationSolution],
   )
-  const inferenceReferences = useMemo(
-    () => (draft ? sketchInferenceReferences(geometry) : EMPTY_INFERENCE_REFERENCES),
-    [draft, geometry],
-  )
+  const inferencePresentation = useSketchInferencePresentation({
+    cellSize: dragInferenceCellSize(bounds, viewportSize),
+    draft,
+    geometry,
+  })
   const handleDragPreview = useCallback((preview: SketchPointDragPreview) => {
     setCursor(preview.point)
     setInference(preview.inference)
@@ -3478,10 +5493,11 @@ function SketchDrawing({
   } = useSketchPointDrag({
     bounds,
     draft,
-    inferenceReferences,
+    inferenceCandidateQuery: inferencePresentation.candidateQuery,
     onDraftChange,
     onDraggingPointChange,
     onPreview: handleDragPreview,
+    svgRef,
   })
   const dragTarget = useMemo<SketchDragTarget | null>(
     () =>
@@ -3507,7 +5523,7 @@ function SketchDrawing({
       pending,
       point,
       rectangle,
-      references: inferenceReferences,
+      references: inferencePresentation.references,
       suppressed,
     })
   const appendAt = useCallback(
@@ -3532,11 +5548,11 @@ function SketchDrawing({
     [construction, draft, editorTool, onDraftChange, onEditorToolChange, pending],
   )
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (transform.consumePointerMove(event)) return
     handleSketchPointerMove({
       bounds,
       draggingPointId,
       event,
-      eventPoint,
       inferredPlacement,
       panGesture,
       setBounds,
@@ -3547,13 +5563,18 @@ function SketchDrawing({
     })
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (transform.consumeKeyDown(event)) return
+    if (circularPattern.consumeKeyDown(event)) return
+    if (linearPattern.consumeKeyDown(event)) return
     handleSketchKeyDown({
       appendAt,
       cursor,
       draft,
+      editorTool,
       event,
       inference,
       onDraftChange,
+      onEditorToolChange,
       onRedo,
       onSelectionChange,
       onUndo,
@@ -3563,6 +5584,20 @@ function SketchDrawing({
     })
   }
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (transform.consumeCanvasPointerDown(event)) return
+    if (circularPattern.consumeCanvasPointerDown(event)) return
+    if (linearPattern.consumeCanvasPointerDown(event)) return
+    const offsetDraft = offsetDraftFromCanvasPointer({
+      draft,
+      editorTool,
+      event,
+      eventPoint,
+      pending,
+    })
+    if (offsetDraft !== undefined) {
+      if (offsetDraft) publishModificationDraft(offsetDraft)
+      return
+    }
     handleSketchCanvasPointerDown({
       appendAt,
       bounds,
@@ -3574,17 +5609,110 @@ function SketchDrawing({
       setPanGesture,
     })
   }
-  const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
-    if (!draft || !isSketchModificationTool(editorTool)) return
-    const point = eventPoint(event)
-    if (!point) return
-    const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
-    if (!nextDraft) return
+  const publishModificationDraft = (nextDraft: SketchRecord) => {
     onDraftChange(nextDraft)
     onSelectionChange([])
+    setPending(null)
     setInference(null)
   }
-  const handlePointerUp = () => {
+  const handleCircleSplitAction = (
+    circle: Extract<SketchEntity, { type: "circle" }>,
+    point: SketchPoint2,
+  ) => {
+    const projectedPoint = projectedCirclePoint(draft ?? sketch, circle, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-circle-second" || pending.circleId !== circle.id) {
+      setPending({ kind: "split-circle-second", circleId: circle.id, firstPoint: projectedPoint })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeCircleSplitUpdate(draft, circle.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publishModificationDraft(nextDraft)
+  }
+  const handleEllipseSplitAction = (
+    ellipse: Extract<SketchEntity, { type: "ellipse" }>,
+    point: SketchPoint2,
+  ) => {
+    const projectedPoint = projectedEllipsePoint(draft ?? sketch, ellipse, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-ellipse-second" || pending.ellipseId !== ellipse.id) {
+      setPending({
+        kind: "split-ellipse-second",
+        ellipseId: ellipse.id,
+        firstPoint: projectedPoint,
+      })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeEllipseSplitUpdate(draft, ellipse.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publishModificationDraft(nextDraft)
+  }
+  const publishMirrorDraft = (
+    result: ReturnType<typeof mirrorSketchEntities>,
+    keepSelectingSources: boolean,
+  ) => {
+    if (result.createdEntityIds.length === 0) return
+    onDraftChange(result.sketch)
+    onSelectionChange([])
+    setInference(null)
+    if (keepSelectingSources) return
+    setPending(null)
+    onEditorToolChange("select")
+  }
+  const handleMirrorAction = (entityId: SketchEntityId) => {
+    if (!draft) return
+    const resolution = resolveMirrorAction({ draft, entityId, pending, selectedEntityIds })
+    if (resolution?.kind === "select-sources") {
+      onSelectionChange([])
+      setInference(null)
+      setPending({ axisLineId: resolution.axisLineId, kind: "mirror-sources" })
+      return
+    }
+    if (resolution) publishMirrorDraft(resolution.result, resolution.keepSelectingSources)
+  }
+  const handleOffsetSourceAction = (entityId: SketchEntityId) => {
+    if (!draft) return
+    const entity = draft.entities.find(({ id }) => id === entityId)
+    if (entity?.type !== "line") return
+    const lineIds = connectedSketchOffsetLineIds(draft, entity.id)
+    onSelectionChange(lineIds)
+    setInference(null)
+    setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
+  }
+  const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (!draft) return
+    const entity = draft.entities.find(({ id }) => id === entityId)
+    const actionKind = sketchCurveActionKind(editorTool, entity)
+    if (!actionKind) return
+    const actions = {
+      "circular-pattern": () => circularPattern.selectEntity(event, entityId),
+      "linear-pattern": () => linearPattern.selectEntity(event, entityId),
+      mirror: () => handleMirrorAction(entityId),
+      offset: () => handleOffsetSourceAction(entityId),
+      transform: () => transform.selectEntity(event, entityId),
+      "split-circle": () => {
+        const point = eventPoint(event)
+        if (point && entity?.type === "circle") handleCircleSplitAction(entity, point)
+      },
+      "split-ellipse": () => {
+        const point = eventPoint(event)
+        if (point && entity?.type === "ellipse") handleEllipseSplitAction(entity, point)
+      },
+      direct: () => {
+        const point = eventPoint(event)
+        if (!point || !isDirectSketchModificationTool(editorTool)) return
+        const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
+        if (nextDraft) publishModificationDraft(nextDraft)
+      },
+    } satisfies Record<SketchCurveActionKind, () => void>
+    actions[actionKind]()
+  }
+  const handlePointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    if (transform.consumePointerUp(event)) return
     finishPointDrag()
     setInference(null)
     setPanGesture(null)
@@ -3616,26 +5744,38 @@ function SketchDrawing({
       handlers={{
         appendAt,
         onCanvasPointerDown: handleCanvasPointerDown,
+        onCircularPatternApply: circularPattern.apply,
+        onCircularPatternCancel: circularPattern.cancel,
+        onCircularPatternPreview: circularPattern.preview,
         onCurveAction: handleCurveAction,
         onKeyDown: handleKeyDown,
+        onLinearPatternApply: linearPattern.apply,
+        onLinearPatternCancel: linearPattern.cancel,
+        onLinearPatternPreview: linearPattern.preview,
         onPointPointerDown: handlePointPointerDown,
         onPointerLeave: handlePointerLeave,
         onPointerMove: handlePointerMove,
         onPointerUp: handlePointerUp,
         onSelection: handleSelection,
+        onTransformStart: transform.start,
+        onTransformApply: transform.applyExact,
+        onTransformCancel: transform.cancel,
         onWheel: handleWheel,
       }}
       sketch={sketch}
       state={{
         annotationProfiles,
         bounds,
+        circularPattern: circularPattern.presentation,
         cursor,
         dragTarget,
         draggingPointId,
         editable,
         geometry,
         inference,
+        linearPattern: linearPattern.presentation,
         pending,
+        transform: transform.presentation,
         viewportSize,
       }}
       svgRef={svgRef}
@@ -3787,16 +5927,19 @@ type SketchDrawingConfiguration = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
+  originPlaneVisibility: ViewerOriginPlaneVisibility
   releasedDragTarget: SketchDragTarget | null
   selectConstraintLabel: (label: string) => string
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   solution: SolvedSketchWire | null
+  variables: readonly VariableDefinition[]
 }>
 
 function SketchViewportContent({
@@ -3960,6 +6103,7 @@ type SketchViewportState = Readonly<{
   controller: DocumentControllerState
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  originPlaneVisibility: ViewerOriginPlaneVisibility
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -3970,6 +6114,7 @@ type SketchViewportActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
@@ -4039,6 +6184,7 @@ export function SketchViewport({
     controller,
     draft,
     editorTool,
+    originPlaneVisibility,
     selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
@@ -4049,6 +6195,7 @@ export function SketchViewport({
     onEditorToolChange,
     onConstraintSelectionChange,
     onFailedConstraintsChange,
+    onOriginPlaneVisibilityChange,
     onProfilesChange,
     onProfileSelect,
     onRedo,
@@ -4090,20 +6237,24 @@ export function SketchViewport({
       onConstraintSelectionChange,
       onDraggingPointChange: handleDraggingPointChange,
       onEditorToolChange,
+      onOriginPlaneVisibilityChange,
       selectedProfile,
       selectedConstraintId,
       selectedEntityIds,
       selectConstraintLabel: presentation.selectConstraintLabel,
       solution: displaySolution,
+      variables: controller.report?.snapshot.variables ?? [],
       onDraftChange,
       onProfileSelect,
       onRedo,
       onSelectionChange,
       onUndo,
+      originPlaneVisibility,
       releasedDragTarget,
     }),
     [
       construction,
+      controller.report?.snapshot.variables,
       displaySolution,
       draft,
       editorTool,
@@ -4111,10 +6262,12 @@ export function SketchViewport({
       onConstraintSelectionChange,
       onDraftChange,
       onEditorToolChange,
+      onOriginPlaneVisibilityChange,
       onProfileSelect,
       onRedo,
       onSelectionChange,
       onUndo,
+      originPlaneVisibility,
       presentation.drawingLabel,
       presentation.editDimensionLabel,
       presentation.selectConstraintLabel,
@@ -4147,6 +6300,12 @@ export function SketchViewport({
         selectedEntityIds={selectedEntityIds}
         onDraftChange={onDraftChange}
       />
+      <div className="absolute bottom-3 right-3">
+        <OriginPlaneVisibilityControls
+          onChange={onOriginPlaneVisibilityChange}
+          visibility={originPlaneVisibility}
+        />
+      </div>
       <SketchOrientation plane={activeSketch?.plane ?? null} />
     </section>
   )

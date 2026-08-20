@@ -4,13 +4,14 @@ import {
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
-  featureRecordSchema,
   featureIdSchema,
+  featureRecordSchema,
   type SketchProfileSelector,
+  type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
-import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useEffect, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
@@ -82,6 +83,7 @@ export type ExtrusionFormMode =
       featureLabel: string
       kind: "create"
       profile: SketchProfileSelector
+      supportReference?: TopoRef
     }>
   | Readonly<{
       feature: FeatureRecord
@@ -110,13 +112,22 @@ function extrusionRecord(
   parameters: ReturnType<typeof extrusionFeatureParametersSchema.parse>,
   targetFeatureId: FeatureId | null,
 ) {
-  const dependencies = targetFeatureId ? [targetFeatureId] : []
+  const references =
+    mode.kind === "create"
+      ? mode.supportReference
+        ? [mode.supportReference]
+        : []
+      : mode.feature.references
+  const dependencies = [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
+    (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
+  )
   if (mode.kind === "edit") {
     return featureRecordSchema.parse({
       ...mode.feature,
       type: extrusionFeatureType.type,
       parameters,
       dependencies,
+      references,
     })
   }
   return featureRecordSchema.parse({
@@ -125,7 +136,7 @@ function extrusionRecord(
     type: extrusionFeatureType.type,
     parameters,
     dependencies,
-    references: [],
+    references,
     suppressed: false,
     label: mode.featureLabel,
   })

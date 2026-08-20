@@ -23,6 +23,8 @@ export type SketchEditorTool =
   | "aligned-rectangle"
   | "centered-aligned-rectangle"
   | "circle"
+  | "ellipse"
+  | "elliptical-arc"
   | "three-point-circle"
   | "inscribed-polygon"
   | "circumscribed-polygon"
@@ -34,11 +36,35 @@ export type SketchEditorTool =
   | "tangent-arc"
   | "trim"
   | "extend"
+  | "mirror"
+  | "offset"
+  | "linear-pattern"
+  | "circular-pattern"
   | "split"
-export type SketchModificationTool = Extract<SketchEditorTool, "extend" | "split" | "trim">
+  | "transform"
+export type SketchModificationTool = Extract<
+  SketchEditorTool,
+  | "circular-pattern"
+  | "extend"
+  | "linear-pattern"
+  | "mirror"
+  | "offset"
+  | "split"
+  | "transform"
+  | "trim"
+>
 export type SketchDraftChangeMode = "record" | "replace"
 
-const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set(["extend", "split", "trim"])
+const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
+  "circular-pattern",
+  "extend",
+  "linear-pattern",
+  "mirror",
+  "offset",
+  "split",
+  "transform",
+  "trim",
+])
 
 export function isSketchModificationTool(tool: SketchEditorTool): tool is SketchModificationTool {
   return sketchModificationTools.has(tool)

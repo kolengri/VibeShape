@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./origin-planes": "./src/origin-planes.ts",
     "./project-thumbnail": "./src/project-thumbnail.ts",
     "./three-viewport": "./src/three-viewport.ts"
   },

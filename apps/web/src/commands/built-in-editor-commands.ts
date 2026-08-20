@@ -26,7 +26,8 @@ export type BuiltInEditorCommandContext = Readonly<{
     cancelActive: () => void
     createBox: () => void
     createCylinder: () => void
-    createExtrusion: () => void
+    createDatumPlane: () => void
+    createExtrusion: () => unknown
     createSketch: () => void
     createSubtract: () => void
     redoSketch: () => void
@@ -51,6 +52,7 @@ export type BuiltInEditorCommandContext = Readonly<{
 
 const editorOwner = "org.vibeshape.core.editor"
 const partDesignOwner = "org.vibeshape.core.part-design"
+const referenceGeometryOwner = "org.vibeshape.core.reference-geometry"
 const sketchOwner = "org.vibeshape.core.sketch"
 
 const descriptors: readonly EditorCommandDescriptor[] = [
@@ -76,6 +78,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.createSketch,
     labelKey: "createSketch",
     ownerModuleId: sketchOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "datum-plane",
+    id: editorCommandIds.createDatumPlane,
+    labelKey: "createDatumPlane",
+    ownerModuleId: referenceGeometryOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -190,6 +200,22 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "ellipse",
+    id: editorCommandIds.sketchEllipse,
+    labelKey: "sketchEllipse",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
+    icon: "elliptical-arc",
+    id: editorCommandIds.sketchEllipticalArc,
+    labelKey: "sketchEllipticalArc",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "inscribed-polygon",
     id: editorCommandIds.sketchInscribedPolygon,
     labelKey: "sketchInscribedPolygon",
@@ -281,9 +307,50 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "mirror",
+    id: editorCommandIds.sketchMirror,
+    labelKey: "sketchMirror",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "offset",
+    id: editorCommandIds.sketchOffset,
+    labelKey: "sketchOffset",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "o" },
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "linear-pattern",
+    id: editorCommandIds.sketchLinearPattern,
+    labelKey: "sketchLinearPattern",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "circular-pattern",
+    id: editorCommandIds.sketchCircularPattern,
+    labelKey: "sketchCircularPattern",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "split",
     id: editorCommandIds.sketchSplit,
     labelKey: "sketchSplit",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
+    icon: "transform",
+    id: editorCommandIds.sketchTransform,
+    labelKey: "sketchTransform",
     ownerModuleId: sketchOwner,
     toolbarGroup: "sketch-modify",
   },
@@ -352,15 +419,22 @@ function sketchToolHandler(
     | "sketchCenteredAlignedRectangle"
     | "sketchCenteredSlot"
     | "sketchCircle"
+    | "sketchEllipse"
+    | "sketchEllipticalArc"
+    | "sketchCircularPattern"
     | "sketchCircumscribedPolygon"
     | "sketchExtend"
     | "sketchInscribedPolygon"
     | "sketchLine"
+    | "sketchLinearPattern"
+    | "sketchMirror"
+    | "sketchOffset"
     | "sketchPoint"
     | "sketchRectangle"
     | "sketchSelect"
     | "sketchSlot"
     | "sketchSplit"
+    | "sketchTransform"
     | "sketchTangentArc"
     | "sketchTrim"],
   tool: SketchEditorTool,
@@ -406,8 +480,27 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     ownerModuleId: sketchOwner,
   },
   {
+    execute: ({ actions }) => actions.createDatumPlane(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createDatumPlane,
+    isActive: ({ state }) => state.activePartDesignCommand === "datum-plane",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: referenceGeometryOwner,
+  },
+  {
     execute: ({ actions }) => actions.createExtrusion(),
     getEligibility: (context) => {
+      const { activeSketchTool, controller } = context.state
+      if (isActiveSketchEditorTool(activeSketchTool)) {
+        if (controller.status !== "ready" || !controller.report) {
+          return editorCommandDisabled("documentUnavailable")
+        }
+        if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
+        if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
+        return context.state.extrusionAvailable
+          ? editorCommandEnabled()
+          : editorCommandDisabled("selectProfile")
+      }
       const eligibility = canCreateFeature(context)
       if (!eligibility.enabled) return eligibility
       return context.state.extrusionAvailable
@@ -416,7 +509,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     },
     id: editorCommandIds.createExtrusion,
     isActive: ({ state }) => state.activePartDesignCommand === "extrusion",
-    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
     ownerModuleId: partDesignOwner,
   },
   {
@@ -459,6 +552,8 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchAlignedRectangle, "aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCenteredAlignedRectangle, "centered-aligned-rectangle"),
   sketchToolHandler(editorCommandIds.sketchCircle, "circle"),
+  sketchToolHandler(editorCommandIds.sketchEllipse, "ellipse"),
+  sketchToolHandler(editorCommandIds.sketchEllipticalArc, "elliptical-arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointCircle, "three-point-circle"),
   sketchToolHandler(editorCommandIds.sketchInscribedPolygon, "inscribed-polygon"),
   sketchToolHandler(editorCommandIds.sketchCircumscribedPolygon, "circumscribed-polygon"),
@@ -483,7 +578,12 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
   sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
+  sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
+  sketchToolHandler(editorCommandIds.sketchOffset, "offset"),
+  sketchToolHandler(editorCommandIds.sketchLinearPattern, "linear-pattern"),
+  sketchToolHandler(editorCommandIds.sketchCircularPattern, "circular-pattern"),
   sketchToolHandler(editorCommandIds.sketchSplit, "split"),
+  sketchToolHandler(editorCommandIds.sketchTransform, "transform"),
   {
     execute: ({ actions, state }) => actions.setSketchConstruction(!state.sketchConstruction),
     getEligibility: requiresSketch,
