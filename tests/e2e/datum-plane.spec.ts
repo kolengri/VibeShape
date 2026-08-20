@@ -37,9 +37,14 @@ test.describe("datum plane reference geometry", () => {
     const createForm = page.getByRole("form", { name: "Create datum plane" })
     await createForm.getByRole("combobox", { name: "Support" }).selectOption("xz")
     await createForm.getByRole("combobox", { name: "Offset" }).fill("14 mm")
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
+    await expect(page.getByText("Unsaved datum plane preview", { exact: true })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Datum plane 1" })).not.toBeVisible()
     await createForm.getByRole("button", { name: "Create datum plane" }).dblclick()
 
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(page.getByRole("treeitem", { name: "Datum plane 1" })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
@@ -53,7 +58,11 @@ test.describe("datum plane reference geometry", () => {
     const editForm = page.getByRole("form", { name: "Edit datum plane" })
     await expect(editForm.getByRole("combobox", { name: "Support" })).toHaveValue("xz")
     await editForm.getByRole("combobox", { name: "Offset" }).fill("16 mm")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
     await editForm.getByRole("button", { name: "Update datum plane" }).click()
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle")
 
     await selectFeatureFace(page, "Datum plane 1")
 

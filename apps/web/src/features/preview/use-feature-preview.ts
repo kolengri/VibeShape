@@ -1,8 +1,9 @@
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
   type DocumentSnapshot,
-  type FeatureRecord,
   documentSnapshotSchema,
+  type FeatureRecord,
+  readDatumPlaneFeatureParameters,
 } from "@vibeshape/domain"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -17,7 +18,10 @@ type PreviewGeometryIdentity = Readonly<{
   featureId: string
 }>
 
-export type ExtrusionPreviewState = Readonly<{
+export type FeaturePreviewKind = "datum-plane" | "extrusion"
+
+export type FeaturePreviewState = Readonly<{
+  kind?: FeaturePreviewKind
   meshes: readonly ViewerMesh[]
   status: "idle" | "loading" | "ready" | "error"
 }>
@@ -28,7 +32,7 @@ function previewFeatures(snapshot: DocumentSnapshot, candidate: FeatureRecord) {
   return snapshot.features.map((feature) => (feature.id === candidate.id ? candidate : feature))
 }
 
-export function createExtrusionPreviewDocument(
+export function createFeaturePreviewDocument(
   snapshot: DocumentSnapshot,
   candidate: FeatureRecord,
   previewDocumentId: DocumentSnapshot["id"],
@@ -40,22 +44,31 @@ export function createExtrusionPreviewDocument(
   })
 }
 
-export function createExtrusionPreviewMeshes(
+export function createFeaturePreviewMeshes(
   document: DocumentSnapshot,
   geometry: readonly (PreviewGeometryIdentity &
     Readonly<{ geometry: { mesh: Omit<ViewerMesh, "featureId"> } }>)[],
   committedGeometry: readonly PreviewGeometryIdentity[],
 ) {
   const terminalIds = terminalFeatureIds(document.features)
+  const datumIds = new Set<string>(
+    document.features
+      .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
+      .map(({ id }) => id),
+  )
   const committedHashes = new Map(
     committedGeometry.map(({ contentHash, featureId }) => [featureId, contentHash]),
   )
   return geometry
-    .filter(({ featureId }) => terminalIds.has(featureId))
+    .filter(({ featureId }) => terminalIds.has(featureId) || datumIds.has(featureId))
     .map(({ contentHash, featureId, geometry: result }) => ({
       ...result.mesh,
       featureId,
-      appearance: committedHashes.get(featureId) === contentHash ? "model" : "preview",
+      appearance: datumIds.has(featureId)
+        ? "datum"
+        : committedHashes.get(featureId) === contentHash
+          ? "model"
+          : "preview",
     })) satisfies readonly ViewerMesh[]
 }
 
@@ -66,23 +79,27 @@ async function rebuildPreview(
   previewDocumentId: DocumentSnapshot["id"],
   committedGeometry: readonly PreviewGeometryIdentity[],
 ) {
-  const document = createExtrusionPreviewDocument(snapshot, candidate, previewDocumentId)
+  const document = createFeaturePreviewDocument(snapshot, candidate, previewDocumentId)
   const response = await session.rebuild({ document, mesh: PRODUCT_MESH_POLICY })
   const candidateEvaluation = response.evaluation.records.find(
     ({ featureId }) => featureId === candidate.id,
   )
   if (candidateEvaluation?.status !== "succeeded") {
-    throw new Error("The extrusion preview could not be evaluated.")
+    throw new Error("The feature preview could not be evaluated.")
   }
-  return createExtrusionPreviewMeshes(document, response.geometry, committedGeometry)
+  return createFeaturePreviewMeshes(document, response.geometry, committedGeometry)
 }
 
-export function useExtrusionPreview(
+function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
+  return readDatumPlaneFeatureParameters(candidate) ? "datum-plane" : "extrusion"
+}
+
+export function useFeaturePreview(
   snapshot: DocumentSnapshot | null,
   candidate: FeatureRecord | null,
   committedGeometry: readonly PreviewGeometryIdentity[],
 ) {
-  const [state, setState] = useState<ExtrusionPreviewState>({ status: "idle", meshes: [] })
+  const [state, setState] = useState<FeaturePreviewState>({ status: "idle", meshes: [] })
   const sequenceRef = useRef(0)
   const sessionRef = useRef<PreviewSession | null>(null)
   const previewDocumentId = useMemo(
@@ -110,13 +127,14 @@ export function useExtrusionPreview(
       setState({ status: "idle", meshes: [] })
       return
     }
-    setState({ status: "loading", meshes: [] })
+    const kind = featurePreviewKind(candidate)
+    setState({ status: "loading", meshes: [], kind })
     void rebuildPreview(session, snapshot, candidate, previewDocumentId, committedGeometry).then(
       (meshes) => {
-        if (sequenceRef.current === sequence) setState({ status: "ready", meshes })
+        if (sequenceRef.current === sequence) setState({ status: "ready", meshes, kind })
       },
       () => {
-        if (sequenceRef.current === sequence) setState({ status: "error", meshes: [] })
+        if (sequenceRef.current === sequence) setState({ status: "error", meshes: [], kind })
       },
     )
   }, [candidate, committedGeometry, previewDocumentId, snapshot])
