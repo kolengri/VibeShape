@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { boxFeatureType, createLengthQuantity, datumPlaneFeatureType } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type {
@@ -25,6 +26,7 @@ vi.mock("../document/document-controller", async (importOriginal) => {
 
 const boxId = "0195b5ac-b220-7a2c-8c33-67a36a7f2602"
 const booleanId = "0195b5ac-b220-7a2c-8c33-67a36a7f2603"
+const datumId = "0195b5ac-b220-7a2c-8c33-67a36a7f2604"
 const mesh = {
   positions: new Float32Array([0, 0, 0, 20, 0, 0, 0, 20, 0]),
   normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
@@ -41,7 +43,15 @@ function readyController(
     saveStatus: "saved",
     diagnostic: null,
     report: {
-      snapshot: { features },
+      snapshot: {
+        features: features.map((feature) => ({
+          type: boxFeatureType.type,
+          parameters: {},
+          references: [],
+          suppressed: false,
+          ...feature,
+        })),
+      },
       rebuild: { ok: true, response: { geometry } },
     },
   } as unknown as DocumentControllerState
@@ -201,6 +211,35 @@ describe("GeometryViewport", () => {
     expect(screen.getByText("Create a feature to display its rebuilt geometry.").textContent).toBe(
       "Create a feature to display its rebuilt geometry.",
     )
+  })
+
+  it("renders datum planes as reference geometry while keeping them independently hideable", () => {
+    const datumFeature = {
+      schemaVersion: 0,
+      id: datumId,
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(10),
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }, datumFeature],
+      [
+        { featureId: boxId, geometry: { mesh } },
+        { featureId: datumId, geometry: { mesh } },
+      ],
+    )
+
+    expect(viewerMeshes(controller)).toEqual([
+      { featureId: boxId, ...mesh },
+      { featureId: datumId, appearance: "datum", ...mesh },
+    ])
+    expect(viewerMeshes(controller, [datumId])).toEqual([{ featureId: boxId, ...mesh }])
   })
 
   it("initializes an empty 3D viewport for origin-plane preselection and selection", async () => {

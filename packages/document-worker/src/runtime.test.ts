@@ -3,6 +3,7 @@ import {
   boxFeatureType,
   createLengthQuantity,
   cylinderFeatureType,
+  datumPlaneFeatureType,
   type FeatureId,
   type FeatureRecord,
   featureIdSchema,
@@ -39,6 +40,7 @@ const featureIds = {
   box: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101"),
   cylinder: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
   boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
+  datum: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104"),
 } as const
 const sketchIds = {
   sketch: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
@@ -108,6 +110,22 @@ function boolean(): FeatureRecord {
     type: booleanFeatureType.type,
     parameters: { operation: "subtract" },
     dependencies: [featureIds.box, featureIds.cylinder],
+    references: [],
+    suppressed: false,
+  }
+}
+
+function datum(): FeatureRecord {
+  return {
+    schemaVersion: 0,
+    id: featureIds.datum,
+    type: datumPlaneFeatureType.type,
+    parameters: {
+      mode: "offset",
+      support: { kind: "origin-plane", plane: "xy" },
+      offset: createLengthQuantity(10),
+    },
+    dependencies: [],
     references: [],
     suppressed: false,
   }
@@ -533,6 +551,32 @@ describe("DocumentWorkerRuntime", () => {
     if (response?.type !== "documentExported") throw new Error("Expected 3MF export response.")
     expect([...response.file.slice(0, 2)]).toEqual([80, 75])
     expect(transfers.at(-1)).toEqual([expect.any(ArrayBuffer)])
+  })
+
+  it("never exports datum-plane display geometry as a printable body", async () => {
+    const { engine, runtime } = createHarness()
+    const datumDocument = documentRebuildSnapshotSchema.parse({
+      ...document(documentIds.primary),
+      features: [datum(), boolean(), cylinder(), box()],
+    })
+    const rebuildWithDatum = request("rebuild-with-datum")
+    if (rebuildWithDatum.type !== "rebuildDocument") {
+      throw new Error("Expected a document rebuild request.")
+    }
+    await runtime.handle({ ...rebuildWithDatum, document: datumDocument })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "export-with-datum",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "step",
+    })
+
+    expect(engine.exportedFeatures.at(-1)?.map(({ featureId }) => featureId)).toEqual([
+      featureIds.boolean,
+    ])
   })
 
   it("rejects print meshes whose identities do not match terminal bodies", async () => {

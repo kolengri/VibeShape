@@ -2,6 +2,7 @@ import {
   booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
+  datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
@@ -26,6 +27,7 @@ import {
   makeEllipseArc,
   makeFace,
   makeLine,
+  makePolygon,
   makeThreePointArc,
   type Shape3D,
   type SimplePoint,
@@ -140,6 +142,8 @@ const EXTRUSION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
 const EXTRUSION_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
+const DATUM_PLANE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
@@ -431,6 +435,7 @@ type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
+type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
 function boxFeatureSemanticRole(
   context: TopologyCandidateContext,
@@ -497,6 +502,7 @@ type ParsedFeature =
   | { kind: "boolean"; parameters: BooleanContentParameters }
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
+  | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
 
 type FeatureParseResult =
@@ -586,14 +592,14 @@ function extrusionInputCardinalityIsValid(
   return !supportFeatureId || dependencies.some(({ featureId }) => featureId === supportFeatureId)
 }
 
-function extrusionReferencesAreValid(
+function supportReferencesAreValid(
   input: FeatureEvaluationInput,
-  parameters: ExtrusionContentParameters,
+  supportFeatureId: string | undefined,
 ) {
   const references = input.content.feature.references
-  if (!parameters.supportFeatureId) return references.length === 0
+  if (!supportFeatureId) return references.length === 0
   const supportInputIndex = input.dependencies.findIndex(
-    ({ featureId }) => featureId === parameters.supportFeatureId,
+    ({ featureId }) => featureId === supportFeatureId,
   )
   return (
     supportInputIndex >= 0 &&
@@ -615,12 +621,35 @@ function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResul
         : `A ${parameters.data.operation} extrusion requires one target and may also depend on its sketch support.`,
     )
   }
-  if (!extrusionReferencesAreValid(input, parameters.data)) {
+  if (!supportReferencesAreValid(input, parameters.data.supportFeatureId)) {
     return invalidInputCardinality(
       "An extrusion sketch-support reference must match its support dependency.",
     )
   }
   return { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
+}
+
+function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = datumPlaneFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Datum plane content is invalid.")
+  }
+  const supportFeatureId = parameters.data.supportFeatureId
+  const validDependencies = supportFeatureId
+    ? input.dependencies.length === 1 && input.dependencies[0]?.featureId === supportFeatureId
+    : input.dependencies.length === 0
+  if (
+    input.content.feature.inputs.length !== input.dependencies.length ||
+    !validDependencies ||
+    !supportReferencesAreValid(input, supportFeatureId)
+  ) {
+    return invalidInputCardinality(
+      "A datum plane may depend only on its matching face-support reference.",
+    )
+  }
+  return { ok: true, feature: { kind: "datum-plane", parameters: parameters.data } }
 }
 
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
@@ -629,6 +658,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
+  [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 
 function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -680,6 +710,42 @@ function createExtrusionFeatureShape(
   }
 }
 
+function createDatumPlaneFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: DatumPlaneContentParameters,
+) {
+  const { frame, size } = parameters
+  const half = size / 2
+  const thickness = 0.001
+  const point = (x: number, y: number): SimplePoint => [
+    frame.origin[0] + frame.xAxis[0] * x + frame.yAxis[0] * y,
+    frame.origin[1] + frame.xAxis[1] * x + frame.yAxis[1] * y,
+    frame.origin[2] + frame.xAxis[2] * x + frame.yAxis[2] * y,
+  ]
+  const face = makePolygon([
+    point(-half, -half),
+    point(half, -half),
+    point(half, half),
+    point(-half, half),
+  ])
+  const vector = new opencascade.gp_Vec_4(
+    frame.normal[0] * thickness,
+    frame.normal[1] * thickness,
+    frame.normal[2] * thickness,
+  )
+  try {
+    const builder = new opencascade.BRepPrimAPI_MakePrism_1(face.wrapped, vector, false, true)
+    try {
+      return cast(builder.Shape()).asShape3D()
+    } finally {
+      builder.delete()
+    }
+  } finally {
+    vector.delete()
+    face.delete()
+  }
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: ParsedFeature,
@@ -697,6 +763,10 @@ function createFeatureShape(
 
   if (feature.kind === "extrusion") {
     return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
+  }
+
+  if (feature.kind === "datum-plane") {
+    return createDatumPlaneFeatureShape(opencascade, feature.parameters)
   }
 
   const [target, tool] = dependencyShapes
@@ -984,7 +1054,14 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
         ? boxFeatureSemanticRole(context, feature.parameters)
         : feature.kind === "cylinder"
           ? cylinderFeatureSemanticRole(context, feature.parameters)
-          : extrusionFeatureSemanticRole(context, feature.parameters),
+          : feature.kind === "datum-plane"
+            ? context.kind === "face" &&
+              context.signature.geometryClass === "PLANE" &&
+              context.signature.direction &&
+              Math.abs(dot3(context.signature.direction, feature.parameters.frame.normal)) > 0.999
+              ? "datum.plane"
+              : undefined
+            : extrusionFeatureSemanticRole(context, feature.parameters),
   })
 }
 

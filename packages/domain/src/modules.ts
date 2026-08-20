@@ -13,6 +13,7 @@ import {
   extrusionFeatureType,
   legacyExtrusionFeatureType,
 } from "./part-design"
+import { datumPlaneFeatureType } from "./reference-geometry"
 
 export const commandDescriptorSchema = z
   .object({
@@ -351,6 +352,15 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     legacyExtrusionFeatureType,
     extrusionFeatureType,
   ],
+})
+
+export const referenceGeometryModule: ModuleDescriptor = moduleDescriptorSchema.parse({
+  id: "org.vibeshape.core.reference-geometry",
+  version: "0.1.0",
+  dependencies: [featureCoreModule.id],
+  commands: [],
+  queries: [],
+  featureTypes: [datumPlaneFeatureType],
 })
 
 function registryFailure(

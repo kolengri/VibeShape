@@ -15,6 +15,7 @@ export type SelectedSketchSupport = Readonly<{
 
 function supportedPlanarRole(role: string | undefined) {
   if (!role) return false
+  if (role === "datum.plane") return true
   if (role.startsWith("primitive.box.")) return true
   if (role === "primitive.cylinder.cap.start") return true
   if (role === "primitive.cylinder.cap.end") return true

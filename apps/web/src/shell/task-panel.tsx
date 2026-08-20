@@ -41,8 +41,13 @@ import {
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
+  isDatumPlaneFeature,
   isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
+import {
+  DatumPlaneForm,
+  type DatumPlaneFormMode,
+} from "../features/reference-geometry/datum-plane-form"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
@@ -284,8 +289,45 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
   }
 }
 
+function useDatumPlaneFormCopy(mode: DatumPlaneFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel.datumPlane")
+  const operationCopy = {
+    create: {
+      title: t("title"),
+      description: t("description"),
+      submit: t("create"),
+      validationSummary: t("validationSummary"),
+      saveFailed: t("createFailed"),
+    },
+    edit: {
+      title: t("editTitle"),
+      description: t("editDescription"),
+      submit: t("update"),
+      validationSummary: t("updateValidationSummary"),
+      saveFailed: t("updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
+    parameters: t("parameters"),
+    support: t("support"),
+    supportDescription: t("supportDescription"),
+    selectedFace: t("selectedFace"),
+    planeXy: t("planeXy"),
+    planeXz: t("planeXz"),
+    planeYz: t("planeYz"),
+    offset: t("offset"),
+    expressionDescription: t("expressionDescription"),
+    cancel: t("cancel"),
+    invalidExpression: t("invalidExpression"),
+    invalidDimension: t("invalidDimension"),
+    invalidRange: t("invalidRange"),
+    staleRevision: t("staleRevision"),
+  }
+}
+
 function featureTaskContext(
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode,
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode,
   revision: number,
 ) {
   return mode.kind === "edit"
@@ -298,7 +340,7 @@ function EditFeatureDeleteAction({
   onDeleted,
   report,
 }: {
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode
   onDeleted: () => void
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -405,6 +447,37 @@ function BoxTaskPanel({
         copy={boxCopy}
         disabled={report.mode === "read-only"}
         mode={mode}
+        onCancel={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
+    </aside>
+  )
+}
+
+function DatumPlaneTaskPanel({
+  mode,
+  onCloseTool,
+  report,
+}: {
+  mode: DatumPlaneFormMode
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const copy = useDatumPlaneFormCopy(mode.kind)
+  const task = featureTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <DatumPlaneForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        copy={copy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        variables={snapshot.variables}
         onCancel={onCloseTool}
         onSave={task.onSave}
         onSaved={onCloseTool}
@@ -526,6 +599,25 @@ function extrusionFormMode(
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   return feature && isExtrusionFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function datumPlaneFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): DatumPlaneFormMode | null {
+  if (activeTool.kind === "create-datum-plane")
+    return createDatumPlaneFormMode(activeTool, featureLabel)
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isDatumPlaneFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function createDatumPlaneFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" }>,
+  featureLabel: string,
+): Extract<DatumPlaneFormMode, { kind: "create" }> {
+  const mode = { kind: "create" as const, createFeatureId: createBrowserFeatureId, featureLabel }
+  return activeTool.support ? { ...mode, support: activeTool.support } : mode
 }
 
 function createExtrusionFormMode(
@@ -752,6 +844,21 @@ function ActiveCylinderTaskPanel({
   return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
 }
 
+function ActiveDatumPlaneTaskPanel({
+  activeTool,
+  onCloseTool,
+  report,
+}: {
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>
+  onCloseTool: () => void
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const t = useTranslations("app.shell.taskPanel.datumPlane")
+  const datumCount = report.snapshot.features.filter(isDatumPlaneFeature).length
+  const mode = datumPlaneFormMode(activeTool, report, t("featureLabel", { number: datumCount + 1 }))
+  return mode ? <DatumPlaneTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+}
+
 function ActiveExtrusionTaskPanel({
   activeTool,
   onCloseTool,
@@ -835,6 +942,14 @@ function CylinderToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPa
   )
 }
 
+function DatumPlaneToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-datum-plane" && activeTool.kind !== "edit-datum-plane")
+    return null
+  return (
+    <ActiveDatumPlaneTaskPanel activeTool={activeTool} onCloseTool={onCloseTool} report={report} />
+  )
+}
+
 function ExtrusionToolTaskPanel({
   activeTool,
   onCloseTool,
@@ -864,6 +979,8 @@ const activeTaskPanelByKind = {
   "edit-box": BoxToolTaskPanel,
   "create-cylinder": CylinderToolTaskPanel,
   "edit-cylinder": CylinderToolTaskPanel,
+  "create-datum-plane": DatumPlaneToolTaskPanel,
+  "edit-datum-plane": DatumPlaneToolTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
   "edit-extrusion": ExtrusionToolTaskPanel,
   "create-subtract": SubtractToolTaskPanel,

@@ -177,6 +177,7 @@ export type EditorWorkspaceActions = Readonly<{
   closeTool: () => void
   createBox: () => void
   createCylinder: () => void
+  createDatumPlane: () => void
   createExtrusion: () => Promise<boolean>
   createSketch: () => void
   createSubtract: () => void

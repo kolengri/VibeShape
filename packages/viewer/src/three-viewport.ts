@@ -49,7 +49,7 @@ const ORIENTATION_INSET_MARGIN = 8
 const ORIENTATION_INSET_SIZE = 80
 
 export type ViewerMesh = Readonly<{
-  appearance?: "model" | "preview"
+  appearance?: "datum" | "model" | "preview"
   featureId: string
   positions: Float32Array
   normals: Float32Array
@@ -233,6 +233,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     transparent: true,
     opacity: 0.9,
   })
+  readonly #datumSurfaceMaterial = new MeshBasicMaterial({
+    color: new Color("#65a9ee"),
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  readonly #datumEdgeMaterial = new LineBasicMaterial({
+    color: new Color("#65a9ee"),
+    transparent: true,
+    opacity: 0.8,
+  })
   readonly #preselectionMaterial = new MeshBasicMaterial({
     color: new Color("#65a9ee"),
     transparent: true,
@@ -336,11 +348,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#meshSources.clear()
     for (const source of meshes) {
       const preview = source.appearance === "preview"
+      const datum = source.appearance === "datum"
       const geometry = createViewerGeometry(source)
       const surfaceMaterial = preview
         ? this.#previewSurfaceMaterial
-        : this.#createModelSurfaceMaterial(source.featureId)
-      const edgeMaterial = preview ? this.#previewEdgeMaterial : this.#createModelEdgeMaterial()
+        : datum
+          ? this.#datumSurfaceMaterial
+          : this.#createModelSurfaceMaterial(source.featureId)
+      const edgeMaterial = preview
+        ? this.#previewEdgeMaterial
+        : datum
+          ? this.#datumEdgeMaterial
+          : this.#createModelEdgeMaterial()
       const surface = new Mesh(geometry, surfaceMaterial)
       surface.name = source.featureId
       if (!preview) {
@@ -428,6 +447,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#selectionGroup)
     this.#previewSurfaceMaterial.dispose()
     this.#previewEdgeMaterial.dispose()
+    this.#datumSurfaceMaterial.dispose()
+    this.#datumEdgeMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()

@@ -16,6 +16,17 @@ export type PrimitiveLengthCopy = Readonly<{
   invalidRange: string
 }>
 
+export type FeatureParameterFormProps<Mode, Copy> = Readonly<{
+  baseRevision: number
+  copy: Copy
+  disabled?: boolean
+  mode: Mode
+  onCancel: () => void
+  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
+  onSaved: () => void
+  variables: readonly VariableDefinition[]
+}>
+
 export function quantityExpression(quantity: LengthQuantity) {
   return quantity.source.expression ?? `${quantity.source.value} ${quantity.source.unit}`
 }

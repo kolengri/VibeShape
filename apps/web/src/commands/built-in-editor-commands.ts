@@ -26,6 +26,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     cancelActive: () => void
     createBox: () => void
     createCylinder: () => void
+    createDatumPlane: () => void
     createExtrusion: () => unknown
     createSketch: () => void
     createSubtract: () => void
@@ -51,6 +52,7 @@ export type BuiltInEditorCommandContext = Readonly<{
 
 const editorOwner = "org.vibeshape.core.editor"
 const partDesignOwner = "org.vibeshape.core.part-design"
+const referenceGeometryOwner = "org.vibeshape.core.reference-geometry"
 const sketchOwner = "org.vibeshape.core.sketch"
 
 const descriptors: readonly EditorCommandDescriptor[] = [
@@ -76,6 +78,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.createSketch,
     labelKey: "createSketch",
     ownerModuleId: sketchOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "datum-plane",
+    id: editorCommandIds.createDatumPlane,
+    labelKey: "createDatumPlane",
+    ownerModuleId: referenceGeometryOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -468,6 +478,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     isToolbarVisible: ({ state }) =>
       state.activeSketchTool === null || state.activeSketchTool.kind === "select-sketch-plane",
     ownerModuleId: sketchOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createDatumPlane(),
+    getEligibility: canCreateFeature,
+    id: editorCommandIds.createDatumPlane,
+    isActive: ({ state }) => state.activePartDesignCommand === "datum-plane",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: referenceGeometryOwner,
   },
   {
     execute: ({ actions }) => actions.createExtrusion(),

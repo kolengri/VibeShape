@@ -7,7 +7,6 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -15,6 +14,7 @@ import {
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
+  type FeatureParameterFormProps,
   parsePrimitiveLengthExpression,
   quantityExpression,
   submitFeatureMutation,
@@ -139,16 +139,7 @@ export function CylinderForm({
   onSave,
   onSaved,
   variables,
-}: {
-  baseRevision: number
-  copy: CylinderFormCopy
-  disabled?: boolean
-  mode: CylinderFormMode
-  onCancel: () => void
-  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
-  onSaved: () => void
-  variables: readonly VariableDefinition[]
-}) {
+}: FeatureParameterFormProps<CylinderFormMode, CylinderFormCopy>) {
   const {
     clearSubmissionErrors,
     displayUnits,

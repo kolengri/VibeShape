@@ -13,6 +13,9 @@ import {
   featureCoreModule,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  readDatumPlaneFeatureParameters,
+  referenceGeometryFeatureTypeHandlers,
+  referenceGeometryModule,
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -58,9 +61,17 @@ type SketchContextResult =
     }
 
 function createBuiltInFeatureRegistry() {
-  const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
+  const modules = createModuleRegistry([
+    documentCoreModule,
+    featureCoreModule,
+    partDesignModule,
+    referenceGeometryModule,
+  ])
   if (!modules.ok) throw new Error(modules.diagnostic.message)
-  const featureTypes = createFeatureTypeRegistry(modules.registry, partDesignFeatureTypeHandlers)
+  const featureTypes = createFeatureTypeRegistry(modules.registry, [
+    ...partDesignFeatureTypeHandlers,
+    ...referenceGeometryFeatureTypeHandlers,
+  ])
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
   return featureTypes.registry
 }
@@ -190,7 +201,10 @@ function terminalExportFeatures(state: FeatureRebuildState) {
 
   return state.features.flatMap((feature) => {
     const contentHash = successfulHashes.get(feature.id)
-    return contentHash && solidFeatureIds.has(feature.id) && !consumedFeatureIds.has(feature.id)
+    return contentHash &&
+      solidFeatureIds.has(feature.id) &&
+      !consumedFeatureIds.has(feature.id) &&
+      readDatumPlaneFeatureParameters(feature) === null
       ? [{ featureId: feature.id, contentHash }]
       : []
   })

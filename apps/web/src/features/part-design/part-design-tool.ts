@@ -2,10 +2,12 @@ import {
   booleanFeatureType,
   boxFeatureType,
   cylinderFeatureType,
+  datumPlaneFeatureType,
   extrusionFeatureType,
-  legacyExtrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
+  legacyExtrusionFeatureType,
+  type SketchFeatureFaceSupport,
   type SketchProfileSelector,
 } from "@vibeshape/domain"
 
@@ -18,6 +20,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-datum-plane"; support?: SketchFeatureFaceSupport }>
+  | Readonly<{ kind: "edit-datum-plane"; featureId: FeatureId }>
 
 function hasFeatureType(feature: FeatureRecord, expected: FeatureRecord["type"]) {
   return (
@@ -45,6 +49,10 @@ export function isExtrusionFeature(feature: FeatureRecord) {
     hasFeatureType(feature, extrusionFeatureType.type) ||
     hasFeatureType(feature, legacyExtrusionFeatureType.type)
   )
+}
+
+export function isDatumPlaneFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, datumPlaneFeatureType.type)
 }
 
 function isPartDesignSolidFeature(feature: FeatureRecord) {
@@ -120,6 +128,7 @@ export function editPartDesignTool(
   if (isCylinderFeature(feature)) return { kind: "edit-cylinder", featureId: feature.id }
   if (isExtrusionFeature(feature)) return { kind: "edit-extrusion", featureId: feature.id }
   if (isBooleanFeature(feature)) return { kind: "edit-subtract", featureId: feature.id }
+  if (isDatumPlaneFeature(feature)) return { kind: "edit-datum-plane", featureId: feature.id }
   return null
 }
 
@@ -138,5 +147,8 @@ export function activePartDesignCommand(activeTool: ActivePartDesignTool | null)
     case "create-subtract":
     case "edit-subtract":
       return "subtract"
+    case "create-datum-plane":
+    case "edit-datum-plane":
+      return "datum-plane"
   }
 }

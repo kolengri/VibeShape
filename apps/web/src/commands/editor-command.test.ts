@@ -46,6 +46,7 @@ function commandContext(
       cancelActive: vi.fn(),
       createBox: vi.fn(),
       createCylinder: vi.fn(),
+      createDatumPlane: vi.fn(),
       createExtrusion: vi.fn(),
       createSketch: vi.fn(),
       createSubtract: vi.fn(),

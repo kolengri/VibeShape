@@ -7,11 +7,16 @@ import {
   cylinderFeatureParametersSchema,
   type DocumentSnapshot,
   type FeatureRecord,
+  readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
   type SketchEntity,
   type SketchRecord,
 } from "@vibeshape/domain"
-import { extrusionFeatureContentParametersSchema, extrusionFrameSchema } from "@vibeshape/protocol"
+import {
+  datumPlaneFeatureContentParametersSchema,
+  extrusionFeatureContentParametersSchema,
+  extrusionFrameSchema,
+} from "@vibeshape/protocol"
 import {
   resolveSketchProfileSelector,
   type SketchProfileLoop,
@@ -143,13 +148,40 @@ function extrusionSupportFrame(
     : null
 }
 
+function datumPlaneFrame(
+  feature: FeatureRecord,
+  document: DocumentSnapshot,
+  features: readonly FeatureRecord[],
+  visitedFeatureIds: ReadonlySet<string>,
+): ExtrusionFrame | null {
+  const parameters = readDatumPlaneFeatureParameters(feature)
+  if (!parameters) return null
+  const support = parameters.support
+  const baseFrame: ExtrusionFrame | null =
+    support.kind === "origin-plane"
+      ? originPlaneFrame(support.plane)
+      : (() => {
+          const source = features.find(({ id }) => id === support.reference.featureId)
+          const role = support.reference.semanticRole
+          if (!source || !role || visitedFeatureIds.has(source.id)) return null
+          return featureSupportFrame(
+            source,
+            role,
+            document,
+            features,
+            new Set([...visitedFeatureIds, source.id]),
+          )
+        })()
+  return baseFrame ? translatedFrame(baseFrame, parameters.offset.value) : null
+}
+
 function featureSupportFrame(
   feature: FeatureRecord,
   role: string,
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
   visitedFeatureIds: ReadonlySet<string>,
-) {
+): ExtrusionFrame | null {
   if (feature.type.typeId === "org.vibeshape.feature.part-design.box") {
     return boxSupportFrame(feature, role)
   }
@@ -158,6 +190,12 @@ function featureSupportFrame(
   }
   if (feature.type.typeId === "org.vibeshape.feature.part-design.extrusion") {
     return extrusionSupportFrame(feature, role, document, features, visitedFeatureIds)
+  }
+  if (
+    feature.type.typeId === "org.vibeshape.feature.reference-geometry.datum-plane" &&
+    role === "datum.plane"
+  ) {
+    return datumPlaneFrame(feature, document, features, visitedFeatureIds)
   }
   return null
 }
@@ -429,6 +467,23 @@ async function prepareFeatureContent(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
 ) {
+  const datumPlane = readDatumPlaneFeatureParameters(feature)
+  if (datumPlane) {
+    const frame = datumPlaneFrame(feature, document, features, new Set([feature.id]))
+    if (!frame) {
+      return failure("org.vibeshape.feature.datum-plane-support-missing", "support-unresolved")
+    }
+    return {
+      ok: true as const,
+      parameters: datumPlaneFeatureContentParametersSchema.parse({
+        frame,
+        size: 64,
+        ...(datumPlane.support.kind === "feature-face"
+          ? { supportFeatureId: datumPlane.support.reference.featureId }
+          : {}),
+      }),
+    }
+  }
   const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) return null
   const sketch = document.sketches.find(({ id }) => id === parameters.profile.sketchId)
