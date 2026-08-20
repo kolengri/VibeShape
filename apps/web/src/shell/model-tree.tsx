@@ -1,6 +1,8 @@
 import type { FeatureRecord, SketchId, SketchRecord } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { Eye, EyeOff } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
 import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
@@ -24,23 +26,44 @@ function FeatureTreeItem({
   feature,
   onActivate,
   onFeatureRename,
+  onVisibilityChange,
   onSketchRename,
   unnamedFeature,
+  visible,
 }: {
   active: boolean
   controller: DocumentControllerState
   feature: FeatureRecord
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
+  visible: boolean
 }) {
+  const t = useTranslations("app.shell.modelTree")
   const [renameOpen, setRenameOpen] = useState(false)
   const label = feature.label ?? unnamedFeature
   const renameDisabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const visibilityLabel = t(visible ? "hideFeature" : "showFeature", { feature: label })
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={visibilityLabel}
+            aria-pressed={visible}
+            onClick={() => onVisibilityChange(feature.id, !visible)}
+          >
+            {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{visibilityLabel}</TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         variant="ghost"
@@ -80,8 +103,10 @@ function FeatureTreeItems({
   groupLabel,
   onActivate,
   onFeatureRename,
+  onVisibilityChange,
   onSketchRename,
   unnamedFeature,
+  hiddenFeatureIds,
 }: {
   activeFeatureId: FeatureRecord["id"] | null
   controller: DocumentControllerState
@@ -89,8 +114,10 @@ function FeatureTreeItems({
   groupLabel: string
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
+  hiddenFeatureIds: readonly FeatureRecord["id"][]
 }) {
   if (features.length === 0) return null
   return (
@@ -104,8 +131,10 @@ function FeatureTreeItems({
           feature={feature}
           onActivate={onActivate}
           onFeatureRename={onFeatureRename}
+          onVisibilityChange={onVisibilityChange}
           onSketchRename={onSketchRename}
           unnamedFeature={unnamedFeature}
+          visible={!hiddenFeatureIds.includes(feature.id)}
         />
       ))}
     </fieldset>
@@ -249,10 +278,12 @@ export function ModelTree({
   controller,
   onFeatureActivate,
   onFeatureRename,
+  onFeatureVisibilityChange,
   onSketchActivate,
   onSketchRename,
   onWorkspaceChange,
   sketchRenameBlockedId,
+  hiddenFeatureIds,
 }: {
   activeFeatureId: FeatureRecord["id"] | null
   activeSketchId: SketchId | null
@@ -260,10 +291,12 @@ export function ModelTree({
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
   onSketchRename: SketchRenameHandler
   onWorkspaceChange: (workspace: EditorWorkspaceName) => void
   sketchRenameBlockedId: SketchId | null
+  hiddenFeatureIds: readonly FeatureRecord["id"][]
 }) {
   const t = useTranslations("app.shell.modelTree")
   const features = controller.report?.snapshot.features ?? []
@@ -315,8 +348,10 @@ export function ModelTree({
           groupLabel={t("items.features")}
           onActivate={onFeatureActivate}
           onFeatureRename={onFeatureRename}
+          onVisibilityChange={onFeatureVisibilityChange}
           onSketchRename={onSketchRename}
           unnamedFeature={t("unnamedFeature")}
+          hiddenFeatureIds={hiddenFeatureIds}
         />
         <ModelTreeRootItem
           targetWorkspace="model"

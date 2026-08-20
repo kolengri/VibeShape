@@ -24,7 +24,7 @@ and selection are presentation state; they never replace stable entity and const
 | Center-point Circle | Author a center and analytical radius | Implemented |
 | Three-point Circle | Author an exact circle through three non-collinear points | Implemented |
 | Center-point Ellipse | Define a center, first axis endpoint, and perpendicular second-axis radius as one exact analytical curve | Implemented with stable primary- and secondary-axis diameter dimensions; direct curve modification remains open |
-| Elliptical Arc | Define a center, primary-axis endpoint, secondary radius and start point, then the endpoint along a temporary construction ellipse | Implemented as one exact analytical curve with solver-owned trammel constraints; direct Trim/Extend/Split remains open |
+| Elliptical Arc | Define a center, primary-axis endpoint, secondary radius and start point, then the endpoint along a temporary construction ellipse | Implemented as one exact analytical curve with solver-owned trammel constraints and direct Trim/Extend/Split against bounded lines |
 | Circumscribed Polygon | Define a center, vertex radius, and 3–50 sides; keep every vertex on one construction circle with equal side intent | Implemented |
 | Inscribed Polygon | Define a center, tangent-circle radius, and 3–50 sides; keep side midpoints on the construction circle with equal side intent | Implemented |
 | Center-point Arc | Author center, start, end, and positive sweep | Implemented |
@@ -58,7 +58,7 @@ lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch 
 reflects points or analytical curves through shared pure domain operations. Offset accepts a
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
-every line pair plus both open-chain endpoints. Direct ellipse modification, spline, drag-through Trim, free-end Extend,
+every line pair plus both open-chain endpoints. Ellipse-to-round and ellipse-to-ellipse modification boundaries, spline, drag-through Trim, free-end Extend,
 round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
@@ -91,11 +91,11 @@ documentation.
 |---|---|---|
 | Line | Line and center-origin Midpoint Line in one remembered split family | Infinite construction line and richer wake-up inference |
 | Rectangle | Corner, Center, Aligned, and Centered Aligned variants | Selection-driven conversion and numeric placement |
-| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse with primary- and secondary-axis diameter dimensions | Tangent circle and direct ellipse modification |
+| Circle and ellipse | Center-point and Three-point Circle plus exact Center-point Ellipse with primary- and secondary-axis diameter dimensions and analytical line-bounded Trim/Split | Tangent circle and round/ellipse modification boundaries |
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Elliptical, Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, curve Trim/Split, open-curve Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Drag-through Trim, free-end Extend, round-curve and ellipse/spline direct modification, draggable circular-pattern center, and associative pattern editing |
+| Modify | Delete, direct point manipulation, line/arc/circle/ellipse/elliptical-arc Trim and Split, open line/arc/elliptical-arc Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Ellipse-to-round and ellipse-to-ellipse boundaries, drag-through Trim, free-end Extend, round-curve Offset, spline modification, draggable circular-pattern center, and associative pattern editing |
 | Curves | Analytical lines, circles, circular arcs, full ellipses, and elliptical arcs | Spline, other conics, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -230,7 +230,7 @@ active support plane and display unit.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
    relocatable manipulator origin.
 4. Add reference dimensions and a driving/reference conversion command.
-5. Extend Trim, Extend, and Split to ellipse and future spline entities, then add
-   drag-through Trim and explicit free-end Extend behavior.
+5. Extend ellipse Trim and Extend from bounded line intersections to round and ellipse boundaries,
+   then add future spline entities, drag-through Trim, and explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.

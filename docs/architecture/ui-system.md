@@ -58,8 +58,8 @@ editor-session lifetime. If project switching later becomes in-place, an owning 
 provider must remount the provider with a stable document key; concurrently mounted document tabs
 must each own a separate provider or use an explicitly keyed store registry.
 
-The store owns workspace and active-tool coordination, viewport selection, unsaved sketch drafts,
-sketch-local undo and redo, profile selection, and transient shell overlays. It MUST NOT own or clone
+The store owns workspace and active-tool coordination, viewport selection, origin-plane and feature visibility,
+unsaved sketch drafts, sketch-local undo and redo, profile selection, and transient shell overlays. It MUST NOT own or clone
 the committed document snapshot, semantic revision history, TanStack Form values, persisted records,
 worker sessions, solved geometry, mesh buffers, or Three.js objects. Store actions may prepare UI
 intent, but committed changes still pass through the ordinary revision-checked application command

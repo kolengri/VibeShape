@@ -84,4 +84,61 @@ test.describe("selector-backed extrusion", () => {
       reopenedForm.getByRole("checkbox", { name: "Extrude symmetrically" }),
     ).toBeChecked()
   })
+
+  test("creates a separate colored body from a selected planar model face", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    await boxForm.getByRole("button", { name: "Create box" }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const statusBar = page.locator("footer[role='status']")
+    const faceSamples = [
+      { x: bounds.width * 0.4, y: bounds.height * 0.55 },
+      { x: bounds.width * 0.6, y: bounds.height * 0.55 },
+      { x: bounds.width * 0.5, y: bounds.height * 0.3 },
+    ]
+    let sampleIndex = 0
+    await expect
+      .poll(async () => {
+        await canvas.click({
+          position: faceSamples[sampleIndex % faceSamples.length] as (typeof faceSamples)[number],
+        })
+        sampleIndex += 1
+        return statusBar.textContent()
+      })
+      .toMatch(/Selection: Box 1 · Face \d+/)
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toBeDisabled()
+
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
+    await expect(extrusionForm).toBeVisible()
+    await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()
+
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    await expect(page.getByRole("treeitem", { name: "Extrusion 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
+      timeout: 120_000,
+    })
+
+    await page.getByRole("button", { name: "Hide Box 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await page.getByRole("button", { name: "Show Box 1" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+  })
 })

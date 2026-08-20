@@ -327,6 +327,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         {sketchMode ? (
           <>
             <ToolbarCommandGroup
+              commands={modelPrimaryCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("modelPrimaryLabel")}
+            />
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
               commands={sketchToolCommands.filter(
                 ({ descriptor }) => !groupedSketchToolIds.has(descriptor.id),
               )}

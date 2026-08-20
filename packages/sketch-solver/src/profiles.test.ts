@@ -232,6 +232,26 @@ describe("sketch profile detection", () => {
     ])
   })
 
+  it("joins complementary elliptical arcs that share stable axes", () => {
+    const value = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, 0, 5),
+      ellipticalArc(101, 1, 2, 3, 2, 3),
+      ellipticalArc(102, 1, 2, 3, 3, 2),
+    ])
+
+    const result = detectSketchProfiles(value, authoredSolution(value))
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.profiles).toHaveLength(1)
+    expect(result.profiles[0]?.area).toBeCloseTo(Math.PI * 50, 6)
+    expect(result.profiles[0]?.perimeter).toBeCloseTo(48.442_241, 5)
+    expect(result.profiles[0]?.bounds).toEqual({ minX: -10, minY: -5, maxX: 10, maxY: 5 })
+    expect(result.loops[0]?.segments).toHaveLength(2)
+    expect(result.loops[0]?.segments.every(({ type }) => type === "elliptical-arc")).toBe(true)
+  })
+
   it("fails closed when an elliptical-arc endpoint is outside its ellipse", () => {
     const value = sketch([
       point(1, 0, 0),

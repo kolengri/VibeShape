@@ -33,6 +33,7 @@ import {
   MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
+  projectPointToSketchEllipse,
   type RegularPolygonMode,
   regularPolygonGeometry,
   removeSketchEntities,
@@ -53,6 +54,7 @@ import {
   sketchConstraintIdSchema,
   sketchCurvePointIds,
   sketchEllipseGeometry,
+  sketchEllipseParameterForPoint,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
   sketchEllipticalArcStartGeometry,
@@ -60,6 +62,7 @@ import {
   sketchProfileSelectorSchema,
   splitSketchCircle,
   splitSketchCurve,
+  splitSketchEllipse,
   straightSlotGeometry,
   tangentArcGeometry,
   threePointArcGeometry,
@@ -81,6 +84,10 @@ import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import { Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import type {
+  ViewerOriginPlane,
+  ViewerOriginPlaneVisibility,
+} from "@vibeshape/viewer/origin-planes"
 import {
   type CSSProperties,
   type Dispatch,
@@ -97,6 +104,7 @@ import {
   useState,
   type WheelEvent,
 } from "react"
+import { OriginPlaneVisibilityControls } from "../../components/origin-plane-visibility-controls"
 import {
   type ActiveSketchSolveOptions,
   type ActiveSketchSolveResult,
@@ -315,6 +323,11 @@ type PendingGeometry =
       firstPoint: SketchPoint2
       kind: "split-circle-second"
     }>
+  | Readonly<{
+      ellipseId: SketchEntityId
+      firstPoint: SketchPoint2
+      kind: "split-ellipse-second"
+    }>
   | Readonly<{ axisLineId: SketchEntityId; kind: "mirror-sources" }>
   | Readonly<{
       kind: "offset-distance"
@@ -345,8 +358,7 @@ type PanGesture = Readonly<{
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 const LIVE_DRAG_SOLVE_INTERVAL_MS = 32
-const DENSE_DRAG_SOLVE_INTERVAL_MS = 64
-const VERY_DENSE_DRAG_SOLVE_INTERVAL_MS = 96
+const DENSE_DRAG_IDLE_SOLVE_DELAY_MS = 120
 const DENSE_DRAG_SOLVE_COMPLEXITY = 128
 const VERY_DENSE_DRAG_SOLVE_COMPLEXITY = 512
 const DRAG_INFERENCE_FALLBACK_VIEWPORT = { height: 600, width: 800 } as const
@@ -1338,9 +1350,15 @@ type SketchCurveModificationSupport = (
 const directModificationCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set([
   "arc",
   "circle",
+  "ellipse",
+  "elliptical-arc",
   "line",
 ])
-const extendCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set(["arc", "line"])
+const extendCurveTypes: ReadonlySet<SketchCurveEntity["type"]> = new Set([
+  "arc",
+  "elliptical-arc",
+  "line",
+])
 const supportsEverySketchCurve: SketchCurveModificationSupport = () => true
 const sketchCurveModificationSupport = {
   "circular-pattern": supportsEverySketchCurve,
@@ -1949,6 +1967,8 @@ function pendingStart(pending: PendingGeometry, sketch: SketchRecord) {
     }
     case "split-circle-second":
       return pending.firstPoint
+    case "split-ellipse-second":
+      return pending.firstPoint
     default:
       return { x: 0, y: 0 }
   }
@@ -2518,6 +2538,51 @@ function PendingCircleSplitShape({
   )
 }
 
+type PendingEllipseSplit = Extract<PendingGeometry, { kind: "split-ellipse-second" }>
+
+function ellipseArcPreviewPoints(
+  geometry: NonNullable<ReturnType<typeof sketchEllipseGeometry>>,
+  start: SketchPoint2,
+  end: SketchPoint2,
+) {
+  const startParameter = sketchEllipseParameterForPoint(geometry, start)
+  const endParameter = sketchEllipseParameterForPoint(geometry, end)
+  const sweep = (((endParameter - startParameter) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+  const segmentCount = Math.max(8, Math.ceil((sweep / (Math.PI * 2)) * 64))
+  return Array.from({ length: segmentCount + 1 }, (_, index) =>
+    sketchEllipsePointAt(geometry, startParameter + (sweep * index) / segmentCount),
+  )
+}
+
+function PendingEllipseSplitShape({
+  cursor,
+  pending,
+  sketch,
+}: {
+  cursor: SketchPoint2
+  pending: PendingEllipseSplit
+  sketch: SketchRecord
+}) {
+  const ellipse = sketch.entities.find(({ id }) => id === pending.ellipseId)
+  if (ellipse?.type !== "ellipse") return null
+  const points = new Map(
+    sketch.entities.flatMap((entity) => (entity.type === "point" ? [[entity.id, entity]] : [])),
+  )
+  const geometry = ellipseGeometry(ellipse, points)
+  if (!geometry) return null
+  const secondPoint = projectPointToSketchEllipse(geometry, cursor).point
+  const firstArc = ellipseArcPreviewPoints(geometry, pending.firstPoint, secondPoint)
+  const secondArc = ellipseArcPreviewPoints(geometry, secondPoint, pending.firstPoint)
+  return (
+    <>
+      <polyline points={firstArc.map(({ x, y }) => `${x},${y}`).join(" ")} />
+      <polyline points={secondArc.map(({ x, y }) => `${x},${y}`).join(" ")} />
+      <circle cx={pending.firstPoint.x} cy={pending.firstPoint.y} r={3} />
+      <circle cx={secondPoint.x} cy={secondPoint.y} r={3} />
+    </>
+  )
+}
+
 type PendingAnalyticalCurve = Extract<
   PendingGeometry,
   | { kind: "ellipse-primary" | "ellipse-secondary" }
@@ -2577,6 +2642,9 @@ function PendingCurveShape({
   }
   if (pending.kind === "split-circle-second") {
     return <PendingCircleSplitShape cursor={cursor} pending={pending} sketch={sketch} />
+  }
+  if (pending.kind === "split-ellipse-second") {
+    return <PendingEllipseSplitShape cursor={cursor} pending={pending} sketch={sketch} />
   }
   if (isPendingAnalyticalCurve(pending)) {
     return (
@@ -3418,6 +3486,7 @@ type SketchCurveActionKind =
   | "mirror"
   | "offset"
   | "split-circle"
+  | "split-ellipse"
   | "transform"
 
 const indirectSketchCurveActions = new Map<SketchModificationTool, SketchCurveActionKind>([
@@ -3441,7 +3510,9 @@ function sketchCurveActionKind(
   if (!isSketchModificationTool(tool)) return null
   const indirectAction = indirectSketchCurveActions.get(tool)
   if (indirectAction) return indirectAction
-  return tool === "split" && entity?.type === "circle" ? "split-circle" : "direct"
+  if (tool !== "split") return "direct"
+  if (entity?.type === "circle") return "split-circle"
+  return entity?.type === "ellipse" ? "split-ellipse" : "direct"
 }
 
 function sketchModificationUpdate(
@@ -3485,6 +3556,24 @@ function safeCircleSplitUpdate(
   }
 }
 
+function safeEllipseSplitUpdate(
+  draft: SketchRecord,
+  ellipseId: SketchEntityId,
+  firstPoint: SketchPoint2,
+  secondPoint: SketchPoint2,
+) {
+  try {
+    return splitSketchEllipse(draft, {
+      createEntityId: createBrowserSketchEntityId,
+      ellipseId,
+      firstPoint,
+      secondPoint,
+    }).sketch
+  } catch {
+    return null
+  }
+}
+
 function projectedCirclePoint(
   draft: SketchRecord,
   circle: Extract<SketchEntity, { type: "circle" }>,
@@ -3500,6 +3589,18 @@ function projectedCirclePoint(
     x: center.x + (offsetX / offsetLength) * circle.radius,
     y: center.y + (offsetY / offsetLength) * circle.radius,
   }
+}
+
+function projectedEllipsePoint(
+  draft: SketchRecord,
+  ellipse: Extract<SketchEntity, { type: "ellipse" }>,
+  point: SketchPoint2,
+) {
+  const points = new Map(
+    draft.entities.flatMap((entity) => (entity.type === "point" ? [[entity.id, entity]] : [])),
+  )
+  const geometry = ellipseGeometry(ellipse, points)
+  return geometry ? projectPointToSketchEllipse(geometry, point).point : null
 }
 
 function safeSketchModificationUpdate(
@@ -3955,12 +4056,17 @@ function dragInferenceCellSize(bounds: SketchBounds, viewport: SketchViewportSiz
   return 2 ** Math.round(Math.log2(tolerance))
 }
 
-function liveDragSolveInterval(sketch: SketchRecord) {
+type LiveDragSolvePolicy = Readonly<{
+  delayMs: number
+  mode: "debounce" | "throttle"
+}>
+
+function liveDragSolvePolicy(sketch: SketchRecord): LiveDragSolvePolicy | null {
   const complexity = sketch.entities.length + sketch.constraints.length
-  if (complexity > VERY_DENSE_DRAG_SOLVE_COMPLEXITY) return VERY_DENSE_DRAG_SOLVE_INTERVAL_MS
+  if (complexity > VERY_DENSE_DRAG_SOLVE_COMPLEXITY) return null
   return complexity > DENSE_DRAG_SOLVE_COMPLEXITY
-    ? DENSE_DRAG_SOLVE_INTERVAL_MS
-    : LIVE_DRAG_SOLVE_INTERVAL_MS
+    ? { delayMs: DENSE_DRAG_IDLE_SOLVE_DELAY_MS, mode: "debounce" }
+    : { delayMs: LIVE_DRAG_SOLVE_INTERVAL_MS, mode: "throttle" }
 }
 
 function updateDraggedPointFromPointer(input: {
@@ -4242,9 +4348,13 @@ function useSketchPointDrag({
   )
 
   const scheduleLiveSolve = useCallback(
-    (pointId: SketchEntityId, point: SketchPoint2, intervalMs: number) => {
+    (pointId: SketchEntityId, point: SketchPoint2, policy: LiveDragSolvePolicy | null) => {
+      if (!policy) return
       queuedDragSolveTargetRef.current = { point, pointId }
-      if (dragSolveTimerRef.current !== null) return
+      if (dragSolveTimerRef.current !== null) {
+        if (policy.mode === "throttle") return
+        window.clearTimeout(dragSolveTimerRef.current)
+      }
       dragSolveTimerRef.current = window.setTimeout(() => {
         dragSolveTimerRef.current = null
         const target = queuedDragSolveTargetRef.current
@@ -4252,7 +4362,7 @@ function useSketchPointDrag({
         if (target) {
           startTransition(() => onDraggingPointChange(target.pointId, target.point))
         }
-      }, intervalMs)
+      }, policy.delayMs)
     },
     [onDraggingPointChange],
   )
@@ -4278,7 +4388,7 @@ function useSketchPointDrag({
       const next = { inference, point: inference.point }
       lastDragPreviewRef.current = next
       onPreview(next)
-      scheduleLiveSolve(draggingPointId, next.point, liveDragSolveInterval(draft))
+      scheduleLiveSolve(draggingPointId, next.point, liveDragSolvePolicy(draft))
       return next
     },
     [bounds, draft, draggingPointId, inferenceCandidateQuery, onPreview, scheduleLiveSolve],
@@ -4633,6 +4743,11 @@ function SketchDrawingView({
         onWheel={handlers.onWheel}
       >
         <title>{configuration.ariaLabel}</title>
+        <SketchOriginPlaneReferences
+          activePlane={sketch.plane}
+          bounds={state.bounds}
+          visibility={configuration.originPlaneVisibility}
+        />
         <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
           <line
             x1={state.bounds.minX}
@@ -4745,6 +4860,86 @@ function SketchDrawingView({
       />
     </div>
   )
+}
+
+const sketchPlaneReferenceClass = {
+  xy: "stroke-axis-z",
+  xz: "stroke-axis-y",
+  yz: "stroke-axis-x",
+} satisfies Record<ViewerOriginPlane, string>
+
+/**
+ * Preserves the origin-reference context without making the SVG drawing plane interactive.
+ */
+function SketchOriginPlaneReferences({
+  activePlane,
+  bounds,
+  visibility,
+}: {
+  activePlane: SketchRecord["plane"]
+  bounds: SketchBounds
+  visibility: ViewerOriginPlaneVisibility
+}) {
+  const perpendicularPlanes = viewerOriginPlaneReferences(activePlane)
+  return (
+    <g transform="scale(1 -1)" className="pointer-events-none">
+      {visibility[activePlane] ? (
+        <rect
+          className={`${sketchPlaneReferenceClass[activePlane]} fill-primary/5 opacity-60`}
+          data-sketch-origin-plane={activePlane}
+          height={bounds.height}
+          width={bounds.width}
+          x={bounds.minX}
+          y={bounds.minY}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
+      {perpendicularPlanes.map(({ axis, plane }) =>
+        visibility[plane] ? (
+          <line
+            key={plane}
+            className={`${sketchPlaneReferenceClass[plane]} opacity-50`}
+            data-sketch-origin-plane={plane}
+            vectorEffect="non-scaling-stroke"
+            {...(axis === "horizontal"
+              ? {
+                  x1: bounds.minX,
+                  x2: bounds.minX + bounds.width,
+                  y1: 0,
+                  y2: 0,
+                }
+              : {
+                  x1: 0,
+                  x2: 0,
+                  y1: bounds.minY,
+                  y2: bounds.minY + bounds.height,
+                })}
+          />
+        ) : null,
+      )}
+    </g>
+  )
+}
+
+function viewerOriginPlaneReferences(activePlane: ViewerOriginPlane) {
+  const references: Record<
+    ViewerOriginPlane,
+    readonly { axis: "horizontal" | "vertical"; plane: ViewerOriginPlane }[]
+  > = {
+    xy: [
+      { plane: "xz", axis: "horizontal" },
+      { plane: "yz", axis: "vertical" },
+    ],
+    xz: [
+      { plane: "xy", axis: "horizontal" },
+      { plane: "yz", axis: "vertical" },
+    ],
+    yz: [
+      { plane: "xy", axis: "horizontal" },
+      { plane: "xz", axis: "vertical" },
+    ],
+  }
+  return references[activePlane]
 }
 
 function SketchMirrorInstruction({
@@ -5436,6 +5631,26 @@ function SketchDrawing({
       : null
     if (nextDraft) publishModificationDraft(nextDraft)
   }
+  const handleEllipseSplitAction = (
+    ellipse: Extract<SketchEntity, { type: "ellipse" }>,
+    point: SketchPoint2,
+  ) => {
+    const projectedPoint = projectedEllipsePoint(draft ?? sketch, ellipse, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-ellipse-second" || pending.ellipseId !== ellipse.id) {
+      setPending({
+        kind: "split-ellipse-second",
+        ellipseId: ellipse.id,
+        firstPoint: projectedPoint,
+      })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeEllipseSplitUpdate(draft, ellipse.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publishModificationDraft(nextDraft)
+  }
   const publishMirrorDraft = (
     result: ReturnType<typeof mirrorSketchEntities>,
     keepSelectingSources: boolean,
@@ -5482,6 +5697,10 @@ function SketchDrawing({
       "split-circle": () => {
         const point = eventPoint(event)
         if (point && entity?.type === "circle") handleCircleSplitAction(entity, point)
+      },
+      "split-ellipse": () => {
+        const point = eventPoint(event)
+        if (point && entity?.type === "ellipse") handleEllipseSplitAction(entity, point)
       },
       direct: () => {
         const point = eventPoint(event)
@@ -5708,10 +5927,12 @@ type SketchDrawingConfiguration = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
   onRedo: () => void
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
+  originPlaneVisibility: ViewerOriginPlaneVisibility
   releasedDragTarget: SketchDragTarget | null
   selectConstraintLabel: (label: string) => string
   selectedConstraintId: SketchConstraintId | null
@@ -5882,6 +6103,7 @@ type SketchViewportState = Readonly<{
   controller: DocumentControllerState
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  originPlaneVisibility: ViewerOriginPlaneVisibility
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -5892,6 +6114,7 @@ type SketchViewportActions = Readonly<{
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
   onProfileSelect: (profile: SketchProfileSelector) => void
@@ -5961,6 +6184,7 @@ export function SketchViewport({
     controller,
     draft,
     editorTool,
+    originPlaneVisibility,
     selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
@@ -5971,6 +6195,7 @@ export function SketchViewport({
     onEditorToolChange,
     onConstraintSelectionChange,
     onFailedConstraintsChange,
+    onOriginPlaneVisibilityChange,
     onProfilesChange,
     onProfileSelect,
     onRedo,
@@ -6012,6 +6237,7 @@ export function SketchViewport({
       onConstraintSelectionChange,
       onDraggingPointChange: handleDraggingPointChange,
       onEditorToolChange,
+      onOriginPlaneVisibilityChange,
       selectedProfile,
       selectedConstraintId,
       selectedEntityIds,
@@ -6023,6 +6249,7 @@ export function SketchViewport({
       onRedo,
       onSelectionChange,
       onUndo,
+      originPlaneVisibility,
       releasedDragTarget,
     }),
     [
@@ -6035,10 +6262,12 @@ export function SketchViewport({
       onConstraintSelectionChange,
       onDraftChange,
       onEditorToolChange,
+      onOriginPlaneVisibilityChange,
       onProfileSelect,
       onRedo,
       onSelectionChange,
       onUndo,
+      originPlaneVisibility,
       presentation.drawingLabel,
       presentation.editDimensionLabel,
       presentation.selectConstraintLabel,
@@ -6071,6 +6300,12 @@ export function SketchViewport({
         selectedEntityIds={selectedEntityIds}
         onDraftChange={onDraftChange}
       />
+      <div className="absolute bottom-3 right-3">
+        <OriginPlaneVisibilityControls
+          onChange={onOriginPlaneVisibilityChange}
+          visibility={originPlaneVisibility}
+        />
+      </div>
       <SketchOrientation plane={activeSketch?.plane ?? null} />
     </section>
   )

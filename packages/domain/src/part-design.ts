@@ -1,7 +1,8 @@
 import { z } from "zod"
-import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { FeatureRecord } from "./feature-graph"
+import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
+import type { FeatureId } from "./identifiers"
 import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { lengthQuantitySchema } from "./units"
 import {
@@ -244,12 +245,13 @@ export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
     schemaVersion: 2,
   },
   classification: "solid",
-  dependencies: { min: 0, max: 1 },
-  references: { min: 0, max: 0 },
+  dependencies: { min: 0, max: 2 },
+  references: { min: 0, max: 1 },
 })
 
 function isExtrusionType(feature: FeatureRecord) {
   const type = feature.type
+  if (!type) return false
   return [legacyExtrusionFeatureType.type, extrusionFeatureType.type].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -265,19 +267,29 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
   return parsed.success ? parsed.data : null
 }
 
+export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
+  const extrusion = readExtrusionFeatureParameters(feature)
+  if (!extrusion) return feature.dependencies
+  return extrusion.operation === "new" ? [] : feature.dependencies.slice(0, 1)
+}
+
 function extrusionFeatureInvariant(feature: FeatureRecord) {
   const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return []
-  const expectedDependencyCount = parameters.data.operation === "new" ? 0 : 1
-  return feature.dependencies.length === expectedDependencyCount
+  const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
+  const minimumDependencyCount = parameters.data.operation === "new" ? supportDependencyCount : 1
+  const maximumDependencyCount =
+    parameters.data.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
+  return feature.dependencies.length >= minimumDependencyCount &&
+    feature.dependencies.length <= maximumDependencyCount
     ? []
     : [
         {
           path: "dependencies",
           message:
             parameters.data.operation === "new"
-              ? "New-body extrusion cannot declare a target dependency."
-              : `${parameters.data.operation} extrusion requires exactly one target dependency.`,
+              ? "New-body extrusion dependencies must match its sketch-support references."
+              : `${parameters.data.operation} extrusion requires one target plus any distinct sketch-support dependency.`,
         },
       ]
 }

@@ -183,6 +183,7 @@ export type DocumentFeatureContentPreparationPort = (
   input: Readonly<{
     document: DocumentSnapshot
     feature: FeatureRecord
+    features?: readonly FeatureRecord[]
   }>,
 ) =>
   | DocumentFeatureContentPreparationResult
@@ -690,9 +691,10 @@ async function callFeatureContentPreparer(
   prepareFeatureContent: DocumentFeatureContentPreparationPort,
   document: DocumentSnapshot,
   feature: FeatureRecord,
+  features: readonly FeatureRecord[],
 ) {
   try {
-    return await prepareFeatureContent({ document, feature })
+    return await prepareFeatureContent({ document, feature, features })
   } catch {
     return {
       ok: false as const,
@@ -718,6 +720,7 @@ async function prepareDocumentFeatureContent(
       input.prepareFeatureContent,
       document,
       feature,
+      features,
     )
     if (!prepared) continue
     if (!prepared.ok) {

@@ -512,7 +512,11 @@ function invalidInputCardinality(message: string) {
 
 function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
+  if (
+    feature.inputs.length !== 0 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 0
+  ) {
     return invalidInputCardinality("Box features cannot declare dependency inputs.")
   }
   const parameters = boxFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -532,7 +536,11 @@ function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
 
 function parseCylinderFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (feature.inputs.length !== 0 || input.dependencies.length !== 0) {
+  if (
+    feature.inputs.length !== 0 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 0
+  ) {
     return invalidInputCardinality("Cylinder features cannot declare dependency inputs.")
   }
   const parameters = cylinderFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -550,7 +558,11 @@ function parseCylinderFeature(input: FeatureEvaluationInput): FeatureParseResult
 
 function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (feature.inputs.length !== 2 || input.dependencies.length !== 2) {
+  if (
+    feature.inputs.length !== 2 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 2
+  ) {
     return invalidInputCardinality("Boolean subtraction requires two ordered dependency inputs.")
   }
   const parameters = booleanFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -559,21 +571,53 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
     : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
 }
 
+function extrusionInputCardinalityIsValid(
+  input: FeatureEvaluationInput,
+  parameters: ExtrusionContentParameters,
+) {
+  const dependencies = input.dependencies
+  if (input.content.feature.inputs.length !== dependencies.length) return false
+  const supportFeatureId = parameters.supportFeatureId
+  if (parameters.operation === "new") {
+    if (!supportFeatureId) return dependencies.length === 0
+    return dependencies.length === 1 && dependencies[0]?.featureId === supportFeatureId
+  }
+  if (dependencies.length < 1 || dependencies.length > 2) return false
+  return !supportFeatureId || dependencies.some(({ featureId }) => featureId === supportFeatureId)
+}
+
+function extrusionReferencesAreValid(
+  input: FeatureEvaluationInput,
+  parameters: ExtrusionContentParameters,
+) {
+  const references = input.content.feature.references
+  if (!parameters.supportFeatureId) return references.length === 0
+  const supportInputIndex = input.dependencies.findIndex(
+    ({ featureId }) => featureId === parameters.supportFeatureId,
+  )
+  return (
+    supportInputIndex >= 0 &&
+    references.length === 1 &&
+    references[0]?.inputIndex === supportInputIndex
+  )
+}
+
 function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   const parameters = extrusionFeatureContentParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Extrusion content parameters are invalid.")
   }
-  const expectedInputCount = parameters.data.operation === "new" ? 0 : 1
-  if (
-    feature.inputs.length !== expectedInputCount ||
-    input.dependencies.length !== expectedInputCount
-  ) {
+  if (!extrusionInputCardinalityIsValid(input, parameters.data)) {
     return invalidInputCardinality(
       parameters.data.operation === "new"
-        ? "A new-body extrusion cannot declare feature dependency inputs."
-        : `A ${parameters.data.operation} extrusion requires one target dependency input.`,
+        ? "A new-body extrusion may depend only on its sketch support."
+        : `A ${parameters.data.operation} extrusion requires one target and may also depend on its sketch support.`,
+    )
+  }
+  if (!extrusionReferencesAreValid(input, parameters.data)) {
+    return invalidInputCardinality(
+      "An extrusion sketch-support reference must match its support dependency.",
     )
   }
   return { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
@@ -589,13 +633,6 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
 
 function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
-  if (feature.references.length !== 0) {
-    return featureFailure(
-      "invalid-feature-parameters",
-      "The current feature evaluator does not accept topology references.",
-    )
-  }
-
   const key = featureTypeKey(feature.type)
   const parse = FEATURE_PARSERS.get(key)
   if (parse) return parse(input)
@@ -668,25 +705,54 @@ function createFeatureShape(
 }
 
 function extrusionPlane(parameters: ExtrusionContentParameters) {
+  const frame = parameters.frame
+  if (frame) {
+    return {
+      normal: frame.normal,
+      point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [
+        frame.origin[0] + frame.xAxis[0] * x + frame.yAxis[0] * y + frame.normal[0] * offset,
+        frame.origin[1] + frame.xAxis[1] * x + frame.yAxis[1] * y + frame.normal[1] * offset,
+        frame.origin[2] + frame.xAxis[2] * x + frame.yAxis[2] * y + frame.normal[2] * offset,
+      ],
+      local: (point: readonly [number, number, number]) => {
+        const offset = [
+          point[0] - frame.origin[0],
+          point[1] - frame.origin[1],
+          point[2] - frame.origin[2],
+        ] as const
+        return [dot3(offset, frame.xAxis), dot3(offset, frame.yAxis)] as const
+      },
+      coordinate: (point: readonly [number, number, number]) =>
+        dot3(
+          [point[0] - frame.origin[0], point[1] - frame.origin[1], point[2] - frame.origin[2]],
+          frame.normal,
+        ),
+    }
+  }
   switch (parameters.plane) {
     case "xy":
       return {
         normal: [0, 0, 1] as [number, number, number],
         point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [x, y, offset],
         local: ([x, y]: readonly [number, number, number]) => [x, y] as const,
+        coordinate: ([, , z]: readonly [number, number, number]) => z,
       }
     case "xz":
       return {
         normal: [0, -1, 0] as [number, number, number],
         point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [x, -offset, y],
         local: ([x, _y, z]: readonly [number, number, number]) => [x, z] as const,
+        coordinate: ([, y]: readonly [number, number, number]) => -y,
       }
     case "yz":
       return {
         normal: [1, 0, 0] as [number, number, number],
         point: ([x, y]: readonly [number, number], offset = 0): SimplePoint => [offset, x, y],
         local: ([_x, y, z]: readonly [number, number, number]) => [y, z] as const,
+        coordinate: ([x]: readonly [number, number, number]) => x,
       }
+    default:
+      throw new Error("Extrusion content is missing a sketch placement.")
   }
 }
 
@@ -709,7 +775,7 @@ function extrusionCapRole(
     return undefined
   }
   const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
-  const coordinate = dot3(context.signature.centroid, plane.normal)
+  const coordinate = plane.coordinate(context.signature.centroid)
   return firstMatchingRole([
     [nearlyEqual(coordinate, startOffset), "extrusion.cap.start"],
     [nearlyEqual(coordinate, startOffset + parameters.distance), "extrusion.cap.end"],

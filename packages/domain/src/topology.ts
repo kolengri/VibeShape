@@ -97,10 +97,21 @@ export const topoRefSchema = topoRefContentSchema
   .safeExtend({ featureId: featureIdSchema })
   .strict()
 
+export const planarFaceTopoRefSchema = topoRefSchema
+  .safeExtend({
+    kind: z.literal("face"),
+    signature: topologySignatureSchema.safeExtend({
+      kind: z.literal("face"),
+      geometryClass: z.literal("PLANE"),
+    }),
+  })
+  .strict()
+
 export const topologyCandidateSchema = z
   .object({
     candidateId: z.string().min(1).max(256),
     kind: topologyKindSchema,
+    meshFaceId: z.number().int().nonnegative().optional(),
     semanticRole: semanticRoleSchema.optional(),
     lineageTokens: z.array(lineageTokenSchema).max(256),
     signature: topologySignatureSchema,
@@ -109,6 +120,10 @@ export const topologyCandidateSchema = z
   .refine((candidate) => candidate.kind === candidate.signature.kind, {
     message: "Topology candidate kind must match its signature kind.",
     path: ["signature", "kind"],
+  })
+  .refine((candidate) => candidate.meshFaceId === undefined || candidate.kind === "face", {
+    message: "Only face topology candidates may declare a tessellation face ID.",
+    path: ["meshFaceId"],
   })
 
 export const topologyResolutionPolicySchema = z

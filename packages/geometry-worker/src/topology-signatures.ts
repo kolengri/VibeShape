@@ -150,6 +150,7 @@ export function createTopologyCandidates(
     return {
       candidateId: sample.candidateId,
       kind: sample.kind,
+      ...(sample.kind === "face" ? { meshFaceId: sample.ownKey } : {}),
       signature,
       lineageTokens: annotations.lineageTokens?.(context) ?? [],
       ...(annotations.semanticRole?.(context)

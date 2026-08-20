@@ -9,6 +9,7 @@ import {
   createModuleRegistry,
   documentCoreModule,
   type FeatureTypeRegistry,
+  featureBodyDependencyIds,
   featureCoreModule,
   partDesignFeatureTypeHandlers,
   partDesignModule,
@@ -177,7 +178,7 @@ function terminalExportFeatures(state: FeatureRebuildState) {
   const consumedFeatureIds = new Set<string>()
   for (const feature of state.features) {
     if (!successfulHashes.has(feature.id)) continue
-    for (const dependencyId of feature.dependencies) {
+    for (const dependencyId of featureBodyDependencyIds(feature)) {
       if (successfulHashes.has(dependencyId)) consumedFeatureIds.add(dependencyId)
     }
   }

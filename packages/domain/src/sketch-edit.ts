@@ -163,12 +163,14 @@ export function createEmptySketch(input: {
   id: SketchId
   label: string
   plane: SketchRecord["plane"]
+  support?: SketchRecord["support"]
 }): SketchRecord {
   return sketchRecordSchema.parse({
     schemaVersion: 0,
     id: input.id,
     label: input.label,
     plane: input.plane,
+    ...(input.support ? { support: input.support } : {}),
     entities: [],
     constraints: [],
   })

@@ -226,7 +226,12 @@ describe("document extrusion content preparation", () => {
       ok: true,
       parameters: {
         sketchId,
-        plane: "xz",
+        frame: {
+          origin: [0, 0, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 0, 1],
+          normal: [0, -1, 0],
+        },
         distance: 15,
         symmetric: true,
         operation: "new",
@@ -255,6 +260,67 @@ describe("document extrusion content preparation", () => {
               secondaryAxisPoint: [2, 8],
             },
           ],
+        },
+      },
+    })
+  })
+
+  it("resolves an extrusion-cap support into a parametric world frame", async () => {
+    const source = fixture()
+    const reference = {
+      schemaVersion: 0 as const,
+      featureId: source.feature.id,
+      kind: "face" as const,
+      semanticRole: "extrusion.cap.end",
+      signature: {
+        kind: "face" as const,
+        geometryClass: "PLANE",
+        measure: 200,
+        centroid: [0, -7.5, 0] as [number, number, number],
+        bounds: {
+          min: [-10, -7.5, -5] as [number, number, number],
+          max: [10, -7.5, 5] as [number, number, number],
+        },
+        direction: [0, -1, 0] as [number, number, number],
+        directionMode: "oriented" as const,
+        boundaryCount: 4,
+        adjacentGeometryClasses: ["PLANE"],
+      },
+    }
+    const supportedSketch = sketchRecordSchema.parse({
+      ...source.document.sketches[0],
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      label: "Supported profile",
+      support: { kind: "feature-face", reference },
+    })
+    const target = extrusionFixture(supportedSketch)
+    const feature = featureRecordSchema.parse({
+      ...target.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003302",
+      dependencies: [source.feature.id],
+      references: [reference],
+    })
+    const document = documentSnapshotSchema.parse({
+      ...target.document,
+      sketches: [source.document.sketches[0], supportedSketch],
+      features: [source.feature, feature],
+    })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: target.solution,
+    }))
+
+    await expect(
+      prepare({ document, feature, features: document.features }),
+    ).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        supportFeatureId: source.feature.id,
+        frame: {
+          origin: [0, -7.5, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 0, 1],
+          normal: [0, -1, 0],
         },
       },
     })

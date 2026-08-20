@@ -26,6 +26,20 @@ import {
   WebGLRenderer,
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
+import {
+  defaultViewerOriginPlaneVisibility,
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+  viewerOriginPlanes,
+} from "./origin-planes"
+import { viewerBodyColor } from "./viewer-appearance"
+
+export {
+  defaultViewerOriginPlaneVisibility,
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+  viewerOriginPlanes,
+} from "./origin-planes"
 
 const DEFAULT_VIEW_HEIGHT = 100
 const FIT_PADDING = 1.35
@@ -33,9 +47,6 @@ const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
 const ORIENTATION_INSET_MARGIN = 8
 const ORIENTATION_INSET_SIZE = 80
-
-export const viewerOriginPlanes = ["xy", "xz", "yz"] as const
-export type ViewerOriginPlane = (typeof viewerOriginPlanes)[number]
 
 export type ViewerMesh = Readonly<{
   appearance?: "model" | "preview"
@@ -56,6 +67,7 @@ export type OrthographicFrustum = Readonly<{
 export type GeometryViewport = Readonly<{
   setMeshes: (meshes: readonly ViewerMesh[]) => void
   setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
+  setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   fit: () => void
   clearSelection: () => void
   dispose: () => void
@@ -165,6 +177,10 @@ function disposeModelGroup(group: Group) {
   }
 }
 
+function disposeMaterials(materials: readonly (MeshStandardMaterial | LineBasicMaterial)[]) {
+  for (const material of materials) material.dispose()
+}
+
 function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
   return left?.featureId === right?.featureId && left?.faceId === right?.faceId
 }
@@ -198,14 +214,13 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #meshSources = new Map<string, ViewerMesh>()
   readonly #surfaceMeshes: Mesh[] = []
   readonly #originPlaneMeshes = new Map<Mesh, ViewerOriginPlane>()
+  readonly #originPlaneMeshesByPlane = new Map<ViewerOriginPlane, Mesh>()
+  readonly #originPlaneEdges = new Map<LineSegments, ViewerOriginPlane>()
+  readonly #originPlaneEdgesByPlane = new Map<ViewerOriginPlane, LineSegments>()
   readonly #originPlaneMaterials = new Map<ViewerOriginPlane, MeshBasicMaterial>()
   readonly #originPlaneEdgeMaterials: LineBasicMaterial[] = []
-  readonly #surfaceMaterial = new MeshStandardMaterial({
-    color: new Color("#9aaec1"),
-    roughness: 0.72,
-    metalness: 0.04,
-  })
-  readonly #edgeMaterial = new LineBasicMaterial({ color: new Color("#263746") })
+  readonly #modelSurfaceMaterials: MeshStandardMaterial[] = []
+  readonly #modelEdgeMaterials: LineBasicMaterial[] = []
   readonly #previewSurfaceMaterial = new MeshBasicMaterial({
     color: new Color("#4c8dff"),
     transparent: true,
@@ -245,6 +260,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #pointerDown: Readonly<{ x: number; y: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
   #originPlanePreselection: ViewerOriginPlane | null = null
+  #originPlaneVisibility: ViewerOriginPlaneVisibility = defaultViewerOriginPlaneVisibility
   #preselection: ViewerSelection | null = null
   #selection: ViewerSelection | null = null
 
@@ -312,25 +328,27 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.clearSelection()
     this.#setPreselection(null)
     disposeModelGroup(this.#modelGroup)
+    disposeMaterials(this.#modelSurfaceMaterials)
+    disposeMaterials(this.#modelEdgeMaterials)
+    this.#modelSurfaceMaterials.length = 0
+    this.#modelEdgeMaterials.length = 0
     this.#surfaceMeshes.length = 0
     this.#meshSources.clear()
     for (const source of meshes) {
       const preview = source.appearance === "preview"
       const geometry = createViewerGeometry(source)
-      const surface = new Mesh(
-        geometry,
-        preview ? this.#previewSurfaceMaterial : this.#surfaceMaterial,
-      )
+      const surfaceMaterial = preview
+        ? this.#previewSurfaceMaterial
+        : this.#createModelSurfaceMaterial(source.featureId)
+      const edgeMaterial = preview ? this.#previewEdgeMaterial : this.#createModelEdgeMaterial()
+      const surface = new Mesh(geometry, surfaceMaterial)
       surface.name = source.featureId
       if (!preview) {
         this.#meshSources.set(source.featureId, source)
         this.#surfaceMeshes.push(surface)
       }
       this.#modelGroup.add(surface)
-      const edges = new LineSegments(
-        new EdgesGeometry(geometry, 28),
-        preview ? this.#previewEdgeMaterial : this.#edgeMaterial,
-      )
+      const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
       edges.name = `${source.featureId}:edges`
       this.#modelGroup.add(edges)
     }
@@ -340,13 +358,19 @@ class ThreeGeometryViewport implements GeometryViewport {
   setOriginPlaneSelection(selectedPlane: ViewerOriginPlane | null) {
     if (this.#disposed || selectedPlane === this.#originPlaneSelection) return
     this.#originPlaneSelection = selectedPlane
-    this.#originPlaneGroup.visible = selectedPlane !== null
     this.#setOriginPlanePreselection(null)
     if (selectedPlane !== null) {
       this.clearSelection()
       this.#setPreselection(null)
     }
-    this.#updateOriginPlaneMaterials()
+    this.#updateOriginPlanes()
+    this.#render()
+  }
+
+  setOriginPlaneVisibility(visibility: ViewerOriginPlaneVisibility) {
+    if (this.#disposed) return
+    this.#originPlaneVisibility = visibility
+    this.#updateOriginPlanes()
     this.#render()
   }
 
@@ -397,11 +421,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.removeEventListener("change", this.#render)
     this.#controls.dispose()
     disposeModelGroup(this.#modelGroup)
+    disposeMaterials(this.#modelSurfaceMaterials)
+    disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
-    this.#surfaceMaterial.dispose()
-    this.#edgeMaterial.dispose()
     this.#previewSurfaceMaterial.dispose()
     this.#previewEdgeMaterial.dispose()
     this.#preselectionMaterial.dispose()
@@ -416,6 +440,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#originPlaneEdgeMaterials.length = 0
     this.#originPlaneMaterials.clear()
     this.#originPlaneMeshes.clear()
+    this.#originPlaneMeshesByPlane.clear()
+    this.#originPlaneEdges.clear()
+    this.#originPlaneEdgesByPlane.clear()
     this.#renderer.dispose()
   }
 
@@ -467,7 +494,6 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #createOriginPlanes() {
-    this.#originPlaneGroup.visible = false
     for (const plane of viewerOriginPlanes) {
       const material = new MeshBasicMaterial({
         color: new Color(originPlaneColor(plane)),
@@ -481,6 +507,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       orientOriginPlane(mesh, plane)
       this.#originPlaneMaterials.set(plane, material)
       this.#originPlaneMeshes.set(mesh, plane)
+      this.#originPlaneMeshesByPlane.set(plane, mesh)
       this.#originPlaneGroup.add(mesh)
 
       const edgeMaterial = new LineBasicMaterial({ color: new Color(originPlaneColor(plane)) })
@@ -488,21 +515,45 @@ class ThreeGeometryViewport implements GeometryViewport {
       const edges = new LineSegments(new EdgesGeometry(mesh.geometry), edgeMaterial)
       edges.name = `origin-plane:${plane}:edges`
       edges.rotation.copy(mesh.rotation)
+      this.#originPlaneEdges.set(edges, plane)
+      this.#originPlaneEdgesByPlane.set(plane, edges)
       this.#originPlaneGroup.add(edges)
     }
+    this.#updateOriginPlanes()
+  }
+
+  #createModelSurfaceMaterial(featureId: string) {
+    const material = new MeshStandardMaterial({
+      color: new Color(viewerBodyColor(featureId)),
+      roughness: 0.72,
+      metalness: 0.04,
+    })
+    this.#modelSurfaceMaterials.push(material)
+    return material
+  }
+
+  #createModelEdgeMaterial() {
+    const material = new LineBasicMaterial({ color: new Color("#263746") })
+    this.#modelEdgeMaterials.push(material)
+    return material
   }
 
   #setOriginPlanePreselection(plane: ViewerOriginPlane | null) {
     if (plane === this.#originPlanePreselection) return
     this.#originPlanePreselection = plane
     this.#canvas.style.cursor = plane ? "pointer" : ""
-    this.#updateOriginPlaneMaterials()
+    this.#updateOriginPlanes()
     this.#onOriginPlanePreselectionChange(plane)
     this.#render()
   }
 
-  #updateOriginPlaneMaterials() {
+  #updateOriginPlanes() {
     for (const [plane, material] of this.#originPlaneMaterials) {
+      const visible = this.#originPlaneSelection !== null || this.#originPlaneVisibility[plane]
+      const mesh = this.#originPlaneMeshesByPlane.get(plane)
+      if (mesh) mesh.visible = visible
+      const edges = this.#originPlaneEdgesByPlane.get(plane)
+      if (edges) edges.visible = visible
       material.opacity =
         plane === this.#originPlanePreselection
           ? 0.42
@@ -510,6 +561,7 @@ class ThreeGeometryViewport implements GeometryViewport {
             ? 0.26
             : 0.12
     }
+    this.#originPlaneGroup.visible = [...this.#originPlaneMeshes].some(([mesh]) => mesh.visible)
   }
 
   #setPreselection(selection: ViewerSelection | null) {
@@ -546,7 +598,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
     if (this.#originPlaneSelection) {
-      this.#setOriginPlanePreselection(this.#pickOriginPlane(event))
+      const plane = this.#pickOriginPlane(event)
+      this.#setOriginPlanePreselection(plane)
+      this.#setPreselection(plane ? null : this.#pick(event))
       return
     }
     this.#setPreselection(this.#pick(event))
@@ -560,7 +614,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (movement > 3) return
     if (this.#originPlaneSelection) {
       const plane = this.#pickOriginPlane(event)
-      if (plane) this.#onOriginPlaneSelectionChange(plane)
+      if (plane) {
+        this.#onOriginPlaneSelectionChange(plane)
+      } else {
+        this.#setSelection(this.#pick(event))
+      }
       return
     }
     this.#setSelection(this.#pick(event))
@@ -569,7 +627,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onPointerLeave = () => {
     this.#pointerDown = null
     if (this.#originPlaneSelection) this.#setOriginPlanePreselection(null)
-    else this.#setPreselection(null)
+    this.#setPreselection(null)
   }
 
   #render = () => {

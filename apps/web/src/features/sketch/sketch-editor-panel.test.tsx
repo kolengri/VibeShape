@@ -7,6 +7,7 @@ import {
   appendSketchLine,
   createEmptySketch,
   createLengthQuantity,
+  type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
@@ -44,6 +45,7 @@ const copy = {
   distance: "Distance",
   editConstraint: "Edit dimension",
   equal: "Equal",
+  extrude: "Extrude selected profile",
   finish: "Finish sketch",
   fixed: "Fix point",
   geometry: "Geometry tools",
@@ -56,6 +58,7 @@ const copy = {
   parallel: "Parallel",
   perpendicular: "Perpendicular",
   plane: "Support plane",
+  planeFeatureFace: "Selected model face",
   planeXy: "XY plane",
   planeXz: "XZ plane",
   planeYz: "YZ plane",
@@ -114,6 +117,10 @@ function renderPanel(
   selectedConstraintId: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["selectedConstraintId"] = null,
+  extrusion?: Readonly<{
+    onExtrude: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onExtrude"]
+    profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
+  }>,
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -124,17 +131,19 @@ function renderPanel(
             state={{
               disabled: false,
               draft: sketch,
+              extrusionAvailable: extrusion !== undefined,
               failedConstraintIds,
               message: null,
-              profiles: [],
+              profiles: extrusion?.profile ? [extrusion.profile] : [],
               selectedConstraintId,
               selectedEntityIds,
-              selectedProfile: null,
+              selectedProfile: extrusion?.profile ?? null,
               variables,
             }}
             actions={{
               onCancel: vi.fn(),
               onDraftChange,
+              onExtrude: extrusion?.onExtrude ?? vi.fn(async () => true),
               onFinish: vi.fn(async () => undefined),
               onSelectedConstraintChange: vi.fn(),
               onSelectedProfileChange: vi.fn(),
@@ -151,6 +160,27 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
+  it("offers a single-flight Extrude action for a selected closed profile", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const boundary = sketch.entities.find((entity) => entity.type === "line")
+    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
+    const onExtrude = vi.fn(() => new Promise<boolean>(() => undefined))
+    const profile = {
+      holeBoundaryEntityIds: [],
+      outerBoundaryEntityIds: [boundary.id],
+      schemaVersion: 0,
+      sketchId: sketch.id,
+    } satisfies SketchProfileSelector
+
+    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, { onExtrude, profile })
+
+    const button = screen.getByRole("button", { name: "Extrude selected profile" })
+    await user.dblClick(button)
+    expect(onExtrude).toHaveBeenCalledOnce()
+    expect(button.getAttribute("aria-busy")).toBe("true")
+  })
+
   it("adds an applicable geometric constraint from the current selection", async () => {
     const user = userEvent.setup()
     const sketch = lineSketch()

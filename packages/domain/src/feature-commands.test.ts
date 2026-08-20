@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
 import { documentSnapshotSchema } from "./document"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
+import { sketchIdSchema } from "./identifiers"
+import { createEmptySketch } from "./sketch-edit"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureIds = {
@@ -225,6 +227,50 @@ describe("feature document commands", () => {
       ),
     ).toMatchObject({ ok: false, diagnostic: { code: "command-no-op" } })
     expect(JSON.stringify(addedDependent.snapshot)).toBe(before)
+  })
+
+  it("blocks removal of a feature used as a planar sketch support", () => {
+    const created = createDocument()
+    const root = feature(featureIds.root)
+    const addedRoot = applyFeatureCommand(
+      created.snapshot,
+      featureCommand("org.vibeshape.feature.add", 1, { feature: root }),
+    )
+    const sketch = createEmptySketch({
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201"),
+      label: "Supported sketch",
+      plane: "xy",
+      support: {
+        kind: "feature-face",
+        reference: {
+          schemaVersion: 0,
+          featureId: root.id,
+          kind: "face",
+          semanticRole: "primitive.box.cap.end",
+          signature: {
+            kind: "face",
+            geometryClass: "PLANE",
+            measure: 400,
+            centroid: [0, 0, 10],
+            bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+            direction: [0, 0, 1],
+            directionMode: "oriented",
+            boundaryCount: 4,
+            adjacentGeometryClasses: ["PLANE"],
+          },
+        },
+      },
+    })
+    const snapshot = documentSnapshotSchema.parse({ ...addedRoot.snapshot, sketches: [sketch] })
+
+    expect(
+      applyDocumentCommand(
+        snapshot,
+        featureCommand("org.vibeshape.feature.remove", snapshot.revision, {
+          featureId: root.id,
+        }),
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "feature-in-use" } })
   })
 
   it("rejects tampered feature events even when their payloads remain schema-valid", () => {

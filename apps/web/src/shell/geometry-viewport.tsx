@@ -1,11 +1,16 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import {
+  defaultViewerOriginPlaneVisibility,
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+  viewerOriginPlanes,
+} from "@vibeshape/viewer/origin-planes"
 import { renderProjectThumbnail } from "@vibeshape/viewer/project-thumbnail"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
   ViewerMesh,
-  ViewerOriginPlane,
   ViewerSelection,
 } from "@vibeshape/viewer/three-viewport"
 import {
@@ -17,6 +22,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { OriginPlaneVisibilityControls } from "../components/origin-plane-visibility-controls"
 import {
   type DocumentControllerState,
   saveActiveProjectThumbnail,
@@ -36,18 +42,23 @@ type ViewportMount = {
 }
 
 const ignoreOriginPlaneSelection = () => undefined
+const ignoreOriginPlaneVisibilityChange = () => undefined
 
 async function loadGeometryViewport(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
   const { createGeometryViewport } = await import("@vibeshape/viewer/three-viewport")
   return createGeometryViewport(canvas, options)
 }
 
-export function viewerMeshes(controller: DocumentControllerState): readonly ViewerMesh[] {
+export function viewerMeshes(
+  controller: DocumentControllerState,
+  hiddenFeatureIds: readonly string[] = [],
+): readonly ViewerMesh[] {
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
   const terminalIds = terminalFeatureIds(controller.report?.snapshot.features ?? [])
+  const hiddenIds = new Set(hiddenFeatureIds)
   return rebuild.response.geometry
-    .filter(({ featureId }) => terminalIds.has(featureId))
+    .filter(({ featureId }) => terminalIds.has(featureId) && !hiddenIds.has(featureId))
     .map(({ featureId, geometry }) => ({ featureId, ...geometry.mesh }))
 }
 
@@ -99,6 +110,7 @@ async function initializeViewport(
   viewportRef: RefObject<GeometryViewportPort | null>,
   latestMeshesRef: RefObject<readonly ViewerMesh[]>,
   latestOriginPlaneRef: RefObject<ViewerOriginPlane | null>,
+  latestOriginPlaneVisibilityRef: RefObject<ViewerOriginPlaneVisibility>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
   try {
@@ -114,6 +126,7 @@ async function initializeViewport(
     mount.viewport = viewport
     viewportRef.current = viewport
     viewport.setMeshes(latestMeshesRef.current)
+    viewport.setOriginPlaneVisibility(latestOriginPlaneVisibilityRef.current)
     viewport.setOriginPlaneSelection(latestOriginPlaneRef.current)
     viewport.fit()
     setRendererFailed(false)
@@ -126,7 +139,7 @@ function useViewportRenderer(
   createViewport: ViewportFactory,
   meshes: readonly ViewerMesh[],
   originPlaneSelection: ViewerOriginPlane | null,
-  originPlaneSelectionActive: boolean,
+  originPlaneVisibility: ViewerOriginPlaneVisibility,
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
   onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
@@ -135,10 +148,12 @@ function useViewportRenderer(
   const viewportRef = useRef<GeometryViewportPort | null>(null)
   const latestMeshesRef = useRef(meshes)
   const latestOriginPlaneRef = useRef(originPlaneSelection)
+  const latestOriginPlaneVisibilityRef = useRef(originPlaneVisibility)
   const [rendererFailed, setRendererFailed] = useState(false)
   latestMeshesRef.current = meshes
   latestOriginPlaneRef.current = originPlaneSelection
-  const shouldInitialize = meshes.length > 0 || originPlaneSelectionActive
+  latestOriginPlaneVisibilityRef.current = originPlaneVisibility
+  const shouldInitialize = true
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -154,6 +169,7 @@ function useViewportRenderer(
       viewportRef,
       latestMeshesRef,
       latestOriginPlaneRef,
+      latestOriginPlaneVisibilityRef,
       setRendererFailed,
     )
     return () => {
@@ -177,27 +193,72 @@ function useViewportRenderer(
     viewportRef.current?.setOriginPlaneSelection(originPlaneSelection)
   }, [originPlaneSelection])
 
+  useEffect(() => {
+    viewportRef.current?.setOriginPlaneVisibility(originPlaneVisibility)
+  }, [originPlaneVisibility])
+
   return { canvasRef, rendererFailed, viewportRef }
 }
 
 function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
-  const attemptedRevisionRef = useRef<string | null>(null)
+  const completedRevisionRef = useRef<string | null>(null)
+  const inFlightRevisionRef = useRef<string | null>(null)
+  const retryCountRef = useRef(new Map<string, number>())
+  const [retryAttempt, requestRetry] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     const snapshot = controller.report?.snapshot
     if (controller.status !== "ready" || !snapshot || meshes.length === 0) return
     const revisionKey = `${snapshot.id}:${snapshot.revision}`
-    if (attemptedRevisionRef.current === revisionKey) return
-    attemptedRevisionRef.current = revisionKey
+    if (
+      completedRevisionRef.current === revisionKey ||
+      inFlightRevisionRef.current === revisionKey
+    ) {
+      return
+    }
+
+    const retry = () => {
+      const retryCount = retryCountRef.current.get(revisionKey) ?? 0
+      if (cancelled || retryCount >= 1) return
+      retryCountRef.current.set(revisionKey, retryCount + 1)
+      window.setTimeout(() => {
+        if (!cancelled) requestRetry((attempt) => attempt + 1)
+      }, 250)
+    }
+
+    let thumbnail: ReturnType<typeof renderProjectThumbnail>
     try {
-      const thumbnail = renderProjectThumbnail(meshes)
-      if (thumbnail) {
-        void saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
-      }
+      thumbnail = renderProjectThumbnail(meshes)
     } catch {
       // A derived preview must never block the authoritative geometry viewport.
+      return
     }
-  }, [controller.report?.snapshot, controller.status, meshes])
+
+    if (!thumbnail) {
+      completedRevisionRef.current = revisionKey
+      return
+    }
+
+    inFlightRevisionRef.current = revisionKey
+    void saveActiveProjectThumbnail(snapshot.id, snapshot.revision, thumbnail)
+      .then((result) => {
+        if (result.ok) {
+          completedRevisionRef.current = revisionKey
+          retryCountRef.current.delete(revisionKey)
+          return
+        }
+        retry()
+      })
+      .catch(retry)
+      .finally(() => {
+        if (inFlightRevisionRef.current === revisionKey) inFlightRevisionRef.current = null
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [controller.report?.snapshot, controller.status, meshes, retryAttempt])
 }
 
 function ViewportMessage({
@@ -308,9 +369,14 @@ type GeometryViewportProps = Readonly<{
   controller: DocumentControllerState
   createViewport?: ViewportFactory
   extrusionPreview?: ExtrusionPreviewState
+  hiddenFeatureIds?: readonly string[]
   originPlaneSelection?: Readonly<{
     selectedPlane: ViewerOriginPlane
     onSelect: (plane: ViewerOriginPlane) => void
+  }>
+  originPlaneVisibility?: Readonly<{
+    onChange: (plane: ViewerOriginPlane, visible: boolean) => void
+    visibility: ViewerOriginPlaneVisibility
   }>
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
@@ -329,6 +395,18 @@ function selectedOriginPlane(selection: GeometryViewportProps["originPlaneSelect
 
 function selectOriginPlaneHandler(selection: GeometryViewportProps["originPlaneSelection"]) {
   return selection?.onSelect ?? ignoreOriginPlaneSelection
+}
+
+function visibleOriginPlanes(
+  originPlaneVisibility: GeometryViewportProps["originPlaneVisibility"],
+) {
+  return originPlaneVisibility?.visibility ?? defaultViewerOriginPlaneVisibility
+}
+
+function changeOriginPlaneVisibilityHandler(
+  originPlaneVisibility: GeometryViewportProps["originPlaneVisibility"],
+) {
+  return originPlaneVisibility?.onChange ?? ignoreOriginPlaneVisibilityChange
 }
 
 function previewAllowsViewportMessage(preview: ExtrusionPreviewState | undefined) {
@@ -376,13 +454,24 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     controller,
     createViewport = loadGeometryViewport,
     extrusionPreview,
+    hiddenFeatureIds = [],
     originPlaneSelection,
+    originPlaneVisibility,
     onSelectionChange,
     selection,
   } = props
   const t = useTranslations("app.shell.viewport")
-  const committedMeshes = useMemo(() => viewerMeshes(controller), [controller])
-  const meshes = previewMeshes(extrusionPreview, committedMeshes)
+  const allCommittedMeshes = useMemo(() => viewerMeshes(controller), [controller])
+  const committedMeshes = useMemo(
+    () => viewerMeshes(controller, hiddenFeatureIds),
+    [controller, hiddenFeatureIds],
+  )
+  const meshes = useMemo(() => {
+    const hiddenIds = new Set(hiddenFeatureIds)
+    return previewMeshes(extrusionPreview, committedMeshes).filter(
+      ({ featureId }) => !hiddenIds.has(featureId),
+    )
+  }, [committedMeshes, extrusionPreview, hiddenFeatureIds])
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
@@ -390,12 +479,12 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     createViewport,
     meshes,
     selectedOriginPlane(originPlaneSelection),
-    originPlaneSelection !== undefined,
+    visibleOriginPlanes(originPlaneVisibility),
     setOriginPlanePreselection,
     selectOriginPlaneHandler(originPlaneSelection),
     onSelectionChange,
   )
-  useProjectThumbnail(controller, committedMeshes)
+  useProjectThumbnail(controller, allCommittedMeshes)
   useClearInvalidSelection(meshes, selection, onSelectionChange)
   const message = translatedViewportMessage(
     controller,
@@ -410,6 +499,8 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     meshes,
     message,
     originPlanePreselection,
+    originPlaneVisibility: visibleOriginPlanes(originPlaneVisibility),
+    onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(originPlaneVisibility),
     viewportRef,
   }
 }
@@ -417,23 +508,34 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
 function ViewportControlsSlot({
   meshes,
   originPlaneSelection,
+  originPlaneVisibility,
+  onOriginPlaneVisibilityChange,
   selection,
   viewportRef,
 }: Readonly<{
   meshes: readonly ViewerMesh[]
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
+  originPlaneVisibility: ViewerOriginPlaneVisibility
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
   selection: GeometryViewportProps["selection"]
   viewportRef: RefObject<GeometryViewportPort | null>
 }>) {
   const t = useTranslations("app.shell.viewport")
-  if (meshes.length === 0 && !originPlaneSelection) return null
   return (
-    <ViewportControls
-      clearLabel={t("clearSelection")}
-      fitLabel={t("fit")}
-      selection={selection}
-      viewportRef={viewportRef}
-    />
+    <div className="flex items-center gap-1">
+      <OriginPlaneVisibilityControls
+        onChange={onOriginPlaneVisibilityChange}
+        visibility={originPlaneVisibility}
+      />
+      {meshes.length > 0 || originPlaneSelection ? (
+        <ViewportControls
+          clearLabel={t("clearSelection")}
+          fitLabel={t("fit")}
+          selection={selection}
+          viewportRef={viewportRef}
+        />
+      ) : null}
+    </div>
   )
 }
 
@@ -458,8 +560,15 @@ export function GeometryViewport(props: GeometryViewportProps) {
   const { extrusionPreview, originPlaneSelection, selection } = props
   const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
-  const { canvasRef, meshes, message, originPlanePreselection, viewportRef } =
-    useGeometryViewportModel(props)
+  const {
+    canvasRef,
+    meshes,
+    message,
+    onOriginPlaneVisibilityChange,
+    originPlanePreselection,
+    originPlaneVisibility,
+    viewportRef,
+  } = useGeometryViewportModel(props)
   return (
     <section
       aria-label={t("ariaLabel")}
@@ -471,6 +580,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
       data-preview-status={extrusionPreview?.status ?? "idle"}
       data-origin-plane-selection={originPlaneSelection?.selectedPlane}
       data-origin-plane-preselection={originPlanePreselection ?? undefined}
+      data-origin-plane-visibility={viewerOriginPlanes
+        .filter((plane) => originPlaneVisibility[plane])
+        .join(",")}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
       <ViewportMessage message={message} title={t("title")} />
@@ -478,6 +590,8 @@ export function GeometryViewport(props: GeometryViewportProps) {
       <ViewportControlsSlot
         meshes={meshes}
         originPlaneSelection={originPlaneSelection}
+        originPlaneVisibility={originPlaneVisibility}
+        onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
         selection={selection}
         viewportRef={viewportRef}
       />

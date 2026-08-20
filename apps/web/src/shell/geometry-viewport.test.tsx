@@ -2,16 +2,26 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
   ViewerSelection,
 } from "@vibeshape/viewer"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { ExtrusionPreviewState } from "../features/extrusion/use-extrusion-preview"
 import { i18n } from "../i18n"
 import { GeometryViewport, viewerMeshes } from "./geometry-viewport"
+
+const { saveActiveProjectThumbnailMock } = vi.hoisted(() => ({
+  saveActiveProjectThumbnailMock: vi.fn(),
+}))
+
+vi.mock("../document/document-controller", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../document/document-controller")>()
+  return { ...actual, saveActiveProjectThumbnail: saveActiveProjectThumbnailMock }
+})
 
 const boxId = "0195b5ac-b220-7a2c-8c33-67a36a7f2602"
 const booleanId = "0195b5ac-b220-7a2c-8c33-67a36a7f2603"
@@ -45,10 +55,15 @@ function renderViewport(
     onSelect: (plane: "xy" | "xz" | "yz") => void
   }>,
   extrusionPreview?: ExtrusionPreviewState,
+  originPlaneVisibility?: Readonly<{
+    visibility: { xy: boolean; xz: boolean; yz: boolean }
+    onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
+  }>,
 ) {
   const port: GeometryViewportPort = {
     setMeshes: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
+    setOriginPlaneVisibility: vi.fn(),
     fit: vi.fn(),
     clearSelection: vi.fn(),
     dispose: vi.fn(),
@@ -59,14 +74,17 @@ function renderViewport(
   )
   const element = (nextController: DocumentControllerState) => (
     <I18nProvider i18n={i18n} initialLocale="en">
-      <GeometryViewport
-        controller={nextController}
-        createViewport={createViewport}
-        selection={selection}
-        onSelectionChange={onSelectionChange}
-        {...(extrusionPreview ? { extrusionPreview } : {})}
-        {...(originPlaneSelection ? { originPlaneSelection } : {})}
-      />
+      <TooltipProvider>
+        <GeometryViewport
+          controller={nextController}
+          createViewport={createViewport}
+          selection={selection}
+          onSelectionChange={onSelectionChange}
+          {...(extrusionPreview ? { extrusionPreview } : {})}
+          {...(originPlaneSelection ? { originPlaneSelection } : {})}
+          {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
+        />
+      </TooltipProvider>
     </I18nProvider>
   )
   const result = render(element(controller))
@@ -81,6 +99,11 @@ function renderViewport(
 }
 
 afterEach(cleanup)
+
+beforeEach(() => {
+  saveActiveProjectThumbnailMock.mockReset()
+  saveActiveProjectThumbnailMock.mockResolvedValue({ ok: true })
+})
 
 describe("GeometryViewport", () => {
   it("renders exact unsaved meshes as a distinct preview state", async () => {
@@ -114,6 +137,7 @@ describe("GeometryViewport", () => {
       expect.objectContaining({ onSelectionChange }),
     )
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
+    expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith({ xy: true, xz: true, yz: true })
     expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null)
     expect(
       screen
@@ -158,7 +182,7 @@ describe("GeometryViewport", () => {
     expect(port.fit).toHaveBeenCalledOnce()
   })
 
-  it("renders only terminal feature geometry and reports an empty model", () => {
+  it("renders only terminal feature geometry and retains origin-plane context for an empty model", async () => {
     const controller = readyController(
       [
         { id: boxId, dependencies: [] },
@@ -170,9 +194,10 @@ describe("GeometryViewport", () => {
       ],
     )
     expect(viewerMeshes(controller)).toEqual([{ featureId: booleanId, ...mesh }])
+    expect(viewerMeshes(controller, [booleanId])).toEqual([])
 
     const empty = renderViewport(readyController([], []))
-    expect(empty.createViewport).not.toHaveBeenCalled()
+    await waitFor(() => expect(empty.createViewport).toHaveBeenCalledOnce())
     expect(screen.getByText("Create a feature to display its rebuilt geometry.").textContent).toBe(
       "Create a feature to display its rebuilt geometry.",
     )
@@ -202,6 +227,25 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenCalledWith("xy")
   })
 
+  it("forwards individual origin-plane visibility and exposes accessible toggles", async () => {
+    const onChange = vi.fn()
+    const visibility = { xy: true, xz: false, yz: true }
+    const { port } = renderViewport(readyController([], []), null, undefined, undefined, {
+      visibility,
+      onChange,
+    })
+
+    await waitFor(() => expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith(visibility))
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-origin-plane-visibility")).toBe("xy,yz")
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide XY plane" }))
+    fireEvent.click(screen.getByRole("button", { name: "Show XZ plane" }))
+
+    expect(onChange).toHaveBeenNthCalledWith(1, "xy", false)
+    expect(onChange).toHaveBeenNthCalledWith(2, "xz", true)
+  })
+
   it("contains renderer initialization failures as a localized viewport state", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
@@ -214,12 +258,14 @@ describe("GeometryViewport", () => {
 
     render(
       <I18nProvider i18n={i18n} initialLocale="en">
-        <GeometryViewport
-          controller={controller}
-          createViewport={createViewport}
-          selection={null}
-          onSelectionChange={onSelectionChange}
-        />
+        <TooltipProvider>
+          <GeometryViewport
+            controller={controller}
+            createViewport={createViewport}
+            selection={null}
+            onSelectionChange={onSelectionChange}
+          />
+        </TooltipProvider>
       </I18nProvider>,
     )
 
@@ -230,5 +276,29 @@ describe("GeometryViewport", () => {
         )
       ).textContent,
     ).toBe("WebGL2 is unavailable in this browser or device. Modeling data remains saved.")
+  })
+
+  it("retries one failed derived thumbnail write before marking the revision complete", async () => {
+    vi.useFakeTimers()
+    saveActiveProjectThumbnailMock
+      .mockResolvedValueOnce({
+        ok: false,
+        diagnostic: { code: "storage-unavailable", message: "Preview storage was unavailable." },
+      })
+      .mockResolvedValueOnce({ ok: true })
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    ;(controller.report?.snapshot as { id: string; revision: number }).id = "project-1"
+    ;(controller.report?.snapshot as { id: string; revision: number }).revision = 3
+
+    renderViewport(controller)
+
+    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(250)
+    await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2))
+    vi.useRealTimers()
   })
 })

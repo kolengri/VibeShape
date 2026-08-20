@@ -172,6 +172,8 @@ class ProductionSketchBuilder {
   readonly #pointParameters = new Map<SketchEntityId, PointBinding>()
   readonly #circleRadiusParameters = new Map<SketchEntityId, number>()
   readonly #constraintIdsByHandle = new Map<number, SketchConstraintId>()
+  readonly #ellipseAxes = new Map<string, Readonly<{ primary: number; secondary: number }>>()
+  readonly #ellipseEndpointLoci = new Set<string>()
   #nextParameter = 11
   #nextEntity = 301
   #nextConstraint = 1
@@ -250,20 +252,7 @@ class ProductionSketchBuilder {
   }
 
   addEllipse(entity: Extract<SketchEntity, { type: "ellipse" }>) {
-    const primaryAxis = this.#nextEntity++
-    this.#addEntity(primaryAxis, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
-      points: [this.entity(entity.centerPointId), this.entity(entity.primaryAxisPointId)],
-      workplane: 200,
-    })
-    const secondaryAxis = this.#nextEntity++
-    this.#addEntity(secondaryAxis, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
-      points: [this.entity(entity.centerPointId), this.entity(entity.secondaryAxisPointId)],
-      workplane: 200,
-    })
-    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
-      entityA: primaryAxis,
-      entityB: secondaryAxis,
-    })
+    this.#ellipseAxisHandles(entity)
   }
 
   addEllipticalArc(
@@ -276,18 +265,7 @@ class ProductionSketchBuilder {
     if (!center || !primary || !secondary) {
       throw new Error(`Sketch elliptical arc ${entity.id} is missing initial axis points.`)
     }
-    const primaryAxis = this.#addAuxiliaryLine(
-      this.entity(entity.centerPointId),
-      this.entity(entity.primaryAxisPointId),
-    )
-    const secondaryAxis = this.#addAuxiliaryLine(
-      this.entity(entity.centerPointId),
-      this.entity(entity.secondaryAxisPointId),
-    )
-    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
-      entityA: primaryAxis,
-      entityB: secondaryAxis,
-    })
+    const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(entity)
     const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
     const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
     const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
@@ -301,6 +279,13 @@ class ProductionSketchBuilder {
       y: secondaryVector.y / secondaryRadius,
     }
     for (const endpointId of [entity.startPointId, entity.endPointId]) {
+      const endpointLocusKey = [
+        entity.centerPointId,
+        entity.primaryAxisPointId,
+        entity.secondaryAxisPointId,
+        endpointId,
+      ].join(":")
+      if (this.#ellipseEndpointLoci.has(endpointLocusKey)) continue
       const endpoint = pointValues.get(endpointId)
       if (!endpoint) {
         throw new Error(`Sketch elliptical arc ${entity.id} is missing an endpoint value.`)
@@ -345,6 +330,7 @@ class ProductionSketchBuilder {
         entityA: secondaryRadiusLine,
         entityB: primaryRadiusLine,
       })
+      this.#ellipseEndpointLoci.add(endpointLocusKey)
     }
   }
 
@@ -473,6 +459,30 @@ class ProductionSketchBuilder {
       workplane: 200,
     })
     return handle
+  }
+
+  #ellipseAxisHandles(entity: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>) {
+    const key = [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId].join(
+      ":",
+    )
+    const existing = this.#ellipseAxes.get(key)
+    if (existing) return existing
+    const axes = {
+      primary: this.#addAuxiliaryLine(
+        this.entity(entity.centerPointId),
+        this.entity(entity.primaryAxisPointId),
+      ),
+      secondary: this.#addAuxiliaryLine(
+        this.entity(entity.centerPointId),
+        this.entity(entity.secondaryAxisPointId),
+      ),
+    }
+    this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.perpendicular, {
+      entityA: axes.primary,
+      entityB: axes.secondary,
+    })
+    this.#ellipseAxes.set(key, axes)
+    return axes
   }
 
   #addEntity(handle: number, group: number, type: number, fields: EntityFields = {}) {

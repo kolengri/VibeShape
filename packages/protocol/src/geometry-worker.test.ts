@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   extrusionFeatureContentParametersSchema,
+  featureContentIdentitySchema,
   GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
   geometryWorkerRequestSchema,
@@ -130,6 +131,37 @@ describe("geometry worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts a stable topology reference to a dependency input", () => {
+    expect(
+      featureContentIdentitySchema.safeParse({
+        ...boxContent,
+        feature: {
+          ...boxContent.feature,
+          inputs: ["b".repeat(64)],
+          references: [
+            {
+              schemaVersion: 0,
+              kind: "face",
+              semanticRole: "primitive.box.cap.end",
+              signature: {
+                kind: "face",
+                geometryClass: "PLANE",
+                measure: 600,
+                centroid: [0, 0, 20],
+                bounds: { min: [-10, -15, 20], max: [10, 15, 20] },
+                direction: [0, 0, 1],
+                directionMode: "oriented",
+                boundaryCount: 4,
+                adjacentGeometryClasses: ["PLANE"],
+              },
+              inputIndex: 0,
+            },
+          ],
+        },
+      }).success,
+    ).toBe(true)
+  })
+
   it("accepts exact selector-resolved extrusion profiles and rejects mismatched sources", () => {
     const parameters = {
       sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
@@ -162,6 +194,26 @@ describe("geometry worker protocol", () => {
     } as const
 
     expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    const { plane: _plane, ...profile } = parameters
+    const framed = {
+      ...profile,
+      frame: {
+        origin: [0, 0, 10],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+      },
+    }
+    expect(extrusionFeatureContentParametersSchema.safeParse(framed).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({ ...framed, plane: "xy" }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...framed,
+        frame: { ...framed.frame, yAxis: [0, -1, 0] },
+      }).success,
+    ).toBe(false)
     expect(
       extrusionFeatureContentParametersSchema.safeParse({ ...parameters, operation: "intersect" })
         .success,

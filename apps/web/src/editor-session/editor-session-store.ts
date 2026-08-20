@@ -1,15 +1,22 @@
 import type {
+  FeatureId,
   SketchConstraintId,
   SketchEntityId,
   SketchId,
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
+import {
+  defaultViewerOriginPlaneVisibility,
+  type ViewerOriginPlane,
+  type ViewerOriginPlaneVisibility,
+} from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import type { Draft } from "immer"
 import { immer } from "zustand/middleware/immer"
 import { createStore } from "zustand/vanilla"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
+import type { SelectedSketchSupport } from "../features/sketch/sketch-support"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -37,6 +44,8 @@ export type SketchEditorSessionState = Readonly<{
 export type EditorSessionState = Readonly<{
   activePartDesignTool: ActivePartDesignTool | null
   commandPaletteOpen: boolean
+  hiddenFeatureIds: readonly FeatureId[]
+  originPlaneVisibility: ViewerOriginPlaneVisibility
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
   workspace: EditorWorkspaceName
@@ -48,9 +57,11 @@ export type EditorSessionActions = Readonly<{
   closeActiveTool: () => void
   redoSketchDraft: () => void
   saveSketch: (sketch: SketchRecord) => void
-  selectSketch: (sketchId: SketchId) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
+  selectSketchSupport: (support: SelectedSketchSupport) => void
   setCommandPaletteOpen: (open: boolean) => void
+  setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
+  setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -90,6 +101,8 @@ function createEditorSessionState(): EditorSessionState {
   return {
     activePartDesignTool: null,
     commandPaletteOpen: false,
+    hiddenFeatureIds: [],
+    originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     selection: null,
     sketch: createSketchState(),
     workspace: "model",
@@ -191,22 +204,26 @@ export function createEditorSessionStore() {
             state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
           }),
-        selectSketch: (sketchId) =>
-          set((state) => {
-            state.workspace = "sketch"
-            state.activePartDesignTool = null
-            state.selection = null
-            state.sketch.activeSketchId = sketchId
-            state.sketch.activeSketchTool = null
-            resetSketchDraft(state.sketch, null)
-            resetSketchPresentation(state.sketch, "select")
-          }),
         selectSketchPlane: (plane) => {
           const { activeSketchTool, draft } = get().sketch
           if (activeSketchTool?.kind !== "select-sketch-plane" || !draft) return
           set((state) => {
             if (!state.sketch.draft) return
             state.sketch.draft.plane = plane
+            delete state.sketch.draft.support
+            state.sketch.activeSketchTool = { kind: "create-sketch" }
+            resetSketchPresentation(state.sketch, "line")
+            state.workspace = "sketch"
+            state.selection = null
+          })
+        },
+        selectSketchSupport: ({ plane, support }) => {
+          const { activeSketchTool, draft } = get().sketch
+          if (activeSketchTool?.kind !== "select-sketch-plane" || !draft) return
+          set((state) => {
+            if (!state.sketch.draft) return
+            state.sketch.draft.plane = plane
+            state.sketch.draft.support = support
             state.sketch.activeSketchTool = { kind: "create-sketch" }
             resetSketchPresentation(state.sketch, "line")
             state.workspace = "sketch"
@@ -216,6 +233,17 @@ export function createEditorSessionStore() {
         setCommandPaletteOpen: (open) =>
           set((state) => {
             state.commandPaletteOpen = open
+          }),
+        setFeatureVisibility: (featureId, visible) =>
+          set((state) => {
+            state.hiddenFeatureIds = visible
+              ? state.hiddenFeatureIds.filter((id) => id !== featureId)
+              : [...new Set([...state.hiddenFeatureIds, featureId])]
+            if (!visible && state.selection?.featureId === featureId) state.selection = null
+          }),
+        setOriginPlaneVisibility: (plane, visible) =>
+          set((state) => {
+            state.originPlaneVisibility[plane] = visible
           }),
         setSelection: (selection) =>
           set((state) => {

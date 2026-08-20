@@ -60,7 +60,7 @@ type TaskPanelProps = Readonly<{
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
@@ -113,6 +113,7 @@ function useSketchEditorCopy() {
     distance: t("distance"),
     editConstraint: t("editConstraint"),
     equal: t("equal"),
+    extrude: t("extrude"),
     finish: t("finish"),
     fixed: t("fixed"),
     horizontal: t("horizontal"),
@@ -123,6 +124,7 @@ function useSketchEditorCopy() {
     parallel: t("parallel"),
     perpendicular: t("perpendicular"),
     plane: t("plane"),
+    planeFeatureFace: t("planeFeatureFace"),
     planeXy: t("planeXy"),
     planeXz: t("planeXz"),
     planeYz: t("planeYz"),
@@ -520,15 +522,25 @@ function extrusionFormMode(
   featureLabel: string,
 ): ExtrusionFormMode | null {
   if (activeTool.kind === "create-extrusion") {
-    return {
-      kind: "create",
-      createFeatureId: createBrowserFeatureId,
-      featureLabel,
-      profile: activeTool.profile,
-    }
+    return createExtrusionFormMode(activeTool, report, featureLabel)
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   return feature && isExtrusionFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function createExtrusionFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): Extract<ExtrusionFormMode, { kind: "create" }> {
+  const sketch = report.snapshot.sketches.find(({ id }) => id === activeTool.profile.sketchId)
+  const mode = {
+    kind: "create" as const,
+    createFeatureId: createBrowserFeatureId,
+    featureLabel,
+    profile: activeTool.profile,
+  }
+  return sketch?.support ? { ...mode, supportReference: sketch.support.reference } : mode
 }
 
 function booleanOptions(
@@ -561,7 +573,7 @@ function StartModelingAction({
 }: {
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -666,7 +678,7 @@ function StartTaskPanel({
   canSubtract: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
 }) {
@@ -924,6 +936,7 @@ type ActiveSketchTaskPanelState = Readonly<{
 
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
@@ -959,6 +972,7 @@ function ActiveSketchTaskPanel({
   } = state
   const {
     onCloseTool,
+    onCreateExtrusion,
     onDraftChange,
     onSelectedConstraintChange,
     onSelectedProfileChange,
@@ -985,6 +999,14 @@ function ActiveSketchTaskPanel({
     }
     onSketchSaved(draft)
   }
+  const extrude = async () => {
+    setMessage(null)
+    const succeeded = await onCreateExtrusion()
+    if (!succeeded) {
+      setMessage(activeSketchTool.kind === "edit-sketch" ? t("updateFailed") : t("createFailed"))
+    }
+    return succeeded
+  }
   return (
     <aside
       aria-label={t("taskAriaLabel")}
@@ -1001,6 +1023,7 @@ function ActiveSketchTaskPanel({
           state={{
             disabled: report.mode === "read-only",
             draft,
+            extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,
             profiles,
@@ -1012,6 +1035,7 @@ function ActiveSketchTaskPanel({
           actions={{
             onCancel: onCloseTool,
             onDraftChange,
+            onExtrude: extrude,
             onFinish: finish,
             onSelectedConstraintChange,
             onSelectedProfileChange,
@@ -1107,7 +1131,7 @@ function SelectedSketchTaskPanel({
 }: {
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1187,7 +1211,7 @@ function SketchStartTaskPanel({
   activeSketchId: SketchId | null
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1230,6 +1254,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
         }}
         actions={{
           onCloseTool: props.onCloseTool,
+          onCreateExtrusion: props.onCreateExtrusion,
           onDraftChange: props.onSketchDraftChange,
           onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,
