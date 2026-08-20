@@ -64,8 +64,10 @@ type RenderTreeOptions = Partial<
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
     | "onSketchRename"
+    | "onSketchVisibilityChange"
     | "sketchRenameBlockedId"
     | "hiddenFeatureIds"
+    | "hiddenSketchIds"
   >
 >
 
@@ -75,8 +77,10 @@ function renderTree({
   onFeatureVisibilityChange = vi.fn(),
   onSketchActivate = vi.fn(),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
+  onSketchVisibilityChange = vi.fn(),
   sketchRenameBlockedId = null,
   hiddenFeatureIds = [],
+  hiddenSketchIds = [],
 }: RenderTreeOptions = {}) {
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -87,11 +91,13 @@ function renderTree({
           activeWorkspace="model"
           controller={controller}
           hiddenFeatureIds={hiddenFeatureIds}
+          hiddenSketchIds={hiddenSketchIds}
           onFeatureActivate={onFeatureActivate}
           onFeatureRename={onFeatureRename}
           onFeatureVisibilityChange={onFeatureVisibilityChange}
           onSketchActivate={onSketchActivate}
           onSketchRename={onSketchRename}
+          onSketchVisibilityChange={onSketchVisibilityChange}
           onWorkspaceChange={vi.fn()}
           sketchRenameBlockedId={sketchRenameBlockedId}
         />
@@ -136,6 +142,23 @@ describe("ModelTree", () => {
     renderTree({ hiddenFeatureIds: [featureId], onFeatureVisibilityChange })
     await user.click(screen.getByRole("button", { name: "Show Box 1" }))
     expect(onFeatureVisibilityChange).toHaveBeenLastCalledWith(featureId, true)
+  })
+
+  it("toggles saved sketch visibility without entering edit mode", async () => {
+    const user = userEvent.setup()
+    const onSketchActivate = vi.fn()
+    const onSketchVisibilityChange = vi.fn()
+    const { unmount } = renderTree({ onSketchActivate, onSketchVisibilityChange })
+
+    await user.click(screen.getByRole("button", { name: "Hide Profile" }))
+
+    expect(onSketchVisibilityChange).toHaveBeenCalledWith(sketchId, false)
+    expect(onSketchActivate).not.toHaveBeenCalled()
+
+    unmount()
+    renderTree({ hiddenSketchIds: [sketchId], onSketchVisibilityChange })
+    await user.click(screen.getByRole("button", { name: "Show Profile" }))
+    expect(onSketchVisibilityChange).toHaveBeenLastCalledWith(sketchId, true)
   })
 
   it("renames a feature once from its discoverable model-tree action", async () => {

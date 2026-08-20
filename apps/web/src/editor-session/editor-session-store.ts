@@ -45,6 +45,7 @@ export type EditorSessionState = Readonly<{
   activePartDesignTool: ActivePartDesignTool | null
   commandPaletteOpen: boolean
   hiddenFeatureIds: readonly FeatureId[]
+  hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
@@ -56,12 +57,19 @@ export type EditorSessionActions = Readonly<{
   beginSketchEdit: (sketch: SketchRecord) => void
   closeActiveTool: () => void
   redoSketchDraft: () => void
-  saveSketch: (sketch: SketchRecord) => void
+  saveSketch: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   selectSketchSupport: (support: SelectedSketchSupport) => void
   setCommandPaletteOpen: (open: boolean) => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
+  setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -102,6 +110,7 @@ function createEditorSessionState(): EditorSessionState {
     activePartDesignTool: null,
     commandPaletteOpen: false,
     hiddenFeatureIds: [],
+    hiddenSketchIds: [],
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     selection: null,
     sketch: createSketchState(),
@@ -194,8 +203,9 @@ export function createEditorSessionStore() {
             state.sketch.selectedEntityIds = []
           })
         },
-        saveSketch: (sketch) =>
+        saveSketch: (sketch, presentation) =>
           set((state) => {
+            state.workspace = "model"
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = null
             resetSketchDraft(state.sketch, null)
@@ -203,6 +213,10 @@ export function createEditorSessionStore() {
             state.sketch.failedConstraintIds = []
             state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
+            if (presentation) {
+              state.sketch.profiles = [...presentation.profiles]
+              state.sketch.selectedProfile = presentation.selectedProfile
+            }
           }),
         selectSketchPlane: (plane) => {
           const { activeSketchTool, draft } = get().sketch
@@ -245,6 +259,12 @@ export function createEditorSessionStore() {
           set((state) => {
             state.originPlaneVisibility[plane] = visible
           }),
+        setSketchVisibility: (sketchId, visible) =>
+          set((state) => {
+            state.hiddenSketchIds = visible
+              ? state.hiddenSketchIds.filter((id) => id !== sketchId)
+              : [...new Set([...state.hiddenSketchIds, sketchId])]
+          }),
         setSelection: (selection) =>
           set((state) => {
             state.selection = selection
@@ -274,6 +294,7 @@ export function createEditorSessionStore() {
           }),
         setSketchProfiles: (profiles) =>
           set((state) => {
+            if (!state.sketch.activeSketchTool) return
             state.sketch.profiles = [...profiles]
             const selectedProfile = state.sketch.selectedProfile
             const matchingProfile = selectedProfile

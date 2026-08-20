@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { i18n } from "../i18n"
-import { GeometryViewport, viewerMeshes } from "./geometry-viewport"
+import { GeometryViewport, viewerMeshes, viewerSketches } from "./geometry-viewport"
 
 const { saveActiveProjectThumbnailMock } = vi.hoisted(() => ({
   saveActiveProjectThumbnailMock: vi.fn(),
@@ -33,10 +33,18 @@ const mesh = {
   indices: new Uint32Array([0, 1, 2]),
   triangleFaceIds: new Uint32Array([1]),
 }
+const sketchDisplay = {
+  sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f2605",
+  curvePositions: new Float32Array([0, 0, 0, 20, 0, 0]),
+  constructionCurvePositions: new Float32Array(),
+  pointPositions: new Float32Array([0, 0, 0, 20, 0, 0]),
+  constructionPointPositions: new Float32Array(),
+}
 
 function readyController(
   features: readonly { id: string; dependencies: readonly string[] }[],
   geometry: readonly { featureId: string; geometry: { mesh: typeof mesh } }[],
+  sketches: readonly (typeof sketchDisplay)[] = [],
 ) {
   return {
     status: "ready",
@@ -52,7 +60,7 @@ function readyController(
           ...feature,
         })),
       },
-      rebuild: { ok: true, response: { geometry } },
+      rebuild: { ok: true, response: { geometry, sketches } },
     },
   } as unknown as DocumentControllerState
 }
@@ -72,6 +80,7 @@ function renderViewport(
 ) {
   const port: GeometryViewportPort = {
     setMeshes: vi.fn(),
+    setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
     fit: vi.fn(),
@@ -213,6 +222,21 @@ describe("GeometryViewport", () => {
     )
   })
 
+  it("renders exact saved sketches with the model and filters hidden sketch identities", async () => {
+    const controller = readyController([], [], [sketchDisplay])
+    expect(viewerSketches(controller)).toEqual([sketchDisplay])
+    expect(viewerSketches(controller, [sketchDisplay.sketchId])).toEqual([])
+
+    const { port } = renderViewport(controller)
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalledWith([sketchDisplay]))
+    expect(
+      screen
+        .getByRole("region", { name: "3D viewport" })
+        .getAttribute("data-rendered-sketch-count"),
+    ).toBe("1")
+    expect(screen.queryByText("Create a feature to display its rebuilt geometry.")).toBeNull()
+  })
+
   it("renders datum planes as reference geometry while keeping them independently hideable", () => {
     const datumFeature = {
       schemaVersion: 0,
@@ -283,6 +307,9 @@ describe("GeometryViewport", () => {
 
     expect(onChange).toHaveBeenNthCalledWith(1, "xy", false)
     expect(onChange).toHaveBeenNthCalledWith(2, "xz", true)
+    expect(document.querySelector('[data-plane-symbol="XY"]')).toBeTruthy()
+    expect(document.querySelector('[data-plane-symbol="XZ"]')).toBeTruthy()
+    expect(document.querySelector('[data-plane-symbol="YZ"]')).toBeTruthy()
   })
 
   it("contains renderer initialization failures as a localized viewport state", async () => {

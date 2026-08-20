@@ -1,12 +1,53 @@
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Eye, EyeOff } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import {
   type ViewerOriginPlane,
   type ViewerOriginPlaneVisibility,
   viewerOriginPlanes,
 } from "@vibeshape/viewer/origin-planes"
+
+const planeAxes = {
+  xy: [
+    { axis: "X", className: "text-axis-x" },
+    { axis: "Y", className: "text-axis-y" },
+  ],
+  xz: [
+    { axis: "X", className: "text-axis-x" },
+    { axis: "Z", className: "text-axis-z" },
+  ],
+  yz: [
+    { axis: "Y", className: "text-axis-y" },
+    { axis: "Z", className: "text-axis-z" },
+  ],
+} as const satisfies Record<
+  ViewerOriginPlane,
+  readonly [{ axis: string; className: string }, { axis: string; className: string }]
+>
+
+function PlaneVisibilitySymbol({ plane, visible }: { plane: ViewerOriginPlane; visible: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-plane-symbol={plane.toUpperCase()}
+      className={cn(
+        "relative grid size-5 place-items-center rounded-sm border border-current/45",
+        "font-mono text-[9px] font-bold leading-none tracking-[-0.08em]",
+        !visible && "opacity-45",
+      )}
+    >
+      <span>
+        {planeAxes[plane].map(({ axis, className }) => (
+          <span key={axis} className={className}>
+            {axis}
+          </span>
+        ))}
+      </span>
+      {!visible ? <span className="absolute h-px w-6 -rotate-45 bg-current" /> : null}
+    </span>
+  )
+}
 
 /**
  * Keeps the visibility policy for the three persistent origin references consistent across CAD views.
@@ -43,7 +84,7 @@ export function OriginPlaneVisibilityControls({
                 aria-pressed={visible}
                 onClick={() => onChange(plane, !visible)}
               >
-                {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+                <PlaneVisibilitySymbol plane={plane} visible={visible} />
                 <span className="sr-only">{labels[plane]}</span>
               </Button>
             </TooltipTrigger>

@@ -79,6 +79,7 @@ type WorkspaceContentProps = Readonly<{
   model: Readonly<{
     featurePreview: ReturnType<typeof useFeaturePreview>
     hiddenFeatureIds: readonly FeatureId[]
+    hiddenSketchIds: readonly SketchId[]
     originPlaneVisibility: ViewerOriginPlaneVisibility
     selection: ViewerSelection | null
   }>
@@ -141,6 +142,7 @@ function ModelingWorkspaceContent({
       controller={controller}
       featurePreview={model.featurePreview}
       hiddenFeatureIds={model.hiddenFeatureIds}
+      hiddenSketchIds={model.hiddenSketchIds}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
@@ -195,6 +197,7 @@ export type EditorWorkspaceActions = Readonly<{
   redoSketchDraft: () => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
+  setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   setSketchEditorTool: (tool: SketchEditorTool) => void
@@ -203,7 +206,13 @@ export type EditorWorkspaceActions = Readonly<{
   setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
   setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
-  sketchSaved: (sketch: SketchRecord) => void
+  sketchSaved: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
   switchWorkspace: (workspace: EditorWorkspaceName) => void
   undoSketchDraft: () => void
 }>
@@ -215,6 +224,7 @@ type EditorWorkspaceProps = Readonly<{
   activeSketchTool: ActiveSketchTool | null
   controller: DocumentControllerState
   hiddenFeatureIds: readonly FeatureId[]
+  hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   selection: ViewerSelection | null
   sketchConstruction: boolean
@@ -250,11 +260,13 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       activeSketchId={activeSketchId}
       controller={controller}
       hiddenFeatureIds={props.hiddenFeatureIds}
+      hiddenSketchIds={props.hiddenSketchIds}
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onSketchActivate={actions.editSketch}
       onSketchRename={updateSketch}
+      onSketchVisibilityChange={actions.setSketchVisibility}
       onWorkspaceChange={actions.switchWorkspace}
       sketchRenameBlockedId={
         activeSketchTool?.kind === "edit-sketch" ? activeSketchTool.sketchId : null
@@ -293,6 +305,7 @@ function EditorContent({
       model={{
         featurePreview,
         hiddenFeatureIds: props.hiddenFeatureIds,
+        hiddenSketchIds: props.hiddenSketchIds,
         originPlaneVisibility: props.originPlaneVisibility,
         selection,
       }}

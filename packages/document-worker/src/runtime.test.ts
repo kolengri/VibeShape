@@ -626,7 +626,19 @@ describe("DocumentWorkerRuntime", () => {
       draggedPoints: [{ entityId: sketchIds.point, x: 10, y: 20 }],
     })
 
-    expect(module.solveFlatSystem).toHaveBeenCalledOnce()
+    const rebuild = messages.find(
+      ({ requestId, type }) => requestId === "rebuild-for-sketch" && type === "documentRebuilt",
+    )
+    expect(rebuild).toMatchObject({
+      type: "documentRebuilt",
+      sketches: [{ sketchId: sketchIds.sketch }],
+    })
+    expect(
+      Array.from(
+        rebuild?.type === "documentRebuilt" ? (rebuild.sketches[0]?.pointPositions ?? []) : [],
+      ),
+    ).toEqual([1, 2, 0])
+    expect(module.solveFlatSystem).toHaveBeenCalledTimes(2)
     expect(messages.find(({ requestId }) => requestId === "solve-sketch")).toMatchObject({
       type: "sketchSolved",
       solution: {
@@ -713,6 +725,16 @@ describe("DocumentWorkerRuntime", () => {
       type: "failure",
       diagnostic: { code: "sketch-solver-unavailable", retryable: false },
     })
+    const unavailableRebuild = unavailable.messages.find(
+      ({ requestId, type }) => requestId === "rebuild-without-solver" && type === "documentRebuilt",
+    )
+    expect(
+      Array.from(
+        unavailableRebuild?.type === "documentRebuilt"
+          ? (unavailableRebuild.sketches[0]?.pointPositions ?? [])
+          : [],
+      ),
+    ).toEqual([1, 2, 0])
 
     const module = sketchSolverModule()
     const harness = createHarness((input) => solveSketchRecord(module, input))
@@ -723,6 +745,7 @@ describe("DocumentWorkerRuntime", () => {
         sketches: [sketch()],
       }),
     })
+    vi.mocked(module.solveFlatSystem).mockClear()
     await harness.runtime.handle({
       protocolVersion: DOCUMENT_PROTOCOL_VERSION,
       requestId: "stale-sketch",

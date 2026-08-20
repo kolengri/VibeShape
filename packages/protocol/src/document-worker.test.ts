@@ -518,6 +518,49 @@ describe("document worker protocol", () => {
     ).toMatchObject({ type: "failure", diagnostic: { retryable: false } })
   })
 
+  it("validates bounded unique sketch display transfers on rebuilt documents", () => {
+    const response = {
+      ...envelope(),
+      type: "documentRebuilt",
+      evaluation: {
+        records: [],
+        dirtyFeatureIds: [],
+        evaluatedFeatureIds: [],
+        reusedFeatureIds: [],
+      },
+      geometry: [],
+      sketches: [
+        {
+          sketchId,
+          curvePositions: new Float32Array([0, 0, 0, 10, 0, 0]),
+          constructionCurvePositions: new Float32Array(),
+          pointPositions: new Float32Array([0, 0, 0]),
+          constructionPointPositions: new Float32Array(),
+        },
+      ],
+    } as const
+
+    expect(documentWorkerResponseSchema.parse(response)).toMatchObject({
+      type: "documentRebuilt",
+      sketches: [{ sketchId }],
+    })
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        sketches: [
+          ...response.sketches,
+          { ...response.sketches[0], curvePositions: new Float32Array([0, 0, 0]) },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        sketches: [...response.sketches, response.sketches[0]],
+      }).success,
+    ).toBe(false)
+  })
+
   it("validates non-empty 3MF, STEP, and STL export transfers", () => {
     expect(
       documentWorkerRequestSchema.parse({

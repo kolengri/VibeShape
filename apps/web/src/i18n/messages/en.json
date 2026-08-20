@@ -408,7 +408,9 @@
         },
         "projectFeatures": "Project features",
         "hideFeature": "Hide {feature}",
+        "hideSketch": "Hide {sketch}",
         "showFeature": "Show {feature}",
+        "showSketch": "Show {sketch}",
         "title": "Model tree",
         "unnamedFeature": "Unnamed feature",
         "unnamedSketch": "Unnamed sketch"

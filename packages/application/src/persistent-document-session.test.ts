@@ -138,6 +138,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
         reusedFeatureIds: [],
       },
       geometry: [],
+      sketches: [],
     }
   }
 

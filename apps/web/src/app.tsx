@@ -223,6 +223,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchEditorTool: sessionActions.setSketchEditorTool,
         setFeatureVisibility: sessionActions.setFeatureVisibility,
         setOriginPlaneVisibility: sessionActions.setOriginPlaneVisibility,
+        setSketchVisibility: sessionActions.setSketchVisibility,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
         setSketchProfiles: sessionActions.setSketchProfiles,
         setSketchSelectedConstraintId: sessionActions.setSketchSelectedConstraintId,
@@ -252,6 +253,7 @@ function EditorApplication({
       activePartDesignTool: state.activePartDesignTool,
       commandPaletteOpen: state.commandPaletteOpen,
       hiddenFeatureIds: state.hiddenFeatureIds,
+      hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
       selection: state.selection,
       sketch: state.sketch,
@@ -335,6 +337,7 @@ function EditorApplication({
         activeTool={session.activePartDesignTool}
         controller={controller}
         hiddenFeatureIds={session.hiddenFeatureIds}
+        hiddenSketchIds={session.hiddenSketchIds}
         originPlaneVisibility={session.originPlaneVisibility}
         workspace={session.workspace}
         selection={session.selection}
