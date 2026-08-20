@@ -252,6 +252,10 @@
           "label": "Cylinder",
           "keywords": "create cylinder|primitive|solid|round"
         },
+        "createDatumPlane": {
+          "label": "Datum plane",
+          "keywords": "create datum plane|reference plane|offset plane|construction plane"
+        },
         "createExtrusion": { "label": "Extrude", "keywords": "create extrusion|profile|solid|pad" },
         "createSketch": { "label": "Create sketch", "keywords": "new sketch|2d|profile|draw" },
         "createSubtract": {
@@ -495,6 +499,33 @@
           "staleRevision": "The document changed while this cylinder was being edited. Review the current model and try again.",
           "createFailed": "The cylinder could not be created. Your parameter values are preserved.",
           "updateFailed": "The cylinder could not be updated. Your parameter values are preserved."
+        },
+        "datumPlane": {
+          "title": "Create datum plane",
+          "description": "Create a reusable sketch support at a signed offset from an origin plane or the selected planar model face.",
+          "editTitle": "Edit datum plane",
+          "editDescription": "Update the signed offset while preserving the plane identity and dependent sketches.",
+          "parameters": "Plane definition",
+          "support": "Support",
+          "supportDescription": "Select a planar face before starting this command, or choose an origin plane here.",
+          "selectedFace": "Selected model face",
+          "planeXy": "XY plane",
+          "planeXz": "XZ plane",
+          "planeYz": "YZ plane",
+          "offset": "Offset",
+          "expressionDescription": "Enter a positive, zero, or negative length with a supported unit, or use a variable such as #planeOffset.",
+          "create": "Create datum plane",
+          "update": "Update datum plane",
+          "cancel": "Cancel",
+          "featureLabel": "Datum plane {number}",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter an offset between -1,000,000 mm and 1,000,000 mm.",
+          "validationSummary": "Fix the highlighted offset before creating the datum plane.",
+          "updateValidationSummary": "Fix the highlighted offset before updating the datum plane.",
+          "staleRevision": "The document changed while this datum plane was being edited. Review the current model and try again.",
+          "createFailed": "The datum plane could not be created. Your parameter values are preserved.",
+          "updateFailed": "The datum plane could not be updated. Your parameter values are preserved."
         },
         "boolean": {
           "title": "Subtract solids",

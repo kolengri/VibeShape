@@ -2,7 +2,6 @@ import { z } from "zod"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
-import type { FeatureId } from "./identifiers"
 import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { lengthQuantitySchema } from "./units"
 import {
@@ -265,12 +264,6 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
   if (!isExtrusionType(feature)) return null
   const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
-}
-
-export function featureBodyDependencyIds(feature: FeatureRecord): readonly FeatureId[] {
-  const extrusion = readExtrusionFeatureParameters(feature)
-  if (!extrusion) return feature.dependencies
-  return extrusion.operation === "new" ? [] : feature.dependencies.slice(0, 1)
 }
 
 function extrusionFeatureInvariant(feature: FeatureRecord) {

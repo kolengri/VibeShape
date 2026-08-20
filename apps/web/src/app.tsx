@@ -155,6 +155,14 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     if (selectedSupport) sessionActions.selectSketchSupport(selectedSupport)
   }, [controller, selection, sessionActions, t])
 
+  const createDatumPlane = useCallback(() => {
+    const selectedSupport = supportFromSelection(controller, selection)
+    sessionActions.startPartDesignTool({
+      kind: "create-datum-plane",
+      ...(selectedSupport ? { support: selectedSupport.support } : {}),
+    })
+  }, [controller, selection, sessionActions])
+
   const select = useCallback(
     (nextSelection: Parameters<typeof sessionActions.setSelection>[0]) => {
       sessionActions.setSelection(nextSelection)
@@ -201,6 +209,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         closeTool: sessionActions.closeActiveTool,
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
+        createDatumPlane,
         createExtrusion,
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
@@ -223,7 +232,15 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         switchWorkspace: sessionActions.switchWorkspace,
         undoSketchDraft: sessionActions.undoSketchDraft,
       }) satisfies EditorWorkspaceActions,
-    [createExtrusion, createSketch, editFeature, editSketch, select, sessionActions],
+    [
+      createDatumPlane,
+      createExtrusion,
+      createSketch,
+      editFeature,
+      editSketch,
+      select,
+      sessionActions,
+    ],
   )
 }
 
@@ -267,6 +284,7 @@ function EditorApplication({
       cancelActive: workspaceActions.closeTool,
       createBox: workspaceActions.createBox,
       createCylinder: workspaceActions.createCylinder,
+      createDatumPlane: workspaceActions.createDatumPlane,
       createExtrusion: workspaceActions.createExtrusion,
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,

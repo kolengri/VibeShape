@@ -1,3 +1,4 @@
+import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
@@ -56,10 +57,22 @@ export function viewerMeshes(
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
   const terminalIds = terminalFeatureIds(controller.report?.snapshot.features ?? [])
+  const datumIds = new Set<string>(
+    (controller.report?.snapshot.features ?? [])
+      .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
+      .map(({ id }) => id),
+  )
   const hiddenIds = new Set(hiddenFeatureIds)
   return rebuild.response.geometry
-    .filter(({ featureId }) => terminalIds.has(featureId) && !hiddenIds.has(featureId))
-    .map(({ featureId, geometry }) => ({ featureId, ...geometry.mesh }))
+    .filter(
+      ({ featureId }) =>
+        (terminalIds.has(featureId) || datumIds.has(featureId)) && !hiddenIds.has(featureId),
+    )
+    .map(({ featureId, geometry }) => ({
+      featureId,
+      ...geometry.mesh,
+      ...(datumIds.has(featureId) ? { appearance: "datum" as const } : {}),
+    }))
 }
 
 function viewportMessage(
@@ -461,7 +474,10 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     selection,
   } = props
   const t = useTranslations("app.shell.viewport")
-  const allCommittedMeshes = useMemo(() => viewerMeshes(controller), [controller])
+  const allCommittedMeshes = useMemo(
+    () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
+    [controller],
+  )
   const committedMeshes = useMemo(
     () => viewerMeshes(controller, hiddenFeatureIds),
     [controller, hiddenFeatureIds],

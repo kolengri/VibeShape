@@ -15,6 +15,7 @@ export {
   FlipHorizontal2,
   FolderOpen,
   Grid2X2,
+  Layers3,
   Minus,
   MousePointer2,
   Move,

@@ -293,6 +293,14 @@ export const extrusionFeatureContentParametersSchema = z
     "Extrusion profiles are limited to 2,000 total segments.",
   )
 
+export const datumPlaneFeatureContentParametersSchema = z
+  .object({
+    frame: extrusionFrameSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    size: cadLengthSchema,
+  })
+  .strict()
+
 const normalizedBuildVersionSchema = z
   .string()
   .min(1)

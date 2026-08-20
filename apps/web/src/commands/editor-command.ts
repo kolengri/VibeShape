@@ -2,6 +2,7 @@ export const editorCommandIds = {
   cancelActive: "org.vibeshape.editor.cancel-active",
   createBox: "org.vibeshape.editor.part-design.create-box",
   createCylinder: "org.vibeshape.editor.part-design.create-cylinder",
+  createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
@@ -68,6 +69,7 @@ export type EditorCommandIcon =
   | "centered-slot"
   | "construction"
   | "cylinder"
+  | "datum-plane"
   | "extrude"
   | "extend"
   | "line"
@@ -96,6 +98,7 @@ export type EditorCommandLabelKey =
   | "cancelActive"
   | "createBox"
   | "createCylinder"
+  | "createDatumPlane"
   | "createExtrusion"
   | "createSketch"
   | "createSubtract"
