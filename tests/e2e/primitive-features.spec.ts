@@ -9,6 +9,7 @@ interface FeatureEvaluationHarnessState {
   state: "running" | "passed" | "failed"
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
+  positionedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
@@ -67,6 +68,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.error).toBeNull()
   const box = requireResult(state.box)
   const cachedBox = requireResult(state.cachedBox)
+  const positionedBox = requireResult(state.positionedBox)
   const cylinder = requireResult(state.cylinder)
   const extrusion = requireResult(state.extrusion)
   const ellipseExtrusion = requireResult(state.ellipseExtrusion)
@@ -95,6 +97,22 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     ]),
   )
   expectMesh(box)
+
+  expect(positionedBox.shape.valid).toBe(true)
+  expect(positionedBox.shape.volume).toBeCloseTo(20 * 30 * 25.4, 5)
+  expectBounds(positionedBox.shape.bounds, { min: [2, -23, 7], max: [22, 7, 32.4] })
+  expect(
+    positionedBox.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? []),
+  ).toEqual(
+    expect.arrayContaining([
+      "primitive.box.cap.start",
+      "primitive.box.cap.end",
+      "primitive.box.side.x-min",
+      "primitive.box.side.x-max",
+      "primitive.box.side.y-min",
+      "primitive.box.side.y-max",
+    ]),
+  )
 
   expect(cylinder.cache.brepHit).toBe(false)
   expect(cylinder.shape.valid).toBe(true)
@@ -183,7 +201,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 11 }).flatMap(() => [
+    ...Array.from({ length: 12 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -197,6 +215,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 10, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 11, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

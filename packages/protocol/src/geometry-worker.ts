@@ -90,6 +90,7 @@ export const boxFeatureContentParametersSchema = z
     depth: cadLengthSchema,
     height: cadLengthSchema,
     centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
   })
   .strict()
 
@@ -98,6 +99,7 @@ export const cylinderFeatureContentParametersSchema = z
     radius: cadLengthSchema,
     height: cadLengthSchema,
     centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
   })
   .strict()
 

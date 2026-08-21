@@ -17,7 +17,10 @@ test.describe("Cylinder parameters", () => {
     const createForm = page.getByRole("form", { name: "Create cylinder" })
     await expect(createForm).toBeVisible()
     await createForm.getByRole("combobox", { name: "Radius" }).fill("#radius")
-    await createForm.getByRole("checkbox", { name: "Center on the origin" }).check()
+    await createForm.getByRole("combobox", { name: "Origin X" }).fill("18 mm")
+    await createForm.getByRole("combobox", { name: "Origin Y" }).fill("-6 mm")
+    await createForm.getByRole("combobox", { name: "Origin Z" }).fill("10 mm")
+    await createForm.getByRole("checkbox", { name: "Center height about placement origin" }).check()
     await createForm.getByRole("button", { name: "Create cylinder" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Cylinder 1" })).toBeVisible()
@@ -28,8 +31,14 @@ test.describe("Cylinder parameters", () => {
     await page.getByRole("treeitem", { name: "Cylinder 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit cylinder" })
     await expect(editForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
-    await expect(editForm.getByRole("checkbox", { name: "Center on the origin" })).toBeChecked()
+    await expect(editForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("18 mm")
+    await expect(editForm.getByRole("combobox", { name: "Origin Y" })).toHaveValue("-6 mm")
+    await expect(editForm.getByRole("combobox", { name: "Origin Z" })).toHaveValue("10 mm")
+    await expect(
+      editForm.getByRole("checkbox", { name: "Center height about placement origin" }),
+    ).toBeChecked()
     await editForm.getByRole("combobox", { name: "Height" }).fill("42 mm")
+    await editForm.getByRole("combobox", { name: "Origin X" }).fill("24 mm")
     await editForm.getByRole("button", { name: "Update cylinder" }).dblclick()
     await expect(editForm).not.toBeVisible()
 
@@ -40,6 +49,11 @@ test.describe("Cylinder parameters", () => {
     const reopenedForm = page.getByRole("form", { name: "Edit cylinder" })
     await expect(reopenedForm.getByRole("combobox", { name: "Radius" })).toHaveValue("#radius")
     await expect(reopenedForm.getByRole("combobox", { name: "Height" })).toHaveValue("42 mm")
-    await expect(reopenedForm.getByRole("checkbox", { name: "Center on the origin" })).toBeChecked()
+    await expect(reopenedForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("24 mm")
+    await expect(reopenedForm.getByRole("combobox", { name: "Origin Y" })).toHaveValue("-6 mm")
+    await expect(reopenedForm.getByRole("combobox", { name: "Origin Z" })).toHaveValue("10 mm")
+    await expect(
+      reopenedForm.getByRole("checkbox", { name: "Center height about placement origin" }),
+    ).toBeChecked()
   })
 })

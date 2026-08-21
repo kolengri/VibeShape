@@ -35,6 +35,7 @@ interface FeatureEvaluationHarnessState {
   state: "running" | "passed" | "failed"
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
+  positionedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
@@ -60,6 +61,7 @@ declare global {
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const boxFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101")
+const positionedBoxFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3112")
 const cylinderFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102")
 const booleanFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103")
 const identicalToolFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104")
@@ -89,6 +91,7 @@ const state: FeatureEvaluationHarnessState = {
   state: "running",
   box: null,
   cachedBox: null,
+  positionedBox: null,
   cylinder: null,
   extrusion: null,
   ellipseExtrusion: null,
@@ -233,6 +236,7 @@ function feature(
   kind: "boolean" | "box" | "cylinder",
   featureId: FeatureId,
   dependencies: readonly FeatureId[],
+  origin: readonly [number, number, number] = [0, 0, 0],
 ) {
   if (kind === "box") {
     return {
@@ -244,6 +248,11 @@ function feature(
         depth: createLengthQuantity(30),
         height: createLengthQuantity(1, "in"),
         centered: false,
+        origin: {
+          x: createLengthQuantity(origin[0]),
+          y: createLengthQuantity(origin[1]),
+          z: createLengthQuantity(origin[2]),
+        },
       },
       dependencies: [],
       references: [],
@@ -259,6 +268,11 @@ function feature(
         radius: createLengthQuantity(5),
         height: createLengthQuantity(60),
         centered: true,
+        origin: {
+          x: createLengthQuantity(origin[0]),
+          y: createLengthQuantity(origin[1]),
+          z: createLengthQuantity(origin[2]),
+        },
       },
       dependencies: [],
       references: [],
@@ -287,6 +301,7 @@ async function evaluate(
   featureId: FeatureId,
   environment: unknown,
   dependencies: readonly { featureId: FeatureId; contentHash: string }[] = [],
+  origin: readonly [number, number, number] = [0, 0, 0],
 ) {
   const content = await computeFeatureContentHash(
     featureRegistry(),
@@ -295,6 +310,7 @@ async function evaluate(
         kind,
         featureId,
         dependencies.map(({ featureId: dependencyId }) => dependencyId),
+        origin,
       ),
       dependencies,
       environment,
@@ -406,6 +422,14 @@ async function run() {
     const box = await evaluate(client, "box", boxFeatureId, environment)
     state.box = box
     state.cachedBox = await evaluate(client, "box", boxFeatureId, environment)
+    state.positionedBox = await evaluate(
+      client,
+      "box",
+      positionedBoxFeatureId,
+      environment,
+      [],
+      [12, -8, 7],
+    )
     const cylinder = await evaluate(client, "cylinder", cylinderFeatureId, environment)
     state.cylinder = cylinder
     state.extrusion = await evaluateExtrusion(client, environment, extrusionFeatureId, "new", [])

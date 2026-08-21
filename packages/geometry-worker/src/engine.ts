@@ -207,6 +207,41 @@ function withinFeatureWorkspace(values: readonly number[]) {
   return values.every((value) => value <= MAX_FEATURE_WORKSPACE_LENGTH_MM)
 }
 
+function boxWithinFeatureWorkspace(parameters: BoxContentParameters) {
+  const [originX, originY, originZ] = parameters.origin
+  const halfWidth = parameters.width / 2
+  const halfDepth = parameters.depth / 2
+  const minimumZ = parameters.centered ? originZ - parameters.height / 2 : originZ
+  const maximumZ = minimumZ + parameters.height
+
+  return withinFeatureWorkspace([
+    parameters.width,
+    parameters.depth,
+    parameters.height,
+    Math.abs(originX - halfWidth),
+    Math.abs(originX + halfWidth),
+    Math.abs(originY - halfDepth),
+    Math.abs(originY + halfDepth),
+    Math.abs(minimumZ),
+    Math.abs(maximumZ),
+  ])
+}
+
+function cylinderWithinFeatureWorkspace(parameters: CylinderContentParameters) {
+  const [originX, originY, originZ] = parameters.origin
+  const minimumZ = parameters.centered ? originZ - parameters.height / 2 : originZ
+  const maximumZ = minimumZ + parameters.height
+
+  return withinFeatureWorkspace([
+    parameters.radius,
+    parameters.height,
+    Math.abs(originX) + parameters.radius,
+    Math.abs(originY) + parameters.radius,
+    Math.abs(minimumZ),
+    Math.abs(maximumZ),
+  ])
+}
+
 function relativeError(expected: number, actual: number) {
   return Math.abs(expected - actual) / Math.max(Math.abs(expected), Number.EPSILON)
 }
@@ -446,22 +481,23 @@ function boxFeatureSemanticRole(
   }
   const { centroid, direction } = context.signature
   if (!direction) return undefined
-  const minimumZ = parameters.centered ? -parameters.height / 2 : 0
-  const maximumZ = parameters.centered ? parameters.height / 2 : parameters.height
+  const [originX, originY, originZ] = parameters.origin
+  const minimumZ = originZ + (parameters.centered ? -parameters.height / 2 : 0)
+  const maximumZ = originZ + (parameters.centered ? parameters.height / 2 : parameters.height)
   const axes = [
     {
       coordinate: centroid[0],
       normal: direction[0],
-      minimum: -parameters.width / 2,
-      maximum: parameters.width / 2,
+      minimum: originX - parameters.width / 2,
+      maximum: originX + parameters.width / 2,
       minimumRole: "primitive.box.side.x-min",
       maximumRole: "primitive.box.side.x-max",
     },
     {
       coordinate: centroid[1],
       normal: direction[1],
-      minimum: -parameters.depth / 2,
-      maximum: parameters.depth / 2,
+      minimum: originY - parameters.depth / 2,
+      maximum: originY + parameters.depth / 2,
       minimumRole: "primitive.box.side.y-min",
       maximumRole: "primitive.box.side.y-max",
     },
@@ -490,8 +526,9 @@ function cylinderFeatureSemanticRole(
   if (context.signature.geometryClass === "CYLINDRE") return "primitive.cylinder.wall"
   if (context.signature.geometryClass !== "PLANE" || !context.signature.direction) return undefined
   const z = context.signature.centroid[2]
-  const minimumZ = parameters.centered ? -parameters.height / 2 : 0
-  const maximumZ = parameters.centered ? parameters.height / 2 : parameters.height
+  const originZ = parameters.origin[2]
+  const minimumZ = originZ + (parameters.centered ? -parameters.height / 2 : 0)
+  const maximumZ = originZ + (parameters.centered ? parameters.height / 2 : parameters.height)
   return firstMatchingRole([
     [nearlyEqual(z, minimumZ), "primitive.cylinder.cap.start"],
     [nearlyEqual(z, maximumZ), "primitive.cylinder.cap.end"],
@@ -529,12 +566,10 @@ function parseBoxFeature(input: FeatureEvaluationInput): FeatureParseResult {
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Box content parameters are invalid.")
   }
-  if (
-    !withinFeatureWorkspace([parameters.data.width, parameters.data.depth, parameters.data.height])
-  ) {
+  if (!boxWithinFeatureWorkspace(parameters.data)) {
     return featureFailure(
       "invalid-feature-parameters",
-      `Box dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+      `Box dimensions and placement must stay within ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm of the world origin.`,
     )
   }
   return { ok: true, feature: { kind: "box", parameters: parameters.data } }
@@ -553,10 +588,10 @@ function parseCylinderFeature(input: FeatureEvaluationInput): FeatureParseResult
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Cylinder content parameters are invalid.")
   }
-  if (!withinFeatureWorkspace([parameters.data.radius, parameters.data.height])) {
+  if (!cylinderWithinFeatureWorkspace(parameters.data)) {
     return featureFailure(
       "invalid-feature-parameters",
-      `Cylinder dimensions must not exceed ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm.`,
+      `Cylinder dimensions and placement must stay within ${MAX_FEATURE_WORKSPACE_LENGTH_MM} mm of the world origin.`,
     )
   }
   return { ok: true, feature: { kind: "cylinder", parameters: parameters.data } }
@@ -752,13 +787,17 @@ function createFeatureShape(
   dependencyShapes: readonly Shape3D[],
 ) {
   if (feature.kind === "box") {
-    const { width, depth, height, centered } = feature.parameters
-    return createOcctBox(opencascade, [width, depth, height], centered)
+    const { width, depth, height, centered, origin } = feature.parameters
+    return createOcctBox(opencascade, [width, depth, height], centered, origin)
   }
 
   if (feature.kind === "cylinder") {
-    const { radius, height, centered } = feature.parameters
-    return createOcctCylinder(opencascade, radius, height, [0, 0, centered ? -height / 2 : 0])
+    const { radius, height, centered, origin } = feature.parameters
+    return createOcctCylinder(opencascade, radius, height, [
+      origin[0],
+      origin[1],
+      origin[2] + (centered ? -height / 2 : 0),
+    ])
   }
 
   if (feature.kind === "extrusion") {

@@ -449,8 +449,8 @@ describe("DocumentWorkerRuntime", () => {
 
     expect(engine.evaluatedInputs).toHaveLength(2)
     expect(engine.evaluatedInputs.map(({ content }) => content.feature.parameters)).toEqual([
-      { width: 20, depth: 30, height: 40, centered: false },
-      { width: 24, depth: 30, height: 40, centered: false },
+      { width: 20, depth: 30, height: 40, centered: false, origin: [0, 0, 0] },
+      { width: 24, depth: 30, height: 40, centered: false, origin: [0, 0, 0] },
     ])
     expect(rebuilt(messages, "variable-equivalent").evaluation.reusedFeatureIds).toEqual([
       featureIds.box,

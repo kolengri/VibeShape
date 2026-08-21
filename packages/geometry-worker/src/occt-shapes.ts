@@ -108,9 +108,14 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     opencascade: OpenCascadeInstance,
     dimensions: Vector3,
     centeredZ = false,
+    origin: Vector3 = [0, 0, 0],
   ): Shape3D {
     const [length, width, height] = dimensions
-    const corner = new opencascade.gp_Pnt_3(-length / 2, -width / 2, centeredZ ? -height / 2 : 0)
+    const corner = new opencascade.gp_Pnt_3(
+      origin[0] - length / 2,
+      origin[1] - width / 2,
+      origin[2] + (centeredZ ? -height / 2 : 0),
+    )
 
     try {
       const maker = new opencascade.BRepPrimAPI_MakeBox_3(corner, length, width, height)
