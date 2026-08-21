@@ -15,6 +15,7 @@ export function isActiveSketchEditorTool(
 
 export type SketchEditorTool =
   | "select"
+  | "use"
   | "point"
   | "line"
   | "midpoint-line"

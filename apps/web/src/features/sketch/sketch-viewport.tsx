@@ -82,7 +82,7 @@ import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
-import { Ruler } from "@vibeshape/ui/components/icons"
+import { Link2, Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type {
   ViewerOriginPlane,
@@ -110,6 +110,7 @@ import {
   type ActiveSketchSolveResult,
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
+  createBrowserSketchExternalReferenceId,
   type DocumentControllerState,
   solveActiveSketch,
 } from "../../document/document-controller"
@@ -118,6 +119,7 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import type { ExternalSketchPointCandidate } from "./external-sketch-points"
 import {
   defaultCircularSketchPatternDefinition,
   SketchCircularPatternForm,
@@ -713,6 +715,22 @@ function sketchBounds(points: readonly SketchPoint2[]): SketchBounds {
   const width = Math.max(maxX - minX + 40, MIN_VIEW_WIDTH)
   const height = Math.max(maxY - minY + 40, MIN_VIEW_HEIGHT)
   return { minX: centerX - width / 2, minY: centerY - height / 2, width, height }
+}
+
+function expandedSketchBounds(bounds: SketchBounds, points: readonly SketchPoint2[]): SketchBounds {
+  if (points.length === 0) return bounds
+  const candidates = sketchBounds(points)
+  const minX = Math.min(bounds.minX, candidates.minX)
+  const minY = Math.min(bounds.minY, candidates.minY)
+  const maxX = Math.max(bounds.minX + bounds.width, candidates.minX + candidates.width)
+  const maxY = Math.max(bounds.minY + bounds.height, candidates.minY + candidates.height)
+  const next = { minX, minY, width: maxX - minX, height: maxY - minY }
+  return next.minX === bounds.minX &&
+    next.minY === bounds.minY &&
+    next.width === bounds.width &&
+    next.height === bounds.height
+    ? bounds
+    : next
 }
 
 function pointerToSketchPoint(
@@ -1540,17 +1558,83 @@ function SketchGeometry({
   )
 }
 
-function SketchExternalPoints({ points }: Readonly<{ points: readonly DisplayPoint[] }>) {
+function candidateKey(candidate: ExternalSketchPointCandidate) {
+  return `${candidate.sourceSketchId}:${candidate.sourcePointId}`
+}
+
+function referenceMatchesCandidate(
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+  candidate: ExternalSketchPointCandidate,
+) {
+  return (
+    reference.sourceSketchId === candidate.sourceSketchId &&
+    reference.sourcePointId === candidate.sourcePointId
+  )
+}
+
+function hasCoincidentPointConstraint(
+  sketch: SketchRecord,
+  firstPointId: SketchEntityId,
+  secondPointId: SketchEntityId,
+) {
+  return sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "coincident" &&
+      ((constraint.firstPointId === firstPointId && constraint.secondPointId === secondPointId) ||
+        (constraint.firstPointId === secondPointId && constraint.secondPointId === firstPointId)),
+  )
+}
+
+function attachExternalPointToSelection(
+  sketch: SketchRecord,
+  projectedPointId: SketchEntityId,
+  selectedEntityIds: readonly SketchEntityId[],
+) {
+  const selectedPoints = selectedSketchEntities(sketch, selectedEntityIds).filter(
+    (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+  )
+  if (selectedPoints.length !== 1) return sketch
+  const selectedPoint = selectedPoints[0]
+  if (!selectedPoint || hasCoincidentPointConstraint(sketch, selectedPoint.id, projectedPointId)) {
+    return sketch
+  }
+  return appendSketchConstraint(
+    sketch,
+    {
+      type: "coincident",
+      firstPointId: selectedPoint.id,
+      secondPointId: projectedPointId,
+    },
+    createBrowserSketchConstraintId,
+  )
+}
+
+function SketchExternalPoints({
+  onAttach,
+  points,
+}: Readonly<{
+  onAttach: ((projectedPointId: SketchEntityId) => void) | null
+  points: readonly DisplayPoint[]
+}>) {
   if (points.length === 0) return null
   return (
     <g
       aria-label="External sketch references"
-      className="pointer-events-none"
+      className={onAttach ? undefined : "pointer-events-none"}
       data-sketch-external-reference-count={points.length}
       transform="scale(1 -1)"
     >
       {points.map((point) => (
-        <g key={point.id} data-sketch-external-point-id={point.id}>
+        <g
+          key={point.id}
+          data-sketch-external-point-id={point.id}
+          className={onAttach ? "cursor-crosshair" : undefined}
+          onPointerDown={(event) => {
+            if (!onAttach) return
+            event.stopPropagation()
+            onAttach(point.id)
+          }}
+        >
           <circle
             cx={point.x}
             cy={point.y}
@@ -1582,6 +1666,140 @@ function SketchExternalPoints({ points }: Readonly<{ points: readonly DisplayPoi
       ))}
     </g>
   )
+}
+
+function SketchAvailableExternalPoints({
+  candidates,
+  onUse,
+}: Readonly<{
+  candidates: readonly ExternalSketchPointCandidate[]
+  onUse: (candidate: ExternalSketchPointCandidate) => void
+}>) {
+  if (candidates.length === 0) return null
+  return (
+    <g
+      aria-label="Available external sketch points"
+      data-sketch-available-external-point-count={candidates.length}
+      transform="scale(1 -1)"
+    >
+      {candidates.map((candidate) => (
+        <g
+          key={candidateKey(candidate)}
+          className="cursor-crosshair"
+          data-sketch-available-external-point-id={candidate.sourcePointId}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            onUse(candidate)
+          }}
+        >
+          <circle
+            cx={candidate.x}
+            cy={candidate.y}
+            r={5}
+            className="fill-background/75 stroke-sky-400"
+            strokeDasharray="3 2"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={candidate.x - 8}
+            x2={candidate.x + 8}
+            y1={candidate.y}
+            y2={candidate.y}
+            className="stroke-sky-400"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={candidate.x}
+            x2={candidate.x}
+            y1={candidate.y - 8}
+            y2={candidate.y + 8}
+            className="stroke-sky-400"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <title>{candidate.label}</title>
+        </g>
+      ))}
+    </g>
+  )
+}
+
+function SketchExternalReferencePresentation({
+  availableCandidates,
+  editorTool,
+  externalPoints,
+  selectedEntityIds,
+  onAttach,
+  onUse,
+}: Readonly<{
+  availableCandidates: readonly ExternalSketchPointCandidate[]
+  editorTool: SketchEditorTool
+  externalPoints: readonly DisplayPoint[]
+  selectedEntityIds: readonly SketchEntityId[]
+  onAttach: (projectedPointId: SketchEntityId) => void
+  onUse: (candidate: ExternalSketchPointCandidate) => void
+}>) {
+  return (
+    <>
+      <SketchAvailableExternalPoints candidates={availableCandidates} onUse={onUse} />
+      <SketchExternalPoints
+        points={externalPoints}
+        onAttach={editorTool === "select" && selectedEntityIds.length === 1 ? onAttach : null}
+      />
+    </>
+  )
+}
+
+function SketchExternalReferenceLayer({
+  candidates,
+  draft,
+  editorTool,
+  externalPoints,
+  selectedEntityIds,
+  onDraftChange,
+}: Readonly<{
+  candidates: readonly ExternalSketchPointCandidate[]
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  externalPoints: readonly DisplayPoint[]
+  selectedEntityIds: readonly SketchEntityId[]
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+}>) {
+  const externalReferences = useExternalReferenceInteraction({
+    candidates,
+    draft,
+    editorTool,
+    onDraftChange,
+    selectedEntityIds,
+  })
+  return (
+    <SketchExternalReferencePresentation
+      availableCandidates={externalReferences.availableCandidates}
+      editorTool={editorTool}
+      externalPoints={externalPoints}
+      selectedEntityIds={selectedEntityIds}
+      onAttach={externalReferences.attach}
+      onUse={externalReferences.use}
+    />
+  )
+}
+
+function SketchUsePointBounds({
+  candidates,
+  editorTool,
+  setBounds,
+}: Readonly<{
+  candidates: readonly ExternalSketchPointCandidate[]
+  editorTool: SketchEditorTool
+  setBounds: Dispatch<SetStateAction<SketchBounds>>
+}>) {
+  useEffect(() => {
+    if (editorTool !== "use") return
+    setBounds((bounds) => expandedSketchBounds(bounds, candidates))
+  }, [candidates, editorTool, setBounds])
+  return null
 }
 
 const StableSketchGeometry = memo(SketchGeometry)
@@ -3606,12 +3824,14 @@ const placementBuilders = {
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
 } satisfies Record<
-  Exclude<SketchEditorTool, "select" | SketchModificationTool>,
+  Exclude<SketchEditorTool, "select" | "use" | SketchModificationTool>,
   (input: PlacementInput) => PlacementUpdate
 >
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return tool === "select" || isSketchModificationTool(tool) ? null : placementBuilders[tool](input)
+  return tool === "select" || tool === "use" || isSketchModificationTool(tool)
+    ? null
+    : placementBuilders[tool](input)
 }
 
 function safePlacementUpdate(tool: SketchEditorTool, input: PlacementInput) {
@@ -4047,6 +4267,7 @@ const pointInferenceSupport = {
   point: alwaysSupportsPointInference,
   rectangle: neverSupportsPointInference,
   select: neverSupportsPointInference,
+  use: neverSupportsPointInference,
   slot: (pending) => pending?.kind !== "slot-width",
   "slot-from-selection": neverSupportsPointInference,
   split: neverSupportsPointInference,
@@ -4920,7 +5141,14 @@ function SketchDrawingView({
           solution={configuration.annotationSolution}
           onSelect={configuration.onProfileSelect}
         />
-        <SketchExternalPoints points={state.geometry.externalPoints} />
+        <SketchExternalReferenceLayer
+          candidates={configuration.externalPointCandidates}
+          draft={configuration.draft}
+          editorTool={configuration.editorTool}
+          externalPoints={state.geometry.externalPoints}
+          selectedEntityIds={configuration.selectedEntityIds}
+          onDraftChange={configuration.onDraftChange}
+        />
         <StableSketchGeometry
           draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
           editable={state.editable}
@@ -5568,6 +5796,147 @@ function useSketchInferencePresentation(input: {
   return { candidateQuery, references }
 }
 
+function useExternalReferenceInteraction({
+  candidates,
+  draft,
+  editorTool,
+  onDraftChange,
+  selectedEntityIds,
+}: Pick<
+  SketchDrawingConfiguration,
+  "draft" | "editorTool" | "onDraftChange" | "selectedEntityIds"
+> & {
+  candidates: readonly ExternalSketchPointCandidate[]
+}) {
+  const availableCandidates = useMemo(() => {
+    if (!draft || editorTool !== "use") return []
+    const references = draft.externalReferences ?? []
+    return candidates.filter(
+      (candidate) =>
+        !references.some((reference) => referenceMatchesCandidate(reference, candidate)),
+    )
+  }, [candidates, draft, editorTool])
+  const use = useCallback(
+    (candidate: ExternalSketchPointCandidate) => {
+      if (!draft) return
+      const references = draft.externalReferences ?? []
+      if (references.some((reference) => referenceMatchesCandidate(reference, candidate))) return
+      const projectedPointId = createBrowserSketchEntityId()
+      const next = attachExternalPointToSelection(
+        {
+          ...draft,
+          externalReferences: [
+            ...references,
+            {
+              schemaVersion: 0,
+              id: createBrowserSketchExternalReferenceId(),
+              sourceSketchId: candidate.sourceSketchId,
+              sourcePointId: candidate.sourcePointId,
+              projectedPointId,
+            },
+          ],
+        },
+        projectedPointId,
+        selectedEntityIds,
+      )
+      onDraftChange(next)
+    },
+    [draft, onDraftChange, selectedEntityIds],
+  )
+  const attach = useCallback(
+    (projectedPointId: SketchEntityId) => {
+      if (!draft) return
+      const next = attachExternalPointToSelection(draft, projectedPointId, selectedEntityIds)
+      if (next !== draft) onDraftChange(next)
+    },
+    [draft, onDraftChange, selectedEntityIds],
+  )
+  return { attach, availableCandidates, use }
+}
+
+function sketchSplitActions({
+  draft,
+  eventPoint,
+  pending,
+  publish,
+  sketch,
+  setCursor,
+  setPending,
+}: Readonly<{
+  draft: SketchRecord | null
+  eventPoint: (event: PointerEvent<SVGElement>) => SketchPoint2 | null
+  pending: PendingGeometry | null
+  publish: (draft: SketchRecord) => void
+  sketch: SketchRecord
+  setCursor: Dispatch<SetStateAction<SketchPoint2 | null>>
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}>) {
+  const splitCircle = (circle: Extract<SketchEntity, { type: "circle" }>, point: SketchPoint2) => {
+    const projectedPoint = projectedCirclePoint(draft ?? sketch, circle, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-circle-second" || pending.circleId !== circle.id) {
+      setPending({ kind: "split-circle-second", circleId: circle.id, firstPoint: projectedPoint })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeCircleSplitUpdate(draft, circle.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publish(nextDraft)
+  }
+  const splitEllipse = (
+    ellipse: Extract<SketchEntity, { type: "ellipse" }>,
+    point: SketchPoint2,
+  ) => {
+    const projectedPoint = projectedEllipsePoint(draft ?? sketch, ellipse, point)
+    if (!projectedPoint) return
+    if (pending?.kind !== "split-ellipse-second" || pending.ellipseId !== ellipse.id) {
+      setPending({
+        kind: "split-ellipse-second",
+        ellipseId: ellipse.id,
+        firstPoint: projectedPoint,
+      })
+      setCursor(projectedPoint)
+      return
+    }
+    const nextDraft = draft
+      ? safeEllipseSplitUpdate(draft, ellipse.id, pending.firstPoint, projectedPoint)
+      : null
+    if (nextDraft) publish(nextDraft)
+  }
+  return { eventPoint, splitCircle, splitEllipse }
+}
+
+function applyMirrorAction({
+  draft,
+  entityId,
+  pending,
+  publish,
+  selectedEntityIds,
+  setInference,
+  setPending,
+  onSelectionChange,
+}: Readonly<{
+  draft: SketchRecord | null
+  entityId: SketchEntityId
+  pending: PendingGeometry | null
+  publish: (result: ReturnType<typeof mirrorSketchEntities>, keepSelectingSources: boolean) => void
+  selectedEntityIds: readonly SketchEntityId[]
+  setInference: Dispatch<SetStateAction<SketchPointInference | null>>
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+  onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+}>) {
+  if (!draft) return
+  const resolution = resolveMirrorAction({ draft, entityId, pending, selectedEntityIds })
+  if (resolution?.kind === "select-sources") {
+    onSelectionChange([])
+    setInference(null)
+    setPending({ axisLineId: resolution.axisLineId, kind: "mirror-sources" })
+    return
+  }
+  if (resolution) publish(resolution.result, resolution.keepSelectingSources)
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -5756,42 +6125,15 @@ function SketchDrawing({
     setPending(null)
     setInference(null)
   }
-  const handleCircleSplitAction = (
-    circle: Extract<SketchEntity, { type: "circle" }>,
-    point: SketchPoint2,
-  ) => {
-    const projectedPoint = projectedCirclePoint(draft ?? sketch, circle, point)
-    if (!projectedPoint) return
-    if (pending?.kind !== "split-circle-second" || pending.circleId !== circle.id) {
-      setPending({ kind: "split-circle-second", circleId: circle.id, firstPoint: projectedPoint })
-      setCursor(projectedPoint)
-      return
-    }
-    const nextDraft = draft
-      ? safeCircleSplitUpdate(draft, circle.id, pending.firstPoint, projectedPoint)
-      : null
-    if (nextDraft) publishModificationDraft(nextDraft)
-  }
-  const handleEllipseSplitAction = (
-    ellipse: Extract<SketchEntity, { type: "ellipse" }>,
-    point: SketchPoint2,
-  ) => {
-    const projectedPoint = projectedEllipsePoint(draft ?? sketch, ellipse, point)
-    if (!projectedPoint) return
-    if (pending?.kind !== "split-ellipse-second" || pending.ellipseId !== ellipse.id) {
-      setPending({
-        kind: "split-ellipse-second",
-        ellipseId: ellipse.id,
-        firstPoint: projectedPoint,
-      })
-      setCursor(projectedPoint)
-      return
-    }
-    const nextDraft = draft
-      ? safeEllipseSplitUpdate(draft, ellipse.id, pending.firstPoint, projectedPoint)
-      : null
-    if (nextDraft) publishModificationDraft(nextDraft)
-  }
+  const { splitCircle, splitEllipse } = sketchSplitActions({
+    draft,
+    eventPoint,
+    pending,
+    publish: publishModificationDraft,
+    setCursor,
+    setPending,
+    sketch,
+  })
   const publishMirrorDraft = (
     result: ReturnType<typeof mirrorSketchEntities>,
     keepSelectingSources: boolean,
@@ -5804,17 +6146,17 @@ function SketchDrawing({
     setPending(null)
     onEditorToolChange("select")
   }
-  const handleMirrorAction = (entityId: SketchEntityId) => {
-    if (!draft) return
-    const resolution = resolveMirrorAction({ draft, entityId, pending, selectedEntityIds })
-    if (resolution?.kind === "select-sources") {
-      onSelectionChange([])
-      setInference(null)
-      setPending({ axisLineId: resolution.axisLineId, kind: "mirror-sources" })
-      return
-    }
-    if (resolution) publishMirrorDraft(resolution.result, resolution.keepSelectingSources)
-  }
+  const handleMirrorAction = (entityId: SketchEntityId) =>
+    applyMirrorAction({
+      draft,
+      entityId,
+      onSelectionChange,
+      pending,
+      publish: publishMirrorDraft,
+      selectedEntityIds,
+      setInference,
+      setPending,
+    })
   const handleOffsetSourceAction = (entityId: SketchEntityId) => {
     if (!draft) return
     const entity = draft.entities.find(({ id }) => id === entityId)
@@ -5837,11 +6179,11 @@ function SketchDrawing({
       transform: () => transform.selectEntity(event, entityId),
       "split-circle": () => {
         const point = eventPoint(event)
-        if (point && entity?.type === "circle") handleCircleSplitAction(entity, point)
+        if (point && entity?.type === "circle") splitCircle(entity, point)
       },
       "split-ellipse": () => {
         const point = eventPoint(event)
-        if (point && entity?.type === "ellipse") handleEllipseSplitAction(entity, point)
+        if (point && entity?.type === "ellipse") splitEllipse(entity, point)
       },
       direct: () => {
         const point = eventPoint(event)
@@ -5880,47 +6222,54 @@ function SketchDrawing({
     [onSelectionChange, selectedEntityIds],
   )
   return (
-    <SketchDrawingView
-      configuration={configuration}
-      handlers={{
-        appendAt,
-        onCanvasPointerDown: handleCanvasPointerDown,
-        onCircularPatternApply: circularPattern.apply,
-        onCircularPatternCancel: circularPattern.cancel,
-        onCircularPatternPreview: circularPattern.preview,
-        onCurveAction: handleCurveAction,
-        onKeyDown: handleKeyDown,
-        onLinearPatternApply: linearPattern.apply,
-        onLinearPatternCancel: linearPattern.cancel,
-        onLinearPatternPreview: linearPattern.preview,
-        onPointPointerDown: handlePointPointerDown,
-        onPointerLeave: handlePointerLeave,
-        onPointerMove: handlePointerMove,
-        onPointerUp: handlePointerUp,
-        onSelection: handleSelection,
-        onTransformStart: transform.start,
-        onTransformApply: transform.applyExact,
-        onTransformCancel: transform.cancel,
-        onWheel: handleWheel,
-      }}
-      sketch={sketch}
-      state={{
-        annotationProfiles,
-        bounds,
-        circularPattern: circularPattern.presentation,
-        cursor,
-        dragTarget,
-        draggingPointId,
-        editable,
-        geometry,
-        inference,
-        linearPattern: linearPattern.presentation,
-        pending,
-        transform: transform.presentation,
-        viewportSize,
-      }}
-      svgRef={svgRef}
-    />
+    <>
+      <SketchUsePointBounds
+        candidates={configuration.externalPointCandidates}
+        editorTool={editorTool}
+        setBounds={setBounds}
+      />
+      <SketchDrawingView
+        configuration={configuration}
+        handlers={{
+          appendAt,
+          onCanvasPointerDown: handleCanvasPointerDown,
+          onCircularPatternApply: circularPattern.apply,
+          onCircularPatternCancel: circularPattern.cancel,
+          onCircularPatternPreview: circularPattern.preview,
+          onCurveAction: handleCurveAction,
+          onKeyDown: handleKeyDown,
+          onLinearPatternApply: linearPattern.apply,
+          onLinearPatternCancel: linearPattern.cancel,
+          onLinearPatternPreview: linearPattern.preview,
+          onPointPointerDown: handlePointPointerDown,
+          onPointerLeave: handlePointerLeave,
+          onPointerMove: handlePointerMove,
+          onPointerUp: handlePointerUp,
+          onSelection: handleSelection,
+          onTransformStart: transform.start,
+          onTransformApply: transform.applyExact,
+          onTransformCancel: transform.cancel,
+          onWheel: handleWheel,
+        }}
+        sketch={sketch}
+        state={{
+          annotationProfiles,
+          bounds,
+          circularPattern: circularPattern.presentation,
+          cursor,
+          dragTarget,
+          draggingPointId,
+          editable,
+          geometry,
+          inference,
+          linearPattern: linearPattern.presentation,
+          pending,
+          transform: transform.presentation,
+          viewportSize,
+        }}
+        svgRef={svgRef}
+      />
+    </>
   )
 }
 
@@ -6062,6 +6411,7 @@ type SketchDrawingConfiguration = Readonly<{
   annotationSolution: SolvedSketchWire | null
   construction: boolean
   draft: SketchRecord | null
+  externalPointCandidates: readonly ExternalSketchPointCandidate[]
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
@@ -6197,7 +6547,7 @@ function SketchPrecisionToolbar({
   return (
     <div
       aria-label={viewportT("precisionTools")}
-      className="absolute right-3 top-3 flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm"
+      className="flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm"
       role="toolbar"
     >
       {constraints.map(({ definition, kind }) => (
@@ -6239,11 +6589,53 @@ function SketchPrecisionToolbar({
   )
 }
 
+function SketchExternalReferenceToolbar({
+  candidates,
+  draft,
+  editorTool,
+  onEditorToolChange,
+}: Readonly<{
+  candidates: readonly ExternalSketchPointCandidate[]
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  onEditorToolChange: (tool: SketchEditorTool) => void
+}>) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  const availableCandidates = useMemo(() => {
+    if (!draft) return []
+    const references = draft.externalReferences ?? []
+    return candidates.filter(
+      (candidate) =>
+        !references.some((reference) => referenceMatchesCandidate(reference, candidate)),
+    )
+  }, [candidates, draft])
+  if (!draft || availableCandidates.length === 0) return null
+  const active = editorTool === "use"
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant={active ? "secondary" : "ghost"}
+          aria-label={t("useExternalPoint")}
+          aria-pressed={active}
+          onClick={() => onEditorToolChange(active ? "select" : "use")}
+        >
+          <Link2 aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("useExternalPoint")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 type SketchViewportState = Readonly<{
   construction: boolean
   controller: DocumentControllerState
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  externalPointCandidates: readonly ExternalSketchPointCandidate[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
@@ -6325,6 +6717,7 @@ export function SketchViewport({
     controller,
     draft,
     editorTool,
+    externalPointCandidates,
     originPlaneVisibility,
     selectedConstraintId,
     selectedEntityIds,
@@ -6373,6 +6766,7 @@ export function SketchViewport({
       annotationSolution: displaySolution,
       construction,
       draft,
+      externalPointCandidates,
       editDimensionLabel: presentation.editDimensionLabel,
       editorTool,
       onConstraintSelectionChange,
@@ -6399,6 +6793,7 @@ export function SketchViewport({
       displaySolution,
       draft,
       editorTool,
+      externalPointCandidates,
       handleDraggingPointChange,
       onConstraintSelectionChange,
       onDraftChange,
@@ -6435,12 +6830,20 @@ export function SketchViewport({
         profileText={presentation.solve.profileText}
         status={presentation.solve.statusText}
       />
-      <SketchPrecisionToolbar
-        draft={draft}
-        editorTool={editorTool}
-        selectedEntityIds={selectedEntityIds}
-        onDraftChange={onDraftChange}
-      />
+      <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
+        <SketchExternalReferenceToolbar
+          candidates={externalPointCandidates}
+          draft={draft}
+          editorTool={editorTool}
+          onEditorToolChange={onEditorToolChange}
+        />
+        <SketchPrecisionToolbar
+          draft={draft}
+          editorTool={editorTool}
+          selectedEntityIds={selectedEntityIds}
+          onDraftChange={onDraftChange}
+        />
+      </div>
       <div className="absolute bottom-3 right-3">
         <OriginPlaneVisibilityControls
           onChange={onOriginPlaneVisibilityChange}

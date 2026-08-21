@@ -16,6 +16,7 @@ export {
   FolderOpen,
   Grid2X2,
   Layers3,
+  Link2,
   Minus,
   MousePointer2,
   Move,

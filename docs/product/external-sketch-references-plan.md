@@ -38,8 +38,10 @@ The first delivered increment is intentionally smaller than the full first verti
 sketch can retain a **coplanar point reference** to an earlier saved sketch and attach one authored point
 to it with a Coincident relation. The reference persists only stable source and projected-point IDs; the
 document worker resolves current source coordinates before every solve and provides the projected point as
-read-only fixed solver input. The editor lists available source points, lists/removes references, and shows
-resolved projected points in the sketch canvas. Deleting a referenced source sketch is rejected.
+read-only fixed solver input. The icon-only **Use point** canvas tool exposes compatible source points in
+the active sketch and accepts them directly on the drawing; the task panel lists/removes only references
+already in use. Selecting one local point before Use creates the Coincident relation in the same draft edit.
+Deleting a referenced source sketch is rejected.
 
 This increment does not yet support external curves, feature edges, intersection, automatic external
 inference, cross-support projection, or chained references. A source must be earlier in presentation order,
