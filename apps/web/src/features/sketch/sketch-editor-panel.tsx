@@ -653,7 +653,7 @@ function SketchEditorFooter({
 }) {
   return (
     <div className="mt-auto grid gap-2 border-t pt-3">
-      <div className={`grid gap-2 ${canExtrude ? "grid-cols-3" : "grid-cols-2"}`}>
+      <div className="grid gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {copy.cancel}
         </Button>

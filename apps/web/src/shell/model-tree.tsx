@@ -1,4 +1,9 @@
-import type { FeatureRecord, SketchId, SketchRecord } from "@vibeshape/domain"
+import {
+  type FeatureRecord,
+  readExtrusionFeatureParameters,
+  type SketchId,
+  type SketchRecord,
+} from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { Eye, EyeOff } from "@vibeshape/ui/components/icons"
@@ -6,7 +11,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
 import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
-import type { DocumentControllerState } from "../document/document-controller"
+import type {
+  DocumentControllerState,
+  DocumentMutationResult,
+} from "../document/document-controller"
+import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
 import type { EditorWorkspaceName } from "./workspace"
 
@@ -19,6 +28,28 @@ type SketchRenameHandler = (
   baseRevision: number,
   sketch: SketchRecord,
 ) => Promise<SemanticRenameResult>
+
+type SketchRemoveHandler = (
+  baseRevision: number,
+  sketchId: SketchId,
+) => Promise<DocumentMutationResult>
+
+function sketchHasDependents(
+  sketch: SketchRecord,
+  features: readonly FeatureRecord[],
+  sketches: readonly SketchRecord[],
+) {
+  return (
+    features.some(
+      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === sketch.id,
+    ) ||
+    sketches.some((candidate) =>
+      (candidate.externalReferences ?? []).some(
+        (reference) => reference.sourceSketchId === sketch.id,
+      ),
+    )
+  )
+}
 
 function FeatureTreeItem({
   active,
@@ -152,11 +183,68 @@ function FeatureTreeItems({
   )
 }
 
+function SketchTreeActions({
+  controller,
+  onRenameOpenChange,
+  onFeatureRename,
+  onSketchDeleted,
+  onSketchRemove,
+  onSketchRename,
+  renameBlocked,
+  renameOpen,
+  sketch,
+  unnamedSketch,
+}: {
+  controller: DocumentControllerState
+  onRenameOpenChange: (open: boolean) => void
+  onFeatureRename: FeatureRenameHandler
+  onSketchDeleted: () => void
+  onSketchRemove: SketchRemoveHandler
+  onSketchRename: SketchRenameHandler
+  renameBlocked: boolean
+  renameOpen: boolean
+  sketch: SketchRecord
+  unnamedSketch: string
+}) {
+  const label = sketch.label || unnamedSketch
+  const dependents = sketchHasDependents(
+    sketch,
+    controller.report?.snapshot.features ?? [],
+    controller.report?.snapshot.sketches ?? [],
+  )
+
+  return (
+    <>
+      <ModelTreeRenameDialog
+        blocked={renameBlocked}
+        controller={controller}
+        fallbackName={unnamedSketch}
+        onFeatureRename={onFeatureRename}
+        onOpenChange={onRenameOpenChange}
+        onSketchRename={onSketchRename}
+        open={renameOpen}
+        target={{ kind: "sketch", record: sketch }}
+      />
+      <SketchDeleteAction
+        baseRevision={controller.report?.snapshot.revision ?? 0}
+        blocked={renameBlocked || dependents}
+        disabled={controller.status !== "ready" || controller.report?.mode !== "read-write"}
+        sketch={sketch}
+        sketchName={label}
+        onDeleted={onSketchDeleted}
+        onRemove={onSketchRemove}
+      />
+    </>
+  )
+}
+
 function SketchTreeItem({
   active,
   controller,
   onActivate,
   onFeatureRename,
+  onSketchDeleted,
+  onSketchRemove,
   onSketchRename,
   onVisibilityChange,
   renameBlocked,
@@ -168,6 +256,8 @@ function SketchTreeItem({
   controller: DocumentControllerState
   onActivate: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
+  onSketchDeleted: () => void
+  onSketchRemove: SketchRemoveHandler
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
@@ -218,15 +308,17 @@ function SketchTreeItem({
       >
         <span className="truncate">{label}</span>
       </Button>
-      <ModelTreeRenameDialog
-        blocked={renameBlocked}
+      <SketchTreeActions
         controller={controller}
-        fallbackName={unnamedSketch}
+        onRenameOpenChange={setRenameOpen}
         onFeatureRename={onFeatureRename}
-        onOpenChange={setRenameOpen}
+        onSketchDeleted={onSketchDeleted}
+        onSketchRemove={onSketchRemove}
         onSketchRename={onSketchRename}
-        open={renameOpen}
-        target={{ kind: "sketch", record: sketch }}
+        renameBlocked={renameBlocked}
+        renameOpen={renameOpen}
+        sketch={sketch}
+        unnamedSketch={unnamedSketch}
       />
     </div>
   )
@@ -238,6 +330,8 @@ function SketchTreeItems({
   groupLabel,
   onActivate,
   onFeatureRename,
+  onSketchDeleted,
+  onSketchRemove,
   onSketchRename,
   onVisibilityChange,
   renameBlockedId,
@@ -250,6 +344,8 @@ function SketchTreeItems({
   groupLabel: string
   onActivate: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
+  onSketchDeleted: () => void
+  onSketchRemove: SketchRemoveHandler
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlockedId: SketchId | null
@@ -268,6 +364,8 @@ function SketchTreeItems({
           controller={controller}
           onActivate={onActivate}
           onFeatureRename={onFeatureRename}
+          onSketchDeleted={onSketchDeleted}
+          onSketchRemove={onSketchRemove}
           onSketchRename={onSketchRename}
           onVisibilityChange={onVisibilityChange}
           renameBlocked={sketch.id === renameBlockedId}
@@ -316,6 +414,8 @@ type ModelTreeProps = {
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onSketchDeleted: () => void
+  onSketchRemove: SketchRemoveHandler
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
@@ -365,6 +465,8 @@ function ModelTreeSketchBranch({
   controller,
   hiddenSketchIds,
   onFeatureRename,
+  onSketchDeleted,
+  onSketchRemove,
   onSketchActivate,
   onSketchRename,
   onSketchVisibilityChange,
@@ -377,6 +479,8 @@ function ModelTreeSketchBranch({
   | "controller"
   | "hiddenSketchIds"
   | "onFeatureRename"
+  | "onSketchDeleted"
+  | "onSketchRemove"
   | "onSketchActivate"
   | "onSketchRename"
   | "onSketchVisibilityChange"
@@ -393,6 +497,8 @@ function ModelTreeSketchBranch({
       groupLabel={t("items.sketches")}
       onActivate={onSketchActivate}
       onFeatureRename={onFeatureRename}
+      onSketchDeleted={onSketchDeleted}
+      onSketchRemove={onSketchRemove}
       onSketchRename={onSketchRename}
       onVisibilityChange={onSketchVisibilityChange}
       renameBlockedId={sketchRenameBlockedId}

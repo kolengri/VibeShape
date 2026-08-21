@@ -64,6 +64,8 @@ type RenderTreeOptions = Partial<
     | "onFeaturePreselectionChange"
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
+    | "onSketchDeleted"
+    | "onSketchRemove"
     | "onSketchRename"
     | "onSketchVisibilityChange"
     | "sketchRenameBlockedId"
@@ -78,6 +80,8 @@ function renderTree({
   onFeaturePreselectionChange = vi.fn(),
   onFeatureVisibilityChange = vi.fn(),
   onSketchActivate = vi.fn(),
+  onSketchDeleted = vi.fn(),
+  onSketchRemove = vi.fn().mockResolvedValue({ ok: true }),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
   onSketchVisibilityChange = vi.fn(),
   sketchRenameBlockedId = null,
@@ -99,6 +103,8 @@ function renderTree({
           onFeaturePreselectionChange={onFeaturePreselectionChange}
           onFeatureVisibilityChange={onFeatureVisibilityChange}
           onSketchActivate={onSketchActivate}
+          onSketchDeleted={onSketchDeleted}
+          onSketchRemove={onSketchRemove}
           onSketchRename={onSketchRename}
           onSketchVisibilityChange={onSketchVisibilityChange}
           onWorkspaceChange={vi.fn()}
@@ -179,6 +185,20 @@ describe("ModelTree", () => {
     renderTree({ hiddenSketchIds: [sketchId], onSketchVisibilityChange })
     await user.click(screen.getByRole("button", { name: "Show Profile" }))
     expect(onSketchVisibilityChange).toHaveBeenLastCalledWith(sketchId, true)
+  })
+
+  it("confirms and removes an unused saved sketch by stable identity", async () => {
+    const user = userEvent.setup()
+    const onSketchDeleted = vi.fn()
+    const onSketchRemove = vi.fn().mockResolvedValue({ ok: true })
+
+    renderTree({ onSketchDeleted, onSketchRemove })
+
+    await user.click(screen.getByRole("button", { name: "Delete Profile" }))
+    await user.click(screen.getByRole("button", { name: "Delete sketch" }))
+
+    expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
+    expect(onSketchDeleted).toHaveBeenCalledOnce()
   })
 
   it("renames a feature once from its discoverable model-tree action", async () => {

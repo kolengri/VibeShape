@@ -468,6 +468,19 @@ export function updateSketch(baseRevision: number, sketch: SketchRecord) {
   return commitSketchMutation("org.vibeshape.sketch.update", baseRevision, sketch)
 }
 
+export function removeSketch(baseRevision: number, sketchId: SketchId) {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.sketch.remove",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { sketchId },
+  }))
+}
+
 export async function solveActiveSketch(
   baseRevision: number,
   sketch: SketchId | SketchRecord,
