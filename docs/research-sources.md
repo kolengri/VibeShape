@@ -72,6 +72,19 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 **Conclusion:** SPK-002 validates the stable solver subset behind VibeShape's flat worker ABI; the complete experimental SolveSpace web UI will not be embedded. Topological naming must be designed before the feature model, not patched after the MVP.
 
+## CAD Editor Interaction Models
+
+| Source | Evidence |
+|---|---|
+| [Onshape Sketch Basics](https://cad.onshape.com/help/Content/sketch_basics.htm) | Coplanar vertices and edges of earlier sketches or features participate in automatic sketch inference. |
+| [Onshape Working with Constraints](https://cad.onshape.com/help/Content/Sketch/working_with_constraints.htm) | External sketch relations are distinct from internal relations; the `Use` tool can connect sketch geometry to an entity in another sketch or feature. |
+| [Onshape Use](https://cad.onshape.com/help/Content/Sketch/use.htm) | Projects selected sketch or part edges onto the active sketch plane; supported used edges update with source changes and must remain trackable. |
+| [Onshape Intersection](https://cad.onshape.com/help/Content/Sketch/intersection.htm) | Projects the intersection of a selected face or surface and the active sketch plane, with explicit Intersection and Pierce constraints. |
+| [Onshape Derived](https://cad.onshape.com/help/Content/PartStudio/derived.htm) | Associates a sketch, part, surface, curve, plane, or mate connector from another Part Studio or document through a one-way derived link. |
+| [Onshape Modeling In Context](https://cad.onshape.com/help/Content/Assembly/modeling_in_context.htm) | Assembly contexts capture reference geometry and position snapshots, and update them explicitly rather than silently. |
+
+**Conclusion:** VibeShape should first implement same-document external sketch references as stable source selectors and read-only solver geometry, with explicit dependency edges and fail-closed topology repair. Copying source entities, retaining mesh intersections, or serializing transient OCCT identifiers would lose parametric intent. Cross-Part-Studio Derived links and assembly context snapshots require separate versioning, locking, and update-policy design. See the [External Sketch References Plan](product/external-sketch-references-plan.md).
+
 ## 3D Printing and Formats
 
 | Source | Evidence |
