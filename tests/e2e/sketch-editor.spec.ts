@@ -9,6 +9,33 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const cancel = taskPanel.getByRole("button", { name: "Cancel", exact: true })
+    const finish = taskPanel.getByRole("button", { name: "Finish sketch", exact: true })
+    const [panelBounds, cancelBounds, finishBounds] = await Promise.all([
+      taskPanel.boundingBox(),
+      cancel.boundingBox(),
+      finish.boundingBox(),
+    ])
+    if (!panelBounds || !cancelBounds || !finishBounds) {
+      throw new Error("Sketch task-panel actions are not visible.")
+    }
+
+    expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(1)
+    expect(
+      panelBounds.y + panelBounds.height - (finishBounds.y + finishBounds.height),
+    ).toBeLessThanOrEqual(20)
+  })
+
   test("adds and edits a driving dimension from a selected line", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

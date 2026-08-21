@@ -647,7 +647,7 @@ function SketchEditorFooter({
   onFinish: () => Promise<void>
 }) {
   return (
-    <div className="sticky bottom-0 z-10 -mx-4 grid gap-2 border-t bg-panel px-4 py-3">
+    <div className="mt-auto grid gap-2 border-t pt-3">
       <div className={`grid gap-2 ${canExtrude ? "grid-cols-3" : "grid-cols-2"}`}>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {copy.cancel}
@@ -737,31 +737,33 @@ export function SketchEditorPanel({
   }
 
   return (
-    <div className="grid gap-4">
-      <SketchSetupSection copy={copy} draft={draft} onDraftChange={onDraftChange} />
-      <SketchConstraintSection
-        copy={copy}
-        entities={entities}
-        options={options}
-        selectionKey={selectedEntityIds.join(":")}
-        variables={variables}
-        onAdd={apply}
-      />
-      <AppliedConstraintsSection
-        copy={copy}
-        draft={draft}
-        failedConstraintIds={failedConstraintIds}
-        selectedConstraintId={selectedConstraintId}
-        variables={variables}
-        onDraftChange={onDraftChange}
-        onSelectedConstraintChange={onSelectedConstraintChange}
-      />
-      <SketchProfilesSection
-        copy={copy}
-        profiles={profiles}
-        selectedProfile={selectedProfile}
-        onSelectedProfileChange={onSelectedProfileChange}
-      />
+    <div className="flex min-h-full flex-col gap-4">
+      <div className="grid gap-4">
+        <SketchSetupSection copy={copy} draft={draft} onDraftChange={onDraftChange} />
+        <SketchConstraintSection
+          copy={copy}
+          entities={entities}
+          options={options}
+          selectionKey={selectedEntityIds.join(":")}
+          variables={variables}
+          onAdd={apply}
+        />
+        <AppliedConstraintsSection
+          copy={copy}
+          draft={draft}
+          failedConstraintIds={failedConstraintIds}
+          selectedConstraintId={selectedConstraintId}
+          variables={variables}
+          onDraftChange={onDraftChange}
+          onSelectedConstraintChange={onSelectedConstraintChange}
+        />
+        <SketchProfilesSection
+          copy={copy}
+          profiles={profiles}
+          selectedProfile={selectedProfile}
+          onSelectedProfileChange={onSelectedProfileChange}
+        />
+      </div>
       <SketchEditorFooter
         canExtrude={extrusionAvailable}
         copy={copy}
