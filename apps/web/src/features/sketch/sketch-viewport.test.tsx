@@ -167,6 +167,9 @@ type SketchViewportTestProps = Readonly<{
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+  externalPointCandidates?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["externalPointCandidates"]
   originPlaneVisibility?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["originPlaneVisibility"]
@@ -196,6 +199,7 @@ function viewportState(props: SketchViewportTestProps) {
     controller: props.controller ?? controller,
     draft: props.draft ?? null,
     editorTool: props.editorTool ?? "select",
+    externalPointCandidates: props.externalPointCandidates ?? [],
     originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
     selectedConstraintId: props.selectedConstraintId ?? null,
     selectedEntityIds: props.selectedEntityIds ?? [],
@@ -315,6 +319,44 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("uses an earlier coplanar sketch point directly from the drawing", () => {
+    const sourcePoint = pointEntities[0]
+    if (!sourcePoint) throw new Error("The source sketch fixture must contain a point.")
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202") }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalPointCandidates: [
+        {
+          label: "Source sketch · Point",
+          sourceSketchId: sketch.id,
+          sourcePointId: sourcePoint.id,
+          x: sourcePoint.x,
+          y: sourcePoint.y,
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const sourcePointElement = document.querySelector(
+      `[data-sketch-available-external-point-id="${sourcePoint.id}"]`,
+    )
+    if (!sourcePointElement) throw new Error("The source point must be selectable on the drawing.")
+
+    fireEvent.pointerDown(sourcePointElement)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({ sourceSketchId: sketch.id, sourcePointId: sourcePoint.id }),
+        ],
+      }),
+    )
+  })
+
   it("keeps individually toggleable origin references visible while editing a sketch", () => {
     const fixture = lineSketchFixture("b250", [{ start: { x: -10, y: 0 }, end: { x: 10, y: 0 } }])
     const onOriginPlaneVisibilityChange = vi.fn()

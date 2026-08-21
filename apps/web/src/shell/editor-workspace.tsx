@@ -23,6 +23,7 @@ import {
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
+import { externalSketchPointCandidates } from "../features/sketch/external-sketch-points"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -111,6 +112,9 @@ function SketchWorkspaceContent({
         controller,
         draft: sketch.draft,
         editorTool: sketch.editorTool,
+        externalPointCandidates: sketch.draft
+          ? externalSketchPointCandidates(controller.report?.snapshot.sketches ?? [], sketch.draft)
+          : [],
         originPlaneVisibility: model.originPlaneVisibility,
         selectedConstraintId: sketch.selectedConstraintId,
         selectedEntityIds: sketch.selectedEntityIds,

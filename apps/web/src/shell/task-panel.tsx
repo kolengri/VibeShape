@@ -9,8 +9,6 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { type ReactNode, useState } from "react"
 import {
   addFeature,
@@ -48,10 +46,8 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
-import {
-  type ExternalSketchPointCandidate,
-  SketchEditorPanel,
-} from "../features/sketch/sketch-editor-panel"
+import { externalSketchPointCandidates } from "../features/sketch/external-sketch-points"
+import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
   type ActiveSketchTool,
@@ -1125,51 +1121,6 @@ function sketchSaveFailureMessage(
   return activeSketchTool.kind === "edit-sketch" ? copy.updateFailed : copy.createFailed
 }
 
-function externalPointCandidates(
-  sketches: readonly SketchRecord[],
-  draft: SketchRecord,
-): readonly ExternalSketchPointCandidate[] {
-  const sketchIndex = sketches.findIndex((sketch) => sketch.id === draft.id)
-  const sourceSketches = sketches.slice(0, sketchIndex >= 0 ? sketchIndex : undefined)
-  return sourceSketches.flatMap((sketch) => externalPointCandidatesForSketch(sketch, draft))
-}
-
-function externalPointCandidatesForSketch(
-  source: SketchRecord,
-  draft: SketchRecord,
-): readonly ExternalSketchPointCandidate[] {
-  if (!isCompatibleExternalPointSource(source, draft)) return []
-  const candidates: ExternalSketchPointCandidate[] = []
-  for (const entity of source.entities) {
-    if (entity.type !== "point") continue
-    candidates.push({
-      label: `${source.label} · Point`,
-      sourcePointId: entity.id,
-      sourceSketchId: source.id,
-    })
-  }
-  return candidates
-}
-
-function isCompatibleExternalPointSource(source: SketchRecord, draft: SketchRecord) {
-  if (!hasMatchingExternalReferencePlane(source, draft)) return false
-  if (!hasMatchingExternalReferenceSupport(source, draft)) return false
-  return hasNoExternalReferenceDependencies(source)
-}
-
-function hasMatchingExternalReferencePlane(source: SketchRecord, draft: SketchRecord) {
-  return source.plane === draft.plane
-}
-
-function hasMatchingExternalReferenceSupport(source: SketchRecord, draft: SketchRecord) {
-  return JSON.stringify(source.support ?? null) === JSON.stringify(draft.support ?? null)
-}
-
-function hasNoExternalReferenceDependencies(sketch: SketchRecord) {
-  if (!sketch.externalReferences) return true
-  return sketch.externalReferences.length === 0
-}
-
 function ActiveSketchTaskPanel({
   actions,
   report,
@@ -1199,7 +1150,7 @@ function ActiveSketchTaskPanel({
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
-  const referenceCandidates = externalPointCandidates(report.snapshot.sketches, draft)
+  const referenceCandidates = externalSketchPointCandidates(report.snapshot.sketches, draft)
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
@@ -1267,14 +1218,10 @@ function ActiveSketchTaskPanel({
 }
 
 function SketchPlaneSelectionTaskPanel({
-  draft,
   onCancel,
-  onDraftChange,
   onPlaneSelect,
 }: {
-  draft: SketchRecord
   onCancel: () => void
-  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onPlaneSelect: (plane: SketchRecord["plane"]) => void
 }) {
   const t = useTranslations("app.shell.taskPanel.sketch")
@@ -1284,29 +1231,21 @@ function SketchPlaneSelectionTaskPanel({
       <p className="mt-2 text-xs leading-4 text-muted-foreground">
         {t("planeSelectionDescription")}
       </p>
-      <Field className="mt-4">
-        <FieldLabel htmlFor="sketch-origin-plane">{t("plane")}</FieldLabel>
-        <NativeSelect
-          id="sketch-origin-plane"
-          value={draft.plane}
-          onChange={(event) =>
-            onDraftChange(
-              { ...draft, plane: event.currentTarget.value as SketchRecord["plane"] },
-              "replace",
-            )
-          }
-        >
-          <option value="xy">{t("planeXy")}</option>
-          <option value="xz">{t("planeXz")}</option>
-          <option value="yz">{t("planeYz")}</option>
-        </NativeSelect>
-      </Field>
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <fieldset className="mt-4 grid grid-cols-3 gap-2">
+        <legend className="sr-only">{t("plane")}</legend>
+        <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xy")}>
+          {t("planeXy")}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xz")}>
+          {t("planeXz")}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("yz")}>
+          {t("planeYz")}
+        </Button>
+      </fieldset>
+      <div className="mt-4 grid">
         <Button type="button" size="sm" variant="outline" onClick={onCancel}>
           {t("cancel")}
-        </Button>
-        <Button type="button" size="sm" onClick={() => onPlaneSelect(draft.plane)}>
-          {t("startSketch")}
         </Button>
       </div>
     </aside>
@@ -1513,9 +1452,7 @@ export function TaskPanel(props: TaskPanelProps) {
   if (props.activeSketchTool?.kind === "select-sketch-plane" && props.sketchDraft) {
     return (
       <SketchPlaneSelectionTaskPanel
-        draft={props.sketchDraft}
         onCancel={props.onCloseTool}
-        onDraftChange={props.onSketchDraftChange}
         onPlaneSelect={props.onSketchPlaneSelect}
       />
     )
