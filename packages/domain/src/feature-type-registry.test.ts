@@ -56,6 +56,11 @@ function boxParameters() {
     depth: createLengthQuantity(30),
     height: createLengthQuantity(1, "in"),
     centered: true,
+    origin: {
+      x: createLengthQuantity(5),
+      y: createLengthQuantity(-3),
+      z: createLengthQuantity(10),
+    },
   }
 }
 
@@ -93,6 +98,7 @@ describe("feature type registry", () => {
         depth: 30,
         height: 25.4,
         centered: true,
+        origin: [5, -3, 10],
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
       expect(result.registry.descriptors).toHaveLength(5)
@@ -122,6 +128,10 @@ describe("feature type registry", () => {
       ...boxParameters(),
       width: createLengthQuantity(20, "mm", "#width"),
       depth: createLengthQuantity(10, "mm", "#width / 2"),
+      origin: {
+        ...boxParameters().origin,
+        x: createLengthQuantity(5, "mm", "#width"),
+      },
     })
     const resolved = result.registry.resolveFeatureParameters(authored, variables.valuesByName)
 
@@ -131,10 +141,33 @@ describe("feature type registry", () => {
         parameters: {
           width: { value: 24, source: { value: 24, expression: "#width" } },
           depth: { value: 12, source: { value: 12, expression: "#width / 2" } },
+          origin: { x: { value: 24, source: { value: 24, expression: "#width" } } },
         },
       },
     })
     expect(authored.parameters).toMatchObject({ width: { value: 20 }, depth: { value: 10 } })
+  })
+
+  it("defaults legacy primitive placement to the world origin", () => {
+    const result = registry()
+    if (!result.ok) throw new Error("Expected a valid registry fixture.")
+    const parameters = boxParameters()
+    const legacy = feature({
+      width: parameters.width,
+      depth: parameters.depth,
+      height: parameters.height,
+      centered: parameters.centered,
+    })
+
+    expect(result.registry.validateFeature(legacy)).toMatchObject({
+      ok: true,
+      feature: {
+        parameters: {
+          origin: { x: { value: 0 }, y: { value: 0 }, z: { value: 0 } },
+        },
+      },
+      contentParameters: { origin: [0, 0, 0] },
+    })
   })
 
   it("returns bounded diagnostics for missing or dimensionally invalid parameter variables", () => {
@@ -178,6 +211,23 @@ describe("feature type registry", () => {
     ).toMatchObject({
       ok: false,
       diagnostic: { code: "invalid-feature-parameters", issues: [{ path: "parameters.width" }] },
+    })
+    expect(
+      result.registry.validateFeature(
+        feature({
+          ...boxParameters(),
+          origin: {
+            ...boxParameters().origin,
+            x: createLengthQuantity(100_001),
+          },
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature-parameters",
+        issues: [{ path: "parameters.origin.x" }],
+      },
     })
     expect(
       result.registry.validateFeature(

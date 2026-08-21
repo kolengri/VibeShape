@@ -1,9 +1,9 @@
 import { z } from "zod"
-import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { FeatureRecord } from "./feature-graph"
+import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
-import { lengthQuantitySchema } from "./units"
+import { createLengthQuantity, lengthQuantitySchema } from "./units"
 import {
   type EvaluatedVariable,
   type ExpressionValue,
@@ -11,6 +11,7 @@ import {
 } from "./variables"
 
 const MAX_PRIMITIVE_LENGTH_MM = 1_000_000
+const MAX_PRIMITIVE_POSITION_MM = 100_000
 
 const primitiveLengthSchema = lengthQuantitySchema.refine(
   ({ value }) => value > 0 && value <= MAX_PRIMITIVE_LENGTH_MM,
@@ -19,12 +20,46 @@ const primitiveLengthSchema = lengthQuantitySchema.refine(
 
 const primitiveContentLengthSchema = z.number().finite().positive().max(MAX_PRIMITIVE_LENGTH_MM)
 
+const primitivePositionSchema = lengthQuantitySchema.refine(
+  ({ value }) => Math.abs(value) <= MAX_PRIMITIVE_POSITION_MM,
+  `Primitive placement coordinates must be at most ${MAX_PRIMITIVE_POSITION_MM} mm from the origin.`,
+)
+
+const primitiveContentPositionSchema = z
+  .number()
+  .finite()
+  .min(-MAX_PRIMITIVE_POSITION_MM)
+  .max(MAX_PRIMITIVE_POSITION_MM)
+
+export const primitiveOriginSchema = z
+  .object({
+    x: primitivePositionSchema,
+    y: primitivePositionSchema,
+    z: primitivePositionSchema,
+  })
+  .strict()
+
+const primitiveOriginWithDefaultSchema = primitiveOriginSchema.default({
+  x: createLengthQuantity(0),
+  y: createLengthQuantity(0),
+  z: createLengthQuantity(0),
+})
+
+const primitiveContentOriginSchema = z
+  .tuple([
+    primitiveContentPositionSchema,
+    primitiveContentPositionSchema,
+    primitiveContentPositionSchema,
+  ])
+  .default([0, 0, 0])
+
 export const boxFeatureParametersSchema = z
   .object({
     width: primitiveLengthSchema,
     depth: primitiveLengthSchema,
     height: primitiveLengthSchema,
     centered: z.boolean(),
+    origin: primitiveOriginWithDefaultSchema,
   })
   .strict()
 
@@ -33,6 +68,7 @@ export const cylinderFeatureParametersSchema = z
     radius: primitiveLengthSchema,
     height: primitiveLengthSchema,
     centered: z.boolean(),
+    origin: primitiveOriginWithDefaultSchema,
   })
   .strict()
 
@@ -42,6 +78,7 @@ export const boxFeatureContentParametersSchema = z
     depth: primitiveContentLengthSchema,
     height: primitiveContentLengthSchema,
     centered: z.boolean(),
+    origin: primitiveContentOriginSchema,
   })
   .strict()
 
@@ -50,6 +87,7 @@ export const cylinderFeatureContentParametersSchema = z
     radius: primitiveContentLengthSchema,
     height: primitiveContentLengthSchema,
     centered: z.boolean(),
+    origin: primitiveContentOriginSchema,
   })
   .strict()
 
@@ -116,16 +154,24 @@ function resolveLengthParameter(
     : expressionFailure(path, "The expression did not resolve to a length.", "dimension-mismatch")
 }
 
+function resolvePrimitiveOrigin(
+  origin: z.infer<typeof primitiveOriginSchema>,
+  variables: VariableValues,
+) {
+  const x = resolveLengthParameter("origin.x", origin.x, variables)
+  if (!x.ok) return x
+  const y = resolveLengthParameter("origin.y", origin.y, variables)
+  if (!y.ok) return y
+  const z = resolveLengthParameter("origin.z", origin.z, variables)
+  if (!z.ok) return z
+  return {
+    ok: true,
+    origin: { x: x.quantity, y: y.quantity, z: z.quantity },
+  } as const
+}
+
 function resolveBoxParameters(parameters: unknown, variables: VariableValues) {
-  const parsed = z
-    .object({
-      width: lengthQuantitySchema,
-      depth: lengthQuantitySchema,
-      height: lengthQuantitySchema,
-      centered: z.boolean(),
-    })
-    .strict()
-    .safeParse(parameters)
+  const parsed = boxFeatureParametersSchema.safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const width = resolveLengthParameter("width", parsed.data.width, variables)
   if (!width.ok) return width
@@ -133,6 +179,8 @@ function resolveBoxParameters(parameters: unknown, variables: VariableValues) {
   if (!depth.ok) return depth
   const height = resolveLengthParameter("height", parsed.data.height, variables)
   if (!height.ok) return height
+  const origin = resolvePrimitiveOrigin(parsed.data.origin, variables)
+  if (!origin.ok) return origin
   return {
     ok: true,
     parameters: {
@@ -140,26 +188,27 @@ function resolveBoxParameters(parameters: unknown, variables: VariableValues) {
       depth: depth.quantity,
       height: height.quantity,
       centered: parsed.data.centered,
+      origin: origin.origin,
     },
   } as const
 }
 
 function resolveCylinderParameters(parameters: unknown, variables: VariableValues) {
-  const parsed = z
-    .object({ radius: lengthQuantitySchema, height: lengthQuantitySchema, centered: z.boolean() })
-    .strict()
-    .safeParse(parameters)
+  const parsed = cylinderFeatureParametersSchema.safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const radius = resolveLengthParameter("radius", parsed.data.radius, variables)
   if (!radius.ok) return radius
   const height = resolveLengthParameter("height", parsed.data.height, variables)
   if (!height.ok) return height
+  const origin = resolvePrimitiveOrigin(parsed.data.origin, variables)
+  if (!origin.ok) return origin
   return {
     ok: true,
     parameters: {
       radius: radius.quantity,
       height: height.quantity,
       centered: parsed.data.centered,
+      origin: origin.origin,
     },
   } as const
 }
@@ -244,12 +293,13 @@ export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
     schemaVersion: 2,
   },
   classification: "solid",
-  dependencies: { min: 0, max: 1 },
-  references: { min: 0, max: 0 },
+  dependencies: { min: 0, max: 2 },
+  references: { min: 0, max: 1 },
 })
 
 function isExtrusionType(feature: FeatureRecord) {
   const type = feature.type
+  if (!type) return false
   return [legacyExtrusionFeatureType.type, extrusionFeatureType.type].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -268,16 +318,20 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
 function extrusionFeatureInvariant(feature: FeatureRecord) {
   const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return []
-  const expectedDependencyCount = parameters.data.operation === "new" ? 0 : 1
-  return feature.dependencies.length === expectedDependencyCount
+  const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
+  const minimumDependencyCount = parameters.data.operation === "new" ? supportDependencyCount : 1
+  const maximumDependencyCount =
+    parameters.data.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
+  return feature.dependencies.length >= minimumDependencyCount &&
+    feature.dependencies.length <= maximumDependencyCount
     ? []
     : [
         {
           path: "dependencies",
           message:
             parameters.data.operation === "new"
-              ? "New-body extrusion cannot declare a target dependency."
-              : `${parameters.data.operation} extrusion requires exactly one target dependency.`,
+              ? "New-body extrusion dependencies must match its sketch-support references."
+              : `${parameters.data.operation} extrusion requires one target plus any distinct sketch-support dependency.`,
         },
       ]
 }
@@ -294,6 +348,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         depth: box.depth.value,
         height: box.height.value,
         centered: box.centered,
+        origin: [box.origin.x.value, box.origin.y.value, box.origin.z.value],
       })
     },
   },
@@ -307,6 +362,7 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         radius: cylinder.radius.value,
         height: cylinder.height.value,
         centered: cylinder.centered,
+        origin: [cylinder.origin.x.value, cylinder.origin.y.value, cylinder.origin.z.value],
       })
     },
   },

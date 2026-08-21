@@ -1,20 +1,20 @@
 import {
+  createLengthQuantity,
+  datumPlaneFeatureType,
   documentIdSchema,
   documentSnapshotSchema,
   featureIdSchema,
   featureRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
-import {
-  createExtrusionPreviewDocument,
-  createExtrusionPreviewMeshes,
-} from "./use-extrusion-preview"
+import { createFeaturePreviewDocument, createFeaturePreviewMeshes } from "./use-feature-preview"
 
 const documentId = documentIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f2101")
 const previewDocumentId = documentIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f2102")
 const baseId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101")
 const independentId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102")
 const candidateId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103")
+const datumId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104")
 
 function feature(id: typeof baseId, dependencies: readonly (typeof baseId)[] = []) {
   return featureRecordSchema.parse({
@@ -53,10 +53,10 @@ const mesh = {
   triangleFaceIds: new Uint32Array([1]),
 }
 
-describe("extrusion preview composition", () => {
+describe("feature preview composition", () => {
   it("creates a disposable document without mutating the committed snapshot", () => {
     const candidate = feature(candidateId, [baseId])
-    const preview = createExtrusionPreviewDocument(snapshot, candidate, previewDocumentId)
+    const preview = createFeaturePreviewDocument(snapshot, candidate, previewDocumentId)
 
     expect(preview.id).toBe(previewDocumentId)
     expect(preview.features.map(({ id }) => id)).toEqual([baseId, independentId, candidateId])
@@ -66,19 +66,19 @@ describe("extrusion preview composition", () => {
 
   it("replaces an edited feature identity instead of appending a duplicate", () => {
     const edited = feature(baseId)
-    const preview = createExtrusionPreviewDocument(snapshot, edited, previewDocumentId)
+    const preview = createFeaturePreviewDocument(snapshot, edited, previewDocumentId)
 
     expect(preview.features).toHaveLength(2)
     expect(preview.features[0]?.id).toBe(baseId)
   })
 
   it("marks only changed terminal geometry as preview", () => {
-    const document = createExtrusionPreviewDocument(
+    const document = createFeaturePreviewDocument(
       snapshot,
       feature(candidateId, [baseId]),
       previewDocumentId,
     )
-    const meshes = createExtrusionPreviewMeshes(
+    const meshes = createFeaturePreviewMeshes(
       document,
       [
         { featureId: baseId, contentHash: "base", geometry: { mesh } },
@@ -94,6 +94,41 @@ describe("extrusion preview composition", () => {
     expect(meshes.map(({ appearance, featureId }) => ({ appearance, featureId }))).toEqual([
       { featureId: independentId, appearance: "model" },
       { featureId: candidateId, appearance: "preview" },
+    ])
+  })
+
+  it("retains changed datum geometry as a selectable translucent reference preview", () => {
+    const datum = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: datumId,
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xy" },
+        offset: createLengthQuantity(12),
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    const document = createFeaturePreviewDocument(snapshot, datum, previewDocumentId)
+    const meshes = createFeaturePreviewMeshes(
+      document,
+      [
+        { featureId: baseId, contentHash: "base", geometry: { mesh } },
+        { featureId: independentId, contentHash: "independent", geometry: { mesh } },
+        { featureId: datumId, contentHash: "datum", geometry: { mesh } },
+      ],
+      [
+        { featureId: baseId, contentHash: "base" },
+        { featureId: independentId, contentHash: "independent" },
+      ],
+    )
+
+    expect(meshes.map(({ appearance, featureId }) => ({ appearance, featureId }))).toEqual([
+      { featureId: baseId, appearance: "model" },
+      { featureId: independentId, appearance: "model" },
+      { featureId: datumId, appearance: "datum" },
     ])
   })
 })

@@ -11,6 +11,14 @@ const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const sketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3202"
+const secondSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3203"
+const thirdSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3204"
+const fourthSketchPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3205"
+const sourceLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3206"
+const offsetLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
+const offsetConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
+const ellipseId = "0195b5ac-b220-7a2c-8c33-67a36a7f3209"
+const ellipseConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3210"
 
 function sketch() {
   return {
@@ -29,6 +37,71 @@ function sketch() {
       },
     ],
     constraints: [],
+  } as const
+}
+
+function offsetSketch() {
+  return {
+    ...sketch(),
+    entities: [
+      ...sketch().entities,
+      {
+        schemaVersion: 0,
+        id: secondSketchPointId,
+        type: "point",
+        x: 20,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: thirdSketchPointId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: fourthSketchPointId,
+        type: "point",
+        x: 20,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: sourceLineId,
+        type: "line",
+        startPointId: sketchPointId,
+        endPointId: secondSketchPointId,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: offsetLineId,
+        type: "line",
+        startPointId: thirdSketchPointId,
+        endPointId: fourthSketchPointId,
+        construction: false,
+      },
+    ],
+    constraints: [
+      {
+        schemaVersion: 0,
+        id: offsetConstraintId,
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [{ sourceLineId, offsetLineId, distanceScale: 1 }],
+        value: {
+          schemaVersion: 0,
+          dimension: "length",
+          value: 5,
+          unit: "mm",
+          source: { value: 5, unit: "mm", expression: "5 mm" },
+        },
+      },
+    ],
   } as const
 }
 
@@ -236,6 +309,135 @@ describe("document worker protocol", () => {
     ).toMatchObject({ type: "sketchSolved", solution: { sketchId } })
   })
 
+  it("accepts ellipse axis diameters but rejects radial ellipse constraints", () => {
+    const ellipseSketch = {
+      ...sketch(),
+      entities: [
+        ...sketch().entities,
+        {
+          schemaVersion: 0,
+          id: secondSketchPointId,
+          type: "point",
+          x: 20,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: thirdSketchPointId,
+          type: "point",
+          x: 0,
+          y: 10,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: ellipseId,
+          type: "ellipse",
+          centerPointId: sketchPointId,
+          primaryAxisPointId: secondSketchPointId,
+          secondaryAxisPointId: thirdSketchPointId,
+          construction: false,
+        },
+      ],
+    } as const
+    const length = {
+      schemaVersion: 0,
+      dimension: "length",
+      value: 20,
+      unit: "mm",
+      source: { value: 20, unit: "mm", expression: "20 mm" },
+    } as const
+    const constrainedEllipseSketch = {
+      ...ellipseSketch,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: ellipseConstraintId,
+          type: "primary-axis-diameter",
+          curveId: ellipseId,
+          value: length,
+        },
+      ],
+    } as const
+    const parsed = documentRebuildSnapshotSchema.parse({
+      ...document(),
+      sketches: [constrainedEllipseSketch],
+    })
+    expect(parsed.sketches[0]?.entities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "ellipse" })]),
+    )
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...ellipseSketch,
+            constraints: [
+              {
+                schemaVersion: 0,
+                id: ellipseConstraintId,
+                type: "radius",
+                curveId: ellipseId,
+                value: length,
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts a bounded signed line-chain offset and rejects unsafe pairs", () => {
+    expect(
+      documentRebuildSnapshotSchema.parse({ ...document(), sketches: [offsetSketch()] }),
+    ).toMatchObject({
+      sketches: [
+        {
+          constraints: [
+            {
+              type: "offset",
+              endpointPairs: [],
+              linePairs: [{ sourceLineId, offsetLineId, distanceScale: 1 }],
+            },
+          ],
+        },
+      ],
+    })
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...offsetSketch(),
+            constraints: [
+              {
+                ...offsetSketch().constraints[0],
+                linePairs: [{ sourceLineId, offsetLineId: sourceLineId, distanceScale: 1 }],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentRebuildSnapshotSchema.safeParse({
+        ...document(),
+        sketches: [
+          {
+            ...offsetSketch(),
+            constraints: [
+              {
+                ...offsetSketch().constraints[0],
+                linePairs: [{ sourceLineId: sketchPointId, offsetLineId, distanceScale: 1 }],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   it("validates bounded deterministic profile results", () => {
     const profile = {
       schemaVersion: 0,
@@ -267,6 +469,18 @@ describe("document worker protocol", () => {
     expect(sketchProfileResultWireSchema.parse(profile)).toMatchObject({
       profiles: [{ area: 100 }],
     })
+    expect(
+      sketchProfileResultWireSchema.parse({
+        ...profile,
+        loops: [
+          {
+            ...profile.loops[0],
+            sourceEntityIds: [ellipseId],
+            segments: [{ entityId: ellipseId, type: "ellipse", reversed: false }],
+          },
+        ],
+      }),
+    ).toMatchObject({ loops: [{ segments: [{ type: "ellipse" }] }] })
     expect(
       sketchProfileResultWireSchema.safeParse({
         ...profile,
@@ -302,6 +516,49 @@ describe("document worker protocol", () => {
         },
       }),
     ).toMatchObject({ type: "failure", diagnostic: { retryable: false } })
+  })
+
+  it("validates bounded unique sketch display transfers on rebuilt documents", () => {
+    const response = {
+      ...envelope(),
+      type: "documentRebuilt",
+      evaluation: {
+        records: [],
+        dirtyFeatureIds: [],
+        evaluatedFeatureIds: [],
+        reusedFeatureIds: [],
+      },
+      geometry: [],
+      sketches: [
+        {
+          sketchId,
+          curvePositions: new Float32Array([0, 0, 0, 10, 0, 0]),
+          constructionCurvePositions: new Float32Array(),
+          pointPositions: new Float32Array([0, 0, 0]),
+          constructionPointPositions: new Float32Array(),
+        },
+      ],
+    } as const
+
+    expect(documentWorkerResponseSchema.parse(response)).toMatchObject({
+      type: "documentRebuilt",
+      sketches: [{ sketchId }],
+    })
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        sketches: [
+          ...response.sketches,
+          { ...response.sketches[0], curvePositions: new Float32Array([0, 0, 0]) },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        sketches: [...response.sketches, response.sketches[0]],
+      }).success,
+    ).toBe(false)
   })
 
   it("validates non-empty 3MF, STEP, and STL export transfers", () => {

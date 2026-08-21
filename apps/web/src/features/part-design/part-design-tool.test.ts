@@ -1,8 +1,9 @@
 import {
-  boxFeatureType,
   booleanFeatureType,
+  boxFeatureType,
   createLengthQuantity,
   cylinderFeatureType,
+  datumPlaneFeatureType,
   extrusionFeatureType,
   featureIdSchema,
   featureRecordSchema,
@@ -17,6 +18,7 @@ import {
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
+  isDatumPlaneFeature,
   isExtrusionFeature,
 } from "./part-design-tool"
 
@@ -84,6 +86,18 @@ const dependentBoolean = featureRecordSchema.parse({
   label: "Subtract 2",
 })
 
+const datumPlane = featureRecordSchema.parse({
+  ...box,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2706"),
+  type: datumPlaneFeatureType.type,
+  parameters: {
+    mode: "offset",
+    support: { kind: "origin-plane", plane: "xy" },
+    offset: createLengthQuantity(10),
+  },
+  label: "Datum plane 1",
+})
+
 describe("part-design tool routing", () => {
   it("matches feature types by their full contribution identity", () => {
     expect(isBoxFeature(box)).toBe(true)
@@ -92,6 +106,7 @@ describe("part-design tool routing", () => {
     expect(isCylinderFeature(cylinder)).toBe(true)
     expect(isBooleanFeature(boolean)).toBe(true)
     expect(isExtrusionFeature(extrusion)).toBe(true)
+    expect(isDatumPlaneFeature(datumPlane)).toBe(true)
   })
 
   it("derives the active command and optional edit feature identity", () => {
@@ -99,6 +114,7 @@ describe("part-design tool routing", () => {
     expect(activePartDesignCommand({ kind: "edit-cylinder", featureId })).toBe("cylinder")
     expect(activePartDesignCommand({ kind: "create-subtract" })).toBe("subtract")
     expect(activePartDesignCommand({ kind: "edit-extrusion", featureId })).toBe("extrusion")
+    expect(activePartDesignCommand({ kind: "create-datum-plane" })).toBe("datum-plane")
     expect(activeFeatureId({ kind: "edit-cylinder", featureId })).toBe(featureId)
     expect(activeFeatureId({ kind: "create-cylinder" })).toBeNull()
     expect(activePartDesignCommand(null)).toBeNull()
@@ -110,17 +126,17 @@ describe("part-design tool routing", () => {
       kind: "edit-extrusion",
       featureId: extrusion.id,
     })
+    expect(editPartDesignTool(datumPlane)).toEqual({
+      kind: "edit-datum-plane",
+      featureId: datumPlane.id,
+    })
     expect(editPartDesignTool(undefined)).toBeNull()
   })
 
   it("excludes the edited Boolean and all of its dependents from input candidates", () => {
-    expect(booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean])).toEqual([
-      box,
-      cylinder,
-      extrusion,
-      boolean,
-      dependentBoolean,
-    ])
+    expect(
+      booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean, datumPlane]),
+    ).toEqual([box, cylinder, extrusion, boolean, dependentBoolean])
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean], boolean.id),
     ).toEqual([box, cylinder, extrusion])

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  boxFeatureContentParametersSchema,
+  extrusionFeatureContentParametersSchema,
+  featureContentIdentitySchema,
   GEOMETRY_MEMORY_STAGES,
   GEOMETRY_PROTOCOL_VERSION,
-  extrusionFeatureContentParametersSchema,
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
@@ -96,6 +98,22 @@ describe("geometry worker protocol", () => {
     }
 
     expect(geometryWorkerRequestSchema.safeParse(request).success).toBe(true)
+    expect(boxFeatureContentParametersSchema.parse(request.content.feature.parameters)).toEqual({
+      ...request.content.feature.parameters,
+      origin: [0, 0, 0],
+    })
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        content: {
+          ...request.content,
+          feature: {
+            ...request.content.feature,
+            parameters: { ...request.content.feature.parameters, origin: [12, -8, 7] },
+          },
+        },
+      }).success,
+    ).toBe(true)
     expect(
       geometryWorkerRequestSchema.safeParse({
         ...request,
@@ -130,6 +148,37 @@ describe("geometry worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts a stable topology reference to a dependency input", () => {
+    expect(
+      featureContentIdentitySchema.safeParse({
+        ...boxContent,
+        feature: {
+          ...boxContent.feature,
+          inputs: ["b".repeat(64)],
+          references: [
+            {
+              schemaVersion: 0,
+              kind: "face",
+              semanticRole: "primitive.box.cap.end",
+              signature: {
+                kind: "face",
+                geometryClass: "PLANE",
+                measure: 600,
+                centroid: [0, 0, 20],
+                bounds: { min: [-10, -15, 20], max: [10, 15, 20] },
+                direction: [0, 0, 1],
+                directionMode: "oriented",
+                boundaryCount: 4,
+                adjacentGeometryClasses: ["PLANE"],
+              },
+              inputIndex: 0,
+            },
+          ],
+        },
+      }).success,
+    ).toBe(true)
+  })
+
   it("accepts exact selector-resolved extrusion profiles and rejects mismatched sources", () => {
     const parameters = {
       sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
@@ -162,6 +211,26 @@ describe("geometry worker protocol", () => {
     } as const
 
     expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    const { plane: _plane, ...profile } = parameters
+    const framed = {
+      ...profile,
+      frame: {
+        origin: [0, 0, 10],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+      },
+    }
+    expect(extrusionFeatureContentParametersSchema.safeParse(framed).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({ ...framed, plane: "xy" }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...framed,
+        frame: { ...framed.frame, yAxis: [0, -1, 0] },
+      }).success,
+    ).toBe(false)
     expect(
       extrusionFeatureContentParametersSchema.safeParse({ ...parameters, operation: "intersect" })
         .success,
@@ -175,6 +244,97 @@ describe("geometry worker protocol", () => {
     expect(
       extrusionFeatureContentParametersSchema.safeParse({ ...parameters, distance: Number.NaN })
         .success,
+    ).toBe(false)
+  })
+
+  it("accepts exact ellipse extrusion geometry and rejects invalid axes", () => {
+    const parameters = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      plane: "xy",
+      outer: {
+        sourceEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
+        segments: [
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+            type: "ellipse",
+            center: [2, 3],
+            primaryAxisPoint: [12, 3],
+            secondaryAxisPoint: [2, 8],
+          },
+        ],
+      },
+      holes: [],
+      distance: 12,
+      symmetric: false,
+      operation: "new",
+    } as const
+
+    expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [{ ...parameters.outer.segments[0], secondaryAxisPoint: [7, 8] }],
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [{ ...parameters.outer.segments[0], primaryAxisPoint: [2, 3] }],
+        },
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts exact elliptical-arc extrusion geometry and rejects off-ellipse endpoints", () => {
+    const parameters = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      plane: "xy",
+      outer: {
+        sourceEntityIds: [
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+          "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+        ],
+        segments: [
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+            type: "elliptical-arc",
+            center: [0, 0],
+            primaryAxisPoint: [10, 0],
+            secondaryAxisPoint: [0, 5],
+            start: [10, 0],
+            end: [-10, 0],
+          },
+          {
+            entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+            type: "line",
+            start: [-10, 0],
+            end: [10, 0],
+          },
+        ],
+      },
+      holes: [],
+      distance: 12,
+      symmetric: false,
+      operation: "new",
+    } as const
+
+    expect(extrusionFeatureContentParametersSchema.safeParse(parameters).success).toBe(true)
+    expect(
+      extrusionFeatureContentParametersSchema.safeParse({
+        ...parameters,
+        outer: {
+          ...parameters.outer,
+          segments: [
+            { ...parameters.outer.segments[0], end: [-9, 0] },
+            parameters.outer.segments[1],
+          ],
+        },
+      }).success,
     ).toBe(false)
   })
 

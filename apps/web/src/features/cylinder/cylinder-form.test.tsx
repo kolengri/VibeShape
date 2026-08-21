@@ -22,16 +22,23 @@ const variables = [
 const copy = {
   title: "Create cylinder",
   description: "Create a cylindrical solid.",
+  parameters: "Cylinder definition",
   dimensions: "Required dimensions",
   radius: "Radius",
   height: "Height",
-  centered: "Center on the origin",
+  placement: "Axis placement origin",
+  originX: "Origin X",
+  originY: "Origin Y",
+  originZ: "Origin Z",
+  centered: "Center height about placement origin",
   expressionDescription: "Enter a length or #variable.",
+  positionDescription: "Enter a signed coordinate or #variable.",
   submit: "Create cylinder",
   cancel: "Cancel",
   invalidExpression: "Enter a valid expression.",
   invalidDimension: "Expression must resolve to a length.",
   invalidRange: "Enter a positive supported length.",
+  invalidPositionRange: "Enter a supported coordinate.",
   validationSummary: "Fix the highlighted dimensions.",
   staleRevision: "The document changed.",
   saveFailed: "The cylinder could not be created.",
@@ -45,6 +52,11 @@ const existingFeature = featureRecordSchema.parse({
     radius: createLengthQuantity(12, "mm", "#radius"),
     height: createLengthQuantity(30, "mm", "30 mm"),
     centered: true,
+    origin: {
+      x: createLengthQuantity(12, "mm", "#radius"),
+      y: createLengthQuantity(-6, "mm", "-6 mm"),
+      z: createLengthQuantity(10, "mm", "10 mm"),
+    },
   },
   dependencies: [],
   references: [],
@@ -124,6 +136,11 @@ describe("CylinderForm", () => {
             value: 12,
             source: expect.objectContaining({ expression: "#radius" }),
           }),
+          origin: {
+            x: expect.objectContaining({ value: 0 }),
+            y: expect.objectContaining({ value: 0 }),
+            z: expect.objectContaining({ value: 0 }),
+          },
         }),
       }),
     )
@@ -164,10 +181,22 @@ describe("CylinderForm", () => {
     expect(
       (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
     ).toBe(true)
+    expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
+      "#radius",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originY }) as HTMLInputElement).value).toBe(
+      "-6 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originZ }) as HTMLInputElement).value).toBe(
+      "10 mm",
+    )
 
     const height = screen.getByRole("combobox", { name: copy.height })
+    const originZ = screen.getByRole("combobox", { name: copy.originZ })
     await user.clear(height)
     await user.type(height, "42 mm")
+    await user.clear(originZ)
+    await user.type(originZ, "18 mm")
     await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
@@ -183,6 +212,13 @@ describe("CylinderForm", () => {
           height: expect.objectContaining({
             value: 42,
             source: expect.objectContaining({ expression: "42 mm" }),
+          }),
+          origin: expect.objectContaining({
+            x: expect.objectContaining({
+              source: expect.objectContaining({ expression: "#radius" }),
+            }),
+            y: expect.objectContaining({ value: -6 }),
+            z: expect.objectContaining({ value: 18 }),
           }),
         }),
       }),

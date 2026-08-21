@@ -1,5 +1,6 @@
 import {
   createEmptySketch,
+  featureIdSchema,
   type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -11,6 +12,7 @@ import { createEditorSessionStore } from "./editor-session-store"
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 const boundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3201")
 const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-67a36a7f3201")
+const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202")
 
 function createSketch(label = "Sketch 1") {
   return createEmptySketch({ id: sketchId, label, plane: "xy" })
@@ -38,6 +40,54 @@ describe("editor session store", () => {
     expect(first.getState().sketch).toBe(firstSketchState)
     expect(second.getState().commandPaletteOpen).toBe(false)
     expect(second.getState().selection).toBeNull()
+  })
+
+  it("keeps origin-plane visibility local to the editor session", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+
+    first.getState().actions.setOriginPlaneVisibility("xz", false)
+
+    expect(first.getState().originPlaneVisibility).toEqual({ xy: true, xz: false, yz: true })
+    expect(second.getState().originPlaneVisibility).toEqual({ xy: true, xz: true, yz: true })
+  })
+
+  it("keeps feature visibility local and clears selection when its feature is hidden", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+    first.getState().actions.setSelection({ featureId, faceId: 4, faceOrdinal: 2 })
+    first.getState().actions.setFeatureVisibility(featureId, false)
+
+    expect(first.getState().hiddenFeatureIds).toEqual([featureId])
+    expect(first.getState().selection).toBeNull()
+    expect(second.getState().hiddenFeatureIds).toEqual([])
+
+    first.getState().actions.setFeatureVisibility(featureId, true)
+    expect(first.getState().hiddenFeatureIds).toEqual([])
+  })
+
+  it("owns transient feature preselection and clears it when the feature is hidden", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+
+    first.getState().actions.setFeaturePreselection(featureId)
+    expect(first.getState().preselectedFeatureId).toBe(featureId)
+    expect(second.getState().preselectedFeatureId).toBeNull()
+
+    first.getState().actions.setFeatureVisibility(featureId, false)
+    expect(first.getState().preselectedFeatureId).toBeNull()
+  })
+
+  it("keeps saved sketch visibility local to the editor session", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+
+    first.getState().actions.setSketchVisibility(sketchId, false)
+    expect(first.getState().hiddenSketchIds).toEqual([sketchId])
+    expect(second.getState().hiddenSketchIds).toEqual([])
+
+    first.getState().actions.setSketchVisibility(sketchId, true)
+    expect(first.getState().hiddenSketchIds).toEqual([])
   })
 
   it("owns the create-sketch support-selection lifecycle without committing a document", () => {
@@ -68,6 +118,50 @@ describe("editor session store", () => {
         draft: { plane: "xz" },
         editorTool: "line",
         undoStack: [],
+      },
+    })
+  })
+
+  it("starts a sketch directly on a selected planar feature face", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+    const support = {
+      plane: "xy" as const,
+      support: {
+        kind: "feature-face" as const,
+        reference: {
+          schemaVersion: 0 as const,
+          featureId,
+          kind: "face" as const,
+          semanticRole: "extrusion.cap.end",
+          signature: {
+            kind: "face" as const,
+            geometryClass: "PLANE" as const,
+            measure: 400,
+            centroid: [0, 0, 10] as [number, number, number],
+            bounds: {
+              min: [-10, -10, 10] as [number, number, number],
+              max: [10, 10, 10] as [number, number, number],
+            },
+            direction: [0, 0, 1] as [number, number, number],
+            directionMode: "oriented" as const,
+            boundaryCount: 4,
+            adjacentGeometryClasses: ["PLANE"],
+          },
+        },
+      },
+    }
+
+    store.getState().actions.beginSketchCreate(sketch)
+    store.getState().actions.selectSketchSupport(support)
+
+    expect(store.getState()).toMatchObject({
+      selection: null,
+      workspace: "sketch",
+      sketch: {
+        activeSketchTool: { kind: "create-sketch" },
+        draft: { support: support.support },
+        editorTool: "line",
       },
     })
   })
@@ -122,7 +216,8 @@ describe("editor session store", () => {
     store.getState().actions.beginSketchEdit(sketch)
     store.getState().actions.setSketchProfiles([profile])
 
-    store.getState().actions.saveSketch(sketch)
+    store.getState().actions.saveSketch(sketch, { profiles: [profile], selectedProfile: profile })
+    store.getState().actions.setSketchProfiles([])
 
     expect(store.getState().sketch).toMatchObject({
       activeSketchId: sketchId,
@@ -134,5 +229,6 @@ describe("editor session store", () => {
       undoStack: [],
       redoStack: [],
     })
+    expect(store.getState().workspace).toBe("model")
   })
 })

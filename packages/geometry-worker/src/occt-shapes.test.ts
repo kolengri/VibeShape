@@ -45,13 +45,13 @@ beforeEach(() => {
 })
 
 describe("owned OCCT primitive adapters", () => {
-  it("centers a box in XY and deletes every temporary binding", () => {
+  it("centers a box around its placement axis and deletes every temporary binding", () => {
     const fixture = createPrimitiveFixture()
 
-    const result = fixture.operations.createBox(fixture.opencascade, [60, 40, 20])
+    const result = fixture.operations.createBox(fixture.opencascade, [60, 40, 20], true, [8, -4, 6])
 
     expect(result).toBe(fixture.wrappedShape)
-    expect(fixture.opencascade.gp_Pnt_3).toHaveBeenCalledWith(-30, -20, 0)
+    expect(fixture.opencascade.gp_Pnt_3).toHaveBeenCalledWith(-22, -24, -4)
     expect(fixture.maker.delete).toHaveBeenCalledOnce()
     expect(fixture.point.delete).toHaveBeenCalledOnce()
     expect(fixture.rawShape.delete).toHaveBeenCalledOnce()

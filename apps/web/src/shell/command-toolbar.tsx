@@ -90,7 +90,11 @@ const sketchToolFamilies = [
     labelKey: "rectangleToolsLabel",
   },
   {
-    commandIds: [editorCommandIds.sketchCircle, editorCommandIds.sketchThreePointCircle],
+    commandIds: [
+      editorCommandIds.sketchCircle,
+      editorCommandIds.sketchThreePointCircle,
+      editorCommandIds.sketchEllipse,
+    ],
     id: "circle",
     labelKey: "circleToolsLabel",
   },
@@ -116,6 +120,7 @@ const sketchToolFamilies = [
       editorCommandIds.sketchThreePointArc,
       editorCommandIds.sketchTangentArc,
       editorCommandIds.sketchArc,
+      editorCommandIds.sketchEllipticalArc,
     ],
     id: "arc",
     labelKey: "arcToolsLabel",
@@ -277,6 +282,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const modelPrimaryCommands = group("model-primary")
   const modelPrimitiveCommands = group("model-primitives")
   const sketchToolCommands = group("sketch-tools")
+  const sketchModifyCommands = group("sketch-modify")
   const sketchModeCommands = group("sketch-mode")
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
@@ -321,6 +327,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         {sketchMode ? (
           <>
             <ToolbarCommandGroup
+              commands={modelPrimaryCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("modelPrimaryLabel")}
+            />
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
               commands={sketchToolCommands.filter(
                 ({ descriptor }) => !groupedSketchToolIds.has(descriptor.id),
               )}
@@ -339,6 +352,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
                 onCommandSelect={(command) => selectFamilyCommand(family.id, command)}
               />
             ))}
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
+              commands={sketchModifyCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("sketchModifyLabel")}
+            />
             <ToolbarSeparator />
             {sketchModeCommands.map((command) => (
               <ToolbarAction

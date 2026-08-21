@@ -9,6 +9,8 @@ import {
   appendSketchCenterRectangle,
   appendSketchCircle,
   appendSketchConstraint,
+  appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   appendSketchMidpointLine,
   appendSketchPoint,
@@ -19,6 +21,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   createEmptySketch,
+  extendSketchLine,
   MAX_REGULAR_POLYGON_SIDES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
@@ -27,7 +30,12 @@ import {
   removeSketchEntities,
   setSketchDimensionValue,
   setSketchEntityConstruction,
+  sketchLineIntersection,
+  sketchEllipticalArcGeometry,
+  sketchEllipticalArcStartGeometry,
+  splitSketchLine,
   tangentArcGeometry,
+  trimSketchLine,
 } from "./sketch-edit"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
@@ -84,6 +92,149 @@ describe("sketch editing", () => {
     expect(second.sketch.entities.filter(({ type }) => type === "point")).toHaveLength(3)
     expect(second.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(2)
     expect(second.sketch.entities.at(-1)).toMatchObject({ type: "line", startPointId: endPointId })
+  })
+
+  it("computes stable infinite-line intersection parameters", () => {
+    expect(
+      sketchLineIntersection({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 4, y: -3 }, { x: 4, y: 3 }),
+    ).toEqual({ firstParameter: 0.4, secondParameter: 0.5, point: { x: 4, y: 0 } })
+    expect(
+      sketchLineIntersection({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 2 }, { x: 10, y: 2 }),
+    ).toBeNull()
+  })
+
+  it("splits a line while preserving its identity and collinear intent", () => {
+    const initial = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const original = initial.sketch.entities.find((entity) => entity.type === "line")
+    if (!original) throw new Error("The split fixture requires one line.")
+
+    const result = splitSketchLine(initial.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: original.id,
+      point: { x: 4, y: 2 },
+    })
+    const lines = result.sketch.entities.filter((entity) => entity.type === "line")
+    const splitPoint = result.sketch.entities.find(
+      (entity) => entity.type === "point" && entity.x === 4 && entity.y === 0,
+    )
+
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ id: original.id, endPointId: splitPoint?.id })
+    expect(lines[1]).toMatchObject({
+      startPointId: splitPoint?.id,
+      endPointId: original.endPointId,
+    })
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({
+        type: "parallel",
+        firstEntityId: original.id,
+        secondEntityId: lines[1]?.id,
+      }),
+    ])
+    expect(() =>
+      splitSketchLine(initial.sketch, {
+        createConstraintId: constraintId,
+        createEntityId: entityId,
+        lineId: original.id,
+        point: { x: 0, y: 0 },
+      }),
+    ).toThrow("inside")
+  })
+
+  it("trims the selected bounded line segment between two intersections", () => {
+    const targetResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    })
+    const firstBoundaryResult = appendSketchLine(targetResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 3, y: -4 } },
+      end: { kind: "new", point: { x: 3, y: 4 } },
+    })
+    const fixture = appendSketchLine(firstBoundaryResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 7, y: -4 } },
+      end: { kind: "new", point: { x: 7, y: 4 } },
+    })
+    const linesBefore = fixture.sketch.entities.filter((entity) => entity.type === "line")
+    const target = linesBefore[0]
+    if (!target) throw new Error("The trim fixture requires a target line.")
+
+    const result = trimSketchLine(fixture.sketch, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: target.id,
+      point: { x: 5, y: 0 },
+    })
+    const lines = result.sketch.entities.filter((entity) => entity.type === "line")
+    const horizontalSegments = lines.filter(
+      ({ id }) => !linesBefore.some(({ id: old }) => old === id) || id === target.id,
+    )
+    const points = new Map(
+      result.sketch.entities
+        .filter(
+          (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+        )
+        .map((point) => [point.id, point]),
+    )
+
+    expect(lines).toHaveLength(4)
+    expect(horizontalSegments).toHaveLength(2)
+    expect(points.get(horizontalSegments[0]?.endPointId as SketchEntityId)).toMatchObject({
+      x: 3,
+      y: 0,
+    })
+    expect(points.get(horizontalSegments[1]?.startPointId as SketchEntityId)).toMatchObject({
+      x: 7,
+      y: 0,
+    })
+    expect(result.sketch.constraints.filter(({ type }) => type === "point-on-line")).toHaveLength(3)
+    expect(result.sketch.constraints.filter(({ type }) => type === "parallel")).toHaveLength(1)
+  })
+
+  it("extends the selected line endpoint to the nearest bounded line", () => {
+    const targetResult = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 5, y: 0 } },
+    })
+    const fixture = appendSketchLine(targetResult.sketch, {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 10, y: -4 } },
+      end: { kind: "new", point: { x: 10, y: 4 } },
+    })
+    const target = fixture.sketch.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The extend fixture requires a target line.")
+
+    const constrainedFixture = appendSketchConstraint(
+      fixture.sketch,
+      { type: "fixed", pointId: target.endPointId },
+      constraintId,
+    )
+    const result = extendSketchLine(constrainedFixture, {
+      createConstraintId: constraintId,
+      createEntityId: entityId,
+      lineId: target.id,
+      point: { x: 4.5, y: 0 },
+    })
+    const extended = result.sketch.entities.find(({ id }) => id === target.id)
+    const endPoint =
+      extended?.type === "line"
+        ? result.sketch.entities.find(({ id }) => id === extended.endPointId)
+        : null
+
+    expect(extended).toMatchObject({ type: "line", id: target.id })
+    expect(endPoint).toMatchObject({ type: "point", x: 10, y: 0 })
+    expect(result.sketch.entities.some(({ id }) => id === target.endPointId)).toBe(false)
+    expect(result.sketch.constraints).toEqual([
+      expect.objectContaining({ type: "point-on-line", pointId: endPoint?.id }),
+    ])
   })
 
   it("adds a line symmetrically from its midpoint with persistent design intent", () => {
@@ -331,6 +482,101 @@ describe("sketch editing", () => {
     })
     const end = arc.sketch.entities.at(-2)
     expect(end).toMatchObject({ type: "point", x: 0, y: 10 })
+  })
+
+  it("adds an exact ellipse from center, primary radius, and projected secondary radius", () => {
+    const result = appendSketchEllipse(empty(), {
+      center: { kind: "new", point: { x: 2, y: 3 } },
+      createEntityId: entityId,
+      primaryAxisPoint: { kind: "new", point: { x: 8, y: 3 } },
+      secondaryRadiusPoint: { x: 5, y: -1 },
+    })
+    const ellipse = result.sketch.entities.find((entity) => entity.type === "ellipse")
+    if (!ellipse) throw new Error("The ellipse fixture requires an ellipse entity.")
+    const secondary = result.sketch.entities.find(
+      (entity) => entity.id === ellipse.secondaryAxisPointId,
+    )
+
+    expect(result.createdEntityIds).toHaveLength(4)
+    expect(ellipse).toMatchObject({
+      type: "ellipse",
+      centerPointId: result.createdEntityIds[0],
+      primaryAxisPointId: result.createdEntityIds[1],
+      secondaryAxisPointId: result.createdEntityIds[2],
+    })
+    expect(secondary).toMatchObject({ type: "point", x: 2, y: -1 })
+  })
+
+  it("derives and appends an exact center-origin elliptical arc", () => {
+    const startGeometry = sketchEllipticalArcStartGeometry(
+      { x: 2, y: 3 },
+      { x: 8, y: 3 },
+      { x: 5, y: -1 },
+    )
+    if (!startGeometry) throw new Error("The elliptical-arc start fixture must be valid.")
+    const geometry = sketchEllipticalArcGeometry(
+      startGeometry.center,
+      startGeometry.primaryAxisPoint,
+      startGeometry.secondaryAxisPoint,
+      startGeometry.startPoint,
+      { x: 2, y: 7 },
+    )
+    if (!geometry) throw new Error("The elliptical-arc fixture must be valid.")
+
+    expect(startGeometry.primaryRadius).toBe(6)
+    expect(startGeometry.secondaryRadius).toBeCloseTo(4.6188021535)
+    expect(startGeometry.startPoint.x).toBeCloseTo(5)
+    expect(startGeometry.startPoint.y).toBeCloseTo(-1)
+    expect(geometry.endPoint.x).toBeCloseTo(2)
+    expect(geometry.endPoint.y).toBeCloseTo(7.6188021535)
+    expect(geometry.sweep).toBeGreaterThan(0)
+
+    const result = appendSketchEllipticalArc(empty(), {
+      center: { kind: "new", point: geometry.center },
+      createEntityId: entityId,
+      endPoint: { kind: "new", point: geometry.endPoint },
+      primaryAxisPoint: { kind: "new", point: geometry.primaryAxisPoint },
+      secondaryAxisPoint: geometry.secondaryAxisPoint,
+      startPoint: { kind: "new", point: geometry.startPoint },
+    })
+    const arc = result.sketch.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!arc) throw new Error("The sketch must contain the appended elliptical arc.")
+
+    expect(result.createdEntityIds).toHaveLength(6)
+    expect(arc).toMatchObject({
+      centerPointId: result.createdEntityIds[0],
+      primaryAxisPointId: result.createdEntityIds[1],
+      secondaryAxisPointId: result.createdEntityIds[2],
+      startPointId: result.createdEntityIds[3],
+      endPointId: result.createdEntityIds[4],
+    })
+  })
+
+  it("reuses an elliptical-arc quadrant axis point and rejects a full sweep", () => {
+    const result = appendSketchEllipticalArc(empty(), {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      endPoint: { kind: "new", point: { x: 0, y: 4 } },
+      primaryAxisPoint: { kind: "new", point: { x: 6, y: 0 } },
+      secondaryAxisPoint: { x: 0, y: 4 },
+      startPoint: { kind: "new", point: { x: 6, y: 0 } },
+    })
+    const arc = result.sketch.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!arc) throw new Error("The quadrant fixture must contain an elliptical arc.")
+    expect(arc.startPointId).toBe(arc.primaryAxisPointId)
+    expect(arc.endPointId).toBe(arc.secondaryAxisPointId)
+    expect(result.createdEntityIds).toHaveLength(4)
+
+    expect(() =>
+      appendSketchEllipticalArc(empty(), {
+        center: { kind: "new", point: { x: 0, y: 0 } },
+        createEntityId: entityId,
+        endPoint: { kind: "new", point: { x: 6, y: 0 } },
+        primaryAxisPoint: { kind: "new", point: { x: 6, y: 0 } },
+        secondaryAxisPoint: { x: 0, y: 4 },
+        startPoint: { kind: "new", point: { x: 6, y: 0 } },
+      }),
+    ).toThrow("distinct endpoints")
   })
 
   it("constructs Onshape-compatible regular polygon geometry from a center and radius", () => {

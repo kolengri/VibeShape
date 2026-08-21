@@ -11,6 +11,7 @@ const lineA = "018f0000-0000-7000-8000-000000000006"
 const lineB = "018f0000-0000-7000-8000-000000000007"
 const circle = "018f0000-0000-7000-8000-000000000008"
 const arc = "018f0000-0000-7000-8000-000000000009"
+const ellipse = "018f0000-0000-7000-8000-000000000010"
 
 function constraintId(index: number) {
   return `018f0000-0000-7000-8000-${String(index).padStart(12, "0")}`
@@ -58,6 +59,15 @@ function validSketch() {
         centerPointId: pointA,
         startPointId: pointB,
         endPointId: pointC,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipse,
+        type: "ellipse",
+        centerPointId: pointA,
+        primaryAxisPointId: pointB,
+        secondaryAxisPointId: pointC,
         construction: false,
       },
     ],
@@ -163,6 +173,14 @@ function validSketch() {
       {
         schemaVersion: 0,
         id: constraintId(117),
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+        value: createLengthQuantity(20),
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(118),
         type: "angle",
         firstEntityId: lineA,
         secondEntityId: lineB,
@@ -170,16 +188,30 @@ function validSketch() {
       },
       {
         schemaVersion: 0,
-        id: constraintId(118),
+        id: constraintId(119),
         type: "radius",
         curveId: circle,
         value: createLengthQuantity(5),
       },
       {
         schemaVersion: 0,
-        id: constraintId(119),
+        id: constraintId(120),
         type: "diameter",
         curveId: arc,
+        value: createLengthQuantity(40),
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(121),
+        type: "primary-axis-diameter",
+        curveId: ellipse,
+        value: createLengthQuantity(40),
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(122),
+        type: "secondary-axis-diameter",
+        curveId: ellipse,
         value: createLengthQuantity(40),
       },
     ],
@@ -190,7 +222,7 @@ describe("sketchRecordSchema", () => {
   test("accepts analytical P0 entities, construction state, and every P0 constraint family", () => {
     const parsed = sketchRecordSchema.parse(validSketch())
 
-    expect(parsed.entities).toHaveLength(8)
+    expect(parsed.entities).toHaveLength(9)
     expect(parsed.constraints.map((constraint) => constraint.type)).toEqual([
       "coincident",
       "horizontal",
@@ -208,9 +240,12 @@ describe("sketchRecordSchema", () => {
       "horizontal-distance",
       "vertical-distance",
       "distance",
+      "offset",
       "angle",
       "radius",
       "diameter",
+      "primary-axis-diameter",
+      "secondary-axis-diameter",
     ])
   })
 
@@ -231,15 +266,70 @@ describe("sketchRecordSchema", () => {
         },
       ],
     }
+    const wrongEllipseDimensionTarget = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(204),
+          type: "primary-axis-diameter",
+          curveId: circle,
+          value: createLengthQuantity(10),
+        },
+      ],
+    }
     const missingEntityTarget = {
       ...fixture,
       entities: fixture.entities.filter((entity) => entity.id !== pointB),
       constraints: [],
     }
+    const sameOffsetLine = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(201),
+          type: "offset",
+          endpointPairs: [],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineA, distanceScale: 1 }],
+          value: createLengthQuantity(5),
+        },
+      ],
+    }
+    const incompleteOffsetEndpoints = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(202),
+          type: "offset",
+          endpointPairs: [{ sourcePointId: pointA, offsetPointId: pointC }],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+          value: createLengthQuantity(5),
+        },
+      ],
+    }
+    const zeroOffset = {
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(203),
+          type: "offset",
+          endpointPairs: [],
+          linePairs: [{ sourceLineId: lineA, offsetLineId: lineB, distanceScale: 1 }],
+          value: createLengthQuantity(0),
+        },
+      ],
+    }
 
     expect(sketchRecordSchema.safeParse(duplicate).success).toBe(false)
     expect(sketchRecordSchema.safeParse(wrongConstraintTarget).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(wrongEllipseDimensionTarget).success).toBe(false)
     expect(sketchRecordSchema.safeParse(missingEntityTarget).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(sameOffsetLine).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(incompleteOffsetEndpoints).success).toBe(false)
+    expect(sketchRecordSchema.safeParse(zeroOffset).success).toBe(false)
   })
 
   test("rejects degenerate analytical records and non-finite or out-of-budget geometry", () => {

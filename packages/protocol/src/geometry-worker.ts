@@ -1,7 +1,7 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 8 as const
+export const GEOMETRY_PROTOCOL_VERSION = 9 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -35,12 +35,62 @@ const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoor
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
 
+function vectorDot(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+) {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+function vectorCross(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+) {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0],
+  ] as const
+}
+
+function normalizedVector(vector: readonly [number, number, number]) {
+  return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
+}
+
+export const extrusionFrameSchema = z
+  .object({
+    origin: vector3Schema,
+    xAxis: vector3Schema,
+    yAxis: vector3Schema,
+    normal: vector3Schema,
+  })
+  .strict()
+  .superRefine((frame, context) => {
+    const axes = [frame.xAxis, frame.yAxis, frame.normal]
+    if (axes.some((axis) => !normalizedVector(axis))) {
+      context.addIssue({ code: "custom", message: "Extrusion frame axes must be normalized." })
+      return
+    }
+    if (
+      Math.abs(vectorDot(frame.xAxis, frame.yAxis)) > 1e-6 ||
+      Math.abs(vectorDot(frame.xAxis, frame.normal)) > 1e-6 ||
+      Math.abs(vectorDot(frame.yAxis, frame.normal)) > 1e-6
+    ) {
+      context.addIssue({ code: "custom", message: "Extrusion frame axes must be orthogonal." })
+      return
+    }
+    if (vectorDot(vectorCross(frame.xAxis, frame.yAxis), frame.normal) < 1 - 1e-6) {
+      context.addIssue({ code: "custom", message: "Extrusion frame must be right-handed." })
+    }
+  })
+
 export const boxFeatureContentParametersSchema = z
   .object({
     width: cadLengthSchema,
     depth: cadLengthSchema,
     height: cadLengthSchema,
     centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
   })
   .strict()
 
@@ -49,6 +99,7 @@ export const cylinderFeatureContentParametersSchema = z
     radius: cadLengthSchema,
     height: cadLengthSchema,
     centered: z.boolean(),
+    origin: vector3Schema.default([0, 0, 0]),
   })
   .strict()
 
@@ -84,10 +135,111 @@ const extrusionCircleSegmentSchema = z
   })
   .strict()
 
+const extrusionEllipseSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("ellipse"),
+    center: vector2Schema,
+    primaryAxisPoint: vector2Schema,
+    secondaryAxisPoint: vector2Schema,
+  })
+  .strict()
+  .superRefine((segment, context) => {
+    const primary = [
+      segment.primaryAxisPoint[0] - segment.center[0],
+      segment.primaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const secondary = [
+      segment.secondaryAxisPoint[0] - segment.center[0],
+      segment.secondaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const primaryRadius = Math.hypot(...primary)
+    const secondaryRadius = Math.hypot(...secondary)
+    if (primaryRadius < 0.001 || secondaryRadius < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion ellipse axes must have positive CAD-scale radii.",
+      })
+      return
+    }
+    const normalizedDot =
+      (primary[0] * secondary[0] + primary[1] * secondary[1]) / (primaryRadius * secondaryRadius)
+    if (Math.abs(normalizedDot) > 1e-6) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion ellipse axes must be perpendicular.",
+      })
+    }
+  })
+
+const extrusionEllipticalArcSegmentSchema = z
+  .object({
+    entityId: sketchEntityIdSchema,
+    type: z.literal("elliptical-arc"),
+    center: vector2Schema,
+    primaryAxisPoint: vector2Schema,
+    secondaryAxisPoint: vector2Schema,
+    start: vector2Schema,
+    end: vector2Schema,
+  })
+  .strict()
+  .superRefine((segment, context) => {
+    const primary = [
+      segment.primaryAxisPoint[0] - segment.center[0],
+      segment.primaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const secondary = [
+      segment.secondaryAxisPoint[0] - segment.center[0],
+      segment.secondaryAxisPoint[1] - segment.center[1],
+    ] as const
+    const primaryRadius = Math.hypot(...primary)
+    const secondaryRadius = Math.hypot(...secondary)
+    if (primaryRadius < 0.001 || secondaryRadius < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc axes must have positive CAD-scale radii.",
+      })
+      return
+    }
+    const normalizedDot =
+      (primary[0] * secondary[0] + primary[1] * secondary[1]) / (primaryRadius * secondaryRadius)
+    if (Math.abs(normalizedDot) > 1e-6) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc axes must be perpendicular.",
+      })
+    }
+    for (const [path, point] of [
+      ["start", segment.start],
+      ["end", segment.end],
+    ] as const) {
+      const offset = [point[0] - segment.center[0], point[1] - segment.center[1]] as const
+      const primaryCoordinate =
+        (offset[0] * primary[0] + offset[1] * primary[1]) / primaryRadius ** 2
+      const secondaryCoordinate =
+        (offset[0] * secondary[0] + offset[1] * secondary[1]) / secondaryRadius ** 2
+      if (Math.abs(primaryCoordinate ** 2 + secondaryCoordinate ** 2 - 1) > 1e-6) {
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "Extrusion elliptical-arc endpoints must lie on the ellipse.",
+        })
+      }
+    }
+    if (Math.hypot(segment.end[0] - segment.start[0], segment.end[1] - segment.start[1]) < 0.001) {
+      context.addIssue({
+        code: "custom",
+        message: "Extrusion elliptical-arc endpoints must be distinct.",
+      })
+    }
+  })
+
 export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
   extrusionLineSegmentSchema,
   extrusionArcSegmentSchema,
   extrusionCircleSegmentSchema,
+  extrusionEllipseSegmentSchema,
+  extrusionEllipticalArcSegmentSchema,
 ])
 
 const extrusionProfileLoopSchema = z
@@ -123,7 +275,9 @@ const extrusionProfileLoopSchema = z
 export const extrusionFeatureContentParametersSchema = z
   .object({
     sketchId: sketchIdSchema,
-    plane: z.enum(["xy", "xz", "yz"]),
+    supportFeatureId: featureIdSchema.optional(),
+    plane: z.enum(["xy", "xz", "yz"]).optional(),
+    frame: extrusionFrameSchema.optional(),
     outer: extrusionProfileLoopSchema,
     holes: z.array(extrusionProfileLoopSchema).max(2_000),
     distance: cadLengthSchema,
@@ -131,12 +285,23 @@ export const extrusionFeatureContentParametersSchema = z
     operation: z.enum(["new", "add", "remove", "intersect"]),
   })
   .strict()
+  .refine(({ frame, plane }) => Number(frame !== undefined) + Number(plane !== undefined) === 1, {
+    message: "Extrusion content must declare exactly one sketch placement.",
+  })
   .refine(
     ({ outer, holes }) =>
       outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
       2_000,
     "Extrusion profiles are limited to 2,000 total segments.",
   )
+
+export const datumPlaneFeatureContentParametersSchema = z
+  .object({
+    frame: extrusionFrameSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    size: cadLengthSchema,
+  })
+  .strict()
 
 const normalizedBuildVersionSchema = z
   .string()
@@ -200,22 +365,6 @@ const featureContentParametersSchema = z
     "Feature content parameters exceed the encoded-size limit.",
   )
 
-export const featureContentIdentitySchema = z
-  .object({
-    schemaVersion: z.literal(0),
-    feature: z
-      .object({
-        schemaVersion: z.literal(0),
-        type: featureTypeSchema,
-        parameters: featureContentParametersSchema,
-        inputs: z.array(sha256Schema).max(8),
-        references: z.tuple([]),
-      })
-      .strict(),
-    environment: featureContentEnvironmentSchema,
-  })
-  .strict()
-
 function canonicalJson(value: unknown): string {
   if (isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
   if (!isPlainObject(value)) {
@@ -238,10 +387,6 @@ function canonicalJson(value: unknown): string {
 
 export function serializeFeatureContentEnvironment(input: unknown) {
   return canonicalJson(featureContentEnvironmentSchema.parse(input))
-}
-
-export function serializeFeatureContentIdentity(input: unknown) {
-  return canonicalJson(featureContentIdentitySchema.parse(input))
 }
 
 export const featureMeshPolicySchema = z
@@ -301,6 +446,7 @@ export const topologyCandidateSchema = z
   .object({
     candidateId: identifierSchema,
     kind: topologyKindSchema,
+    meshFaceId: nonNegativeIntegerSchema.optional(),
     semanticRole: z.string().min(1).max(256).optional(),
     lineageTokens: z.array(z.string().min(1).max(256)).max(256),
     signature: topologySignatureSchema,
@@ -310,6 +456,57 @@ export const topologyCandidateSchema = z
     message: "Topology candidate kind must match its signature kind.",
     path: ["signature", "kind"],
   })
+  .refine((candidate) => candidate.meshFaceId === undefined || candidate.kind === "face", {
+    message: "Only face topology candidates may declare a tessellation face ID.",
+    path: ["meshFaceId"],
+  })
+
+const topologyIntentSchema = z
+  .object({
+    nearPoint: vector3Schema.optional(),
+    expectedDirection: vector3Schema.optional(),
+  })
+  .strict()
+  .refine((intent) => !intent.expectedDirection || isNormalized(intent.expectedDirection), {
+    message: "Topology intent directions must be normalized.",
+    path: ["expectedDirection"],
+  })
+
+const contentReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    kind: topologyKindSchema,
+    semanticRole: z.string().min(1).max(256).optional(),
+    lineageToken: z.string().min(1).max(256).optional(),
+    signature: topologySignatureSchema,
+    intent: topologyIntentSchema.optional(),
+    inputIndex: z.number().int().nonnegative().max(1_023),
+  })
+  .strict()
+  .refine((reference) => reference.kind === reference.signature.kind, {
+    message: "Content reference kind must match its signature kind.",
+    path: ["signature", "kind"],
+  })
+
+export const featureContentIdentitySchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    feature: z
+      .object({
+        schemaVersion: z.literal(0),
+        type: featureTypeSchema,
+        parameters: featureContentParametersSchema,
+        inputs: z.array(sha256Schema).max(1_024),
+        references: z.array(contentReferenceSchema).max(4_096),
+      })
+      .strict(),
+    environment: featureContentEnvironmentSchema,
+  })
+  .strict()
+
+export function serializeFeatureContentIdentity(input: unknown) {
+  return canonicalJson(featureContentIdentitySchema.parse(input))
+}
 
 export const geometryLifecycleOperationSchema = z.enum([
   "box",

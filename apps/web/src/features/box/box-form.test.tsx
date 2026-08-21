@@ -30,17 +30,24 @@ const variables = [
 const copy = {
   title: "Create box",
   description: "Create a primitive solid.",
+  parameters: "Box definition",
   dimensions: "Required dimensions",
   width: "Width",
   depth: "Depth",
   height: "Height",
-  centered: "Center on the origin",
+  placement: "Placement origin",
+  originX: "Origin X",
+  originY: "Origin Y",
+  originZ: "Origin Z",
+  centered: "Center height about placement origin",
   expressionDescription: "Enter a length or #variable.",
+  positionDescription: "Enter a signed coordinate or #variable.",
   submit: "Create box",
   cancel: "Cancel",
   invalidExpression: "Enter a valid expression.",
   invalidDimension: "Expression must resolve to a length.",
   invalidRange: "Enter a positive supported length.",
+  invalidPositionRange: "Enter a supported coordinate.",
   validationSummary: "Fix the highlighted dimensions.",
   staleRevision: "The document changed.",
   saveFailed: "The box could not be created.",
@@ -55,6 +62,11 @@ const existingFeature = featureRecordSchema.parse({
     depth: createLengthQuantity(2, "cm", "2 cm"),
     height: createLengthQuantity(20),
     centered: true,
+    origin: {
+      x: createLengthQuantity(24, "mm", "#width"),
+      y: createLengthQuantity(-5, "mm", "-5 mm"),
+      z: createLengthQuantity(2, "cm", "2 cm"),
+    },
   },
   dependencies: [],
   references: [],
@@ -135,6 +147,11 @@ describe("BoxForm", () => {
             value: 24,
             source: expect.objectContaining({ expression: "#width" }),
           }),
+          origin: {
+            x: expect.objectContaining({ value: 0 }),
+            y: expect.objectContaining({ value: 0 }),
+            z: expect.objectContaining({ value: 0 }),
+          },
         }),
       }),
     )
@@ -204,10 +221,22 @@ describe("BoxForm", () => {
     expect(
       (screen.getByRole("checkbox", { name: copy.centered }) as HTMLInputElement).checked,
     ).toBe(true)
+    expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
+      "#width",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originY }) as HTMLInputElement).value).toBe(
+      "-5 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originZ }) as HTMLInputElement).value).toBe(
+      "2 cm",
+    )
 
     const depth = screen.getByRole("combobox", { name: copy.depth })
+    const originY = screen.getByRole("combobox", { name: copy.originY })
     await user.clear(depth)
     await user.type(depth, "28 mm")
+    await user.clear(originY)
+    await user.type(originY, "-12 mm")
     await user.dblClick(screen.getByRole("button", { name: editCopy.submit }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
@@ -223,6 +252,13 @@ describe("BoxForm", () => {
           depth: expect.objectContaining({
             value: 28,
             source: expect.objectContaining({ expression: "28 mm" }),
+          }),
+          origin: expect.objectContaining({
+            x: expect.objectContaining({
+              source: expect.objectContaining({ expression: "#width" }),
+            }),
+            y: expect.objectContaining({ value: -12 }),
+            z: expect.objectContaining({ value: 20 }),
           }),
         }),
       }),

@@ -1,12 +1,15 @@
 import {
   createLengthQuantity,
   createRectangleSketch,
+  datumPlaneFeatureType,
   documentSnapshotSchema,
   extrusionFeatureType,
   featureRecordSchema,
+  type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import {
   createSketchProfileSelector,
@@ -47,6 +50,10 @@ function fixture() {
     createEntityId: nextEntityId,
     createConstraintId: nextConstraintId,
   })
+  return extrusionFixture(sketch)
+}
+
+function extrusionFixture(sketch: SketchRecord) {
   const points = sketch.entities.flatMap((entity) =>
     entity.type === "point" ? [{ entityId: entity.id, x: entity.x, y: entity.y }] : [],
   )
@@ -95,7 +102,161 @@ function fixture() {
   return { document, feature, solution }
 }
 
+function ellipseFixture() {
+  return extrusionFixture(
+    sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchId,
+      label: "Ellipse profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003401",
+          type: "point",
+          x: 2,
+          y: 3,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003402",
+          type: "point",
+          x: 12,
+          y: 3,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003403",
+          type: "point",
+          x: 2,
+          y: 8,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003404",
+          type: "ellipse",
+          centerPointId: "0195b5ac-b220-7a2c-8c33-000000003401",
+          primaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003402",
+          secondaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003403",
+          construction: false,
+        },
+      ],
+      constraints: [],
+    }),
+  )
+}
+
+function ellipticalArcFixture() {
+  return extrusionFixture(
+    sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchId,
+      label: "Elliptical arc profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003411",
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003412",
+          type: "point",
+          x: 10,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003413",
+          type: "point",
+          x: 0,
+          y: 5,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003414",
+          type: "point",
+          x: -10,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003415",
+          type: "elliptical-arc",
+          centerPointId: "0195b5ac-b220-7a2c-8c33-000000003411",
+          primaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          secondaryAxisPointId: "0195b5ac-b220-7a2c-8c33-000000003413",
+          startPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          endPointId: "0195b5ac-b220-7a2c-8c33-000000003414",
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000003416",
+          type: "line",
+          startPointId: "0195b5ac-b220-7a2c-8c33-000000003414",
+          endPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+          construction: false,
+        },
+      ],
+      constraints: [],
+    }),
+  )
+}
+
 describe("document extrusion content preparation", () => {
+  it("resolves a signed origin-offset datum plane into an exact world frame", async () => {
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000003300",
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: { kind: "origin-plane", plane: "xz" },
+        offset: createLengthQuantity(12),
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+      label: "Plane 1",
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ac",
+      revision: 1,
+      name: "Datum plane preparation",
+      variables: [],
+      sketches: [],
+      features: [feature],
+      createdAt: "2026-08-20T00:00:00.000Z",
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    })
+    const prepare = createDocumentFeatureContentPreparer(null)
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        size: 64,
+        frame: {
+          origin: [0, -12, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 0, 1],
+          normal: [0, -1, 0],
+        },
+      },
+    })
+  })
+
   it("resolves a stable selector into ordered exact profile geometry", async () => {
     const { document, feature, solution } = fixture()
     const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution }))
@@ -108,7 +269,12 @@ describe("document extrusion content preparation", () => {
       ok: true,
       parameters: {
         sketchId,
-        plane: "xz",
+        frame: {
+          origin: [0, 0, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 0, 1],
+          normal: [0, -1, 0],
+        },
         distance: 15,
         symmetric: true,
         operation: "new",
@@ -118,6 +284,113 @@ describe("document extrusion content preparation", () => {
     })
     expect(second).toEqual(first)
     expect(solve).toHaveBeenCalledTimes(1)
+  })
+
+  it("materializes an exact solved ellipse for the geometry worker", async () => {
+    const { document, feature, solution } = ellipseFixture()
+    const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        outer: {
+          segments: [
+            {
+              entityId: "0195b5ac-b220-7a2c-8c33-000000003404",
+              type: "ellipse",
+              center: [2, 3],
+              primaryAxisPoint: [12, 3],
+              secondaryAxisPoint: [2, 8],
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  it("resolves an extrusion-cap support into a parametric world frame", async () => {
+    const source = fixture()
+    const reference = {
+      schemaVersion: 0 as const,
+      featureId: source.feature.id,
+      kind: "face" as const,
+      semanticRole: "extrusion.cap.end",
+      signature: {
+        kind: "face" as const,
+        geometryClass: "PLANE",
+        measure: 200,
+        centroid: [0, -7.5, 0] as [number, number, number],
+        bounds: {
+          min: [-10, -7.5, -5] as [number, number, number],
+          max: [10, -7.5, 5] as [number, number, number],
+        },
+        direction: [0, -1, 0] as [number, number, number],
+        directionMode: "oriented" as const,
+        boundaryCount: 4,
+        adjacentGeometryClasses: ["PLANE"],
+      },
+    }
+    const supportedSketch = sketchRecordSchema.parse({
+      ...source.document.sketches[0],
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      label: "Supported profile",
+      support: { kind: "feature-face", reference },
+    })
+    const target = extrusionFixture(supportedSketch)
+    const feature = featureRecordSchema.parse({
+      ...target.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003302",
+      dependencies: [source.feature.id],
+      references: [reference],
+    })
+    const document = documentSnapshotSchema.parse({
+      ...target.document,
+      sketches: [source.document.sketches[0], supportedSketch],
+      features: [source.feature, feature],
+    })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: target.solution,
+    }))
+
+    await expect(
+      prepare({ document, feature, features: document.features }),
+    ).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        supportFeatureId: source.feature.id,
+        frame: {
+          origin: [0, -7.5, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 0, 1],
+          normal: [0, -1, 0],
+        },
+      },
+    })
+  })
+
+  it("materializes an ordered exact elliptical arc for the geometry worker", async () => {
+    const { document, feature, solution } = ellipticalArcFixture()
+    const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        outer: {
+          segments: expect.arrayContaining([
+            {
+              entityId: "0195b5ac-b220-7a2c-8c33-000000003415",
+              type: "elliptical-arc",
+              center: [0, 0],
+              primaryAxisPoint: [10, 0],
+              secondaryAxisPoint: [0, 5],
+              start: expect.any(Array),
+              end: expect.any(Array),
+            },
+          ]),
+        },
+      },
+    })
   })
 
   it("fails closed when the selected boundary disappears", async () => {

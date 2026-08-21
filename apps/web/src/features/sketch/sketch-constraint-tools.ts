@@ -13,6 +13,9 @@ export type SketchDimensionKind =
   | "angle"
   | "radius"
   | "diameter"
+  | "primary-axis-diameter"
+  | "secondary-axis-diameter"
+  | "offset"
 
 export type SketchConstraintToolKind =
   | "coincident"
@@ -210,6 +213,8 @@ export function compatibleSketchDimensionTools(
       {
         arc: ["radius", "diameter"],
         circle: ["radius", "diameter"],
+        ellipse: ["primary-axis-diameter", "secondary-axis-diameter"],
+        "elliptical-arc": ["primary-axis-diameter", "secondary-axis-diameter"],
         line: ["distance"],
         "line:line": ["angle"],
         "point:point": ["distance", "horizontal-distance", "vertical-distance"],
@@ -223,10 +228,14 @@ export function createSketchDimensionConstraint(
   entities: readonly SketchEntity[],
   value: SketchDimensionValue,
 ): SketchConstraintDefinition | null {
+  if (kind === "offset") return null
   if (!compatibleSketchDimensionTools(entities).includes(kind)) return null
   if (kind === "angle") return createAngleDimensionConstraint(entities, value)
   if (kind === "radius" || kind === "diameter") {
     return createRoundDimensionConstraint(kind, entities, value)
+  }
+  if (kind === "primary-axis-diameter" || kind === "secondary-axis-diameter") {
+    return createEllipseAxisDimensionConstraint(kind, entities, value)
   }
   return createLinearDimensionConstraint(kind, entities, value)
 }
@@ -252,6 +261,20 @@ function createRoundDimensionConstraint(
   value: SketchDimensionValue,
 ): SketchConstraintDefinition | null {
   const curve = roundCurves(entities)[0]
+  return curve && value.dimension === "length" && value.value > 0
+    ? { type: kind, curveId: curve.id, value }
+    : null
+}
+
+function createEllipseAxisDimensionConstraint(
+  kind: "primary-axis-diameter" | "secondary-axis-diameter",
+  entities: readonly SketchEntity[],
+  value: SketchDimensionValue,
+): SketchConstraintDefinition | null {
+  const curve = entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }> =>
+      entity.type === "ellipse" || entity.type === "elliptical-arc",
+  )
   return curve && value.dimension === "length" && value.value > 0
     ? { type: kind, curveId: curve.id, value }
     : null

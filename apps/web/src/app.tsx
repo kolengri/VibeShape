@@ -3,47 +3,174 @@ import {
   defaultDocumentDisplayUnits,
   type FeatureId,
   type SketchId,
+  type SketchProfileSelector,
+  type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { useCallback, useMemo, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
-import { createBrowserSketchId, useDocumentController } from "./document/document-controller"
+import {
+  addSketch,
+  createBrowserSketchId,
+  updateSketch,
+  useDocumentController,
+} from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
 import { EditorSessionProvider, useEditorSession } from "./editor-session/editor-session-provider"
+import type { EditorSessionActions } from "./editor-session/editor-session-store"
 import {
   activePartDesignCommand,
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
 import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
+import { selectedSketchSupportFromController } from "./features/sketch/sketch-support"
+import type { ActiveSketchTool } from "./features/sketch/sketch-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
 import { StatusBar } from "./shell/status-bar"
 
+type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
+
+type OpenSketchSaveRequest =
+  | Readonly<{ kind: "failed" | "unchanged" }>
+  | Readonly<{
+      draft: SketchRecord
+      kind: "save"
+      revision: number
+      save: typeof addSketch
+    }>
+
+const sketchSaveByToolKind: Partial<Record<ActiveSketchTool["kind"], typeof addSketch>> = {
+  "create-sketch": addSketch,
+  "edit-sketch": updateSketch,
+}
+
+function sketchSaveForTool(activeSketchTool: ActiveSketchTool | null) {
+  if (!activeSketchTool) return null
+  return sketchSaveByToolKind[activeSketchTool.kind] ?? null
+}
+
+function writableDocumentRevision(controller: ReturnType<typeof useDocumentController>) {
+  const report = controller.report
+  if (!report) return null
+  if (report.mode !== "read-write") return null
+  return report.snapshot.revision
+}
+
+function openSketchSaveRequest(
+  controller: ReturnType<typeof useDocumentController>,
+  activeSketchTool: ActiveSketchTool | null,
+  draft: SketchRecord | null,
+): OpenSketchSaveRequest {
+  if (!draft) return { kind: "unchanged" }
+  const save = sketchSaveForTool(activeSketchTool)
+  if (!save) return { kind: "unchanged" }
+  const revision = writableDocumentRevision(controller)
+  if (revision === null) return { kind: "failed" }
+  return { draft, kind: "save", revision, save }
+}
+
+async function persistOpenSketchBeforeExtrusion(
+  request: OpenSketchSaveRequest,
+): Promise<SketchPersistenceBeforeExtrusionResult> {
+  if (request.kind !== "save") return request.kind === "failed" ? "failed" : "unchanged"
+  const result = await request.save(request.revision, request.draft)
+  return result.ok ? "saved" : "failed"
+}
+
+function selectedExtrusionProfile(
+  profile: SketchProfileSelector | null,
+  activeSketchId: SketchId | null,
+) {
+  return profile?.sketchId === activeSketchId ? profile : null
+}
+
+function applySavedSketchToSession(
+  persistence: SketchPersistenceBeforeExtrusionResult,
+  request: OpenSketchSaveRequest,
+  saveSketch: (sketch: SketchRecord) => void,
+) {
+  if (persistence !== "saved") return
+  if (request.kind !== "save") return
+  saveSketch(request.draft)
+}
+
+function supportFromSelection(
+  controller: ReturnType<typeof useDocumentController>,
+  selection: Parameters<EditorSessionActions["setSelection"]>[0],
+) {
+  return selection ? selectedSketchSupportFromController(controller, selection) : null
+}
+
+function createSketchDraft(
+  label: string,
+  selectedSupport: ReturnType<typeof selectedSketchSupportFromController>,
+) {
+  if (!selectedSupport) {
+    return createEmptySketch({ id: createBrowserSketchId(), label, plane: "xy" })
+  }
+  return createEmptySketch({
+    id: createBrowserSketchId(),
+    label,
+    plane: selectedSupport.plane,
+    support: selectedSupport.support,
+  })
+}
+
+function selectedSupportForPlaneTool(
+  controller: ReturnType<typeof useDocumentController>,
+  activeSketchTool: ActiveSketchTool | null,
+  selection: Parameters<EditorSessionActions["setSelection"]>[0],
+) {
+  if (activeSketchTool?.kind !== "select-sketch-plane") return null
+  return supportFromSelection(controller, selection)
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
-  const { activeSketchId, selectedProfile } = useEditorSession(
+  const { activeSketchId, activeSketchTool, draft, selectedProfile, selection } = useEditorSession(
     useShallow((state) => ({
       activeSketchId: state.sketch.activeSketchId,
+      activeSketchTool: state.sketch.activeSketchTool,
+      draft: state.sketch.draft,
       selectedProfile: state.sketch.selectedProfile,
+      selection: state.selection,
     })),
   )
 
   const createSketch = useCallback(() => {
     const report = controller.report
     if (!report) return
-    sessionActions.beginSketchCreate(
-      createEmptySketch({
-        id: createBrowserSketchId(),
-        label: t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
-        plane: "xy",
-      }),
+    const selectedSupport = supportFromSelection(controller, selection)
+    const sketch = createSketchDraft(
+      t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
+      selectedSupport,
     )
-  }, [controller.report, sessionActions, t])
+    sessionActions.beginSketchCreate(sketch)
+    if (selectedSupport) sessionActions.selectSketchSupport(selectedSupport)
+  }, [controller, selection, sessionActions, t])
+
+  const createDatumPlane = useCallback(() => {
+    const selectedSupport = supportFromSelection(controller, selection)
+    sessionActions.startPartDesignTool({
+      kind: "create-datum-plane",
+      ...(selectedSupport ? { support: selectedSupport.support } : {}),
+    })
+  }, [controller, selection, sessionActions])
+
+  const select = useCallback(
+    (nextSelection: Parameters<typeof sessionActions.setSelection>[0]) => {
+      sessionActions.setSelection(nextSelection)
+      const support = selectedSupportForPlaneTool(controller, activeSketchTool, nextSelection)
+      if (support) sessionActions.selectSketchSupport(support)
+    },
+    [activeSketchTool?.kind, controller, sessionActions],
+  )
 
   const editSketch = useCallback(
     (sketchId: SketchId) => {
@@ -53,13 +180,19 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     [controller.report?.snapshot.sketches, sessionActions],
   )
 
-  const createExtrusion = useCallback(() => {
-    if (!selectedProfile || selectedProfile.sketchId !== activeSketchId) return
+  const createExtrusion = useCallback(async () => {
+    const profile = selectedExtrusionProfile(selectedProfile, activeSketchId)
+    if (!profile) return false
+    const request = openSketchSaveRequest(controller, activeSketchTool, draft)
+    const persistence = await persistOpenSketchBeforeExtrusion(request)
+    if (persistence === "failed") return false
+    applySavedSketchToSession(persistence, request, sessionActions.saveSketch)
     sessionActions.startPartDesignTool({
       kind: "create-extrusion",
-      profile: selectedProfile,
+      profile,
     })
-  }, [activeSketchId, selectedProfile, sessionActions])
+    return true
+  }, [activeSketchId, activeSketchTool, controller.report, draft, selectedProfile, sessionActions])
 
   const editFeature = useCallback(
     (featureId: FeatureId) => {
@@ -76,18 +209,22 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         closeTool: sessionActions.closeActiveTool,
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
+        createDatumPlane,
         createExtrusion,
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
         editFeature,
         editSketch,
-        select: sessionActions.setSelection,
-        selectSketch: sessionActions.selectSketch,
+        preselectFeature: sessionActions.setFeaturePreselection,
+        select,
         selectSketchPlane: sessionActions.selectSketchPlane,
         redoSketchDraft: sessionActions.redoSketchDraft,
         setSketchConstruction: sessionActions.setSketchConstruction,
         setSketchDraft: sessionActions.setSketchDraft,
         setSketchEditorTool: sessionActions.setSketchEditorTool,
+        setFeatureVisibility: sessionActions.setFeatureVisibility,
+        setOriginPlaneVisibility: sessionActions.setOriginPlaneVisibility,
+        setSketchVisibility: sessionActions.setSketchVisibility,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
         setSketchProfiles: sessionActions.setSketchProfiles,
         setSketchSelectedConstraintId: sessionActions.setSketchSelectedConstraintId,
@@ -97,7 +234,15 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         switchWorkspace: sessionActions.switchWorkspace,
         undoSketchDraft: sessionActions.undoSketchDraft,
       }) satisfies EditorWorkspaceActions,
-    [createExtrusion, createSketch, editFeature, editSketch, sessionActions],
+    [
+      createDatumPlane,
+      createExtrusion,
+      createSketch,
+      editFeature,
+      editSketch,
+      select,
+      sessionActions,
+    ],
   )
 }
 
@@ -108,6 +253,10 @@ function EditorApplication({
     useShallow((state) => ({
       activePartDesignTool: state.activePartDesignTool,
       commandPaletteOpen: state.commandPaletteOpen,
+      hiddenFeatureIds: state.hiddenFeatureIds,
+      hiddenSketchIds: state.hiddenSketchIds,
+      originPlaneVisibility: state.originPlaneVisibility,
+      preselectedFeatureId: state.preselectedFeatureId,
       selection: state.selection,
       sketch: state.sketch,
       workspace: state.workspace,
@@ -130,7 +279,7 @@ function EditorApplication({
   const extrusionAvailable =
     session.sketch.selectedProfile !== null &&
     session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
-    session.sketch.activeSketchTool === null
+    session.activePartDesignTool === null
   const slotFromSelectionAvailable =
     session.sketch.draft !== null &&
     selectedSketchLineId(session.sketch.draft, session.sketch.selectedEntityIds) !== null
@@ -139,6 +288,7 @@ function EditorApplication({
       cancelActive: workspaceActions.closeTool,
       createBox: workspaceActions.createBox,
       createCylinder: workspaceActions.createCylinder,
+      createDatumPlane: workspaceActions.createDatumPlane,
       createExtrusion: workspaceActions.createExtrusion,
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
@@ -188,6 +338,10 @@ function EditorApplication({
         activeSketchTool={session.sketch.activeSketchTool}
         activeTool={session.activePartDesignTool}
         controller={controller}
+        hiddenFeatureIds={session.hiddenFeatureIds}
+        hiddenSketchIds={session.hiddenSketchIds}
+        originPlaneVisibility={session.originPlaneVisibility}
+        preselectedFeatureId={session.preselectedFeatureId}
         workspace={session.workspace}
         selection={session.selection}
         sketchConstruction={session.sketch.construction}

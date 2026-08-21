@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { SketchEntityId } from "./identifiers"
-import { inferSketchPoint } from "./sketch-inference"
+import { createSketchInferenceCandidateQuery, inferSketchPoint } from "./sketch-inference"
 
 const firstPointId = "018f0000-0000-7000-9000-000000000001" as SketchEntityId
 const secondPointId = "018f0000-0000-7000-9000-000000000002" as SketchEntityId
@@ -77,6 +77,12 @@ describe("sketch inference", () => {
     expect(() =>
       inferSketchPoint({ point: { x: 0, y: 0 }, points: [], tolerance: Number.NaN }),
     ).toThrow("finite non-negative")
+    expect(() =>
+      createSketchInferenceCandidateQuery({ cellSize: 1, lines: [], points: [] })(
+        { x: 0, y: 0 },
+        Number.NaN,
+      ),
+    ).toThrow("finite non-negative")
   })
 
   it("infers persistent midpoint and point-on-line relations", () => {
@@ -130,6 +136,67 @@ describe("sketch inference", () => {
         { type: "point-on-line", lineId: secondLineId },
       ],
     })
+  })
+
+  it("queries only nearby candidates without changing dense-sketch inference", () => {
+    const verticalLine = {
+      id: secondLineId,
+      startPointId: thirdPointId,
+      endPointId: fourthPointId,
+      start: { x: 5, y: -5 },
+      end: { x: 5, y: 5 },
+    } as const
+    const farPoints = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `018f0000-0000-7000-9001-${index.toString().padStart(12, "0")}` as SketchEntityId,
+      x: 1_000 + index * 10,
+      y: 1_000,
+    }))
+    const farLines = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `018f0000-0000-7000-9002-${index.toString().padStart(12, "0")}` as SketchEntityId,
+      startPointId: firstPointId,
+      endPointId: secondPointId,
+      start: { x: 1_000 + index * 10, y: 999 },
+      end: { x: 1_000 + index * 10, y: 1_001 },
+    }))
+    const lines = [horizontalLine, verticalLine, ...farLines]
+    const query = createSketchInferenceCandidateQuery({
+      cellSize: 1,
+      lines,
+      points: farPoints,
+    })
+    const point = { x: 5.2, y: 0.1 }
+    const candidates = query(point, 1)
+
+    expect(candidates.lines).toHaveLength(2)
+    expect(candidates.points).toHaveLength(0)
+    expect(inferSketchPoint({ ...candidates, point, tolerance: 1 })).toEqual(
+      inferSketchPoint({ lines, point, points: farPoints, tolerance: 1 }),
+    )
+  })
+
+  it("keeps exceptionally long lines locally queryable through coarser index levels", () => {
+    const longLine = {
+      ...horizontalLine,
+      start: { x: -1_000, y: 0 },
+      end: { x: 1_000, y: 0 },
+    }
+    const farLines = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `018f0000-0000-7000-9003-${index.toString().padStart(12, "0")}` as SketchEntityId,
+      startPointId: firstPointId,
+      endPointId: secondPointId,
+      start: { x: 2_000 + index * 10, y: -1_000 },
+      end: { x: 2_000 + index * 10, y: 1_000 },
+    }))
+    const candidates = createSketchInferenceCandidateQuery({
+      cellSize: 1,
+      lines: [longLine, ...farLines],
+      points: [],
+    })({ x: 400, y: 0.25 }, 1)
+
+    expect(candidates.lines).toEqual([longLine])
+    expect(
+      inferSketchPoint({ ...candidates, point: { x: 400, y: 0.25 }, tolerance: 1 }),
+    ).toMatchObject({ kind: "point-on-line", point: { x: 400, y: 0 } })
   })
 
   it("infers parallel and perpendicular direction from a connected non-axis line", () => {

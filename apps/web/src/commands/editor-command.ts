@@ -2,6 +2,7 @@ export const editorCommandIds = {
   cancelActive: "org.vibeshape.editor.cancel-active",
   createBox: "org.vibeshape.editor.part-design.create-box",
   createCylinder: "org.vibeshape.editor.part-design.create-cylinder",
+  createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
@@ -14,9 +15,16 @@ export const editorCommandIds = {
   sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
   sketchCircle: "org.vibeshape.editor.sketch.tool.circle",
+  sketchEllipse: "org.vibeshape.editor.sketch.tool.ellipse",
+  sketchEllipticalArc: "org.vibeshape.editor.sketch.tool.elliptical-arc",
+  sketchCircularPattern: "org.vibeshape.editor.sketch.modify.circular-pattern",
   sketchCircumscribedPolygon: "org.vibeshape.editor.sketch.tool.circumscribed-polygon",
   sketchConstruction: "org.vibeshape.editor.sketch.toggle-construction",
+  sketchExtend: "org.vibeshape.editor.sketch.modify.extend",
   sketchLine: "org.vibeshape.editor.sketch.tool.line",
+  sketchLinearPattern: "org.vibeshape.editor.sketch.modify.linear-pattern",
+  sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
+  sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
@@ -25,6 +33,9 @@ export const editorCommandIds = {
   sketchRedo: "org.vibeshape.editor.sketch.redo",
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
   sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
+  sketchSplit: "org.vibeshape.editor.sketch.modify.split",
+  sketchTransform: "org.vibeshape.editor.sketch.modify.transform",
+  sketchTrim: "org.vibeshape.editor.sketch.modify.trim",
   sketchUndo: "org.vibeshape.editor.sketch.undo",
   workspaceModel: "org.vibeshape.editor.workspace.model",
   workspaceSketch: "org.vibeshape.editor.workspace.sketch",
@@ -40,6 +51,7 @@ export type EditorCommandToolbarGroup =
   | "model-primitives"
   | "sketch-tools"
   | "sketch-mode"
+  | "sketch-modify"
   | "history"
 
 export type EditorCommandIcon =
@@ -48,14 +60,22 @@ export type EditorCommandIcon =
   | "box"
   | "cancel"
   | "circle"
+  | "ellipse"
+  | "elliptical-arc"
+  | "circular-pattern"
   | "circumscribed-polygon"
   | "center-rectangle"
   | "centered-aligned-rectangle"
   | "centered-slot"
   | "construction"
   | "cylinder"
+  | "datum-plane"
   | "extrude"
+  | "extend"
   | "line"
+  | "linear-pattern"
+  | "mirror"
+  | "offset"
   | "inscribed-polygon"
   | "midpoint-line"
   | "model"
@@ -65,8 +85,11 @@ export type EditorCommandIcon =
   | "select"
   | "sketch"
   | "slot"
+  | "split"
+  | "transform"
   | "subtract"
   | "tangent-arc"
+  | "trim"
   | "undo"
   | "three-point-arc"
   | "three-point-circle"
@@ -75,6 +98,7 @@ export type EditorCommandLabelKey =
   | "cancelActive"
   | "createBox"
   | "createCylinder"
+  | "createDatumPlane"
   | "createExtrusion"
   | "createSketch"
   | "createSubtract"
@@ -87,9 +111,16 @@ export type EditorCommandLabelKey =
   | "sketchCenteredAlignedRectangle"
   | "sketchCenteredSlot"
   | "sketchCircle"
+  | "sketchEllipse"
+  | "sketchEllipticalArc"
+  | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"
+  | "sketchExtend"
   | "sketchLine"
+  | "sketchLinearPattern"
+  | "sketchMirror"
+  | "sketchOffset"
   | "sketchInscribedPolygon"
   | "sketchPoint"
   | "sketchRectangle"
@@ -97,7 +128,10 @@ export type EditorCommandLabelKey =
   | "sketchSlotAroundLine"
   | "sketchRedo"
   | "sketchSelect"
+  | "sketchSplit"
+  | "sketchTransform"
   | "sketchTangentArc"
+  | "sketchTrim"
   | "sketchUndo"
   | "workspaceModel"
   | "workspaceSketch"

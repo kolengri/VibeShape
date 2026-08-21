@@ -1,6 +1,12 @@
 import { isString } from "is-what"
 import { z } from "zod"
-import { sketchConstraintIdSchema, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
+import {
+  type SketchEntityId,
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "./identifiers"
+import { planarFaceTopoRefSchema } from "./topology"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 
 export const MAX_SKETCHES_PER_DOCUMENT = 256
@@ -16,6 +22,13 @@ const coordinateSchema = z
   .max(MAX_SKETCH_COORDINATE_MM)
 const radiusSchema = z.number().finite().positive().max(MAX_SKETCH_COORDINATE_MM)
 const constructionSchema = z.boolean().default(false)
+
+export const sketchFeatureFaceSupportSchema = z
+  .object({
+    kind: z.literal("feature-face"),
+    reference: planarFaceTopoRefSchema,
+  })
+  .strict()
 
 const sketchEntityEnvelopeSchema = z.object({
   schemaVersion: z.literal(0),
@@ -62,11 +75,50 @@ export const sketchArcEntitySchema = sketchEntityEnvelopeSchema
     message: "A sketch arc requires distinct center, start, and end point entities.",
   })
 
+export const sketchEllipseEntitySchema = sketchEntityEnvelopeSchema
+  .extend({
+    type: z.literal("ellipse"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (ellipse) =>
+      new Set([ellipse.centerPointId, ellipse.primaryAxisPointId, ellipse.secondaryAxisPointId])
+        .size === 3,
+    { message: "A sketch ellipse requires distinct center and axis point entities." },
+  )
+
+export const sketchEllipticalArcEntitySchema = sketchEntityEnvelopeSchema
+  .extend({
+    type: z.literal("elliptical-arc"),
+    centerPointId: sketchEntityIdSchema,
+    primaryAxisPointId: sketchEntityIdSchema,
+    secondaryAxisPointId: sketchEntityIdSchema,
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine(
+    (arc) =>
+      new Set([arc.centerPointId, arc.primaryAxisPointId, arc.secondaryAxisPointId]).size === 3 &&
+      arc.startPointId !== arc.endPointId &&
+      arc.startPointId !== arc.centerPointId &&
+      arc.endPointId !== arc.centerPointId,
+    {
+      message:
+        "A sketch elliptical arc requires distinct axes, distinct endpoints, and endpoints away from the center.",
+    },
+  )
+
 export const sketchEntitySchema = z.discriminatedUnion("type", [
   sketchPointEntitySchema,
   sketchLineEntitySchema,
   sketchCircleEntitySchema,
   sketchArcEntitySchema,
+  sketchEllipseEntitySchema,
+  sketchEllipticalArcEntitySchema,
 ])
 
 const sketchConstraintEnvelopeSchema = z.object({
@@ -152,6 +204,58 @@ const verticalDistanceConstraintSchema = pointPairSchema
 const distanceConstraintSchema = pointPairSchema
   .extend({ type: z.literal("distance"), value: lengthQuantitySchema })
   .strict()
+const offsetLinePairSchema = z
+  .object({
+    sourceLineId: sketchEntityIdSchema,
+    offsetLineId: sketchEntityIdSchema,
+    distanceScale: z.union([z.literal(-1), z.literal(1)]),
+  })
+  .strict()
+  .refine((pair) => pair.sourceLineId !== pair.offsetLineId, {
+    message: "A sketch offset pair requires distinct source and offset lines.",
+  })
+const offsetEndpointPairSchema = z
+  .object({
+    sourcePointId: sketchEntityIdSchema,
+    offsetPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((pair) => pair.sourcePointId !== pair.offsetPointId, {
+    message: "A sketch offset endpoint pair requires distinct points.",
+  })
+const offsetConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("offset"),
+    linePairs: z.array(offsetLinePairSchema).min(1).max(MAX_SKETCH_ENTITIES),
+    endpointPairs: z.array(offsetEndpointPairSchema).max(2),
+    value: lengthQuantitySchema,
+  })
+  .strict()
+  .refine((constraint) => constraint.value.value !== 0, {
+    message: "A sketch offset requires a nonzero distance.",
+  })
+  .refine(
+    (constraint) =>
+      new Set(constraint.linePairs.map(({ sourceLineId }) => sourceLineId)).size ===
+        constraint.linePairs.length &&
+      new Set(constraint.linePairs.map(({ offsetLineId }) => offsetLineId)).size ===
+        constraint.linePairs.length,
+    {
+      message: "A sketch offset cannot repeat source or offset lines.",
+    },
+  )
+  .refine(
+    (constraint) => constraint.endpointPairs.length === 0 || constraint.endpointPairs.length === 2,
+    { message: "An open sketch offset requires both endpoint pairs." },
+  )
+  .refine(
+    (constraint) =>
+      new Set(constraint.endpointPairs.map(({ sourcePointId }) => sourcePointId)).size ===
+        constraint.endpointPairs.length &&
+      new Set(constraint.endpointPairs.map(({ offsetPointId }) => offsetPointId)).size ===
+        constraint.endpointPairs.length,
+    { message: "A sketch offset cannot repeat source or offset endpoint points." },
+  )
 const angleConstraintSchema = entityPairSchema
   .extend({ type: z.literal("angle"), value: angleQuantitySchema })
   .strict()
@@ -165,6 +269,20 @@ const radiusConstraintSchema = sketchConstraintEnvelopeSchema
 const diameterConstraintSchema = sketchConstraintEnvelopeSchema
   .extend({
     type: z.literal("diameter"),
+    curveId: sketchEntityIdSchema,
+    value: lengthQuantitySchema,
+  })
+  .strict()
+const primaryAxisDiameterConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("primary-axis-diameter"),
+    curveId: sketchEntityIdSchema,
+    value: lengthQuantitySchema,
+  })
+  .strict()
+const secondaryAxisDiameterConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("secondary-axis-diameter"),
     curveId: sketchEntityIdSchema,
     value: lengthQuantitySchema,
   })
@@ -187,9 +305,12 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   horizontalDistanceConstraintSchema,
   verticalDistanceConstraintSchema,
   distanceConstraintSchema,
+  offsetConstraintSchema,
   angleConstraintSchema,
   radiusConstraintSchema,
   diameterConstraintSchema,
+  primaryAxisDiameterConstraintSchema,
+  secondaryAxisDiameterConstraintSchema,
 ])
 
 export type SketchEntity = Readonly<z.infer<typeof sketchEntitySchema>>
@@ -208,26 +329,33 @@ function validateEntityReferences(
   entity: SketchEntity,
   entities: ReadonlyMap<string, SketchEntity>,
 ) {
+  return entityPointReferenceIds(entity).every((id) => entityIs(entities, id, ["point"]))
+}
+
+function entityPointReferenceIds(entity: SketchEntity): readonly SketchEntityId[] {
   switch (entity.type) {
     case "point":
-      return true
+      return []
     case "line":
-      return (
-        entityIs(entities, entity.startPointId, ["point"]) &&
-        entityIs(entities, entity.endPointId, ["point"])
-      )
+      return [entity.startPointId, entity.endPointId]
     case "circle":
-      return entityIs(entities, entity.centerPointId, ["point"])
+      return [entity.centerPointId]
     case "arc":
-      return (
-        entityIs(entities, entity.centerPointId, ["point"]) &&
-        entityIs(entities, entity.startPointId, ["point"]) &&
-        entityIs(entities, entity.endPointId, ["point"])
-      )
+      return [entity.centerPointId, entity.startPointId, entity.endPointId]
+    case "ellipse":
+      return [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId]
+    case "elliptical-arc":
+      return [
+        entity.centerPointId,
+        entity.primaryAxisPointId,
+        entity.secondaryAxisPointId,
+        entity.startPointId,
+        entity.endPointId,
+      ]
   }
 }
 
-type NonEqualConstraintType = Exclude<SketchConstraint["type"], "equal">
+type RuleValidatedConstraintType = Exclude<SketchConstraint["type"], "equal" | "offset">
 type EntityReferenceRules = Readonly<Record<string, readonly SketchEntity["type"][]>>
 
 const constraintEntityReferenceRules = {
@@ -256,7 +384,9 @@ const constraintEntityReferenceRules = {
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
   diameter: { curveId: ["circle", "arc"] },
-} as const satisfies Record<NonEqualConstraintType, EntityReferenceRules>
+  "primary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
+  "secondary-axis-diameter": { curveId: ["ellipse", "elliptical-arc"] },
+} as const satisfies Record<RuleValidatedConstraintType, EntityReferenceRules>
 
 function validateEqualConstraintReferences(
   constraint: Extract<SketchConstraint, { type: "equal" }>,
@@ -279,12 +409,153 @@ function validateConstraintReferences(
   if (constraint.type === "equal") {
     return validateEqualConstraintReferences(constraint, entities)
   }
+  if (constraint.type === "offset") {
+    return (
+      constraint.linePairs.every(
+        ({ sourceLineId, offsetLineId }) =>
+          entityIs(entities, sourceLineId, ["line"]) && entityIs(entities, offsetLineId, ["line"]),
+      ) &&
+      constraint.endpointPairs.every(
+        ({ sourcePointId, offsetPointId }) =>
+          entityIs(entities, sourcePointId, ["point"]) &&
+          entityIs(entities, offsetPointId, ["point"]),
+      )
+    )
+  }
   const constraintRecord = constraint as unknown as Readonly<Record<string, unknown>>
   const rules: EntityReferenceRules = constraintEntityReferenceRules[constraint.type]
   return Object.entries(rules).every(([field, entityTypes]) => {
     const entityId = constraintRecord[field]
     return isString(entityId) && entityIs(entities, entityId, entityTypes)
   })
+}
+
+type SketchStructure = Readonly<{
+  constraints: readonly SketchConstraint[]
+  entities: readonly SketchEntity[]
+}>
+
+function indexSketchEntities(sketch: SketchStructure, context: z.RefinementCtx) {
+  const entities = new Map<string, SketchEntity>()
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (entities.has(entity.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["entities", index, "id"],
+        message: "Sketch entity IDs must be unique.",
+      })
+    }
+    entities.set(entity.id, entity)
+  }
+  return entities
+}
+
+function validateSketchEntityTable(
+  sketch: SketchStructure,
+  entities: ReadonlyMap<string, SketchEntity>,
+  context: z.RefinementCtx,
+) {
+  for (const [index, entity] of sketch.entities.entries()) {
+    if (validateEntityReferences(entity, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["entities", index],
+      message: "A sketch entity reference has an incompatible or missing target.",
+    })
+  }
+}
+
+function nativeConstraintCount(structure: SketchStructure) {
+  const authored = structure.constraints.reduce(
+    (count, constraint) =>
+      count +
+      (constraint.type === "offset"
+        ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
+        : 1),
+    0,
+  )
+  const internal = structure.entities.reduce((count, entity) => {
+    if (entity.type === "ellipse") return count + 1
+    return entity.type === "elliptical-arc" ? count + 11 : count
+  }, 0)
+  return authored + internal
+}
+
+const nativeEntityCapacity = {
+  arc: { entities: 1, parameters: 0 },
+  circle: { entities: 2, parameters: 1 },
+  ellipse: { entities: 2, parameters: 0 },
+  "elliptical-arc": { entities: 10, parameters: 8 },
+  line: { entities: 1, parameters: 0 },
+  point: { entities: 1, parameters: 2 },
+} as const satisfies Record<
+  SketchEntity["type"],
+  Readonly<{ entities: number; parameters: number }>
+>
+
+function nativeSketchCapacity(structure: SketchStructure) {
+  const authored = structure.entities.reduce(
+    (capacity, entity) => ({
+      entities: capacity.entities + nativeEntityCapacity[entity.type].entities,
+      parameters: capacity.parameters + nativeEntityCapacity[entity.type].parameters,
+    }),
+    { entities: 3, parameters: 7 },
+  )
+  const projectionCount =
+    Number(structure.constraints.some(({ type }) => type === "horizontal-distance")) +
+    Number(structure.constraints.some(({ type }) => type === "vertical-distance"))
+  return {
+    entities: authored.entities + projectionCount * 3,
+    parameters: authored.parameters + projectionCount * 4,
+  }
+}
+
+function validateSketchConstraintTable(
+  sketch: SketchStructure,
+  entities: ReadonlyMap<string, SketchEntity>,
+  context: z.RefinementCtx,
+) {
+  const constraintIds = new Set<string>()
+  for (const [index, constraint] of sketch.constraints.entries()) {
+    if (constraintIds.has(constraint.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["constraints", index, "id"],
+        message: "Sketch constraint IDs must be unique.",
+      })
+    }
+    constraintIds.add(constraint.id)
+    if (validateConstraintReferences(constraint, entities)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["constraints", index],
+      message: "A sketch constraint reference has an incompatible or missing target.",
+    })
+  }
+  if (nativeConstraintCount(sketch) <= MAX_SKETCH_CONSTRAINTS) return
+  context.addIssue({
+    code: "custom",
+    path: ["constraints"],
+    message: "Sketch constraints exceed the native solver safety limit.",
+  })
+}
+
+function validateNativeSketchCapacity(sketch: SketchStructure, context: z.RefinementCtx) {
+  const capacity = nativeSketchCapacity(sketch)
+  if (capacity.entities > 5_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch entities exceed the native solver safety limit.",
+    })
+  }
+  if (capacity.parameters > 10_000) {
+    context.addIssue({
+      code: "custom",
+      path: ["entities"],
+      message: "Sketch parameters exceed the native solver safety limit.",
+    })
+  }
 }
 
 export const sketchRecordSchema = z
@@ -297,50 +568,16 @@ export const sketchRecordSchema = z
       .max(120)
       .refine((label) => label.trim() === label, "Sketch labels must be normalized."),
     plane: z.enum(["xy", "xz", "yz"]),
+    support: sketchFeatureFaceSupportSchema.optional(),
     entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
     constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
   })
   .strict()
   .superRefine((sketch, context) => {
-    const entities = new Map<string, SketchEntity>()
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (entities.has(entity.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index, "id"],
-          message: "Sketch entity IDs must be unique.",
-        })
-      }
-      entities.set(entity.id, entity)
-    }
-    for (const [index, entity] of sketch.entities.entries()) {
-      if (!validateEntityReferences(entity, entities)) {
-        context.addIssue({
-          code: "custom",
-          path: ["entities", index],
-          message: "A sketch entity reference has an incompatible or missing target.",
-        })
-      }
-    }
-
-    const constraintIds = new Set<string>()
-    for (const [index, constraint] of sketch.constraints.entries()) {
-      if (constraintIds.has(constraint.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index, "id"],
-          message: "Sketch constraint IDs must be unique.",
-        })
-      }
-      constraintIds.add(constraint.id)
-      if (!validateConstraintReferences(constraint, entities)) {
-        context.addIssue({
-          code: "custom",
-          path: ["constraints", index],
-          message: "A sketch constraint reference has an incompatible or missing target.",
-        })
-      }
-    }
+    const entities = indexSketchEntities(sketch, context)
+    validateSketchEntityTable(sketch, entities, context)
+    validateSketchConstraintTable(sketch, entities, context)
+    validateNativeSketchCapacity(sketch, context)
   })
 
 const structuralSketchRecordsSchema = z.array(sketchRecordSchema).max(MAX_SKETCHES_PER_DOCUMENT)
@@ -362,3 +599,4 @@ export const sketchRecordsSchema = structuralSketchRecordsSchema.superRefine(
 )
 
 export type SketchRecord = Readonly<z.infer<typeof sketchRecordSchema>>
+export type SketchFeatureFaceSupport = Readonly<z.infer<typeof sketchFeatureFaceSupportSchema>>

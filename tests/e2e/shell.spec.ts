@@ -50,6 +50,40 @@ test.describe("foundation CAD shell", () => {
     expect(after.equals(before), "Primary drag must change the rendered camera view.").toBe(false)
   })
 
+  test("zooms the 3D viewport toward the pointer", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Box", exact: true })
+      .click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+    const fit = viewport.getByRole("button", { name: "Fit view" })
+    const zoomAt = async (horizontal: number) => {
+      await fit.click()
+      await page.mouse.move(bounds.x + bounds.width * horizontal, bounds.y + bounds.height * 0.5)
+      await page.mouse.wheel(0, -400)
+      return canvas.screenshot()
+    }
+
+    const leftZoom = await zoomAt(0.15)
+    const rightZoom = await zoomAt(0.85)
+
+    expect(
+      rightZoom.equals(leftZoom),
+      "The wheel position must change the camera target after the same fitted view.",
+    ).toBe(false)
+  })
+
   test("keeps primary commands in a predictable keyboard order", async ({ browserName, page }) => {
     await page.goto("/")
 

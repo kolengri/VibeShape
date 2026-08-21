@@ -169,6 +169,12 @@ function identity(
   return createFeatureContentIdentity(registry, { feature, dependencies, environment })
 }
 
+function expectSuccessfulIdentity(result: ReturnType<typeof identity>) {
+  expect(result.ok).toBe(true)
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result
+}
+
 describe("feature content identity", () => {
   it("ignores record identity, labels, suppression, and equivalent source units", () => {
     const registry = partDesignRegistry()
@@ -195,6 +201,7 @@ describe("feature content identity", () => {
       depth: 30,
       height: 25.4,
       centered: true,
+      origin: [0, 0, 0],
     })
   })
 
@@ -243,46 +250,67 @@ describe("feature content identity", () => {
     })
   })
 
-  it("changes identity for semantic parameters, input order, runtime, and extension integrity", () => {
+  it("changes identity for semantic parameters, runtime, and extension integrity", () => {
     const registry = partDesignRegistry()
     const feature = boxFeature(featureIds.a, { width: [20, "mm"], height: [25.4, "mm"] })
-    const baseline = identity(registry, feature)
-    const changedParameter = identity(
-      registry,
-      boxFeature(featureIds.a, { width: [21, "mm"], height: [25.4, "mm"] }),
+    const baseline = expectSuccessfulIdentity(identity(registry, feature))
+    const changedParameter = expectSuccessfulIdentity(
+      identity(registry, boxFeature(featureIds.a, { width: [21, "mm"], height: [25.4, "mm"] })),
     )
-    const changedRuntime = createFeatureContentIdentity(registry, {
-      feature,
-      dependencies: [],
-      environment: {
-        ...environment,
-        geometry: { ...environment.geometry, adapterVersion: "0.1.1" },
-      },
-    })
-    const extensionRuntime = createFeatureContentIdentity(registry, {
-      feature,
-      dependencies: [],
-      environment: {
-        ...environment,
-        provider: {
-          kind: "extension",
-          extensionId: "org.example.feature-pack",
-          extensionVersion: "1.0.0",
-          apiVersion: "0.1.0",
-          integrity: "c".repeat(64),
+    const changedRuntime = expectSuccessfulIdentity(
+      createFeatureContentIdentity(registry, {
+        feature,
+        dependencies: [],
+        environment: {
+          ...environment,
+          geometry: { ...environment.geometry, adapterVersion: "0.1.1" },
         },
-      },
-    })
+      }),
+    )
+    const extensionRuntime = expectSuccessfulIdentity(
+      createFeatureContentIdentity(registry, {
+        feature,
+        dependencies: [],
+        environment: {
+          ...environment,
+          provider: {
+            kind: "extension",
+            extensionId: "org.example.feature-pack",
+            extensionVersion: "1.0.0",
+            apiVersion: "0.1.0",
+            integrity: "c".repeat(64),
+          },
+        },
+      }),
+    )
 
-    expect(baseline.ok && changedParameter.ok).toBe(true)
-    expect(baseline.ok && changedRuntime.ok).toBe(true)
-    expect(baseline.ok && extensionRuntime.ok).toBe(true)
-    if (!baseline.ok || !changedParameter.ok || !changedRuntime.ok || !extensionRuntime.ok) {
-      return
-    }
     expect(changedParameter.canonicalPayload).not.toBe(baseline.canonicalPayload)
     expect(changedRuntime.canonicalPayload).not.toBe(baseline.canonicalPayload)
     expect(extensionRuntime.canonicalPayload).not.toBe(baseline.canonicalPayload)
+  })
+
+  it("changes identity when a direct primitive placement changes", () => {
+    const registry = partDesignRegistry()
+    const feature = boxFeature(featureIds.a, { width: [20, "mm"], height: [25.4, "mm"] })
+    const baseline = expectSuccessfulIdentity(identity(registry, feature))
+    const repositioned = expectSuccessfulIdentity(
+      identity(
+        registry,
+        featureRecordSchema.parse({
+          ...feature,
+          parameters: {
+            ...feature.parameters,
+            origin: {
+              x: createLengthQuantity(10),
+              y: createLengthQuantity(0),
+              z: createLengthQuantity(0),
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(repositioned.canonicalPayload).not.toBe(baseline.canonicalPayload)
   })
 
   it("fails closed on incomplete, duplicate, extra, and invalid dependency content", () => {

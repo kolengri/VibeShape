@@ -1,5 +1,5 @@
 import type { SketchEntityId } from "./identifiers"
-import type { SketchPoint2, SketchPointTarget } from "./sketch-edit"
+import { type SketchPoint2, type SketchPointTarget, sketchLineIntersection } from "./sketch-edit"
 
 export type SketchInferencePoint = SketchPoint2 & Readonly<{ id: SketchEntityId }>
 
@@ -42,6 +42,19 @@ export type SketchPointInference = Readonly<{
   target: SketchPointTarget
 }>
 
+export type SketchInferenceCandidateQuery<
+  Point extends SketchInferencePoint = SketchInferencePoint,
+> = (
+  point: SketchPoint2,
+  tolerance: number,
+) => Readonly<{
+  lines: readonly SketchInferenceLine[]
+  points: readonly Point[]
+}>
+
+const MAX_INDEXED_LINE_CELLS = 256
+const MAX_SPATIAL_INDEX_LEVELS = 32
+
 type PointCandidate = Readonly<{
   kind: Exclude<SketchPointInferenceKind, "coincident" | "none">
   point: SketchPoint2
@@ -61,6 +74,186 @@ function squaredDistance(first: SketchPoint2, second: SketchPoint2) {
   const x = first.x - second.x
   const y = first.y - second.y
   return x * x + y * y
+}
+
+function requireInferenceTolerance(tolerance: number) {
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    throw new RangeError("Sketch inference tolerance must be a finite non-negative distance.")
+  }
+}
+
+function spatialCell(value: number, cellSize: number) {
+  return Math.floor(value / cellSize)
+}
+
+function spatialCellKey(x: number, y: number) {
+  return `${x}:${y}`
+}
+
+function addSpatialCandidate<Candidate>(
+  buckets: Map<string, Candidate[]>,
+  key: string,
+  candidate: Candidate,
+) {
+  const bucket = buckets.get(key)
+  if (bucket) bucket.push(candidate)
+  else buckets.set(key, [candidate])
+}
+
+type SpatialSegmentTraversal = {
+  cellX: number
+  cellY: number
+  deltaTX: number
+  deltaTY: number
+  endCellX: number
+  endCellY: number
+  maximumTX: number
+  maximumTY: number
+  stepX: number
+  stepY: number
+}
+
+function spatialAxisTraversal(start: number, end: number, cell: number, cellSize: number) {
+  const delta = end - start
+  const step = Math.sign(delta)
+  if (step === 0) {
+    return { deltaT: Number.POSITIVE_INFINITY, maximumT: Number.POSITIVE_INFINITY, step }
+  }
+  const nextBoundary = (step > 0 ? cell + 1 : cell) * cellSize
+  return {
+    deltaT: cellSize / Math.abs(delta),
+    maximumT: (nextBoundary - start) / delta,
+    step,
+  }
+}
+
+function createSpatialSegmentTraversal(line: SketchInferenceLine, cellSize: number) {
+  const cellX = spatialCell(line.start.x, cellSize)
+  const cellY = spatialCell(line.start.y, cellSize)
+  const x = spatialAxisTraversal(line.start.x, line.end.x, cellX, cellSize)
+  const y = spatialAxisTraversal(line.start.y, line.end.y, cellY, cellSize)
+  return {
+    cellX,
+    cellY,
+    deltaTX: x.deltaT,
+    deltaTY: y.deltaT,
+    endCellX: spatialCell(line.end.x, cellSize),
+    endCellY: spatialCell(line.end.y, cellSize),
+    maximumTX: x.maximumT,
+    maximumTY: y.maximumT,
+    stepX: x.step,
+    stepY: y.step,
+  }
+}
+
+function advanceSpatialSegment(traversal: SpatialSegmentTraversal) {
+  const advanceX = traversal.maximumTX <= traversal.maximumTY
+  const advanceY = traversal.maximumTY <= traversal.maximumTX
+  if (advanceX) {
+    traversal.cellX += traversal.stepX
+    traversal.maximumTX += traversal.deltaTX
+  }
+  if (advanceY) {
+    traversal.cellY += traversal.stepY
+    traversal.maximumTY += traversal.deltaTY
+  }
+}
+
+function segmentSpatialCells(line: SketchInferenceLine, cellSize: number) {
+  const traversal = createSpatialSegmentTraversal(line, cellSize)
+  const cells: string[] = []
+
+  while (cells.length <= MAX_INDEXED_LINE_CELLS) {
+    cells.push(spatialCellKey(traversal.cellX, traversal.cellY))
+    if (traversal.cellX === traversal.endCellX && traversal.cellY === traversal.endCellY)
+      return cells
+    advanceSpatialSegment(traversal)
+  }
+
+  return null
+}
+
+function queriedSpatialCandidates<Candidate extends Readonly<{ id: SketchEntityId }>>(
+  buckets: ReadonlyMap<string, readonly Candidate[]>,
+  point: SketchPoint2,
+  radius: number,
+  cellSize: number,
+) {
+  const centerX = spatialCell(point.x, cellSize)
+  const centerY = spatialCell(point.y, cellSize)
+  const candidates = new Map<SketchEntityId, Candidate>()
+  for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+    for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+      const bucket = buckets.get(spatialCellKey(centerX + offsetX, centerY + offsetY))
+      if (!bucket) continue
+      for (const candidate of bucket) candidates.set(candidate.id, candidate)
+    }
+  }
+  return [...candidates.values()]
+}
+
+function indexedLineCells(line: SketchInferenceLine, baseCellSize: number) {
+  let cellSize = baseCellSize
+  for (let level = 0; level < MAX_SPATIAL_INDEX_LEVELS; level += 1) {
+    const cells = segmentSpatialCells(line, cellSize)
+    if (cells) return { cells, cellSize }
+    cellSize *= 4
+    if (!Number.isFinite(cellSize)) break
+  }
+  return null
+}
+
+export function createSketchInferenceCandidateQuery<Point extends SketchInferencePoint>(input: {
+  cellSize: number
+  lines: readonly SketchInferenceLine[]
+  points: readonly Point[]
+}): SketchInferenceCandidateQuery<Point> {
+  if (!Number.isFinite(input.cellSize) || input.cellSize <= 0) {
+    return (_point, tolerance) => {
+      requireInferenceTolerance(tolerance)
+      return { lines: input.lines, points: input.points }
+    }
+  }
+  const lineBucketsByCellSize = new Map<number, Map<string, SketchInferenceLine[]>>()
+  const pointBuckets = new Map<string, Point[]>()
+  const overflowLines: SketchInferenceLine[] = []
+  for (const point of input.points) {
+    addSpatialCandidate(
+      pointBuckets,
+      spatialCellKey(spatialCell(point.x, input.cellSize), spatialCell(point.y, input.cellSize)),
+      point,
+    )
+  }
+  for (const line of input.lines) {
+    const indexed = indexedLineCells(line, input.cellSize)
+    if (!indexed) {
+      overflowLines.push(line)
+      continue
+    }
+    let buckets = lineBucketsByCellSize.get(indexed.cellSize)
+    if (!buckets) {
+      buckets = new Map()
+      lineBucketsByCellSize.set(indexed.cellSize, buckets)
+    }
+    for (const cell of indexed.cells) addSpatialCandidate(buckets, cell, line)
+  }
+
+  return (point, tolerance) => {
+    requireInferenceTolerance(tolerance)
+    const linesById = new Map<SketchEntityId, SketchInferenceLine>()
+    for (const [cellSize, buckets] of lineBucketsByCellSize) {
+      const radius = Math.max(0, Math.ceil(tolerance / cellSize))
+      for (const line of queriedSpatialCandidates(buckets, point, radius, cellSize)) {
+        linesById.set(line.id, line)
+      }
+    }
+    for (const line of overflowLines) linesById.set(line.id, line)
+    const pointRadius = Math.max(0, Math.ceil(tolerance / input.cellSize))
+    return {
+      lines: [...linesById.values()],
+      points: queriedSpatialCandidates(pointBuckets, point, pointRadius, input.cellSize),
+    }
+  }
 }
 
 function nearestPoint(
@@ -140,23 +333,17 @@ function nearbyLines(
 }
 
 function segmentIntersection(first: SketchInferenceLine, second: SketchInferenceLine) {
-  const firstX = first.end.x - first.start.x
-  const firstY = first.end.y - first.start.y
-  const secondX = second.end.x - second.start.x
-  const secondY = second.end.y - second.start.y
-  const denominator = firstX * secondY - firstY * secondX
-  if (Math.abs(denominator) <= Number.EPSILON) return null
-  const offsetX = second.start.x - first.start.x
-  const offsetY = second.start.y - first.start.y
-  const firstParameter = (offsetX * secondY - offsetY * secondX) / denominator
-  const secondParameter = (offsetX * firstY - offsetY * firstX) / denominator
-  if (firstParameter < 0 || firstParameter > 1 || secondParameter < 0 || secondParameter > 1) {
+  const intersection = sketchLineIntersection(first.start, first.end, second.start, second.end)
+  if (
+    !intersection ||
+    intersection.firstParameter < 0 ||
+    intersection.firstParameter > 1 ||
+    intersection.secondParameter < 0 ||
+    intersection.secondParameter > 1
+  ) {
     return null
   }
-  return {
-    x: first.start.x + firstX * firstParameter,
-    y: first.start.y + firstY * firstParameter,
-  }
+  return intersection.point
 }
 
 function intersectionCandidate(
@@ -474,9 +661,7 @@ export function inferSketchPoint(input: {
   points: readonly SketchInferencePoint[]
   tolerance: number
 }): SketchPointInference {
-  if (!Number.isFinite(input.tolerance) || input.tolerance < 0) {
-    throw new RangeError("Sketch inference tolerance must be a finite non-negative distance.")
-  }
+  requireInferenceTolerance(input.tolerance)
   const snappedPoint = nearestPoint(input.point, input.points, input.tolerance)
   return snappedPoint ? coincidentInference(snappedPoint) : newPointInference(input)
 }

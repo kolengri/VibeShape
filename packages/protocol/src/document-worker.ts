@@ -14,10 +14,11 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 7 as const
+export const DOCUMENT_PROTOCOL_VERSION = 10 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
+const MAX_SKETCH_DISPLAY_FLOATS = 2_000_000
 const MAX_VARIABLES = 4_096
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const reverseDnsPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$/
@@ -216,6 +217,34 @@ export const documentFeatureGeometrySchema = z
   })
   .strict()
 
+const sketchDisplayLinePositionsSchema = z
+  .instanceof(Float32Array)
+  .refine((positions) => positions.length % 6 === 0, {
+    message: "Sketch display line positions must contain complete 3D segment pairs.",
+  })
+  .refine((positions) => positions.length <= MAX_SKETCH_DISPLAY_FLOATS, {
+    message: "Sketch display line positions exceed the transfer budget.",
+  })
+
+const sketchDisplayPointPositionsSchema = z
+  .instanceof(Float32Array)
+  .refine((positions) => positions.length % 3 === 0, {
+    message: "Sketch display point positions must contain complete 3D points.",
+  })
+  .refine((positions) => positions.length <= MAX_SKETCH_DISPLAY_FLOATS, {
+    message: "Sketch display point positions exceed the transfer budget.",
+  })
+
+export const documentSketchDisplaySchema = z
+  .object({
+    sketchId: sketchWireIdSchema,
+    curvePositions: sketchDisplayLinePositionsSchema,
+    constructionCurvePositions: sketchDisplayLinePositionsSchema,
+    pointPositions: sketchDisplayPointPositionsSchema,
+    constructionPointPositions: sketchDisplayPointPositionsSchema,
+  })
+  .strict()
+
 const responseEnvelopeSchema = requestEnvelopeSchema
 
 const progressResponseSchema = responseEnvelopeSchema.extend({
@@ -225,55 +254,100 @@ const progressResponseSchema = responseEnvelopeSchema.extend({
   fraction: z.number().finite().min(0).max(1),
 })
 
+type ValidationContext = {
+  addIssue(issue: { code: "custom"; path: PropertyKey[]; message: string }): void
+}
+type EvaluationRecord = z.infer<typeof featureEvaluationRecordSchema>
+type FeatureGeometry = z.infer<typeof documentFeatureGeometrySchema>
+type SketchDisplay = z.infer<typeof documentSketchDisplaySchema>
+
+function successfulEvaluationHashes(
+  records: readonly EvaluationRecord[],
+  context: ValidationContext,
+) {
+  const recordIds = new Set<string>()
+  const successfulHashes = new Map<string, string>()
+  for (const [index, record] of records.entries()) {
+    if (recordIds.has(record.featureId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["evaluation", "records", index, "featureId"],
+        message: "Evaluation feature IDs must be unique.",
+      })
+    }
+    recordIds.add(record.featureId)
+    if (record.status === "succeeded") successfulHashes.set(record.featureId, record.contentHash)
+  }
+  return successfulHashes
+}
+
+function geometryFeatureIds(
+  geometryRecords: readonly FeatureGeometry[],
+  successfulHashes: ReadonlyMap<string, string>,
+  context: ValidationContext,
+) {
+  const geometryIds = new Set<string>()
+  for (const [index, geometry] of geometryRecords.entries()) {
+    if (geometryIds.has(geometry.featureId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["geometry", index, "featureId"],
+        message: "Geometry feature IDs must be unique.",
+      })
+    }
+    geometryIds.add(geometry.featureId)
+    if (successfulHashes.get(geometry.featureId) !== geometry.contentHash) {
+      context.addIssue({
+        code: "custom",
+        path: ["geometry", index, "contentHash"],
+        message: "Geometry must match a successful evaluation record and content hash.",
+      })
+    }
+  }
+  return geometryIds
+}
+
+function validateSuccessfulGeometry(
+  successfulHashes: ReadonlyMap<string, string>,
+  geometryIds: ReadonlySet<string>,
+  context: ValidationContext,
+) {
+  for (const featureId of successfulHashes.keys()) {
+    if (geometryIds.has(featureId)) continue
+    context.addIssue({
+      code: "custom",
+      path: ["geometry"],
+      message: `Successful feature ${featureId} must include geometry.`,
+    })
+  }
+}
+
+function validateSketchDisplayIds(sketches: readonly SketchDisplay[], context: ValidationContext) {
+  const sketchIds = new Set<string>()
+  for (const [index, sketch] of sketches.entries()) {
+    if (sketchIds.has(sketch.sketchId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["sketches", index, "sketchId"],
+        message: "Sketch display IDs must be unique.",
+      })
+    }
+    sketchIds.add(sketch.sketchId)
+  }
+}
+
 const documentRebuiltResponseSchema = responseEnvelopeSchema
   .extend({
     type: z.literal("documentRebuilt"),
     evaluation: documentFeatureEvaluationSchema,
     geometry: z.array(documentFeatureGeometrySchema).max(MAX_FEATURES),
+    sketches: z.array(documentSketchDisplaySchema).max(MAX_SKETCHES),
   })
   .superRefine((response, context) => {
-    const recordIds = new Set<string>()
-    const successfulHashes = new Map<string, string>()
-    for (const [index, record] of response.evaluation.records.entries()) {
-      if (recordIds.has(record.featureId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["evaluation", "records", index, "featureId"],
-          message: "Evaluation feature IDs must be unique.",
-        })
-      }
-      recordIds.add(record.featureId)
-      if (record.status === "succeeded") successfulHashes.set(record.featureId, record.contentHash)
-    }
-
-    const geometryIds = new Set<string>()
-    for (const [index, geometry] of response.geometry.entries()) {
-      if (geometryIds.has(geometry.featureId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["geometry", index, "featureId"],
-          message: "Geometry feature IDs must be unique.",
-        })
-      }
-      geometryIds.add(geometry.featureId)
-      if (successfulHashes.get(geometry.featureId) !== geometry.contentHash) {
-        context.addIssue({
-          code: "custom",
-          path: ["geometry", index, "contentHash"],
-          message: "Geometry must match a successful evaluation record and content hash.",
-        })
-      }
-    }
-
-    for (const featureId of successfulHashes.keys()) {
-      if (!geometryIds.has(featureId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["geometry"],
-          message: `Successful feature ${featureId} must include geometry.`,
-        })
-      }
-    }
+    const successfulHashes = successfulEvaluationHashes(response.evaluation.records, context)
+    const geometryIds = geometryFeatureIds(response.geometry, successfulHashes, context)
+    validateSuccessfulGeometry(successfulHashes, geometryIds, context)
+    validateSketchDisplayIds(response.sketches, context)
   })
 
 const documentDisposedResponseSchema = responseEnvelopeSchema.extend({

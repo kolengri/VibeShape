@@ -9,8 +9,11 @@ interface FeatureEvaluationHarnessState {
   state: "running" | "passed" | "failed"
   box: FeatureResponse | null
   cachedBox: FeatureResponse | null
+  positionedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
+  ellipseExtrusion: FeatureResponse | null
+  ellipticalArcExtrusion: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
@@ -65,8 +68,11 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.error).toBeNull()
   const box = requireResult(state.box)
   const cachedBox = requireResult(state.cachedBox)
+  const positionedBox = requireResult(state.positionedBox)
   const cylinder = requireResult(state.cylinder)
   const extrusion = requireResult(state.extrusion)
+  const ellipseExtrusion = requireResult(state.ellipseExtrusion)
+  const ellipticalArcExtrusion = requireResult(state.ellipticalArcExtrusion)
   const extrusionAdd = requireResult(state.extrusionAdd)
   const extrusionIntersect = requireResult(state.extrusionIntersect)
   const extrusionRemove = requireResult(state.extrusionRemove)
@@ -91,6 +97,22 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     ]),
   )
   expectMesh(box)
+
+  expect(positionedBox.shape.valid).toBe(true)
+  expect(positionedBox.shape.volume).toBeCloseTo(20 * 30 * 25.4, 5)
+  expectBounds(positionedBox.shape.bounds, { min: [2, -23, 7], max: [22, 7, 32.4] })
+  expect(
+    positionedBox.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? []),
+  ).toEqual(
+    expect.arrayContaining([
+      "primitive.box.cap.start",
+      "primitive.box.cap.end",
+      "primitive.box.side.x-min",
+      "primitive.box.side.x-max",
+      "primitive.box.side.y-min",
+      "primitive.box.side.y-max",
+    ]),
+  )
 
   expect(cylinder.cache.brepHit).toBe(false)
   expect(cylinder.shape.valid).toBe(true)
@@ -123,6 +145,39 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   )
   expectMesh(extrusion)
 
+  expect(ellipseExtrusion.cache.brepHit).toBe(false)
+  expect(ellipseExtrusion.shape.valid).toBe(true)
+  expect(ellipseExtrusion.shape.solidCount).toBe(1)
+  expect(ellipseExtrusion.shape.volume).toBeCloseTo(Math.PI * 5 * 10 * 12, 5)
+  expectBounds(ellipseExtrusion.shape.bounds, { min: [-5, -10, 0], max: [5, 10, 12] })
+  expect(
+    ellipseExtrusion.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? []),
+  ).toEqual(
+    expect.arrayContaining([
+      "extrusion.cap.start",
+      "extrusion.cap.end",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3310",
+    ]),
+  )
+  expectMesh(ellipseExtrusion)
+
+  expect(ellipticalArcExtrusion.cache.brepHit).toBe(false)
+  expect(ellipticalArcExtrusion.shape.valid).toBe(true)
+  expect(ellipticalArcExtrusion.shape.solidCount).toBe(1)
+  expect(ellipticalArcExtrusion.shape.volume).toBeCloseTo(Math.PI * 10 * 5 * 6, 5)
+  expectBounds(ellipticalArcExtrusion.shape.bounds, { min: [-10, 0, 0], max: [10, 5, 12] })
+  expect(
+    ellipticalArcExtrusion.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? []),
+  ).toEqual(
+    expect.arrayContaining([
+      "extrusion.cap.start",
+      "extrusion.cap.end",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3311",
+      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3312",
+    ]),
+  )
+  expectMesh(ellipticalArcExtrusion)
+
   expect(extrusionAdd.shape.volume).toBeCloseTo(20 * 30 * 25.4 + 20 * 10 * 18 - 10 * 10 * 18, 5)
   expectBounds(extrusionAdd.shape.bounds, { min: [-10, -15, 0], max: [20, 15, 25.4] })
   expectMesh(extrusionAdd)
@@ -146,7 +201,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 9 }).flatMap(() => [
+    ...Array.from({ length: 12 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -160,6 +215,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 8, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 11, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

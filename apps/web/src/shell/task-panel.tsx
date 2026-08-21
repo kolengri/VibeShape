@@ -41,8 +41,13 @@ import {
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
+  isDatumPlaneFeature,
   isExtrusionFeature,
 } from "../features/part-design/part-design-tool"
+import {
+  DatumPlaneForm,
+  type DatumPlaneFormMode,
+} from "../features/reference-geometry/datum-plane-form"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
@@ -60,16 +65,22 @@ type TaskPanelProps = Readonly<{
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
-  onExtrusionPreviewChange: (feature: FeatureRecord | null) => void
+  onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  onSketchSaved: (sketch: SketchRecord) => void
+  onSketchSaved: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
   sketchDraft: SketchRecord | null
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
@@ -113,15 +124,18 @@ function useSketchEditorCopy() {
     distance: t("distance"),
     editConstraint: t("editConstraint"),
     equal: t("equal"),
+    extrude: t("extrude"),
     finish: t("finish"),
     fixed: t("fixed"),
     horizontal: t("horizontal"),
     horizontalDistance: t("horizontalDistance"),
     midpoint: t("midpoint"),
     noConstraints: t("noConstraints"),
+    offset: t("offset"),
     parallel: t("parallel"),
     perpendicular: t("perpendicular"),
     plane: t("plane"),
+    planeFeatureFace: t("planeFeatureFace"),
     planeXy: t("planeXy"),
     planeXz: t("planeXz"),
     planeYz: t("planeYz"),
@@ -129,10 +143,12 @@ function useSketchEditorCopy() {
     pointOnLine: t("pointOnLine"),
     profile: (number: number) => t("profile", { number }),
     profiles: t("profiles"),
+    primaryAxisDiameter: t("primaryAxisDiameter"),
     radius: t("radius"),
     remove: t("removeConstraint"),
     saveDimension: t("saveDimension"),
     selectionHint: t("constraintSelectionHint"),
+    secondaryAxisDiameter: t("secondaryAxisDiameter"),
     symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
     vertical: t("vertical"),
@@ -160,16 +176,23 @@ function useBoxFormCopy(mode: BoxFormMode["kind"]) {
   }[mode]
   return {
     ...operationCopy,
+    parameters: t("box.parameters"),
     dimensions: t("box.dimensions"),
     width: t("box.width"),
     depth: t("box.depth"),
     height: t("box.height"),
     centered: t("box.centered"),
+    placement: t("box.placement"),
+    originX: t("box.originX"),
+    originY: t("box.originY"),
+    originZ: t("box.originZ"),
+    positionDescription: t("box.positionDescription"),
     expressionDescription: t("box.expressionDescription"),
     cancel: t("box.cancel"),
     invalidExpression: t("box.invalidExpression"),
     invalidDimension: t("box.invalidDimension"),
     invalidRange: t("box.invalidRange"),
+    invalidPositionRange: t("box.invalidPositionRange"),
     staleRevision: t("box.staleRevision"),
   }
 }
@@ -194,15 +217,22 @@ function useCylinderFormCopy(mode: CylinderFormMode["kind"]) {
   }[mode]
   return {
     ...operationCopy,
+    parameters: t("cylinder.parameters"),
     dimensions: t("cylinder.dimensions"),
     radius: t("cylinder.radius"),
     height: t("cylinder.height"),
     centered: t("cylinder.centered"),
+    placement: t("cylinder.placement"),
+    originX: t("cylinder.originX"),
+    originY: t("cylinder.originY"),
+    originZ: t("cylinder.originZ"),
+    positionDescription: t("cylinder.positionDescription"),
     expressionDescription: t("cylinder.expressionDescription"),
     cancel: t("cylinder.cancel"),
     invalidExpression: t("cylinder.invalidExpression"),
     invalidDimension: t("cylinder.invalidDimension"),
     invalidRange: t("cylinder.invalidRange"),
+    invalidPositionRange: t("cylinder.invalidPositionRange"),
     staleRevision: t("cylinder.staleRevision"),
   }
 }
@@ -279,8 +309,45 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
   }
 }
 
+function useDatumPlaneFormCopy(mode: DatumPlaneFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel.datumPlane")
+  const operationCopy = {
+    create: {
+      title: t("title"),
+      description: t("description"),
+      submit: t("create"),
+      validationSummary: t("validationSummary"),
+      saveFailed: t("createFailed"),
+    },
+    edit: {
+      title: t("editTitle"),
+      description: t("editDescription"),
+      submit: t("update"),
+      validationSummary: t("updateValidationSummary"),
+      saveFailed: t("updateFailed"),
+    },
+  }[mode]
+  return {
+    ...operationCopy,
+    parameters: t("parameters"),
+    support: t("support"),
+    supportDescription: t("supportDescription"),
+    selectedFace: t("selectedFace"),
+    planeXy: t("planeXy"),
+    planeXz: t("planeXz"),
+    planeYz: t("planeYz"),
+    offset: t("offset"),
+    expressionDescription: t("expressionDescription"),
+    cancel: t("cancel"),
+    invalidExpression: t("invalidExpression"),
+    invalidDimension: t("invalidDimension"),
+    invalidRange: t("invalidRange"),
+    staleRevision: t("staleRevision"),
+  }
+}
+
 function featureTaskContext(
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode,
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode,
   revision: number,
 ) {
   return mode.kind === "edit"
@@ -293,7 +360,7 @@ function EditFeatureDeleteAction({
   onDeleted,
   report,
 }: {
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode
   onDeleted: () => void
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -341,7 +408,7 @@ function ExtrusionTaskPanel({
 }: {
   mode: ExtrusionFormMode
   onCloseTool: () => void
-  onPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly ExtrusionTargetOption[]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -401,6 +468,40 @@ function BoxTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         onCancel={onCloseTool}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
+    </aside>
+  )
+}
+
+function DatumPlaneTaskPanel({
+  mode,
+  onCloseTool,
+  onPreviewChange,
+  report,
+}: {
+  mode: DatumPlaneFormMode
+  onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const snapshot = report.snapshot
+  const copy = useDatumPlaneFormCopy(mode.kind)
+  const task = featureTaskContext(mode, snapshot.revision)
+  const t = useTranslations("app.shell.taskPanel")
+  return (
+    <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <DatumPlaneForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        copy={copy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
+        variables={snapshot.variables}
+        onCancel={onCloseTool}
+        onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
       />
@@ -517,15 +618,44 @@ function extrusionFormMode(
   featureLabel: string,
 ): ExtrusionFormMode | null {
   if (activeTool.kind === "create-extrusion") {
-    return {
-      kind: "create",
-      createFeatureId: createBrowserFeatureId,
-      featureLabel,
-      profile: activeTool.profile,
-    }
+    return createExtrusionFormMode(activeTool, report, featureLabel)
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   return feature && isExtrusionFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function datumPlaneFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): DatumPlaneFormMode | null {
+  if (activeTool.kind === "create-datum-plane")
+    return createDatumPlaneFormMode(activeTool, featureLabel)
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isDatumPlaneFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function createDatumPlaneFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" }>,
+  featureLabel: string,
+): Extract<DatumPlaneFormMode, { kind: "create" }> {
+  const mode = { kind: "create" as const, createFeatureId: createBrowserFeatureId, featureLabel }
+  return activeTool.support ? { ...mode, support: activeTool.support } : mode
+}
+
+function createExtrusionFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): Extract<ExtrusionFormMode, { kind: "create" }> {
+  const sketch = report.snapshot.sketches.find(({ id }) => id === activeTool.profile.sketchId)
+  const mode = {
+    kind: "create" as const,
+    createFeatureId: createBrowserFeatureId,
+    featureLabel,
+    profile: activeTool.profile,
+  }
+  return sketch?.support ? { ...mode, supportReference: sketch.support.reference } : mode
 }
 
 function booleanOptions(
@@ -558,7 +688,7 @@ function StartModelingAction({
 }: {
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -663,7 +793,7 @@ function StartTaskPanel({
   canSubtract: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
 }) {
@@ -737,6 +867,30 @@ function ActiveCylinderTaskPanel({
   return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
 }
 
+function ActiveDatumPlaneTaskPanel({
+  activeTool,
+  onCloseTool,
+  onPreviewChange,
+  report,
+}: {
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>
+  onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const t = useTranslations("app.shell.taskPanel.datumPlane")
+  const datumCount = report.snapshot.features.filter(isDatumPlaneFeature).length
+  const mode = datumPlaneFormMode(activeTool, report, t("featureLabel", { number: datumCount + 1 }))
+  return mode ? (
+    <DatumPlaneTaskPanel
+      report={report}
+      mode={mode}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onPreviewChange}
+    />
+  ) : null
+}
+
 function ActiveExtrusionTaskPanel({
   activeTool,
   onCloseTool,
@@ -745,7 +899,7 @@ function ActiveExtrusionTaskPanel({
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
   onCloseTool: () => void
-  onPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
@@ -804,7 +958,7 @@ function ActiveSubtractTaskPanel({
 type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
   onCloseTool: () => void
-  onExtrusionPreviewChange: TaskPanelProps["onExtrusionPreviewChange"]
+  onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }>
 
@@ -820,10 +974,28 @@ function CylinderToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPa
   )
 }
 
+function DatumPlaneToolTaskPanel({
+  activeTool,
+  onCloseTool,
+  onFeaturePreviewChange,
+  report,
+}: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-datum-plane" && activeTool.kind !== "edit-datum-plane")
+    return null
+  return (
+    <ActiveDatumPlaneTaskPanel
+      activeTool={activeTool}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onFeaturePreviewChange}
+      report={report}
+    />
+  )
+}
+
 function ExtrusionToolTaskPanel({
   activeTool,
   onCloseTool,
-  onExtrusionPreviewChange,
+  onFeaturePreviewChange,
   report,
 }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-extrusion" && activeTool.kind !== "edit-extrusion") return null
@@ -831,7 +1003,7 @@ function ExtrusionToolTaskPanel({
     <ActiveExtrusionTaskPanel
       activeTool={activeTool}
       onCloseTool={onCloseTool}
-      onPreviewChange={onExtrusionPreviewChange}
+      onPreviewChange={onFeaturePreviewChange}
       report={report}
     />
   )
@@ -849,6 +1021,8 @@ const activeTaskPanelByKind = {
   "edit-box": BoxToolTaskPanel,
   "create-cylinder": CylinderToolTaskPanel,
   "edit-cylinder": CylinderToolTaskPanel,
+  "create-datum-plane": DatumPlaneToolTaskPanel,
+  "edit-datum-plane": DatumPlaneToolTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
   "edit-extrusion": ExtrusionToolTaskPanel,
   "create-subtract": SubtractToolTaskPanel,
@@ -883,7 +1057,7 @@ function ModelTaskPanel({
   onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
-  onExtrusionPreviewChange,
+  onFeaturePreviewChange,
   sketchSelectedProfile,
 }: TaskPanelProps) {
   const report = controller.report
@@ -893,7 +1067,7 @@ function ModelTaskPanel({
       activeTool={activeTool}
       report={report}
       onCloseTool={onCloseTool}
-      onExtrusionPreviewChange={onExtrusionPreviewChange}
+      onFeaturePreviewChange={onFeaturePreviewChange}
     />
   ) : (
     <StartTaskPanel
@@ -921,10 +1095,17 @@ type ActiveSketchTaskPanelState = Readonly<{
 
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  onSketchSaved: (sketch: SketchRecord) => void
+  onSketchSaved: (
+    sketch: SketchRecord,
+    presentation?: Readonly<{
+      profiles: readonly SketchProfileSelector[]
+      selectedProfile: SketchProfileSelector | null
+    }>,
+  ) => void
 }>
 
 function sketchSaveFailureMessage(
@@ -956,6 +1137,7 @@ function ActiveSketchTaskPanel({
   } = state
   const {
     onCloseTool,
+    onCreateExtrusion,
     onDraftChange,
     onSelectedConstraintChange,
     onSelectedProfileChange,
@@ -980,7 +1162,15 @@ function ActiveSketchTaskPanel({
       )
       return
     }
-    onSketchSaved(draft)
+    onSketchSaved(draft, { profiles, selectedProfile })
+  }
+  const extrude = async () => {
+    setMessage(null)
+    const succeeded = await onCreateExtrusion()
+    if (!succeeded) {
+      setMessage(activeSketchTool.kind === "edit-sketch" ? t("updateFailed") : t("createFailed"))
+    }
+    return succeeded
   }
   return (
     <aside
@@ -998,6 +1188,7 @@ function ActiveSketchTaskPanel({
           state={{
             disabled: report.mode === "read-only",
             draft,
+            extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,
             profiles,
@@ -1009,6 +1200,7 @@ function ActiveSketchTaskPanel({
           actions={{
             onCancel: onCloseTool,
             onDraftChange,
+            onExtrude: extrude,
             onFinish: finish,
             onSelectedConstraintChange,
             onSelectedProfileChange,
@@ -1104,7 +1296,7 @@ function SelectedSketchTaskPanel({
 }: {
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1184,7 +1376,7 @@ function SketchStartTaskPanel({
   activeSketchId: SketchId | null
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => void
+  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1227,6 +1419,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
         }}
         actions={{
           onCloseTool: props.onCloseTool,
+          onCreateExtrusion: props.onCreateExtrusion,
           onDraftChange: props.onSketchDraftChange,
           onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,

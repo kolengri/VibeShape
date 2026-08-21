@@ -25,6 +25,8 @@
 | [0021](0021-transient-sketch-draft-solving.md) | Accepted | Exact-revision worker solving for complete, non-persisted sketch drafts |
 | [0022](0022-project-display-unit-preferences.md) | Accepted | Revisioned project display units with canonical millimeter/radian geometry |
 | [0023](0023-explicit-target-extrusion-operations.md) | Accepted | New/add/remove/intersect extrusion with an explicit terminal-feature target dependency |
+| [0024](0024-stable-planar-face-sketch-support.md) | Accepted | Stable planar-face sketch support with separate evaluation and body dependencies |
+| [0025](0025-first-class-offset-datum-planes.md) | Accepted | First-class signed offset datum planes that remain outside body ownership and export |
 
 Statuses:
 

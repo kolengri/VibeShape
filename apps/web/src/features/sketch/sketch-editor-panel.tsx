@@ -55,15 +55,18 @@ type SketchEditorPanelCopy = Readonly<{
   distance: string
   editConstraint: string
   equal: string
+  extrude: string
   finish: string
   fixed: string
   horizontal: string
   horizontalDistance: string
   midpoint: string
   noConstraints: string
+  offset: string
   parallel: string
   perpendicular: string
   plane: string
+  planeFeatureFace: string
   planeXy: string
   planeXz: string
   planeYz: string
@@ -71,10 +74,12 @@ type SketchEditorPanelCopy = Readonly<{
   pointOnLine: string
   profile: (number: number) => string
   profiles: string
+  primaryAxisDiameter: string
   radius: string
   remove: string
   saveDimension: string
   selectionHint: string
+  secondaryAxisDiameter: string
   symmetric: string
   tangent: string
   vertical: string
@@ -102,11 +107,14 @@ function constraintName(
     "point-on-curve": copy.pointOnCurve,
     fixed: copy.fixed,
     "horizontal-distance": copy.horizontalDistance,
+    offset: copy.offset,
     "vertical-distance": copy.verticalDistance,
     distance: copy.distance,
     angle: copy.angle,
     radius: copy.radius,
     diameter: copy.diameter,
+    "primary-axis-diameter": copy.primaryAxisDiameter,
+    "secondary-axis-diameter": copy.secondaryAxisDiameter,
   }[type]
 }
 
@@ -124,7 +132,10 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
     diameter: copy.diameter,
     distance: copy.distance,
     "horizontal-distance": copy.horizontalDistance,
+    offset: copy.offset,
+    "primary-axis-diameter": copy.primaryAxisDiameter,
     radius: copy.radius,
+    "secondary-axis-diameter": copy.secondaryAxisDiameter,
     "vertical-distance": copy.verticalDistance,
   }
   return compatibleSketchDimensionTools(entities).map((kind) => ({ kind, label: labels[kind] }))
@@ -149,7 +160,10 @@ function evaluateDimensionValue(
       ? createAngleQuantity(evaluated.value.value, "rad", normalizedExpression)
       : null
   }
-  return evaluated.value.dimension === "length" && evaluated.value.value > 0
+  const validLength =
+    evaluated.value.dimension === "length" &&
+    (kind === "offset" ? evaluated.value.value !== 0 : evaluated.value.value > 0)
+  return validLength
     ? createLengthQuantity(evaluated.value.value, "mm", normalizedExpression)
     : null
 }
@@ -271,12 +285,13 @@ function SketchSetupSection({
         <FieldLabel htmlFor="sketch-plane">{copy.plane}</FieldLabel>
         <NativeSelect
           id="sketch-plane"
-          value={draft.plane}
-          disabled={draft.entities.length > 0}
+          value={draft.support ? "feature-face" : draft.plane}
+          disabled={draft.support !== undefined || draft.entities.length > 0}
           onChange={(event) =>
             onDraftChange({ ...draft, plane: event.currentTarget.value as SketchRecord["plane"] })
           }
         >
+          {draft.support ? <option value="feature-face">{copy.planeFeatureFace}</option> : null}
           <option value="xy">{copy.planeXy}</option>
           <option value="xz">{copy.planeXz}</option>
           <option value="yz">{copy.planeYz}</option>
@@ -615,27 +630,42 @@ function SketchProfilesSection({
 }
 
 function SketchEditorFooter({
+  canExtrude,
   copy,
   disabled,
   message,
   onCancel,
+  onExtrude,
   onFinish,
 }: {
+  canExtrude: boolean
   copy: SketchEditorPanelCopy
   disabled: boolean
   message: string | null
   onCancel: () => void
+  onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
 }) {
   return (
     <div className="sticky bottom-0 z-10 -mx-4 grid gap-2 border-t bg-panel px-4 py-3">
-      <div className="grid grid-cols-2 gap-2">
+      <div className={`grid gap-2 ${canExtrude ? "grid-cols-3" : "grid-cols-2"}`}>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {copy.cancel}
         </Button>
-        <Button type="button" size="sm" disabled={disabled} onClick={onFinish}>
+        <Button
+          type="button"
+          size="sm"
+          variant={canExtrude ? "outline" : "default"}
+          disabled={disabled}
+          onClick={onFinish}
+        >
           {copy.finish}
         </Button>
+        {canExtrude ? (
+          <Button type="button" size="sm" disabled={disabled} onClick={onExtrude}>
+            {copy.extrude}
+          </Button>
+        ) : null}
       </div>
       {message ? (
         <p className="text-xs leading-4 text-destructive" role="alert">
@@ -649,6 +679,7 @@ function SketchEditorFooter({
 type SketchEditorPanelState = Readonly<{
   disabled: boolean
   draft: SketchRecord
+  extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
   profiles: readonly SketchProfileSelector[]
@@ -661,6 +692,7 @@ type SketchEditorPanelState = Readonly<{
 type SketchEditorPanelActions = Readonly<{
   onCancel: () => void
   onDraftChange: (draft: SketchRecord) => void
+  onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
@@ -678,6 +710,7 @@ export function SketchEditorPanel({
   const {
     disabled,
     draft,
+    extrusionAvailable,
     failedConstraintIds,
     message,
     profiles,
@@ -686,8 +719,14 @@ export function SketchEditorPanel({
     selectedProfile,
     variables,
   } = state
-  const { onCancel, onDraftChange, onFinish, onSelectedConstraintChange, onSelectedProfileChange } =
-    actions
+  const {
+    onCancel,
+    onDraftChange,
+    onExtrude,
+    onFinish,
+    onSelectedConstraintChange,
+    onSelectedProfileChange,
+  } = actions
   const entities = useMemo(
     () => selectedSketchEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
@@ -724,10 +763,12 @@ export function SketchEditorPanel({
         onSelectedProfileChange={onSelectedProfileChange}
       />
       <SketchEditorFooter
+        canExtrude={extrusionAvailable}
         copy={copy}
         disabled={disabled}
         message={message}
         onCancel={onCancel}
+        onExtrude={onExtrude}
         onFinish={onFinish}
       />
     </div>

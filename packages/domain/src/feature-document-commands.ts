@@ -45,6 +45,10 @@ type FeatureEvent =
   | FeatureSuppressionChangedEvent
 type TransactionId = z.infer<typeof draftIdSchema> | null
 
+function featureSupportsSketch(snapshot: DocumentSnapshot, featureId: FeatureRecord["id"]) {
+  return snapshot.sketches.some(({ support }) => support?.reference.featureId === featureId)
+}
+
 function reduceAddedEvent(
   snapshot: DocumentSnapshot | null,
   event: FeatureAddedEvent,
@@ -139,6 +143,15 @@ function reduceRemovedEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "The feature removal event does not match the current document.",
+      ),
+    }
+  }
+  if (featureSupportsSketch(current.snapshot, event.feature.id)) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "A feature supporting an existing sketch cannot be removed.",
       ),
     }
   }
@@ -316,6 +329,12 @@ function createRemovedEvent(
     return domainDiagnostic(
       "feature-not-found",
       `Feature ${command.payload.featureId} does not exist in the document.`,
+    )
+  }
+  if (featureSupportsSketch(current.snapshot, command.payload.featureId)) {
+    return domainDiagnostic(
+      "feature-in-use",
+      `Feature ${command.payload.featureId} supports an existing sketch.`,
     )
   }
 

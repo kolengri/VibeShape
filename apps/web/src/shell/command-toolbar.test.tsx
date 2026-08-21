@@ -25,6 +25,7 @@ const actions = {
   cancelActive: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),
+  createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
   createSketch: vi.fn(),
   createSubtract: vi.fn(),
@@ -148,6 +149,10 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("three-point-circle")
 
+    await user.click(screen.getByRole("button", { name: "Circle tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Center-point ellipse" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("ellipse")
+
     await user.click(screen.getByRole("button", { name: "Polygon tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Circumscribed polygon" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("circumscribed-polygon")
@@ -176,6 +181,30 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Arc tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Tangent arc Shift+A" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("tangent-arc")
+
+    await user.click(screen.getByRole("button", { name: "Trim" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("trim")
+
+    await user.click(screen.getByRole("button", { name: "Extend" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("extend")
+
+    await user.click(screen.getByRole("button", { name: "Mirror" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("mirror")
+
+    await user.click(screen.getByRole("button", { name: "Offset" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("offset")
+
+    await user.click(screen.getByRole("button", { name: "Linear pattern" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("linear-pattern")
+
+    await user.click(screen.getByRole("button", { name: "Circular pattern" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("circular-pattern")
+
+    await user.click(screen.getByRole("button", { name: "Split" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("split")
+
+    await user.click(screen.getByRole("button", { name: "Transform" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("transform")
 
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)

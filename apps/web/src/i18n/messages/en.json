@@ -252,6 +252,10 @@
           "label": "Cylinder",
           "keywords": "create cylinder|primitive|solid|round"
         },
+        "createDatumPlane": {
+          "label": "Datum plane",
+          "keywords": "create datum plane|reference plane|offset plane|construction plane"
+        },
         "createExtrusion": { "label": "Extrude", "keywords": "create extrusion|profile|solid|pad" },
         "createSketch": { "label": "Create sketch", "keywords": "new sketch|2d|profile|draw" },
         "createSubtract": {
@@ -287,6 +291,18 @@
           "label": "Center-point circle",
           "keywords": "sketch circle|center point circle|round|radius|diameter"
         },
+        "sketchEllipse": {
+          "label": "Center-point ellipse",
+          "keywords": "sketch ellipse|center point ellipse|oval|major axis|minor axis"
+        },
+        "sketchEllipticalArc": {
+          "label": "Elliptical arc",
+          "keywords": "elliptical arc|ellipse segment|center axis start end|oval arc"
+        },
+        "sketchCircularPattern": {
+          "label": "Circular pattern",
+          "keywords": "circular sketch pattern|radial array|repeat around center|polar copies"
+        },
         "sketchCircumscribedPolygon": {
           "label": "Circumscribed polygon",
           "keywords": "circumscribed polygon|polygon inside circle|regular polygon|center polygon"
@@ -295,7 +311,27 @@
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
+        "sketchExtend": {
+          "label": "Extend",
+          "keywords": "extend sketch line|lengthen to boundary|modify geometry"
+        },
         "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchLinearPattern": {
+          "label": "Linear pattern",
+          "keywords": "linear sketch pattern|array geometry|repeat selection|grid copies"
+        },
+        "sketchMirror": {
+          "label": "Mirror",
+          "keywords": "mirror sketch geometry|reflect entities|symmetry line|copy across axis"
+        },
+        "sketchOffset": {
+          "label": "Offset",
+          "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
+        },
+        "sketchTransform": {
+          "label": "Transform",
+          "keywords": "transform sketch geometry|move selection|rotate selection|scale selection"
+        },
         "sketchInscribedPolygon": {
           "label": "Inscribed polygon",
           "keywords": "inscribed polygon|polygon around circle|regular polygon|center polygon"
@@ -319,9 +355,17 @@
           "label": "Slot from selected line",
           "keywords": "slot from selected line|convert line to slot|onshape slot|line centerline"
         },
+        "sketchSplit": {
+          "label": "Split",
+          "keywords": "split sketch line|divide segment|break geometry"
+        },
         "sketchTangentArc": {
           "label": "Tangent arc",
           "keywords": "tangent arc|line continuation|fillet curve|shift a"
+        },
+        "sketchTrim": {
+          "label": "Trim",
+          "keywords": "trim sketch line|remove segment|cut geometry|m"
         },
         "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
         "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
@@ -344,9 +388,11 @@
         "arcToolsLabel": "Arc tools",
         "circleToolsLabel": "Circle tools",
         "lineToolsLabel": "Line tools",
+        "modelPrimaryLabel": "Modeling actions",
         "polygonToolsLabel": "Polygon tools",
         "primitives": "Primitives",
         "rectangleToolsLabel": "Rectangle tools",
+        "sketchModifyLabel": "Sketch modification tools",
         "sketchToolsLabel": "Sketch geometry tools",
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace"
@@ -361,6 +407,10 @@
           "variables": "Variables"
         },
         "projectFeatures": "Project features",
+        "hideFeature": "Hide {feature}",
+        "hideSketch": "Hide {sketch}",
+        "showFeature": "Show {feature}",
+        "showSketch": "Show {sketch}",
         "title": "Model tree",
         "unnamedFeature": "Unnamed feature",
         "unnamedSketch": "Unnamed sketch"
@@ -407,15 +457,21 @@
         },
         "box": {
           "title": "Create box",
-          "description": "Create a primitive solid with dimensions driven by literals or document variables.",
+          "description": "Create a primitive solid with explicit dimensions and a placement origin.",
           "editTitle": "Edit box",
-          "editDescription": "Update this Box while preserving its identity, label, and variable expressions.",
-          "dimensions": "Required dimensions",
+          "editDescription": "Update this Box's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Box definition",
+          "dimensions": "Dimensions",
           "width": "Width",
           "depth": "Depth",
           "height": "Height",
-          "centered": "Center on the origin",
+          "placement": "Placement origin",
+          "originX": "Origin X",
+          "originY": "Origin Y",
+          "originZ": "Origin Z",
+          "centered": "Center height about placement origin",
           "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #width.",
+          "positionDescription": "Enter a signed coordinate with a supported unit, a unitless value in project units, or a variable such as #offset.",
           "create": "Create box",
           "update": "Update box",
           "cancel": "Cancel",
@@ -423,6 +479,7 @@
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
           "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
+          "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
           "validationSummary": "Fix the highlighted dimensions before creating the box.",
           "updateValidationSummary": "Fix the highlighted dimensions before updating the box.",
           "staleRevision": "The document changed while this box was being edited. Review the current model and try again.",
@@ -431,14 +488,20 @@
         },
         "cylinder": {
           "title": "Create cylinder",
-          "description": "Create a cylindrical solid with dimensions driven by literals or document variables.",
+          "description": "Create a cylindrical solid with explicit dimensions and an axis placement origin.",
           "editTitle": "Edit cylinder",
-          "editDescription": "Update this Cylinder while preserving its identity, label, and variable expressions.",
-          "dimensions": "Required dimensions",
+          "editDescription": "Update this Cylinder's dimensions and placement while preserving its identity and authored expressions.",
+          "parameters": "Cylinder definition",
+          "dimensions": "Dimensions",
           "radius": "Radius",
           "height": "Height",
-          "centered": "Center on the origin",
+          "placement": "Axis placement origin",
+          "originX": "Origin X",
+          "originY": "Origin Y",
+          "originZ": "Origin Z",
+          "centered": "Center height about placement origin",
           "expressionDescription": "Enter a positive length with a supported unit, a unitless value in project units, or a variable such as #radius.",
+          "positionDescription": "Enter a signed coordinate with a supported unit, a unitless value in project units, or a variable such as #offset.",
           "create": "Create cylinder",
           "update": "Update cylinder",
           "cancel": "Cancel",
@@ -446,11 +509,39 @@
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
           "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
+          "invalidPositionRange": "Enter a coordinate from -100,000 mm to 100,000 mm.",
           "validationSummary": "Fix the highlighted dimensions before creating the cylinder.",
           "updateValidationSummary": "Fix the highlighted dimensions before updating the cylinder.",
           "staleRevision": "The document changed while this cylinder was being edited. Review the current model and try again.",
           "createFailed": "The cylinder could not be created. Your parameter values are preserved.",
           "updateFailed": "The cylinder could not be updated. Your parameter values are preserved."
+        },
+        "datumPlane": {
+          "title": "Create datum plane",
+          "description": "Create a reusable sketch support at a signed offset from an origin plane or the selected planar model face.",
+          "editTitle": "Edit datum plane",
+          "editDescription": "Update the signed offset while preserving the plane identity and dependent sketches.",
+          "parameters": "Plane definition",
+          "support": "Support",
+          "supportDescription": "Select a planar face before starting this command, or choose an origin plane here.",
+          "selectedFace": "Selected model face",
+          "planeXy": "XY plane",
+          "planeXz": "XZ plane",
+          "planeYz": "YZ plane",
+          "offset": "Offset",
+          "expressionDescription": "Enter a positive, zero, or negative length with a supported unit, or use a variable such as #planeOffset.",
+          "create": "Create datum plane",
+          "update": "Update datum plane",
+          "cancel": "Cancel",
+          "featureLabel": "Datum plane {number}",
+          "invalidExpression": "Enter a valid expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to a length.",
+          "invalidRange": "Enter an offset between -1,000,000 mm and 1,000,000 mm.",
+          "validationSummary": "Fix the highlighted offset before creating the datum plane.",
+          "updateValidationSummary": "Fix the highlighted offset before updating the datum plane.",
+          "staleRevision": "The document changed while this datum plane was being edited. Review the current model and try again.",
+          "createFailed": "The datum plane could not be created. Your parameter values are preserved.",
+          "updateFailed": "The datum plane could not be updated. Your parameter values are preserved."
         },
         "boolean": {
           "title": "Subtract solids",
@@ -508,26 +599,29 @@
         "sketch": {
           "taskAriaLabel": "Sketch task panel",
           "workspaceTitle": "Sketch workspace",
-          "workspaceDescription": "Create and constrain points, lines, rectangles, circles, and arcs on an origin plane. Sketches are solved locally and can use document variables.",
-          "savedDescription": "Saved on the {plane} origin plane. Edit its geometry and constraints or select a closed profile for a downstream feature.",
+          "workspaceDescription": "Create and constrain points, lines, rectangles, circles, ellipses, and arcs on an origin plane or supported planar model face. Sketches are solved locally and can use document variables.",
+          "savedDescription": "Saved on its support plane. Edit its geometry and constraints or select a closed profile for a downstream feature.",
           "title": "Create sketch",
           "description": "Create analytical geometry, apply design intent, and finish one or more closed profiles.",
           "editTitle": "Edit sketch",
           "editDescription": "Update geometry, constraints, dimensions, or the empty sketch support plane while preserving stable identities.",
           "dimensions": "Sketch definition",
           "plane": "Support plane",
-          "planeDescription": "Choose one of the document origin planes.",
+          "planeDescription": "Choose a document origin plane or a supported planar model face.",
+          "planeFeatureFace": "Selected model face",
           "planeXy": "XY plane",
           "planeXz": "XZ plane",
           "planeYz": "YZ plane",
           "planeSelectionTitle": "Select a sketch plane",
-          "planeSelectionDescription": "Choose an origin plane in the 3D viewport or use the support-plane control below.",
+          "planeSelectionDescription": "Choose an origin plane or a highlighted planar model face in the 3D viewport, or use the origin-plane control below.",
           "startSketch": "Start sketch",
           "geometry": "Geometry tools",
           "select": "Select",
           "line": "Line",
           "rectangle": "Rectangle",
           "circle": "Circle",
+          "ellipse": "Ellipse",
+          "ellipticalArc": "Elliptical arc",
           "arc": "Center-point arc",
           "construction": "Construction geometry",
           "undo": "Undo",
@@ -556,13 +650,16 @@
           "pointOnCurve": "Point on curve",
           "dimension": "Dimension type",
           "dimensionExpression": "Driving expression",
-          "dimensionInvalid": "Enter a positive length or a valid angle expression using available variables.",
+          "dimensionInvalid": "Enter a positive length, a nonzero signed offset, or a valid angle expression using available variables.",
           "distance": "Distance",
           "horizontalDistance": "Horizontal distance",
+          "offset": "Offset",
           "verticalDistance": "Vertical distance",
           "angle": "Angle",
           "radius": "Radius",
           "diameter": "Diameter",
+          "primaryAxisDiameter": "Primary axis diameter",
+          "secondaryAxisDiameter": "Secondary axis diameter",
           "profiles": "Closed profiles",
           "profile": "Profile {number}",
           "width": "Width",
@@ -602,19 +699,25 @@
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",
         "fit": "Fit view",
+        "hidePlane": "Hide {plane}",
         "loadFailed": "The local document could not be opened.",
         "loading": "Opening the local document and geometry engine…",
         "orientation": "{plane} · {unit}",
+        "originPlanes": "Origin plane visibility",
         "planeXy": "XY plane",
         "planeXz": "XZ plane",
         "planeYz": "YZ plane",
-        "selectSketchPlane": "Select an origin plane to start the sketch.",
+        "selectSketchPlane": "Select an origin plane or supported planar model face to start the sketch.",
         "selectedSketchPlane": "Current choice: {plane}",
         "preselectedSketchPlane": "Click to sketch on {plane}",
         "previewFailed": "The unsaved extrusion could not be previewed. Adjust its parameters or target.",
         "previewLoading": "Rebuilding unsaved extrusion preview…",
         "previewReady": "Unsaved extrusion preview",
+        "datumPreviewFailed": "The unsaved datum plane could not be previewed. Adjust its support or offset.",
+        "datumPreviewLoading": "Rebuilding unsaved datum plane preview…",
+        "datumPreviewReady": "Unsaved datum plane preview",
         "rebuildFailed": "The saved model could not be rebuilt. Its semantic revision is still available.",
+        "showPlane": "Show {plane}",
         "title": "3D viewport",
         "worldAxes": "World axes",
         "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
@@ -641,8 +744,61 @@
         "precisionTools": "Sketch precision tools",
         "dimensionTool": "Add drawing dimension",
         "editDimension": "Edit dimension {label}",
+        "mirrorSelectAxis": "Select a mirror line, then select geometry to mirror.",
+        "mirrorSelectAxisForSelection": "Select a mirror line for the selected geometry.",
+        "mirrorSelectSources": "Select geometry to mirror. Press Escape when finished.",
+        "offsetSelectSource": "Select a line or connected line chain to offset.",
+        "offsetSetDistance": "Move the pointer to set the signed offset, then click.",
+        "linearPatternSelectGeometry": "Select sketch geometry to pattern.",
+        "linearPatternAdjust": "Set count, spacing, and angle for one or two directions. Enter or empty space applies; Escape cancels.",
+        "circularPatternSelectGeometry": "Select sketch geometry to pattern around a center.",
+        "circularPatternAdjust": "Set the center, count, and closed or open sweep. Enter or empty space applies; Escape cancels.",
+        "transformSelectGeometry": "Select sketch geometry to transform.",
+        "transformAdjust": "Drag to move, rotate, or scale; drag the dashed origin ring to relocate the pivot. Arrow keys move; [ and ] rotate; - and = scale. Exact fields accept units and #variables. Enter or empty space applies; Escape cancels.",
+        "transformMove": "Move selection",
+        "transformMoveX": "Move selection horizontally",
+        "transformMoveY": "Move selection vertically",
+        "transformOrigin": "Move transform origin",
+        "transformRotate": "Rotate selection",
+        "transformScale": "Scale selection uniformly",
         "selectConstraint": "Select constraint {label}",
         "orientation": "{plane} · {unit}"
+      },
+      "transform": {
+        "title": "Precise transform",
+        "originX": "Origin X",
+        "originY": "Origin Y",
+        "translationX": "Translation X",
+        "translationY": "Translation Y",
+        "rotation": "Rotation",
+        "scale": "Scale",
+        "invalid": "Enter valid length, angle, and positive scalar expressions.",
+        "apply": "Apply transform",
+        "cancel": "Cancel"
+      },
+      "linearPattern": {
+        "title": "Linear pattern",
+        "firstCount": "First count",
+        "firstSpacing": "First spacing",
+        "firstAngle": "First angle",
+        "secondDirection": "Add second direction",
+        "secondCount": "Second count",
+        "secondSpacing": "Second spacing",
+        "secondAngle": "Second angle",
+        "invalid": "Enter valid counts, positive spacing, and angle expressions. A pattern supports at most 100 total instances.",
+        "apply": "Apply linear pattern",
+        "cancel": "Cancel"
+      },
+      "circularPattern": {
+        "title": "Circular pattern",
+        "centerX": "Center X",
+        "centerY": "Center Y",
+        "count": "Instance count",
+        "closed": "Closed 360° pattern",
+        "angle": "Open sweep angle",
+        "invalid": "Enter a valid center, a count from 2 to 100, and an open angle between 0° and 360°.",
+        "apply": "Apply circular pattern",
+        "cancel": "Cancel"
       }
     },
     "variables": {

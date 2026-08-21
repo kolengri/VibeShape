@@ -208,6 +208,8 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 |---|---|
 | [Onshape user interface basics](https://cad.onshape.com/help/Content/Home/user_interface_basics.htm) | Stable Part Studio graphics area, feature list, workflow-specific toolbars, grouped overflow, explicit dialogs, selection, undo/redo, and error indicators |
 | [Onshape sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm) | Sketch toolbar activation, grouped and last-used tools, shortcut toolbar, `Escape`, constraint visibility, and the transition from a valid open sketch into Extrude or Revolve |
+| [Onshape Linear Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_linear_pattern.htm) | One/two-direction counts, spacing, angle controls, acceptance grammar, and preview cap |
+| [Onshape Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm) | Open/closed angle behavior and relocatable pattern center |
 | [Onshape Automatic Inferencing](https://cad.onshape.com/help/Content/Sketch/automatic_inferencing.htm) | Persistent automatic constraints, common horizontal/vertical/midpoint/parallel/coincident candidates, reference wake-up behavior, and temporary Shift suppression |
 | [Onshape Midpoint Line](https://cad.onshape.com/help/Content/Sketch/midpoint_line.htm) | Midpoint-first symmetric segment authoring and persistent midpoint relation |
 | [Onshape Center Point Rectangle](https://cad.onshape.com/help/Content/Sketch/center_point_rectangle.htm) | Center-first symmetric rectangle workflow and construction diagonals |
@@ -215,6 +217,8 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 | [Autodesk Inventor 2026 rectangle tools](https://help.autodesk.com/cloudhelp/2026/ENU/Inventor-Help/files/GUID-D489CE6D-7299-4211-A43A-F3580A4BA357.htm) | Three-point center rectangle interaction: center, direction/half-length, and adjacent half-width |
 | [Onshape 3 Point Circle](https://cad.onshape.com/help/Content/Sketch/3_point_circle.htm) | Exact circle placement through three circumference points |
 | [Onshape Center Point Arc](https://cad.onshape.com/help/Content/Sketch/center_point_arc.htm) | Center, start, and endpoint arc workflow |
+| [Onshape Ellipse](https://cad.onshape.com/help/Content/Sketch/ellipse.htm) | Center, primary-axis radius, secondary-axis radius, and post-creation primary then secondary axis diameter entry |
+| [Onshape Elliptical Arc](https://cad.onshape.com/help/Content/Sketch/elliptical_arc.htm) | Center, primary-axis radius, secondary-radius/start point, temporary construction ellipse, endpoint, and quadrant snapping workflow |
 | [Onshape Tangent Arc](https://cad.onshape.com/help/Content/Sketch/arc_tangent.htm) | Line-endpoint continuation, tangent intent, `Shift+A`, and return to Line after completion |
 | [Onshape Slot](https://cad.onshape.com/help/Content/Sketch/slot.htm) | Selection-first or tool-first slot creation around sketch curves, explicit width control, and chain-selection follow-up behavior |
 | [Onshape dialogs](https://cad.onshape.com/help/Content/Home/dialogs.htm) | Distinct selection and keyboard-input fields plus feature editing in historical context |

@@ -13,6 +13,7 @@ import {
   type NativeSketchSolverModule,
   SKETCH_SOLVER_ABI,
   SOLVESPACE_CONSTRAINT_TYPE,
+  SOLVESPACE_ENTITY_TYPE,
 } from "./abi"
 import { compileSketchSystem, solveSketchRecord } from "./production"
 
@@ -27,6 +28,24 @@ const fixedId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-00000000
 const variableId = variableIdSchema.parse("018f0000-0000-7000-8000-000000000009")
 const midpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000010")
 const symmetricId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000011")
+const pointC = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000012")
+const pointD = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000013")
+const offsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000014")
+const offsetId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000015")
+const secondSourceLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000016")
+const secondOffsetLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000017")
+const ellipseCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000018")
+const ellipsePrimaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000019")
+const ellipseSecondaryId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000020")
+const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000021")
+const ellipticalArcStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000022")
+const ellipticalArcEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000023")
+const ellipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000024")
+const primaryAxisDiameterId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000025")
+const secondaryAxisDiameterId = sketchConstraintIdSchema.parse(
+  "018f0000-0000-7000-8000-000000000026",
+)
+const secondEllipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000027")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -37,12 +56,38 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
     entities: [
       { schemaVersion: 0, id: pointA, type: "point", x: 1, y: 2, construction: false },
       { schemaVersion: 0, id: pointB, type: "point", x: 11, y: 2, construction: false },
+      { schemaVersion: 0, id: pointC, type: "point", x: 1, y: 7, construction: false },
+      { schemaVersion: 0, id: pointD, type: "point", x: 11, y: 7, construction: false },
+      {
+        schemaVersion: 0,
+        id: offsetLineId,
+        type: "line",
+        startPointId: pointC,
+        endPointId: pointD,
+        construction: false,
+      },
       {
         schemaVersion: 0,
         id: lineId,
         type: "line",
         startPointId: pointA,
         endPointId: pointB,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondSourceLineId,
+        type: "line",
+        startPointId: pointB,
+        endPointId: pointD,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondOffsetLineId,
+        type: "line",
+        startPointId: pointC,
+        endPointId: pointA,
         construction: false,
       },
       {
@@ -80,7 +125,130 @@ function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
         lineId,
       },
       { schemaVersion: 0, id: fixedId, type: "fixed", pointId: pointA },
+      {
+        schemaVersion: 0,
+        id: offsetId,
+        type: "offset",
+        endpointPairs: [],
+        linePairs: [
+          { sourceLineId: lineId, offsetLineId, distanceScale: 1 },
+          {
+            sourceLineId: secondSourceLineId,
+            offsetLineId: secondOffsetLineId,
+            distanceScale: -1,
+          },
+        ],
+        value: createLengthQuantity(-5),
+      },
     ],
+  })
+}
+
+function ellipseSketch() {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Ellipse solver fixture",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: ellipseCenterId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipsePrimaryId,
+        type: "point",
+        x: 10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseSecondaryId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseId,
+        type: "ellipse",
+        centerPointId: ellipseCenterId,
+        primaryAxisPointId: ellipsePrimaryId,
+        secondaryAxisPointId: ellipseSecondaryId,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  })
+}
+
+function ellipticalArcSketch() {
+  return sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Elliptical arc solver fixture",
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: ellipseCenterId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipsePrimaryId,
+        type: "point",
+        x: 10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipseSecondaryId,
+        type: "point",
+        x: 0,
+        y: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcStartId,
+        type: "point",
+        x: 6,
+        y: 4,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcEndId,
+        type: "point",
+        x: -10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcId,
+        type: "elliptical-arc",
+        centerPointId: ellipseCenterId,
+        primaryAxisPointId: ellipsePrimaryId,
+        secondaryAxisPointId: ellipseSecondaryId,
+        startPointId: ellipticalArcStartId,
+        endPointId: ellipticalArcEndId,
+        construction: false,
+      },
+    ],
+    constraints: [],
   })
 }
 
@@ -117,6 +285,153 @@ function createModule(
 }
 
 describe("production sketch compilation", () => {
+  test("compiles an ellipse as perpendicular solver-owned axis lines", () => {
+    const result = compileSketchSystem({ revision: 4, sketch: ellipseSketch(), variables: [] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      2,
+    )
+    expect(constraintTypes).toEqual([SOLVESPACE_CONSTRAINT_TYPE.perpendicular])
+    expect(constraintValues).toEqual(new Float64Array([0]))
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
+  test("compiles primary and secondary ellipse diameters as axis radii", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: primaryAxisDiameterId,
+            type: "primary-axis-diameter",
+            curveId: ellipseId,
+            value: createLengthQuantity(30),
+          },
+          {
+            schemaVersion: 0,
+            id: secondaryAxisDiameterId,
+            type: "secondary-axis-diameter",
+            curveId: ellipseId,
+            value: createLengthQuantity(12),
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance,
+      SOLVESPACE_CONSTRAINT_TYPE.pointPointDistance,
+    ])
+    expect(constraintValues).toEqual(new Float64Array([0, 15, 6]))
+    expect(Array.from(result.compiled.bindings.constraintIdsByHandle.values())).toEqual([
+      primaryAxisDiameterId,
+      secondaryAxisDiameterId,
+    ])
+  })
+
+  test("compiles exact elliptical-arc endpoint loci through solver-owned trammels", () => {
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: ellipticalArcSketch(),
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords, parameterValues } =
+      result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      6,
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.pointIn2d)).toHaveLength(9)
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+    ])
+    expect(parameterValues).toHaveLength(25)
+    expect(result.compiled.bindings.pointParameters.size).toBe(5)
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
+  test("shares solver-owned ellipse axes and endpoint loci across complementary arcs", () => {
+    const fixture = ellipticalArcSketch()
+    const source = fixture.entities.find((entity) => entity.type === "elliptical-arc")
+    if (!source) throw new Error("The fixture requires one elliptical arc.")
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            ...source,
+            id: secondEllipticalArcId,
+            startPointId: source.endPointId,
+            endPointId: source.startPointId,
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintValues, entityRecords, parameterValues } = result.compiled.system
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      6,
+    )
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.pointIn2d)).toHaveLength(9)
+    expect(constraintValues).toHaveLength(11)
+    expect(parameterValues).toHaveLength(25)
+    expect(result.compiled.bindings.constraintIdsByHandle.size).toBe(0)
+  })
+
   test("maps semantic records and resolved dimensions to the private flat ABI", () => {
     const result = compileSketchSystem({ revision: 4, sketch: sketch(), variables })
     expect(result.ok).toBe(true)
@@ -138,8 +453,12 @@ describe("production sketch compilation", () => {
       SOLVESPACE_CONSTRAINT_TYPE.atMidpoint,
       SOLVESPACE_CONSTRAINT_TYPE.symmetricLine,
       SOLVESPACE_CONSTRAINT_TYPE.whereDragged,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointLineDistance,
     ])
-    expect(constraintValues).toEqual(new Float64Array([25, 8, 0, 0, 0]))
+    expect(constraintValues).toEqual(new Float64Array([25, 8, 0, 0, 0, 0, 5, 0, -5]))
     expect(entityTypes).toContain(80_000)
     expect(entityTypes).toContain(80_001)
     expect(result.compiled.system.solveGroup).toBe(2)

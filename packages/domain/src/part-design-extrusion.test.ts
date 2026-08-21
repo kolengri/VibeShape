@@ -94,6 +94,37 @@ describe("selector-backed extrusion feature", () => {
     ).toMatchObject({ ok: true })
   })
 
+  it("accepts one stable face-support dependency for a new-body extrusion", () => {
+    const supportFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
+    const reference = {
+      schemaVersion: 0 as const,
+      featureId: supportFeatureId,
+      kind: "face" as const,
+      semanticRole: "extrusion.cap.end",
+      signature: {
+        kind: "face" as const,
+        geometryClass: "PLANE",
+        measure: 400,
+        centroid: [0, 0, 10] as [number, number, number],
+        bounds: {
+          min: [-10, -10, 10] as [number, number, number],
+          max: [10, 10, 10] as [number, number, number],
+        },
+        direction: [0, 0, 1] as [number, number, number],
+        directionMode: "oriented" as const,
+        boundaryCount: 4,
+        adjacentGeometryClasses: ["PLANE"],
+      },
+    }
+    const supported = featureRecordSchema.parse({
+      ...extrusion(),
+      dependencies: [supportFeatureId],
+      references: [reference],
+    })
+
+    expect(registry().validateFeature(supported)).toMatchObject({ ok: true })
+  })
+
   it("resolves distance expressions while retaining the authored selector", () => {
     const variables = evaluateVariableDefinitions([
       {
