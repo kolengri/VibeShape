@@ -15,6 +15,7 @@ import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import { useState } from "react"
 import {
   type DocumentControllerState,
+  removeSketch,
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
@@ -276,6 +277,8 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onSketchActivate={actions.editSketch}
+      onSketchDeleted={actions.closeTool}
+      onSketchRemove={removeSketch}
       onSketchRename={updateSketch}
       onSketchVisibilityChange={actions.setSketchVisibility}
       onWorkspaceChange={actions.switchWorkspace}

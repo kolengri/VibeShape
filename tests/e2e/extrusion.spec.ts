@@ -151,4 +151,38 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
   })
+
+  test("starts a sketch from an extrusion cap during support selection", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("form", { name: "Extrude profile" })
+      .getByRole("button", { name: "Create extrusion" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await expect(viewport).toHaveAttribute("data-origin-plane-selection", /xy|xz|yz/)
+
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.3 } })
+
+    const support = page.getByRole("combobox", { name: "Support plane" })
+    await expect(support).toHaveValue("feature-face")
+    await expect(support).toBeDisabled()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+  })
 })

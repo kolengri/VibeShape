@@ -831,9 +831,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
     if (this.#originPlaneSelection) {
-      const plane = this.#pickOriginPlane(event)
+      const modelSelection = this.#pick(event)
+      const plane = modelSelection ? null : this.#pickOriginPlane(event)
       this.#setOriginPlanePreselection(plane)
-      this.#setPreselection(plane ? null : this.#pick(event))
+      this.#setPreselection(modelSelection)
       return
     }
     this.#setPreselection(this.#pick(event))
@@ -846,12 +847,13 @@ class ThreeGeometryViewport implements GeometryViewport {
     const movement = Math.hypot(event.clientX - start.x, event.clientY - start.y)
     if (movement > 3) return
     if (this.#originPlaneSelection) {
-      const plane = this.#pickOriginPlane(event)
-      if (plane) {
-        this.#onOriginPlaneSelectionChange(plane)
-      } else {
-        this.#setSelection(this.#pick(event))
+      const modelSelection = this.#pick(event)
+      if (modelSelection) {
+        this.#setSelection(modelSelection)
+        return
       }
+      const plane = this.#pickOriginPlane(event)
+      if (plane) this.#onOriginPlaneSelectionChange(plane)
       return
     }
     this.#setSelection(this.#pick(event))
