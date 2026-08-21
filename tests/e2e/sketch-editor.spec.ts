@@ -9,6 +9,55 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("keeps the same 3D canvas as passive context while editing a sketch", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    const canvas = viewport.locator("canvas")
+    await canvas.evaluate((element) => {
+      element.dataset.testViewportIdentity = "persistent"
+    })
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+
+    const passiveViewport = page.locator("section[data-passive='true']")
+    await expect(passiveViewport).toHaveAttribute("aria-hidden", "true")
+    await expect(passiveViewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(passiveViewport.locator("canvas")).toHaveAttribute(
+      "data-test-viewport-identity",
+      "persistent",
+    )
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    const restoredViewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(restoredViewport.locator("canvas")).toHaveAttribute(
+      "data-test-viewport-identity",
+      "persistent",
+    )
+    await expect(restoredViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+  })
+
   test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -30,7 +79,11 @@ test.describe("full sketch editor", () => {
       throw new Error("Sketch task-panel actions are not visible.")
     }
 
-    expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(1)
+    expect(cancelBounds.y + cancelBounds.height).toBeLessThanOrEqual(finishBounds.y)
+    expect(cancelBounds.x).toBeGreaterThanOrEqual(panelBounds.x)
+    expect(finishBounds.x + finishBounds.width).toBeLessThanOrEqual(
+      panelBounds.x + panelBounds.width,
+    )
     expect(
       panelBounds.y + panelBounds.height - (finishBounds.y + finishBounds.height),
     ).toBeLessThanOrEqual(20)

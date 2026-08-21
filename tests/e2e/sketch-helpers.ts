@@ -18,8 +18,15 @@ export async function selectSketchTool(page: Page, family: string, tool: string 
 }
 
 export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" = "xy") {
-  await page.getByRole("combobox", { name: "Support plane" }).selectOption(plane)
-  await page.getByRole("button", { name: "Start sketch" }).click()
+  const planeLabels = {
+    xy: "XY plane",
+    xz: "XZ plane",
+    yz: "YZ plane",
+  } as const
+  await page
+    .getByRole("complementary", { name: "Sketch task panel" })
+    .getByRole("button", { name: planeLabels[plane], exact: true })
+    .click()
   await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
 }
 

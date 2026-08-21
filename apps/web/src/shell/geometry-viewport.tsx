@@ -1,6 +1,7 @@
 import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { cn } from "@vibeshape/ui/lib/cn"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -472,6 +473,7 @@ type GeometryViewportProps = Readonly<{
   selectedFeatureId?: string | null
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
+  passive?: boolean
 }>
 
 function viewerFeatureMesh(
@@ -702,7 +704,7 @@ function WorldAxesLegend() {
 }
 
 export function GeometryViewport(props: GeometryViewportProps) {
-  const { featurePreview, originPlaneSelection, selection } = props
+  const { featurePreview, originPlaneSelection, passive = false, selection } = props
   const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
   const {
@@ -720,7 +722,12 @@ export function GeometryViewport(props: GeometryViewportProps) {
   return (
     <section
       aria-label={t("ariaLabel")}
-      className="relative min-h-0 overflow-hidden bg-viewport-background"
+      aria-hidden={passive ? true : undefined}
+      className={cn(
+        "relative min-h-0 overflow-hidden bg-viewport-background",
+        passive && "pointer-events-none",
+      )}
+      data-passive={passive ? "true" : undefined}
       data-rendered-feature-count={meshes.length}
       data-rendered-sketch-count={sketches.length}
       data-preview-feature-count={
@@ -735,26 +742,33 @@ export function GeometryViewport(props: GeometryViewportProps) {
         .filter((plane) => originPlaneVisibility[plane])
         .join(",")}
     >
-      <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
-      <ViewportMessage message={message} title={t("title")} />
-      <PreviewStatus preview={featurePreview} />
-      <ViewportControlsSlot
-        meshes={meshes}
-        sketches={sketches}
-        originPlaneSelection={originPlaneSelection}
-        originPlaneVisibility={originPlaneVisibility}
-        onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
-        selection={selection}
-        viewportRef={viewportRef}
+      <canvas
+        ref={canvasRef}
+        className={cn("absolute inset-0 size-full touch-none", passive && "pointer-events-none")}
       />
-      <OriginPlaneSelectionOverlay
-        preselectedPlane={originPlanePreselection}
-        selection={originPlaneSelection}
-      />
-      <WorldAxesLegend />
-      <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
-        {t("orientation", { plane: "XYZ", unit: displayUnits.length })}
-      </div>
+      {!passive ? (
+        <>
+          <ViewportMessage message={message} title={t("title")} />
+          <PreviewStatus preview={featurePreview} />
+          <ViewportControlsSlot
+            meshes={meshes}
+            sketches={sketches}
+            originPlaneSelection={originPlaneSelection}
+            originPlaneVisibility={originPlaneVisibility}
+            onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
+            selection={selection}
+            viewportRef={viewportRef}
+          />
+          <OriginPlaneSelectionOverlay
+            preselectedPlane={originPlanePreselection}
+            selection={originPlaneSelection}
+          />
+          <WorldAxesLegend />
+          <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
+            {t("orientation", { plane: "XYZ", unit: displayUnits.length })}
+          </div>
+        </>
+      ) : null}
     </section>
   )
 }
