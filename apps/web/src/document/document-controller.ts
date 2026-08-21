@@ -33,6 +33,7 @@ import {
   sessionIdSchema,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
   sketchIdSchema,
   type VariableDefinition,
   type VariableId,
@@ -310,6 +311,10 @@ export function createBrowserSketchId(): SketchId {
 
 export function createBrowserSketchEntityId(): SketchEntityId {
   return sketchEntityIdSchema.parse(browserUuidV7())
+}
+
+export function createBrowserSketchExternalReferenceId() {
+  return sketchExternalReferenceIdSchema.parse(browserUuidV7())
 }
 
 export function createBrowserSketchConstraintId(): SketchConstraintId {

@@ -7,6 +7,7 @@ const sha256Pattern = /^[0-9a-f]{64}$/
 export const sketchWireIdSchema = z.string().regex(uuidV7Pattern)
 const sketchEntityIdSchema = z.string().regex(uuidV7Pattern)
 const sketchConstraintIdSchema = z.string().regex(uuidV7Pattern)
+const sketchExternalReferenceIdSchema = z.string().regex(uuidV7Pattern)
 const revisionSchema = z.number().int().nonnegative().safe()
 const featureIdSchema = z.string().regex(uuidV7Pattern)
 const coordinateSchema = z.number().finite().min(-1_000_000).max(1_000_000)
@@ -350,6 +351,16 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
     .strict(),
 ])
 
+const externalPointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    sourceSketchId: sketchWireIdSchema,
+    sourcePointId: sketchEntityIdSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
 type WireEntity = z.infer<typeof sketchEntitySchema>
 
 function entityIs(entities: ReadonlyMap<string, WireEntity>, id: string, types: readonly string[]) {
@@ -424,6 +435,7 @@ const wireConstraintEntityReferenceRules = {
 type SketchWireStructure = Readonly<{
   constraints: readonly SketchWireConstraint[]
   entities: readonly WireEntity[]
+  externalReferences?: readonly z.infer<typeof externalPointReferenceWireSchema>[] | undefined
 }>
 
 function indexWireEntities(sketch: SketchWireStructure, context: z.RefinementCtx) {
@@ -538,8 +550,55 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
     Number(sketch.constraints.some(({ type }) => type === "horizontal-distance")) +
     Number(sketch.constraints.some(({ type }) => type === "vertical-distance"))
   return {
-    entities: authored.entities + projectionCount * 3,
-    parameters: authored.parameters + projectionCount * 4,
+    entities: authored.entities + (sketch.externalReferences?.length ?? 0) + projectionCount * 3,
+    parameters:
+      authored.parameters + (sketch.externalReferences?.length ?? 0) * 2 + projectionCount * 4,
+  }
+}
+
+function wireConstraintEntitiesWithExternalPoints(
+  sketch: SketchWireStructure,
+  entities: ReadonlyMap<string, WireEntity>,
+) {
+  const constraintEntities = new Map(entities)
+  for (const reference of sketch.externalReferences ?? []) {
+    constraintEntities.set(reference.projectedPointId, {
+      schemaVersion: 0,
+      id: reference.projectedPointId,
+      type: "point",
+      construction: true,
+      x: 0,
+      y: 0,
+    })
+  }
+  return constraintEntities
+}
+
+function validateWireExternalReferenceIds(sketch: SketchWireStructure, context: z.RefinementCtx) {
+  const entityIds = new Set(sketch.entities.map((entity) => entity.id))
+  const referenceIds = new Set<string>()
+  const projectedPointIds = new Set<string>()
+  for (const [index, reference] of (sketch.externalReferences ?? []).entries()) {
+    if (referenceIds.has(reference.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalReferences", index, "id"],
+        message: "External sketch reference IDs must be unique.",
+      })
+    }
+    if (
+      projectedPointIds.has(reference.projectedPointId) ||
+      entityIds.has(reference.projectedPointId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalReferences", index, "projectedPointId"],
+        message:
+          "Projected external point IDs must be unique and cannot collide with sketch entities.",
+      })
+    }
+    referenceIds.add(reference.id)
+    projectedPointIds.add(reference.projectedPointId)
   }
 }
 
@@ -548,6 +607,8 @@ function validateWireConstraintTable(
   entities: ReadonlyMap<string, WireEntity>,
   context: z.RefinementCtx,
 ) {
+  const constraintEntities = wireConstraintEntitiesWithExternalPoints(sketch, entities)
+  validateWireExternalReferenceIds(sketch, context)
   const constraintIds = new Set<string>()
   for (const [index, constraint] of sketch.constraints.entries()) {
     if (constraintIds.has(constraint.id)) {
@@ -558,7 +619,7 @@ function validateWireConstraintTable(
       })
     }
     constraintIds.add(constraint.id)
-    if (wireConstraintReferencesAreValid(constraint, entities)) continue
+    if (wireConstraintReferencesAreValid(constraint, constraintEntities)) continue
     context.addIssue({
       code: "custom",
       path: ["constraints", index],
@@ -604,6 +665,7 @@ export const sketchWireRecordSchema = z
     support: sketchFeatureFaceSupportWireSchema.optional(),
     entities: z.array(sketchEntitySchema).max(4_990),
     constraints: z.array(sketchConstraintSchema).max(10_000),
+    externalReferences: z.array(externalPointReferenceWireSchema).max(4_990).optional(),
   })
   .strict()
   .superRefine((sketch, context) => {

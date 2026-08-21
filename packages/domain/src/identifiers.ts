@@ -18,6 +18,7 @@ export const draftIdSchema = createUuidV7Schema("DraftId")
 export const featureIdSchema = createUuidV7Schema("FeatureId")
 export const sketchConstraintIdSchema = createUuidV7Schema("SketchConstraintId")
 export const sketchEntityIdSchema = createUuidV7Schema("SketchEntityId")
+export const sketchExternalReferenceIdSchema = createUuidV7Schema("SketchExternalReferenceId")
 export const sketchIdSchema = createUuidV7Schema("SketchId")
 export const sessionIdSchema = createUuidV7Schema("SessionId")
 export const variableIdSchema = createUuidV7Schema("VariableId")
@@ -44,6 +45,7 @@ export type ModuleId = z.infer<typeof moduleIdSchema>
 export type SessionId = z.infer<typeof sessionIdSchema>
 export type SketchConstraintId = z.infer<typeof sketchConstraintIdSchema>
 export type SketchEntityId = z.infer<typeof sketchEntityIdSchema>
+export type SketchExternalReferenceId = z.infer<typeof sketchExternalReferenceIdSchema>
 export type SketchId = z.infer<typeof sketchIdSchema>
 export type VariableId = z.infer<typeof variableIdSchema>
 

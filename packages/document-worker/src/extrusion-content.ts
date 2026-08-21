@@ -20,6 +20,7 @@ import {
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
 import type { SketchSolvePort } from "./runtime"
+import { resolveExternalSketchPoints } from "./external-sketch-references"
 import { datumPlaneFrame, type SupportFrame, sketchFrame } from "./support-frame"
 
 const TWO_PI = Math.PI * 2
@@ -233,14 +234,16 @@ export function solveSketchOnce(
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
-  const pending = Promise.resolve(
-    solveSketch({
-      sketch,
-      variables: [...document.variables],
-      revision: document.revision,
-      continuation: null,
-      draggedPoints: [],
-    }),
+  const pending = resolveExternalSketchPoints(document, sketch, solveSketch).then(
+    (externalPoints) =>
+      solveSketch({
+        sketch,
+        variables: [...document.variables],
+        revision: document.revision,
+        continuation: null,
+        draggedPoints: [],
+        externalPoints,
+      }),
   )
   solvedBySketchId.set(sketch.id, pending)
   return pending

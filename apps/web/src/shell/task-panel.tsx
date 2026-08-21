@@ -48,7 +48,10 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
-import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
+import {
+  type ExternalSketchPointCandidate,
+  SketchEditorPanel,
+} from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
   type ActiveSketchTool,
@@ -122,6 +125,10 @@ function useSketchEditorCopy() {
     dimensionInvalid: t("dimensionInvalid"),
     dimensions: t("dimensions"),
     distance: t("distance"),
+    externalReferenceDescription: t("externalReferenceDescription"),
+    externalReferences: t("externalReferences"),
+    attachSelectedPoint: t("attachSelectedPoint"),
+    noExternalReferences: t("noExternalReferences"),
     editConstraint: t("editConstraint"),
     equal: t("equal"),
     extrude: t("extrude"),
@@ -151,6 +158,7 @@ function useSketchEditorCopy() {
     secondaryAxisDiameter: t("secondaryAxisDiameter"),
     symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
+    useExternalPoint: t("useExternalPoint"),
     vertical: t("vertical"),
     verticalDistance: t("verticalDistance"),
   }
@@ -1117,6 +1125,51 @@ function sketchSaveFailureMessage(
   return activeSketchTool.kind === "edit-sketch" ? copy.updateFailed : copy.createFailed
 }
 
+function externalPointCandidates(
+  sketches: readonly SketchRecord[],
+  draft: SketchRecord,
+): readonly ExternalSketchPointCandidate[] {
+  const sketchIndex = sketches.findIndex((sketch) => sketch.id === draft.id)
+  const sourceSketches = sketches.slice(0, sketchIndex >= 0 ? sketchIndex : undefined)
+  return sourceSketches.flatMap((sketch) => externalPointCandidatesForSketch(sketch, draft))
+}
+
+function externalPointCandidatesForSketch(
+  source: SketchRecord,
+  draft: SketchRecord,
+): readonly ExternalSketchPointCandidate[] {
+  if (!isCompatibleExternalPointSource(source, draft)) return []
+  const candidates: ExternalSketchPointCandidate[] = []
+  for (const entity of source.entities) {
+    if (entity.type !== "point") continue
+    candidates.push({
+      label: `${source.label} · Point`,
+      sourcePointId: entity.id,
+      sourceSketchId: source.id,
+    })
+  }
+  return candidates
+}
+
+function isCompatibleExternalPointSource(source: SketchRecord, draft: SketchRecord) {
+  if (!hasMatchingExternalReferencePlane(source, draft)) return false
+  if (!hasMatchingExternalReferenceSupport(source, draft)) return false
+  return hasNoExternalReferenceDependencies(source)
+}
+
+function hasMatchingExternalReferencePlane(source: SketchRecord, draft: SketchRecord) {
+  return source.plane === draft.plane
+}
+
+function hasMatchingExternalReferenceSupport(source: SketchRecord, draft: SketchRecord) {
+  return JSON.stringify(source.support ?? null) === JSON.stringify(draft.support ?? null)
+}
+
+function hasNoExternalReferenceDependencies(sketch: SketchRecord) {
+  if (!sketch.externalReferences) return true
+  return sketch.externalReferences.length === 0
+}
+
 function ActiveSketchTaskPanel({
   actions,
   report,
@@ -1146,6 +1199,7 @@ function ActiveSketchTaskPanel({
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
+  const referenceCandidates = externalPointCandidates(report.snapshot.sketches, draft)
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
@@ -1188,6 +1242,7 @@ function ActiveSketchTaskPanel({
           state={{
             disabled: report.mode === "read-only",
             draft,
+            externalPointCandidates: referenceCandidates,
             extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,

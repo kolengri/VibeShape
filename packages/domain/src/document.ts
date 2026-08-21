@@ -1,7 +1,8 @@
 import { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
-import { type SketchRecord, sketchRecordsSchema } from "./sketch"
+import { type SketchExternalPointReference, type SketchRecord, sketchRecordsSchema } from "./sketch"
 import { angleInputUnitSchema, lengthInputUnitSchema } from "./units"
 import { type VariableDefinition, variableDefinitionsSchema } from "./variables"
 
@@ -26,6 +27,131 @@ export const documentDisplayUnitsSchema = z
 
 export type DocumentDisplayUnits = Readonly<z.infer<typeof documentDisplayUnitsSchema>>
 
+type DocumentReferenceValidationInput = Readonly<{
+  features: readonly FeatureRecord[]
+  sketches: readonly SketchRecord[]
+}>
+
+function addDocumentIssue(context: z.RefinementCtx, path: readonly PropertyKey[], message: string) {
+  context.addIssue({ code: "custom", path: [...path], message })
+}
+
+type ExternalReferenceValidationInput = Readonly<{
+  context: z.RefinementCtx
+  reference: SketchExternalPointReference
+  referenceIndex: number
+  sketch: SketchRecord
+  sketchIndex: number
+  source: SketchRecord
+  sourceIndex: number
+}>
+
+function externalReferencePath(
+  input: Pick<ExternalReferenceValidationInput, "referenceIndex" | "sketchIndex">,
+) {
+  return ["sketches", input.sketchIndex, "externalReferences", input.referenceIndex] as const
+}
+
+function validateExternalReferenceOrder(input: ExternalReferenceValidationInput) {
+  if (input.source.id !== input.sketch.id && input.sourceIndex < input.sketchIndex) return
+  addDocumentIssue(
+    input.context,
+    [...externalReferencePath(input), "sourceSketchId"],
+    "An external sketch reference must reference an earlier sketch.",
+  )
+}
+
+function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {
+  const path = externalReferencePath(input)
+  if ((input.source.externalReferences?.length ?? 0) > 0) {
+    addDocumentIssue(
+      input.context,
+      [...path, "sourceSketchId"],
+      "External sketch references cannot chain in schema version 0.",
+    )
+  }
+  if (
+    input.source.entities.find((entity) => entity.id === input.reference.sourcePointId)?.type ===
+    "point"
+  ) {
+    return
+  }
+  addDocumentIssue(
+    input.context,
+    [...path, "sourcePointId"],
+    "An external sketch reference must target a source point.",
+  )
+}
+
+function validateExternalReferenceSupport(input: ExternalReferenceValidationInput) {
+  if (
+    input.source.plane === input.sketch.plane &&
+    canonicalJson(input.source.support ?? null) === canonicalJson(input.sketch.support ?? null)
+  ) {
+    return
+  }
+  addDocumentIssue(
+    input.context,
+    externalReferencePath(input),
+    "External point references require matching coplanar sketch supports.",
+  )
+}
+
+function validateExternalPointReference(input: {
+  context: z.RefinementCtx
+  reference: SketchExternalPointReference
+  referenceIndex: number
+  sketch: SketchRecord
+  sketchIndex: number
+  source: SketchRecord | undefined
+  sourceIndex: number
+}) {
+  const path = ["sketches", input.sketchIndex, "externalReferences", input.referenceIndex] as const
+  if (!input.source) {
+    addDocumentIssue(
+      input.context,
+      [...path, "sourceSketchId"],
+      "An external sketch reference must reference an existing source sketch.",
+    )
+    return
+  }
+  const resolved = { ...input, source: input.source }
+  validateExternalReferenceOrder(resolved)
+  validateExternalReferenceSource(resolved)
+  validateExternalReferenceSupport(resolved)
+}
+
+function validateDocumentSketchReferences(
+  document: DocumentReferenceValidationInput,
+  context: z.RefinementCtx,
+) {
+  const featureIds = new Set(document.features.map(({ id }) => id))
+  const sketchesById = new Map(document.sketches.map((sketch) => [sketch.id, sketch]))
+  for (const [sketchIndex, sketch] of document.sketches.entries()) {
+    const supportFeatureId = sketch.support?.reference.featureId
+    if (supportFeatureId && !featureIds.has(supportFeatureId)) {
+      addDocumentIssue(
+        context,
+        ["sketches", sketchIndex, "support", "reference", "featureId"],
+        "A sketch support must reference an existing feature.",
+      )
+    }
+    for (const [referenceIndex, reference] of (sketch.externalReferences ?? []).entries()) {
+      validateExternalPointReference({
+        context,
+        reference,
+        referenceIndex,
+        sketch,
+        sketchIndex,
+        source: sketchesById.get(reference.sourceSketchId),
+        sourceIndex: document.sketches.findIndex(
+          (candidate) => candidate.id === reference.sourceSketchId,
+        ),
+      })
+    }
+  }
+}
+
 export const documentSnapshotSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -40,18 +166,7 @@ export const documentSnapshotSchema = z
     updatedAt: timestampSchema,
   })
   .strict()
-  .superRefine((document, context) => {
-    const featureIds = new Set(document.features.map(({ id }) => id))
-    for (const [index, sketch] of document.sketches.entries()) {
-      const supportFeatureId = sketch.support?.reference.featureId
-      if (!supportFeatureId || featureIds.has(supportFeatureId)) continue
-      context.addIssue({
-        code: "custom",
-        path: ["sketches", index, "support", "reference", "featureId"],
-        message: "A sketch support must reference an existing feature.",
-      })
-    }
-  })
+  .superRefine(validateDocumentSketchReferences)
 
 type ParsedDocumentSnapshot = z.infer<typeof documentSnapshotSchema>
 

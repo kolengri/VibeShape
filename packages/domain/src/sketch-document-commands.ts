@@ -11,10 +11,10 @@ import type {
   DocumentEventResult,
   DomainDiagnostic,
 } from "./commands"
-import type { DocumentSnapshot } from "./document"
+import { documentSnapshotSchema, type DocumentSnapshot } from "./document"
 import type { draftIdSchema } from "./identifiers"
 import { readExtrusionFeatureParameters } from "./part-design"
-import { type SketchRecord, sketchRecordSchema, sketchRecordsSchema } from "./sketch"
+import { type SketchRecord, sketchRecordSchema } from "./sketch"
 
 type SketchCommand = Extract<
   DocumentCommand,
@@ -32,6 +32,12 @@ function sketchesEqual(left: SketchRecord, right: SketchRecord) {
   return canonicalJson(left) === canonicalJson(right)
 }
 
+function sketchHasExternalDependents(snapshot: DocumentSnapshot, sketchId: string) {
+  return snapshot.sketches.some((sketch) =>
+    (sketch.externalReferences ?? []).some((reference) => reference.sourceSketchId === sketchId),
+  )
+}
+
 function invalidSketchCollection(error: z.ZodError): DomainDiagnostic {
   return {
     code: "invalid-sketch",
@@ -41,10 +47,10 @@ function invalidSketchCollection(error: z.ZodError): DomainDiagnostic {
   }
 }
 
-function parseSketches(sketches: readonly SketchRecord[]) {
-  const parsed = sketchRecordsSchema.safeParse(sketches)
+function parseSketches(snapshot: DocumentSnapshot, sketches: readonly SketchRecord[]) {
+  const parsed = documentSnapshotSchema.safeParse({ ...snapshot, sketches })
   return parsed.success
-    ? ({ ok: true, sketches: parsed.data } as const)
+    ? ({ ok: true, sketches: parsed.data.sketches } as const)
     : ({ ok: false, diagnostic: invalidSketchCollection(parsed.error) } as const)
 }
 
@@ -65,7 +71,7 @@ function reduceAddedEvent(
       diagnostic: domainDiagnostic("invalid-event", "The added sketch already exists."),
     }
   }
-  const next = parseSketches([...current.snapshot.sketches, event.sketch])
+  const next = parseSketches(current.snapshot, [...current.snapshot.sketches, event.sketch])
   return next.ok
     ? {
         ok: true,
@@ -111,7 +117,7 @@ function reduceUpdatedEvent(
   }
   const sketches = [...current.snapshot.sketches]
   sketches[index] = event.sketch
-  const next = parseSketches(sketches)
+  const next = parseSketches(current.snapshot, sketches)
   return next.ok
     ? {
         ok: true,
@@ -156,6 +162,15 @@ function reduceRemovedEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "A sketch referenced by an extrusion cannot be removed.",
+      ),
+    }
+  }
+  if (sketchHasExternalDependents(current.snapshot, event.sketch.id)) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "A sketch referenced by external sketch geometry cannot be removed.",
       ),
     }
   }
@@ -214,7 +229,10 @@ function createAddedEvent(
       `Sketch ${command.payload.sketch.id} already exists in the document.`,
     )
   }
-  const next = parseSketches([...current.snapshot.sketches, command.payload.sketch])
+  const next = parseSketches(current.snapshot, [
+    ...current.snapshot.sketches,
+    command.payload.sketch,
+  ])
   return next.ok
     ? {
         ...eventEnvelope(command, transactionId),
@@ -250,7 +268,7 @@ function createUpdatedEvent(
   const sketches = current.snapshot.sketches.map((sketch) =>
     sketch.id === command.payload.sketch.id ? command.payload.sketch : sketch,
   )
-  const next = parseSketches(sketches)
+  const next = parseSketches(current.snapshot, sketches)
   return next.ok
     ? {
         ...eventEnvelope(command, transactionId),
@@ -284,6 +302,12 @@ function createRemovedEvent(
     return domainDiagnostic(
       "sketch-in-use",
       `Sketch ${sketch.id} is referenced by an extrusion feature.`,
+    )
+  }
+  if (sketch && sketchHasExternalDependents(current.snapshot, sketch.id)) {
+    return domainDiagnostic(
+      "sketch-in-use",
+      `Sketch ${sketch.id} is referenced by external sketch geometry.`,
     )
   }
   return sketch

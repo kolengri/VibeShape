@@ -2,6 +2,7 @@ import { isString } from "is-what"
 import { z } from "zod"
 import {
   type SketchEntityId,
+  sketchExternalReferenceIdSchema,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
@@ -27,6 +28,20 @@ export const sketchFeatureFaceSupportSchema = z
   .object({
     kind: z.literal("feature-face"),
     reference: planarFaceTopoRefSchema,
+  })
+  .strict()
+
+/**
+ * A read-only point projected from an earlier coplanar sketch. Its coordinates
+ * are resolved at solve time; only stable source and projected identities persist.
+ */
+export const sketchExternalPointReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    sourceSketchId: sketchIdSchema,
+    sourcePointId: sketchEntityIdSchema,
+    projectedPointId: sketchEntityIdSchema,
   })
   .strict()
 
@@ -433,6 +448,7 @@ function validateConstraintReferences(
 type SketchStructure = Readonly<{
   constraints: readonly SketchConstraint[]
   entities: readonly SketchEntity[]
+  externalReferences?: readonly SketchExternalPointReference[] | undefined
 }>
 
 function indexSketchEntities(sketch: SketchStructure, context: z.RefinementCtx) {
@@ -505,8 +521,59 @@ function nativeSketchCapacity(structure: SketchStructure) {
     Number(structure.constraints.some(({ type }) => type === "horizontal-distance")) +
     Number(structure.constraints.some(({ type }) => type === "vertical-distance"))
   return {
-    entities: authored.entities + projectionCount * 3,
-    parameters: authored.parameters + projectionCount * 4,
+    entities: authored.entities + (structure.externalReferences?.length ?? 0) + projectionCount * 3,
+    parameters:
+      authored.parameters + (structure.externalReferences?.length ?? 0) * 2 + projectionCount * 4,
+  }
+}
+
+function constraintEntitiesWithExternalPoints(
+  sketch: SketchStructure,
+  entities: ReadonlyMap<string, SketchEntity>,
+  context: z.RefinementCtx,
+) {
+  const constraintEntities = new Map(entities)
+  for (const reference of sketch.externalReferences ?? []) {
+    if (constraintEntities.has(reference.projectedPointId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalReferences"],
+        message: "Projected external point IDs cannot collide with sketch entity IDs.",
+      })
+      continue
+    }
+    constraintEntities.set(reference.projectedPointId, {
+      schemaVersion: 0,
+      id: reference.projectedPointId,
+      type: "point",
+      x: 0,
+      y: 0,
+      construction: true,
+    })
+  }
+  return constraintEntities
+}
+
+function validateExternalReferenceIds(sketch: SketchStructure, context: z.RefinementCtx) {
+  const externalReferenceIds = new Set<string>()
+  const projectedPointIds = new Set<string>()
+  for (const [index, reference] of (sketch.externalReferences ?? []).entries()) {
+    if (externalReferenceIds.has(reference.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalReferences", index, "id"],
+        message: "External sketch reference IDs must be unique.",
+      })
+    }
+    if (projectedPointIds.has(reference.projectedPointId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalReferences", index, "projectedPointId"],
+        message: "Projected external point IDs must be unique.",
+      })
+    }
+    externalReferenceIds.add(reference.id)
+    projectedPointIds.add(reference.projectedPointId)
   }
 }
 
@@ -515,6 +582,8 @@ function validateSketchConstraintTable(
   entities: ReadonlyMap<string, SketchEntity>,
   context: z.RefinementCtx,
 ) {
+  const constraintEntities = constraintEntitiesWithExternalPoints(sketch, entities, context)
+  validateExternalReferenceIds(sketch, context)
   const constraintIds = new Set<string>()
   for (const [index, constraint] of sketch.constraints.entries()) {
     if (constraintIds.has(constraint.id)) {
@@ -525,7 +594,7 @@ function validateSketchConstraintTable(
       })
     }
     constraintIds.add(constraint.id)
-    if (validateConstraintReferences(constraint, entities)) continue
+    if (validateConstraintReferences(constraint, constraintEntities)) continue
     context.addIssue({
       code: "custom",
       path: ["constraints", index],
@@ -571,6 +640,10 @@ export const sketchRecordSchema = z
     support: sketchFeatureFaceSupportSchema.optional(),
     entities: z.array(sketchEntitySchema).max(MAX_SKETCH_ENTITIES),
     constraints: z.array(sketchConstraintSchema).max(MAX_SKETCH_CONSTRAINTS),
+    externalReferences: z
+      .array(sketchExternalPointReferenceSchema)
+      .max(MAX_SKETCH_ENTITIES)
+      .optional(),
   })
   .strict()
   .superRefine((sketch, context) => {
@@ -600,3 +673,6 @@ export const sketchRecordsSchema = structuralSketchRecordsSchema.superRefine(
 
 export type SketchRecord = Readonly<z.infer<typeof sketchRecordSchema>>
 export type SketchFeatureFaceSupport = Readonly<z.infer<typeof sketchFeatureFaceSupportSchema>>
+export type SketchExternalPointReference = Readonly<
+  z.infer<typeof sketchExternalPointReferenceSchema>
+>

@@ -10,6 +10,7 @@ import {
   type SketchConstraint,
   type SketchEntity,
   type SketchRecord,
+  sketchPointEntitySchema,
   sketchRecordSchema,
 } from "@vibeshape/domain/sketch"
 import {
@@ -78,40 +79,70 @@ const sketchCompilationInputSchema = z
   .object({
     revision: revisionSchema,
     sketch: sketchRecordSchema,
+    externalPoints: z.array(sketchPointEntitySchema).max(4_990).default([]),
     variables: variableDefinitionsSchema.default([]),
     continuation: sketchSolveContinuationSchema.nullable().default(null),
     draggedPoints: z.array(sketchDragTargetSchema).max(128).default([]),
   })
   .strict()
   .superRefine((input, context) => {
-    if (input.continuation?.sketchId !== undefined) {
-      if (input.continuation.sketchId !== input.sketch.id) {
-        context.addIssue({
-          code: "custom",
-          path: ["continuation", "sketchId"],
-          message: "Sketch continuation must match the solved sketch.",
-        })
-      }
-      if (input.continuation.sourceRevision > input.revision) {
-        context.addIssue({
-          code: "custom",
-          path: ["continuation", "sourceRevision"],
-          message: "Sketch continuation cannot come from a future document revision.",
-        })
-      }
-    }
-    const draggedIds = new Set<string>()
-    for (const [index, target] of input.draggedPoints.entries()) {
-      if (draggedIds.has(target.entityId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["draggedPoints", index, "entityId"],
-          message: "Dragged sketch point IDs must be unique.",
-        })
-      }
-      draggedIds.add(target.entityId)
-    }
+    validateContinuation(input, context)
+    validateDraggedPoints(input, context)
+    validateExternalPoints(input, context)
   })
+
+type SketchCompilationSchemaInput = z.infer<typeof sketchCompilationInputSchema>
+
+function validateContinuation(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
+  if (!input.continuation) return
+  if (input.continuation.sketchId !== input.sketch.id) {
+    context.addIssue({
+      code: "custom",
+      path: ["continuation", "sketchId"],
+      message: "Sketch continuation must match the solved sketch.",
+    })
+  }
+  if (input.continuation.sourceRevision <= input.revision) return
+  context.addIssue({
+    code: "custom",
+    path: ["continuation", "sourceRevision"],
+    message: "Sketch continuation cannot come from a future document revision.",
+  })
+}
+
+function validateDraggedPoints(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
+  const draggedIds = new Set<string>()
+  for (const [index, target] of input.draggedPoints.entries()) {
+    if (draggedIds.has(target.entityId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["draggedPoints", index, "entityId"],
+        message: "Dragged sketch point IDs must be unique.",
+      })
+    }
+    draggedIds.add(target.entityId)
+  }
+}
+
+function validateExternalPoints(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
+  const entityIds = new Set(input.sketch.entities.map((entity) => entity.id))
+  for (const [index, point] of input.externalPoints.entries()) {
+    if (entityIds.has(point.id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["externalPoints", index, "id"],
+        message: "External sketch point IDs cannot collide with authored entities.",
+      })
+    }
+    entityIds.add(point.id)
+  }
+  if (input.sketch.entities.length + input.externalPoints.length <= 4_990) return
+  context.addIssue({
+    code: "custom",
+    path: ["externalPoints"],
+    message: "Authored and external sketch entities exceed the solver safety limit.",
+  })
+}
 
 export type SketchSolveContinuation = Readonly<z.infer<typeof sketchSolveContinuationSchema>>
 export type SketchDragTarget = Readonly<z.infer<typeof sketchDragTargetSchema>>
@@ -198,11 +229,11 @@ class ProductionSketchBuilder {
     })
   }
 
-  addPoint(id: SketchEntityId, x: number, y: number) {
-    const xParameter = this.#addParameter(x)
-    const yParameter = this.#addParameter(y)
+  addPoint(id: SketchEntityId, x: number, y: number, group = 2) {
+    const xParameter = this.#addParameter(x, group)
+    const yParameter = this.#addParameter(y, group)
     const entity = this.#nextEntity++
-    this.#addEntity(entity, 2, SOLVESPACE_ENTITY_TYPE.pointIn2d, {
+    this.#addEntity(entity, group, SOLVESPACE_ENTITY_TYPE.pointIn2d, {
       parameters: [xParameter.handle, yParameter.handle],
       workplane: 200,
     })
@@ -517,22 +548,22 @@ function compilationFailure(
 }
 
 function initialPointValues(
-  sketch: SketchRecord,
+  entities: readonly SketchEntity[],
   continuation: SketchSolveContinuation | null,
   draggedPoints: readonly SketchDragTarget[],
 ) {
   const values = new Map(
-    sketch.entities.flatMap((entity) =>
+    entities.flatMap((entity) =>
       entity.type === "point" ? [[entity.id, { x: entity.x, y: entity.y }] as const] : [],
     ),
   )
   for (const point of continuation?.points ?? []) {
-    const entity = sketch.entities.find((candidate) => candidate.id === point.entityId)
+    const entity = entities.find((candidate) => candidate.id === point.entityId)
     if (entity?.type !== "point") return null
     values.set(point.entityId, { x: point.x, y: point.y })
   }
   for (const target of draggedPoints) {
-    const entity = sketch.entities.find((candidate) => candidate.id === target.entityId)
+    const entity = entities.find((candidate) => candidate.id === target.entityId)
     if (entity?.type !== "point") return null
     values.set(target.entityId, { x: target.x, y: target.y })
   }
@@ -921,12 +952,21 @@ function addSketchCurveEntity(
 function addSketchEntities(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
+  externalPoints: readonly Extract<SketchEntity, { type: "point" }>[],
   pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
   circleRadii: ReadonlyMap<SketchEntityId, number>,
 ) {
   for (const entity of sketch.entities) {
     if (entity.type !== "point") continue
     addSketchPointEntity(builder, entity, pointValues)
+  }
+  for (const point of externalPoints) {
+    const value = pointValues.get(point.id)
+    if (!value) throw new Error(`External sketch point ${point.id} is missing initial values.`)
+    builder.addPoint(point.id, value.x, value.y)
+    builder.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.whereDragged, {
+      pointA: builder.entity(point.id),
+    })
   }
   for (const entity of sketch.entities) {
     if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
@@ -959,7 +999,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     return compilationFailure("invalid-variables", variables.diagnostic.message, "variables")
   }
   const pointValues = initialPointValues(
-    input.data.sketch,
+    [...input.data.sketch.entities, ...input.data.externalPoints],
     input.data.continuation,
     input.data.draggedPoints,
   )
@@ -973,7 +1013,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   }
 
   const builder = new ProductionSketchBuilder()
-  addSketchEntities(builder, input.data.sketch, pointValues, circleRadii)
+  addSketchEntities(builder, input.data.sketch, input.data.externalPoints, pointValues, circleRadii)
   const invalidConstraintIndex = addSketchConstraints(builder, input.data.sketch, variables)
   if (invalidConstraintIndex !== null) {
     return compilationFailure(

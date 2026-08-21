@@ -241,6 +241,7 @@ type SketchPointLookup = Pick<ReadonlyMap<string, DisplayPoint>, "get">
 type SketchGeometryPresentation = Readonly<{
   curves: readonly SketchCurveEntity[]
   curvesByPointId: ReadonlyMap<string, readonly SketchCurveEntity[]>
+  externalPoints: readonly DisplayPoint[]
   points: readonly DisplayPoint[]
   pointsById: ReadonlyMap<string, DisplayPoint>
   solvedCircles: ReadonlyMap<string, number>
@@ -652,11 +653,29 @@ function displayPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) 
   })
 }
 
+function displayExternalPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) {
+  const solvedById = new Map(solution?.points.map((point) => [point.entityId, point]))
+  return (sketch.externalReferences ?? []).flatMap((reference): DisplayPoint[] => {
+    const point = solvedById.get(reference.projectedPointId)
+    return point
+      ? [
+          {
+            construction: true,
+            id: reference.projectedPointId,
+            x: point.x,
+            y: point.y,
+          },
+        ]
+      : []
+  })
+}
+
 function createSketchGeometryPresentation(
   sketch: SketchRecord,
   solution: SolvedSketchWire | null,
 ): SketchGeometryPresentation {
   const points = displayPoints(sketch, solution)
+  const externalPoints = displayExternalPoints(sketch, solution)
   const pointsById = new Map(points.map((point) => [point.id, point]))
   const curves = sketch.entities.filter(
     (entity): entity is SketchCurveEntity => entity.type !== "point",
@@ -672,6 +691,7 @@ function createSketchGeometryPresentation(
   return {
     curves,
     curvesByPointId,
+    externalPoints,
     points,
     pointsById,
     solvedCircles: new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius])),
@@ -1515,6 +1535,50 @@ function SketchGeometry({
           onSelect={onSelect}
           onTarget={onTarget}
         />
+      ))}
+    </g>
+  )
+}
+
+function SketchExternalPoints({ points }: Readonly<{ points: readonly DisplayPoint[] }>) {
+  if (points.length === 0) return null
+  return (
+    <g
+      aria-label="External sketch references"
+      className="pointer-events-none"
+      data-sketch-external-reference-count={points.length}
+      transform="scale(1 -1)"
+    >
+      {points.map((point) => (
+        <g key={point.id} data-sketch-external-point-id={point.id}>
+          <circle
+            cx={point.x}
+            cy={point.y}
+            r={4}
+            className="fill-background stroke-sky-500"
+            strokeDasharray="2 1"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={point.x - 6}
+            x2={point.x + 6}
+            y1={point.y}
+            y2={point.y}
+            className="stroke-sky-500"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={point.x}
+            x2={point.x}
+            y1={point.y - 6}
+            y2={point.y + 6}
+            className="stroke-sky-500"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
       ))}
     </g>
   )
@@ -4856,6 +4920,7 @@ function SketchDrawingView({
           solution={configuration.annotationSolution}
           onSelect={configuration.onProfileSelect}
         />
+        <SketchExternalPoints points={state.geometry.externalPoints} />
         <StableSketchGeometry
           draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
           editable={state.editable}
@@ -5528,7 +5593,9 @@ function SketchDrawing({
     () => createSketchGeometryPresentation(sketch, solution),
     [sketch, solution],
   )
-  const [bounds, setBounds] = useState(() => sketchBounds(geometry.points))
+  const [bounds, setBounds] = useState(() =>
+    sketchBounds([...geometry.points, ...geometry.externalPoints]),
+  )
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })

@@ -605,7 +605,9 @@ describe("DocumentWorkerRuntime", () => {
 
   it("solves the exact rebuilt sketch through the production flat ABI boundary", async () => {
     const module = sketchSolverModule()
-    const solvePort: SketchSolvePort = (input) => solveSketchRecord(module, input)
+    const solvePort = vi.fn((input: Parameters<SketchSolvePort>[0]) =>
+      solveSketchRecord(module, input),
+    )
     const { messages, runtime } = createHarness(solvePort)
     await runtime.handle({
       ...request("rebuild-for-sketch"),
@@ -699,6 +701,83 @@ describe("DocumentWorkerRuntime", () => {
     expect(
       messages.find(({ requestId }) => requestId === "solve-uncommitted-sketch-without-draft"),
     ).toMatchObject({ type: "failure", diagnostic: { code: "sketch-not-found" } })
+  })
+
+  it("resolves a persisted external point as fixed geometry for a dependent sketch", async () => {
+    const module = sketchSolverModule()
+    const solvePort = vi.fn((input: Parameters<SketchSolvePort>[0]) =>
+      solveSketchRecord(module, input),
+    )
+    const dependent = {
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3203",
+      label: "Attached profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3204",
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3205",
+          type: "coincident",
+          firstPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3204",
+          secondPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3207",
+        },
+      ],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3206",
+          sourceSketchId: sketchIds.sketch,
+          sourcePointId: sketchIds.point,
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3207",
+        },
+      ],
+    } as const
+    const { messages, runtime } = createHarness(solvePort)
+    await runtime.handle({
+      ...request("rebuild-for-external-point"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [sketch(), dependent],
+      }),
+    })
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "solve-external-point",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "solveSketch",
+      sketchId: dependent.id,
+      continuation: null,
+      draggedPoints: [],
+    })
+
+    expect(messages.find(({ requestId }) => requestId === "solve-external-point")).toMatchObject({
+      type: "sketchSolved",
+      solution: { sketchId: dependent.id },
+    })
+    expect(
+      solvePort.mock.calls.find(([input]) => input.sketch.id === dependent.id)?.[0].externalPoints,
+    ).toEqual([
+      {
+        schemaVersion: 0,
+        id: dependent.externalReferences[0].projectedPointId,
+        type: "point",
+        construction: true,
+        x: 1,
+        y: 2,
+      },
+    ])
   })
 
   it("rejects unavailable, stale, missing, and invalid sketch solve state without mutation", async () => {
