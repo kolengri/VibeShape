@@ -309,23 +309,7 @@ function ModelTreeRootItem({
   )
 }
 
-export function ModelTree({
-  activeFeatureId,
-  activeSketchId,
-  activeWorkspace,
-  controller,
-  onFeatureActivate,
-  onFeatureRename,
-  onFeaturePreselectionChange,
-  onFeatureVisibilityChange,
-  onSketchActivate,
-  onSketchRename,
-  onSketchVisibilityChange,
-  onWorkspaceChange,
-  sketchRenameBlockedId,
-  hiddenFeatureIds,
-  hiddenSketchIds,
-}: {
+type ModelTreeProps = {
   activeFeatureId: FeatureRecord["id"] | null
   activeSketchId: SketchId | null
   activeWorkspace: EditorWorkspaceName
@@ -341,70 +325,152 @@ export function ModelTree({
   sketchRenameBlockedId: SketchId | null
   hiddenFeatureIds: readonly FeatureRecord["id"][]
   hiddenSketchIds: readonly SketchId[]
+}
+
+function ModelTreeWorkspaceItems({
+  activeWorkspace,
+  onWorkspaceChange,
+  sketches,
+  t,
+}: Pick<ModelTreeProps, "activeWorkspace" | "onWorkspaceChange"> & {
+  sketches: readonly SketchRecord[]
+  t: ReturnType<typeof useTranslations>
 }) {
+  return (
+    <>
+      <ModelTreeRootItem
+        current={activeWorkspace === "variables" ? "page" : undefined}
+        targetWorkspace="variables"
+        title={t("items.variables")}
+        onWorkspaceChange={onWorkspaceChange}
+      />
+      <ModelTreeRootItem
+        targetWorkspace="model"
+        title={t("items.origin")}
+        onWorkspaceChange={onWorkspaceChange}
+      />
+      <ModelTreeRootItem
+        current={activeWorkspace === "sketch" ? "page" : undefined}
+        expanded={sketches.length > 0}
+        targetWorkspace="sketch"
+        title={t("items.sketches")}
+        onWorkspaceChange={onWorkspaceChange}
+      />
+    </>
+  )
+}
+
+function ModelTreeSketchBranch({
+  activeSketchId,
+  controller,
+  hiddenSketchIds,
+  onFeatureRename,
+  onSketchActivate,
+  onSketchRename,
+  onSketchVisibilityChange,
+  sketchRenameBlockedId,
+  sketches,
+  t,
+}: Pick<
+  ModelTreeProps,
+  | "activeSketchId"
+  | "controller"
+  | "hiddenSketchIds"
+  | "onFeatureRename"
+  | "onSketchActivate"
+  | "onSketchRename"
+  | "onSketchVisibilityChange"
+  | "sketchRenameBlockedId"
+> & {
+  sketches: readonly SketchRecord[]
+  t: ReturnType<typeof useTranslations>
+}) {
+  return (
+    <SketchTreeItems
+      activeSketchId={activeSketchId}
+      controller={controller}
+      sketches={sketches}
+      groupLabel={t("items.sketches")}
+      onActivate={onSketchActivate}
+      onFeatureRename={onFeatureRename}
+      onSketchRename={onSketchRename}
+      onVisibilityChange={onSketchVisibilityChange}
+      renameBlockedId={sketchRenameBlockedId}
+      unnamedSketch={t("unnamedSketch")}
+      hiddenSketchIds={hiddenSketchIds}
+    />
+  )
+}
+
+function ModelTreeFeatureBranch({
+  activeFeatureId,
+  controller,
+  features,
+  hiddenFeatureIds,
+  onFeatureActivate,
+  onFeaturePreselectionChange,
+  onFeatureRename,
+  onFeatureVisibilityChange,
+  onSketchRename,
+  onWorkspaceChange,
+  t,
+}: Pick<
+  ModelTreeProps,
+  | "activeFeatureId"
+  | "controller"
+  | "hiddenFeatureIds"
+  | "onFeatureActivate"
+  | "onFeaturePreselectionChange"
+  | "onFeatureRename"
+  | "onFeatureVisibilityChange"
+  | "onSketchRename"
+  | "onWorkspaceChange"
+> & {
+  features: readonly FeatureRecord[]
+  t: ReturnType<typeof useTranslations>
+}) {
+  return (
+    <>
+      <ModelTreeRootItem
+        targetWorkspace="model"
+        expanded={features.length > 0}
+        title={t("items.features")}
+        onWorkspaceChange={onWorkspaceChange}
+      />
+      <FeatureTreeItems
+        activeFeatureId={activeFeatureId}
+        controller={controller}
+        features={features}
+        groupLabel={t("items.features")}
+        onActivate={onFeatureActivate}
+        onFeatureRename={onFeatureRename}
+        onPreselectionChange={onFeaturePreselectionChange}
+        onVisibilityChange={onFeatureVisibilityChange}
+        onSketchRename={onSketchRename}
+        unnamedFeature={t("unnamedFeature")}
+        hiddenFeatureIds={hiddenFeatureIds}
+      />
+      <ModelTreeRootItem
+        targetWorkspace="model"
+        title={t("items.bodies")}
+        onWorkspaceChange={onWorkspaceChange}
+      />
+    </>
+  )
+}
+
+export function ModelTree(props: ModelTreeProps) {
   const t = useTranslations("app.shell.modelTree")
-  const features = controller.report?.snapshot.features ?? []
-  const sketches = controller.report?.snapshot.sketches ?? []
+  const features = props.controller.report?.snapshot.features ?? []
+  const sketches = props.controller.report?.snapshot.sketches ?? []
 
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-r bg-panel p-2">
       <h2 className="px-2 py-1 text-sm font-medium">{t("title")}</h2>
       <div className="mt-1 grid gap-0.5" role="tree" aria-label={t("projectFeatures")}>
-        <ModelTreeRootItem
-          current={activeWorkspace === "variables" ? "page" : undefined}
-          targetWorkspace="variables"
-          title={t("items.variables")}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-        <ModelTreeRootItem
-          targetWorkspace="model"
-          title={t("items.origin")}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-        <ModelTreeRootItem
-          current={activeWorkspace === "sketch" ? "page" : undefined}
-          expanded={sketches.length > 0}
-          targetWorkspace="sketch"
-          title={t("items.sketches")}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-        <SketchTreeItems
-          activeSketchId={activeSketchId}
-          controller={controller}
-          sketches={sketches}
-          groupLabel={t("items.sketches")}
-          onActivate={onSketchActivate}
-          onFeatureRename={onFeatureRename}
-          onSketchRename={onSketchRename}
-          onVisibilityChange={onSketchVisibilityChange}
-          renameBlockedId={sketchRenameBlockedId}
-          unnamedSketch={t("unnamedSketch")}
-          hiddenSketchIds={hiddenSketchIds}
-        />
-        <ModelTreeRootItem
-          targetWorkspace="model"
-          expanded={features.length > 0}
-          title={t("items.features")}
-          onWorkspaceChange={onWorkspaceChange}
-        />
-        <FeatureTreeItems
-          activeFeatureId={activeFeatureId}
-          controller={controller}
-          features={features}
-          groupLabel={t("items.features")}
-          onActivate={onFeatureActivate}
-          onFeatureRename={onFeatureRename}
-          onPreselectionChange={onFeaturePreselectionChange}
-          onVisibilityChange={onFeatureVisibilityChange}
-          onSketchRename={onSketchRename}
-          unnamedFeature={t("unnamedFeature")}
-          hiddenFeatureIds={hiddenFeatureIds}
-        />
-        <ModelTreeRootItem
-          targetWorkspace="model"
-          title={t("items.bodies")}
-          onWorkspaceChange={onWorkspaceChange}
-        />
+        <ModelTreeWorkspaceItems {...props} sketches={sketches} t={t} />
+        <ModelTreeSketchBranch {...props} sketches={sketches} t={t} />
+        <ModelTreeFeatureBranch {...props} features={features} t={t} />
       </div>
     </aside>
   )
