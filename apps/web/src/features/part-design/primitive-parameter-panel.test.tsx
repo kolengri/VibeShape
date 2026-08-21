@@ -12,8 +12,10 @@ import {
 const copy: PrimitiveParameterPanelCopy = {
   title: "Create primitive",
   description: "Create a primitive solid.",
+  parameters: "Primitive definition",
   dimensions: "Required dimensions",
-  centered: "Center on the origin",
+  placement: "Placement origin",
+  centered: "Center height about placement origin",
   cancel: "Cancel",
 }
 
@@ -39,6 +41,7 @@ describe("PrimitiveParameterPanel", () => {
             {copy.centered}
           </label>
         }
+        placementFields={<TextField label="Origin X" defaultValue="0 mm" />}
         footerAction={<button type="button">Create primitive</button>}
         onCancel={onCancel}
       />,

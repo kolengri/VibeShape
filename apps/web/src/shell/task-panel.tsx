@@ -176,16 +176,23 @@ function useBoxFormCopy(mode: BoxFormMode["kind"]) {
   }[mode]
   return {
     ...operationCopy,
+    parameters: t("box.parameters"),
     dimensions: t("box.dimensions"),
     width: t("box.width"),
     depth: t("box.depth"),
     height: t("box.height"),
     centered: t("box.centered"),
+    placement: t("box.placement"),
+    originX: t("box.originX"),
+    originY: t("box.originY"),
+    originZ: t("box.originZ"),
+    positionDescription: t("box.positionDescription"),
     expressionDescription: t("box.expressionDescription"),
     cancel: t("box.cancel"),
     invalidExpression: t("box.invalidExpression"),
     invalidDimension: t("box.invalidDimension"),
     invalidRange: t("box.invalidRange"),
+    invalidPositionRange: t("box.invalidPositionRange"),
     staleRevision: t("box.staleRevision"),
   }
 }
@@ -210,15 +217,22 @@ function useCylinderFormCopy(mode: CylinderFormMode["kind"]) {
   }[mode]
   return {
     ...operationCopy,
+    parameters: t("cylinder.parameters"),
     dimensions: t("cylinder.dimensions"),
     radius: t("cylinder.radius"),
     height: t("cylinder.height"),
     centered: t("cylinder.centered"),
+    placement: t("cylinder.placement"),
+    originX: t("cylinder.originX"),
+    originY: t("cylinder.originY"),
+    originZ: t("cylinder.originZ"),
+    positionDescription: t("cylinder.positionDescription"),
     expressionDescription: t("cylinder.expressionDescription"),
     cancel: t("cylinder.cancel"),
     invalidExpression: t("cylinder.invalidExpression"),
     invalidDimension: t("cylinder.invalidDimension"),
     invalidRange: t("cylinder.invalidRange"),
+    invalidPositionRange: t("cylinder.invalidPositionRange"),
     staleRevision: t("cylinder.staleRevision"),
   }
 }

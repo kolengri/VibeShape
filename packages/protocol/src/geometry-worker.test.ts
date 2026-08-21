@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  boxFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
   featureContentIdentitySchema,
   GEOMETRY_MEMORY_STAGES,
@@ -97,6 +98,22 @@ describe("geometry worker protocol", () => {
     }
 
     expect(geometryWorkerRequestSchema.safeParse(request).success).toBe(true)
+    expect(boxFeatureContentParametersSchema.parse(request.content.feature.parameters)).toEqual({
+      ...request.content.feature.parameters,
+      origin: [0, 0, 0],
+    })
+    expect(
+      geometryWorkerRequestSchema.safeParse({
+        ...request,
+        content: {
+          ...request.content,
+          feature: {
+            ...request.content.feature,
+            parameters: { ...request.content.feature.parameters, origin: [12, -8, 7] },
+          },
+        },
+      }).success,
+    ).toBe(true)
     expect(
       geometryWorkerRequestSchema.safeParse({
         ...request,

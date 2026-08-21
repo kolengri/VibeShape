@@ -24,6 +24,9 @@ test.describe("Box parameters", () => {
     await expect(page.getByRole("option", { name: /#width/ })).toBeVisible()
     await width.press("Enter")
     await expect(width).toHaveValue("#width")
+    await boxForm.getByRole("combobox", { name: "Origin X" }).fill("#width")
+    await boxForm.getByRole("combobox", { name: "Origin Y" }).fill("-8 mm")
+    await boxForm.getByRole("combobox", { name: "Origin Z" }).fill("5 mm")
     await boxForm.getByRole("button", { name: "Create box" }).dblclick()
 
     const boxTreeItem = page.getByRole("treeitem", { name: "Box 1" })
@@ -66,7 +69,11 @@ test.describe("Box parameters", () => {
     await expect(viewport).toHaveAttribute("data-selected-feature", /.+/)
     const editForm = page.getByRole("form", { name: "Edit box" })
     await expect(editForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
+    await expect(editForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("#width")
+    await expect(editForm.getByRole("combobox", { name: "Origin Y" })).toHaveValue("-8 mm")
+    await expect(editForm.getByRole("combobox", { name: "Origin Z" })).toHaveValue("5 mm")
     await editForm.getByRole("combobox", { name: "Depth" }).fill("28 mm")
+    await editForm.getByRole("combobox", { name: "Origin Z" }).fill("12 mm")
     await editForm.getByRole("button", { name: "Update box" }).dblclick()
     await expect(editForm).not.toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -78,6 +85,9 @@ test.describe("Box parameters", () => {
     const reopenedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(reopenedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
     await expect(reopenedEditForm.getByRole("combobox", { name: "Depth" })).toHaveValue("28 mm")
+    await expect(reopenedEditForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("#width")
+    await expect(reopenedEditForm.getByRole("combobox", { name: "Origin Y" })).toHaveValue("-8 mm")
+    await expect(reopenedEditForm.getByRole("combobox", { name: "Origin Z" })).toHaveValue("12 mm")
 
     await reopenedEditForm.getByRole("button", { name: "Cancel" }).click()
     await page.getByRole("treeitem", { name: "Variables" }).click()
@@ -93,6 +103,7 @@ test.describe("Box parameters", () => {
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     const renamedEditForm = page.getByRole("form", { name: "Edit box" })
     await expect(renamedEditForm.getByRole("combobox", { name: "Width" })).toHaveValue("#span")
+    await expect(renamedEditForm.getByRole("combobox", { name: "Origin X" })).toHaveValue("#span")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
 
     await page.reload()
@@ -101,6 +112,9 @@ test.describe("Box parameters", () => {
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
+    ).toHaveValue("#span")
+    await expect(
+      page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Origin X" }),
     ).toHaveValue("#span")
 
     await page

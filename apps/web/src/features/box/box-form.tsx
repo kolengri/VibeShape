@@ -14,8 +14,13 @@ import {
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
 import { LengthExpressionField } from "../part-design/length-expression-field"
 import {
+  defaultPrimitiveOriginValues,
   type FeatureParameterFormProps,
+  type PrimitiveOriginField,
+  type PrimitiveOriginFormValues,
   parsePrimitiveLengthExpression,
+  parsePrimitiveOriginValues,
+  primitiveOriginFormValues,
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
@@ -26,12 +31,20 @@ import {
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
 type DimensionField = "width" | "depth" | "height"
+type BoxField = DimensionField | PrimitiveOriginField
 
 type BoxFormCopy = PrimitiveParameterPanelCopy &
   Readonly<{
     width: string
     depth: string
     height: string
+    invalidPositionRange: string
+    originX: string
+    originY: string
+    originZ: string
+    parameters: string
+    placement: string
+    positionDescription: string
     expressionDescription: string
     submit: string
     invalidExpression: string
@@ -42,18 +55,25 @@ type BoxFormCopy = PrimitiveParameterPanelCopy &
     saveFailed: string
   }>
 
-type BoxFormValues = Readonly<{
-  width: string
-  depth: string
-  height: string
-  centered: boolean
-}>
+type BoxFormValues = PrimitiveOriginFormValues &
+  Readonly<{
+    width: string
+    depth: string
+    height: string
+    centered: boolean
+  }>
 
 function defaultBoxValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
 ): BoxFormValues {
   const length = defaultLengthExpression(20, unit)
-  return { width: length, depth: length, height: length, centered: false }
+  return {
+    width: length,
+    depth: length,
+    height: length,
+    centered: false,
+    ...defaultPrimitiveOriginValues(unit),
+  }
 }
 
 export type BoxFormMode =
@@ -74,6 +94,7 @@ function boxFormValuesFromFeature(feature: FeatureRecord): BoxFormValues {
     depth: quantityExpression(parameters.depth),
     height: quantityExpression(parameters.height),
     centered: parameters.centered,
+    ...primitiveOriginFormValues(parameters.origin),
   }
 }
 
@@ -125,13 +146,13 @@ function parseBoxValues(
       displayUnit,
     ),
   }
-  const issues: Partial<Record<DimensionField, string>> = {}
+  const origin = parsePrimitiveOriginValues(values, variables, copy, displayUnit)
+  const issues: Partial<Record<BoxField, string>> = { ...(origin.ok ? {} : origin.issues) }
   for (const field of ["width", "depth", "height"] as const) {
     const result = parsed[field]
     if (!result.ok) issues[field] = result.message
   }
-  if (Object.keys(issues).length > 0) return { ok: false as const, issues }
-  if (!parsed.width.ok || !parsed.depth.ok || !parsed.height.ok) {
+  if (!parsed.width.ok || !parsed.depth.ok || !parsed.height.ok || !origin.ok) {
     return { ok: false as const, issues }
   }
   return {
@@ -141,6 +162,7 @@ function parseBoxValues(
       depth: parsed.depth.quantity,
       height: parsed.height.quantity,
       centered: values.centered,
+      origin: origin.origin,
     }),
   }
 }
@@ -176,9 +198,9 @@ export function BoxForm({
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)
-        const firstField = (["width", "depth", "height"] as const).find(
-          (field) => parsed.issues[field],
-        )
+        const firstField = (
+          ["width", "depth", "height", "originX", "originY", "originZ"] as const
+        ).find((field) => parsed.issues[field])
         if (firstField) {
           formElementRef.current?.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
         }
@@ -218,6 +240,27 @@ export function BoxForm({
     </form.Field>
   )
 
+  const originField = (fieldName: PrimitiveOriginField, label: string) => (
+    <form.Field name={fieldName}>
+      {(field) => (
+        <LengthExpressionField
+          id={`box-${fieldName}`}
+          name={field.name}
+          value={field.state.value}
+          label={label}
+          description={copy.positionDescription}
+          error={issues[fieldName]}
+          suggestions={suggestions}
+          onBlur={field.handleBlur}
+          onValueChange={(value) => {
+            clearSubmissionErrors()
+            field.handleChange(value)
+          }}
+        />
+      )}
+    </form.Field>
+  )
+
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
       <PrimitiveParameterPanel
@@ -241,6 +284,13 @@ export function BoxForm({
               />
             )}
           </form.Field>
+        }
+        placementFields={
+          <>
+            {originField("originX", copy.originX)}
+            {originField("originY", copy.originY)}
+            {originField("originZ", copy.originZ)}
+          </>
         }
         footerAction={
           <form.SubmitButton disabled={disabled} requireDirty={false} size="sm">

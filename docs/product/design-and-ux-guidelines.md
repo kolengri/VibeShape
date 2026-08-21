@@ -355,6 +355,7 @@ The table has these columns:
 - Ordered Boolean inputs are labeled by role rather than position alone: the target remains and the tool is removed. The same feature, the edited feature itself, suppressed features, and transitive dependents that would create a cycle are unavailable as input choices.
 - A finite list of local feature inputs uses the native select contract for keyboard navigation and typeahead. A searchable combobox is introduced only when measured list size or disambiguation needs justify it.
 - Create and edit reuse the same non-modal task-panel composition. Edit restores the authored source string, preserves stable feature identity and untouched record fields, and commits only through the ordinary update command.
+- A direct solid primitive never relies on an unexplained hidden location. Its form exposes an explicit placement origin in the current project unit, supports the same signed unit and `#variable` expressions as other length fields, explains how centering changes the Z extent, and restores those authored values during edit.
 - Validation or persistence failure keeps the visible editing buffer and adjacent diagnostics. A successful save closes the task only after semantic persistence; geometry rebuild does not bypass that ordering.
 - Reset restores the command's initial value, not a hidden global default.
 - Parameter changes use a short debounce for preview but Apply always validates the exact visible values.

@@ -195,6 +195,7 @@ describe("feature content identity", () => {
       depth: 30,
       height: 25.4,
       centered: true,
+      origin: [0, 0, 0],
     })
   })
 
@@ -251,6 +252,20 @@ describe("feature content identity", () => {
       registry,
       boxFeature(featureIds.a, { width: [21, "mm"], height: [25.4, "mm"] }),
     )
+    const changedPlacement = identity(
+      registry,
+      featureRecordSchema.parse({
+        ...feature,
+        parameters: {
+          ...feature.parameters,
+          origin: {
+            x: createLengthQuantity(10),
+            y: createLengthQuantity(0),
+            z: createLengthQuantity(0),
+          },
+        },
+      }),
+    )
     const changedRuntime = createFeatureContentIdentity(registry, {
       feature,
       dependencies: [],
@@ -274,13 +289,20 @@ describe("feature content identity", () => {
       },
     })
 
-    expect(baseline.ok && changedParameter.ok).toBe(true)
+    expect(baseline.ok && changedParameter.ok && changedPlacement.ok).toBe(true)
     expect(baseline.ok && changedRuntime.ok).toBe(true)
     expect(baseline.ok && extensionRuntime.ok).toBe(true)
-    if (!baseline.ok || !changedParameter.ok || !changedRuntime.ok || !extensionRuntime.ok) {
+    if (
+      !baseline.ok ||
+      !changedParameter.ok ||
+      !changedPlacement.ok ||
+      !changedRuntime.ok ||
+      !extensionRuntime.ok
+    ) {
       return
     }
     expect(changedParameter.canonicalPayload).not.toBe(baseline.canonicalPayload)
+    expect(changedPlacement.canonicalPayload).not.toBe(baseline.canonicalPayload)
     expect(changedRuntime.canonicalPayload).not.toBe(baseline.canonicalPayload)
     expect(extensionRuntime.canonicalPayload).not.toBe(baseline.canonicalPayload)
   })

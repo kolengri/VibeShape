@@ -5,16 +5,89 @@ import {
   evaluateVariableDefinitions,
   type FeatureRecord,
   type LengthQuantity,
+  primitiveOriginSchema,
   type VariableDefinition,
 } from "@vibeshape/domain"
 import type { FeatureMutationResult } from "../../document/document-controller"
-import { normalizeExpressionWithDisplayUnit } from "../../document/document-display-units"
+import {
+  defaultLengthExpression,
+  normalizeExpressionWithDisplayUnit,
+} from "../../document/document-display-units"
 
 export type PrimitiveLengthCopy = Readonly<{
   invalidExpression: string
   invalidDimension: string
   invalidRange: string
 }>
+
+export type PrimitiveOriginField = "originX" | "originY" | "originZ"
+
+export type PrimitiveOriginFormValues = Readonly<Record<PrimitiveOriginField, string>>
+
+export function defaultPrimitiveOriginValues(
+  displayUnit: DocumentDisplayUnits["length"],
+): PrimitiveOriginFormValues {
+  const zero = defaultLengthExpression(0, displayUnit)
+  return { originX: zero, originY: zero, originZ: zero }
+}
+
+export function primitiveOriginFormValues(
+  origin: ReturnType<typeof primitiveOriginSchema.parse>,
+): PrimitiveOriginFormValues {
+  return {
+    originX: quantityExpression(origin.x),
+    originY: quantityExpression(origin.y),
+    originZ: quantityExpression(origin.z),
+  }
+}
+
+export function parsePrimitiveOriginValues(
+  values: PrimitiveOriginFormValues,
+  variables: readonly VariableDefinition[],
+  copy: PrimitiveLengthCopy & Readonly<{ invalidPositionRange: string }>,
+  displayUnit: DocumentDisplayUnits["length"],
+) {
+  const positionCopy = { ...copy, invalidRange: copy.invalidPositionRange }
+  const parsed = {
+    originX: parsePrimitiveLengthExpression(
+      values.originX,
+      variables,
+      positionCopy,
+      (quantity) => primitiveOriginSchema.shape.x.safeParse(quantity).success,
+      displayUnit,
+    ),
+    originY: parsePrimitiveLengthExpression(
+      values.originY,
+      variables,
+      positionCopy,
+      (quantity) => primitiveOriginSchema.shape.y.safeParse(quantity).success,
+      displayUnit,
+    ),
+    originZ: parsePrimitiveLengthExpression(
+      values.originZ,
+      variables,
+      positionCopy,
+      (quantity) => primitiveOriginSchema.shape.z.safeParse(quantity).success,
+      displayUnit,
+    ),
+  }
+  const issues: Partial<Record<PrimitiveOriginField, string>> = {}
+  for (const field of ["originX", "originY", "originZ"] as const) {
+    const result = parsed[field]
+    if (!result.ok) issues[field] = result.message
+  }
+  if (!parsed.originX.ok || !parsed.originY.ok || !parsed.originZ.ok) {
+    return { ok: false as const, issues }
+  }
+  return {
+    ok: true as const,
+    origin: primitiveOriginSchema.parse({
+      x: parsed.originX.quantity,
+      y: parsed.originY.quantity,
+      z: parsed.originZ.quantity,
+    }),
+  }
+}
 
 export type FeatureParameterFormProps<Mode, Copy> = Readonly<{
   baseRevision: number
