@@ -361,8 +361,9 @@ but it does not own committed history, semantic references, solved geometry, or 
 
 ## Document evolution
 
-This direction changes the native history model and therefore requires a new ADR before implementation.
-That ADR must define:
+This direction changes the native history model. The accepted
+[document dependency and interleaved History decision](../adr/0026-document-dependency-graph-and-interleaved-history.md)
+defines:
 
 - the interleaved `HistoryItemRef` schema and document schema version;
 - the document-wide sketch/feature dependency graph;
@@ -372,26 +373,47 @@ That ADR must define:
 - protocol version changes for resolved support and external geometry;
 - archive compatibility and deterministic replay.
 
-Legacy migration uses full event order when available. For a snapshot without enough event ordering, it
-performs a stable topological merge using existing feature dependencies, sketch support, extrusion profile
-sources, external sketch sources, and existing array order as the final tie-breaker. The merge changes only
-presentation order; it never retargets a reference or changes evaluation identity. Documents with an
-impossible graph fail import with a bounded diagnostic.
+Legacy migration uses full verified event order when available. If that prefix is missing, corrupt,
+inconsistent with the selected valid snapshot, or absent from a snapshot-only archive, migration performs a
+stable topological merge using existing feature dependencies, sketch support, extrusion profile sources,
+external sketch sources, and existing array order as the final tie-breaker. The merge changes only
+presentation order, is reported as snapshot-derived degraded recovery, and never retargets a reference or
+changes evaluation identity. Documents with an impossible graph fail import with a bounded diagnostic.
 
-The accepted feature DAG and `TopoRef` decisions remain in force. The new ADR extends them; it does not
+The accepted feature DAG and `TopoRef` decisions remain in force. ADR-0026 extends them; it does not
 rewrite old decisions in place.
 
 ## Delivery plan
 
-### Slice 0 — architecture and migration gate
+### Slice 0A — non-authoritative document graph foundation
 
-- Add the history/dependency ADR and schema fixtures.
+- Add the history/dependency ADR.
 - Build a pure document graph spanning sketches and features.
-- Add `HistoryItemRef` ordering and deterministic legacy migration.
-- Replace command-specific deletion checks with graph-owned incoming-dependency checks.
-- Add cycle, missing-owner, forward-reference, stable-order, replay, and archive tests.
+- Add bounded cycle, missing-owner, forward-reference, stable-order, and relation-query tests.
+- Keep persistence, command behavior, worker protocols, and visible product behavior unchanged.
 
-**Exit:** every current document has one validated interleaved History order without changing geometry.
+**Exit:** the pure graph contract is tested and available to later slices, but is not yet authoritative for
+deletion, reorder, scheduling, persistence, or UI eligibility.
+
+### Slice 0B — command and replay integration
+
+- Validate the document graph after candidate command reduction and during replay.
+- Replace command-specific deletion checks with graph-owned incoming-dependency checks.
+- Project sketch changes through document relations into feature dirty roots.
+- Add command, replay, deletion-blocking, rollback, and failure-isolation tests.
+
+**Exit:** document mutation and replay share one dependency authority without changing the persisted schema.
+
+### Slice 0C — versioned History migration
+
+- Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
+- Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a
+  complete verified journal prefix is unavailable, corrupt, or inconsistent.
+- Add old-format, corrupt-prefix, late-snapshot recovery, archive round-trip, and exact-replay fixtures.
+- Add revisioned History insertion and reorder commands only after the migration matrix passes.
+
+**Exit:** every schema-version-1 document has one validated interleaved History order, while recoverable legacy
+documents remain openable without changing geometry or overwriting their source records prematurely.
 
 ### Slice 1 — understandable History and editing context
 

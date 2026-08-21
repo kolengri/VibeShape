@@ -19,6 +19,22 @@ CAD cannot be validated with UI screenshots or byte-for-byte B-Rep comparison al
 | Extension conformance | Packages, capabilities, determinism, isolation, compatibility | `SPK-006` harness and browser E2E |
 | Automation and MCP conformance | Resources, schemas, draft safety, pairing, consent, progress, cancellation | Contract tests, hostile loopback fixtures, and real MCP client E2E |
 
+## Document dependency graph tests
+
+The document graph requires deterministic pure tests for every durable relation between sketch and feature
+nodes, exact History coverage, strict typed node references, duplicate and missing owners, self-reference,
+forward-order failures, cross-kind cycles, deterministic independent-node ordering, and deduplicated
+parent/child adjacency when two semantic relations share one node pair. Sketch and feature IDs are separate
+typed namespaces even when their UUID text matches.
+
+The initial graph is an integrity foundation only. Before it becomes authoritative for deletion, reorder,
+dirty propagation, persistence, or UI eligibility, tests must also cover unavailable feature dependency
+models and the migration/replay matrix required by
+[ADR-0026](adr/0026-document-dependency-graph-and-interleaved-history.md): complete legacy journal replay,
+late snapshot plus suffix recovery, deterministic snapshot-derived fallback for snapshot-only or missing,
+corrupt, and inconsistent journal prefixes, migration idempotence, interrupted persistence, document copy, and
+`.vshape` canonical equality.
+
 ## Geometry assertions
 
 Prefer:
