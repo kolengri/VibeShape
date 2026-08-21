@@ -368,6 +368,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#camera.position.set(80, -80, 65)
     this.#controls = new OrbitControls(this.#camera, canvas)
     this.#controls.enableDamping = false
+    this.#controls.zoomToCursor = true
     this.#controls.mouseButtons.LEFT = MOUSE.ROTATE
     this.#controls.mouseButtons.MIDDLE = MOUSE.ROTATE
     this.#controls.mouseButtons.RIGHT = MOUSE.PAN
