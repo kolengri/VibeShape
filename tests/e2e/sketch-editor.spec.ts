@@ -1,4 +1,3 @@
-import type { Locator } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import {
   addDimension,
@@ -564,12 +563,7 @@ test.describe("full sketch editor", () => {
     await selectSketchEntities(page, drawing, "line", [1])
     await page.getByRole("button", { name: "Mirror", exact: true }).click()
     await expect(page.getByText("Select a mirror line for the selected geometry.")).toBeVisible()
-    await lines.first().dispatchEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      buttons: 1,
-      pointerId: 1,
-    })
+    await lines.first().click()
     await expect(lines).toHaveCount(3)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
@@ -580,21 +574,11 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(lines).toHaveCount(2)
     await page.getByRole("button", { name: "Mirror", exact: true }).click()
-    await lines.first().dispatchEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      buttons: 1,
-      pointerId: 2,
-    })
+    await lines.first().click()
     await expect(
       page.getByText("Select geometry to mirror. Press Escape when finished."),
     ).toBeVisible()
-    await lines.nth(1).dispatchEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      buttons: 1,
-      pointerId: 3,
-    })
+    await lines.nth(1).click()
     await expect(lines).toHaveCount(3)
     await expect(page.getByRole("button", { name: "Mirror", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -834,21 +818,10 @@ test.describe("full sketch editor", () => {
     }
     const activateLine = async (
       tool: "Trim" | "Extend" | "Split",
-      lineIndex: number,
       point: Readonly<{ x: number; y: number }>,
     ) => {
       await page.getByRole("button", { name: tool, exact: true }).click()
-      await drawing
-        .locator('[data-sketch-entity-type="line"]')
-        .nth(lineIndex)
-        .dispatchEvent("pointerdown", {
-          bubbles: true,
-          button: 0,
-          buttons: 1,
-          clientX: point.x,
-          clientY: point.y,
-          pointerId: 1,
-        })
+      await page.mouse.click(point.x, point.y)
     }
 
     await drawLine(canvasPoint(0.25, 0.5), canvasPoint(0.75, 0.5))
@@ -856,13 +829,14 @@ test.describe("full sketch editor", () => {
     await drawLine(canvasPoint(0.6, 0.35), canvasPoint(0.6, 0.65))
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
 
-    await activateLine("Trim", 0, canvasPoint(0.5, 0.5))
+    const trimPoint = canvasPoint(0.5, 0.5)
+    await activateLine("Trim", { ...trimPoint, y: trimPoint.y + 6 })
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
 
-    await activateLine("Split", 0, canvasPoint(0.5, 0.5))
+    await activateLine("Split", canvasPoint(0.5, 0.5))
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Undo", exact: true }).click()
@@ -872,7 +846,7 @@ test.describe("full sketch editor", () => {
     await drawLine(canvasPoint(0.6, 0.65), canvasPoint(0.6, 0.85))
     const extendTarget = drawing.locator('[data-sketch-entity-type="line"]').nth(3)
     const originalEnd = await extendTarget.getAttribute("x2")
-    await activateLine("Extend", 3, canvasPoint(0.39, 0.75))
+    await activateLine("Extend", canvasPoint(0.33, 0.75))
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
     await expect(extendTarget).not.toHaveAttribute("x2", originalEnd ?? "")
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
@@ -904,19 +878,8 @@ test.describe("full sketch editor", () => {
       await page.mouse.click(end.x, end.y)
       await page.keyboard.press("Escape")
     }
-    const dispatchCurvePoint = async (
-      curve: Locator,
-      point: Readonly<{ x: number; y: number }>,
-    ) => {
-      await curve.dispatchEvent("pointerdown", {
-        bubbles: true,
-        button: 0,
-        buttons: 1,
-        clientX: point.x,
-        clientY: point.y,
-        pointerId: 1,
-      })
-    }
+    const activateCurveAt = (point: Readonly<{ x: number; y: number }>) =>
+      page.mouse.click(point.x, point.y)
 
     await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await clickPoint(canvasPoint(0.65, 0.4))
@@ -927,18 +890,17 @@ test.describe("full sketch editor", () => {
     await expect(circle).toHaveCount(1)
 
     await page.getByRole("button", { name: "Trim", exact: true }).click()
-    await dispatchCurvePoint(circle, canvasPoint(0.65, 0.24))
+    await activateCurveAt(canvasPoint(0.65, 0.24))
     await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(0)
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
 
-    const restoredCircle = drawing.locator('[data-sketch-entity-type="circle"]')
     await page.getByRole("button", { name: "Split", exact: true }).click()
-    await dispatchCurvePoint(restoredCircle, canvasPoint(0.77, 0.4))
+    await activateCurveAt(canvasPoint(0.77, 0.4))
     await expect(drawing.locator('[data-sketch-preview-tool="split-circle-second"]')).toBeVisible()
-    await dispatchCurvePoint(restoredCircle, canvasPoint(0.65, 0.24))
+    await activateCurveAt(canvasPoint(0.65, 0.24))
     await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(0)
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
@@ -954,7 +916,7 @@ test.describe("full sketch editor", () => {
     const originalArcPoints = await arc.getAttribute("points")
 
     await page.getByRole("button", { name: "Extend", exact: true }).click()
-    await dispatchCurvePoint(arc, canvasPoint(0.3, 0.59))
+    await activateCurveAt(canvasPoint(0.3, 0.59))
     await expect(arc).not.toHaveAttribute("points", originalArcPoints ?? "")
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
@@ -985,19 +947,8 @@ test.describe("full sketch editor", () => {
       await clickPoint(end)
       await page.keyboard.press("Escape")
     }
-    const dispatchCurvePoint = async (
-      curve: Locator,
-      point: Readonly<{ x: number; y: number }>,
-    ) => {
-      await curve.dispatchEvent("pointerdown", {
-        bubbles: true,
-        button: 0,
-        buttons: 1,
-        clientX: point.x,
-        clientY: point.y,
-        pointerId: 1,
-      })
-    }
+    const activateCurveAt = (point: Readonly<{ x: number; y: number }>) =>
+      page.mouse.click(point.x, point.y)
 
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await clickPoint(canvasPoint(0.65, 0.4))
@@ -1009,18 +960,17 @@ test.describe("full sketch editor", () => {
     await expect(ellipse).toHaveCount(1)
 
     await page.getByRole("button", { name: "Trim", exact: true }).click()
-    await dispatchCurvePoint(ellipse, canvasPoint(0.65, 0.24))
+    await activateCurveAt(canvasPoint(0.65, 0.24))
     await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
     await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Undo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
 
-    const restoredEllipse = drawing.locator('[data-sketch-entity-type="ellipse"]')
     await page.getByRole("button", { name: "Split", exact: true }).click()
-    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.77, 0.4))
+    await activateCurveAt(canvasPoint(0.77, 0.4))
     await expect(drawing.locator('[data-sketch-preview-tool="split-ellipse-second"]')).toBeVisible()
-    await dispatchCurvePoint(restoredEllipse, canvasPoint(0.65, 0.24))
+    await activateCurveAt(canvasPoint(0.65, 0.24))
     await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(0)
     await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(2)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
@@ -1037,7 +987,7 @@ test.describe("full sketch editor", () => {
     const originalArcPoints = await ellipticalArc.getAttribute("points")
 
     await page.getByRole("button", { name: "Extend", exact: true }).click()
-    await dispatchCurvePoint(ellipticalArc, canvasPoint(0.2, 0.72))
+    await activateCurveAt(canvasPoint(0.2, 0.72))
     await expect(ellipticalArc).not.toHaveAttribute("points", originalArcPoints ?? "")
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })

@@ -1094,6 +1094,21 @@ function curveDrawingProps(
   }
 }
 
+function curveHitAreaProps(
+  entityId: SketchEntityId,
+  onPointerDown: CurveDrawingProps["onPointerDown"],
+) {
+  return {
+    fill: "none",
+    pointerEvents: "stroke" as const,
+    stroke: "transparent",
+    strokeLinecap: "round" as const,
+    strokeWidth: 16,
+    vectorEffect: "non-scaling-stroke" as const,
+    onPointerDown: (event: PointerEvent<SVGElement>) => onPointerDown(event, entityId),
+  }
+}
+
 function SketchLine({
   entity,
   hidden,
@@ -1108,13 +1123,24 @@ function SketchLine({
   const end = points.get(entity.endPointId)
   if (!start || !end) return null
   return (
-    <line
-      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
-      x1={start.x}
-      y1={start.y}
-      x2={end.x}
-      y2={end.y}
-    />
+    <>
+      {interactive && !hidden ? (
+        <line
+          {...curveHitAreaProps(entity.id, onPointerDown)}
+          x1={start.x}
+          y1={start.y}
+          x2={end.x}
+          y2={end.y}
+        />
+      ) : null}
+      <line
+        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        x1={start.x}
+        y1={start.y}
+        x2={end.x}
+        y2={end.y}
+      />
+    </>
   )
 }
 
@@ -1130,12 +1156,22 @@ function SketchCircle({
   const center = points.get(entity.centerPointId)
   if (!center) return null
   return (
-    <circle
-      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
-      cx={center.x}
-      cy={center.y}
-      r={solvedRadius ?? entity.radius}
-    />
+    <>
+      {interactive && !hidden ? (
+        <circle
+          {...curveHitAreaProps(entity.id, onPointerDown)}
+          cx={center.x}
+          cy={center.y}
+          r={solvedRadius ?? entity.radius}
+        />
+      ) : null}
+      <circle
+        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        cx={center.x}
+        cy={center.y}
+        r={solvedRadius ?? entity.radius}
+      />
+    </>
   )
 }
 
@@ -1153,11 +1189,17 @@ function SketchArc({
   const start = points.get(entity.startPointId)
   const end = points.get(entity.endPointId)
   if (!center || !start || !end) return null
+  const pointsValue = arcPolyline(center, start, end)
   return (
-    <polyline
-      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
-      points={arcPolyline(center, start, end)}
-    />
+    <>
+      {interactive && !hidden ? (
+        <polyline {...curveHitAreaProps(entity.id, onPointerDown)} points={pointsValue} />
+      ) : null}
+      <polyline
+        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        points={pointsValue}
+      />
+    </>
   )
 }
 
@@ -1174,14 +1216,26 @@ function SketchEllipse({
   const geometry = ellipseGeometry(entity, points)
   if (!geometry) return null
   return (
-    <ellipse
-      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
-      cx={geometry.center.x}
-      cy={geometry.center.y}
-      rx={geometry.primaryRadius}
-      ry={geometry.secondaryRadius}
-      transform={ellipseSvgTransform(geometry)}
-    />
+    <>
+      {interactive && !hidden ? (
+        <ellipse
+          {...curveHitAreaProps(entity.id, onPointerDown)}
+          cx={geometry.center.x}
+          cy={geometry.center.y}
+          rx={geometry.primaryRadius}
+          ry={geometry.secondaryRadius}
+          transform={ellipseSvgTransform(geometry)}
+        />
+      ) : null}
+      <ellipse
+        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        cx={geometry.center.x}
+        cy={geometry.center.y}
+        rx={geometry.primaryRadius}
+        ry={geometry.secondaryRadius}
+        transform={ellipseSvgTransform(geometry)}
+      />
+    </>
   )
 }
 
@@ -1197,13 +1251,19 @@ function SketchEllipticalArc({
 }) {
   const geometry = ellipticalArcGeometry(entity, points)
   if (!geometry) return null
+  const pointsValue = ellipticalArcGeometrySamples(geometry)
+    .map(({ x, y }) => `${x},${y}`)
+    .join(" ")
   return (
-    <polyline
-      {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
-      points={ellipticalArcGeometrySamples(geometry)
-        .map(({ x, y }) => `${x},${y}`)
-        .join(" ")}
-    />
+    <>
+      {interactive && !hidden ? (
+        <polyline {...curveHitAreaProps(entity.id, onPointerDown)} points={pointsValue} />
+      ) : null}
+      <polyline
+        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        points={pointsValue}
+      />
+    </>
   )
 }
 
@@ -1824,6 +1884,7 @@ function useSketchViewportSize(svgRef: RefObject<SVGSVGElement | null>) {
 function ConstraintAnnotations({
   bounds,
   editDimensionLabel,
+  interactive,
   onSelect,
   selectedConstraintId,
   selectConstraintLabel,
@@ -1833,6 +1894,7 @@ function ConstraintAnnotations({
 }: {
   bounds: SketchBounds
   editDimensionLabel: (label: string) => string
+  interactive: boolean
   onSelect: (constraintId: SketchConstraintId) => void
   selectedConstraintId: SketchConstraintId | null
   selectConstraintLabel: (label: string) => string
@@ -1840,6 +1902,7 @@ function ConstraintAnnotations({
   solution: SolvedSketchWire | null
   viewport: SketchViewportSize
 }) {
+  const pointerEventsClass = interactive ? "pointer-events-auto" : "pointer-events-none"
   return (
     <div className="pointer-events-none absolute inset-0">
       {constraintGlyphs(sketch, solution).map((glyph) => (
@@ -1856,8 +1919,8 @@ function ConstraintAnnotations({
           aria-pressed={selectedConstraintId === glyph.id}
           className={
             glyph.dimensional
-              ? "pointer-events-auto absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] text-foreground shadow-xs"
-              : "pointer-events-auto absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs"
+              ? `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] text-foreground shadow-xs`
+              : `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs`
           }
           style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
           onClick={(event) => {
@@ -1873,6 +1936,26 @@ function ConstraintAnnotations({
 }
 
 const StableConstraintAnnotations = memo(ConstraintAnnotations)
+
+function SketchDrawingAnnotations({
+  configuration,
+  sketch,
+  state,
+}: Pick<SketchDrawingViewProps, "configuration" | "sketch" | "state">) {
+  return (
+    <StableConstraintAnnotations
+      bounds={state.bounds}
+      editDimensionLabel={configuration.editDimensionLabel}
+      interactive={state.editable && configuration.editorTool === "select"}
+      selectedConstraintId={configuration.selectedConstraintId}
+      selectConstraintLabel={configuration.selectConstraintLabel}
+      sketch={sketch}
+      solution={configuration.annotationSolution}
+      viewport={state.viewportSize}
+      onSelect={configuration.onConstraintSelectionChange}
+    />
+  )
+}
 
 type PendingWithTargetStart = Extract<
   PendingGeometry,
@@ -4815,16 +4898,7 @@ function SketchDrawingView({
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
       </svg>
-      <StableConstraintAnnotations
-        bounds={state.bounds}
-        editDimensionLabel={configuration.editDimensionLabel}
-        selectedConstraintId={configuration.selectedConstraintId}
-        selectConstraintLabel={configuration.selectConstraintLabel}
-        sketch={sketch}
-        solution={configuration.annotationSolution}
-        viewport={state.viewportSize}
-        onSelect={configuration.onConstraintSelectionChange}
-      />
+      <SketchDrawingAnnotations configuration={configuration} sketch={sketch} state={state} />
       <SketchMirrorInstruction
         editorTool={configuration.editorTool}
         pending={state.pending}

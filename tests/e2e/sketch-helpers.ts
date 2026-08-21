@@ -55,21 +55,8 @@ export async function selectSketchEntities(
   await page.getByRole("button", { name: "Select", exact: true }).click()
   const entities = drawing.locator(`[data-sketch-entity-type="${type}"]`)
   for (const [selectionIndex, entityIndex] of indices.entries()) {
-    const entity = entities.nth(entityIndex)
-    await entity.dispatchEvent("pointerdown", {
-      bubbles: true,
-      button: 0,
-      buttons: 1,
-      clientX: 0,
-      clientY: 0,
-      ctrlKey: selectionIndex > 0,
-      pointerId: selectionIndex + 1,
-    })
-    await entity.dispatchEvent("pointerup", {
-      bubbles: true,
-      button: 0,
-      buttons: 0,
-      pointerId: selectionIndex + 1,
+    await entities.nth(entityIndex).click({
+      modifiers: selectionIndex > 0 ? ["Control"] : [],
     })
   }
 }
