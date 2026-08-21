@@ -1,5 +1,8 @@
 # Sketch-first modeling implementation plan
 
+The cross-sketch, feature-history, support-frame, and 3D reference workflow is specified in the
+[Associative Sketch and Feature Workflow Plan](associative-sketch-and-feature-workflow-plan.md).
+
 ## Decision
 
 VibeShape's primary modeling workflow is **Sketch → select closed profile → Feature**. Direct Box and Cylinder commands remain supported as secondary advanced tools, but they do not define the product's default path.
@@ -15,7 +18,7 @@ Primary references:
 ## Product invariants
 
 1. **A sketch is a first-class historical record.** It owns stable entity and constraint identities, its support plane, and authored dimension expressions.
-2. **Selection and editing are different actions.** A single tree or viewport activation selects an entity and exposes eligible commands. Editing starts only through an explicit Edit action or an agreed shortcut.
+2. **Selection and editing share one stable owner identity.** Hover and focus preselect the same viewport geometry. Activating a saved sketch enters its editor directly; feature activation opens its edit task without an extra redundant action.
 3. **A feature consumes design intent.** Extrude stores a stable profile selector, never a response-local profile or loop index.
 4. **Tool eligibility follows selection.** Extrude is available only when the selected sketch contains a supported closed region. Later Add, Remove, and Intersect modes additionally require compatible target bodies.
 5. **Every command previews before commit.** Parameter and selection changes remain transient until one asynchronous, single-flight Apply action persists an ordinary document command.

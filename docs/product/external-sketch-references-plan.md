@@ -4,6 +4,9 @@
 - Reviewed: **2026-08-21**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
+This is the detailed external-reference slice of the broader
+[Associative Sketch and Feature Workflow Plan](associative-sketch-and-feature-workflow-plan.md).
+
 ## Problem
 
 A sketch currently owns only its authored entities, constraints, dimensions, and support frame. It can be
