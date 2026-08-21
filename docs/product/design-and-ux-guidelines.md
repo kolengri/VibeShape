@@ -172,6 +172,8 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 
 - Hover provides preselection before click whenever hit testing is available.
 - Selection highlights the exact subshape and identifies its type in the status area or selection summary.
+- Hovering or keyboard-focusing a visible feature-tree row preselects that feature's exact rebuilt geometry in the 3D viewport. Activating the row opens edit and keeps the same feature highlighted until the task closes.
+- Feature-level tree highlighting, command preview, and face selection are separate render layers. Historical feature geometry remains identifiable even when a downstream operation consumes it, while hidden features never reappear through highlighting.
 - Empty-space click clears selection unless an active command defines a different, visible behavior.
 - Additive and range selection conventions are platform-aware and documented in shortcut help.
 - The active selection filter is always visible when it restricts results.
@@ -367,6 +369,7 @@ The model tree is a dedicated accessible tree, not a styled table.
 - `Enter` activates the primary edit action; `Space` toggles selection when supported; `F2` renames.
 - Multi-selection follows platform conventions and never changes feature order.
 - Visibility, suppression, active, warning, error, and stale states have independent controls or indicators.
+- Pointer hover and keyboard focus use the same feature preselection contract; active edit uses persistent selection semantics rather than relying on row color alone.
 - An error badge identifies the owning feature and opens its diagnostic; it is not only a count on an ancestor.
 - Reordering is unavailable until DAG validation can explain whether a move is legal.
 - Context-menu actions are duplicated in the command palette or an accessible action menu.

@@ -81,6 +81,8 @@ type WorkspaceContentProps = Readonly<{
     hiddenFeatureIds: readonly FeatureId[]
     hiddenSketchIds: readonly SketchId[]
     originPlaneVisibility: ViewerOriginPlaneVisibility
+    preselectedFeatureId: FeatureId | null
+    selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
   }>
   sketch: Readonly<{
@@ -147,6 +149,8 @@ function ModelingWorkspaceContent({
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
       }}
+      preselectedFeatureId={model.preselectedFeatureId}
+      selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
@@ -192,6 +196,7 @@ export type EditorWorkspaceActions = Readonly<{
   createSubtract: () => void
   editFeature: (featureId: FeatureId) => void
   editSketch: (sketchId: SketchId) => void
+  preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   redoSketchDraft: () => void
@@ -226,6 +231,7 @@ type EditorWorkspaceProps = Readonly<{
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  preselectedFeatureId: FeatureId | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
   sketchDraft: SketchRecord | null
@@ -263,6 +269,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       hiddenSketchIds={props.hiddenSketchIds}
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
+      onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onSketchActivate={actions.editSketch}
       onSketchRename={updateSketch}
@@ -307,6 +314,8 @@ function EditorContent({
         hiddenFeatureIds: props.hiddenFeatureIds,
         hiddenSketchIds: props.hiddenSketchIds,
         originPlaneVisibility: props.originPlaneVisibility,
+        preselectedFeatureId: props.preselectedFeatureId,
+        selectedFeatureId: activeFeatureId(props.activeTool),
         selection,
       }}
       workspace={workspace}

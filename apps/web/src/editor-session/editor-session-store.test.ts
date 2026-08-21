@@ -66,6 +66,18 @@ describe("editor session store", () => {
     expect(first.getState().hiddenFeatureIds).toEqual([])
   })
 
+  it("owns transient feature preselection and clears it when the feature is hidden", () => {
+    const first = createEditorSessionStore()
+    const second = createEditorSessionStore()
+
+    first.getState().actions.setFeaturePreselection(featureId)
+    expect(first.getState().preselectedFeatureId).toBe(featureId)
+    expect(second.getState().preselectedFeatureId).toBeNull()
+
+    first.getState().actions.setFeatureVisibility(featureId, false)
+    expect(first.getState().preselectedFeatureId).toBeNull()
+  })
+
   it("keeps saved sketch visibility local to the editor session", () => {
     const first = createEditorSessionStore()
     const second = createEditorSessionStore()

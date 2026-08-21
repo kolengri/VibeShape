@@ -76,6 +76,8 @@ export type OrthographicFrustum = Readonly<{
 }>
 
 export type GeometryViewport = Readonly<{
+  setFeaturePreselection: (mesh: ViewerMesh | null) => void
+  setFeatureSelection: (mesh: ViewerMesh | null) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
@@ -230,6 +232,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #originPlaneGroup = new Group()
+  readonly #featurePreselectionGroup = new Group()
+  readonly #featureSelectionGroup = new Group()
   readonly #preselectionGroup = new Group()
   readonly #selectionGroup = new Group()
   readonly #raycaster = new Raycaster()
@@ -314,6 +318,34 @@ class ThreeGeometryViewport implements GeometryViewport {
     polygonOffsetFactor: -3,
     side: DoubleSide,
   })
+  readonly #featurePreselectionMaterial = new MeshBasicMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    depthWrite: false,
+    opacity: 0.14,
+    side: DoubleSide,
+    transparent: true,
+  })
+  readonly #featurePreselectionEdgeMaterial = new LineBasicMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    opacity: 0.76,
+    transparent: true,
+  })
+  readonly #featureSelectionMaterial = new MeshBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    depthWrite: false,
+    opacity: 0.22,
+    side: DoubleSide,
+    transparent: true,
+  })
+  readonly #featureSelectionEdgeMaterial = new LineBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    opacity: 0.96,
+    transparent: true,
+  })
   readonly #resizeObserver: ResizeObserver
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void
@@ -324,6 +356,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #originPlaneSelection: ViewerOriginPlane | null = null
   #originPlanePreselection: ViewerOriginPlane | null = null
   #originPlaneVisibility: ViewerOriginPlaneVisibility = defaultViewerOriginPlaneVisibility
+  #featurePreselection: ViewerMesh | null = null
+  #featureSelection: ViewerMesh | null = null
   #preselection: ViewerSelection | null = null
   #selection: ViewerSelection | null = null
 
@@ -348,6 +382,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#sketchGroup)
     this.#createOriginPlanes()
     this.#scene.add(this.#originPlaneGroup)
+    this.#scene.add(this.#featurePreselectionGroup)
+    this.#scene.add(this.#featureSelectionGroup)
     this.#scene.add(this.#preselectionGroup)
     this.#scene.add(this.#selectionGroup)
     this.#orientationAxes.setColors(
@@ -425,6 +461,35 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#modelGroup.add(edges)
     }
     this.#render()
+  }
+
+  setFeaturePreselection(mesh: ViewerMesh | null) {
+    if (this.#disposed) return
+    const visibleMesh = mesh?.featureId === this.#featureSelection?.featureId ? null : mesh
+    if (visibleMesh === this.#featurePreselection) return
+    this.#featurePreselection = visibleMesh
+    this.#replaceFeatureHighlight(
+      this.#featurePreselectionGroup,
+      this.#featurePreselectionMaterial,
+      this.#featurePreselectionEdgeMaterial,
+      visibleMesh,
+      2,
+    )
+  }
+
+  setFeatureSelection(mesh: ViewerMesh | null) {
+    if (this.#disposed || mesh === this.#featureSelection) return
+    this.#featureSelection = mesh
+    this.#replaceFeatureHighlight(
+      this.#featureSelectionGroup,
+      this.#featureSelectionMaterial,
+      this.#featureSelectionEdgeMaterial,
+      mesh,
+      3,
+    )
+    if (mesh?.featureId === this.#featurePreselection?.featureId) {
+      this.setFeaturePreselection(null)
+    }
   }
 
   setSketches(sketches: readonly ViewerSketch[]) {
@@ -530,6 +595,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeMaterials(this.#modelSurfaceMaterials)
     disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
+    disposeModelGroup(this.#featurePreselectionGroup)
+    disposeModelGroup(this.#featureSelectionGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
     this.#previewSurfaceMaterial.dispose()
@@ -542,6 +609,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchConstructionPointMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
+    this.#featurePreselectionMaterial.dispose()
+    this.#featurePreselectionEdgeMaterial.dispose()
+    this.#featureSelectionMaterial.dispose()
+    this.#featureSelectionEdgeMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
     for (const material of this.#originPlaneEdgeMaterials) material.dispose()
     this.#orientationAxes.geometry.dispose()
@@ -725,6 +796,28 @@ class ThreeGeometryViewport implements GeometryViewport {
       const source = this.#meshSources.get(selection.featureId)
       const geometry = source ? createFaceHighlightGeometry(source, selection.faceId) : null
       if (geometry) group.add(new Mesh(geometry, material))
+    }
+    this.#render()
+  }
+
+  #replaceFeatureHighlight(
+    group: Group,
+    surfaceMaterial: MeshBasicMaterial,
+    edgeMaterial: LineBasicMaterial,
+    source: ViewerMesh | null,
+    renderOrder: number,
+  ) {
+    disposeModelGroup(group)
+    if (source) {
+      const geometry = createViewerGeometry(source)
+      const surface = new Mesh(geometry, surfaceMaterial)
+      surface.name = `${source.featureId}:feature-highlight`
+      surface.renderOrder = renderOrder
+      group.add(surface)
+      const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
+      edges.name = `${source.featureId}:feature-highlight-edges`
+      edges.renderOrder = renderOrder
+      group.add(edges)
     }
     this.#render()
   }

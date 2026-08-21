@@ -215,6 +215,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
         editFeature,
         editSketch,
+        preselectFeature: sessionActions.setFeaturePreselection,
         select,
         selectSketchPlane: sessionActions.selectSketchPlane,
         redoSketchDraft: sessionActions.redoSketchDraft,
@@ -255,6 +256,7 @@ function EditorApplication({
       hiddenFeatureIds: state.hiddenFeatureIds,
       hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
+      preselectedFeatureId: state.preselectedFeatureId,
       selection: state.selection,
       sketch: state.sketch,
       workspace: state.workspace,
@@ -339,6 +341,7 @@ function EditorApplication({
         hiddenFeatureIds={session.hiddenFeatureIds}
         hiddenSketchIds={session.hiddenSketchIds}
         originPlaneVisibility={session.originPlaneVisibility}
+        preselectedFeatureId={session.preselectedFeatureId}
         workspace={session.workspace}
         selection={session.selection}
         sketchConstruction={session.sketch.construction}
