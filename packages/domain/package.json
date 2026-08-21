@@ -11,6 +11,7 @@
     "./command-dispatcher": "./src/command-dispatcher.ts",
     "./commands": "./src/commands.ts",
     "./document": "./src/document.ts",
+    "./document-graph": "./src/document-graph.ts",
     "./drafts": "./src/drafts.ts",
     "./feature-content-identity": "./src/feature-content-identity.ts",
     "./feature-graph": "./src/feature-graph.ts",

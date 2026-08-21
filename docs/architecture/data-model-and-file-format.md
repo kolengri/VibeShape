@@ -45,7 +45,9 @@ Document
   applicationMetadata
 ```
 
-`sketches[]` uses stable UUIDv7 identities and stores analytical origin-plane entities plus constraints independently of disposable solved state. `features[]` uses a stable presentation order, while every feature retains explicit inputs. Opening a file validates sketch reference compatibility, constructs the feature DAG, and rejects missing IDs and cycles.
+Schema version 0 stores `sketches[]` and `features[]` separately. Sketches use stable UUIDv7 identities and store analytical entities plus constraints independently of disposable solved state; features retain stable identity, presentation order within their collection, and explicit B-Rep inputs. Opening a current file validates sketch reference compatibility, constructs the feature DAG, and rejects missing IDs and cycles.
+
+[ADR-0026](../adr/0026-document-dependency-graph-and-interleaved-history.md) accepts a version-1 document evolution with one interleaved History order and durable non-B-Rep semantic input declarations. The pure document-graph foundation validates typed sketch/feature nodes and current first-party relations without changing schema version 0. It is not yet authoritative for persistence, deletion, reorder, dirty propagation, or UI eligibility. Those integrations require the migration-aware snapshot and event replay gates in ADR-0026.
 
 A built-in feature stores a stable first-party module ID, module version, contributed feature-type ID, and feature schema version. A custom feature additionally stores:
 
@@ -102,6 +104,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - an executable trusted-command dispatcher that requires exactly one handler per descriptor and validates command route, owner, and schema-version parity before execution;
 - strict feature schema v0 records with stable type ownership, bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and presentation order;
 - deterministic feature-graph construction with duplicate, missing-dependency, self-reference, undeclared-reference, and cycle rejection;
+- a bounded pure document-dependency graph over typed sketch and feature nodes, with explicit current first-party relation kinds, exact supplied-History coverage, forward-order validation, cross-kind cycle rejection, deterministic evaluation order, and parent/child queries; this first integrity slice remains non-authoritative until versioned replay and unavailable-feature semantic inputs are implemented;
 - atomic feature collection mutations that validate the complete resulting DAG before advancing the document revision and never retain partial state after rejection;
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.

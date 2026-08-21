@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The parametric **feature graph** is the source of design intent. B-Rep is the computed exact body state; the triangle mesh is a derived visualization and manufacturing state.
+The semantic document is the source of design intent. Its document dependency graph relates sketches and features, while the parametric **feature graph** retains B-Rep evaluation and body-input authority. B-Rep is the computed exact body state; the triangle mesh is a derived visualization and manufacturing state.
 
 ```mermaid
 flowchart LR

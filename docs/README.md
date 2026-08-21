@@ -28,6 +28,7 @@ The documents use these terms:
 - CAD objects exist only inside a worker; the UI receives serializable data and mesh buffers.
 - Sketch solving uses the source-built SolveSpace v3.2 subset behind a flat typed-array worker ABI; no native pointer crosses it.
 - Parametric history is a directed acyclic dependency graph with a linear presentation in the UI.
+- A document-wide dependency graph relates sketches and features; the feature DAG remains the B-Rep and body-input authority, and persisted interleaved History waits for replay-safe schema migration.
 - The document length unit is millimeters; calculations use `float64`.
 - 3MF is the preferred print export.
 - Installed-slicer handoff uses an explicitly paired, authenticated `127.0.0.1` bridge with an honest 3MF download fallback.
