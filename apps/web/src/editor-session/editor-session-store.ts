@@ -29,6 +29,7 @@ const SKETCH_HISTORY_LIMIT = 100
 export type SketchEditorSessionState = Readonly<{
   activeSketchId: SketchId | null
   activeSketchTool: ActiveSketchTool | null
+  cameraMode: SketchCameraMode
   construction: boolean
   draft: SketchRecord | null
   editorTool: SketchEditorTool
@@ -40,6 +41,8 @@ export type SketchEditorSessionState = Readonly<{
   selectedProfile: SketchProfileSelector | null
   undoStack: readonly SketchRecord[]
 }>
+
+export type SketchCameraMode = "normal" | "orbit"
 
 export type EditorSessionState = Readonly<{
   activePartDesignTool: ActivePartDesignTool | null
@@ -74,6 +77,7 @@ export type EditorSessionActions = Readonly<{
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
+  setSketchCameraMode: (mode: SketchCameraMode) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
@@ -94,6 +98,7 @@ function createSketchState(): SketchEditorSessionState {
   return {
     activeSketchId: null,
     activeSketchTool: null,
+    cameraMode: "normal",
     construction: false,
     draft: null,
     editorTool: "select",
@@ -134,6 +139,7 @@ function resetSketchPresentation(
   sketch: Draft<SketchEditorSessionState>,
   editorTool: SketchEditorTool,
 ) {
+  sketch.cameraMode = "normal"
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
@@ -211,6 +217,7 @@ export function createEditorSessionStore() {
             state.workspace = "model"
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = null
+            state.sketch.cameraMode = "normal"
             resetSketchDraft(state.sketch, null)
             state.sketch.editorTool = "select"
             state.sketch.failedConstraintIds = []
@@ -282,6 +289,16 @@ export function createEditorSessionStore() {
         setSketchConstruction: (construction) =>
           set((state) => {
             state.sketch.construction = construction
+          }),
+        setSketchCameraMode: (mode) =>
+          set((state) => {
+            if (
+              !state.sketch.activeSketchTool ||
+              state.sketch.activeSketchTool.kind === "select-sketch-plane"
+            ) {
+              return
+            }
+            state.sketch.cameraMode = mode
           }),
         setSketchDraft: (sketch, mode = "record") => {
           const current = get().sketch.draft

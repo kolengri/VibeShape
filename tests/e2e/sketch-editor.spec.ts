@@ -9,7 +9,9 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
-  test("keeps the same 3D canvas as passive context while editing a sketch", async ({ page }) => {
+  test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({
+    page,
+  }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
@@ -47,6 +49,37 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.55)
     await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const orbitViewport = page.locator("section[data-sketch-context-mode='orbit']")
+    await expect(orbitViewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(orbitViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    await expect(orbitViewport.locator("canvas")).toHaveAttribute(
+      "data-test-viewport-identity",
+      "persistent",
+    )
+    const hiddenDrawing = page.locator("section[data-interactive='false']")
+    await expect(hiddenDrawing).toHaveAttribute("aria-hidden", "true")
+    await expect(hiddenDrawing).toHaveAttribute("inert", "")
+    await expect(hiddenDrawing).toHaveClass(/opacity-0/)
+    const orbitBounds = await orbitViewport.locator("canvas").boundingBox()
+    if (!orbitBounds) throw new Error("The orbit context canvas is not visible.")
+    await page.mouse.move(
+      orbitBounds.x + orbitBounds.width / 2,
+      orbitBounds.y + orbitBounds.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      orbitBounds.x + orbitBounds.width / 2 + 80,
+      orbitBounds.y + orbitBounds.height / 2 - 40,
+      { steps: 8 },
+    )
+    await page.mouse.up()
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(passiveViewport).toHaveAttribute("data-sketch-context-mode", "normal")
+    await expect(drawing).toBeVisible()
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
 
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()

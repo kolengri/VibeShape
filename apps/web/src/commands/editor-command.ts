@@ -25,12 +25,14 @@ export const editorCommandIds = {
   sketchLinearPattern: "org.vibeshape.editor.sketch.modify.linear-pattern",
   sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
   sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
+  sketchOrbitView: "org.vibeshape.editor.sketch.view.orbit",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
   sketchSlot: "org.vibeshape.editor.sketch.tool.slot",
   sketchSlotAroundLine: "org.vibeshape.editor.sketch.tool.slot-around-line",
   sketchRedo: "org.vibeshape.editor.sketch.redo",
+  sketchNormalView: "org.vibeshape.editor.sketch.view.normal",
   sketchSelect: "org.vibeshape.editor.sketch.tool.select",
   sketchTangentArc: "org.vibeshape.editor.sketch.tool.tangent-arc",
   sketchSplit: "org.vibeshape.editor.sketch.modify.split",
@@ -52,6 +54,7 @@ export type EditorCommandToolbarGroup =
   | "sketch-tools"
   | "sketch-mode"
   | "sketch-modify"
+  | "sketch-view"
   | "history"
 
 export type EditorCommandIcon =
@@ -76,9 +79,11 @@ export type EditorCommandIcon =
   | "linear-pattern"
   | "mirror"
   | "offset"
+  | "orbit-view"
   | "inscribed-polygon"
   | "midpoint-line"
   | "model"
+  | "normal-view"
   | "point"
   | "rectangle"
   | "redo"
@@ -121,12 +126,14 @@ export type EditorCommandLabelKey =
   | "sketchLinearPattern"
   | "sketchMirror"
   | "sketchOffset"
+  | "sketchOrbitView"
   | "sketchInscribedPolygon"
   | "sketchPoint"
   | "sketchRectangle"
   | "sketchSlot"
   | "sketchSlotAroundLine"
   | "sketchRedo"
+  | "sketchNormalView"
   | "sketchSelect"
   | "sketchSplit"
   | "sketchTransform"

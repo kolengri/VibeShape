@@ -7,9 +7,9 @@ import {
 import {
   createFeatureTypeRegistry,
   createModuleRegistry,
+  type DocumentSnapshot,
   documentCoreModule,
   documentSnapshotSchema,
-  type DocumentSnapshot,
   type FeatureTypeRegistry,
   featureBodyDependencyIds,
   featureCoreModule,
@@ -18,8 +18,8 @@ import {
   readDatumPlaneFeatureParameters,
   referenceGeometryFeatureTypeHandlers,
   referenceGeometryModule,
-  sketchRecordSchema,
   type SketchRecord,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -36,8 +36,8 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
-import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
 import { resolveExternalSketchPoints } from "./external-sketch-references"
+import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
 import { createSketchDisplayRecords } from "./sketch-display"
 
 export interface DocumentWorkerEndpoint {
@@ -526,6 +526,7 @@ export class DocumentWorkerRuntime {
       documentSnapshotSchema.parse(request.document),
       this.solveSketch,
       solvedBySketchId,
+      result.features,
     )
     if (this.#isStale(request)) {
       this.#postFailure(

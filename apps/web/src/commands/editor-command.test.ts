@@ -51,6 +51,7 @@ function commandContext(
       createSketch: vi.fn(),
       createSubtract: vi.fn(),
       redoSketch: vi.fn(),
+      setSketchCameraMode: vi.fn(),
       setSketchConstruction: vi.fn(),
       setSketchTool: vi.fn(),
       switchWorkspace: vi.fn(),
@@ -62,6 +63,7 @@ function commandContext(
       controller: readyController(),
       extrusionAvailable: false,
       sketchConstruction: false,
+      sketchCameraMode: "normal",
       sketchRedoAvailable: false,
       slotFromSelectionAvailable: false,
       sketchTool: "select",
@@ -223,6 +225,31 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(6, "circular-pattern")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(7, "split")
     expect(context.actions.setSketchTool).toHaveBeenNthCalledWith(8, "transform")
+  })
+
+  it("routes sketch camera commands without changing the active geometry tool", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      sketchCameraMode: "normal",
+      sketchTool: "line",
+      workspace: "sketch",
+    })
+    const commands = resolveBuiltInEditorCommands(context)
+    const orbit = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchOrbitView,
+    )
+    const normal = commands.find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchNormalView,
+    )
+
+    expect(orbit?.toolbarVisible).toBe(true)
+    expect(orbit?.active).toBe(false)
+    expect(normal?.active).toBe(true)
+    orbit?.invoke()
+    normal?.invoke()
+    expect(context.actions.setSketchCameraMode).toHaveBeenNthCalledWith(1, "orbit")
+    expect(context.actions.setSketchCameraMode).toHaveBeenNthCalledWith(2, "normal")
+    expect(context.actions.setSketchTool).not.toHaveBeenCalled()
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {

@@ -178,7 +178,7 @@ test.describe("selector-backed extrusion", () => {
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
-    await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.3 } })
+    await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.5 } })
 
     const support = page.getByRole("combobox", { name: "Support plane" })
     await expect(support).toHaveValue("feature-face")

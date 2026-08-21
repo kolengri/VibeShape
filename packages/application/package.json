@@ -8,7 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./feature-rebuild": "./src/feature-rebuild.ts",
-    "./persistent-document-session": "./src/persistent-document-session.ts"
+    "./persistent-document-session": "./src/persistent-document-session.ts",
+    "./support-frame": "./src/support-frame.ts",
+    "./sketch-display": "./src/sketch-display.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

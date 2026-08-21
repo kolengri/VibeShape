@@ -68,6 +68,24 @@ export type ViewerSketch = Readonly<{
   constructionPointPositions: Float32Array
 }>
 
+export type ViewerVector3 = readonly [number, number, number]
+
+/** A finite, orthonormal, right-handed sketch coordinate frame. */
+export type ViewerFrame = Readonly<{
+  origin: ViewerVector3
+  xAxis: ViewerVector3
+  yAxis: ViewerVector3
+  normal: ViewerVector3
+}>
+
+export type ViewerCameraPose = Readonly<{
+  position: ViewerVector3
+  target: ViewerVector3
+  up: ViewerVector3
+}>
+
+export type ViewerInteractionMode = "select" | "camera-only"
+
 export type OrthographicFrustum = Readonly<{
   left: number
   right: number
@@ -76,6 +94,8 @@ export type OrthographicFrustum = Readonly<{
 }>
 
 export type GeometryViewport = Readonly<{
+  orientToFrame: (frame: ViewerFrame) => boolean
+  setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
@@ -106,6 +126,56 @@ export function orthographicFrustum(viewHeight: number, aspect: number): Orthogr
   const halfHeight = safeHeight / 2
   const halfWidth = halfHeight * safeAspect
   return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
+}
+
+const FRAME_TOLERANCE = 1e-6
+
+function finiteVector(vector: unknown): vector is ViewerVector3 {
+  return Array.isArray(vector) && vector.length === 3 && vector.every(Number.isFinite)
+}
+
+function dot(left: ViewerVector3, right: ViewerVector3) {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+/** Returns false for malformed, non-finite, non-orthonormal, or left-handed frames. */
+export function isValidViewerFrame(frame: ViewerFrame): boolean {
+  if (!frame || !finiteVector(frame.origin)) return false
+  if (!finiteVector(frame.xAxis) || !finiteVector(frame.yAxis) || !finiteVector(frame.normal)) {
+    return false
+  }
+  const { xAxis, yAxis, normal } = frame
+  const unit = (vector: ViewerVector3) => Math.abs(dot(vector, vector) - 1) <= FRAME_TOLERANCE
+  if (!unit(xAxis) || !unit(yAxis) || !unit(normal)) return false
+  if (
+    Math.abs(dot(xAxis, yAxis)) > FRAME_TOLERANCE ||
+    Math.abs(dot(xAxis, normal)) > FRAME_TOLERANCE ||
+    Math.abs(dot(yAxis, normal)) > FRAME_TOLERANCE
+  ) {
+    return false
+  }
+  const handedness =
+    (xAxis[1] * yAxis[2] - xAxis[2] * yAxis[1]) * normal[0] +
+    (xAxis[2] * yAxis[0] - xAxis[0] * yAxis[2]) * normal[1] +
+    (xAxis[0] * yAxis[1] - xAxis[1] * yAxis[0]) * normal[2]
+  return handedness >= 1 - FRAME_TOLERANCE
+}
+
+/** Derives an orthographic camera pose without mutating a renderer or camera. */
+export function viewerCameraPoseForFrame(
+  frame: ViewerFrame,
+  distance: number,
+): ViewerCameraPose | null {
+  if (!isValidViewerFrame(frame) || !Number.isFinite(distance) || distance <= 0) return null
+  return {
+    position: [
+      frame.origin[0] + frame.normal[0] * distance,
+      frame.origin[1] + frame.normal[1] * distance,
+      frame.origin[2] + frame.normal[2] * distance,
+    ],
+    target: [...frame.origin],
+    up: [...frame.yAxis],
+  }
 }
 
 export function createViewerGeometry(mesh: ViewerMesh) {
@@ -360,6 +430,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #featureSelection: ViewerMesh | null = null
   #preselection: ViewerSelection | null = null
   #selection: ViewerSelection | null = null
+  #interactionMode: ViewerInteractionMode = "select"
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
@@ -542,6 +613,35 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#originPlaneVisibility = visibility
     this.#updateOriginPlanes()
     this.#render()
+  }
+
+  orientToFrame(frame: ViewerFrame) {
+    if (this.#disposed) return false
+    const distance = this.#camera.position.distanceTo(this.#controls.target)
+    const pose = viewerCameraPoseForFrame(frame, distance)
+    if (!pose) return false
+    this.#controls.target.set(...pose.target)
+    this.#camera.position.set(...pose.position)
+    this.#camera.up.set(...pose.up)
+    this.#updateProjection()
+    this.#controls.update()
+    this.#render()
+    return true
+  }
+
+  setInteractionMode(mode: ViewerInteractionMode) {
+    if (this.#disposed || mode === this.#interactionMode) return
+    this.#interactionMode = mode
+    if (mode === "camera-only") {
+      this.#pointerDown = null
+      this.#setOriginPlanePreselection(null)
+      this.#setPreselection(null)
+      if (this.#selection) {
+        this.#selection = null
+        disposeModelGroup(this.#selectionGroup)
+      }
+      this.#render()
+    }
   }
 
   fit() {
@@ -830,6 +930,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
+    if (this.#interactionMode === "camera-only") return
     if (this.#originPlaneSelection) {
       const modelSelection = this.#pick(event)
       const plane = modelSelection ? null : this.#pickOriginPlane(event)
@@ -844,6 +945,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const start = this.#pointerDown
     this.#pointerDown = null
     if (!event.isPrimary || event.button !== 0 || !start) return
+    if (this.#interactionMode === "camera-only") return
     const movement = Math.hypot(event.clientX - start.x, event.clientY - start.y)
     if (movement > 3) return
     if (this.#originPlaneSelection) {
@@ -861,6 +963,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onPointerLeave = () => {
     this.#pointerDown = null
+    if (this.#interactionMode === "camera-only") return
     if (this.#originPlaneSelection) this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
   }

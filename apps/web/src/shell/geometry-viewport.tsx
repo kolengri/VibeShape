@@ -12,6 +12,7 @@ import { renderProjectThumbnail } from "@vibeshape/viewer/project-thumbnail"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
+  ViewerFrame,
   ViewerMesh,
   ViewerSelection,
   ViewerSketch,
@@ -43,6 +44,11 @@ type ViewportMount = {
   cancelled: boolean
   viewport: GeometryViewportPort | null
 }
+
+export type GeometryViewportSketchContext = Readonly<{
+  frame: ViewerFrame | null
+  mode: "normal" | "orbit"
+}>
 
 const ignoreOriginPlaneSelection = () => undefined
 const ignoreOriginPlaneVisibilityChange = () => undefined
@@ -92,6 +98,14 @@ export function viewerSketches(
         sketch.pointPositions.length > 0 ||
         sketch.constructionPointPositions.length > 0),
   )
+}
+
+export function withActiveSketchDisplay(
+  committed: readonly ViewerSketch[],
+  active: ViewerSketch | null | undefined,
+): readonly ViewerSketch[] {
+  if (!active) return committed
+  return [...committed.filter(({ sketchId }) => sketchId !== active.sketchId), active]
 }
 
 function viewportMessage(
@@ -146,6 +160,7 @@ async function initializeViewport(
   latestOriginPlaneVisibilityRef: RefObject<ViewerOriginPlaneVisibility>,
   latestFeaturePreselectionRef: RefObject<ViewerMesh | null>,
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
+  latestSketchContextRef: RefObject<GeometryViewportSketchContext | null>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
   try {
@@ -167,9 +182,60 @@ async function initializeViewport(
     viewport.setFeatureSelection(latestFeatureSelectionRef.current)
     viewport.setFeaturePreselection(latestFeaturePreselectionRef.current)
     viewport.fit()
+    synchronizeViewportSketchContext(viewport, latestSketchContextRef.current)
     setRendererFailed(false)
   } catch {
     if (!mount.cancelled) setRendererFailed(true)
+  }
+}
+
+function synchronizeViewportSketchContext(
+  viewport: GeometryViewportPort,
+  context: GeometryViewportSketchContext | null,
+) {
+  viewport.setInteractionMode(context ? "camera-only" : "select")
+  if (context?.mode === "normal" && context.frame) viewport.orientToFrame(context.frame)
+}
+
+function useLatestViewportInputs({
+  featurePreselection,
+  featureSelection,
+  meshes,
+  originPlaneSelection,
+  originPlaneVisibility,
+  sketchContext,
+  sketches,
+}: Readonly<{
+  featurePreselection: ViewerMesh | null
+  featureSelection: ViewerMesh | null
+  meshes: readonly ViewerMesh[]
+  originPlaneSelection: ViewerOriginPlane | null
+  originPlaneVisibility: ViewerOriginPlaneVisibility
+  sketchContext: GeometryViewportSketchContext | null
+  sketches: readonly ViewerSketch[]
+}>) {
+  const featurePreselectionRef = useRef(featurePreselection)
+  const featureSelectionRef = useRef(featureSelection)
+  const meshesRef = useRef(meshes)
+  const originPlaneRef = useRef(originPlaneSelection)
+  const originPlaneVisibilityRef = useRef(originPlaneVisibility)
+  const sketchContextRef = useRef(sketchContext)
+  const sketchesRef = useRef(sketches)
+  featurePreselectionRef.current = featurePreselection
+  featureSelectionRef.current = featureSelection
+  meshesRef.current = meshes
+  originPlaneRef.current = originPlaneSelection
+  originPlaneVisibilityRef.current = originPlaneVisibility
+  sketchContextRef.current = sketchContext
+  sketchesRef.current = sketches
+  return {
+    featurePreselectionRef,
+    featureSelectionRef,
+    meshesRef,
+    originPlaneRef,
+    originPlaneVisibilityRef,
+    sketchContextRef,
+    sketchesRef,
   }
 }
 
@@ -184,22 +250,20 @@ function useViewportRenderer(
   onSelectionChange: (selection: ViewerSelection | null) => void,
   featurePreselection: ViewerMesh | null,
   featureSelection: ViewerMesh | null,
+  sketchContext: GeometryViewportSketchContext | null,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
-  const latestMeshesRef = useRef(meshes)
-  const latestSketchesRef = useRef(sketches)
-  const latestOriginPlaneRef = useRef(originPlaneSelection)
-  const latestOriginPlaneVisibilityRef = useRef(originPlaneVisibility)
-  const latestFeaturePreselectionRef = useRef(featurePreselection)
-  const latestFeatureSelectionRef = useRef(featureSelection)
+  const latest = useLatestViewportInputs({
+    featurePreselection,
+    featureSelection,
+    meshes,
+    originPlaneSelection,
+    originPlaneVisibility,
+    sketchContext,
+    sketches,
+  })
   const [rendererFailed, setRendererFailed] = useState(false)
-  latestMeshesRef.current = meshes
-  latestSketchesRef.current = sketches
-  latestOriginPlaneRef.current = originPlaneSelection
-  latestOriginPlaneVisibilityRef.current = originPlaneVisibility
-  latestFeaturePreselectionRef.current = featurePreselection
-  latestFeatureSelectionRef.current = featureSelection
   const shouldInitialize = true
 
   useEffect(() => {
@@ -214,12 +278,13 @@ function useViewportRenderer(
       onSelectionChange,
       mount,
       viewportRef,
-      latestMeshesRef,
-      latestSketchesRef,
-      latestOriginPlaneRef,
-      latestOriginPlaneVisibilityRef,
-      latestFeaturePreselectionRef,
-      latestFeatureSelectionRef,
+      latest.meshesRef,
+      latest.sketchesRef,
+      latest.originPlaneRef,
+      latest.originPlaneVisibilityRef,
+      latest.featurePreselectionRef,
+      latest.featureSelectionRef,
+      latest.sketchContextRef,
       setRendererFailed,
     )
     return () => {
@@ -256,6 +321,11 @@ function useViewportRenderer(
     viewport?.setFeatureSelection(featureSelection)
     viewport?.setFeaturePreselection(featurePreselection)
   }, [featurePreselection, featureSelection])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (viewport) synchronizeViewportSketchContext(viewport, sketchContext)
+  }, [sketchContext])
 
   return { canvasRef, rendererFailed, viewportRef }
 }
@@ -456,6 +526,7 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
 }
 
 type GeometryViewportProps = Readonly<{
+  activeSketchDisplay?: ViewerSketch | null
   controller: DocumentControllerState
   createViewport?: ViewportFactory
   featurePreview?: FeaturePreviewState
@@ -473,7 +544,7 @@ type GeometryViewportProps = Readonly<{
   selectedFeatureId?: string | null
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
-  passive?: boolean
+  sketchContext?: GeometryViewportSketchContext
 }>
 
 function viewerFeatureMesh(
@@ -570,6 +641,7 @@ function translatedViewportMessage(
 
 function useGeometryViewportModel(props: GeometryViewportProps) {
   const {
+    activeSketchDisplay,
     controller,
     createViewport = loadGeometryViewport,
     featurePreview,
@@ -581,6 +653,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     preselectedFeatureId,
     selectedFeatureId,
     selection,
+    sketchContext,
   } = props
   const t = useTranslations("app.shell.viewport")
   const allCommittedMeshes = useMemo(
@@ -597,10 +670,10 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
       ({ featureId }) => !hiddenIds.has(featureId),
     )
   }, [committedMeshes, featurePreview, hiddenFeatureIds])
-  const sketches = useMemo(
-    () => viewerSketches(controller, hiddenSketchIds),
-    [controller, hiddenSketchIds],
-  )
+  const sketches = useMemo(() => {
+    const committed = viewerSketches(controller, hiddenSketchIds)
+    return withActiveSketchDisplay(committed, activeSketchDisplay)
+  }, [activeSketchDisplay, controller, hiddenSketchIds])
   const featurePreselection = useMemo(
     () =>
       highlightedFeatureMesh(controller, preselectedFeatureId, hiddenFeatureIds, featurePreview),
@@ -624,6 +697,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     onSelectionChange,
     featurePreselection,
     featureSelection,
+    sketchContext ?? null,
   )
   useProjectThumbnail(controller, allCommittedMeshes)
   useClearInvalidSelection(meshes, selection, onSelectionChange)
@@ -704,7 +778,9 @@ function WorldAxesLegend() {
 }
 
 export function GeometryViewport(props: GeometryViewportProps) {
-  const { featurePreview, originPlaneSelection, passive = false, selection } = props
+  const { featurePreview, originPlaneSelection, selection, sketchContext } = props
+  const contextActive = sketchContext !== undefined
+  const passive = sketchContext?.mode === "normal"
   const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
   const {
@@ -722,12 +798,13 @@ export function GeometryViewport(props: GeometryViewportProps) {
   return (
     <section
       aria-label={t("ariaLabel")}
-      aria-hidden={passive ? true : undefined}
+      aria-hidden={contextActive ? true : undefined}
       className={cn(
         "relative min-h-0 overflow-hidden bg-viewport-background",
         passive && "pointer-events-none",
       )}
       data-passive={passive ? "true" : undefined}
+      data-sketch-context-mode={sketchContext?.mode}
       data-rendered-feature-count={meshes.length}
       data-rendered-sketch-count={sketches.length}
       data-preview-feature-count={
@@ -746,7 +823,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
         ref={canvasRef}
         className={cn("absolute inset-0 size-full touch-none", passive && "pointer-events-none")}
       />
-      {!passive ? (
+      {!contextActive ? (
         <>
           <ViewportMessage message={message} title={t("title")} />
           <PreviewStatus preview={featurePreview} />
@@ -769,6 +846,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
           </div>
         </>
       ) : null}
+      {sketchContext?.mode === "orbit" ? <WorldAxesLegend /> : null}
     </section>
   )
 }
