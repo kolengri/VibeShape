@@ -12,7 +12,7 @@ import type {
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { useState } from "react"
+import { type ReactNode, useState } from "react"
 import {
   type DocumentControllerState,
   removeSketch,
@@ -134,6 +134,7 @@ function SketchWorkspaceContent({
         onSelectionChange: actions.onSketchSelectionChange,
         onUndo: actions.onSketchUndo,
       }}
+      overlay
     />
   )
 }
@@ -143,7 +144,10 @@ function ModelingWorkspaceContent({
   controller,
   model,
   sketch,
-}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch">) {
+  passive = false,
+}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
+  passive?: boolean
+}) {
   return (
     <GeometryViewport
       controller={controller}
@@ -158,6 +162,7 @@ function ModelingWorkspaceContent({
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
+      passive={passive}
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
         ? {
             originPlaneSelection: {
@@ -170,23 +175,48 @@ function ModelingWorkspaceContent({
   )
 }
 
+export function ModelingSketchViewportStack({
+  modeling,
+  sketch,
+  sketchActive,
+}: Readonly<{
+  modeling: ReactNode
+  sketch: ReactNode
+  sketchActive: boolean
+}>) {
+  return (
+    <div className="relative grid min-h-0">
+      {modeling}
+      {sketchActive ? sketch : null}
+    </div>
+  )
+}
+
 function WorkspaceContent(props: WorkspaceContentProps) {
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
-  return props.workspace === "sketch" ? (
-    <SketchWorkspaceContent
-      actions={props.actions}
-      controller={props.controller}
-      model={props.model}
-      sketch={props.sketch}
-    />
-  ) : (
-    <ModelingWorkspaceContent
-      actions={props.actions}
-      controller={props.controller}
-      model={props.model}
-      sketch={props.sketch}
+  const sketchActive = props.workspace === "sketch"
+  return (
+    <ModelingSketchViewportStack
+      modeling={
+        <ModelingWorkspaceContent
+          actions={props.actions}
+          controller={props.controller}
+          model={props.model}
+          passive={sketchActive}
+          sketch={props.sketch}
+        />
+      }
+      sketch={
+        <SketchWorkspaceContent
+          actions={props.actions}
+          controller={props.controller}
+          model={props.model}
+          sketch={props.sketch}
+        />
+      }
+      sketchActive={sketchActive}
     />
   )
 }

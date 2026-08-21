@@ -164,6 +164,7 @@ function solveResult(
 const noOperation = () => undefined
 
 type SketchViewportTestProps = Readonly<{
+  overlay?: boolean
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
@@ -231,6 +232,7 @@ function viewportElement(props: SketchViewportTestProps) {
       >
         <TooltipProvider delayDuration={0}>
           <SketchViewport
+            {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
             solveSketch={props.solveSketch}
             state={viewportState(props)}
             actions={viewportActions(props)}
@@ -319,6 +321,18 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("uses a transparent surface in overlay mode", () => {
+    const view = renderViewport({
+      overlay: true,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const viewport = view.getByRole("region", { name: "2D sketch workspace" })
+    expect(viewport.getAttribute("data-overlay")).toBe("true")
+    expect(viewport.className).toContain("bg-transparent")
+    expect(viewport.className).not.toContain("bg-viewport-background")
+  })
+
   it("uses an earlier coplanar sketch point directly from the drawing", () => {
     const sourcePoint = pointEntities[0]
     if (!sourcePoint) throw new Error("The source sketch fixture must contain a point.")

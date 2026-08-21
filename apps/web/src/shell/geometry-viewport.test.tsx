@@ -81,6 +81,7 @@ function renderViewport(
     preselectedFeatureId?: string
     selectedFeatureId?: string
   }>,
+  passive = false,
 ) {
   const port: GeometryViewportPort = {
     setFeaturePreselection: vi.fn(),
@@ -97,7 +98,7 @@ function renderViewport(
   const createViewport = vi.fn(
     (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
   )
-  const element = (nextController: DocumentControllerState) => (
+  const element = (nextController: DocumentControllerState, nextPassive = passive) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
         <GeometryViewport
@@ -105,6 +106,7 @@ function renderViewport(
           createViewport={createViewport}
           selection={selection}
           onSelectionChange={onSelectionChange}
+          passive={nextPassive}
           {...featureHighlight}
           {...(featurePreview ? { featurePreview } : {})}
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
@@ -121,6 +123,7 @@ function renderViewport(
     port,
     rerenderController: (nextController: DocumentControllerState) =>
       result.rerender(element(nextController)),
+    rerenderPassive: (nextPassive: boolean) => result.rerender(element(controller, nextPassive)),
   }
 }
 
@@ -132,6 +135,44 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("preserves the viewer and camera while passive context disables chrome and input", async () => {
+    const controller = readyController(
+      [{ id: boxId, dependencies: [] }],
+      [{ featureId: boxId, geometry: { mesh } }],
+    )
+    const { container, createViewport, port, rerenderPassive, unmount } = renderViewport(controller)
+    await waitFor(() =>
+      expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }]),
+    )
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledOnce()
+
+    rerenderPassive(true)
+    const viewport = container.querySelector<HTMLElement>("[data-passive='true']")
+    expect(viewport).not.toBeNull()
+    if (!viewport) return
+    expect(viewport.getAttribute("data-passive")).toBe("true")
+    expect(viewport.getAttribute("aria-hidden")).toBe("true")
+    expect(viewport.className).toContain("pointer-events-none")
+    expect(viewport.querySelector("canvas")).toBeTruthy()
+    expect(screen.queryByRole("region", { name: "3D viewport" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Fit view" })).toBeNull()
+    expect(screen.queryByRole("img", { name: "World axes" })).toBeNull()
+    expect(screen.queryByText("XYZ · mm")).toBeNull()
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.dispose).not.toHaveBeenCalled()
+
+    rerenderPassive(false)
+    expect(screen.getByRole("region", { name: "3D viewport" })).toBeTruthy()
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.dispose).not.toHaveBeenCalled()
+
+    unmount()
+    expect(port.dispose).toHaveBeenCalledOnce()
+  })
+
   it("renders exact unsaved meshes as a distinct preview state", async () => {
     const previewMesh = { featureId: boxId, appearance: "preview" as const, ...mesh }
     const { port } = renderViewport(readyController([], []), null, undefined, {

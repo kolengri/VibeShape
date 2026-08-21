@@ -417,6 +417,11 @@ documents remain openable without changing geometry or overwriting their source 
 
 ### Slice 1 — understandable History and editing context
 
+Status: in progress. The initial context-layer increment keeps the same Three.js viewport mounted across
+Model/Sketch transitions, displays it passively behind a transparent analytical sketch surface, and leaves
+pointer ownership with the sketch editor. Shared camera alignment, orbit-in-context, and graphical 3D source
+selection remain open parts of this slice.
+
 - Replace separate Sketches/Features presentation with History plus Bodies.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
 - Add a history cursor and rollback presentation while editing an earlier sketch or feature.

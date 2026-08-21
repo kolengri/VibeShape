@@ -84,6 +84,7 @@ import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button } from "@vibeshape/ui/components/button"
 import { Link2, Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { cn } from "@vibeshape/ui/lib/cn"
 import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
@@ -6706,9 +6707,11 @@ function useSketchViewportPresentation(
 export function SketchViewport({
   actions,
   solveSketch = solveActiveSketch,
+  overlay = false,
   state,
 }: {
   actions: SketchViewportActions
+  overlay?: boolean
   solveSketch?: SketchSolveFunction
   state: SketchViewportState
 }) {
@@ -6817,7 +6820,11 @@ export function SketchViewport({
   return (
     <section
       aria-label={presentation.ariaLabel}
-      className="relative min-h-0 overflow-hidden bg-viewport-background"
+      className={cn(
+        "relative min-h-0 overflow-hidden",
+        overlay ? "absolute inset-0 z-10 bg-transparent" : "bg-viewport-background",
+      )}
+      data-overlay={overlay ? "true" : undefined}
     >
       <StableSketchViewportContent
         activeSketch={activeSketch}
