@@ -9,6 +9,7 @@ import {
   createModuleRegistry,
   documentCoreModule,
   documentSnapshotSchema,
+  type DocumentSnapshot,
   type FeatureTypeRegistry,
   featureBodyDependencyIds,
   featureCoreModule,
@@ -17,6 +18,8 @@ import {
   readDatumPlaneFeatureParameters,
   referenceGeometryFeatureTypeHandlers,
   referenceGeometryModule,
+  sketchRecordSchema,
+  type SketchRecord,
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
@@ -34,6 +37,7 @@ import {
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
+import { resolveExternalSketchPoints } from "./external-sketch-references"
 import { createSketchDisplayRecords } from "./sketch-display"
 
 export interface DocumentWorkerEndpoint {
@@ -52,7 +56,8 @@ type RebuildDocumentSnapshot = Extract<
 type SketchContextResult =
   | {
       ok: true
-      sketch: SketchCompilationInput["sketch"]
+      document: DocumentSnapshot
+      sketch: SketchRecord
       variables: SketchCompilationInput["variables"]
     }
   | {
@@ -381,10 +386,20 @@ export class DocumentWorkerRuntime {
         retryable: true,
       }
     }
-    const sketch =
+    const parsedDocument = documentSnapshotSchema.safeParse(document)
+    if (!parsedDocument.success) {
+      return {
+        ok: false,
+        code: "sketch-state-unavailable",
+        message: "The requested document has invalid sketch state.",
+        retryable: false,
+      }
+    }
+    const candidate =
       request.draftSketch ??
-      document.sketches.find((candidate) => candidate.id === request.sketchId)
-    if (!sketch) {
+      parsedDocument.data.sketches.find((candidate) => candidate.id === request.sketchId)
+    const parsedSketch = sketchRecordSchema.safeParse(candidate)
+    if (!parsedSketch.success) {
       return {
         ok: false,
         code: "sketch-not-found",
@@ -392,7 +407,12 @@ export class DocumentWorkerRuntime {
         retryable: false,
       }
     }
-    return { ok: true, sketch, variables: document.variables }
+    return {
+      ok: true,
+      document: parsedDocument.data,
+      sketch: parsedSketch.data,
+      variables: parsedDocument.data.variables,
+    }
   }
 
   #postSketchResult(request: SolveSketchRequest, result: SolveSketchRecordResult) {
@@ -437,6 +457,11 @@ export class DocumentWorkerRuntime {
         variables: context.variables,
         continuation: request.continuation,
         draggedPoints: request.draggedPoints,
+        externalPoints: await resolveExternalSketchPoints(
+          context.document,
+          context.sketch,
+          this.solveSketch,
+        ),
       })
       this.#postSketchResult(request, result)
     } catch (error) {

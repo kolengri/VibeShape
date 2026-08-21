@@ -7,6 +7,7 @@ import {
   removeSketchConstraints,
   type SketchConstraintDefinition,
   type SketchConstraintId,
+  type SketchExternalPointReference,
   type SketchDimensionValue,
   type SketchEntity,
   type SketchEntityId,
@@ -22,7 +23,11 @@ import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useMemo, useState } from "react"
-import { createBrowserSketchConstraintId } from "../../document/document-controller"
+import {
+  createBrowserSketchConstraintId,
+  createBrowserSketchEntityId,
+  createBrowserSketchExternalReferenceId,
+} from "../../document/document-controller"
 import {
   defaultAngleExpression,
   defaultLengthExpression,
@@ -53,6 +58,10 @@ type SketchEditorPanelCopy = Readonly<{
   dimensionInvalid: string
   dimensions: string
   distance: string
+  externalReferenceDescription: string
+  externalReferences: string
+  attachSelectedPoint: string
+  noExternalReferences: string
   editConstraint: string
   equal: string
   extrude: string
@@ -82,11 +91,17 @@ type SketchEditorPanelCopy = Readonly<{
   secondaryAxisDiameter: string
   symmetric: string
   tangent: string
+  useExternalPoint: string
   vertical: string
   verticalDistance: string
 }>
 
 type DimensionOption = Readonly<{ kind: SketchDimensionKind; label: string }>
+export type ExternalSketchPointCandidate = Readonly<{
+  label: string
+  sourcePointId: SketchEntityId
+  sourceSketchId: SketchRecord["id"]
+}>
 
 function constraintName(
   type: SketchRecord["constraints"][number]["type"],
@@ -676,9 +691,143 @@ function SketchEditorFooter({
   )
 }
 
+function ExternalReferencesSection({
+  candidates,
+  copy,
+  draft,
+  onDraftChange,
+  selectedEntityIds,
+}: {
+  candidates: readonly ExternalSketchPointCandidate[]
+  copy: SketchEditorPanelCopy
+  draft: SketchRecord
+  onDraftChange: (draft: SketchRecord) => void
+  selectedEntityIds: readonly SketchEntityId[]
+}) {
+  const [candidateKey, setCandidateKey] = useState("")
+  const references = draft.externalReferences ?? []
+  const selectedPoint = selectedSketchEntities(draft, selectedEntityIds).find(
+    (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+  )
+  const add = () => {
+    const candidate = candidates.find(
+      (value) => `${value.sourceSketchId}:${value.sourcePointId}` === candidateKey,
+    )
+    if (
+      !candidate ||
+      references.some(
+        (reference) =>
+          reference.sourceSketchId === candidate.sourceSketchId &&
+          reference.sourcePointId === candidate.sourcePointId,
+      )
+    ) {
+      return
+    }
+    const reference: SketchExternalPointReference = {
+      schemaVersion: 0,
+      id: createBrowserSketchExternalReferenceId(),
+      sourceSketchId: candidate.sourceSketchId,
+      sourcePointId: candidate.sourcePointId,
+      projectedPointId: createBrowserSketchEntityId(),
+    }
+    onDraftChange({ ...draft, externalReferences: [...references, reference] })
+    setCandidateKey("")
+  }
+  const attach = (reference: SketchExternalPointReference) => {
+    if (!selectedPoint) return
+    onDraftChange(
+      appendSketchConstraint(
+        draft,
+        {
+          type: "coincident",
+          firstPointId: selectedPoint.id,
+          secondPointId: reference.projectedPointId,
+        },
+        createBrowserSketchConstraintId,
+      ),
+    )
+  }
+  return (
+    <section className="grid gap-2 border-t pt-3">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {copy.externalReferences}
+      </h3>
+      <p className="text-xs leading-4 text-muted-foreground">{copy.externalReferenceDescription}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <NativeSelect
+          value={candidateKey}
+          onChange={(event) => setCandidateKey(event.currentTarget.value)}
+        >
+          <option value="">{copy.useExternalPoint}</option>
+          {candidates.map((candidate) => (
+            <option
+              key={`${candidate.sourceSketchId}:${candidate.sourcePointId}`}
+              value={`${candidate.sourceSketchId}:${candidate.sourcePointId}`}
+            >
+              {candidate.label}
+            </option>
+          ))}
+        </NativeSelect>
+        <Button type="button" size="sm" variant="outline" disabled={!candidateKey} onClick={add}>
+          {copy.useExternalPoint}
+        </Button>
+      </div>
+      {references.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{copy.noExternalReferences}</p>
+      ) : (
+        <ul className="grid gap-1">
+          {references.map((reference) => {
+            const candidate = candidates.find(
+              (value) =>
+                value.sourceSketchId === reference.sourceSketchId &&
+                value.sourcePointId === reference.sourcePointId,
+            )
+            return (
+              <li
+                key={reference.id}
+                className="flex items-center gap-2 rounded-sm border px-2 py-1"
+              >
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  {candidate?.label ?? reference.sourcePointId}
+                </span>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={!selectedPoint}
+                  onClick={() => attach(reference)}
+                >
+                  {copy.attachSelectedPoint}
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={copy.remove}
+                  onClick={() =>
+                    onDraftChange({
+                      ...draft,
+                      externalReferences: references.filter(
+                        (candidate) => candidate.id !== reference.id,
+                      ),
+                    })
+                  }
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 type SketchEditorPanelState = Readonly<{
   disabled: boolean
   draft: SketchRecord
+  externalPointCandidates: readonly ExternalSketchPointCandidate[]
   extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
@@ -710,6 +859,7 @@ export function SketchEditorPanel({
   const {
     disabled,
     draft,
+    externalPointCandidates,
     extrusionAvailable,
     failedConstraintIds,
     message,
@@ -740,6 +890,13 @@ export function SketchEditorPanel({
     <div className="flex min-h-full flex-col gap-4">
       <div className="grid gap-4">
         <SketchSetupSection copy={copy} draft={draft} onDraftChange={onDraftChange} />
+        <ExternalReferencesSection
+          candidates={externalPointCandidates}
+          copy={copy}
+          draft={draft}
+          selectedEntityIds={selectedEntityIds}
+          onDraftChange={onDraftChange}
+        />
         <SketchConstraintSection
           copy={copy}
           entities={entities}

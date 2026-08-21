@@ -9,6 +9,10 @@ const sketchId = "018f0000-0000-7000-8000-000000000002"
 const pointA = "018f0000-0000-7000-8000-000000000003"
 const pointB = "018f0000-0000-7000-8000-000000000004"
 const lineId = "018f0000-0000-7000-8000-000000000005"
+const dependentSketchId = "018f0000-0000-7000-8000-000000000006"
+const dependentPointId = "018f0000-0000-7000-8000-000000000007"
+const externalReferenceId = "018f0000-0000-7000-8000-000000000008"
+const projectedPointId = "018f0000-0000-7000-8000-000000000009"
 const issuedAt = "2026-08-09T10:00:00.000Z"
 const actor = { type: "user", userId: null } as const
 
@@ -248,5 +252,80 @@ describe("sketch document commands", () => {
       ok: false,
       diagnostic: { code: "invalid-event" },
     })
+  })
+
+  test("preserves a coplanar external point dependency and blocks source removal", () => {
+    const created = createDocument()
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const source = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: commandId(130),
+      documentId,
+      baseRevision: 1,
+      issuedAt,
+      actor,
+      payload: { sketch: sketch() },
+    })
+    if (!source.ok) throw new Error(source.diagnostic.message)
+    const dependent = {
+      schemaVersion: 0,
+      id: dependentSketchId,
+      label: "Attached profile",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: dependentPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000010",
+          type: "coincident",
+          firstPointId: dependentPointId,
+          secondPointId: projectedPointId,
+        },
+      ],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: externalReferenceId,
+          sourceSketchId: sketchId,
+          sourcePointId: pointA,
+          projectedPointId,
+        },
+      ],
+    } as const
+    const added = applyDocumentCommand(source.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: commandId(131),
+      documentId,
+      baseRevision: 2,
+      issuedAt,
+      actor,
+      payload: { sketch: dependent },
+    })
+    expect(added).toMatchObject({ ok: true })
+    if (!added.ok) return
+    expect(added.snapshot.sketches[1]?.externalReferences).toEqual(dependent.externalReferences)
+    expect(
+      applyDocumentCommand(added.snapshot, {
+        kind: "org.vibeshape.sketch.remove",
+        schemaVersion: 1,
+        commandId: commandId(132),
+        documentId,
+        baseRevision: 3,
+        issuedAt,
+        actor,
+        payload: { sketchId },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "sketch-in-use" } })
   })
 })

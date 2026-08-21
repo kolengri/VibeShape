@@ -1,6 +1,6 @@
 # External Sketch References Plan
 
-- Status: **Proposed**
+- Status: **In progress**
 - Reviewed: **2026-08-21**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
@@ -31,6 +31,19 @@ different Part Studio or document. That is a separate cross-document/master-mode
 part of this first slice. See [Derived](https://cad.onshape.com/help/Content/PartStudio/derived.htm).
 
 ## Product contract
+
+### Implemented point-reference foundation
+
+The first delivered increment is intentionally smaller than the full first vertical slice. A dependent
+sketch can retain a **coplanar point reference** to an earlier saved sketch and attach one authored point
+to it with a Coincident relation. The reference persists only stable source and projected-point IDs; the
+document worker resolves current source coordinates before every solve and provides the projected point as
+read-only fixed solver input. The editor lists available source points, lists/removes references, and shows
+resolved projected points in the sketch canvas. Deleting a referenced source sketch is rejected.
+
+This increment does not yet support external curves, feature edges, intersection, automatic external
+inference, cross-support projection, or chained references. A source must be earlier in presentation order,
+have no own external references, and use the exact same origin/support frame as its dependent sketch.
 
 ### Reference types
 

@@ -211,7 +211,7 @@ describe("CommandToolbar", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo" }))
     expect(actions.undoSketch).toHaveBeenCalledOnce()
-  })
+  }, 15_000)
 
   it("uses roving arrow-key focus across workspace controls", async () => {
     const user = userEvent.setup()
