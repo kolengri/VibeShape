@@ -3,6 +3,11 @@ import type {
   DocumentFeatureContentPreparationResult,
 } from "@vibeshape/application/feature-rebuild"
 import {
+  datumPlaneFrame,
+  type SupportFrame,
+  sketchFrame,
+} from "@vibeshape/application/support-frame"
+import {
   type DocumentSnapshot,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
@@ -19,9 +24,8 @@ import {
   type SketchProfileLoop,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import type { SketchSolvePort } from "./runtime"
 import { resolveExternalSketchPoints } from "./external-sketch-references"
-import { datumPlaneFrame, type SupportFrame, sketchFrame } from "./support-frame"
+import type { SketchSolvePort } from "./runtime"
 
 const TWO_PI = Math.PI * 2
 

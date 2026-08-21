@@ -15,9 +15,11 @@ import {
   createFeatureTypeRegistry,
   createModuleRegistry,
   type DocumentDisplayUnits,
+  type DocumentSnapshot,
   documentCoreModule,
   documentIdSchema,
   draftIdSchema,
+  evaluateVariableDefinitions,
   type FeatureRecord,
   featureCoreModule,
   featureIdSchema,
@@ -164,6 +166,13 @@ function removeStoredId(storage: Storage, key: string) {
 }
 
 function coreCommandDispatcher() {
+  const { featureTypes, modules } = coreRegistries()
+  const dispatcher = createCommandDispatcher(modules, createCoreCommandHandlers(featureTypes))
+  if (!dispatcher.ok) throw new Error(dispatcher.diagnostic.message)
+  return dispatcher.dispatcher
+}
+
+function coreRegistries() {
   const modules = createModuleRegistry([
     documentCoreModule,
     featureCoreModule,
@@ -176,12 +185,17 @@ function coreCommandDispatcher() {
     ...referenceGeometryFeatureTypeHandlers,
   ])
   if (!featureTypes.ok) throw new Error(featureTypes.diagnostic.message)
-  const dispatcher = createCommandDispatcher(
-    modules.registry,
-    createCoreCommandHandlers(featureTypes.registry),
-  )
-  if (!dispatcher.ok) throw new Error(dispatcher.diagnostic.message)
-  return dispatcher.dispatcher
+  return { featureTypes: featureTypes.registry, modules: modules.registry }
+}
+
+export function resolveDocumentFeatureParameters(document: DocumentSnapshot) {
+  const variables = evaluateVariableDefinitions(document.variables)
+  if (!variables.ok) return document.features
+  const { featureTypes } = coreRegistries()
+  return document.features.map((feature) => {
+    const resolved = featureTypes.resolveFeatureParameters(feature, variables.valuesByName)
+    return resolved.ok ? resolved.feature : feature
+  })
 }
 
 function dependencies(database: VibeShapeDatabase, repository: LocalDocumentRepository) {

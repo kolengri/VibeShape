@@ -1,4 +1,8 @@
 import {
+  materializeSketchDisplay,
+  type SketchDisplayRecord,
+} from "@vibeshape/application/sketch-display"
+import {
   alignedRectangleGeometry,
   appendSketchAlignedRectangle,
   appendSketchArc,
@@ -25,6 +29,7 @@ import {
   circularSketchPatternTransforms,
   createSketchInferenceCandidateQuery,
   extendSketchCurve,
+  type FeatureRecord,
   inferSketchPoint,
   type LinearSketchPatternDefinition,
   linearPatternSketchEntities,
@@ -6642,9 +6647,11 @@ type SketchViewportState = Readonly<{
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
   sketch: SketchRecord | null
+  supportFeatures: readonly FeatureRecord[]
 }>
 
 type SketchViewportActions = Readonly<{
+  onDisplayChange: (display: SketchDisplayRecord | null) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
   onFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
@@ -6704,13 +6711,159 @@ function useSketchViewportPresentation(
   }
 }
 
+function useActiveSketchDisplay({
+  activeSketch,
+  controller,
+  displaySolution,
+  features,
+  interactive,
+  onDisplayChange,
+}: Readonly<{
+  activeSketch: SketchRecord | null
+  controller: DocumentControllerState
+  displaySolution: SolvedSketchWire | null
+  features: readonly FeatureRecord[]
+  interactive: boolean
+  onDisplayChange: SketchViewportActions["onDisplayChange"]
+}>) {
+  const display = useMemo(() => {
+    const snapshot = controller.report?.snapshot
+    if (interactive || !snapshot || !activeSketch) return null
+    return materializeSketchDisplay(snapshot, activeSketch, displaySolution, features)
+  }, [activeSketch, controller.report?.snapshot, displaySolution, features, interactive])
+  useEffect(() => onDisplayChange(display), [display, onDisplayChange])
+  useEffect(() => () => onDisplayChange(null), [onDisplayChange])
+}
+
+function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfiguration) {
+  const {
+    annotationSolution,
+    ariaLabel,
+    construction,
+    draft,
+    editDimensionLabel,
+    editorTool,
+    externalPointCandidates,
+    onConstraintSelectionChange,
+    onDraftChange,
+    onDraggingPointChange,
+    onEditorToolChange,
+    onOriginPlaneVisibilityChange,
+    onProfileSelect,
+    onRedo,
+    onSelectionChange,
+    onUndo,
+    originPlaneVisibility,
+    releasedDragTarget,
+    selectedConstraintId,
+    selectedEntityIds,
+    selectedProfile,
+    selectConstraintLabel,
+    solution,
+    variables,
+  } = configuration
+  return useMemo<SketchDrawingConfiguration>(
+    () => configuration,
+    [
+      annotationSolution,
+      ariaLabel,
+      construction,
+      draft,
+      editDimensionLabel,
+      editorTool,
+      externalPointCandidates,
+      onConstraintSelectionChange,
+      onDraftChange,
+      onDraggingPointChange,
+      onEditorToolChange,
+      onOriginPlaneVisibilityChange,
+      onProfileSelect,
+      onRedo,
+      onSelectionChange,
+      onUndo,
+      originPlaneVisibility,
+      releasedDragTarget,
+      selectedConstraintId,
+      selectedEntityIds,
+      selectedProfile,
+      selectConstraintLabel,
+      solution,
+      variables,
+    ],
+  )
+}
+
+function useSketchViewportSolveModel({
+  controller,
+  draft,
+  interactive,
+  onDisplayChange,
+  onFailedConstraintsChange,
+  onProfilesChange,
+  sketch,
+  solveSketch,
+  supportFeatures,
+}: Readonly<{
+  controller: DocumentControllerState
+  draft: SketchRecord | null
+  interactive: boolean
+  onDisplayChange: SketchViewportActions["onDisplayChange"]
+  onFailedConstraintsChange: SketchViewportActions["onFailedConstraintsChange"]
+  onProfilesChange: SketchViewportActions["onProfilesChange"]
+  sketch: SketchRecord | null
+  solveSketch: SketchSolveFunction
+  supportFeatures: readonly FeatureRecord[]
+}>) {
+  const [dragState, setDragState] = useState<SketchDragState | null>(null)
+  const activeSketch = draft ?? sketch
+  const dragTarget = useMemo(
+    () => dragTargetForSketch(activeSketch, dragState),
+    [activeSketch, dragState],
+  )
+  const releasedDragTarget = useMemo(
+    () => releasedDragTargetForSketch(activeSketch, dragState),
+    [activeSketch, dragState],
+  )
+  const onDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
+  const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
+  useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
+  const activeSolveState = currentSolveState(solveState, activeSketch)
+  const solution = solvedSolution(activeSolveState)
+  const displaySolution = sketchDisplaySolution(activeSketch, solveState)
+  useActiveSketchDisplay({
+    activeSketch,
+    controller,
+    displaySolution,
+    features: supportFeatures,
+    interactive,
+    onDisplayChange,
+  })
+  const profiles = useSolvedProfiles(solution)
+  useSketchSolutionNotifications(solution, profiles, onProfilesChange, onFailedConstraintsChange)
+  const presentation = useSketchViewportPresentation(
+    activeSketch,
+    draft,
+    solution,
+    activeSolveState,
+  )
+  return {
+    activeSketch,
+    displaySolution,
+    onDraggingPointChange,
+    presentation,
+    releasedDragTarget,
+  }
+}
+
 export function SketchViewport({
   actions,
+  interactive = true,
   solveSketch = solveActiveSketch,
   overlay = false,
   state,
 }: {
   actions: SketchViewportActions
+  interactive?: boolean
   overlay?: boolean
   solveSketch?: SketchSolveFunction
   state: SketchViewportState
@@ -6726,9 +6879,11 @@ export function SketchViewport({
     selectedEntityIds,
     selectedProfile,
     sketch,
+    supportFeatures,
   } = state
   const {
     onDraftChange,
+    onDisplayChange,
     onEditorToolChange,
     onConstraintSelectionChange,
     onFailedConstraintsChange,
@@ -6739,92 +6894,57 @@ export function SketchViewport({
     onSelectionChange,
     onUndo,
   } = actions
-  const [dragState, setDragState] = useState<SketchDragState | null>(null)
-  const activeSketch = draft ?? sketch
-  const dragTarget = useMemo(
-    () => dragTargetForSketch(activeSketch, dragState),
-    [activeSketch, dragState],
-  )
-  const releasedDragTarget = useMemo(
-    () => releasedDragTargetForSketch(activeSketch, dragState),
-    [activeSketch, dragState],
-  )
-  const handleDraggingPointChange = useDraggingPointChange(activeSketch, setDragState)
-  const solveState = useSketchSolution(controller, activeSketch, solveSketch, dragTarget)
-  useReleasedDragSettlement(activeSketch, dragState, solveState, setDragState)
-  const activeSolveState = currentSolveState(solveState, activeSketch)
-  const solution = solvedSolution(activeSolveState)
-  const displaySolution = sketchDisplaySolution(activeSketch, solveState)
-  const profiles = useSolvedProfiles(solution)
-  useSketchSolutionNotifications(solution, profiles, onProfilesChange, onFailedConstraintsChange)
-  const presentation = useSketchViewportPresentation(
-    activeSketch,
+  const { activeSketch, displaySolution, onDraggingPointChange, presentation, releasedDragTarget } =
+    useSketchViewportSolveModel({
+      controller,
+      draft,
+      interactive,
+      onDisplayChange,
+      onFailedConstraintsChange,
+      onProfilesChange,
+      sketch,
+      solveSketch,
+      supportFeatures,
+    })
+  const drawingConfiguration = useStableSketchDrawingConfiguration({
+    ariaLabel: presentation.drawingLabel,
+    annotationSolution: displaySolution,
+    construction,
     draft,
-    solution,
-    activeSolveState,
-  )
-  const drawingConfiguration = useMemo<SketchDrawingConfiguration>(
-    () => ({
-      ariaLabel: presentation.drawingLabel,
-      annotationSolution: displaySolution,
-      construction,
-      draft,
-      externalPointCandidates,
-      editDimensionLabel: presentation.editDimensionLabel,
-      editorTool,
-      onConstraintSelectionChange,
-      onDraggingPointChange: handleDraggingPointChange,
-      onEditorToolChange,
-      onOriginPlaneVisibilityChange,
-      selectedProfile,
-      selectedConstraintId,
-      selectedEntityIds,
-      selectConstraintLabel: presentation.selectConstraintLabel,
-      solution: displaySolution,
-      variables: controller.report?.snapshot.variables ?? [],
-      onDraftChange,
-      onProfileSelect,
-      onRedo,
-      onSelectionChange,
-      onUndo,
-      originPlaneVisibility,
-      releasedDragTarget,
-    }),
-    [
-      construction,
-      controller.report?.snapshot.variables,
-      displaySolution,
-      draft,
-      editorTool,
-      externalPointCandidates,
-      handleDraggingPointChange,
-      onConstraintSelectionChange,
-      onDraftChange,
-      onEditorToolChange,
-      onOriginPlaneVisibilityChange,
-      onProfileSelect,
-      onRedo,
-      onSelectionChange,
-      onUndo,
-      originPlaneVisibility,
-      presentation.drawingLabel,
-      presentation.editDimensionLabel,
-      presentation.selectConstraintLabel,
-      releasedDragTarget,
-      selectedConstraintId,
-      selectedEntityIds,
-      selectedProfile,
-    ],
-  )
+    externalPointCandidates,
+    editDimensionLabel: presentation.editDimensionLabel,
+    editorTool,
+    onConstraintSelectionChange,
+    onDraggingPointChange,
+    onEditorToolChange,
+    onOriginPlaneVisibilityChange,
+    selectedProfile,
+    selectedConstraintId,
+    selectedEntityIds,
+    selectConstraintLabel: presentation.selectConstraintLabel,
+    solution: displaySolution,
+    variables: controller.report?.snapshot.variables ?? [],
+    onDraftChange,
+    onProfileSelect,
+    onRedo,
+    onSelectionChange,
+    onUndo,
+    originPlaneVisibility,
+    releasedDragTarget,
+  })
 
   return (
     <section
       aria-label={presentation.ariaLabel}
+      aria-hidden={interactive ? undefined : true}
       className={cn(
         "relative min-h-0 overflow-hidden",
         overlay ? "absolute inset-0 z-10 bg-transparent" : "bg-viewport-background",
+        !interactive && "pointer-events-none opacity-0",
       )}
+      data-interactive={interactive ? "true" : "false"}
       data-overlay={overlay ? "true" : undefined}
+      inert={interactive ? undefined : true}
     >
       <StableSketchViewportContent
         activeSketch={activeSketch}

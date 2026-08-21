@@ -56,12 +56,12 @@ Status: implemented in the product shell.
 
 ### Slice 2 — plane selection in the modeling viewport
 
-Status: partially implemented. Command-first creation now renders and raycasts the XY, XZ, and YZ origin planes in the 3D modeling viewport, preserves a labeled native select as the keyboard-accessible equivalent, and enters the normal-to-plane 2D workspace only after a valid choice. Preselection-first entry from an idle viewport remains open.
+Status: partially implemented. Command-first creation now renders and raycasts the XY, XZ, and YZ origin planes in the 3D modeling viewport, preserves a labeled native select as the keyboard-accessible equivalent, and enters the normal-to-support 2D workspace only after a valid choice. The same mounted viewer aligns to resolved origin-plane, supported planar-face, extrusion-cap, and Datum Plane frames. The user can temporarily orbit the active unsaved sketch in world-space context and return with **Normal to sketch** without losing the draft. Preselection-first entry from an idle viewport remains open.
 
 - Render XY, XZ, and YZ origin planes as selectable transient datum entities during command-first creation. Implemented.
 - Support both preselection-first (`select plane → Sketch`) and command-first (`Sketch → select plane`) entry.
 - Use viewport preselection and primary-click picking as the command-first primary interaction while retaining the synchronized native select as an accessible equivalent. Implemented.
-- Enter a normal-to-plane orthographic camera only after the support is valid. Implemented for origin-plane support.
+- Enter a normal-to-support orthographic camera only after the support is valid. Implemented for every support role resolved by the shared support-frame authority.
 - Add Escape, invalid-selection guidance, keyboard traversal, and touch-sized selection targets. Escape and the keyboard select path are implemented; rejected-entity guidance and dedicated touch targets remain open.
 
 Exit criterion: a new user can start a sketch from the viewport without reading documentation.

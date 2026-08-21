@@ -284,6 +284,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const sketchToolCommands = group("sketch-tools")
   const sketchModifyCommands = group("sketch-modify")
   const sketchModeCommands = group("sketch-mode")
+  const sketchViewCommands = group("sketch-view")
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
   const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState(defaultFamilyCommandIds)
@@ -368,6 +369,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
                 label={getLabel(command)}
               />
             ))}
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
+              commands={sketchViewCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("sketchViewLabel")}
+            />
             <ToolbarSeparator />
             {historyCommands.map((command) => (
               <ToolbarAction

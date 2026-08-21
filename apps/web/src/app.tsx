@@ -293,6 +293,7 @@ function EditorApplication({
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
       redoSketch: workspaceActions.redoSketchDraft,
+      setSketchCameraMode: sessionActions.setSketchCameraMode,
       setSketchConstruction: workspaceActions.setSketchConstruction,
       setSketchTool: workspaceActions.setSketchEditorTool,
       switchWorkspace: workspaceActions.switchWorkspace,
@@ -304,6 +305,7 @@ function EditorApplication({
       controller,
       extrusionAvailable,
       sketchConstruction: session.sketch.construction,
+      sketchCameraMode: session.sketch.cameraMode,
       sketchRedoAvailable: session.sketch.redoStack.length > 0,
       slotFromSelectionAvailable,
       sketchTool: session.sketch.editorTool,
@@ -345,6 +347,7 @@ function EditorApplication({
         workspace={session.workspace}
         selection={session.selection}
         sketchConstruction={session.sketch.construction}
+        sketchCameraMode={session.sketch.cameraMode}
         sketchDraft={session.sketch.draft}
         sketchEditorTool={session.sketch.editorTool}
         sketchFailedConstraintIds={session.sketch.failedConstraintIds}

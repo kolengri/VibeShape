@@ -1,3 +1,5 @@
+import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
+import { sketchFrame } from "@vibeshape/application/support-frame"
 import type {
   FeatureId,
   FeatureRecord,
@@ -12,13 +14,15 @@ import type {
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useMemo, useState } from "react"
 import {
   type DocumentControllerState,
   removeSketch,
+  resolveDocumentFeatureParameters,
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
+import type { SketchCameraMode } from "../editor-session/editor-session-store"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
@@ -32,7 +36,7 @@ import type {
 } from "../features/sketch/sketch-tool"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
-import { GeometryViewport } from "./geometry-viewport"
+import { GeometryViewport, type GeometryViewportSketchContext } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
@@ -89,6 +93,7 @@ type WorkspaceContentProps = Readonly<{
   }>
   sketch: Readonly<{
     activeTool: ActiveSketchTool | null
+    cameraMode: SketchCameraMode
     construction: boolean
     draft: SketchRecord | null
     editorTool: SketchEditorTool
@@ -104,8 +109,13 @@ function SketchWorkspaceContent({
   actions,
   controller,
   model,
+  onDisplayChange,
   sketch,
-}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch">) {
+  supportFeatures,
+}: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
+  onDisplayChange: (display: SketchDisplayRecord | null) => void
+  supportFeatures: readonly FeatureRecord[]
+}) {
   return (
     <SketchViewport
       state={{
@@ -121,8 +131,10 @@ function SketchWorkspaceContent({
         selectedEntityIds: sketch.selectedEntityIds,
         selectedProfile: sketch.selectedProfile,
         sketch: sketch.selectedSketch,
+        supportFeatures,
       }}
       actions={{
+        onDisplayChange,
         onDraftChange: actions.onSketchDraftChange,
         onEditorToolChange: actions.onSketchEditorToolChange,
         onFailedConstraintsChange: actions.onSketchFailedConstraintsChange,
@@ -134,6 +146,7 @@ function SketchWorkspaceContent({
         onSelectionChange: actions.onSketchSelectionChange,
         onUndo: actions.onSketchUndo,
       }}
+      interactive={sketch.cameraMode === "normal"}
       overlay
     />
   )
@@ -144,9 +157,11 @@ function ModelingWorkspaceContent({
   controller,
   model,
   sketch,
-  passive = false,
+  sketchContext,
+  activeSketchDisplay,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
-  passive?: boolean
+  activeSketchDisplay?: SketchDisplayRecord | null
+  sketchContext?: GeometryViewportSketchContext
 }) {
   return (
     <GeometryViewport
@@ -162,7 +177,8 @@ function ModelingWorkspaceContent({
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
-      passive={passive}
+      {...(activeSketchDisplay ? { activeSketchDisplay } : {})}
+      {...(sketchContext ? { sketchContext } : {})}
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
         ? {
             originPlaneSelection: {
@@ -193,10 +209,33 @@ export function ModelingSketchViewportStack({
 }
 
 function WorkspaceContent(props: WorkspaceContentProps) {
+  const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
+  const snapshot = props.controller.report?.snapshot
+  const supportFeatures = useMemo(
+    () => (snapshot ? resolveDocumentFeatureParameters(snapshot) : EMPTY_GEOMETRY),
+    [snapshot],
+  )
+  const frame = useMemo(
+    () =>
+      snapshot && props.sketch.draft
+        ? sketchFrame(props.sketch.draft, snapshot, supportFeatures)
+        : null,
+    [
+      props.sketch.draft?.id,
+      props.sketch.draft?.plane,
+      props.sketch.draft?.support,
+      snapshot,
+      supportFeatures,
+    ],
+  )
+  const sketchActive = props.workspace === "sketch"
+  const sketchContext = useMemo(
+    () => (sketchActive ? { frame, mode: props.sketch.cameraMode } : undefined),
+    [frame, props.sketch.cameraMode, sketchActive],
+  )
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
-  const sketchActive = props.workspace === "sketch"
   return (
     <ModelingSketchViewportStack
       modeling={
@@ -204,8 +243,9 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           actions={props.actions}
           controller={props.controller}
           model={props.model}
-          passive={sketchActive}
           sketch={props.sketch}
+          {...(activeSketchDisplay ? { activeSketchDisplay } : {})}
+          {...(sketchContext ? { sketchContext } : {})}
         />
       }
       sketch={
@@ -213,7 +253,9 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           actions={props.actions}
           controller={props.controller}
           model={props.model}
+          onDisplayChange={setActiveSketchDisplay}
           sketch={props.sketch}
+          supportFeatures={supportFeatures}
         />
       }
       sketchActive={sketchActive}
@@ -269,6 +311,7 @@ type EditorWorkspaceProps = Readonly<{
   preselectedFeatureId: FeatureId | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
+  sketchCameraMode: SketchCameraMode
   sketchDraft: SketchRecord | null
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
@@ -358,6 +401,7 @@ function EditorContent({
       workspace={workspace}
       sketch={{
         activeTool: activeSketchTool,
+        cameraMode: props.sketchCameraMode,
         construction: props.sketchConstruction,
         draft: props.sketchDraft,
         editorTool: props.sketchEditorTool,

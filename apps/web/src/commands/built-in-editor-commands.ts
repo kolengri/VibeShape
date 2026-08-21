@@ -1,4 +1,5 @@
 import type { DocumentControllerState } from "../document/document-controller"
+import type { SketchCameraMode } from "../editor-session/editor-session-store"
 import {
   type activePartDesignCommand,
   booleanInputFeatures,
@@ -31,6 +32,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createSketch: () => void
     createSubtract: () => void
     redoSketch: () => void
+    setSketchCameraMode: (mode: SketchCameraMode) => void
     setSketchConstruction: (construction: boolean) => void
     setSketchTool: (tool: SketchEditorTool) => void
     switchWorkspace: (workspace: EditorWorkspaceName) => void
@@ -42,6 +44,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     controller: DocumentControllerState
     extrusionAvailable: boolean
     sketchConstruction: boolean
+    sketchCameraMode: SketchCameraMode
     sketchRedoAvailable: boolean
     slotFromSelectionAvailable: boolean
     sketchTool: SketchEditorTool
@@ -364,6 +367,22 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     toolbarGroup: "sketch-mode",
   },
   {
+    group: "sketch",
+    icon: "orbit-view",
+    id: editorCommandIds.sketchOrbitView,
+    labelKey: "sketchOrbitView",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-view",
+  },
+  {
+    group: "sketch",
+    icon: "normal-view",
+    id: editorCommandIds.sketchNormalView,
+    labelKey: "sketchNormalView",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-view",
+  },
+  {
     group: "history",
     icon: "undo",
     id: editorCommandIds.sketchUndo,
@@ -589,6 +608,22 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     getEligibility: requiresSketch,
     id: editorCommandIds.sketchConstruction,
     isActive: ({ state }) => state.sketchConstruction,
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
+  {
+    execute: ({ actions }) => actions.setSketchCameraMode("orbit"),
+    getEligibility: requiresSketch,
+    id: editorCommandIds.sketchOrbitView,
+    isActive: ({ state }) => state.sketchCameraMode === "orbit",
+    isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
+  {
+    execute: ({ actions }) => actions.setSketchCameraMode("normal"),
+    getEligibility: requiresSketch,
+    id: editorCommandIds.sketchNormalView,
+    isActive: ({ state }) => state.sketchCameraMode === "normal",
     isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
     ownerModuleId: sketchOwner,
   },

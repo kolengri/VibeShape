@@ -166,6 +166,42 @@ describe("editor session store", () => {
     })
   })
 
+  it("keeps sketch authoring state intact while camera mode changes and resets on close", () => {
+    const store = createEditorSessionStore()
+    const initial = createSketch("Initial")
+    const changed = createSketch("Changed")
+    const profile = createProfile()
+
+    store.getState().actions.setSketchCameraMode("orbit")
+    expect(store.getState().sketch.cameraMode).toBe("normal")
+
+    store.getState().actions.beginSketchEdit(initial)
+    store.getState().actions.setSketchDraft(changed)
+    store.getState().actions.setSketchSelectedEntityIds([boundaryEntityId])
+    store.getState().actions.setSketchProfiles([profile])
+    store.getState().actions.setSketchCameraMode("orbit")
+
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchTool: { kind: "edit-sketch", sketchId },
+      cameraMode: "orbit",
+      draft: changed,
+      selectedEntityIds: [boundaryEntityId],
+      selectedProfile: profile,
+      undoStack: [initial],
+    })
+
+    store.getState().actions.setSketchCameraMode("normal")
+    expect(store.getState().sketch.cameraMode).toBe("normal")
+    expect(store.getState().sketch.draft).toBe(changed)
+
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchTool: null,
+      cameraMode: "normal",
+      draft: null,
+    })
+  })
+
   it("records bounded local sketch history and clears selection on undo and redo", () => {
     const store = createEditorSessionStore()
     const initial = createSketch("Draft 0")

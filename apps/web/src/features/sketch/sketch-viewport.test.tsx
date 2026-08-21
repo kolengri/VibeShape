@@ -164,6 +164,7 @@ function solveResult(
 const noOperation = () => undefined
 
 type SketchViewportTestProps = Readonly<{
+  interactive?: boolean
   overlay?: boolean
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
@@ -175,6 +176,7 @@ type SketchViewportTestProps = Readonly<{
     typeof SketchViewport
   >["state"]["originPlaneVisibility"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
+  onDisplayChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDisplayChange"]
   onEditorToolChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onEditorToolChange"]
   onConstraintSelectionChange?: React.ComponentProps<
     typeof SketchViewport
@@ -206,11 +208,13 @@ function viewportState(props: SketchViewportTestProps) {
     selectedEntityIds: props.selectedEntityIds ?? [],
     selectedProfile: null,
     sketch: props.sketch,
+    supportFeatures: props.controller?.report?.snapshot.features ?? [],
   } satisfies React.ComponentProps<typeof SketchViewport>["state"]
 }
 
 function viewportActions(props: SketchViewportTestProps) {
   return {
+    onDisplayChange: props.onDisplayChange ?? noOperation,
     onDraftChange: props.onDraftChange ?? noOperation,
     onEditorToolChange: props.onEditorToolChange ?? noOperation,
     onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
@@ -232,6 +236,7 @@ function viewportElement(props: SketchViewportTestProps) {
       >
         <TooltipProvider delayDuration={0}>
           <SketchViewport
+            {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
             {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
             solveSketch={props.solveSketch}
             state={viewportState(props)}
@@ -331,6 +336,57 @@ describe("SketchViewport", () => {
     expect(viewport.getAttribute("data-overlay")).toBe("true")
     expect(viewport.className).toContain("bg-transparent")
     expect(viewport.className).not.toContain("bg-viewport-background")
+  })
+
+  it("keeps the drawing mounted but inert while the 3D context owns navigation", () => {
+    const view = renderViewport({
+      interactive: false,
+      overlay: true,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const viewport = view.container.querySelector<HTMLElement>("[data-interactive='false']")
+    expect(viewport).not.toBeNull()
+    if (!viewport) return
+    expect(viewport.getAttribute("aria-hidden")).toBe("true")
+    expect(viewport.hasAttribute("inert")).toBe(true)
+    expect(viewport.className).toContain("pointer-events-none")
+    expect(viewport.className).toContain("opacity-0")
+    expect(viewport.querySelector("svg[role='img']")).toBeTruthy()
+    expect(view.queryByRole("region", { name: "2D sketch workspace" })).toBeNull()
+  })
+
+  it("publishes the solved draft as world-space display geometry only in orbit mode", async () => {
+    const onDisplayChange = vi.fn()
+    const view = renderViewport({
+      interactive: false,
+      onDisplayChange,
+      overlay: true,
+      sketch,
+      solveSketch: vi.fn(async () => solveResult()),
+    })
+
+    await waitFor(() =>
+      expect(onDisplayChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sketchId,
+          curvePositions: expect.any(Float32Array),
+        }),
+      ),
+    )
+    const published = onDisplayChange.mock.lastCall?.[0]
+    expect(published?.curvePositions.length).toBeGreaterThan(0)
+
+    view.rerender(
+      viewportElement({
+        interactive: true,
+        onDisplayChange,
+        overlay: true,
+        sketch,
+        solveSketch: vi.fn(async () => solveResult()),
+      }),
+    )
+    await waitFor(() => expect(onDisplayChange).toHaveBeenLastCalledWith(null))
   })
 
   it("uses an earlier coplanar sketch point directly from the drawing", () => {

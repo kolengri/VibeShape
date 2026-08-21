@@ -328,6 +328,10 @@
           "label": "Offset",
           "keywords": "offset sketch geometry|parallel copy|offset chain|offset loop"
         },
+        "sketchOrbitView": {
+          "label": "Orbit 3D view",
+          "keywords": "orbit sketch context|rotate 3d view|inspect support|camera"
+        },
         "sketchTransform": {
           "label": "Transform",
           "keywords": "transform sketch geometry|move selection|rotate selection|scale selection"
@@ -346,6 +350,10 @@
           "keywords": "sketch rectangle|box profile|four sides"
         },
         "sketchRedo": { "label": "Redo", "keywords": "redo sketch|restore change|history" },
+        "sketchNormalView": {
+          "label": "Normal to sketch",
+          "keywords": "normal view|align camera|face sketch plane|reset orbit"
+        },
         "sketchSelect": { "label": "Select", "keywords": "selection|pointer|choose geometry" },
         "sketchSlot": {
           "label": "Straight slot",
@@ -394,6 +402,7 @@
         "rectangleToolsLabel": "Rectangle tools",
         "sketchModifyLabel": "Sketch modification tools",
         "sketchToolsLabel": "Sketch geometry tools",
+        "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace"
       },

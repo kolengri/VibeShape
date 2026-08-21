@@ -3,8 +3,10 @@ import {
   createFaceHighlightGeometry,
   createViewerGeometry,
   createViewerSketchGeometry,
+  isValidViewerFrame,
   orthographicFrustum,
   type ViewerMesh,
+  viewerCameraPoseForFrame,
   viewerFaceOrdinal,
 } from "./three-viewport"
 import { viewerBodyColor } from "./viewer-appearance"
@@ -18,6 +20,51 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  it("accepts orthonormal right-handed frames, including origin-plane orientations", () => {
+    expect(
+      isValidViewerFrame({
+        origin: [3, -2, 8],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+      }),
+    ).toBe(true)
+    expect(
+      isValidViewerFrame({
+        origin: [0, 0, 0],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 0, 1],
+        normal: [0, -1, 0],
+      }),
+    ).toBe(true)
+  })
+
+  it("rejects non-finite, non-orthonormal, and left-handed frames", () => {
+    const frame = {
+      origin: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+    }
+    expect(isValidViewerFrame({ ...frame, normal: [0, 0, Number.NaN] })).toBe(false)
+    expect(isValidViewerFrame({ ...frame, yAxis: [0, 1, 0.01] })).toBe(false)
+    expect(isValidViewerFrame({ ...frame, normal: [0, 0, -1] })).toBe(false)
+    expect(isValidViewerFrame(null as never)).toBe(false)
+  })
+
+  it("derives a pose at the retained camera distance", () => {
+    const pose = viewerCameraPoseForFrame(
+      { origin: [4, 5, 6], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+      37,
+    )
+    expect(pose).toEqual({
+      position: [4, 5, 43],
+      target: [4, 5, 6],
+      up: [0, 1, 0],
+    })
+    expect(viewerCameraPoseForFrame({} as never, 37)).toBeNull()
+  })
+
   it("assigns stable display colors to independent terminal feature identities", () => {
     expect(viewerBodyColor("body-a")).toBe(viewerBodyColor("body-a"))
     expect(viewerBodyColor("body-a")).not.toBe(viewerBodyColor("body-b"))

@@ -30,6 +30,7 @@ const actions = {
   createSketch: vi.fn(),
   createSubtract: vi.fn(),
   redoSketch: vi.fn(),
+  setSketchCameraMode: vi.fn(),
   setSketchConstruction: vi.fn(),
   setSketchTool: vi.fn(),
   switchWorkspace: vi.fn(),
@@ -51,6 +52,7 @@ function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {})
       controller,
       extrusionAvailable: false,
       sketchConstruction: false,
+      sketchCameraMode: "normal",
       sketchRedoAvailable: false,
       slotFromSelectionAvailable: true,
       sketchTool: "select",
@@ -208,6 +210,11 @@ describe("CommandToolbar", () => {
 
     await user.click(screen.getByRole("button", { name: "Construction geometry" }))
     expect(actions.setSketchConstruction).toHaveBeenCalledWith(true)
+
+    await user.click(screen.getByRole("button", { name: "Orbit 3D view" }))
+    await user.click(screen.getByRole("button", { name: "Normal to sketch" }))
+    expect(actions.setSketchCameraMode).toHaveBeenNthCalledWith(1, "orbit")
+    expect(actions.setSketchCameraMode).toHaveBeenNthCalledWith(2, "normal")
 
     await user.click(screen.getByRole("button", { name: "Undo" }))
     expect(actions.undoSketch).toHaveBeenCalledOnce()

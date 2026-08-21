@@ -417,17 +417,24 @@ documents remain openable without changing geometry or overwriting their source 
 
 ### Slice 1 — understandable History and editing context
 
-Status: in progress. The initial context-layer increment keeps the same Three.js viewport mounted across
-Model/Sketch transitions, displays it passively behind a transparent analytical sketch surface, and leaves
-pointer ownership with the sketch editor. Shared camera alignment, orbit-in-context, and graphical 3D source
-selection remain open parts of this slice.
+Status: in progress. The context layer keeps the same Three.js viewport mounted across Model/Sketch
+transitions and resolves the active sketch's exact support frame for origin planes and the currently
+supported planar feature and Datum Plane roles. Normal mode aligns the existing orthographic camera to that
+frame and leaves pointer ownership with the transparent analytical sketch surface. **Orbit 3D view** hides
+and makes that surface inert, switches the viewer to camera-only interaction, and displays the unsaved solved
+draft in world coordinates beside the model and reference geometry. **Normal to sketch** restores the exact
+support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
+selection. Graphical 3D source selection, History rollback, and bounded candidate cycling remain open parts
+of this slice.
 
 - Replace separate Sketches/Features presentation with History plus Bodies.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
 - Add a history cursor and rollback presentation while editing an earlier sketch or feature.
 - Keep the Three.js context scene mounted under the analytical sketch interaction layer.
 - Show earlier bodies, datum geometry, and saved sketches during sketch edit.
-- Add Normal to sketch, orbit-in-context, visible selection filter, and bounded candidate cycling.
+- Add Normal to sketch and orbit-in-context. Implemented for resolved support frames with a temporary
+  world-space display of the active draft.
+- Add a visible selection filter and bounded candidate cycling.
 
 **Exit:** a user can identify where a sketch exists, what supports it, and which earlier objects are
 eligible without leaving the viewport.

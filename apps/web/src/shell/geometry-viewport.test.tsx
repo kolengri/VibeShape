@@ -13,7 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { i18n } from "../i18n"
-import { GeometryViewport, viewerMeshes, viewerSketches } from "./geometry-viewport"
+import {
+  GeometryViewport,
+  type GeometryViewportSketchContext,
+  viewerMeshes,
+  viewerSketches,
+  withActiveSketchDisplay,
+} from "./geometry-viewport"
 
 const { saveActiveProjectThumbnailMock } = vi.hoisted(() => ({
   saveActiveProjectThumbnailMock: vi.fn(),
@@ -81,9 +87,11 @@ function renderViewport(
     preselectedFeatureId?: string
     selectedFeatureId?: string
   }>,
-  passive = false,
+  sketchContext?: GeometryViewportSketchContext,
 ) {
   const port: GeometryViewportPort = {
+    orientToFrame: vi.fn(() => true),
+    setInteractionMode: vi.fn(),
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
@@ -98,7 +106,7 @@ function renderViewport(
   const createViewport = vi.fn(
     (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
   )
-  const element = (nextController: DocumentControllerState, nextPassive = passive) => (
+  const element = (nextController: DocumentControllerState, nextSketchContext = sketchContext) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
         <GeometryViewport
@@ -106,7 +114,7 @@ function renderViewport(
           createViewport={createViewport}
           selection={selection}
           onSelectionChange={onSelectionChange}
-          passive={nextPassive}
+          {...(nextSketchContext ? { sketchContext: nextSketchContext } : {})}
           {...featureHighlight}
           {...(featurePreview ? { featurePreview } : {})}
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
@@ -123,7 +131,8 @@ function renderViewport(
     port,
     rerenderController: (nextController: DocumentControllerState) =>
       result.rerender(element(nextController)),
-    rerenderPassive: (nextPassive: boolean) => result.rerender(element(controller, nextPassive)),
+    rerenderSketchContext: (nextSketchContext?: GeometryViewportSketchContext) =>
+      result.rerender(element(controller, nextSketchContext)),
   }
 }
 
@@ -135,19 +144,36 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("replaces the committed sketch display with the active unsaved display", () => {
+    const activeDisplay = {
+      ...sketchDisplay,
+      curvePositions: new Float32Array([5, 0, 0, 25, 0, 0]),
+    }
+
+    expect(withActiveSketchDisplay([sketchDisplay], activeDisplay)).toEqual([activeDisplay])
+    expect(withActiveSketchDisplay([sketchDisplay], null)).toEqual([sketchDisplay])
+  })
+
   it("preserves the viewer and camera while passive context disables chrome and input", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
       [{ featureId: boxId, geometry: { mesh } }],
     )
-    const { container, createViewport, port, rerenderPassive, unmount } = renderViewport(controller)
+    const frame = {
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    } as const
+    const { container, createViewport, port, rerenderSketchContext, unmount } =
+      renderViewport(controller)
     await waitFor(() =>
       expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }]),
     )
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.fit).toHaveBeenCalledOnce()
 
-    rerenderPassive(true)
+    rerenderSketchContext({ frame, mode: "normal" })
     const viewport = container.querySelector<HTMLElement>("[data-passive='true']")
     expect(viewport).not.toBeNull()
     if (!viewport) return
@@ -161,12 +187,25 @@ describe("GeometryViewport", () => {
     expect(screen.queryByText("XYZ · mm")).toBeNull()
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
+    expect(port.orientToFrame).toHaveBeenCalledOnce()
+    expect(port.orientToFrame).toHaveBeenCalledWith(frame)
     expect(port.dispose).not.toHaveBeenCalled()
 
-    rerenderPassive(false)
+    rerenderSketchContext({ frame, mode: "orbit" })
+    const orbitViewport = container.querySelector<HTMLElement>("[data-sketch-context-mode='orbit']")
+    expect(orbitViewport?.className).not.toContain("pointer-events-none")
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
+    expect(port.orientToFrame).toHaveBeenCalledOnce()
+
+    rerenderSketchContext({ frame, mode: "normal" })
+    expect(port.orientToFrame).toHaveBeenCalledTimes(2)
+
+    rerenderSketchContext()
     expect(screen.getByRole("region", { name: "3D viewport" })).toBeTruthy()
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.fit).toHaveBeenCalledOnce()
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("select")
     expect(port.dispose).not.toHaveBeenCalled()
 
     unmount()

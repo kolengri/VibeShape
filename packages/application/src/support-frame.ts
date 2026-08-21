@@ -17,10 +17,12 @@ function dot(left: Vector3, right: Vector3) {
 }
 
 function cross(left: Vector3, right: Vector3): [number, number, number] {
+  const [leftX, leftY, leftZ] = left
+  const [rightX, rightY, rightZ] = right
   return [
-    left[1] * right[2] - left[2] * right[1],
-    left[2] * right[0] - left[0] * right[2],
-    left[0] * right[1] - left[1] * right[0],
+    leftY * rightZ - leftZ * rightY,
+    leftZ * rightX - leftX * rightZ,
+    leftX * rightY - leftY * rightX,
   ]
 }
 
@@ -77,37 +79,58 @@ function translatedFrame(frame: SupportFrame, offset: number, reverse = false): 
 function boxSupportFrame(feature: FeatureRecord, role: string) {
   const parameters = boxFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return null
-  const { centered, depth, height, width } = parameters.data
-  const minimumZ = centered ? -height.value / 2 : 0
-  const maximumZ = centered ? height.value / 2 : height.value
-  const definitions: Readonly<Record<string, readonly [Vector3, number]>> = {
-    "primitive.box.side.x-min": [[-1, 0, 0], -width.value / 2],
-    "primitive.box.side.x-max": [[1, 0, 0], width.value / 2],
-    "primitive.box.side.y-min": [[0, -1, 0], -depth.value / 2],
-    "primitive.box.side.y-max": [[0, 1, 0], depth.value / 2],
-    "primitive.box.cap.start": [[0, 0, -1], -minimumZ],
-    "primitive.box.cap.end": [[0, 0, 1], maximumZ],
+  const { centered, depth, height, origin, width } = parameters.data
+  const originX = origin.x.value
+  const originY = origin.y.value
+  const originZ = origin.z.value
+  const minimumZ = originZ + (centered ? -height.value / 2 : 0)
+  const maximumZ = originZ + (centered ? height.value / 2 : height.value)
+  const definitions: Readonly<Record<string, readonly [Vector3, Vector3]>> = {
+    "primitive.box.side.x-min": [
+      [-1, 0, 0],
+      [originX - width.value / 2, originY, originZ],
+    ],
+    "primitive.box.side.x-max": [
+      [1, 0, 0],
+      [originX + width.value / 2, originY, originZ],
+    ],
+    "primitive.box.side.y-min": [
+      [0, -1, 0],
+      [originX, originY - depth.value / 2, originZ],
+    ],
+    "primitive.box.side.y-max": [
+      [0, 1, 0],
+      [originX, originY + depth.value / 2, originZ],
+    ],
+    "primitive.box.cap.start": [
+      [0, 0, -1],
+      [originX, originY, minimumZ],
+    ],
+    "primitive.box.cap.end": [
+      [0, 0, 1],
+      [originX, originY, maximumZ],
+    ],
   }
   const definition = definitions[role]
   if (!definition) return null
-  const [normal, coordinate] = definition
-  return frameFromNormal(
-    [normal[0] * coordinate, normal[1] * coordinate, normal[2] * coordinate],
-    normal,
-  )
+  const [normal, faceOrigin] = definition
+  return frameFromNormal(faceOrigin, normal)
 }
 
 function cylinderSupportFrame(feature: FeatureRecord, role: string) {
   const parameters = cylinderFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return null
-  const { centered, height } = parameters.data
+  const { centered, height, origin } = parameters.data
+  const originX = origin.x.value
+  const originY = origin.y.value
+  const originZ = origin.z.value
   if (role === "primitive.cylinder.cap.start") {
-    const z = centered ? -height.value / 2 : 0
-    return frameFromNormal([0, 0, z], [0, 0, -1])
+    const z = originZ + (centered ? -height.value / 2 : 0)
+    return frameFromNormal([originX, originY, z], [0, 0, -1])
   }
   if (role === "primitive.cylinder.cap.end") {
-    const z = centered ? height.value / 2 : height.value
-    return frameFromNormal([0, 0, z], [0, 0, 1])
+    const z = originZ + (centered ? height.value / 2 : height.value)
+    return frameFromNormal([originX, originY, z], [0, 0, 1])
   }
   return null
 }
