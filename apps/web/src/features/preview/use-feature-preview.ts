@@ -21,10 +21,22 @@ type PreviewGeometryIdentity = Readonly<{
 export type FeaturePreviewKind = "datum-plane" | "extrusion"
 
 export type FeaturePreviewState = Readonly<{
+  candidateMesh?: ViewerMesh
   kind?: FeaturePreviewKind
   meshes: readonly ViewerMesh[]
   status: "idle" | "loading" | "ready" | "error"
 }>
+
+function createFeaturePreviewCandidateMesh(
+  geometry: readonly (PreviewGeometryIdentity &
+    Readonly<{ geometry: { mesh: Omit<ViewerMesh, "featureId"> } }>)[],
+  featureId: FeatureRecord["id"],
+) {
+  const candidate = geometry.find((result) => result.featureId === featureId)
+  return candidate
+    ? ({ ...candidate.geometry.mesh, appearance: "preview", featureId } satisfies ViewerMesh)
+    : undefined
+}
 
 function previewFeatures(snapshot: DocumentSnapshot, candidate: FeatureRecord) {
   const index = snapshot.features.findIndex(({ id }) => id === candidate.id)
@@ -87,7 +99,10 @@ async function rebuildPreview(
   if (candidateEvaluation?.status !== "succeeded") {
     throw new Error("The feature preview could not be evaluated.")
   }
-  return createFeaturePreviewMeshes(document, response.geometry, committedGeometry)
+  return {
+    candidateMesh: createFeaturePreviewCandidateMesh(response.geometry, candidate.id),
+    meshes: createFeaturePreviewMeshes(document, response.geometry, committedGeometry),
+  }
 }
 
 function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
@@ -130,8 +145,10 @@ export function useFeaturePreview(
     const kind = featurePreviewKind(candidate)
     setState({ status: "loading", meshes: [], kind })
     void rebuildPreview(session, snapshot, candidate, previewDocumentId, committedGeometry).then(
-      (meshes) => {
-        if (sequenceRef.current === sequence) setState({ status: "ready", meshes, kind })
+      ({ candidateMesh, meshes }) => {
+        if (sequenceRef.current === sequence) {
+          setState({ status: "ready", meshes, kind, ...(candidateMesh ? { candidateMesh } : {}) })
+        }
       },
       () => {
         if (sequenceRef.current === sequence) setState({ status: "error", meshes: [], kind })

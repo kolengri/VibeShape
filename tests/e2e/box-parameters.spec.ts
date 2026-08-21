@@ -26,7 +26,8 @@ test.describe("Box parameters", () => {
     await expect(width).toHaveValue("#width")
     await boxForm.getByRole("button", { name: "Create box" }).dblclick()
 
-    await expect(page.getByRole("treeitem", { name: "Box 1" })).toBeVisible()
+    const boxTreeItem = page.getByRole("treeitem", { name: "Box 1" })
+    await expect(boxTreeItem).toBeVisible()
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(viewport.getByRole("button", { name: "Fit view" })).toBeVisible()
@@ -57,7 +58,12 @@ test.describe("Box parameters", () => {
     await expect(statusBar).toContainText("Selection: None")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
-    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await boxTreeItem.hover()
+    await expect(viewport).toHaveAttribute("data-preselected-feature", /.+/)
+    await viewport.hover()
+    await expect(viewport).not.toHaveAttribute("data-preselected-feature")
+    await boxTreeItem.click()
+    await expect(viewport).toHaveAttribute("data-selected-feature", /.+/)
     const editForm = page.getByRole("form", { name: "Edit box" })
     await expect(editForm.getByRole("combobox", { name: "Width" })).toHaveValue("#width")
     await editForm.getByRole("combobox", { name: "Depth" }).fill("28 mm")

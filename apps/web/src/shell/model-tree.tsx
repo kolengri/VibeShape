@@ -26,6 +26,7 @@ function FeatureTreeItem({
   feature,
   onActivate,
   onFeatureRename,
+  onPreselectionChange,
   onVisibilityChange,
   onSketchRename,
   unnamedFeature,
@@ -36,6 +37,7 @@ function FeatureTreeItem({
   feature: FeatureRecord
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
@@ -48,7 +50,11 @@ function FeatureTreeItem({
   const visibilityLabel = t(visible ? "hideFeature" : "showFeature", { feature: label })
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5">
+    <div
+      className="flex min-w-0 items-center gap-0.5"
+      onPointerEnter={() => onPreselectionChange(feature.id)}
+      onPointerLeave={() => onPreselectionChange(null)}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -75,6 +81,8 @@ function FeatureTreeItem({
         role="treeitem"
         aria-selected={active}
         onClick={() => onActivate(feature.id)}
+        onFocus={() => onPreselectionChange(feature.id)}
+        onBlur={() => onPreselectionChange(null)}
         onKeyDown={(event) => {
           if (event.key !== "F2" || renameDisabled) return
           event.preventDefault()
@@ -103,6 +111,7 @@ function FeatureTreeItems({
   groupLabel,
   onActivate,
   onFeatureRename,
+  onPreselectionChange,
   onVisibilityChange,
   onSketchRename,
   unnamedFeature,
@@ -114,6 +123,7 @@ function FeatureTreeItems({
   groupLabel: string
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
@@ -131,6 +141,7 @@ function FeatureTreeItems({
           feature={feature}
           onActivate={onActivate}
           onFeatureRename={onFeatureRename}
+          onPreselectionChange={onPreselectionChange}
           onVisibilityChange={onVisibilityChange}
           onSketchRename={onSketchRename}
           unnamedFeature={unnamedFeature}
@@ -305,6 +316,7 @@ export function ModelTree({
   controller,
   onFeatureActivate,
   onFeatureRename,
+  onFeaturePreselectionChange,
   onFeatureVisibilityChange,
   onSketchActivate,
   onSketchRename,
@@ -320,6 +332,7 @@ export function ModelTree({
   controller: DocumentControllerState
   onFeatureActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
+  onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
   onSketchRename: SketchRenameHandler
@@ -381,6 +394,7 @@ export function ModelTree({
           groupLabel={t("items.features")}
           onActivate={onFeatureActivate}
           onFeatureRename={onFeatureRename}
+          onPreselectionChange={onFeaturePreselectionChange}
           onVisibilityChange={onFeatureVisibilityChange}
           onSketchRename={onSketchRename}
           unnamedFeature={t("unnamedFeature")}

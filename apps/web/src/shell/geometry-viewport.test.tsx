@@ -77,8 +77,14 @@ function renderViewport(
     visibility: { xy: boolean; xz: boolean; yz: boolean }
     onChange: (plane: "xy" | "xz" | "yz", visible: boolean) => void
   }>,
+  featureHighlight?: Readonly<{
+    preselectedFeatureId?: string
+    selectedFeatureId?: string
+  }>,
 ) {
   const port: GeometryViewportPort = {
+    setFeaturePreselection: vi.fn(),
+    setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
@@ -99,6 +105,7 @@ function renderViewport(
           createViewport={createViewport}
           selection={selection}
           onSelectionChange={onSelectionChange}
+          {...featureHighlight}
           {...(featurePreview ? { featurePreview } : {})}
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
           {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
@@ -220,6 +227,56 @@ describe("GeometryViewport", () => {
     expect(screen.getByText("Create a feature to display its rebuilt geometry.").textContent).toBe(
       "Create a feature to display its rebuilt geometry.",
     )
+  })
+
+  it("highlights hovered and opened features by exact identity, including historical geometry", async () => {
+    const controller = readyController(
+      [
+        { id: boxId, dependencies: [] },
+        { id: booleanId, dependencies: [boxId] },
+      ],
+      [
+        { featureId: boxId, geometry: { mesh } },
+        { featureId: booleanId, geometry: { mesh } },
+      ],
+    )
+    const { port } = renderViewport(controller, null, undefined, undefined, undefined, {
+      preselectedFeatureId: booleanId,
+      selectedFeatureId: boxId,
+    })
+
+    await waitFor(() =>
+      expect(port.setFeatureSelection).toHaveBeenLastCalledWith({ featureId: boxId, ...mesh }),
+    )
+    expect(port.setFeaturePreselection).toHaveBeenLastCalledWith({
+      featureId: booleanId,
+      ...mesh,
+    })
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-selected-feature")).toBe(boxId)
+    expect(viewport.getAttribute("data-preselected-feature")).toBe(booleanId)
+  })
+
+  it("uses the unsaved candidate mesh for an opened feature highlight", async () => {
+    const previewMesh = {
+      featureId: boxId,
+      appearance: "preview" as const,
+      ...mesh,
+      positions: new Float32Array([0, 0, 0, 40, 0, 0, 0, 40, 0]),
+    }
+    const { port } = renderViewport(
+      readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh } }],
+      ),
+      null,
+      undefined,
+      { status: "ready", meshes: [previewMesh], candidateMesh: previewMesh },
+      undefined,
+      { selectedFeatureId: boxId },
+    )
+
+    await waitFor(() => expect(port.setFeatureSelection).toHaveBeenLastCalledWith(previewMesh))
   })
 
   it("renders exact saved sketches with the model and filters hidden sketch identities", async () => {

@@ -47,6 +47,7 @@ export type EditorSessionState = Readonly<{
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  preselectedFeatureId: FeatureId | null
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
   workspace: EditorWorkspaceName
@@ -69,6 +70,7 @@ export type EditorSessionActions = Readonly<{
   setCommandPaletteOpen: (open: boolean) => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
+  setFeaturePreselection: (featureId: FeatureId | null) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
@@ -112,6 +114,7 @@ function createEditorSessionState(): EditorSessionState {
     hiddenFeatureIds: [],
     hiddenSketchIds: [],
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
+    preselectedFeatureId: null,
     selection: null,
     sketch: createSketchState(),
     workspace: "model",
@@ -254,6 +257,13 @@ export function createEditorSessionStore() {
               ? state.hiddenFeatureIds.filter((id) => id !== featureId)
               : [...new Set([...state.hiddenFeatureIds, featureId])]
             if (!visible && state.selection?.featureId === featureId) state.selection = null
+            if (!visible && state.preselectedFeatureId === featureId) {
+              state.preselectedFeatureId = null
+            }
+          }),
+        setFeaturePreselection: (featureId) =>
+          set((state) => {
+            state.preselectedFeatureId = featureId
           }),
         setOriginPlaneVisibility: (plane, visible) =>
           set((state) => {

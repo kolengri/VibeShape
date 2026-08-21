@@ -61,6 +61,7 @@ type RenderTreeOptions = Partial<
     ModelTreeProps,
     | "onFeatureActivate"
     | "onFeatureRename"
+    | "onFeaturePreselectionChange"
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
     | "onSketchRename"
@@ -74,6 +75,7 @@ type RenderTreeOptions = Partial<
 function renderTree({
   onFeatureActivate = vi.fn(),
   onFeatureRename = vi.fn().mockResolvedValue({ ok: true }),
+  onFeaturePreselectionChange = vi.fn(),
   onFeatureVisibilityChange = vi.fn(),
   onSketchActivate = vi.fn(),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
@@ -94,6 +96,7 @@ function renderTree({
           hiddenSketchIds={hiddenSketchIds}
           onFeatureActivate={onFeatureActivate}
           onFeatureRename={onFeatureRename}
+          onFeaturePreselectionChange={onFeaturePreselectionChange}
           onFeatureVisibilityChange={onFeatureVisibilityChange}
           onSketchActivate={onSketchActivate}
           onSketchRename={onSketchRename}
@@ -117,6 +120,23 @@ describe("ModelTree", () => {
     expect(featureItem.getAttribute("aria-selected")).toBe("true")
     await user.click(featureItem)
     expect(onFeatureActivate).toHaveBeenCalledWith(featureId)
+  })
+
+  it("preselects feature geometry from pointer hover and keyboard focus", async () => {
+    const user = userEvent.setup()
+    const onFeaturePreselectionChange = vi.fn()
+    renderTree({ onFeaturePreselectionChange })
+    const featureItem = screen.getByRole("treeitem", { name: "Box 1" })
+
+    await user.hover(featureItem)
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+    await user.unhover(featureItem)
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
+
+    featureItem.focus()
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(featureId)
+    featureItem.blur()
+    expect(onFeaturePreselectionChange).toHaveBeenLastCalledWith(null)
   })
 
   it("enters the existing sketch editor from the model-tree sketch item", async () => {
