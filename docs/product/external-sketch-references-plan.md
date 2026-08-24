@@ -1,7 +1,7 @@
 # External Sketch References Plan
 
 - Status: **In progress**
-- Reviewed: **2026-08-21**
+- Reviewed: **2026-08-24**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
 This is the detailed external-reference slice of the broader
@@ -38,17 +38,20 @@ part of this first slice. See [Derived](https://cad.onshape.com/help/Content/Par
 ### Implemented point-reference foundation
 
 The first delivered increment is intentionally smaller than the full first vertical slice. A dependent
-sketch can retain a **coplanar point reference** to an earlier saved sketch and attach one authored point
+sketch can retain a **projected point reference** to an earlier saved sketch and attach one authored point
 to it with a Coincident relation. The reference persists only stable source and projected-point IDs; the
-document worker resolves current source coordinates before every solve and provides the projected point as
-read-only fixed solver input. The icon-only **Use point** canvas tool exposes compatible source points in
-the active sketch and accepts them directly on the drawing; the task panel lists/removes only references
-already in use. Selecting one local point before Use creates the Coincident relation in the same draft edit.
-Deleting a referenced source sketch is rejected.
+document worker resolves current source coordinates before every solve, transforms the point from its exact
+source support through world space into the target support, and provides the result as read-only fixed solver
+input. The icon-only **Use point** tool exposes compatible source points on the normal-to-sketch drawing and
+in the persistent 3D viewport. Orbit mode provides graphical hover preselection, a source label, and direct
+selection without recreating the camera. Selecting one local point before Use creates the Coincident relation
+in the same draft edit. The task panel lists/removes references already in use, and deleting a referenced
+source sketch is rejected.
 
 This increment does not yet support external curves, feature edges, intersection, automatic external
-inference, cross-support projection, or chained references. A source must be earlier in presentation order,
-have no own external references, and use the exact same origin/support frame as its dependent sketch.
+inference, solved-source preselection data, or chained references. A source must be earlier in presentation
+order and have no own external references. Persisted coordinates remain disposable: both UI preview and
+authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
 

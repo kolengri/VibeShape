@@ -91,6 +91,60 @@ test.describe("full sketch editor", () => {
     await expect(restoredViewport).toHaveAttribute("data-rendered-sketch-count", "1")
   })
 
+  test("selects an earlier sketch point graphically in 3D across support frames", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const drawingBounds = await drawing.boundingBox()
+    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.mouse.click(
+      drawingBounds.x + drawingBounds.width * 0.56,
+      drawingBounds.y + drawingBounds.height * 0.46,
+    )
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xz")
+    await page.getByRole("button", { name: "Use point", exact: true }).click()
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "1")
+    const canvasBounds = await viewport.locator("canvas").boundingBox()
+    if (!canvasBounds) throw new Error("The 3D reference-selection canvas is not visible.")
+    const referenceStatus = page.getByRole("status").filter({ hasText: "Use reference:" })
+    let selected = false
+    const centerX = canvasBounds.x + canvasBounds.width / 2
+    const centerY = canvasBounds.y + canvasBounds.height / 2
+    for (let offsetY = -48; offsetY <= 48 && !selected; offsetY += 8) {
+      for (let offsetX = -320; offsetX <= 320; offsetX += 8) {
+        const x = centerX + offsetX
+        const y = centerY + offsetY
+        await page.mouse.move(x, y)
+        await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+        if (await referenceStatus.isVisible()) {
+          await page.mouse.click(x, y)
+          selected = true
+          break
+        }
+      }
+    }
+    expect(selected).toBe(true)
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-external-reference-count='1']")).toBeVisible()
+  })
+
   test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

@@ -254,7 +254,7 @@ describe("sketch document commands", () => {
     })
   })
 
-  test("preserves a coplanar external point dependency and blocks source removal", () => {
+  test("preserves a cross-support external point dependency and blocks source removal", () => {
     const created = createDocument()
     if (!created.ok) throw new Error(created.diagnostic.message)
     const source = applyDocumentCommand(created.snapshot, {
@@ -272,7 +272,7 @@ describe("sketch document commands", () => {
       schemaVersion: 0,
       id: dependentSketchId,
       label: "Attached profile",
-      plane: "xy",
+      plane: "xz",
       entities: [
         {
           schemaVersion: 0,

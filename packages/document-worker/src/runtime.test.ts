@@ -703,7 +703,7 @@ describe("DocumentWorkerRuntime", () => {
     ).toMatchObject({ type: "failure", diagnostic: { code: "sketch-not-found" } })
   })
 
-  it("resolves a persisted external point as fixed geometry for a dependent sketch", async () => {
+  it("projects a persisted external point through world space into a different sketch frame", async () => {
     const module = sketchSolverModule()
     const solvePort = vi.fn((input: Parameters<SketchSolvePort>[0]) =>
       solveSketchRecord(module, input),
@@ -712,7 +712,7 @@ describe("DocumentWorkerRuntime", () => {
       schemaVersion: 0,
       id: "0195b5ac-b220-7a2c-8c33-67a36a7f3203",
       label: "Attached profile",
-      plane: "xy",
+      plane: "xz",
       entities: [
         {
           schemaVersion: 0,
@@ -775,7 +775,7 @@ describe("DocumentWorkerRuntime", () => {
         type: "point",
         construction: true,
         x: 1,
-        y: 2,
+        y: 0,
       },
     ])
   })

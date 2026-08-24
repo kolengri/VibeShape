@@ -235,10 +235,11 @@ export function solveSketchOnce(
   solveSketch: SketchSolvePort,
   document: DocumentSnapshot,
   sketch: SketchRecord,
+  features: readonly FeatureRecord[] = document.features,
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
-  const pending = resolveExternalSketchPoints(document, sketch, solveSketch).then(
+  const pending = resolveExternalSketchPoints(document, sketch, solveSketch, features).then(
     (externalPoints) =>
       solveSketch({
         sketch,
@@ -307,7 +308,7 @@ async function prepareFeatureContent(
     return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
   }
   const result = validatedSolution(
-    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch),
+    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features),
     document,
     sketch,
   )

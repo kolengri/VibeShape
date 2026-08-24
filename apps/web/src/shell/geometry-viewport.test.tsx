@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { boxFeatureType, createLengthQuantity, datumPlaneFeatureType } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -95,6 +95,7 @@ function renderViewport(
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
+    setSketchPointCandidates: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
@@ -210,6 +211,41 @@ describe("GeometryViewport", () => {
 
     unmount()
     expect(port.dispose).toHaveBeenCalledOnce()
+  })
+
+  it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {
+    const candidate = {
+      label: "Source · Point",
+      position: [2, 3, 0] as const,
+      sourcePointId: "point-1",
+      sourceSketchId: "sketch-1",
+    }
+    const onSelect = vi.fn()
+    const controller = readyController([], [])
+    const { createViewport, port } = renderViewport(
+      controller,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        frame: null,
+        mode: "orbit",
+        referenceSelection: { candidates: [candidate], onSelect },
+      },
+    )
+
+    await waitFor(() => expect(port.setSketchPointCandidates).toHaveBeenCalledWith([candidate]))
+    expect(port.setInteractionMode).toHaveBeenLastCalledWith("sketch-reference-select")
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onSketchPointPreselectionChange?.(candidate))
+    expect(screen.getByText("Use reference: Source · Point", { exact: true }).textContent).toBe(
+      "Use reference: Source · Point",
+    )
+
+    options?.onSketchPointSelectionChange?.(candidate)
+    expect(onSelect).toHaveBeenCalledWith(candidate)
   })
 
   it("renders exact unsaved meshes as a distinct preview state", async () => {

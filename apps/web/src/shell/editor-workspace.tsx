@@ -13,8 +13,8 @@ import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
-import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
-import { type ReactNode, useMemo, useState } from "react"
+import type { ViewerSelection, ViewerSketchPointCandidate } from "@vibeshape/viewer/three-viewport"
+import { type ReactNode, useCallback, useMemo, useState } from "react"
 import {
   type DocumentControllerState,
   removeSketch,
@@ -28,7 +28,11 @@ import {
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
-import { externalSketchPointCandidates } from "../features/sketch/external-sketch-points"
+import {
+  applyExternalSketchPointCandidate,
+  type ExternalSketchPointCandidate,
+  externalSketchPointCandidates,
+} from "../features/sketch/external-sketch-points"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -112,7 +116,9 @@ function SketchWorkspaceContent({
   onDisplayChange,
   sketch,
   supportFeatures,
+  externalPointCandidates,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
+  externalPointCandidates: readonly ExternalSketchPointCandidate[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   supportFeatures: readonly FeatureRecord[]
 }) {
@@ -123,9 +129,7 @@ function SketchWorkspaceContent({
         controller,
         draft: sketch.draft,
         editorTool: sketch.editorTool,
-        externalPointCandidates: sketch.draft
-          ? externalSketchPointCandidates(controller.report?.snapshot.sketches ?? [], sketch.draft)
-          : [],
+        externalPointCandidates,
         originPlaneVisibility: model.originPlaneVisibility,
         selectedConstraintId: sketch.selectedConstraintId,
         selectedEntityIds: sketch.selectedEntityIds,
@@ -229,9 +233,70 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     ],
   )
   const sketchActive = props.workspace === "sketch"
+  const externalPointCandidates = useMemo(
+    () =>
+      snapshot && props.sketch.draft
+        ? externalSketchPointCandidates(snapshot, props.sketch.draft, supportFeatures)
+        : [],
+    [props.sketch.draft, snapshot, supportFeatures],
+  )
+  const viewerPointCandidates = useMemo<readonly ViewerSketchPointCandidate[]>(
+    () =>
+      externalPointCandidates.map((candidate) => ({
+        label: candidate.label,
+        position: candidate.world,
+        sourcePointId: candidate.sourcePointId,
+        sourceSketchId: candidate.sourceSketchId,
+      })),
+    [externalPointCandidates],
+  )
+  const selectExternalPoint = useCallback(
+    (hit: ViewerSketchPointCandidate) => {
+      const draft = props.sketch.draft
+      if (!draft) return
+      const candidate = externalPointCandidates.find(
+        (item) =>
+          item.sourceSketchId === hit.sourceSketchId && item.sourcePointId === hit.sourcePointId,
+      )
+      if (!candidate) return
+      const next = applyExternalSketchPointCandidate(
+        draft,
+        candidate,
+        props.sketch.selectedEntityIds,
+      )
+      if (next !== draft) props.actions.onSketchDraftChange(next)
+    },
+    [
+      externalPointCandidates,
+      props.actions.onSketchDraftChange,
+      props.sketch.draft,
+      props.sketch.selectedEntityIds,
+    ],
+  )
   const sketchContext = useMemo(
-    () => (sketchActive ? { frame, mode: props.sketch.cameraMode } : undefined),
-    [frame, props.sketch.cameraMode, sketchActive],
+    () =>
+      sketchActive
+        ? {
+            frame,
+            mode: props.sketch.cameraMode,
+            ...(props.sketch.editorTool === "use"
+              ? {
+                  referenceSelection: {
+                    candidates: viewerPointCandidates,
+                    onSelect: selectExternalPoint,
+                  },
+                }
+              : {}),
+          }
+        : undefined,
+    [
+      frame,
+      props.sketch.cameraMode,
+      props.sketch.editorTool,
+      selectExternalPoint,
+      sketchActive,
+      viewerPointCandidates,
+    ],
   )
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
@@ -256,6 +321,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           onDisplayChange={setActiveSketchDisplay}
           sketch={props.sketch}
           supportFeatures={supportFeatures}
+          externalPointCandidates={externalPointCandidates}
         />
       }
       sketchActive={sketchActive}

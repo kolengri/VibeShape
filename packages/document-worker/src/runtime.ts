@@ -3,6 +3,7 @@ import {
   type FeatureGeometryRecord,
   type FeatureRebuildState,
   rebuildDocumentFeatures,
+  resolveDocumentFeatureParameters,
 } from "@vibeshape/application/feature-rebuild"
 import {
   createFeatureTypeRegistry,
@@ -461,6 +462,7 @@ export class DocumentWorkerRuntime {
           context.document,
           context.sketch,
           this.solveSketch,
+          resolveDocumentFeatureParameters(context.document, this.registry),
         ),
       })
       this.#postSketchResult(request, result)

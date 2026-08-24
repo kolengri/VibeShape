@@ -687,6 +687,16 @@ function resolveDocumentFeatures(
   return { features, preflightFailures }
 }
 
+export function resolveDocumentFeatureParameters(
+  document: DocumentSnapshot,
+  registry: FeatureTypeRegistry,
+): readonly FeatureRecord[] {
+  const variables = evaluateVariableDefinitions(document.variables)
+  return variables.ok
+    ? resolveDocumentFeatures(document, registry, variables).features
+    : document.features
+}
+
 async function callFeatureContentPreparer(
   prepareFeatureContent: DocumentFeatureContentPreparationPort,
   document: DocumentSnapshot,
