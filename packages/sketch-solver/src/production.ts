@@ -10,6 +10,7 @@ import {
   type SketchConstraint,
   type SketchEntity,
   type SketchRecord,
+  sketchLineEntitySchema,
   sketchPointEntitySchema,
   sketchRecordSchema,
 } from "@vibeshape/domain/sketch"
@@ -75,11 +76,25 @@ export const sketchDragTargetSchema = z
   .object({ entityId: sketchEntityIdSchema, x: coordinateSchema, y: coordinateSchema })
   .strict()
 
+const externalLineSchema = z
+  .object({
+    line: sketchLineEntitySchema,
+    startPoint: sketchPointEntitySchema,
+    endPoint: sketchPointEntitySchema,
+  })
+  .strict()
+  .refine(
+    ({ line, startPoint, endPoint }) =>
+      line.startPointId === startPoint.id && line.endPointId === endPoint.id,
+    { message: "External line endpoints must match the projected line entity." },
+  )
+
 const sketchCompilationInputSchema = z
   .object({
     revision: revisionSchema,
     sketch: sketchRecordSchema,
     externalPoints: z.array(sketchPointEntitySchema).max(4_990).default([]),
+    externalLines: z.array(externalLineSchema).max(1_663).default([]),
     variables: variableDefinitionsSchema.default([]),
     continuation: sketchSolveContinuationSchema.nullable().default(null),
     draggedPoints: z.array(sketchDragTargetSchema).max(128).default([]),
@@ -88,7 +103,7 @@ const sketchCompilationInputSchema = z
   .superRefine((input, context) => {
     validateContinuation(input, context)
     validateDraggedPoints(input, context)
-    validateExternalPoints(input, context)
+    validateExternalGeometry(input, context)
   })
 
 type SketchCompilationSchemaInput = z.infer<typeof sketchCompilationInputSchema>
@@ -124,7 +139,7 @@ function validateDraggedPoints(input: SketchCompilationSchemaInput, context: z.R
   }
 }
 
-function validateExternalPoints(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
+function validateExternalGeometry(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
   const entityIds = new Set(input.sketch.entities.map((entity) => entity.id))
   for (const [index, point] of input.externalPoints.entries()) {
     if (entityIds.has(point.id)) {
@@ -136,11 +151,28 @@ function validateExternalPoints(input: SketchCompilationSchemaInput, context: z.
     }
     entityIds.add(point.id)
   }
-  if (input.sketch.entities.length + input.externalPoints.length <= 4_990) return
+  for (const [index, external] of input.externalLines.entries()) {
+    for (const entity of [external.startPoint, external.endPoint, external.line]) {
+      if (entityIds.has(entity.id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["externalLines", index],
+          message: "External sketch line IDs cannot collide with other sketch entities.",
+        })
+      }
+      entityIds.add(entity.id)
+    }
+  }
+  if (
+    input.sketch.entities.length + input.externalPoints.length + input.externalLines.length * 3 <=
+    4_990
+  ) {
+    return
+  }
   context.addIssue({
     code: "custom",
-    path: ["externalPoints"],
-    message: "Authored and external sketch entities exceed the solver safety limit.",
+    path: ["externalLines"],
+    message: "Authored and external sketch geometry exceed the solver safety limit.",
   })
 }
 
@@ -710,9 +742,13 @@ function addRelationshipConstraint(
   }
   if (constraint.type === "equal") {
     const first = sketch.entities.find((entity) => entity.id === constraint.firstEntityId)
+    const firstIsExternalLine = sketch.externalReferences?.some(
+      (reference) =>
+        reference.kind === "line" && reference.projectedLineId === constraint.firstEntityId,
+    )
     builder.addConstraint(
       constraint.id,
-      first?.type === "line"
+      first?.type === "line" || firstIsExternalLine
         ? SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines
         : SOLVESPACE_CONSTRAINT_TYPE.equalRadius,
       {
@@ -953,6 +989,7 @@ function addSketchEntities(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
   externalPoints: readonly Extract<SketchEntity, { type: "point" }>[],
+  externalLines: readonly z.infer<typeof externalLineSchema>[],
   pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
   circleRadii: ReadonlyMap<SketchEntityId, number>,
 ) {
@@ -960,7 +997,10 @@ function addSketchEntities(
     if (entity.type !== "point") continue
     addSketchPointEntity(builder, entity, pointValues)
   }
-  for (const point of externalPoints) {
+  for (const point of [
+    ...externalPoints,
+    ...externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+  ]) {
     const value = pointValues.get(point.id)
     if (!value) throw new Error(`External sketch point ${point.id} is missing initial values.`)
     builder.addPoint(point.id, value.x, value.y)
@@ -971,6 +1011,7 @@ function addSketchEntities(
   for (const entity of sketch.entities) {
     if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
   }
+  for (const { line } of externalLines) builder.addLine(line)
 }
 
 function addSketchConstraints(
@@ -999,7 +1040,11 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     return compilationFailure("invalid-variables", variables.diagnostic.message, "variables")
   }
   const pointValues = initialPointValues(
-    [...input.data.sketch.entities, ...input.data.externalPoints],
+    [
+      ...input.data.sketch.entities,
+      ...input.data.externalPoints,
+      ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+    ],
     input.data.continuation,
     input.data.draggedPoints,
   )
@@ -1013,7 +1058,14 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   }
 
   const builder = new ProductionSketchBuilder()
-  addSketchEntities(builder, input.data.sketch, input.data.externalPoints, pointValues, circleRadii)
+  addSketchEntities(
+    builder,
+    input.data.sketch,
+    input.data.externalPoints,
+    input.data.externalLines,
+    pointValues,
+    circleRadii,
+  )
   const invalidConstraintIndex = addSketchConstraints(builder, input.data.sketch, variables)
   if (invalidConstraintIndex !== null) {
     return compilationFailure(

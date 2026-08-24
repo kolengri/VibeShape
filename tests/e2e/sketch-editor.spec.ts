@@ -91,7 +91,7 @@ test.describe("full sketch editor", () => {
     await expect(restoredViewport).toHaveAttribute("data-rendered-sketch-count", "1")
   })
 
-  test("selects an earlier sketch point graphically in 3D across support frames", async ({
+  test("selects an earlier sketch line graphically in 3D across support frames", async ({
     page,
   }) => {
     await page.goto("/")
@@ -103,9 +103,13 @@ test.describe("full sketch editor", () => {
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
     const drawingBounds = await drawing.boundingBox()
     if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
-    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.getByRole("button", { name: "Line", exact: true }).click()
     await page.mouse.click(
-      drawingBounds.x + drawingBounds.width * 0.56,
+      drawingBounds.x + drawingBounds.width * 0.48,
+      drawingBounds.y + drawingBounds.height * 0.46,
+    )
+    await page.mouse.click(
+      drawingBounds.x + drawingBounds.width * 0.64,
       drawingBounds.y + drawingBounds.height * 0.46,
     )
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -115,14 +119,14 @@ test.describe("full sketch editor", () => {
       .getByRole("button", { name: "Create sketch" })
       .click()
     await confirmSketchPlane(page, "xz")
-    await page.getByRole("button", { name: "Use point", exact: true }).click()
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "1")
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "3")
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The 3D reference-selection canvas is not visible.")
-    const referenceStatus = page.getByRole("status").filter({ hasText: "Use reference:" })
+    const referenceStatus = page.getByRole("status").filter({ hasText: "· Line" })
     let selected = false
     const centerX = canvasBounds.x + canvasBounds.width / 2
     const centerY = canvasBounds.y + canvasBounds.height / 2
@@ -142,7 +146,7 @@ test.describe("full sketch editor", () => {
     expect(selected).toBe(true)
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
-    await expect(drawing.locator("[data-sketch-external-reference-count='1']")).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
   })
 
   test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {

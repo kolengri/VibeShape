@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
-import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
-import type { SketchEntity } from "./sketch"
+import type {
+  SketchConstraintId,
+  SketchEntityId,
+  SketchExternalReferenceId,
+  SketchId,
+} from "./identifiers"
+import { type SketchEntity, sketchRecordSchema } from "./sketch"
 import {
   appendSketchAlignedRectangle,
   appendSketchArc,
@@ -28,6 +33,7 @@ import {
   regularPolygonGeometry,
   removeSketchConstraints,
   removeSketchEntities,
+  removeSketchExternalReference,
   setSketchDimensionValue,
   setSketchEntityConstruction,
   sketchLineIntersection,
@@ -882,6 +888,47 @@ describe("sketch editing", () => {
     expect(constraint).toBeDefined()
     if (!constraint) return
     expect(removeSketchConstraints(constrained, [constraint.id]).constraints).toEqual([])
+  })
+
+  it("removes constraints owned by a removed external line reference", () => {
+    const local = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const line = local.entities.find((entity) => entity.type === "line")
+    if (!line) return
+    const referenceId = "018f0000-0000-7000-8000-000000000501" as SketchExternalReferenceId
+    const projectedLineId = "018f0000-0000-7000-8000-000000000502" as SketchEntityId
+    const withReference = sketchRecordSchema.parse({
+      ...local,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "line",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000503",
+          sourceLineId: "018f0000-0000-7000-8000-000000000504",
+          projectedLineId,
+          projectedStartPointId: "018f0000-0000-7000-8000-000000000505",
+          projectedEndPointId: "018f0000-0000-7000-8000-000000000506",
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000507",
+          type: "parallel",
+          firstEntityId: line.id,
+          secondEntityId: projectedLineId,
+        },
+      ],
+    })
+
+    const removed = removeSketchExternalReference(withReference, referenceId)
+
+    expect(removed.externalReferences).toEqual([])
+    expect(removed.constraints).toEqual([])
   })
 
   it("updates a driving dimension while preserving its identity and references", () => {

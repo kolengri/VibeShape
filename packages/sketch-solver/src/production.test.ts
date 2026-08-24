@@ -585,4 +585,81 @@ describe("production sketch compilation", () => {
       diagnostic: { code: "invalid-dimension" },
     })
   })
+
+  test("compiles a fixed external line as a relationship target outside profile geometry", () => {
+    const externalStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000201")
+    const externalEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000202")
+    const externalLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000203")
+    const parallelId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000204")
+    const record = sketchRecordSchema.parse({
+      ...sketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000205",
+          kind: "line",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000206",
+          sourceLineId: "018f0000-0000-7000-8000-000000000207",
+          projectedLineId: externalLineId,
+          projectedStartPointId: externalStartId,
+          projectedEndPointId: externalEndId,
+        },
+      ],
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: parallelId,
+          type: "parallel",
+          firstEntityId: lineId,
+          secondEntityId: externalLineId,
+        },
+      ],
+    })
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: record,
+      variables,
+      externalLines: [
+        {
+          startPoint: {
+            schemaVersion: 0,
+            id: externalStartId,
+            type: "point",
+            x: 0,
+            y: 20,
+            construction: true,
+          },
+          endPoint: {
+            schemaVersion: 0,
+            id: externalEndId,
+            type: "point",
+            x: 20,
+            y: 20,
+            construction: true,
+          },
+          line: {
+            schemaVersion: 0,
+            id: externalLineId,
+            type: "line",
+            startPointId: externalStartId,
+            endPointId: externalEndId,
+            construction: true,
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const constraintTypes: number[] = []
+    for (
+      let offset = 0;
+      offset < result.compiled.system.constraintRecords.length;
+      offset += SKETCH_SOLVER_ABI.constraintRecordStride
+    ) {
+      constraintTypes.push(result.compiled.system.constraintRecords[offset + 2] as number)
+    }
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.parallel)
+  })
 })

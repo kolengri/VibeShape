@@ -24,7 +24,7 @@ import {
   type SketchProfileLoop,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { resolveExternalSketchPoints } from "./external-sketch-references"
+import { resolveExternalSketchGeometry } from "./external-sketch-references"
 import type { SketchSolvePort } from "./runtime"
 
 const TWO_PI = Math.PI * 2
@@ -239,15 +239,15 @@ export function solveSketchOnce(
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
-  const pending = resolveExternalSketchPoints(document, sketch, solveSketch, features).then(
-    (externalPoints) =>
+  const pending = resolveExternalSketchGeometry(document, sketch, solveSketch, features).then(
+    (externalGeometry) =>
       solveSketch({
         sketch,
         variables: [...document.variables],
         revision: document.revision,
         continuation: null,
         draggedPoints: [],
-        externalPoints,
+        ...externalGeometry,
       }),
   )
   solvedBySketchId.set(sketch.id, pending)

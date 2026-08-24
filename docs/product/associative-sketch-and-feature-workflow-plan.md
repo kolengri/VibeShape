@@ -75,10 +75,10 @@ Those pieces do not yet form a complete associative workflow.
 | Sketch support | Origin planes, Datum Plane, and a bounded set of planar feature faces work. | A typed support-frame union with stable origin/orientation and an explicit reference-coordinate-system option. | P0 |
 | Support selection | Supported planes and faces can be picked before editing. | The same graphical selection model must work for support replacement and all reference inputs. | P0 |
 | Editing context | The sketch editor is primarily an isolated normal-to-plane 2D canvas. | Earlier model geometry, origin/datum geometry, and eligible earlier sketches remain visible and inspectable. | P0 |
-| External references | Only points from an earlier sketch on the exact same frame can be used; chains are forbidden. | Use lines, arcs, circles, ellipses, feature edges, vertices, and exact cross-frame projections. | P0 |
-| External selection | The current Use point interaction is limited to compatible points shown in the 2D canvas. | Hover and select source geometry in the shared viewport with preselection, source labels, and filters. | P0 |
+| External references | Points and lines from earlier sketches can be projected across exact support frames; chains are forbidden. | Add arcs, circles, ellipses, feature edges, and vertices on the same stable reference path. | P0 |
+| External selection | Use external geometry selects earlier sketch points and lines in 2D or the persistent 3D viewport with source hover labels. | Add source filters, overlap cycling, and feature-topology candidates. | P0 |
 | Intersection | Not implemented. | Select a face/surface and create an exact, associative sketch-plane intersection. | P0 |
-| External constraints | One projected point can participate in a Coincident relation. | External Coincident, Point on curve, Parallel, Perpendicular, Tangent, Concentric, Pierce/Intersection, and dimensions where mathematically valid. | P0/P1 |
+| External constraints | A projected point supports Coincident; a projected line is selectable and supports compatible line and point-on-line relations. | Add Point on curve, Tangent, Concentric, Pierce/Intersection, and curve dimensions where mathematically valid. | P0/P1 |
 | Datum construction | Signed offset only. | Offset, Plane point, Line angle, Point normal, Three point, Mid plane, Curve point, and Tangent modes. | P1 |
 | History tools | No rollback cursor, interleaved reorder, or parent/child view. | Rollback, insert-at-cursor, dependency inspection, validated reorder, and suppression. | P0/P1 |
 | Extrude references | One stable profile, distance, symmetric state, and New/Add/Remove/Intersect are supported. | Graphical profiles, direction/start references, richer end conditions, second direction, and explicit merge scope. | P1 |
@@ -422,12 +422,13 @@ transitions and resolves the active sketch's exact support frame for origin plan
 supported planar feature and Datum Plane roles. Normal mode aligns the existing orthographic camera to that
 frame and leaves pointer ownership with the transparent analytical sketch surface. **Orbit 3D view** hides
 and makes that surface inert, switches the viewer to camera-only interaction, and displays the unsaved solved
-draft in world coordinates beside the model and reference geometry. While **Use point** is active, earlier
-eligible sketch points remain graphically selectable in orbit mode with hover preselection and source labels;
-selection creates the same stable reference used by the normal-to-sketch drawing and task panel. Cross-support
-point references are transformed through exact source and target frames before solve. **Normal to sketch** restores the exact
+draft in world coordinates beside the model and reference geometry. While **Use external geometry** is
+active, earlier eligible sketch points and lines remain graphically selectable in orbit mode with hover
+preselection and source labels; selection creates the same stable reference used by the normal-to-sketch
+drawing and task panel. Cross-support point and line references are transformed through exact source and
+target frames before solve. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
-selection. Graphical curve/feature source selection, History rollback, and bounded candidate cycling remain
+selection. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
 open parts of this slice.
 
 - Replace separate Sketches/Features presentation with History plus Bodies.

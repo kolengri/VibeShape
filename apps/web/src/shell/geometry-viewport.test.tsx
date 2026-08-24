@@ -95,7 +95,7 @@ function renderViewport(
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
-    setSketchPointCandidates: vi.fn(),
+    setSketchReferenceCandidates: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
@@ -215,9 +215,18 @@ describe("GeometryViewport", () => {
 
   it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {
     const candidate = {
+      kind: "point" as const,
       label: "Source · Point",
       position: [2, 3, 0] as const,
       sourcePointId: "point-1",
+      sourceSketchId: "sketch-1",
+    }
+    const lineCandidate = {
+      kind: "line" as const,
+      label: "Source · Line",
+      start: [0, 0, 0] as const,
+      end: [10, 0, 0] as const,
+      sourceLineId: "line-1",
       sourceSketchId: "sketch-1",
     }
     const onSelect = vi.fn()
@@ -232,20 +241,26 @@ describe("GeometryViewport", () => {
       {
         frame: null,
         mode: "orbit",
-        referenceSelection: { candidates: [candidate], onSelect },
+        referenceSelection: { candidates: [candidate, lineCandidate], onSelect },
       },
     )
 
-    await waitFor(() => expect(port.setSketchPointCandidates).toHaveBeenCalledWith([candidate]))
+    await waitFor(() =>
+      expect(port.setSketchReferenceCandidates).toHaveBeenCalledWith([candidate, lineCandidate]),
+    )
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("sketch-reference-select")
     const options = createViewport.mock.calls[0]?.[1]
-    act(() => options?.onSketchPointPreselectionChange?.(candidate))
+    act(() => options?.onSketchReferencePreselectionChange?.(candidate))
     expect(screen.getByText("Use reference: Source · Point", { exact: true }).textContent).toBe(
       "Use reference: Source · Point",
     )
 
-    options?.onSketchPointSelectionChange?.(candidate)
+    options?.onSketchReferenceSelectionChange?.(candidate)
     expect(onSelect).toHaveBeenCalledWith(candidate)
+    act(() => options?.onSketchReferencePreselectionChange?.(lineCandidate))
+    expect(screen.getByText("Use reference: Source · Line", { exact: true })).toBeTruthy()
+    options?.onSketchReferenceSelectionChange?.(lineCandidate)
+    expect(onSelect).toHaveBeenCalledWith(lineCandidate)
   })
 
   it("renders exact unsaved meshes as a distinct preview state", async () => {
