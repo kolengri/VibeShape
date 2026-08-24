@@ -165,6 +165,22 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("center-rectangle")
   })
 
+  it("routes the Dimension shortcut to the first-class sketch tool", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchDimension,
+    )
+
+    expect(command?.descriptor.shortcut).toEqual({ key: "d" })
+    expect(command?.descriptor.toolbarGroup).toBe("sketch-modify")
+    expect(command?.toolbarVisible).toBe(true)
+    command?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("dimension")
+  })
+
   it("routes the three-point arc shortcut descriptor to the trusted sketch tool handler", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },

@@ -136,6 +136,7 @@ import {
 import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
+  nextSketchDimensionSelection,
   type SketchConstraintToolKind,
   selectedSketchConstraintEntities,
   selectedSketchEntities,
@@ -147,9 +148,11 @@ import {
 } from "./sketch-linear-pattern-form"
 import {
   isSketchModificationTool,
+  isSketchSelectionTool,
   type SketchDraftChangeMode,
   type SketchEditorTool,
   type SketchModificationTool,
+  usesSketchCrosshairCursor,
 } from "./sketch-tool"
 import { type SketchTransformExactValue, SketchTransformForm } from "./sketch-transform-form"
 import {
@@ -1391,6 +1394,7 @@ const SketchCurve = memo(
 )
 
 type SketchPointDrawingProps = Readonly<{
+  draggable: boolean
   dragging: boolean
   editable: boolean
   modificationTarget: boolean
@@ -1404,6 +1408,7 @@ type SketchPointDrawingProps = Readonly<{
 }>
 
 const SketchPoint = memo(function SketchPoint({
+  draggable,
   dragging,
   editable,
   modificationTarget,
@@ -1430,7 +1435,7 @@ const SketchPoint = memo(function SketchPoint({
           event.stopPropagation()
           if (selectable) {
             onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
-            onPointPointerDown(event, point.id)
+            if (draggable) onPointPointerDown(event, point.id)
           } else if (modificationTarget) {
             onEntityAction(event, point.id)
           } else if (editable) {
@@ -1458,6 +1463,7 @@ const SketchPoint = memo(function SketchPoint({
 }, sameSketchPointDrawingProps)
 
 const stableSketchPointDrawingKeys = [
+  "draggable",
   "dragging",
   "editable",
   "modificationTarget",
@@ -1539,7 +1545,7 @@ function SketchGeometry({
   presentation: SketchGeometryPresentation
   tool: SketchEditorTool
 }) {
-  const selectable = editable && tool === "select"
+  const selectable = editable && isSketchSelectionTool(tool)
   const modifiable = editable && isSketchModificationTool(tool)
   const mirrorSourceSelection = tool === "mirror" && pending?.kind === "mirror-sources"
   const transformSourceSelection = tool === "transform"
@@ -1581,6 +1587,7 @@ function SketchGeometry({
       {presentation.points.map((point) => (
         <SketchPoint
           key={point.id}
+          draggable={tool === "select"}
           dragging={point.id === draggingPointId}
           editable={editable && (!modifiable || mirrorSourceSelection || transformSourceSelection)}
           modificationTarget={mirrorSourceSelection || transformSourceSelection}
@@ -1640,16 +1647,22 @@ function attachExternalPointToSelection(
 
 function SketchExternalPoints({
   onAttach,
+  onSelect,
   points,
+  selectedEntityIds,
 }: Readonly<{
   onAttach: ((projectedPointId: SketchEntityId) => void) | null
+  onSelect: ((entityId: SketchEntityId, additive: boolean) => void) | null
   points: readonly DisplayPoint[]
+  selectedEntityIds: readonly SketchEntityId[]
 }>) {
   if (points.length === 0) return null
+  const interactive = onAttach !== null || onSelect !== null
+  const selected = new Set(selectedEntityIds)
   return (
     <g
       aria-label="External sketch references"
-      className={onAttach ? undefined : "pointer-events-none"}
+      className={interactive ? undefined : "pointer-events-none"}
       data-sketch-external-reference-count={points.length}
       transform="scale(1 -1)"
     >
@@ -1657,18 +1670,26 @@ function SketchExternalPoints({
         <g
           key={point.id}
           data-sketch-external-point-id={point.id}
-          className={onAttach ? "cursor-crosshair" : undefined}
+          className={interactive ? "cursor-crosshair" : undefined}
           onPointerDown={(event) => {
-            if (!onAttach) return
+            if (!interactive) return
             event.stopPropagation()
-            onAttach(point.id)
+            if (onSelect) {
+              onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
+            } else {
+              onAttach?.(point.id)
+            }
           }}
         >
           <circle
             cx={point.x}
             cy={point.y}
             r={4}
-            className="fill-background stroke-sky-500"
+            className={
+              selected.has(point.id)
+                ? "fill-background stroke-amber-500"
+                : "fill-background stroke-sky-500"
+            }
             strokeDasharray="2 1"
             strokeWidth={1.5}
             vectorEffect="non-scaling-stroke"
@@ -1678,7 +1699,7 @@ function SketchExternalPoints({
             x2={point.x + 6}
             y1={point.y}
             y2={point.y}
-            className="stroke-sky-500"
+            className={selected.has(point.id) ? "stroke-amber-500" : "stroke-sky-500"}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -1687,7 +1708,7 @@ function SketchExternalPoints({
             x2={point.x}
             y1={point.y - 6}
             y2={point.y + 6}
-            className="stroke-sky-500"
+            className={selected.has(point.id) ? "stroke-amber-500" : "stroke-sky-500"}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -1709,7 +1730,7 @@ function SketchExternalLines({
   selectedEntityIds: readonly SketchEntityId[]
 }>) {
   if (lines.length === 0) return null
-  const selectable = editorTool === "select"
+  const selectable = isSketchSelectionTool(editorTool)
   const selected = new Set(selectedEntityIds)
   return (
     <g
@@ -1866,7 +1887,9 @@ function SketchExternalReferencePresentation({
       />
       <SketchExternalPoints
         points={externalPoints}
+        selectedEntityIds={selectedEntityIds}
         onAttach={editorTool === "select" && selectedEntityIds.length === 1 ? onAttach : null}
+        onSelect={editorTool === "dimension" ? onSelect : null}
       />
     </>
   )
@@ -2357,7 +2380,7 @@ function SketchDrawingAnnotations({
     <StableConstraintAnnotations
       bounds={state.bounds}
       editDimensionLabel={configuration.editDimensionLabel}
-      interactive={state.editable && configuration.editorTool === "select"}
+      interactive={state.editable && isSketchSelectionTool(configuration.editorTool)}
       selectedConstraintId={configuration.selectedConstraintId}
       selectConstraintLabel={configuration.selectConstraintLabel}
       sketch={sketch}
@@ -3953,12 +3976,12 @@ const placementBuilders = {
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
 } satisfies Record<
-  Exclude<SketchEditorTool, "select" | "use" | SketchModificationTool>,
+  Exclude<SketchEditorTool, "dimension" | "select" | "use" | SketchModificationTool>,
   (input: PlacementInput) => PlacementUpdate
 >
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return tool === "select" || tool === "use" || isSketchModificationTool(tool)
+  return isSketchSelectionTool(tool) || tool === "use" || isSketchModificationTool(tool)
     ? null
     : placementBuilders[tool](input)
 }
@@ -4386,6 +4409,7 @@ const pointInferenceSupport = {
   "center-rectangle": (pending) => pending?.kind !== "center-rectangle",
   "centered-aligned-rectangle": (pending) => pending?.kind !== "centered-aligned-rectangle-width",
   "centered-slot": (pending) => pending?.kind !== "centered-slot-width",
+  dimension: neverSupportsPointInference,
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   line: alwaysSupportsPointInference,
@@ -4774,7 +4798,7 @@ function handleSketchCanvasPointerDown(input: {
     return
   }
   if (event.target !== event.currentTarget) return
-  if (input.editorTool === "select") {
+  if (isSketchSelectionTool(input.editorTool)) {
     input.onSelectionChange([])
     return
   }
@@ -5222,7 +5246,7 @@ function SketchDrawingView({
       <svg
         ref={svgRef}
         aria-label={configuration.ariaLabel}
-        className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${isSketchModificationTool(configuration.editorTool) ? "cursor-crosshair" : ""}`}
+        className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${usesSketchCrosshairCursor(configuration.editorTool) ? "cursor-crosshair" : ""}`}
         data-sketch-dragging-point-id={state.draggingPointId ?? undefined}
         data-sketch-modification-tool={
           isSketchModificationTool(configuration.editorTool) ? configuration.editorTool : undefined
@@ -5332,6 +5356,11 @@ function SketchDrawingView({
       <SketchTransformInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
+      />
+      <SketchDimensionInstruction
+        draft={configuration.draft}
+        editorTool={configuration.editorTool}
+        selectedEntityIds={configuration.selectedEntityIds}
       />
       <SketchLinearPatternInstruction
         editorTool={configuration.editorTool}
@@ -5503,6 +5532,44 @@ function SketchTransformInstruction({
       role="status"
     >
       {t(selectedEntityCount > 0 ? "transformAdjust" : "transformSelectGeometry")}
+    </div>
+  )
+}
+
+function SketchDimensionInstruction({
+  draft,
+  editorTool,
+  selectedEntityIds,
+}: Readonly<{
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  selectedEntityIds: readonly SketchEntityId[]
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  const ready = useMemo(() => {
+    if (!draft || editorTool !== "dimension") return false
+    return (
+      compatibleSketchDimensionTools(selectedSketchConstraintEntities(draft, selectedEntityIds))
+        .length > 0
+    )
+  }, [draft, editorTool, selectedEntityIds])
+
+  useEffect(() => {
+    if (!ready) return
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("sketch-dimension-expression")?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [ready, selectedEntityIds])
+
+  if (editorTool !== "dimension") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-dimension-instruction
+      role="status"
+    >
+      {t(ready ? "dimensionSetValue" : "dimensionSelectGeometry")}
     </div>
   )
 }
@@ -6329,9 +6396,13 @@ function SketchDrawing({
   )
   const handleSelection = useCallback(
     (entityId: SketchEntityId, additive: boolean) => {
-      onSelectionChange(toggleSelection(selectedEntityIds, entityId, additive))
+      onSelectionChange(
+        editorTool === "dimension" && draft && !additive
+          ? nextSketchDimensionSelection(draft, selectedEntityIds, entityId)
+          : toggleSelection(selectedEntityIds, entityId, additive),
+      )
     },
-    [onSelectionChange, selectedEntityIds],
+    [draft, editorTool, onSelectionChange, selectedEntityIds],
   )
   return (
     <>

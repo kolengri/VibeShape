@@ -190,10 +190,11 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
     const drawing = await drawRectangle(page)
 
-    await selectSketchEntities(page, drawing, "line", [0])
-    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
-    await expect(precisionTools).toBeVisible()
-    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
+    await page.getByRole("button", { name: "Dimension", exact: true }).click()
+    await drawing.locator('[data-sketch-entity-type="line"]').first().dispatchEvent("pointerdown")
+    await expect(
+      page.getByText("Dimension · Enter the exact driving value in Sketch definition."),
+    ).toBeVisible()
     await expect(page.getByRole("combobox", { name: "Driving expression" })).toBeFocused()
     await addDimension(page, "Distance", "30 mm")
     const distanceConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 30 mm" })

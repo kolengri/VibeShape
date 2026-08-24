@@ -148,12 +148,15 @@ adding solver constraints.
 
 ## Interaction contract
 
-1. The viewport is selection-first. A compact icon-only precision toolbar appears next to the
-   working area when the complete selection supports a geometric constraint or dimension.
+1. The viewport is selection-first. `D` activates the persistent Dimension tool from the same
+   registered command used by the toolbar and command palette. The tool accepts one line or round
+   curve, or collects two points or two lines through sequential clicks without a modifier. A
+   compatible selection focuses the exact driving-value field. The compact icon-only precision
+   toolbar remains available from ordinary Select mode for selection-first constraint work.
 2. Every icon has a localized accessible name and tooltip. Standard technical glyphs are preferred
    over repeated icon-and-text controls in the canvas.
-3. The task panel provides the keyboard-accessible equivalent, the dimension expression form, the
-   applied-constraint list, conflict state, and removal controls.
+3. The task panel provides the keyboard-accessible equivalent, the focused variable-aware dimension
+   expression form, the applied-constraint list, conflict state, and removal controls.
 4. Selecting a dimension label on the drawing selects the same stable constraint and opens its
    expression editor. Selecting a geometric glyph selects the matching task-panel row.
 5. Adding, editing, or removing a constraint is one local sketch-history edit. It does not create a

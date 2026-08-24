@@ -2151,6 +2151,33 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("collects compatible geometry through the first-class Dimension tool", () => {
+    const selectedLine = requiredSketchEntity(sketch, "line")
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: sketch,
+      editorTool: "dimension",
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onSelectionChange,
+    })
+
+    expect(
+      screen.getByText("Dimension · Enter the exact driving value in Sketch definition."),
+    ).toBeTruthy()
+    expect(screen.queryByRole("toolbar", { name: "Sketch precision tools" })).toBeNull()
+
+    const otherLine = sketch.entities.find(
+      (entity) => entity.type === "line" && entity.id !== selectedLine.id,
+    )
+    if (!otherLine) throw new Error("The rectangle fixture must contain another line.")
+    const target = view.container.querySelector(`[data-sketch-entity-id="${otherLine.id}"]`)
+    if (!target) throw new Error("Dimension mode must expose sketch geometry selection targets.")
+    fireEvent.pointerDown(target)
+    expect(onSelectionChange).toHaveBeenCalledWith([selectedLine.id, otherLine.id])
+  })
+
   it("forwards the previous exact solution and active point drag to the solver", async () => {
     const solveSketch = vi.fn(async () => solveResult())
     renderViewport({ draft: sketch, sketch, solveSketch })
