@@ -2,6 +2,7 @@ import {
   createAngleQuantity,
   createLengthQuantity,
   type SketchEntity,
+  type SketchRecord,
   sketchEntityIdSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
@@ -9,6 +10,7 @@ import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
   createSketchDimensionConstraint,
+  nextSketchDimensionSelection,
 } from "./sketch-constraint-tools"
 
 function entityId(index: number) {
@@ -71,6 +73,11 @@ const ellipticalArc = {
   startPointId: entityId(10),
   endPointId: entityId(11),
 } as const satisfies SketchEntity
+const secondLine = { ...line, id: entityId(12) } as const satisfies SketchEntity
+const dimensionSketch = {
+  constraints: [],
+  entities: [firstPoint, secondPoint, line, secondLine, circle, ellipse],
+} as unknown as SketchRecord
 
 describe("sketch constraint tools", () => {
   it("offers only constraints compatible with the current semantic selection", () => {
@@ -98,7 +105,7 @@ describe("sketch constraint tools", () => {
       "horizontal-distance",
       "vertical-distance",
     ])
-    expect(compatibleSketchDimensionTools([line, { ...line, id: entityId(12) }])).toEqual(["angle"])
+    expect(compatibleSketchDimensionTools([line, secondLine])).toEqual(["angle"])
     expect(compatibleSketchDimensionTools([circle])).toEqual(["radius", "diameter"])
     expect(compatibleSketchDimensionTools([ellipse])).toEqual([
       "primary-axis-diameter",
@@ -119,12 +126,33 @@ describe("sketch constraint tools", () => {
     expect(
       createSketchDimensionConstraint(
         "angle",
-        [line, { ...line, id: entityId(12) }],
+        [line, secondLine],
         createAngleQuantity(Math.PI / 2),
       ),
     ).toMatchObject({ type: "angle", firstEntityId: line.id, secondEntityId: entityId(12) })
     expect(
       createSketchDimensionConstraint("primary-axis-diameter", [ellipse], createLengthQuantity(30)),
     ).toMatchObject({ type: "primary-axis-diameter", curveId: ellipse.id })
+  })
+
+  it("builds a compatible dimension selection without modifier keys", () => {
+    expect(nextSketchDimensionSelection(dimensionSketch, [], firstPoint.id)).toEqual([
+      firstPoint.id,
+    ])
+    expect(nextSketchDimensionSelection(dimensionSketch, [firstPoint.id], secondPoint.id)).toEqual([
+      firstPoint.id,
+      secondPoint.id,
+    ])
+    expect(
+      nextSketchDimensionSelection(dimensionSketch, [firstPoint.id, secondPoint.id], line.id),
+    ).toEqual([line.id])
+    expect(nextSketchDimensionSelection(dimensionSketch, [line.id], secondLine.id)).toEqual([
+      line.id,
+      secondLine.id,
+    ])
+    expect(nextSketchDimensionSelection(dimensionSketch, [line.id], line.id)).toEqual([])
+    expect(nextSketchDimensionSelection(dimensionSketch, [firstPoint.id], circle.id)).toEqual([
+      circle.id,
+    ])
   })
 })

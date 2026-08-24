@@ -302,6 +302,15 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "dimension",
+    id: editorCommandIds.sketchDimension,
+    labelKey: "sketchDimension",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "d" },
+    toolbarGroup: "sketch-modify",
+  },
+  {
+    group: "sketch",
     icon: "extend",
     id: editorCommandIds.sketchExtend,
     labelKey: "sketchExtend",
@@ -442,6 +451,7 @@ function sketchToolHandler(
     | "sketchEllipticalArc"
     | "sketchCircularPattern"
     | "sketchCircumscribedPolygon"
+    | "sketchDimension"
     | "sketchExtend"
     | "sketchInscribedPolygon"
     | "sketchLine"
@@ -595,6 +605,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchArc, "arc"),
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
+  sketchToolHandler(editorCommandIds.sketchDimension, "dimension"),
   sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),

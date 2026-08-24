@@ -15,6 +15,7 @@ export function isActiveSketchEditorTool(
 
 export type SketchEditorTool =
   | "select"
+  | "dimension"
   | "use"
   | "point"
   | "line"
@@ -56,6 +57,10 @@ export type SketchModificationTool = Extract<
 >
 export type SketchDraftChangeMode = "record" | "replace"
 
+export function isSketchSelectionTool(tool: SketchEditorTool) {
+  return tool === "select" || tool === "dimension"
+}
+
 const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
   "circular-pattern",
   "extend",
@@ -69,4 +74,8 @@ const sketchModificationTools: ReadonlySet<SketchEditorTool> = new Set([
 
 export function isSketchModificationTool(tool: SketchEditorTool): tool is SketchModificationTool {
   return sketchModificationTools.has(tool)
+}
+
+export function usesSketchCrosshairCursor(tool: SketchEditorTool) {
+  return tool === "dimension" || isSketchModificationTool(tool)
 }

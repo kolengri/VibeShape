@@ -235,6 +235,22 @@ export function compatibleSketchDimensionTools(
   )
 }
 
+export function nextSketchDimensionSelection(
+  sketch: SketchRecord,
+  currentIds: readonly SketchEntityId[],
+  entityId: SketchEntityId,
+) {
+  if (currentIds.includes(entityId)) {
+    return currentIds.filter((candidate) => candidate !== entityId)
+  }
+  const candidateIds = [...currentIds, entityId]
+  const candidateEntities = selectedSketchConstraintEntities(sketch, candidateIds)
+  if (compatibleSketchDimensionTools(candidateEntities).length > 0 || currentIds.length === 0) {
+    return candidateIds
+  }
+  return [entityId]
+}
+
 export function createSketchDimensionConstraint(
   kind: SketchDimensionKind,
   entities: readonly SketchEntity[],

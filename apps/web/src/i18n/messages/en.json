@@ -311,6 +311,10 @@
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
+        "sketchDimension": {
+          "label": "Dimension",
+          "keywords": "dimension|measure|driving constraint|distance|angle|radius|diameter"
+        },
         "sketchExtend": {
           "label": "Extend",
           "keywords": "extend sketch line|lengthen to boundary|modify geometry"
@@ -769,6 +773,8 @@
         "profile": "Profile: {area} · {perimeter} perimeter",
         "precisionTools": "Sketch precision tools",
         "dimensionTool": "Add drawing dimension",
+        "dimensionSelectGeometry": "Dimension · Select a line, circle, ellipse, or two points or lines.",
+        "dimensionSetValue": "Dimension · Enter the exact driving value in Sketch definition.",
         "editDimension": "Edit dimension {label}",
         "mirrorSelectAxis": "Select a mirror line, then select geometry to mirror.",
         "mirrorSelectAxisForSelection": "Select a mirror line for the selected geometry.",

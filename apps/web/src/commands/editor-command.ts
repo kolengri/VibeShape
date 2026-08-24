@@ -6,6 +6,7 @@ export const editorCommandIds = {
   createExtrusion: "org.vibeshape.editor.part-design.create-extrusion",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
+  sketchDimension: "org.vibeshape.editor.sketch.tool.dimension",
   sketchAlignedRectangle: "org.vibeshape.editor.sketch.tool.aligned-rectangle",
   sketchArc: "org.vibeshape.editor.sketch.tool.arc",
   sketchMidpointLine: "org.vibeshape.editor.sketch.tool.midpoint-line",
@@ -73,6 +74,7 @@ export type EditorCommandIcon =
   | "construction"
   | "cylinder"
   | "datum-plane"
+  | "dimension"
   | "extrude"
   | "extend"
   | "line"
@@ -121,6 +123,7 @@ export type EditorCommandLabelKey =
   | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"
+  | "sketchDimension"
   | "sketchExtend"
   | "sketchLine"
   | "sketchLinearPattern"
