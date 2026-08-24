@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { canonicalJson } from "./canonical-json"
 import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
 import { type SketchExternalPointReference, type SketchRecord, sketchRecordsSchema } from "./sketch"
@@ -83,20 +82,6 @@ function validateExternalReferenceSource(input: ExternalReferenceValidationInput
   )
 }
 
-function validateExternalReferenceSupport(input: ExternalReferenceValidationInput) {
-  if (
-    input.source.plane === input.sketch.plane &&
-    canonicalJson(input.source.support ?? null) === canonicalJson(input.sketch.support ?? null)
-  ) {
-    return
-  }
-  addDocumentIssue(
-    input.context,
-    externalReferencePath(input),
-    "External point references require matching coplanar sketch supports.",
-  )
-}
-
 function validateExternalPointReference(input: {
   context: z.RefinementCtx
   reference: SketchExternalPointReference
@@ -118,7 +103,6 @@ function validateExternalPointReference(input: {
   const resolved = { ...input, source: input.source }
   validateExternalReferenceOrder(resolved)
   validateExternalReferenceSource(resolved)
-  validateExternalReferenceSupport(resolved)
 }
 
 function validateDocumentSketchReferences(

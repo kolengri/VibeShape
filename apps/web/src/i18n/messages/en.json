@@ -731,6 +731,8 @@
         "planeYz": "YZ plane",
         "selectSketchPlane": "Select an origin plane or supported planar model face to start the sketch.",
         "selectedSketchPlane": "Current choice: {plane}",
+        "sketchReferenceCandidate": "Use reference: {label}",
+        "sketchReferenceSelection": "Use point · Select an earlier sketch point",
         "preselectedSketchPlane": "Click to sketch on {plane}",
         "previewFailed": "The unsaved extrusion could not be previewed. Adjust its parameters or target.",
         "previewLoading": "Rebuilding unsaved extrusion preview…",

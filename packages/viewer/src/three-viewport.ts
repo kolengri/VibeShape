@@ -68,6 +68,13 @@ export type ViewerSketch = Readonly<{
   constructionPointPositions: Float32Array
 }>
 
+export type ViewerSketchPointCandidate = Readonly<{
+  label: string
+  position: ViewerVector3
+  sourcePointId: string
+  sourceSketchId: string
+}>
+
 export type ViewerVector3 = readonly [number, number, number]
 
 /** A finite, orthonormal, right-handed sketch coordinate frame. */
@@ -84,7 +91,7 @@ export type ViewerCameraPose = Readonly<{
   up: ViewerVector3
 }>
 
-export type ViewerInteractionMode = "select" | "camera-only"
+export type ViewerInteractionMode = "select" | "camera-only" | "sketch-reference-select"
 
 export type OrthographicFrustum = Readonly<{
   left: number
@@ -93,12 +100,15 @@ export type OrthographicFrustum = Readonly<{
   bottom: number
 }>
 
+type ViewerCameraClipping = Readonly<{ far: number; near: number }>
+
 export type GeometryViewport = Readonly<{
   orientToFrame: (frame: ViewerFrame) => boolean
   setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
+  setSketchPointCandidates: (candidates: readonly ViewerSketchPointCandidate[]) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
@@ -117,6 +127,8 @@ export type GeometryViewportOptions = Readonly<{
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane) => void
   onSelectionChange?: (selection: ViewerSelection | null) => void
+  onSketchPointPreselectionChange?: (candidate: ViewerSketchPointCandidate | null) => void
+  onSketchPointSelectionChange?: (candidate: ViewerSketchPointCandidate) => void
 }>
 
 export function orthographicFrustum(viewHeight: number, aspect: number): OrthographicFrustum {
@@ -126,6 +138,36 @@ export function orthographicFrustum(viewHeight: number, aspect: number): Orthogr
   const halfHeight = safeHeight / 2
   const halfWidth = halfHeight * safeAspect
   return { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight }
+}
+
+function viewerCameraClipping(
+  cameraPosition: ViewerVector3,
+  boundsCenter: ViewerVector3,
+  boundsRadius: number,
+): ViewerCameraClipping {
+  const distance = Math.hypot(
+    cameraPosition[0] - boundsCenter[0],
+    cameraPosition[1] - boundsCenter[1],
+    cameraPosition[2] - boundsCenter[2],
+  )
+  const padding = Math.max(Number.isFinite(boundsRadius) ? boundsRadius * 2.5 : 0, 1)
+  const near = Math.max(distance - padding, 0.01)
+  return { near, far: Math.max(distance + padding, near + 1) }
+}
+
+function viewerViewHeightForBounds(
+  currentViewHeight: number,
+  target: ViewerVector3,
+  boundsCenter: ViewerVector3,
+  boundsRadius: number,
+) {
+  const targetDistance = Math.hypot(
+    target[0] - boundsCenter[0],
+    target[1] - boundsCenter[1],
+    target[2] - boundsCenter[2],
+  )
+  const radius = Number.isFinite(boundsRadius) ? Math.max(boundsRadius, 0) : 0
+  return Math.max(currentViewHeight, (targetDistance + radius) * 2 * FIT_PADDING, 1)
 }
 
 const FRAME_TOLERANCE = 1e-6
@@ -301,6 +343,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #controls: OrbitControls
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
+  readonly #sketchPointCandidateGroup = new Group()
+  readonly #sketchPointPreselectionGroup = new Group()
   readonly #originPlaneGroup = new Group()
   readonly #featurePreselectionGroup = new Group()
   readonly #featureSelectionGroup = new Group()
@@ -345,6 +389,20 @@ class ThreeGeometryViewport implements GeometryViewport {
     size: 2,
     sizeAttenuation: false,
     transparent: true,
+  })
+  readonly #sketchPointCandidateMaterial = new PointsMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    opacity: 1,
+    size: 10,
+    sizeAttenuation: false,
+    transparent: true,
+  })
+  readonly #sketchPointPreselectionMaterial = new PointsMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    size: 14,
+    sizeAttenuation: false,
   })
   readonly #previewSurfaceMaterial = new MeshBasicMaterial({
     color: new Color("#4c8dff"),
@@ -420,6 +478,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
+  readonly #onSketchPointPreselectionChange: (candidate: ViewerSketchPointCandidate | null) => void
+  readonly #onSketchPointSelectionChange: (candidate: ViewerSketchPointCandidate) => void
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
   #pointerDown: Readonly<{ x: number; y: number }> | null = null
@@ -430,6 +490,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #featureSelection: ViewerMesh | null = null
   #preselection: ViewerSelection | null = null
   #selection: ViewerSelection | null = null
+  #sketchPointCandidates: readonly ViewerSketchPointCandidate[] = []
+  #sketchPointObject: Points | null = null
+  #sketchPointPreselection: ViewerSketchPointCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
@@ -438,6 +501,9 @@ class ThreeGeometryViewport implements GeometryViewport {
       options.onOriginPlanePreselectionChange ?? (() => undefined)
     this.#onOriginPlaneSelectionChange = options.onOriginPlaneSelectionChange ?? (() => undefined)
     this.#onSelectionChange = options.onSelectionChange ?? (() => undefined)
+    this.#onSketchPointPreselectionChange =
+      options.onSketchPointPreselectionChange ?? (() => undefined)
+    this.#onSketchPointSelectionChange = options.onSketchPointSelectionChange ?? (() => undefined)
     const context = canvas.getContext("webgl2", {
       alpha: true,
       antialias: true,
@@ -451,6 +517,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.#scene.add(this.#modelGroup)
     this.#scene.add(this.#sketchGroup)
+    this.#scene.add(this.#sketchPointCandidateGroup)
+    this.#scene.add(this.#sketchPointPreselectionGroup)
     this.#createOriginPlanes()
     this.#scene.add(this.#originPlaneGroup)
     this.#scene.add(this.#featurePreselectionGroup)
@@ -482,6 +550,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.target.set(0, 0, 0)
     this.#controls.addEventListener("change", this.#render)
     this.#controls.update()
+    this.#raycaster.params.Points.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown)
     canvas.addEventListener("pointermove", this.#onPointerMove)
     canvas.addEventListener("pointerup", this.#onPointerUp)
@@ -596,6 +665,29 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  setSketchPointCandidates(candidates: readonly ViewerSketchPointCandidate[]) {
+    if (this.#disposed) return
+    this.#setSketchPointPreselection(null)
+    disposeModelGroup(this.#sketchPointCandidateGroup)
+    this.#sketchPointCandidates = candidates
+    this.#sketchPointObject = null
+    if (candidates.length > 0) {
+      const positions = new Float32Array(candidates.length * 3)
+      for (const [index, candidate] of candidates.entries()) {
+        positions.set(candidate.position, index * 3)
+      }
+      const points = new Points(
+        createViewerSketchGeometry(positions),
+        this.#sketchPointCandidateMaterial,
+      )
+      points.name = "sketch-reference-candidates"
+      points.renderOrder = 8
+      this.#sketchPointObject = points
+      this.#sketchPointCandidateGroup.add(points)
+    }
+    this.#render()
+  }
+
   setOriginPlaneSelection(selectedPlane: ViewerOriginPlane | null) {
     if (this.#disposed || selectedPlane === this.#originPlaneSelection) return
     this.#originPlaneSelection = selectedPlane
@@ -623,6 +715,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.target.set(...pose.target)
     this.#camera.position.set(...pose.position)
     this.#camera.up.set(...pose.up)
+    this.#expandViewToScene(frame.origin)
+    this.#updateClippingToScene()
     this.#updateProjection()
     this.#controls.update()
     this.#render()
@@ -632,7 +726,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
     this.#interactionMode = mode
-    if (mode === "camera-only") {
+    if (mode !== "sketch-reference-select") this.#setSketchPointPreselection(null)
+    if (mode === "camera-only" || mode === "sketch-reference-select") {
       this.#pointerDown = null
       this.#setOriginPlanePreselection(null)
       this.#setPreselection(null)
@@ -692,6 +787,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.dispose()
     disposeModelGroup(this.#modelGroup)
     disposeModelGroup(this.#sketchGroup)
+    disposeModelGroup(this.#sketchPointCandidateGroup)
+    disposeModelGroup(this.#sketchPointPreselectionGroup)
     disposeMaterials(this.#modelSurfaceMaterials)
     disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
@@ -707,6 +804,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchConstructionCurveMaterial.dispose()
     this.#sketchPointMaterial.dispose()
     this.#sketchConstructionPointMaterial.dispose()
+    this.#sketchPointCandidateMaterial.dispose()
+    this.#sketchPointPreselectionMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     this.#featurePreselectionMaterial.dispose()
@@ -742,14 +841,43 @@ class ThreeGeometryViewport implements GeometryViewport {
     setCameraFrustum(this.#camera, this.#viewHeight, resolvedAspect)
   }
 
-  #pick(event: PointerEvent): ViewerSelection | null {
-    const bounds = this.#canvas.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return null
-    this.#pointer.set(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+  #updateClippingToScene() {
+    const bounds = new Box3()
+      .setFromObject(this.#modelGroup)
+      .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#sketchPointCandidateGroup)
+    if (bounds.isEmpty()) {
+      this.#camera.near = 0.01
+      this.#camera.far = 10_000
+      return
+    }
+    const sphere = bounds.getBoundingSphere(new Sphere())
+    const clipping = viewerCameraClipping(
+      this.#camera.position.toArray() as [number, number, number],
+      sphere.center.toArray() as [number, number, number],
+      sphere.radius,
     )
-    this.#raycaster.setFromCamera(this.#pointer, this.#camera)
+    this.#camera.near = clipping.near
+    this.#camera.far = clipping.far
+  }
+
+  #expandViewToScene(target: ViewerVector3) {
+    const bounds = new Box3()
+      .setFromObject(this.#modelGroup)
+      .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#sketchPointCandidateGroup)
+    if (bounds.isEmpty()) return
+    const sphere = bounds.getBoundingSphere(new Sphere())
+    this.#viewHeight = viewerViewHeightForBounds(
+      this.#viewHeight,
+      target,
+      sphere.center.toArray() as [number, number, number],
+      sphere.radius,
+    )
+  }
+
+  #pick(event: PointerEvent): ViewerSelection | null {
+    if (!this.#prepareRaycaster(event)) return null
     const intersection = this.#raycaster.intersectObjects(this.#surfaceMeshes, false)[0]
     if (!intersection || intersection.faceIndex === undefined || intersection.faceIndex === null) {
       return null
@@ -762,18 +890,53 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #pickOriginPlane(event: PointerEvent): ViewerOriginPlane | null {
-    const bounds = this.#canvas.getBoundingClientRect()
-    if (bounds.width <= 0 || bounds.height <= 0) return null
-    this.#pointer.set(
-      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-    )
-    this.#raycaster.setFromCamera(this.#pointer, this.#camera)
+    if (!this.#prepareRaycaster(event)) return null
     const intersection = this.#raycaster.intersectObjects(
       [...this.#originPlaneMeshes.keys()],
       false,
     )[0]
     return intersection ? (this.#originPlaneMeshes.get(intersection.object as Mesh) ?? null) : null
+  }
+
+  #pickSketchPoint(event: PointerEvent): ViewerSketchPointCandidate | null {
+    if (!this.#sketchPointObject || !this.#prepareRaycaster(event)) return null
+    const intersection = this.#raycaster.intersectObject(this.#sketchPointObject, false)[0]
+    return intersection?.index === undefined
+      ? null
+      : (this.#sketchPointCandidates[intersection.index] ?? null)
+  }
+
+  #prepareRaycaster(event: PointerEvent) {
+    const bounds = this.#canvas.getBoundingClientRect()
+    if (bounds.width <= 0 || bounds.height <= 0) return false
+    this.#pointer.set(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    )
+    this.#raycaster.setFromCamera(this.#pointer, this.#camera)
+    return true
+  }
+
+  #setSketchPointPreselection(candidate: ViewerSketchPointCandidate | null) {
+    if (
+      candidate?.sourceSketchId === this.#sketchPointPreselection?.sourceSketchId &&
+      candidate?.sourcePointId === this.#sketchPointPreselection?.sourcePointId
+    ) {
+      return
+    }
+    this.#sketchPointPreselection = candidate
+    disposeModelGroup(this.#sketchPointPreselectionGroup)
+    if (candidate) {
+      const points = new Points(
+        createViewerSketchGeometry(new Float32Array(candidate.position)),
+        this.#sketchPointPreselectionMaterial,
+      )
+      points.renderOrder = 9
+      this.#sketchPointPreselectionGroup.add(points)
+    }
+    this.#canvas.style.cursor = candidate ? "crosshair" : ""
+    this.#onSketchPointPreselectionChange(candidate)
+    this.#render()
   }
 
   #createOriginPlanes() {
@@ -931,6 +1094,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
     if (this.#interactionMode === "camera-only") return
+    if (this.#interactionMode === "sketch-reference-select") {
+      this.#setSketchPointPreselection(this.#pickSketchPoint(event))
+      return
+    }
     if (this.#originPlaneSelection) {
       const modelSelection = this.#pick(event)
       const plane = modelSelection ? null : this.#pickOriginPlane(event)
@@ -948,22 +1115,39 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#interactionMode === "camera-only") return
     const movement = Math.hypot(event.clientX - start.x, event.clientY - start.y)
     if (movement > 3) return
+    if (this.#interactionMode === "sketch-reference-select") {
+      this.#commitSketchPointSelection(event)
+      return
+    }
     if (this.#originPlaneSelection) {
-      const modelSelection = this.#pick(event)
-      if (modelSelection) {
-        this.#setSelection(modelSelection)
-        return
-      }
-      const plane = this.#pickOriginPlane(event)
-      if (plane) this.#onOriginPlaneSelectionChange(plane)
+      this.#commitOriginPlaneSelection(event)
       return
     }
     this.#setSelection(this.#pick(event))
   }
 
+  #commitSketchPointSelection(event: PointerEvent) {
+    const candidate = this.#pickSketchPoint(event)
+    if (candidate) this.#onSketchPointSelectionChange(candidate)
+  }
+
+  #commitOriginPlaneSelection(event: PointerEvent) {
+    const modelSelection = this.#pick(event)
+    if (modelSelection) {
+      this.#setSelection(modelSelection)
+      return
+    }
+    const plane = this.#pickOriginPlane(event)
+    if (plane) this.#onOriginPlaneSelectionChange(plane)
+  }
+
   #onPointerLeave = () => {
     this.#pointerDown = null
     if (this.#interactionMode === "camera-only") return
+    if (this.#interactionMode === "sketch-reference-select") {
+      this.#setSketchPointPreselection(null)
+      return
+    }
     if (this.#originPlaneSelection) this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
   }

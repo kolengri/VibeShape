@@ -16,6 +16,7 @@ import type {
   ViewerMesh,
   ViewerSelection,
   ViewerSketch,
+  ViewerSketchPointCandidate,
 } from "@vibeshape/viewer/three-viewport"
 import {
   type Dispatch,
@@ -48,6 +49,10 @@ type ViewportMount = {
 export type GeometryViewportSketchContext = Readonly<{
   frame: ViewerFrame | null
   mode: "normal" | "orbit"
+  referenceSelection?: Readonly<{
+    candidates: readonly ViewerSketchPointCandidate[]
+    onSelect: (candidate: ViewerSketchPointCandidate) => void
+  }>
 }>
 
 const ignoreOriginPlaneSelection = () => undefined
@@ -152,6 +157,8 @@ async function initializeViewport(
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
   onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
+  onSketchPointPreselectionChange: (candidate: ViewerSketchPointCandidate | null) => void,
+  onSketchPointSelectionChange: (candidate: ViewerSketchPointCandidate) => void,
   mount: ViewportMount,
   viewportRef: RefObject<GeometryViewportPort | null>,
   latestMeshesRef: RefObject<readonly ViewerMesh[]>,
@@ -168,6 +175,8 @@ async function initializeViewport(
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
       onSelectionChange,
+      onSketchPointPreselectionChange,
+      onSketchPointSelectionChange,
     })
     if (mount.cancelled) {
       viewport.dispose()
@@ -193,7 +202,10 @@ function synchronizeViewportSketchContext(
   viewport: GeometryViewportPort,
   context: GeometryViewportSketchContext | null,
 ) {
-  viewport.setInteractionMode(context ? "camera-only" : "select")
+  viewport.setSketchPointCandidates(context?.referenceSelection?.candidates ?? [])
+  viewport.setInteractionMode(
+    context?.referenceSelection ? "sketch-reference-select" : context ? "camera-only" : "select",
+  )
   if (context?.mode === "normal" && context.frame) viewport.orientToFrame(context.frame)
 }
 
@@ -264,6 +276,8 @@ function useViewportRenderer(
     sketches,
   })
   const [rendererFailed, setRendererFailed] = useState(false)
+  const [sketchPointPreselection, setSketchPointPreselection] =
+    useState<ViewerSketchPointCandidate | null>(null)
   const shouldInitialize = true
 
   useEffect(() => {
@@ -276,6 +290,8 @@ function useViewportRenderer(
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
       onSelectionChange,
+      setSketchPointPreselection,
+      (candidate) => latest.sketchContextRef.current?.referenceSelection?.onSelect(candidate),
       mount,
       viewportRef,
       latest.meshesRef,
@@ -327,7 +343,7 @@ function useViewportRenderer(
     if (viewport) synchronizeViewportSketchContext(viewport, sketchContext)
   }, [sketchContext])
 
-  return { canvasRef, rendererFailed, viewportRef }
+  return { canvasRef, rendererFailed, sketchPointPreselection, viewportRef }
 }
 
 function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
@@ -686,7 +702,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
-  const { canvasRef, rendererFailed, viewportRef } = useViewportRenderer(
+  const { canvasRef, rendererFailed, sketchPointPreselection, viewportRef } = useViewportRenderer(
     createViewport,
     meshes,
     sketches,
@@ -717,6 +733,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     sketches,
     message,
     originPlanePreselection,
+    sketchPointPreselection,
     originPlaneVisibility: visibleOriginPlanes(originPlaneVisibility),
     onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(originPlaneVisibility),
     viewportRef,
@@ -777,9 +794,91 @@ function WorldAxesLegend() {
   )
 }
 
+function ModelViewportChrome({
+  displayUnit,
+  featurePreview,
+  message,
+  meshes,
+  onOriginPlaneVisibilityChange,
+  originPlanePreselection,
+  originPlaneSelection,
+  originPlaneVisibility,
+  selection,
+  sketches,
+  viewportRef,
+}: Readonly<{
+  displayUnit: string
+  featurePreview: FeaturePreviewState | undefined
+  message: ReturnType<typeof translatedViewportMessage>
+  meshes: readonly ViewerMesh[]
+  onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
+  originPlanePreselection: ViewerOriginPlane | null
+  originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
+  originPlaneVisibility: ViewerOriginPlaneVisibility
+  selection: ViewerSelection | null
+  sketches: readonly ViewerSketch[]
+  viewportRef: RefObject<GeometryViewportPort | null>
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <>
+      <ViewportMessage message={message} title={t("title")} />
+      <PreviewStatus preview={featurePreview} />
+      <ViewportControlsSlot
+        meshes={meshes}
+        sketches={sketches}
+        originPlaneSelection={originPlaneSelection}
+        originPlaneVisibility={originPlaneVisibility}
+        onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
+        selection={selection}
+        viewportRef={viewportRef}
+      />
+      <OriginPlaneSelectionOverlay
+        preselectedPlane={originPlanePreselection}
+        selection={originPlaneSelection}
+      />
+      <WorldAxesLegend />
+      <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
+        {t("orientation", { plane: "XYZ", unit: displayUnit })}
+      </div>
+    </>
+  )
+}
+
+function SketchContextChrome({
+  context,
+  preselection,
+}: Readonly<{
+  context: GeometryViewportSketchContext
+  preselection: ViewerSketchPointCandidate | null
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  if (context.mode !== "orbit") return null
+  return (
+    <>
+      <WorldAxesLegend />
+      {context.referenceSelection ? (
+        <div
+          className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          {t("sketchReferenceSelection")}
+        </div>
+      ) : null}
+      {preselection ? (
+        <div
+          className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          {t("sketchReferenceCandidate", { label: preselection.label })}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 export function GeometryViewport(props: GeometryViewportProps) {
   const { featurePreview, originPlaneSelection, selection, sketchContext } = props
-  const contextActive = sketchContext !== undefined
   const passive = sketchContext?.mode === "normal"
   const displayUnits = useDocumentDisplayUnits()
   const t = useTranslations("app.shell.viewport")
@@ -792,13 +891,14 @@ export function GeometryViewport(props: GeometryViewportProps) {
     originPlanePreselection,
     originPlaneVisibility,
     preselectedFeatureId,
+    sketchPointPreselection,
     selectedFeatureId,
     viewportRef,
   } = useGeometryViewportModel(props)
   return (
     <section
       aria-label={t("ariaLabel")}
-      aria-hidden={contextActive ? true : undefined}
+      aria-hidden={passive ? true : undefined}
       className={cn(
         "relative min-h-0 overflow-hidden bg-viewport-background",
         passive && "pointer-events-none",
@@ -807,6 +907,9 @@ export function GeometryViewport(props: GeometryViewportProps) {
       data-sketch-context-mode={sketchContext?.mode}
       data-rendered-feature-count={meshes.length}
       data-rendered-sketch-count={sketches.length}
+      data-sketch-reference-candidate-count={
+        sketchContext?.referenceSelection?.candidates.length ?? 0
+      }
       data-preview-feature-count={
         meshes.filter(({ appearance }) => appearance === "preview").length
       }
@@ -823,30 +926,23 @@ export function GeometryViewport(props: GeometryViewportProps) {
         ref={canvasRef}
         className={cn("absolute inset-0 size-full touch-none", passive && "pointer-events-none")}
       />
-      {!contextActive ? (
-        <>
-          <ViewportMessage message={message} title={t("title")} />
-          <PreviewStatus preview={featurePreview} />
-          <ViewportControlsSlot
-            meshes={meshes}
-            sketches={sketches}
-            originPlaneSelection={originPlaneSelection}
-            originPlaneVisibility={originPlaneVisibility}
-            onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
-            selection={selection}
-            viewportRef={viewportRef}
-          />
-          <OriginPlaneSelectionOverlay
-            preselectedPlane={originPlanePreselection}
-            selection={originPlaneSelection}
-          />
-          <WorldAxesLegend />
-          <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
-            {t("orientation", { plane: "XYZ", unit: displayUnits.length })}
-          </div>
-        </>
-      ) : null}
-      {sketchContext?.mode === "orbit" ? <WorldAxesLegend /> : null}
+      {sketchContext ? (
+        <SketchContextChrome context={sketchContext} preselection={sketchPointPreselection} />
+      ) : (
+        <ModelViewportChrome
+          displayUnit={displayUnits.length}
+          featurePreview={featurePreview}
+          message={message}
+          meshes={meshes}
+          onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
+          originPlanePreselection={originPlanePreselection}
+          originPlaneSelection={originPlaneSelection}
+          originPlaneVisibility={originPlaneVisibility}
+          selection={selection}
+          sketches={sketches}
+          viewportRef={viewportRef}
+        />
+      )}
     </section>
   )
 }

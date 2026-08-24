@@ -12,8 +12,36 @@ import { extrusionFrameSchema } from "@vibeshape/protocol"
 export type SupportFrame = ReturnType<typeof extrusionFrameSchema.parse>
 type Vector3 = readonly [number, number, number]
 
+export type SupportPoint2 = Readonly<{ x: number; y: number }>
+
 function dot(left: Vector3, right: Vector3) {
   return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+export function supportPointToWorld(frame: SupportFrame, point: SupportPoint2): Vector3 {
+  return [
+    frame.origin[0] + frame.xAxis[0] * point.x + frame.yAxis[0] * point.y,
+    frame.origin[1] + frame.xAxis[1] * point.x + frame.yAxis[1] * point.y,
+    frame.origin[2] + frame.xAxis[2] * point.x + frame.yAxis[2] * point.y,
+  ]
+}
+
+export function projectWorldPointToSupport(frame: SupportFrame, point: Vector3): SupportPoint2 {
+  const relative: Vector3 = [
+    point[0] - frame.origin[0],
+    point[1] - frame.origin[1],
+    point[2] - frame.origin[2],
+  ]
+  return { x: dot(relative, frame.xAxis), y: dot(relative, frame.yAxis) }
+}
+
+export function projectSketchPointBetweenFrames(
+  source: SupportFrame,
+  target: SupportFrame,
+  point: SupportPoint2,
+) {
+  const world = supportPointToWorld(source, point)
+  return { local: projectWorldPointToSupport(target, world), world } as const
 }
 
 function cross(left: Vector3, right: Vector3): [number, number, number] {

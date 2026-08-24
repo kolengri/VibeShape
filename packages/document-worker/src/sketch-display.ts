@@ -17,7 +17,7 @@ export async function createSketchDisplayRecords(
     let result = null
     if (solveSketch) {
       try {
-        result = await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch)
+        result = await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features)
       } catch {
         // The authored fallback keeps a broken sketch inspectable without failing the solid rebuild.
       }

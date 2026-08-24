@@ -402,6 +402,7 @@ describe("SketchViewport", () => {
           label: "Source sketch · Point",
           sourceSketchId: sketch.id,
           sourcePointId: sourcePoint.id,
+          world: [sourcePoint.x, sourcePoint.y, 0],
           x: sourcePoint.x,
           y: sourcePoint.y,
         },

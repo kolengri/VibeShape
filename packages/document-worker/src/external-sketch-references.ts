@@ -1,4 +1,5 @@
-import type { DocumentSnapshot, SketchRecord } from "@vibeshape/domain"
+import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
+import type { DocumentSnapshot, FeatureRecord, SketchRecord } from "@vibeshape/domain"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 
 export type SketchSolvePort = (
@@ -23,7 +24,10 @@ export async function resolveExternalSketchPoints(
   document: DocumentSnapshot,
   sketch: SketchRecord,
   solveSketch: SketchSolvePort,
+  features: readonly FeatureRecord[] = document.features,
 ): Promise<SketchCompilationInput["externalPoints"]> {
+  const targetFrame = sketchFrame(sketch, document, features)
+  if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
   const results = new Map<string, Promise<SolveSketchRecordResult>>()
   const points: NonNullable<SketchCompilationInput["externalPoints"]> = []
   for (const reference of sketch.externalReferences ?? []) {
@@ -47,12 +51,15 @@ export async function resolveExternalSketchPoints(
     if (!point) {
       throw new Error(`External source point ${reference.sourcePointId} is unavailable.`)
     }
+    const sourceFrame = sketchFrame(source, document, features)
+    if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
+    const projected = projectSketchPointBetweenFrames(sourceFrame, targetFrame, point).local
     points.push({
       schemaVersion: 0,
       id: reference.projectedPointId,
       type: "point",
       construction: true,
-      ...point,
+      ...projected,
     })
   }
   return points

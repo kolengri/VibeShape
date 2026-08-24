@@ -2,9 +2,9 @@ import { isString } from "is-what"
 import { z } from "zod"
 import {
   type SketchEntityId,
-  sketchExternalReferenceIdSchema,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
   sketchIdSchema,
 } from "./identifiers"
 import { planarFaceTopoRefSchema } from "./topology"
@@ -32,7 +32,7 @@ export const sketchFeatureFaceSupportSchema = z
   .strict()
 
 /**
- * A read-only point projected from an earlier coplanar sketch. Its coordinates
+ * A read-only point projected from an earlier sketch. Its coordinates
  * are resolved at solve time; only stable source and projected identities persist.
  */
 export const sketchExternalPointReferenceSchema = z

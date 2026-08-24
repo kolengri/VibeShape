@@ -16,6 +16,7 @@ import {
   createBrowserFeatureId,
   type DocumentControllerState,
   removeFeature,
+  resolveDocumentFeatureParameters,
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
@@ -1150,7 +1151,11 @@ function ActiveSketchTaskPanel({
   const t = useTranslations("app.shell.taskPanel.sketch")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
-  const referenceCandidates = externalSketchPointCandidates(report.snapshot.sketches, draft)
+  const referenceCandidates = externalSketchPointCandidates(
+    report.snapshot,
+    draft,
+    resolveDocumentFeatureParameters(report.snapshot),
+  )
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {

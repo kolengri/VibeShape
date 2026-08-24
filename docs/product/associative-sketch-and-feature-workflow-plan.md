@@ -422,10 +422,13 @@ transitions and resolves the active sketch's exact support frame for origin plan
 supported planar feature and Datum Plane roles. Normal mode aligns the existing orthographic camera to that
 frame and leaves pointer ownership with the transparent analytical sketch surface. **Orbit 3D view** hides
 and makes that surface inert, switches the viewer to camera-only interaction, and displays the unsaved solved
-draft in world coordinates beside the model and reference geometry. **Normal to sketch** restores the exact
+draft in world coordinates beside the model and reference geometry. While **Use point** is active, earlier
+eligible sketch points remain graphically selectable in orbit mode with hover preselection and source labels;
+selection creates the same stable reference used by the normal-to-sketch drawing and task panel. Cross-support
+point references are transformed through exact source and target frames before solve. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
-selection. Graphical 3D source selection, History rollback, and bounded candidate cycling remain open parts
-of this slice.
+selection. Graphical curve/feature source selection, History rollback, and bounded candidate cycling remain
+open parts of this slice.
 
 - Replace separate Sketches/Features presentation with History plus Bodies.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
@@ -439,10 +442,10 @@ of this slice.
 **Exit:** a user can identify where a sketch exists, what supports it, and which earlier objects are
 eligible without leaving the viewport.
 
-### Slice 2 — complete coplanar sketch-to-sketch Use
+### Slice 2 — complete sketch-to-sketch Use
 
 - Generalize the point-only schema to analytical sketch entities.
-- Select source points and curves graphically from earlier sketches.
+- Keep the implemented cross-support point selection and add graphical source-curve selection.
 - Project read-only line, circle, arc, ellipse, and elliptical-arc references.
 - Add supported external relations and the external-reference manager.
 - Allow valid reference chains only after graph cycle protection is active.

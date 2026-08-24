@@ -116,7 +116,6 @@ import {
   type ActiveSketchSolveResult,
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
-  createBrowserSketchExternalReferenceId,
   type DocumentControllerState,
   solveActiveSketch,
 } from "../../document/document-controller"
@@ -125,7 +124,10 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import type { ExternalSketchPointCandidate } from "./external-sketch-points"
+import {
+  applyExternalSketchPointCandidate,
+  type ExternalSketchPointCandidate,
+} from "./external-sketch-points"
 import {
   defaultCircularSketchPatternDefinition,
   SketchCircularPatternForm,
@@ -5825,27 +5827,8 @@ function useExternalReferenceInteraction({
   const use = useCallback(
     (candidate: ExternalSketchPointCandidate) => {
       if (!draft) return
-      const references = draft.externalReferences ?? []
-      if (references.some((reference) => referenceMatchesCandidate(reference, candidate))) return
-      const projectedPointId = createBrowserSketchEntityId()
-      const next = attachExternalPointToSelection(
-        {
-          ...draft,
-          externalReferences: [
-            ...references,
-            {
-              schemaVersion: 0,
-              id: createBrowserSketchExternalReferenceId(),
-              sourceSketchId: candidate.sourceSketchId,
-              sourcePointId: candidate.sourcePointId,
-              projectedPointId,
-            },
-          ],
-        },
-        projectedPointId,
-        selectedEntityIds,
-      )
-      onDraftChange(next)
+      const next = applyExternalSketchPointCandidate(draft, candidate, selectedEntityIds)
+      if (next !== draft) onDraftChange(next)
     },
     [draft, onDraftChange, selectedEntityIds],
   )

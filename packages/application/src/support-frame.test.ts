@@ -9,7 +9,14 @@ import {
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
-import { datumPlaneFrame, sketchFrame } from "./support-frame"
+import {
+  datumPlaneFrame,
+  projectSketchPointBetweenFrames,
+  projectWorldPointToSupport,
+  type SupportFrame,
+  sketchFrame,
+  supportPointToWorld,
+} from "./support-frame"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
@@ -65,6 +72,28 @@ function sketch(support?: unknown, id = sketchId) {
 }
 
 describe("support-frame resolution", () => {
+  it("projects a point from one support frame into another through world space", () => {
+    const source: SupportFrame = {
+      origin: [10, 20, 30],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 0, 1],
+      normal: [0, -1, 0],
+    }
+    const target: SupportFrame = {
+      origin: [5, 0, 25],
+      xAxis: [0, 1, 0],
+      yAxis: [0, 0, 1],
+      normal: [1, 0, 0],
+    }
+
+    expect(supportPointToWorld(source, { x: 4, y: 7 })).toEqual([14, 20, 37])
+    expect(projectWorldPointToSupport(target, [14, 20, 37])).toEqual({ x: 20, y: 12 })
+    expect(projectSketchPointBetweenFrames(source, target, { x: 4, y: 7 })).toEqual({
+      local: { x: 20, y: 12 },
+      world: [14, 20, 37],
+    })
+  })
+
   it.each([
     ["xy", [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
     ["xz", [0, 0, 0], [1, 0, 0], [0, 0, 1], [0, -1, 0]],
