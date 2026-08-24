@@ -16,7 +16,7 @@ import type {
   ViewerMesh,
   ViewerSelection,
   ViewerSketch,
-  ViewerSketchPointCandidate,
+  ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
 import {
   type Dispatch,
@@ -50,8 +50,8 @@ export type GeometryViewportSketchContext = Readonly<{
   frame: ViewerFrame | null
   mode: "normal" | "orbit"
   referenceSelection?: Readonly<{
-    candidates: readonly ViewerSketchPointCandidate[]
-    onSelect: (candidate: ViewerSketchPointCandidate) => void
+    candidates: readonly ViewerSketchReferenceCandidate[]
+    onSelect: (candidate: ViewerSketchReferenceCandidate) => void
   }>
 }>
 
@@ -157,8 +157,8 @@ async function initializeViewport(
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
   onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
-  onSketchPointPreselectionChange: (candidate: ViewerSketchPointCandidate | null) => void,
-  onSketchPointSelectionChange: (candidate: ViewerSketchPointCandidate) => void,
+  onSketchReferencePreselectionChange: (candidate: ViewerSketchReferenceCandidate | null) => void,
+  onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void,
   mount: ViewportMount,
   viewportRef: RefObject<GeometryViewportPort | null>,
   latestMeshesRef: RefObject<readonly ViewerMesh[]>,
@@ -175,8 +175,8 @@ async function initializeViewport(
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
       onSelectionChange,
-      onSketchPointPreselectionChange,
-      onSketchPointSelectionChange,
+      onSketchReferencePreselectionChange,
+      onSketchReferenceSelectionChange,
     })
     if (mount.cancelled) {
       viewport.dispose()
@@ -202,7 +202,7 @@ function synchronizeViewportSketchContext(
   viewport: GeometryViewportPort,
   context: GeometryViewportSketchContext | null,
 ) {
-  viewport.setSketchPointCandidates(context?.referenceSelection?.candidates ?? [])
+  viewport.setSketchReferenceCandidates(context?.referenceSelection?.candidates ?? [])
   viewport.setInteractionMode(
     context?.referenceSelection ? "sketch-reference-select" : context ? "camera-only" : "select",
   )
@@ -277,7 +277,7 @@ function useViewportRenderer(
   })
   const [rendererFailed, setRendererFailed] = useState(false)
   const [sketchPointPreselection, setSketchPointPreselection] =
-    useState<ViewerSketchPointCandidate | null>(null)
+    useState<ViewerSketchReferenceCandidate | null>(null)
   const shouldInitialize = true
 
   useEffect(() => {
@@ -850,7 +850,7 @@ function SketchContextChrome({
   preselection,
 }: Readonly<{
   context: GeometryViewportSketchContext
-  preselection: ViewerSketchPointCandidate | null
+  preselection: ViewerSketchReferenceCandidate | null
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null

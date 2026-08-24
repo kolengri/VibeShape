@@ -352,4 +352,37 @@ describe("sketchRecordSchema", () => {
     expect(sketchRecordSchema.safeParse(degenerateLine).success).toBe(false)
     expect(sketchRecordSchema.safeParse(invalidCoordinate).success).toBe(false)
   })
+
+  test("accepts a read-only external line as a constraint target", () => {
+    const fixture = validSketch()
+    const projectedStartPointId = "018f0000-0000-7000-8000-000000000301"
+    const projectedEndPointId = "018f0000-0000-7000-8000-000000000302"
+    const projectedLineId = "018f0000-0000-7000-8000-000000000303"
+    const parsed = sketchRecordSchema.safeParse({
+      ...fixture,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000304",
+          kind: "line",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000305",
+          sourceLineId: "018f0000-0000-7000-8000-000000000306",
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(204),
+          type: "parallel",
+          firstEntityId: lineA,
+          secondEntityId: projectedLineId,
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(true)
+  })
 })

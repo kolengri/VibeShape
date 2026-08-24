@@ -125,8 +125,9 @@ import {
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import {
-  applyExternalSketchPointCandidate,
-  type ExternalSketchPointCandidate,
+  applyExternalSketchCandidate,
+  type ExternalSketchGeometryCandidate,
+  externalReferenceMatchesCandidate,
 } from "./external-sketch-points"
 import {
   defaultCircularSketchPatternDefinition,
@@ -136,6 +137,7 @@ import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
   type SketchConstraintToolKind,
+  selectedSketchConstraintEntities,
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
@@ -245,12 +247,18 @@ type DisplayPoint = Readonly<{
   x: number
   y: number
 }>
+type DisplayExternalLine = Readonly<{
+  id: SketchEntityId
+  start: DisplayPoint
+  end: DisplayPoint
+}>
 
 type SketchCurveEntity = Exclude<SketchEntity, { type: "point" }>
 type SketchPointLookup = Pick<ReadonlyMap<string, DisplayPoint>, "get">
 type SketchGeometryPresentation = Readonly<{
   curves: readonly SketchCurveEntity[]
   curvesByPointId: ReadonlyMap<string, readonly SketchCurveEntity[]>
+  externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   points: readonly DisplayPoint[]
   pointsById: ReadonlyMap<string, DisplayPoint>
@@ -663,21 +671,43 @@ function displayPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) 
   })
 }
 
-function displayExternalPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) {
+function displayExternalGeometry(sketch: SketchRecord, solution: SolvedSketchWire | null) {
   const solvedById = new Map(solution?.points.map((point) => [point.entityId, point]))
-  return (sketch.externalReferences ?? []).flatMap((reference): DisplayPoint[] => {
-    const point = solvedById.get(reference.projectedPointId)
-    return point
-      ? [
-          {
-            construction: true,
-            id: reference.projectedPointId,
-            x: point.x,
-            y: point.y,
-          },
-        ]
-      : []
-  })
+  const externalPoints: DisplayPoint[] = []
+  const externalLines: DisplayExternalLine[] = []
+  for (const reference of sketch.externalReferences ?? []) {
+    if (reference.kind !== "line") {
+      const point = solvedById.get(reference.projectedPointId)
+      if (point) {
+        externalPoints.push({
+          construction: true,
+          id: reference.projectedPointId,
+          x: point.x,
+          y: point.y,
+        })
+      }
+      continue
+    }
+    const start = solvedById.get(reference.projectedStartPointId)
+    const end = solvedById.get(reference.projectedEndPointId)
+    if (!start || !end) continue
+    externalLines.push({
+      id: reference.projectedLineId,
+      start: {
+        construction: true,
+        id: reference.projectedStartPointId,
+        x: start.x,
+        y: start.y,
+      },
+      end: {
+        construction: true,
+        id: reference.projectedEndPointId,
+        x: end.x,
+        y: end.y,
+      },
+    })
+  }
+  return { externalLines, externalPoints }
 }
 
 function createSketchGeometryPresentation(
@@ -685,7 +715,7 @@ function createSketchGeometryPresentation(
   solution: SolvedSketchWire | null,
 ): SketchGeometryPresentation {
   const points = displayPoints(sketch, solution)
-  const externalPoints = displayExternalPoints(sketch, solution)
+  const { externalLines, externalPoints } = displayExternalGeometry(sketch, solution)
   const pointsById = new Map(points.map((point) => [point.id, point]))
   const curves = sketch.entities.filter(
     (entity): entity is SketchCurveEntity => entity.type !== "point",
@@ -701,6 +731,7 @@ function createSketchGeometryPresentation(
   return {
     curves,
     curvesByPointId,
+    externalLines,
     externalPoints,
     points,
     pointsById,
@@ -1566,18 +1597,8 @@ function SketchGeometry({
   )
 }
 
-function candidateKey(candidate: ExternalSketchPointCandidate) {
-  return `${candidate.sourceSketchId}:${candidate.sourcePointId}`
-}
-
-function referenceMatchesCandidate(
-  reference: NonNullable<SketchRecord["externalReferences"]>[number],
-  candidate: ExternalSketchPointCandidate,
-) {
-  return (
-    reference.sourceSketchId === candidate.sourceSketchId &&
-    reference.sourcePointId === candidate.sourcePointId
-  )
+function candidateKey(candidate: ExternalSketchGeometryCandidate) {
+  return `${candidate.sourceSketchId}:${candidate.kind === "line" ? candidate.sourceLineId : candidate.sourcePointId}`
 }
 
 function hasCoincidentPointConstraint(
@@ -1676,57 +1697,138 @@ function SketchExternalPoints({
   )
 }
 
-function SketchAvailableExternalPoints({
+function SketchExternalLines({
+  editorTool,
+  lines,
+  onSelect,
+  selectedEntityIds,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  lines: readonly DisplayExternalLine[]
+  onSelect: (entityId: SketchEntityId, additive: boolean) => void
+  selectedEntityIds: readonly SketchEntityId[]
+}>) {
+  if (lines.length === 0) return null
+  const selectable = editorTool === "select"
+  const selected = new Set(selectedEntityIds)
+  return (
+    <g
+      aria-label="External sketch lines"
+      data-sketch-external-line-count={lines.length}
+      transform="scale(1 -1)"
+    >
+      {lines.map((line) => (
+        <g key={line.id} data-sketch-external-line-id={line.id}>
+          {selectable ? (
+            <line
+              x1={line.start.x}
+              y1={line.start.y}
+              x2={line.end.x}
+              y2={line.end.y}
+              className="cursor-pointer stroke-transparent"
+              strokeWidth={10}
+              vectorEffect="non-scaling-stroke"
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                onSelect(line.id, event.metaKey || event.ctrlKey || event.shiftKey)
+              }}
+            />
+          ) : null}
+          <line
+            x1={line.start.x}
+            y1={line.start.y}
+            x2={line.end.x}
+            y2={line.end.y}
+            className={selected.has(line.id) ? "stroke-amber-500" : "stroke-sky-500"}
+            strokeDasharray="5 3"
+            strokeWidth={selected.has(line.id) ? 2.5 : 1.75}
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      ))}
+    </g>
+  )
+}
+
+function SketchAvailableExternalGeometry({
   candidates,
   onUse,
 }: Readonly<{
-  candidates: readonly ExternalSketchPointCandidate[]
-  onUse: (candidate: ExternalSketchPointCandidate) => void
+  candidates: readonly ExternalSketchGeometryCandidate[]
+  onUse: (candidate: ExternalSketchGeometryCandidate) => void
 }>) {
   if (candidates.length === 0) return null
   return (
     <g
-      aria-label="Available external sketch points"
-      data-sketch-available-external-point-count={candidates.length}
+      aria-label="Available external sketch geometry"
+      data-sketch-available-external-geometry-count={candidates.length}
       transform="scale(1 -1)"
     >
       {candidates.map((candidate) => (
         <g
           key={candidateKey(candidate)}
           className="cursor-crosshair"
-          data-sketch-available-external-point-id={candidate.sourcePointId}
+          data-sketch-available-external-geometry-id={
+            candidate.kind === "line" ? candidate.sourceLineId : candidate.sourcePointId
+          }
           onPointerDown={(event) => {
             event.stopPropagation()
             onUse(candidate)
           }}
         >
-          <circle
-            cx={candidate.x}
-            cy={candidate.y}
-            r={5}
-            className="fill-background/75 stroke-sky-400"
-            strokeDasharray="3 2"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
-          <line
-            x1={candidate.x - 8}
-            x2={candidate.x + 8}
-            y1={candidate.y}
-            y2={candidate.y}
-            className="stroke-sky-400"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-          <line
-            x1={candidate.x}
-            x2={candidate.x}
-            y1={candidate.y - 8}
-            y2={candidate.y + 8}
-            className="stroke-sky-400"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
+          {candidate.kind === "line" ? (
+            <>
+              <line
+                x1={candidate.start.x}
+                y1={candidate.start.y}
+                x2={candidate.end.x}
+                y2={candidate.end.y}
+                className="stroke-transparent"
+                strokeWidth={12}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={candidate.start.x}
+                y1={candidate.start.y}
+                x2={candidate.end.x}
+                y2={candidate.end.y}
+                className="stroke-sky-400"
+                strokeDasharray="5 3"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
+          ) : (
+            <>
+              <circle
+                cx={candidate.x}
+                cy={candidate.y}
+                r={5}
+                className="fill-background/75 stroke-sky-400"
+                strokeDasharray="3 2"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={candidate.x - 8}
+                x2={candidate.x + 8}
+                y1={candidate.y}
+                y2={candidate.y}
+                className="stroke-sky-400"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={candidate.x}
+                x2={candidate.x}
+                y1={candidate.y - 8}
+                y2={candidate.y + 8}
+                className="stroke-sky-400"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
+          )}
           <title>{candidate.label}</title>
         </g>
       ))}
@@ -1737,21 +1839,31 @@ function SketchAvailableExternalPoints({
 function SketchExternalReferencePresentation({
   availableCandidates,
   editorTool,
+  externalLines,
   externalPoints,
   selectedEntityIds,
   onAttach,
+  onSelect,
   onUse,
 }: Readonly<{
-  availableCandidates: readonly ExternalSketchPointCandidate[]
+  availableCandidates: readonly ExternalSketchGeometryCandidate[]
   editorTool: SketchEditorTool
+  externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   selectedEntityIds: readonly SketchEntityId[]
   onAttach: (projectedPointId: SketchEntityId) => void
-  onUse: (candidate: ExternalSketchPointCandidate) => void
+  onSelect: (entityId: SketchEntityId, additive: boolean) => void
+  onUse: (candidate: ExternalSketchGeometryCandidate) => void
 }>) {
   return (
     <>
-      <SketchAvailableExternalPoints candidates={availableCandidates} onUse={onUse} />
+      <SketchAvailableExternalGeometry candidates={availableCandidates} onUse={onUse} />
+      <SketchExternalLines
+        editorTool={editorTool}
+        lines={externalLines}
+        selectedEntityIds={selectedEntityIds}
+        onSelect={onSelect}
+      />
       <SketchExternalPoints
         points={externalPoints}
         onAttach={editorTool === "select" && selectedEntityIds.length === 1 ? onAttach : null}
@@ -1764,16 +1876,20 @@ function SketchExternalReferenceLayer({
   candidates,
   draft,
   editorTool,
+  externalLines,
   externalPoints,
   selectedEntityIds,
   onDraftChange,
+  onSelect,
 }: Readonly<{
-  candidates: readonly ExternalSketchPointCandidate[]
+  candidates: readonly ExternalSketchGeometryCandidate[]
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   selectedEntityIds: readonly SketchEntityId[]
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onSelect: (entityId: SketchEntityId, additive: boolean) => void
 }>) {
   const externalReferences = useExternalReferenceInteraction({
     candidates,
@@ -1786,26 +1902,31 @@ function SketchExternalReferenceLayer({
     <SketchExternalReferencePresentation
       availableCandidates={externalReferences.availableCandidates}
       editorTool={editorTool}
+      externalLines={externalLines}
       externalPoints={externalPoints}
       selectedEntityIds={selectedEntityIds}
       onAttach={externalReferences.attach}
+      onSelect={onSelect}
       onUse={externalReferences.use}
     />
   )
 }
 
-function SketchUsePointBounds({
+function SketchUseGeometryBounds({
   candidates,
   editorTool,
   setBounds,
 }: Readonly<{
-  candidates: readonly ExternalSketchPointCandidate[]
+  candidates: readonly ExternalSketchGeometryCandidate[]
   editorTool: SketchEditorTool
   setBounds: Dispatch<SetStateAction<SketchBounds>>
 }>) {
   useEffect(() => {
     if (editorTool !== "use") return
-    setBounds((bounds) => expandedSketchBounds(bounds, candidates))
+    const points = candidates.flatMap((candidate) =>
+      candidate.kind === "line" ? [candidate.start, candidate.end] : [candidate],
+    )
+    setBounds((bounds) => expandedSketchBounds(bounds, points))
   }, [candidates, editorTool, setBounds])
   return null
 }
@@ -5153,9 +5274,11 @@ function SketchDrawingView({
           candidates={configuration.externalPointCandidates}
           draft={configuration.draft}
           editorTool={configuration.editorTool}
+          externalLines={state.geometry.externalLines}
           externalPoints={state.geometry.externalPoints}
           selectedEntityIds={configuration.selectedEntityIds}
           onDraftChange={configuration.onDraftChange}
+          onSelect={handlers.onSelection}
         />
         <StableSketchGeometry
           draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
@@ -5814,20 +5937,20 @@ function useExternalReferenceInteraction({
   SketchDrawingConfiguration,
   "draft" | "editorTool" | "onDraftChange" | "selectedEntityIds"
 > & {
-  candidates: readonly ExternalSketchPointCandidate[]
+  candidates: readonly ExternalSketchGeometryCandidate[]
 }) {
   const availableCandidates = useMemo(() => {
     if (!draft || editorTool !== "use") return []
     const references = draft.externalReferences ?? []
     return candidates.filter(
       (candidate) =>
-        !references.some((reference) => referenceMatchesCandidate(reference, candidate)),
+        !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
     )
   }, [candidates, draft, editorTool])
   const use = useCallback(
-    (candidate: ExternalSketchPointCandidate) => {
+    (candidate: ExternalSketchGeometryCandidate) => {
       if (!draft) return
-      const next = applyExternalSketchPointCandidate(draft, candidate, selectedEntityIds)
+      const next = applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
       if (next !== draft) onDraftChange(next)
     },
     [draft, onDraftChange, selectedEntityIds],
@@ -6212,7 +6335,7 @@ function SketchDrawing({
   )
   return (
     <>
-      <SketchUsePointBounds
+      <SketchUseGeometryBounds
         candidates={configuration.externalPointCandidates}
         editorTool={editorTool}
         setBounds={setBounds}
@@ -6400,7 +6523,7 @@ type SketchDrawingConfiguration = Readonly<{
   annotationSolution: SolvedSketchWire | null
   construction: boolean
   draft: SketchRecord | null
-  externalPointCandidates: readonly ExternalSketchPointCandidate[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
   onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
@@ -6507,7 +6630,7 @@ function SketchPrecisionToolbar({
   const t = useTranslations("app.shell.taskPanel.sketch")
   const viewportT = useTranslations("app.sketch.viewport")
   const entities = useMemo(
-    () => (draft ? selectedSketchEntities(draft, selectedEntityIds) : []),
+    () => (draft ? selectedSketchConstraintEntities(draft, selectedEntityIds) : []),
     [draft, selectedEntityIds],
   )
   const constraints = compatibleSketchConstraintTools(entities)
@@ -6584,7 +6707,7 @@ function SketchExternalReferenceToolbar({
   editorTool,
   onEditorToolChange,
 }: Readonly<{
-  candidates: readonly ExternalSketchPointCandidate[]
+  candidates: readonly ExternalSketchGeometryCandidate[]
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   onEditorToolChange: (tool: SketchEditorTool) => void
@@ -6595,7 +6718,7 @@ function SketchExternalReferenceToolbar({
     const references = draft.externalReferences ?? []
     return candidates.filter(
       (candidate) =>
-        !references.some((reference) => referenceMatchesCandidate(reference, candidate)),
+        !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
     )
   }, [candidates, draft])
   if (!draft || availableCandidates.length === 0) return null
@@ -6607,14 +6730,14 @@ function SketchExternalReferenceToolbar({
           type="button"
           size="icon-sm"
           variant={active ? "secondary" : "ghost"}
-          aria-label={t("useExternalPoint")}
+          aria-label={t("useExternalGeometry")}
           aria-pressed={active}
           onClick={() => onEditorToolChange(active ? "select" : "use")}
         >
           <Link2 aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{t("useExternalPoint")}</TooltipContent>
+      <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
     </Tooltip>
   )
 }
@@ -6624,7 +6747,7 @@ type SketchViewportState = Readonly<{
   controller: DocumentControllerState
   draft: SketchRecord | null
   editorTool: SketchEditorTool
-  externalPointCandidates: readonly ExternalSketchPointCandidate[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]

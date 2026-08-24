@@ -780,6 +780,96 @@ describe("DocumentWorkerRuntime", () => {
     ])
   })
 
+  it("projects a persisted external line as fixed construction geometry", async () => {
+    const module = sketchSolverModule()
+    const solvePort = vi.fn((input: Parameters<SketchSolvePort>[0]) =>
+      solveSketchRecord(module, input),
+    )
+    const sourceEndPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3221"
+    const sourceLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3222"
+    const source = {
+      ...sketch(),
+      entities: [
+        ...sketch().entities,
+        {
+          schemaVersion: 0,
+          id: sourceEndPointId,
+          type: "point",
+          x: 6,
+          y: 2,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: sourceLineId,
+          type: "line",
+          startPointId: sketchIds.point,
+          endPointId: sourceEndPointId,
+          construction: false,
+        },
+      ],
+    } as const
+    const dependent = {
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3223",
+      label: "Projected layout",
+      plane: "xz",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3224",
+          kind: "line",
+          sourceSketchId: source.id,
+          sourceLineId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-67a36a7f3225",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3226",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3227",
+        },
+      ],
+    } as const
+    const { runtime } = createHarness(solvePort)
+    await runtime.handle({
+      ...request("rebuild-for-external-line"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...document(documentIds.primary),
+        sketches: [source, dependent],
+      }),
+    })
+
+    expect(
+      solvePort.mock.calls.find(([input]) => input.sketch.id === dependent.id)?.[0].externalLines,
+    ).toEqual([
+      {
+        startPoint: {
+          schemaVersion: 0,
+          id: dependent.externalReferences[0].projectedStartPointId,
+          type: "point",
+          construction: true,
+          x: 1,
+          y: 0,
+        },
+        endPoint: {
+          schemaVersion: 0,
+          id: dependent.externalReferences[0].projectedEndPointId,
+          type: "point",
+          construction: true,
+          x: 6,
+          y: 0,
+        },
+        line: {
+          schemaVersion: 0,
+          id: dependent.externalReferences[0].projectedLineId,
+          type: "line",
+          construction: true,
+          startPointId: dependent.externalReferences[0].projectedStartPointId,
+          endPointId: dependent.externalReferences[0].projectedEndPointId,
+        },
+      },
+    ])
+  })
+
   it("rejects unavailable, stale, missing, and invalid sketch solve state without mutation", async () => {
     const unavailable = createHarness()
     await unavailable.runtime.handle({

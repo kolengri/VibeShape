@@ -5,6 +5,7 @@ import type {
   SketchEntityId,
   SketchRecord,
 } from "@vibeshape/domain"
+import { projectedExternalSketchEntities } from "@vibeshape/domain"
 
 export type SketchDimensionKind =
   | "distance"
@@ -51,6 +52,17 @@ const mandatorySketchConstraintTools = [
 export function selectedSketchEntities(sketch: SketchRecord, ids: readonly SketchEntityId[]) {
   const selected = new Set<string>(ids)
   return sketch.entities.filter(({ id }) => selected.has(id))
+}
+
+export function selectedSketchConstraintEntities(
+  sketch: SketchRecord,
+  ids: readonly SketchEntityId[],
+) {
+  const selected = new Set<string>(ids)
+  return [
+    ...sketch.entities,
+    ...projectedExternalSketchEntities(sketch.externalReferences ?? []),
+  ].filter(({ id }) => selected.has(id))
 }
 
 export function selectedSketchLineId(sketch: SketchRecord, ids: readonly SketchEntityId[]) {

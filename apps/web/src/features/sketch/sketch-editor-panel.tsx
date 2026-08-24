@@ -5,6 +5,7 @@ import {
   evaluateExpression,
   evaluateVariableDefinitions,
   removeSketchConstraints,
+  removeSketchExternalReference,
   type SketchConstraintDefinition,
   type SketchConstraintId,
   type SketchDimensionValue,
@@ -31,13 +32,16 @@ import {
 } from "../../document/document-display-units"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
-import type { ExternalSketchPointCandidate } from "./external-sketch-points"
+import {
+  type ExternalSketchGeometryCandidate,
+  externalReferenceMatchesCandidate,
+} from "./external-sketch-points"
 import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
   createSketchDimensionConstraint,
   type SketchDimensionKind,
-  selectedSketchEntities,
+  selectedSketchConstraintEntities,
 } from "./sketch-constraint-tools"
 
 type SketchEditorPanelCopy = Readonly<{
@@ -87,7 +91,7 @@ type SketchEditorPanelCopy = Readonly<{
   secondaryAxisDiameter: string
   symmetric: string
   tangent: string
-  useExternalPoint: string
+  useExternalGeometry: string
   vertical: string
   verticalDistance: string
 }>
@@ -687,7 +691,7 @@ function ExternalReferencesSection({
   draft,
   onDraftChange,
 }: {
-  candidates: readonly ExternalSketchPointCandidate[]
+  candidates: readonly ExternalSketchGeometryCandidate[]
   copy: SketchEditorPanelCopy
   draft: SketchRecord
   onDraftChange: (draft: SketchRecord) => void
@@ -704,10 +708,8 @@ function ExternalReferencesSection({
       ) : (
         <ul className="grid gap-1">
           {references.map((reference) => {
-            const candidate = candidates.find(
-              (value) =>
-                value.sourceSketchId === reference.sourceSketchId &&
-                value.sourcePointId === reference.sourcePointId,
+            const candidate = candidates.find((value) =>
+              externalReferenceMatchesCandidate(reference, value),
             )
             return (
               <li
@@ -715,21 +717,15 @@ function ExternalReferencesSection({
                 className="flex items-center gap-2 rounded-sm border px-2 py-1"
               >
                 <span className="min-w-0 flex-1 truncate text-xs">
-                  {candidate?.label ?? reference.sourcePointId}
+                  {candidate?.label ??
+                    (reference.kind === "line" ? reference.sourceLineId : reference.sourcePointId)}
                 </span>
                 <Button
                   type="button"
                   size="icon-xs"
                   variant="ghost"
                   aria-label={copy.remove}
-                  onClick={() =>
-                    onDraftChange({
-                      ...draft,
-                      externalReferences: references.filter(
-                        (candidate) => candidate.id !== reference.id,
-                      ),
-                    })
-                  }
+                  onClick={() => onDraftChange(removeSketchExternalReference(draft, reference.id))}
                 >
                   <Trash2 aria-hidden="true" />
                 </Button>
@@ -745,7 +741,7 @@ function ExternalReferencesSection({
 type SketchEditorPanelState = Readonly<{
   disabled: boolean
   draft: SketchRecord
-  externalPointCandidates: readonly ExternalSketchPointCandidate[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
@@ -796,7 +792,7 @@ export function SketchEditorPanel({
     onSelectedProfileChange,
   } = actions
   const entities = useMemo(
-    () => selectedSketchEntities(draft, selectedEntityIds),
+    () => selectedSketchConstraintEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
   )
   const options = dimensionOptions(entities, copy)

@@ -14,6 +14,7 @@ import {
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
   sketchIdSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
@@ -399,6 +400,7 @@ describe("SketchViewport", () => {
       editorTool: "use",
       externalPointCandidates: [
         {
+          kind: "point",
           label: "Source sketch · Point",
           sourceSketchId: sketch.id,
           sourcePointId: sourcePoint.id,
@@ -412,7 +414,7 @@ describe("SketchViewport", () => {
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
     })
     const sourcePointElement = document.querySelector(
-      `[data-sketch-available-external-point-id="${sourcePoint.id}"]`,
+      `[data-sketch-available-external-geometry-id="${sourcePoint.id}"]`,
     )
     if (!sourcePointElement) throw new Error("The source point must be selectable on the drawing.")
 
@@ -426,6 +428,103 @@ describe("SketchViewport", () => {
         ],
       }),
     )
+  })
+
+  it("uses an earlier sketch line directly from the drawing", () => {
+    const sourceLine = sketch.entities.find((entity) => entity.type === "line")
+    if (!sourceLine) throw new Error("The source sketch fixture must contain a line.")
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3212") }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalPointCandidates: [
+        {
+          kind: "line",
+          label: "Source sketch · Line",
+          sourceSketchId: sketch.id,
+          sourceLineId: sourceLine.id,
+          start: { world: [0, 0, 0], x: 0, y: 0 },
+          end: { world: [20, 0, 0], x: 20, y: 0 },
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const sourceLineElement = document.querySelector(
+      `[data-sketch-available-external-geometry-id="${sourceLine.id}"]`,
+    )
+    if (!sourceLineElement) throw new Error("The source line must be selectable on the drawing.")
+
+    fireEvent.pointerDown(sourceLineElement)
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({
+            kind: "line",
+            sourceSketchId: sketch.id,
+            sourceLineId: sourceLine.id,
+          }),
+        ],
+      }),
+    )
+  })
+
+  it("renders a solved external line as selectable read-only geometry", async () => {
+    const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3231")
+    const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3232")
+    const projectedEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3233")
+    const draft = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3234"),
+          kind: "line" as const,
+          sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3235"),
+          sourceLineId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3236"),
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    }
+    const base = solveResult()
+    if (!base.ok || base.response.type !== "sketchSolved") throw new Error("Expected solve result.")
+    const onSelectionChange = vi.fn()
+    renderViewport({
+      draft,
+      onSelectionChange,
+      sketch: draft,
+      solveSketch: vi.fn(async () => ({
+        ...base,
+        response: {
+          ...base.response,
+          solution: {
+            ...base.response.solution,
+            points: [
+              ...base.response.solution.points,
+              { entityId: projectedStartPointId, x: 5, y: 6 },
+              { entityId: projectedEndPointId, x: 25, y: 6 },
+            ],
+          },
+        },
+      })),
+    })
+
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-sketch-external-line-id="${projectedLineId}"]`),
+      ).toBeTruthy(),
+    )
+    const externalLine = document.querySelector(
+      `[data-sketch-external-line-id="${projectedLineId}"] line`,
+    )
+    if (!externalLine) throw new Error("The projected line must expose a selection target.")
+    fireEvent.pointerDown(externalLine)
+    expect(onSelectionChange).toHaveBeenCalledWith([projectedLineId])
   })
 
   it("keeps individually toggleable origin references visible while editing a sketch", () => {

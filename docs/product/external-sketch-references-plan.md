@@ -1,7 +1,7 @@
 # External Sketch References Plan
 
 - Status: **In progress**
-- Reviewed: **2026-08-24**
+- Reviewed: **2026-08-25**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
 This is the detailed external-reference slice of the broader
@@ -35,20 +35,23 @@ part of this first slice. See [Derived](https://cad.onshape.com/help/Content/Par
 
 ## Product contract
 
-### Implemented point-reference foundation
+### Implemented point-and-line foundation
 
-The first delivered increment is intentionally smaller than the full first vertical slice. A dependent
-sketch can retain a **projected point reference** to an earlier saved sketch and attach one authored point
-to it with a Coincident relation. The reference persists only stable source and projected-point IDs; the
-document worker resolves current source coordinates before every solve, transforms the point from its exact
-source support through world space into the target support, and provides the result as read-only fixed solver
-input. The icon-only **Use point** tool exposes compatible source points on the normal-to-sketch drawing and
-in the persistent 3D viewport. Orbit mode provides graphical hover preselection, a source label, and direct
-selection without recreating the camera. Selecting one local point before Use creates the Coincident relation
-in the same draft edit. The task panel lists/removes references already in use, and deleting a referenced
-source sketch is rejected.
+The delivered foundation lets a dependent sketch retain a **projected point or line reference** to an
+earlier saved sketch. A point can attach one authored point with a Coincident relation. A projected line is
+read-only construction geometry whose fixed projected endpoints can drive Point on line, Parallel,
+Perpendicular, Equal, Angle, and other compatible solver relations without becoming a profile boundary. A
+reference persists only stable source and projected entity IDs; the document worker resolves current source
+coordinates before every solve, transforms them from the exact source support through world space into the
+target support, and rejects a line whose projection degenerates to a point.
 
-This increment does not yet support external curves, feature edges, intersection, automatic external
+The icon-only **Use external geometry** tool exposes compatible source points and lines on the
+normal-to-sketch drawing and in the persistent 3D viewport. Orbit mode provides graphical hover
+preselection, a source label, and direct selection without recreating the camera. The task panel identifies
+and removes references; removal also removes constraints that target the projected geometry. Deleting a
+referenced source sketch is rejected.
+
+This increment does not yet support circles, arcs, ellipses, feature edges, intersection, automatic external
 inference, solved-source preselection data, or chained references. A source must be earlier in presentation
 order and have no own external references. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.

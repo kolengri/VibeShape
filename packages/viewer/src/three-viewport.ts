@@ -69,11 +69,23 @@ export type ViewerSketch = Readonly<{
 }>
 
 export type ViewerSketchPointCandidate = Readonly<{
+  kind?: "point"
   label: string
   position: ViewerVector3
   sourcePointId: string
   sourceSketchId: string
 }>
+
+export type ViewerSketchLineCandidate = Readonly<{
+  kind: "line"
+  label: string
+  start: ViewerVector3
+  end: ViewerVector3
+  sourceLineId: string
+  sourceSketchId: string
+}>
+
+export type ViewerSketchReferenceCandidate = ViewerSketchPointCandidate | ViewerSketchLineCandidate
 
 export type ViewerVector3 = readonly [number, number, number]
 
@@ -108,7 +120,7 @@ export type GeometryViewport = Readonly<{
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
   setMeshes: (meshes: readonly ViewerMesh[]) => void
-  setSketchPointCandidates: (candidates: readonly ViewerSketchPointCandidate[]) => void
+  setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
@@ -127,8 +139,8 @@ export type GeometryViewportOptions = Readonly<{
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane) => void
   onSelectionChange?: (selection: ViewerSelection | null) => void
-  onSketchPointPreselectionChange?: (candidate: ViewerSketchPointCandidate | null) => void
-  onSketchPointSelectionChange?: (candidate: ViewerSketchPointCandidate) => void
+  onSketchReferencePreselectionChange?: (candidate: ViewerSketchReferenceCandidate | null) => void
+  onSketchReferenceSelectionChange?: (candidate: ViewerSketchReferenceCandidate) => void
 }>
 
 export function orthographicFrustum(viewHeight: number, aspect: number): OrthographicFrustum {
@@ -321,6 +333,19 @@ function sameSelection(left: ViewerSelection | null, right: ViewerSelection | nu
   return left?.featureId === right?.featureId && left?.faceId === right?.faceId
 }
 
+function sketchReferenceCandidateKey(candidate: ViewerSketchReferenceCandidate | null) {
+  if (!candidate) return null
+  const entityId = candidate.kind === "line" ? candidate.sourceLineId : candidate.sourcePointId
+  return `${candidate.kind ?? "point"}:${candidate.sourceSketchId}:${entityId}`
+}
+
+function sameSketchReferenceCandidate(
+  left: ViewerSketchReferenceCandidate | null,
+  right: ViewerSketchReferenceCandidate | null,
+) {
+  return sketchReferenceCandidateKey(left) === sketchReferenceCandidateKey(right)
+}
+
 function orientOriginPlane(mesh: Mesh, plane: ViewerOriginPlane) {
   if (plane === "xz") mesh.rotation.x = Math.PI / 2
   if (plane === "yz") mesh.rotation.y = Math.PI / 2
@@ -404,6 +429,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     size: 14,
     sizeAttenuation: false,
   })
+  readonly #sketchLineCandidateMaterial = new LineBasicMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    opacity: 1,
+    transparent: true,
+  })
+  readonly #sketchLinePreselectionMaterial = new LineBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+  })
   readonly #previewSurfaceMaterial = new MeshBasicMaterial({
     color: new Color("#4c8dff"),
     transparent: true,
@@ -478,8 +513,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
-  readonly #onSketchPointPreselectionChange: (candidate: ViewerSketchPointCandidate | null) => void
-  readonly #onSketchPointSelectionChange: (candidate: ViewerSketchPointCandidate) => void
+  readonly #onSketchReferencePreselectionChange: (
+    candidate: ViewerSketchReferenceCandidate | null,
+  ) => void
+  readonly #onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
   #pointerDown: Readonly<{ x: number; y: number }> | null = null
@@ -492,7 +529,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #selection: ViewerSelection | null = null
   #sketchPointCandidates: readonly ViewerSketchPointCandidate[] = []
   #sketchPointObject: Points | null = null
-  #sketchPointPreselection: ViewerSketchPointCandidate | null = null
+  #sketchLineObjects = new Map<LineSegments, ViewerSketchLineCandidate>()
+  #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
@@ -501,9 +539,10 @@ class ThreeGeometryViewport implements GeometryViewport {
       options.onOriginPlanePreselectionChange ?? (() => undefined)
     this.#onOriginPlaneSelectionChange = options.onOriginPlaneSelectionChange ?? (() => undefined)
     this.#onSelectionChange = options.onSelectionChange ?? (() => undefined)
-    this.#onSketchPointPreselectionChange =
-      options.onSketchPointPreselectionChange ?? (() => undefined)
-    this.#onSketchPointSelectionChange = options.onSketchPointSelectionChange ?? (() => undefined)
+    this.#onSketchReferencePreselectionChange =
+      options.onSketchReferencePreselectionChange ?? (() => undefined)
+    this.#onSketchReferenceSelectionChange =
+      options.onSketchReferenceSelectionChange ?? (() => undefined)
     const context = canvas.getContext("webgl2", {
       alpha: true,
       antialias: true,
@@ -551,6 +590,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.addEventListener("change", this.#render)
     this.#controls.update()
     this.#raycaster.params.Points.threshold = 2
+    this.#raycaster.params.Line.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown)
     canvas.addEventListener("pointermove", this.#onPointerMove)
     canvas.addEventListener("pointerup", this.#onPointerUp)
@@ -665,15 +705,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  setSketchPointCandidates(candidates: readonly ViewerSketchPointCandidate[]) {
+  setSketchReferenceCandidates(candidates: readonly ViewerSketchReferenceCandidate[]) {
     if (this.#disposed) return
     this.#setSketchPointPreselection(null)
     disposeModelGroup(this.#sketchPointCandidateGroup)
-    this.#sketchPointCandidates = candidates
+    this.#sketchPointCandidates = candidates.filter(
+      (candidate): candidate is ViewerSketchPointCandidate => candidate.kind !== "line",
+    )
+    this.#sketchLineObjects.clear()
     this.#sketchPointObject = null
-    if (candidates.length > 0) {
-      const positions = new Float32Array(candidates.length * 3)
-      for (const [index, candidate] of candidates.entries()) {
+    if (this.#sketchPointCandidates.length > 0) {
+      const positions = new Float32Array(this.#sketchPointCandidates.length * 3)
+      for (const [index, candidate] of this.#sketchPointCandidates.entries()) {
         positions.set(candidate.position, index * 3)
       }
       const points = new Points(
@@ -684,6 +727,17 @@ class ThreeGeometryViewport implements GeometryViewport {
       points.renderOrder = 8
       this.#sketchPointObject = points
       this.#sketchPointCandidateGroup.add(points)
+    }
+    for (const candidate of candidates) {
+      if (candidate.kind !== "line") continue
+      const line = new LineSegments(
+        createViewerSketchGeometry(new Float32Array([...candidate.start, ...candidate.end])),
+        this.#sketchLineCandidateMaterial,
+      )
+      line.name = `sketch-reference-line:${candidate.sourceLineId}`
+      line.renderOrder = 8
+      this.#sketchLineObjects.set(line, candidate)
+      this.#sketchPointCandidateGroup.add(line)
     }
     this.#render()
   }
@@ -806,6 +860,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchConstructionPointMaterial.dispose()
     this.#sketchPointCandidateMaterial.dispose()
     this.#sketchPointPreselectionMaterial.dispose()
+    this.#sketchLineCandidateMaterial.dispose()
+    this.#sketchLinePreselectionMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     this.#featurePreselectionMaterial.dispose()
@@ -898,12 +954,28 @@ class ThreeGeometryViewport implements GeometryViewport {
     return intersection ? (this.#originPlaneMeshes.get(intersection.object as Mesh) ?? null) : null
   }
 
-  #pickSketchPoint(event: PointerEvent): ViewerSketchPointCandidate | null {
-    if (!this.#sketchPointObject || !this.#prepareRaycaster(event)) return null
-    const intersection = this.#raycaster.intersectObject(this.#sketchPointObject, false)[0]
-    return intersection?.index === undefined
-      ? null
-      : (this.#sketchPointCandidates[intersection.index] ?? null)
+  #pickSketchPoint(event: PointerEvent): ViewerSketchReferenceCandidate | null {
+    if (!this.#prepareRaycaster(event)) return null
+    const pointHit = this.#pickSketchReferencePoint()
+    const lineHit = this.#pickSketchReferenceLine()
+    if (!pointHit) return lineHit?.candidate ?? null
+    if (!lineHit) return pointHit.candidate
+    return pointHit.distance <= lineHit.distance ? pointHit.candidate : lineHit.candidate
+  }
+
+  #pickSketchReferencePoint() {
+    if (!this.#sketchPointObject) return null
+    const hit = this.#raycaster.intersectObject(this.#sketchPointObject, false)[0]
+    if (hit?.index === undefined) return null
+    const candidate = this.#sketchPointCandidates[hit.index]
+    return candidate ? { candidate, distance: hit.distance } : null
+  }
+
+  #pickSketchReferenceLine() {
+    const hit = this.#raycaster.intersectObjects([...this.#sketchLineObjects.keys()], false)[0]
+    if (!hit) return null
+    const candidate = this.#sketchLineObjects.get(hit.object as LineSegments)
+    return candidate ? { candidate, distance: hit.distance } : null
   }
 
   #prepareRaycaster(event: PointerEvent) {
@@ -914,19 +986,24 @@ class ThreeGeometryViewport implements GeometryViewport {
       -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
     )
     this.#raycaster.setFromCamera(this.#pointer, this.#camera)
+    const selectionThreshold = Math.max((this.#viewHeight / bounds.height) * 8, 0.25)
+    this.#raycaster.params.Line.threshold = selectionThreshold
+    this.#raycaster.params.Points.threshold = selectionThreshold
     return true
   }
 
-  #setSketchPointPreselection(candidate: ViewerSketchPointCandidate | null) {
-    if (
-      candidate?.sourceSketchId === this.#sketchPointPreselection?.sourceSketchId &&
-      candidate?.sourcePointId === this.#sketchPointPreselection?.sourcePointId
-    ) {
-      return
-    }
+  #setSketchPointPreselection(candidate: ViewerSketchReferenceCandidate | null) {
+    if (sameSketchReferenceCandidate(candidate, this.#sketchPointPreselection)) return
     this.#sketchPointPreselection = candidate
     disposeModelGroup(this.#sketchPointPreselectionGroup)
-    if (candidate) {
+    if (candidate?.kind === "line") {
+      const line = new LineSegments(
+        createViewerSketchGeometry(new Float32Array([...candidate.start, ...candidate.end])),
+        this.#sketchLinePreselectionMaterial,
+      )
+      line.renderOrder = 9
+      this.#sketchPointPreselectionGroup.add(line)
+    } else if (candidate) {
       const points = new Points(
         createViewerSketchGeometry(new Float32Array(candidate.position)),
         this.#sketchPointPreselectionMaterial,
@@ -935,7 +1012,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#sketchPointPreselectionGroup.add(points)
     }
     this.#canvas.style.cursor = candidate ? "crosshair" : ""
-    this.#onSketchPointPreselectionChange(candidate)
+    this.#onSketchReferencePreselectionChange(candidate)
     this.#render()
   }
 
@@ -1128,7 +1205,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #commitSketchPointSelection(event: PointerEvent) {
     const candidate = this.#pickSketchPoint(event)
-    if (candidate) this.#onSketchPointSelectionChange(candidate)
+    if (candidate) this.#onSketchReferenceSelectionChange(candidate)
   }
 
   #commitOriginPlaneSelection(event: PointerEvent) {

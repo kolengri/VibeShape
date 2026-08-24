@@ -47,7 +47,7 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
-import { externalSketchPointCandidates } from "../features/sketch/external-sketch-points"
+import { externalSketchGeometryCandidates } from "../features/sketch/external-sketch-points"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
@@ -155,7 +155,7 @@ function useSketchEditorCopy() {
     secondaryAxisDiameter: t("secondaryAxisDiameter"),
     symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
-    useExternalPoint: t("useExternalPoint"),
+    useExternalGeometry: t("useExternalGeometry"),
     vertical: t("vertical"),
     verticalDistance: t("verticalDistance"),
   }
@@ -1149,11 +1149,16 @@ function ActiveSketchTaskPanel({
     onSketchSaved,
   } = actions
   const t = useTranslations("app.shell.taskPanel.sketch")
+  const viewportT = useTranslations("app.shell.viewport")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
-  const referenceCandidates = externalSketchPointCandidates(
+  const referenceCandidates = externalSketchGeometryCandidates(
     report.snapshot,
     draft,
+    {
+      line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
+      point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
+    },
     resolveDocumentFeatureParameters(report.snapshot),
   )
   const modeDescription =

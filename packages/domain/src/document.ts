@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
-import { type SketchExternalPointReference, type SketchRecord, sketchRecordsSchema } from "./sketch"
+import { type SketchExternalReference, type SketchRecord, sketchRecordsSchema } from "./sketch"
 import { angleInputUnitSchema, lengthInputUnitSchema } from "./units"
 import { type VariableDefinition, variableDefinitionsSchema } from "./variables"
 
@@ -37,7 +37,7 @@ function addDocumentIssue(context: z.RefinementCtx, path: readonly PropertyKey[]
 
 type ExternalReferenceValidationInput = Readonly<{
   context: z.RefinementCtx
-  reference: SketchExternalPointReference
+  reference: SketchExternalReference
   referenceIndex: number
   sketch: SketchRecord
   sketchIndex: number
@@ -60,6 +60,12 @@ function validateExternalReferenceOrder(input: ExternalReferenceValidationInput)
   )
 }
 
+function externalReferenceSourceSelector(reference: SketchExternalReference) {
+  return reference.kind === "line"
+    ? ({ entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const)
+    : ({ entityId: reference.sourcePointId, entityType: "point", path: "sourcePointId" } as const)
+}
+
 function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {
   const path = externalReferencePath(input)
   if ((input.source.externalReferences?.length ?? 0) > 0) {
@@ -69,22 +75,19 @@ function validateExternalReferenceSource(input: ExternalReferenceValidationInput
       "External sketch references cannot chain in schema version 0.",
     )
   }
-  if (
-    input.source.entities.find((entity) => entity.id === input.reference.sourcePointId)?.type ===
-    "point"
-  ) {
-    return
-  }
+  const selector = externalReferenceSourceSelector(input.reference)
+  const sourceEntity = input.source.entities.find(({ id }) => id === selector.entityId)
+  if (sourceEntity?.type === selector.entityType) return
   addDocumentIssue(
     input.context,
-    [...path, "sourcePointId"],
-    "An external sketch reference must target a source point.",
+    [...path, selector.path],
+    `An external sketch reference must target a source ${selector.entityType}.`,
   )
 }
 
-function validateExternalPointReference(input: {
+function validateExternalSketchReference(input: {
   context: z.RefinementCtx
-  reference: SketchExternalPointReference
+  reference: SketchExternalReference
   referenceIndex: number
   sketch: SketchRecord
   sketchIndex: number
@@ -121,7 +124,7 @@ function validateDocumentSketchReferences(
       )
     }
     for (const [referenceIndex, reference] of (sketch.externalReferences ?? []).entries()) {
-      validateExternalPointReference({
+      validateExternalSketchReference({
         context,
         reference,
         referenceIndex,

@@ -1,9 +1,15 @@
 import { isString } from "is-what"
-import type { SketchConstraintId, SketchEntityId, SketchId } from "./identifiers"
+import type {
+  SketchConstraintId,
+  SketchEntityId,
+  SketchExternalReferenceId,
+  SketchId,
+} from "./identifiers"
 import {
   type SketchConstraint,
   type SketchEntity,
   type SketchRecord,
+  projectedExternalSketchEntities,
   sketchConstraintSchema,
   sketchRecordSchema,
 } from "./sketch"
@@ -2498,6 +2504,24 @@ export function removeSketchConstraints(
   return sketchRecordSchema.parse({
     ...sketch,
     constraints: sketch.constraints.filter(({ id }) => !removedIds.has(id)),
+  })
+}
+
+export function removeSketchExternalReference(
+  sketch: SketchRecord,
+  referenceId: SketchExternalReferenceId,
+): SketchRecord {
+  const reference = sketch.externalReferences?.find(({ id }) => id === referenceId)
+  if (!reference) return sketch
+  const projectedIds = new Set<string>(
+    projectedExternalSketchEntities([reference]).map(({ id }) => id),
+  )
+  return sketchRecordSchema.parse({
+    ...sketch,
+    externalReferences: sketch.externalReferences?.filter(({ id }) => id !== referenceId),
+    constraints: sketch.constraints.filter((constraint) =>
+      sketchConstraintEntityIds(constraint).every((entityId) => !projectedIds.has(entityId)),
+    ),
   })
 }
 

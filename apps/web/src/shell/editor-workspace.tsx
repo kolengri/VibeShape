@@ -9,11 +9,15 @@ import type {
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
+import { useTranslations } from "@vibeshape/i18n"
 import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
-import type { ViewerSelection, ViewerSketchPointCandidate } from "@vibeshape/viewer/three-viewport"
+import type {
+  ViewerSelection,
+  ViewerSketchReferenceCandidate,
+} from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useCallback, useMemo, useState } from "react"
 import {
   type DocumentControllerState,
@@ -29,9 +33,9 @@ import {
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
-  applyExternalSketchPointCandidate,
-  type ExternalSketchPointCandidate,
-  externalSketchPointCandidates,
+  applyExternalSketchCandidate,
+  type ExternalSketchGeometryCandidate,
+  externalSketchGeometryCandidates,
 } from "../features/sketch/external-sketch-points"
 import type {
   ActiveSketchTool,
@@ -118,7 +122,7 @@ function SketchWorkspaceContent({
   supportFeatures,
   externalPointCandidates,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
-  externalPointCandidates: readonly ExternalSketchPointCandidate[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   supportFeatures: readonly FeatureRecord[]
 }) {
@@ -213,6 +217,7 @@ export function ModelingSketchViewportStack({
 }
 
 function WorkspaceContent(props: WorkspaceContentProps) {
+  const viewportT = useTranslations("app.shell.viewport")
   const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
   const snapshot = props.controller.report?.snapshot
   const supportFeatures = useMemo(
@@ -236,34 +241,53 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   const externalPointCandidates = useMemo(
     () =>
       snapshot && props.sketch.draft
-        ? externalSketchPointCandidates(snapshot, props.sketch.draft, supportFeatures)
+        ? externalSketchGeometryCandidates(
+            snapshot,
+            props.sketch.draft,
+            {
+              line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
+              point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
+            },
+            supportFeatures,
+          )
         : [],
-    [props.sketch.draft, snapshot, supportFeatures],
+    [props.sketch.draft, snapshot, supportFeatures, viewportT],
   )
-  const viewerPointCandidates = useMemo<readonly ViewerSketchPointCandidate[]>(
+  const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () =>
-      externalPointCandidates.map((candidate) => ({
-        label: candidate.label,
-        position: candidate.world,
-        sourcePointId: candidate.sourcePointId,
-        sourceSketchId: candidate.sourceSketchId,
-      })),
+      externalPointCandidates.map(
+        (candidate): ViewerSketchReferenceCandidate =>
+          candidate.kind === "line"
+            ? {
+                kind: "line",
+                label: candidate.label,
+                start: candidate.start.world,
+                end: candidate.end.world,
+                sourceLineId: candidate.sourceLineId,
+                sourceSketchId: candidate.sourceSketchId,
+              }
+            : {
+                kind: "point",
+                label: candidate.label,
+                position: candidate.world,
+                sourcePointId: candidate.sourcePointId,
+                sourceSketchId: candidate.sourceSketchId,
+              },
+      ),
     [externalPointCandidates],
   )
   const selectExternalPoint = useCallback(
-    (hit: ViewerSketchPointCandidate) => {
+    (hit: ViewerSketchReferenceCandidate) => {
       const draft = props.sketch.draft
       if (!draft) return
-      const candidate = externalPointCandidates.find(
-        (item) =>
-          item.sourceSketchId === hit.sourceSketchId && item.sourcePointId === hit.sourcePointId,
-      )
+      const candidate = externalPointCandidates.find((item) => {
+        if (item.sourceSketchId !== hit.sourceSketchId || item.kind !== hit.kind) return false
+        return item.kind === "line"
+          ? hit.kind === "line" && item.sourceLineId === hit.sourceLineId
+          : hit.kind !== "line" && item.sourcePointId === hit.sourcePointId
+      })
       if (!candidate) return
-      const next = applyExternalSketchPointCandidate(
-        draft,
-        candidate,
-        props.sketch.selectedEntityIds,
-      )
+      const next = applyExternalSketchCandidate(draft, candidate, props.sketch.selectedEntityIds)
       if (next !== draft) props.actions.onSketchDraftChange(next)
     },
     [

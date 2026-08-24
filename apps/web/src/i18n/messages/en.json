@@ -648,8 +648,8 @@
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "externalReferences": "External references",
-          "externalReferenceDescription": "Activate Use in the viewport and click a blue source point. With one local point selected, the relationship is attached immediately.",
-          "useExternalPoint": "Use point",
+          "externalReferenceDescription": "Activate Use in the viewport and click a blue source point or line. A used line remains read-only and can drive sketch constraints.",
+          "useExternalGeometry": "Use external geometry",
           "attachSelectedPoint": "Attach",
           "noExternalReferences": "No external points are in use.",
           "removeConstraint": "Remove",
@@ -717,6 +717,8 @@
         }
       },
       "viewport": {
+        "externalLineCandidate": "{sketch} · Line {ordinal}",
+        "externalPointCandidate": "{sketch} · Point {ordinal}",
         "ariaLabel": "3D viewport",
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",
@@ -732,7 +734,7 @@
         "selectSketchPlane": "Select an origin plane or supported planar model face to start the sketch.",
         "selectedSketchPlane": "Current choice: {plane}",
         "sketchReferenceCandidate": "Use reference: {label}",
-        "sketchReferenceSelection": "Use point · Select an earlier sketch point",
+        "sketchReferenceSelection": "Use · Select an earlier sketch point or line",
         "preselectedSketchPlane": "Click to sketch on {plane}",
         "previewFailed": "The unsaved extrusion could not be previewed. Adjust its parameters or target.",
         "previewLoading": "Rebuilding unsaved extrusion preview…",

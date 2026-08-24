@@ -82,7 +82,7 @@ const copy = {
   select: "Select",
   symmetric: "Symmetric",
   tangent: "Tangent",
-  useExternalPoint: "Use point",
+  useExternalGeometry: "Use external geometry",
   undo: "Undo",
   vertical: "Vertical",
   verticalDistance: "Vertical distance",

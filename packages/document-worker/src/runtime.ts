@@ -37,7 +37,7 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
-import { resolveExternalSketchPoints } from "./external-sketch-references"
+import { resolveExternalSketchGeometry } from "./external-sketch-references"
 import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
 import { createSketchDisplayRecords } from "./sketch-display"
 
@@ -452,18 +452,19 @@ export class DocumentWorkerRuntime {
       return
     }
     try {
+      const externalGeometry = await resolveExternalSketchGeometry(
+        context.document,
+        context.sketch,
+        this.solveSketch,
+        resolveDocumentFeatureParameters(context.document, this.registry),
+      )
       const result = await this.solveSketch({
         revision: request.revision,
         sketch: context.sketch,
         variables: context.variables,
         continuation: request.continuation,
         draggedPoints: request.draggedPoints,
-        externalPoints: await resolveExternalSketchPoints(
-          context.document,
-          context.sketch,
-          this.solveSketch,
-          resolveDocumentFeatureParameters(context.document, this.registry),
-        ),
+        ...externalGeometry,
       })
       this.#postSketchResult(request, result)
     } catch (error) {
