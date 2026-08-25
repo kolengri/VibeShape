@@ -76,7 +76,7 @@ Three.js documentation was retrieved through Context7 for `/mrdoob/three.js` and
 
 | Source | Evidence |
 |---|---|
-| [Onshape Sketch Basics](https://cad.onshape.com/help/Content/sketch_basics.htm) | Coplanar vertices and edges of earlier sketches or features participate in automatic sketch inference. |
+| [Onshape Sketch Basics](https://cad.onshape.com/help/Content/Sketch/sketch_basics.htm) | Coplanar vertices and edges of earlier sketches or features participate in automatic sketch inference. |
 | [Onshape Working with Constraints](https://cad.onshape.com/help/Content/Sketch/working_with_constraints.htm) | External sketch relations are distinct from internal relations; the `Use` tool can connect sketch geometry to an entity in another sketch or feature. |
 | [Onshape Use](https://cad.onshape.com/help/Content/Sketch/use.htm) | Projects selected sketch or part edges onto the active sketch plane; supported used edges update with source changes and must remain trackable. |
 | [Onshape Intersection](https://cad.onshape.com/help/Content/Sketch/intersection.htm) | Projects the intersection of a selected face or surface and the active sketch plane, with explicit Intersection and Pierce constraints. |
@@ -221,9 +221,15 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 |---|---|
 | [Onshape user interface basics](https://cad.onshape.com/help/Content/Home/user_interface_basics.htm) | Stable Part Studio graphics area, feature list, workflow-specific toolbars, grouped overflow, explicit dialogs, selection, undo/redo, and error indicators |
 | [Onshape sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm) | Sketch toolbar activation, grouped and last-used tools, shortcut toolbar, `Escape`, constraint visibility, and the transition from a valid open sketch into Extrude or Revolve |
+| [Onshape Line](https://cad.onshape.com/help/Content/Sketch/line.htm) | Continuous line-chain creation, click-drag placement, immediate numerical dimension entry, and temporary Line/Tangent Arc switching |
+| [Onshape Dimension](https://cad.onshape.com/help/Content/Sketch/dimension.htm) | Selection, pointer-driven annotation placement, inline numeric entry, direct/projected/angular/centerline disambiguation, variable expressions, dragging, double-click editing, and driven dimensions |
 | [Onshape Linear Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_linear_pattern.htm) | One/two-direction counts, spacing, angle controls, acceptance grammar, and preview cap |
 | [Onshape Circular Sketch Pattern](https://cad.onshape.com/help/Content/Sketch/sketch_circular_pattern.htm) | Open/closed angle behavior and relocatable pattern center |
 | [Onshape Automatic Inferencing](https://cad.onshape.com/help/Content/Sketch/automatic_inferencing.htm) | Persistent automatic constraints, common horizontal/vertical/midpoint/parallel/coincident candidates, reference wake-up behavior, and temporary Shift suppression |
+| [Onshape Working with Constraints](https://cad.onshape.com/help/Content/Sketch/working_with_constraints.htm) | Tool-first and selection-first application, entity-scoped hover visibility, related-entity highlighting, draggable glyphs, direct deletion, solver colors, and a secondary filtered Constraint manager |
+| [Onshape Use](https://cad.onshape.com/help/Content/Sketch/use.htm) | Hover preview and persistent projection of trackable sketch, part, and silhouette edges onto the active plane |
+| [Onshape Trim](https://cad.onshape.com/help/Content/Sketch/trim.htm) | Direct click targeting and drag-through trimming across multiple entities |
+| [Onshape Sketch Mirror](https://cad.onshape.com/help/Content/Sketch/sketch_mirror.htm) | Selection-first and tool-first canvas workflows with staged prompts and immediate results |
 | [Onshape Midpoint Line](https://cad.onshape.com/help/Content/Sketch/midpoint_line.htm) | Midpoint-first symmetric segment authoring and persistent midpoint relation |
 | [Onshape Center Point Rectangle](https://cad.onshape.com/help/Content/Sketch/center_point_rectangle.htm) | Center-first symmetric rectangle workflow and construction diagonals |
 | [Onshape Aligned Rectangle](https://cad.onshape.com/help/Content/Sketch/aligned_rectangle.htm) | First-side definition, third perpendicular-width pick, and persistent aligned rectangle intent |
