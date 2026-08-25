@@ -187,12 +187,21 @@ function ModelingWorkspaceContent({
   }>
   sketchContext?: GeometryViewportSketchContext
 }) {
+  const hiddenSketchIds = useMemo(
+    () =>
+      mergeSketchEditVisibility(
+        { featureIds: [], sketchIds: model.hiddenSketchIds },
+        editVisibility,
+      ).sketchIds,
+    [editVisibility, model.hiddenSketchIds],
+  )
   return (
     <GeometryViewport
       controller={controller}
       featurePreview={model.featurePreview}
-      hiddenFeatureIds={editVisibility.featureIds}
-      hiddenSketchIds={editVisibility.sketchIds}
+      contextualHiddenFeatureIds={editVisibility.featureIds}
+      hiddenFeatureIds={model.hiddenFeatureIds}
+      hiddenSketchIds={hiddenSketchIds}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
@@ -283,13 +292,10 @@ function workspaceEditVisibility(
   snapshot: DocumentSnapshot | undefined,
   activeSketchId: SketchId | undefined,
   sketchActive: boolean,
-  hiddenFeatureIds: readonly FeatureId[],
-  hiddenSketchIds: readonly SketchId[],
 ) {
-  const configured = { featureIds: hiddenFeatureIds, sketchIds: hiddenSketchIds }
   return sketchActive && snapshot && activeSketchId
-    ? mergeSketchEditVisibility(configured, sketchEditContextVisibility(snapshot, activeSketchId))
-    : configured
+    ? sketchEditContextVisibility(snapshot, activeSketchId)
+    : { featureIds: [], sketchIds: [] }
 }
 
 function useWorkspaceExternalGeometry(
@@ -491,21 +497,8 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   const sketchActive = props.workspace === "sketch"
   const activeSketchId = props.sketch.draft?.id
   const editVisibility = useMemo(
-    () =>
-      workspaceEditVisibility(
-        snapshot,
-        activeSketchId,
-        sketchActive,
-        props.model.hiddenFeatureIds,
-        props.model.hiddenSketchIds,
-      ),
-    [
-      activeSketchId,
-      props.model.hiddenFeatureIds,
-      props.model.hiddenSketchIds,
-      sketchActive,
-      snapshot,
-    ],
+    () => workspaceEditVisibility(snapshot, activeSketchId, sketchActive),
+    [activeSketchId, sketchActive, snapshot],
   )
   const externalContextGeometry = useWorkspaceExternalGeometry(
     snapshot,

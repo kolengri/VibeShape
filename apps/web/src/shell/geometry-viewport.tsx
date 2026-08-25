@@ -66,16 +66,21 @@ async function loadGeometryViewport(canvas: HTMLCanvasElement, options: Geometry
 export function viewerMeshes(
   controller: DocumentControllerState,
   hiddenFeatureIds: readonly string[] = [],
+  contextualHiddenFeatureIds: readonly string[] = [],
 ): readonly ViewerMesh[] {
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
-  const terminalIds = terminalFeatureIds(controller.report?.snapshot.features ?? [])
+  const contextHiddenIds = new Set(contextualHiddenFeatureIds)
+  const visibleContextFeatures = (controller.report?.snapshot.features ?? []).filter(
+    ({ id }) => !contextHiddenIds.has(id),
+  )
+  const terminalIds = terminalFeatureIds(visibleContextFeatures)
   const datumIds = new Set<string>(
-    (controller.report?.snapshot.features ?? [])
+    visibleContextFeatures
       .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
       .map(({ id }) => id),
   )
-  const hiddenIds = new Set(hiddenFeatureIds)
+  const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
   return rebuild.response.geometry
     .filter(
       ({ featureId }) =>
@@ -545,6 +550,7 @@ type GeometryViewportProps = Readonly<{
   activeSketchDisplay?: ViewerSketch | null
   controller: DocumentControllerState
   createViewport?: ViewportFactory
+  contextualHiddenFeatureIds?: readonly string[]
   featurePreview?: FeaturePreviewState
   hiddenFeatureIds?: readonly string[]
   hiddenSketchIds?: readonly string[]
@@ -660,6 +666,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     activeSketchDisplay,
     controller,
     createViewport = loadGeometryViewport,
+    contextualHiddenFeatureIds = [],
     featurePreview,
     hiddenFeatureIds = [],
     hiddenSketchIds = [],
@@ -676,28 +683,33 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
     [controller],
   )
+  const allHiddenFeatureIds = useMemo(
+    () => [...new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])],
+    [contextualHiddenFeatureIds, hiddenFeatureIds],
+  )
   const committedMeshes = useMemo(
-    () => viewerMeshes(controller, hiddenFeatureIds),
-    [controller, hiddenFeatureIds],
+    () => viewerMeshes(controller, hiddenFeatureIds, contextualHiddenFeatureIds),
+    [contextualHiddenFeatureIds, controller, hiddenFeatureIds],
   )
   const meshes = useMemo(() => {
-    const hiddenIds = new Set(hiddenFeatureIds)
+    const hiddenIds = new Set(allHiddenFeatureIds)
     return previewMeshes(featurePreview, committedMeshes).filter(
       ({ featureId }) => !hiddenIds.has(featureId),
     )
-  }, [committedMeshes, featurePreview, hiddenFeatureIds])
+  }, [allHiddenFeatureIds, committedMeshes, featurePreview])
   const sketches = useMemo(() => {
     const committed = viewerSketches(controller, hiddenSketchIds)
     return withActiveSketchDisplay(committed, activeSketchDisplay)
   }, [activeSketchDisplay, controller, hiddenSketchIds])
   const featurePreselection = useMemo(
     () =>
-      highlightedFeatureMesh(controller, preselectedFeatureId, hiddenFeatureIds, featurePreview),
-    [controller, featurePreview, hiddenFeatureIds, preselectedFeatureId],
+      highlightedFeatureMesh(controller, preselectedFeatureId, allHiddenFeatureIds, featurePreview),
+    [allHiddenFeatureIds, controller, featurePreview, preselectedFeatureId],
   )
   const featureSelection = useMemo(
-    () => highlightedFeatureMesh(controller, selectedFeatureId, hiddenFeatureIds, featurePreview),
-    [controller, featurePreview, hiddenFeatureIds, selectedFeatureId],
+    () =>
+      highlightedFeatureMesh(controller, selectedFeatureId, allHiddenFeatureIds, featurePreview),
+    [allHiddenFeatureIds, controller, featurePreview, selectedFeatureId],
   )
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
