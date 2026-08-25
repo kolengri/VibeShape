@@ -1,8 +1,10 @@
 import type { z } from "zod"
 import { canonicalJson } from "./canonical-json"
 import {
+  documentGraphDiagnostic,
   domainDiagnostic,
   requireExistingDocumentRevision,
+  unavailableDependencyModelDiagnostic,
   zodDiagnosticIssues,
 } from "./command-support"
 import type {
@@ -12,9 +14,9 @@ import type {
   DomainDiagnostic,
 } from "./commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "./document"
+import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import type { draftIdSchema } from "./identifiers"
-import { readExtrusionFeatureParameters } from "./part-design"
-import { isSketchExternalModelReference, type SketchRecord, sketchRecordSchema } from "./sketch"
+import { type SketchRecord, sketchRecordSchema } from "./sketch"
 
 type SketchCommand = Extract<
   DocumentCommand,
@@ -32,13 +34,20 @@ function sketchesEqual(left: SketchRecord, right: SketchRecord) {
   return canonicalJson(left) === canonicalJson(right)
 }
 
-function sketchHasExternalDependents(snapshot: DocumentSnapshot, sketchId: string) {
-  return snapshot.sketches.some((sketch) =>
-    (sketch.externalReferences ?? []).some(
-      (reference) =>
-        !isSketchExternalModelReference(reference) && reference.sourceSketchId === sketchId,
-    ),
-  )
+function sketchDependents(snapshot: DocumentSnapshot, sketchId: SketchRecord["id"]) {
+  const graph = createDocumentDependencyGraphFromSnapshot(snapshot)
+  if (!graph.ok)
+    return { ok: false, diagnostic: documentGraphDiagnostic(graph.diagnostic) } as const
+  if (graph.graph.dependencyModelIssues.length > 0) {
+    return {
+      ok: false,
+      diagnostic: unavailableDependencyModelDiagnostic(graph.graph.dependencyModelIssues),
+    } as const
+  }
+  return {
+    ok: true,
+    blockers: graph.graph.deletionBlockersFor({ kind: "sketch", id: sketchId }),
+  } as const
 }
 
 function invalidSketchCollection(error: z.ZodError): DomainDiagnostic {
@@ -152,28 +161,6 @@ function reduceRemovedEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "The sketch removal event does not match the current document.",
-      ),
-    }
-  }
-  if (
-    current.snapshot.features.some(
-      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === event.sketch.id,
-    )
-  ) {
-    return {
-      ok: false,
-      diagnostic: domainDiagnostic(
-        "invalid-event",
-        "A sketch referenced by an extrusion cannot be removed.",
-      ),
-    }
-  }
-  if (sketchHasExternalDependents(current.snapshot, event.sketch.id)) {
-    return {
-      ok: false,
-      diagnostic: domainDiagnostic(
-        "invalid-event",
-        "A sketch referenced by external sketch geometry cannot be removed.",
       ),
     }
   }
@@ -296,22 +283,20 @@ function createRemovedEvent(
   const sketch = current.snapshot.sketches.find(
     (candidate) => candidate.id === command.payload.sketchId,
   )
-  if (
-    sketch &&
-    current.snapshot.features.some(
-      (feature) => readExtrusionFeatureParameters(feature)?.profile.sketchId === sketch.id,
-    )
-  ) {
-    return domainDiagnostic(
-      "sketch-in-use",
-      `Sketch ${sketch.id} is referenced by an extrusion feature.`,
-    )
-  }
-  if (sketch && sketchHasExternalDependents(current.snapshot, sketch.id)) {
-    return domainDiagnostic(
-      "sketch-in-use",
-      `Sketch ${sketch.id} is referenced by external sketch geometry.`,
-    )
+  if (sketch) {
+    const graph = sketchDependents(current.snapshot, sketch.id)
+    if (!graph.ok) return graph.diagnostic
+    if (graph.blockers.length > 0) {
+      return {
+        code: "sketch-in-use",
+        message: `Sketch ${sketch.id} has document dependents.`,
+        retryable: false,
+        issues: graph.blockers.slice(0, 8).map((blocker) => ({
+          path: blocker.ownerPath,
+          message: `Remove or retarget the ${blocker.relation} dependency before deleting the sketch.`,
+        })),
+      }
+    }
   }
   return sketch
     ? {

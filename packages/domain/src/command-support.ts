@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { DocumentSnapshot } from "./document"
+import type { DocumentDependencyModelIssue, DocumentGraphDiagnostic } from "./document-graph"
 
 export const domainDiagnosticCodeSchema = z.enum([
   "invalid-command",
@@ -22,6 +23,7 @@ export const domainDiagnosticCodeSchema = z.enum([
   "feature-in-use",
   "invalid-feature-graph",
   "feature-type-unavailable",
+  "unavailable-dependency-model",
   "invalid-feature-parameters",
   "invalid-feature-content-parameters",
   "invalid-feature-dependency-count",
@@ -131,5 +133,36 @@ export function featureMutationDiagnostic(
       : input.message,
     retryable: false,
     issues: input.issues.slice(0, 8),
+  }
+}
+
+export function documentGraphDiagnostic(
+  input: DocumentGraphDiagnostic,
+  invalidEvent = false,
+): DomainDiagnostic {
+  return {
+    code: invalidEvent ? "invalid-event" : "invalid-command",
+    message: invalidEvent
+      ? "The document event produces an invalid dependency graph."
+      : "The document command produces an invalid dependency graph.",
+    retryable: false,
+    issues: [{ path: input.code, message: input.message }, ...input.issues].slice(0, 8),
+  }
+}
+
+export function unavailableDependencyModelDiagnostic(
+  issues: readonly DocumentDependencyModelIssue[],
+  invalidEvent = false,
+): DomainDiagnostic {
+  return {
+    code: invalidEvent ? "invalid-event" : "unavailable-dependency-model",
+    message: invalidEvent
+      ? "The document event requires an unavailable feature dependency model."
+      : "A feature dependency model is unavailable for this destructive operation.",
+    retryable: false,
+    issues: issues.slice(0, 8).map((issue) => ({
+      path: issue.ownerPath,
+      message: `Feature type ${issue.typeKey} must declare its semantic inputs before deletion is safe.`,
+    })),
   }
 }

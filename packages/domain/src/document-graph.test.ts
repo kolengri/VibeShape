@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { createDocumentDependencyGraph, type DocumentNodeRef } from "./document-graph"
+import {
+  createDocumentDependencyGraph,
+  createDocumentDependencyGraphFromSnapshot,
+  type DocumentNodeRef,
+  deriveLegacyHistory,
+} from "./document-graph"
 import { createLengthQuantity } from "./units"
 
 const id = (value: string) => `00000000-0000-7000-8000-00000000000${value}`
@@ -95,6 +100,57 @@ const extrusion = (value: string, profileSketchId: string, references: unknown[]
 })
 
 describe("createDocumentDependencyGraph", () => {
+  it("derives sketch, extrusion, and supported-sketch history from a v0 snapshot", () => {
+    const result = deriveLegacyHistory({
+      sketches: [supportedSketch("2", "3"), sketch("1")],
+      features: [extrusion("3", "1")],
+    })
+    expect(result).toEqual({
+      ok: true,
+      history: [
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("3") },
+        { kind: "sketch", id: id("2") },
+      ],
+    })
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [supportedSketch("2", "3"), sketch("1")],
+        features: [extrusion("3", "1")],
+      }),
+    ).toMatchObject({ ok: true })
+  })
+
+  it("uses per-kind source ordinals and deterministic keys for independent nodes", () => {
+    const snapshot = {
+      sketches: [sketch("2"), sketch("1")],
+      features: [feature("9"), feature("1")],
+    }
+    expect(deriveLegacyHistory(snapshot)).toEqual({
+      ok: true,
+      history: [
+        { kind: "feature", id: id("9") },
+        { kind: "sketch", id: id("2") },
+        { kind: "feature", id: id("1") },
+        { kind: "sketch", id: id("1") },
+      ],
+    })
+    expect(deriveLegacyHistory(snapshot)).toEqual(deriveLegacyHistory(snapshot))
+  })
+
+  it("fails snapshot derivation for missing sources and cycles", () => {
+    expect(deriveLegacyHistory({ sketches: [], features: [feature("1", ["9"])] })).toMatchObject({
+      ok: false,
+      diagnostic: { code: "missing-node" },
+    })
+    expect(
+      deriveLegacyHistory({
+        sketches: [supportedSketch("1", "2")],
+        features: [extrusion("2", "1")],
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "cycle" } })
+  })
+
   it("builds a deterministic feature dependency graph", () => {
     const result = createDocumentDependencyGraph({
       sketches: [],
@@ -232,6 +288,32 @@ describe("createDocumentDependencyGraph", () => {
     expect(
       result.graph.dependenciesOf({ kind: "feature", id: id("2") } as DocumentNodeRef),
     ).toEqual([{ kind: "feature", id: id("1") }])
+    expect(result.graph.dependencyModelIssues).toEqual([
+      {
+        featureId: id("1"),
+        ownerPath: "features.0.type",
+        typeKey: "org.vibeshape.test.core@0.1.0:org.vibeshape.test.feature.box#1",
+      },
+      {
+        featureId: id("2"),
+        ownerPath: "features.1.type",
+        typeKey: "org.vibeshape.test.core@0.1.0:org.vibeshape.test.feature.box#1",
+      },
+    ])
+    expect(
+      result.graph.deletionBlockersFor({ kind: "feature", id: id("1") } as DocumentNodeRef),
+    ).toEqual([
+      {
+        dependent: { kind: "feature", id: id("2") },
+        ownerPath: "features.1.dependencies.0",
+        relation: "feature-dependency",
+      },
+      {
+        dependent: { kind: "feature", id: id("2") },
+        ownerPath: "features.1.references.0.featureId",
+        relation: "feature-topology-reference",
+      },
+    ])
   })
 
   it("builds extrusion-profile, sketch-support, and external-sketch relations", () => {

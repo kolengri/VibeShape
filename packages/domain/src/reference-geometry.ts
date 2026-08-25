@@ -60,6 +60,21 @@ function datumPlaneInvariant(feature: FeatureRecord) {
   )
 }
 
+export function hasCompleteDatumPlaneDependencyModel(feature: FeatureRecord) {
+  const parameters = readDatumPlaneFeatureParameters(feature)
+  if (!parameters) return false
+  if (parameters.support.kind === "origin-plane") {
+    return feature.dependencies.length === 0 && feature.references.length === 0
+  }
+  const ownerId = parameters.support.reference.featureId
+  return (
+    feature.dependencies.length === 1 &&
+    feature.dependencies[0] === ownerId &&
+    feature.references.length === 1 &&
+    feature.references[0]?.featureId === ownerId
+  )
+}
+
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
 
 function resolveDatumPlaneParameters(parameters: unknown, variables: VariableValues) {

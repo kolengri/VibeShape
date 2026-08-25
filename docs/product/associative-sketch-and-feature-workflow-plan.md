@@ -397,6 +397,9 @@ deletion, reorder, scheduling, persistence, or UI eligibility.
 
 ### Slice 0B — command and replay integration
 
+Status: implemented for command/event integrity and graph-owned deletion protection. Dirty-root projection remains
+part of the rebuild integration work.
+
 - Validate the document graph after candidate command reduction and during replay.
 - Replace command-specific deletion checks with graph-owned incoming-dependency checks.
 - Project sketch changes through document relations into feature dirty roots.

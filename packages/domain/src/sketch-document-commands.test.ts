@@ -247,10 +247,89 @@ describe("sketch document commands", () => {
         actor,
         payload: { sketchId },
       }),
-    ).toMatchObject({ ok: false, diagnostic: { code: "sketch-in-use" } })
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "sketch-in-use",
+        issues: [{ path: "features.0.parameters.profile.sketchId" }],
+      },
+    })
     expect(reduceDocumentEvent(referenced, removal.event)).toMatchObject({
       ok: false,
-      diagnostic: { code: "invalid-event" },
+      diagnostic: {
+        code: "invalid-event",
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: "features.0.parameters.profile.sketchId" }),
+        ]),
+      },
+    })
+  })
+
+  test("blocks destructive deletion when an unavailable feature has no semantic-input model", () => {
+    const created = createDocument()
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: commandId(123),
+      documentId,
+      baseRevision: 1,
+      issuedAt,
+      actor,
+      payload: { sketch: sketch() },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+    const removal = applyDocumentCommand(added.snapshot, {
+      kind: "org.vibeshape.sketch.remove",
+      schemaVersion: 1,
+      commandId: commandId(124),
+      documentId,
+      baseRevision: added.snapshot.revision,
+      issuedAt,
+      actor,
+      payload: { sketchId },
+    })
+    if (!removal.ok) throw new Error(removal.diagnostic.message)
+    const unavailable = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: dependentSketchId,
+      type: {
+        moduleId: "org.example.unavailable",
+        moduleVersion: "1.0.0",
+        typeId: "org.example.feature.profile-consumer",
+        schemaVersion: 1,
+      },
+      parameters: { profile: { sketchId } },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    const snapshot = { ...added.snapshot, features: [unavailable] }
+
+    expect(
+      applyDocumentCommand(snapshot, {
+        kind: "org.vibeshape.sketch.remove",
+        schemaVersion: 1,
+        commandId: commandId(125),
+        documentId,
+        baseRevision: snapshot.revision,
+        issuedAt,
+        actor,
+        payload: { sketchId },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "unavailable-dependency-model",
+        issues: [{ path: "features.0.type" }],
+      },
+    })
+    expect(reduceDocumentEvent(snapshot, removal.event)).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-event",
+        issues: [{ path: "features.0.type" }],
+      },
     })
   })
 
