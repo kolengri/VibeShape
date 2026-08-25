@@ -113,8 +113,9 @@ export function viewerSketches(
 export function withActiveSketchDisplay(
   committed: readonly ViewerSketch[],
   active: ViewerSketch | null | undefined,
+  includeActive = true,
 ): readonly ViewerSketch[] {
-  if (!active) return committed
+  if (!active || !includeActive) return committed
   return [...committed.filter(({ sketchId }) => sketchId !== active.sketchId), active]
 }
 
@@ -699,8 +700,8 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   }, [allHiddenFeatureIds, committedMeshes, featurePreview])
   const sketches = useMemo(() => {
     const committed = viewerSketches(controller, hiddenSketchIds)
-    return withActiveSketchDisplay(committed, activeSketchDisplay)
-  }, [activeSketchDisplay, controller, hiddenSketchIds])
+    return withActiveSketchDisplay(committed, activeSketchDisplay, sketchContext?.mode === "orbit")
+  }, [activeSketchDisplay, controller, hiddenSketchIds, sketchContext?.mode])
   const featurePreselection = useMemo(
     () =>
       highlightedFeatureMesh(controller, preselectedFeatureId, allHiddenFeatureIds, featurePreview),
