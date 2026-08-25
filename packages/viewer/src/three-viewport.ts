@@ -94,10 +94,29 @@ export type ViewerSketchCurveCandidate = Readonly<{
   sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc"
 }>
 
+export type ViewerModelPointCandidate = Readonly<{
+  kind: "model-point"
+  label: string
+  featureId: string
+  candidateId: string
+  position: ViewerVector3
+}>
+
+export type ViewerModelLineCandidate = Readonly<{
+  kind: "model-line"
+  label: string
+  featureId: string
+  candidateId: string
+  start: ViewerVector3
+  end: ViewerVector3
+}>
+
 export type ViewerSketchReferenceCandidate =
   | ViewerSketchPointCandidate
   | ViewerSketchLineCandidate
   | ViewerSketchCurveCandidate
+  | ViewerModelPointCandidate
+  | ViewerModelLineCandidate
 
 export type ViewerVector3 = readonly [number, number, number]
 
@@ -347,6 +366,9 @@ function sameSelection(left: ViewerSelection | null, right: ViewerSelection | nu
 
 function sketchReferenceCandidateKey(candidate: ViewerSketchReferenceCandidate | null) {
   if (!candidate) return null
+  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+    return `${candidate.kind}:${candidate.featureId}:${candidate.candidateId}`
+  }
   const entityId =
     candidate.kind === "line"
       ? candidate.sourceLineId
@@ -356,10 +378,32 @@ function sketchReferenceCandidateKey(candidate: ViewerSketchReferenceCandidate |
   return `${candidate.kind ?? "point"}:${candidate.sourceSketchId}:${entityId}`
 }
 
-function sketchReferenceLinePositions(
-  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate,
+function isViewerSketchPointCandidate(
+  candidate: ViewerSketchReferenceCandidate,
+): candidate is ViewerSketchPointCandidate | ViewerModelPointCandidate {
+  return candidate.kind === "point" || candidate.kind === "model-point"
+}
+
+function isViewerSketchLineCandidate(
+  candidate: ViewerSketchReferenceCandidate,
+): candidate is ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate {
+  return candidate.kind === "line" || candidate.kind === "curve" || candidate.kind === "model-line"
+}
+
+function sketchReferenceEntityId(
+  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate,
 ) {
-  if (candidate.kind === "line") return new Float32Array([...candidate.start, ...candidate.end])
+  if (candidate.kind === "line") return candidate.sourceLineId
+  if (candidate.kind === "curve") return candidate.sourceEntityId
+  return candidate.candidateId
+}
+
+function sketchReferenceLinePositions(
+  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate,
+) {
+  if (candidate.kind === "line" || candidate.kind === "model-line") {
+    return new Float32Array([...candidate.start, ...candidate.end])
+  }
   const positions: number[] = []
   for (let index = 1; index < candidate.points.length; index += 1) {
     const start = candidate.points[index - 1]
@@ -557,11 +601,11 @@ class ThreeGeometryViewport implements GeometryViewport {
   #featureSelection: ViewerMesh | null = null
   #preselection: ViewerSelection | null = null
   #selection: ViewerSelection | null = null
-  #sketchPointCandidates: readonly ViewerSketchPointCandidate[] = []
+  #sketchPointCandidates: readonly (ViewerSketchPointCandidate | ViewerModelPointCandidate)[] = []
   #sketchPointObject: Points | null = null
   #sketchLineObjects = new Map<
     LineSegments,
-    ViewerSketchLineCandidate | ViewerSketchCurveCandidate
+    ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate
   >()
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
@@ -742,10 +786,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#setSketchPointPreselection(null)
     disposeModelGroup(this.#sketchPointCandidateGroup)
-    this.#sketchPointCandidates = candidates.filter(
-      (candidate): candidate is ViewerSketchPointCandidate =>
-        candidate.kind !== "line" && candidate.kind !== "curve",
-    )
+    this.#sketchPointCandidates = candidates.filter(isViewerSketchPointCandidate)
     this.#sketchLineObjects.clear()
     this.#sketchPointObject = null
     if (this.#sketchPointCandidates.length > 0) {
@@ -763,14 +804,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#sketchPointCandidateGroup.add(points)
     }
     for (const candidate of candidates) {
-      if (candidate.kind !== "line" && candidate.kind !== "curve") continue
+      if (!isViewerSketchLineCandidate(candidate)) continue
       const line = new LineSegments(
         createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
         this.#sketchLineCandidateMaterial,
       )
-      line.name = `sketch-reference-${candidate.kind}:${
-        candidate.kind === "line" ? candidate.sourceLineId : candidate.sourceEntityId
-      }`
+      line.name = `sketch-reference-${candidate.kind}:${sketchReferenceEntityId(candidate)}`
       line.renderOrder = 8
       this.#sketchLineObjects.set(line, candidate)
       this.#sketchPointCandidateGroup.add(line)
@@ -1032,7 +1071,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (sameSketchReferenceCandidate(candidate, this.#sketchPointPreselection)) return
     this.#sketchPointPreselection = candidate
     disposeModelGroup(this.#sketchPointPreselectionGroup)
-    if (candidate?.kind === "line" || candidate?.kind === "curve") {
+    if (candidate && isViewerSketchLineCandidate(candidate)) {
       const line = new LineSegments(
         createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
         this.#sketchLinePreselectionMaterial,

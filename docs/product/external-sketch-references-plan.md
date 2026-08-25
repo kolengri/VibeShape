@@ -149,8 +149,8 @@ cannot alter evaluation order.
 3. **Editor interaction**: provide the icon-only `Use external geometry` tool, external inference,
    visible preselection, source labels, a reference list, visibility toggle, and accessible removal.
 4. **Feature-edge Use**: the exact vertex/LINE payload, stable model-reference schema, progressive rebuild,
-   and fail-closed worker resolution are implemented. Add graphical model candidate preselection, direct
-   creation, and repair diagnostics.
+   fail-closed worker resolution, and graphical normal/orbit candidate selection are implemented. Add
+   curved feature edges, overlap cycling, source filters, and repair diagnostics.
 5. **Intersection**: add bounded analytical face/surface intersections with `Intersection`/`Pierce`
    relations. Do not approximate this with mesh intersections.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace

@@ -1,5 +1,5 @@
-import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
 import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
+import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
   FeatureRecord,
@@ -96,7 +96,7 @@ export function externalReferenceMatchesCandidate(
     : reference.kind !== "line" && reference.sourcePointId === candidate.sourcePointId
 }
 
-function attachProjectedPoint(
+export function attachExternalProjectedPoint(
   sketch: SketchRecord,
   projectedPointId: SketchEntityId,
   selectedEntityIds: readonly SketchEntityId[],
@@ -169,7 +169,7 @@ export function applyExternalSketchCandidate(
     }
   }
   const projectedPointId = createBrowserSketchEntityId()
-  return attachProjectedPoint(
+  return attachExternalProjectedPoint(
     {
       ...draft,
       externalReferences: [

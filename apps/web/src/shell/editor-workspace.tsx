@@ -36,6 +36,11 @@ import {
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
+  applyExternalModelCandidate,
+  type ExternalModelGeometryCandidate,
+  externalModelGeometryCandidates,
+} from "../features/sketch/external-model-geometry"
+import {
   applyExternalSketchCandidate,
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
@@ -52,7 +57,11 @@ import type {
 } from "../features/sketch/sketch-tool"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
-import { GeometryViewport, type GeometryViewportSketchContext } from "./geometry-viewport"
+import {
+  GeometryViewport,
+  type GeometryViewportSketchContext,
+  viewerMeshes,
+} from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
@@ -129,8 +138,10 @@ function SketchWorkspaceContent({
   sketch,
   supportFeatures,
   externalContextGeometry,
+  externalModelCandidates,
   externalPointCandidates,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
@@ -144,6 +155,7 @@ function SketchWorkspaceContent({
         draft: sketch.draft,
         editorTool: sketch.editorTool,
         externalContextGeometry,
+        externalModelCandidates,
         externalPointCandidates,
         originPlaneVisibility: model.originPlaneVisibility,
         selectedConstraintId: sketch.selectedConstraintId,
@@ -369,10 +381,33 @@ function viewerReferenceCandidate(
   }
 }
 
+function viewerModelReferenceCandidate(
+  candidate: ExternalModelGeometryCandidate,
+): ViewerSketchReferenceCandidate {
+  if (candidate.kind === "model-line") {
+    return {
+      candidateId: candidate.candidateId,
+      end: candidate.end.world,
+      featureId: candidate.featureId,
+      kind: "model-line",
+      label: candidate.label,
+      start: candidate.start.world,
+    }
+  }
+  return {
+    candidateId: candidate.candidateId,
+    featureId: candidate.featureId,
+    kind: "model-point",
+    label: candidate.label,
+    position: candidate.position,
+  }
+}
+
 function matchingExternalCandidate(
   candidates: readonly ExternalSketchGeometryCandidate[],
   hit: ViewerSketchReferenceCandidate,
 ) {
+  if (hit.kind === "model-point" || hit.kind === "model-line") return undefined
   return candidates.find((candidate) => {
     if (candidate.sourceSketchId !== hit.sourceSketchId || candidate.kind !== hit.kind) return false
     if (candidate.kind === "line") {
@@ -404,7 +439,8 @@ function useWorkspaceSketchContext(
 }
 
 function useSelectExternalGeometry(
-  candidates: readonly ExternalSketchGeometryCandidate[],
+  sketchCandidates: readonly ExternalSketchGeometryCandidate[],
+  modelCandidates: readonly ExternalModelGeometryCandidate[],
   draft: SketchRecord | null,
   selectedEntityIds: readonly SketchEntityId[],
   onDraftChange: (draft: SketchRecord) => void,
@@ -412,12 +448,22 @@ function useSelectExternalGeometry(
   return useCallback(
     (hit: ViewerSketchReferenceCandidate) => {
       if (!draft) return
-      const candidate = matchingExternalCandidate(candidates, hit)
-      if (!candidate) return
-      const next = applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+      const modelCandidate = modelCandidates.find(
+        (candidate) =>
+          candidate.kind === hit.kind &&
+          (hit.kind === "model-point" || hit.kind === "model-line") &&
+          candidate.featureId === hit.featureId &&
+          candidate.candidateId === hit.candidateId,
+      )
+      const sketchCandidate = matchingExternalCandidate(sketchCandidates, hit)
+      const next = modelCandidate
+        ? applyExternalModelCandidate(draft, modelCandidate, selectedEntityIds)
+        : sketchCandidate
+          ? applyExternalSketchCandidate(draft, sketchCandidate, selectedEntityIds)
+          : draft
       if (next !== draft) onDraftChange(next)
     },
-    [candidates, draft, onDraftChange, selectedEntityIds],
+    [draft, modelCandidates, onDraftChange, selectedEntityIds, sketchCandidates],
   )
 }
 
@@ -425,6 +471,7 @@ function WorkspaceContentView({
   activeSketchDisplay,
   editVisibility,
   externalContextGeometry,
+  externalModelCandidates,
   externalPointCandidates,
   props,
   sketchActive,
@@ -435,6 +482,7 @@ function WorkspaceContentView({
   activeSketchDisplay: SketchDisplayRecord | null
   editVisibility: Readonly<{ featureIds: readonly FeatureId[]; sketchIds: readonly SketchId[] }>
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   props: WorkspaceContentProps
   sketchActive: boolean
@@ -467,6 +515,7 @@ function WorkspaceContentView({
           sketch={props.sketch}
           supportFeatures={supportFeatures}
           externalContextGeometry={externalContextGeometry}
+          externalModelCandidates={externalModelCandidates}
           externalPointCandidates={externalPointCandidates}
         />
       }
@@ -511,12 +560,46 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     () => usableExternalGeometryCandidates(externalContextGeometry),
     [externalContextGeometry],
   )
+  const visibleModelFeatureIds = useMemo(
+    () =>
+      viewerMeshes(props.controller, props.model.hiddenFeatureIds, editVisibility.featureIds)
+        .filter(({ appearance }) => appearance !== "datum")
+        .map(({ featureId }) => featureId as FeatureId),
+    [editVisibility.featureIds, props.controller, props.model.hiddenFeatureIds],
+  )
+  const t = useTranslations("app.shell.viewport")
+  const externalModelCandidates = useMemo(() => {
+    const rebuild = props.controller.report?.rebuild
+    if (!snapshot || !props.sketch.draft || !frame || !rebuild?.ok) return []
+    return externalModelGeometryCandidates(
+      rebuild.response.geometry,
+      snapshot.features,
+      visibleModelFeatureIds,
+      props.sketch.draft,
+      frame,
+      {
+        line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
+        point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
+      },
+    )
+  }, [
+    frame,
+    props.controller.report?.rebuild,
+    props.sketch.draft,
+    snapshot,
+    t,
+    visibleModelFeatureIds,
+  ])
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
-    () => externalPointCandidates.map(viewerReferenceCandidate),
-    [externalPointCandidates],
+    () => [
+      ...externalPointCandidates.map(viewerReferenceCandidate),
+      ...externalModelCandidates.map(viewerModelReferenceCandidate),
+    ],
+    [externalModelCandidates, externalPointCandidates],
   )
   const selectExternalPoint = useSelectExternalGeometry(
     externalPointCandidates,
+    externalModelCandidates,
     props.sketch.draft,
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
@@ -534,6 +617,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
       activeSketchDisplay={activeSketchDisplay}
       editVisibility={editVisibility}
       externalContextGeometry={externalContextGeometry}
+      externalModelCandidates={externalModelCandidates}
       externalPointCandidates={externalPointCandidates}
       props={props}
       sketchActive={sketchActive}
