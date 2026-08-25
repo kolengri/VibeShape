@@ -43,7 +43,7 @@ const copy = {
   dimensionInvalid: "Invalid dimension",
   dimensions: "Dimensions",
   distance: "Distance",
-  externalReferenceDescription: "Use a point from an earlier sketch.",
+  externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
   attachSelectedPoint: "Attach",
   editConstraint: "Edit dimension",

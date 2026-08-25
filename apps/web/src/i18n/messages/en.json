@@ -652,7 +652,7 @@
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "externalReferences": "External references",
-          "externalReferenceDescription": "Activate Use in the viewport and click a blue source point or line. A used line remains read-only and can drive sketch constraints.",
+          "externalReferenceDescription": "Activate Use in the viewport and click a blue source point, line, or analytical curve. Used geometry remains read-only; its stable points, lines, and round curves support compatible constraints.",
           "useExternalGeometry": "Use external geometry",
           "attachSelectedPoint": "Attach",
           "noExternalReferences": "No external points are in use.",
@@ -723,7 +723,7 @@
       "viewport": {
         "externalLineCandidate": "{sketch} · Line {ordinal}",
         "externalPointCandidate": "{sketch} · Point {ordinal}",
-        "externalCurveContext": "{sketch} · {kind, select, circle {Circle} arc {Arc} ellipse {Ellipse} elliptical-arc {Elliptical arc} other {Curve}} {ordinal}",
+        "externalCurveContext": "{sketch} · {kind, select, circle {Circle} arc {Arc} ellipse {Ellipse} ellipticalArc {Elliptical arc} other {Curve}} {ordinal}",
         "ariaLabel": "3D viewport",
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",

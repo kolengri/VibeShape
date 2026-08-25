@@ -385,4 +385,37 @@ describe("sketchRecordSchema", () => {
 
     expect(parsed.success).toBe(true)
   })
+
+  test("accepts a read-only external curve as an associative constraint target", () => {
+    const fixture = validSketch()
+    const projectedCircleId = "018f0000-0000-7000-8000-000000000307"
+    const projectedCenterId = "018f0000-0000-7000-8000-000000000308"
+    const parsed = sketchRecordSchema.safeParse({
+      ...fixture,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000309",
+          kind: "curve",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000310",
+          sourceEntityId: "018f0000-0000-7000-8000-000000000311",
+          sourceType: "circle",
+          projectedEntityId: projectedCircleId,
+          projectedType: "circle",
+          projectedPointIds: [projectedCenterId],
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(205),
+          type: "point-on-curve",
+          pointId: pointA,
+          curveId: projectedCircleId,
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(true)
+  })
 })

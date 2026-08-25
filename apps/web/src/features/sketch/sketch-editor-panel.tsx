@@ -33,7 +33,7 @@ import {
 } from "./external-sketch-points"
 import {
   compatibleSketchConstraintTools,
-  compatibleSketchDimensionTools,
+  compatibleSketchDimensionToolsForSelection,
   type SketchDimensionKind,
   selectedSketchConstraintEntities,
 } from "./sketch-constraint-tools"
@@ -133,7 +133,7 @@ function constraintValue(constraint: SketchRecord["constraints"][number]) {
   )
 }
 
-function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorPanelCopy) {
+function dimensionOptions(kinds: readonly SketchDimensionKind[], copy: SketchEditorPanelCopy) {
   const labels: Record<SketchDimensionKind, string> = {
     angle: copy.angle,
     diameter: copy.diameter,
@@ -145,7 +145,7 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
     "secondary-axis-diameter": copy.secondaryAxisDiameter,
     "vertical-distance": copy.verticalDistance,
   }
-  return compatibleSketchDimensionTools(entities).map((kind) => ({ kind, label: labels[kind] }))
+  return kinds.map((kind) => ({ kind, label: labels[kind] }))
 }
 
 function SketchDimensionForm({
@@ -678,7 +678,11 @@ function ExternalReferencesSection({
               >
                 <span className="min-w-0 flex-1 truncate text-xs">
                   {candidate?.label ??
-                    (reference.kind === "line" ? reference.sourceLineId : reference.sourcePointId)}
+                    (reference.kind === "line"
+                      ? reference.sourceLineId
+                      : reference.kind === "curve"
+                        ? reference.sourceEntityId
+                        : reference.sourcePointId)}
                 </span>
                 <Button
                   type="button"
@@ -755,7 +759,8 @@ export function SketchEditorPanel({
     () => selectedSketchConstraintEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
   )
-  const options = dimensionOptions(entities, copy)
+  const optionKinds = compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
+  const options = dimensionOptions(optionKinds, copy)
   const apply = (definition: SketchConstraintDefinition) => {
     onDraftChange(appendSketchConstraint(draft, definition, createBrowserSketchConstraintId))
   }

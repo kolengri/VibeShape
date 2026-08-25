@@ -7,7 +7,11 @@ import {
 } from "@vibeshape/domain/identifiers"
 import {
   MAX_SKETCH_COORDINATE_MM,
+  sketchArcEntitySchema,
+  sketchCircleEntitySchema,
   type SketchConstraint,
+  sketchEllipseEntitySchema,
+  sketchEllipticalArcEntitySchema,
   type SketchEntity,
   type SketchRecord,
   sketchLineEntitySchema,
@@ -89,12 +93,56 @@ const externalLineSchema = z
     { message: "External line endpoints must match the projected line entity." },
   )
 
+const externalCurveEntitySchema = z.discriminatedUnion("type", [
+  sketchCircleEntitySchema,
+  sketchArcEntitySchema,
+  sketchEllipseEntitySchema,
+  sketchEllipticalArcEntitySchema,
+])
+
+function curvePointIds(curve: z.infer<typeof externalCurveEntitySchema>): readonly string[] {
+  if (curve.type === "circle") return [curve.centerPointId]
+  if (curve.type === "arc") return [curve.centerPointId, curve.startPointId, curve.endPointId]
+  if (curve.type === "ellipse") {
+    return [curve.centerPointId, curve.primaryAxisPointId, curve.secondaryAxisPointId]
+  }
+  return [
+    curve.centerPointId,
+    curve.primaryAxisPointId,
+    curve.secondaryAxisPointId,
+    curve.startPointId,
+    curve.endPointId,
+  ]
+}
+
+const externalCurveSchema = z
+  .object({
+    curve: externalCurveEntitySchema,
+    points: z.array(sketchPointEntitySchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine(({ curve, points }, context) => {
+    const expectedIds = curvePointIds(curve)
+    const pointIds = points.map(({ id }) => id)
+    if (
+      expectedIds.length !== pointIds.length ||
+      expectedIds.some((id, index) => id !== pointIds[index])
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["points"],
+        message: "External curve points must match the projected curve definition in role order.",
+      })
+    }
+  })
+
 const sketchCompilationInputSchema = z
   .object({
     revision: revisionSchema,
     sketch: sketchRecordSchema,
     externalPoints: z.array(sketchPointEntitySchema).max(4_990).default([]),
     externalLines: z.array(externalLineSchema).max(1_663).default([]),
+    externalCurves: z.array(externalCurveSchema).max(1_247).default([]),
     variables: variableDefinitionsSchema.default([]),
     continuation: sketchSolveContinuationSchema.nullable().default(null),
     draggedPoints: z.array(sketchDragTargetSchema).max(128).default([]),
@@ -141,30 +189,32 @@ function validateDraggedPoints(input: SketchCompilationSchemaInput, context: z.R
 
 function validateExternalGeometry(input: SketchCompilationSchemaInput, context: z.RefinementCtx) {
   const entityIds = new Set(input.sketch.entities.map((entity) => entity.id))
-  for (const [index, point] of input.externalPoints.entries()) {
-    if (entityIds.has(point.id)) {
-      context.addIssue({
-        code: "custom",
-        path: ["externalPoints", index, "id"],
-        message: "External sketch point IDs cannot collide with authored entities.",
-      })
-    }
-    entityIds.add(point.id)
-  }
-  for (const [index, external] of input.externalLines.entries()) {
-    for (const entity of [external.startPoint, external.endPoint, external.line]) {
-      if (entityIds.has(entity.id)) {
-        context.addIssue({
-          code: "custom",
-          path: ["externalLines", index],
-          message: "External sketch line IDs cannot collide with other sketch entities.",
-        })
-      }
-      entityIds.add(entity.id)
-    }
-  }
+  validateExternalEntityGroups(
+    input.externalPoints.map((point) => [point]),
+    "externalPoints",
+    "External sketch point IDs cannot collide with authored entities.",
+    entityIds,
+    context,
+  )
+  validateExternalEntityGroups(
+    input.externalLines.map(({ startPoint, endPoint, line }) => [startPoint, endPoint, line]),
+    "externalLines",
+    "External sketch line IDs cannot collide with other sketch entities.",
+    entityIds,
+    context,
+  )
+  validateExternalEntityGroups(
+    input.externalCurves.map(({ points, curve }) => [...points, curve]),
+    "externalCurves",
+    "External sketch curve IDs cannot collide with other sketch entities.",
+    entityIds,
+    context,
+  )
   if (
-    input.sketch.entities.length + input.externalPoints.length + input.externalLines.length * 3 <=
+    input.sketch.entities.length +
+      input.externalPoints.length +
+      input.externalLines.length * 3 +
+      input.externalCurves.reduce((count, curve) => count + curve.points.length + 1, 0) <=
     4_990
   ) {
     return
@@ -174,6 +224,22 @@ function validateExternalGeometry(input: SketchCompilationSchemaInput, context: 
     path: ["externalLines"],
     message: "Authored and external sketch geometry exceed the solver safety limit.",
   })
+}
+
+function validateExternalEntityGroups(
+  groups: readonly (readonly { id: string }[])[],
+  path: "externalCurves" | "externalLines" | "externalPoints",
+  message: string,
+  entityIds: Set<string>,
+  context: z.RefinementCtx,
+) {
+  for (const [index, group] of groups.entries()) {
+    for (const entity of group) {
+      if (entityIds.has(entity.id))
+        context.addIssue({ code: "custom", path: [path, index], message })
+      entityIds.add(entity.id)
+    }
+  }
 }
 
 export type SketchSolveContinuation = Readonly<z.infer<typeof sketchSolveContinuationSchema>>
@@ -602,14 +668,17 @@ function initialPointValues(
   return values
 }
 
-function initialCircleRadii(sketch: SketchRecord, continuation: SketchSolveContinuation | null) {
+function initialCircleRadii(
+  entities: readonly SketchEntity[],
+  continuation: SketchSolveContinuation | null,
+) {
   const radii = new Map(
-    sketch.entities.flatMap((entity) =>
+    entities.flatMap((entity) =>
       entity.type === "circle" ? [[entity.id, entity.radius] as const] : [],
     ),
   )
   for (const circle of continuation?.circles ?? []) {
-    const entity = sketch.entities.find((candidate) => candidate.id === circle.entityId)
+    const entity = entities.find((candidate) => candidate.id === circle.entityId)
     if (entity?.type !== "circle") return null
     radii.set(circle.entityId, circle.radius)
   }
@@ -990,6 +1059,7 @@ function addSketchEntities(
   sketch: SketchRecord,
   externalPoints: readonly Extract<SketchEntity, { type: "point" }>[],
   externalLines: readonly z.infer<typeof externalLineSchema>[],
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
   pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
   circleRadii: ReadonlyMap<SketchEntityId, number>,
 ) {
@@ -997,10 +1067,28 @@ function addSketchEntities(
     if (entity.type !== "point") continue
     addSketchPointEntity(builder, entity, pointValues)
   }
-  for (const point of [
-    ...externalPoints,
-    ...externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
-  ]) {
+  addFixedExternalPoints(
+    builder,
+    [
+      ...externalPoints,
+      ...externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+      ...externalCurves.flatMap(({ points }) => points),
+    ],
+    pointValues,
+  )
+  for (const entity of sketch.entities) {
+    if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
+  }
+  for (const { line } of externalLines) builder.addLine(line)
+  addFixedExternalCurves(builder, externalCurves, pointValues, circleRadii)
+}
+
+function addFixedExternalPoints(
+  builder: ProductionSketchBuilder,
+  points: readonly Extract<SketchEntity, { type: "point" }>[],
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  for (const point of points) {
     const value = pointValues.get(point.id)
     if (!value) throw new Error(`External sketch point ${point.id} is missing initial values.`)
     builder.addPoint(point.id, value.x, value.y)
@@ -1008,10 +1096,24 @@ function addSketchEntities(
       pointA: builder.entity(point.id),
     })
   }
-  for (const entity of sketch.entities) {
-    if (entity.type !== "point") addSketchCurveEntity(builder, entity, pointValues, circleRadii)
+}
+
+function addFixedExternalCurves(
+  builder: ProductionSketchBuilder,
+  curves: readonly z.infer<typeof externalCurveSchema>[],
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  circleRadii: ReadonlyMap<SketchEntityId, number>,
+) {
+  for (const { curve } of curves) {
+    addSketchCurveEntity(builder, curve, pointValues, circleRadii)
+    if (curve.type === "circle") {
+      builder.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.diameter, {
+        entityA: builder.entity(curve.id),
+        value: curve.radius * 2,
+        workplane: 0,
+      })
+    }
   }
-  for (const { line } of externalLines) builder.addLine(line)
 }
 
 function addSketchConstraints(
@@ -1044,11 +1146,15 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
       ...input.data.sketch.entities,
       ...input.data.externalPoints,
       ...input.data.externalLines.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]),
+      ...input.data.externalCurves.flatMap(({ points }) => points),
     ],
     input.data.continuation,
     input.data.draggedPoints,
   )
-  const circleRadii = initialCircleRadii(input.data.sketch, input.data.continuation)
+  const circleRadii = initialCircleRadii(
+    [...input.data.sketch.entities, ...input.data.externalCurves.map(({ curve }) => curve)],
+    input.data.continuation,
+  )
   if (!pointValues || !circleRadii) {
     return compilationFailure(
       "invalid-continuation",
@@ -1063,6 +1169,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     input.data.sketch,
     input.data.externalPoints,
     input.data.externalLines,
+    input.data.externalCurves,
     pointValues,
     circleRadii,
   )

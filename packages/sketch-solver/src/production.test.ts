@@ -662,4 +662,75 @@ describe("production sketch compilation", () => {
     }
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.parallel)
   })
+
+  test("compiles a fixed external circle as an associative curve target", () => {
+    const externalCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000208")
+    const externalCircleId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000209")
+    const record = sketchRecordSchema.parse({
+      ...sketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000210",
+          kind: "curve",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000211",
+          sourceEntityId: "018f0000-0000-7000-8000-000000000212",
+          sourceType: "circle",
+          projectedEntityId: externalCircleId,
+          projectedType: "circle",
+          projectedPointIds: [externalCenterId],
+        },
+      ],
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000213",
+          type: "point-on-curve",
+          pointId: pointA,
+          curveId: externalCircleId,
+        },
+      ],
+    })
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: record,
+      variables,
+      externalCurves: [
+        {
+          points: [
+            {
+              schemaVersion: 0,
+              id: externalCenterId,
+              type: "point",
+              x: 12,
+              y: 8,
+              construction: true,
+            },
+          ],
+          curve: {
+            schemaVersion: 0,
+            id: externalCircleId,
+            type: "circle",
+            centerPointId: externalCenterId,
+            radius: 6,
+            construction: true,
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const constraintTypes: number[] = []
+    for (
+      let offset = 0;
+      offset < result.compiled.system.constraintRecords.length;
+      offset += SKETCH_SOLVER_ABI.constraintRecordStride
+    ) {
+      constraintTypes.push(result.compiled.system.constraintRecords[offset + 2] as number)
+    }
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.diameter)
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle)
+  })
 })

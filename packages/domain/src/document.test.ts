@@ -72,4 +72,65 @@ describe("document sketch references", () => {
       }).success,
     ).toBe(true)
   })
+
+  it("validates an external curve against its stable source entity and type", () => {
+    const center = pointSketch(4)
+    const sourceCircleId = id("3501")
+    const source = {
+      ...center,
+      entities: [
+        ...center.entities,
+        {
+          schemaVersion: 0 as const,
+          id: sourceCircleId,
+          type: "circle" as const,
+          construction: false,
+          centerPointId: sketchPointId(center),
+          radius: 4,
+        },
+      ],
+    }
+    const target = {
+      ...pointSketch(5),
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: id("3502"),
+          kind: "curve" as const,
+          sourceSketchId: source.id,
+          sourceEntityId: sourceCircleId,
+          sourceType: "circle" as const,
+          projectedEntityId: id("3503"),
+          projectedType: "circle" as const,
+          projectedPointIds: [id("3504")],
+        },
+      ],
+    }
+    const snapshot = {
+      schemaVersion: 0,
+      id: id("3505"),
+      revision: 1,
+      name: "Curve reference",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [source, target],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    }
+
+    expect(documentSnapshotSchema.safeParse(snapshot).success).toBe(true)
+    expect(
+      documentSnapshotSchema.safeParse({
+        ...snapshot,
+        sketches: [
+          source,
+          {
+            ...target,
+            externalReferences: [{ ...target.externalReferences[0], sourceType: "arc" }],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
 })

@@ -3,11 +3,14 @@ import {
   type SupportFrame,
   sketchFrame,
 } from "@vibeshape/application/support-frame"
+import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
 import type {
   DocumentSnapshot,
   FeatureRecord,
+  SketchExternalCurveReference,
   SketchExternalLineReference,
   SketchExternalPointReference,
+  SketchPoint2,
   SketchRecord,
 } from "@vibeshape/domain"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
@@ -32,7 +35,7 @@ function sourcePointResult(
 }
 
 export type ResolvedExternalSketchGeometry = Readonly<
-  Pick<SketchCompilationInput, "externalLines" | "externalPoints">
+  Pick<SketchCompilationInput, "externalCurves" | "externalLines" | "externalPoints">
 >
 
 function resolveExternalPoint(
@@ -101,6 +104,157 @@ function resolveExternalLine(
   }
 }
 
+function sourcePointMap(source: SketchRecord, result: SolveSketchRecordResult) {
+  return new Map(
+    source.entities.flatMap((entity) => {
+      if (entity.type !== "point") return []
+      const point = sourcePointResult(source, result, entity.id)
+      return point ? ([[entity.id, point]] as const) : []
+    }),
+  )
+}
+
+function projectedPointEntity(id: string, point: SketchPoint2) {
+  return { schemaVersion: 0 as const, id, type: "point" as const, construction: true, ...point }
+}
+
+type ExternalCurveInput = NonNullable<SketchCompilationInput["externalCurves"]>[number]
+
+function requiredProjectedPoint(
+  points: ExternalCurveInput["points"],
+  index: number,
+  message: string,
+) {
+  const point = points[index]
+  if (!point) throw new Error(message)
+  return point
+}
+
+function requiredProjectedRadius(projection: { radius?: number }) {
+  if (!projection.radius) throw new Error("External projected circle radius is unavailable.")
+  return projection.radius
+}
+
+function projectedCurveEntity(
+  reference: SketchExternalCurveReference,
+  projection: NonNullable<ReturnType<typeof projectSketchCurveBetweenFrames>>,
+  points: ExternalCurveInput["points"],
+): ExternalCurveInput["curve"] {
+  const centerPoint = requiredProjectedPoint(
+    points,
+    0,
+    "External projected curve requires a center point.",
+  )
+  const base = { schemaVersion: 0 as const, id: reference.projectedEntityId, construction: true }
+  if (projection.type === "circle") {
+    return {
+      ...base,
+      type: "circle",
+      centerPointId: centerPoint.id,
+      radius: requiredProjectedRadius(projection),
+    }
+  }
+  const firstPoint = requiredProjectedPoint(
+    points,
+    1,
+    "External projected curve defining points are unavailable.",
+  )
+  const secondPoint = requiredProjectedPoint(
+    points,
+    2,
+    "External projected curve defining points are unavailable.",
+  )
+  if (projection.type === "arc") {
+    return {
+      ...base,
+      type: "arc",
+      centerPointId: centerPoint.id,
+      startPointId: firstPoint.id,
+      endPointId: secondPoint.id,
+    }
+  }
+  if (projection.type === "ellipse") {
+    return {
+      ...base,
+      type: "ellipse",
+      centerPointId: centerPoint.id,
+      primaryAxisPointId: firstPoint.id,
+      secondaryAxisPointId: secondPoint.id,
+    }
+  }
+  const startPoint = requiredProjectedPoint(
+    points,
+    3,
+    "External projected elliptical arc endpoints are unavailable.",
+  )
+  const endPoint = requiredProjectedPoint(
+    points,
+    4,
+    "External projected elliptical arc endpoints are unavailable.",
+  )
+  return {
+    ...base,
+    type: "elliptical-arc",
+    centerPointId: centerPoint.id,
+    primaryAxisPointId: firstPoint.id,
+    secondaryAxisPointId: secondPoint.id,
+    startPointId: startPoint.id,
+    endPointId: endPoint.id,
+  }
+}
+
+function materializeProjectedCurve(
+  reference: SketchExternalCurveReference,
+  projection: NonNullable<ReturnType<typeof projectSketchCurveBetweenFrames>>,
+): ExternalCurveInput {
+  if (projection.type !== reference.projectedType) {
+    throw new Error(
+      `External source curve ${reference.sourceEntityId} changed projected geometry type.`,
+    )
+  }
+  const points = projection.points.map((point, index) => {
+    const id = reference.projectedPointIds[index]
+    if (!id) throw new Error("External projected curve point identities are incomplete.")
+    return projectedPointEntity(id, point)
+  })
+  return { points, curve: projectedCurveEntity(reference, projection, points) }
+}
+
+function resolveExternalCurve(
+  reference: SketchExternalCurveReference,
+  source: SketchRecord,
+  result: SolveSketchRecordResult,
+  sourceFrame: SupportFrame,
+  targetFrame: SupportFrame,
+): NonNullable<SketchCompilationInput["externalCurves"]>[number] {
+  const sourceCurve = source.entities.find(({ id }) => id === reference.sourceEntityId)
+  if (
+    !sourceCurve ||
+    sourceCurve.type === "point" ||
+    sourceCurve.type === "line" ||
+    sourceCurve.type !== reference.sourceType
+  ) {
+    throw new Error(`External source curve ${reference.sourceEntityId} is unavailable.`)
+  }
+  const solvedRadius =
+    sourceCurve.type === "circle" && result.ok
+      ? result.solution.circles.find(({ entityId }) => entityId === sourceCurve.id)?.radius
+      : undefined
+  const projection = projectSketchCurveBetweenFrames(
+    sourceFrame,
+    targetFrame,
+    sourceCurve,
+    sourcePointMap(source, result),
+    solvedRadius,
+  )
+  if (!projection) {
+    throw new Error(
+      `External source curve ${reference.sourceEntityId} has a degenerate projection.`,
+    )
+  }
+  return materializeProjectedCurve(reference, projection)
+}
+
 function sourceSolve(
   results: SketchSolveCache,
   document: DocumentSnapshot,
@@ -142,6 +296,7 @@ export async function resolveExternalSketchGeometry(
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
   const points: NonNullable<SketchCompilationInput["externalPoints"]> = []
   const lines: NonNullable<SketchCompilationInput["externalLines"]> = []
+  const curves: NonNullable<SketchCompilationInput["externalCurves"]> = []
   for (const reference of sketch.externalReferences ?? []) {
     const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
     if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
@@ -152,7 +307,11 @@ export async function resolveExternalSketchGeometry(
       lines.push(resolveExternalLine(reference, source, result, sourceFrame, targetFrame))
       continue
     }
+    if (reference.kind === "curve") {
+      curves.push(resolveExternalCurve(reference, source, result, sourceFrame, targetFrame))
+      continue
+    }
     points.push(resolveExternalPoint(reference, source, result, sourceFrame, targetFrame))
   }
-  return { externalLines: lines, externalPoints: points }
+  return { externalCurves: curves, externalLines: lines, externalPoints: points }
 }

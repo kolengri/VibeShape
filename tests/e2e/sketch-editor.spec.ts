@@ -29,10 +29,7 @@ test.describe("full sketch editor", () => {
       element.dataset.testViewportIdentity = "persistent"
     })
 
-    await page
-      .getByRole("complementary", { name: "Task panel" })
-      .getByRole("button", { name: "Create sketch" })
-      .click()
+    await page.getByRole("button", { name: "Create sketch", exact: true }).click()
     await confirmSketchPlane(page)
 
     const passiveViewport = page.locator("section[data-passive='true']")
@@ -156,6 +153,37 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+  })
+
+  test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const curveCandidate = drawing.locator(
+      "[data-sketch-available-external-geometry-count] > g:has(polyline)",
+    )
+    await expect(curveCandidate).toHaveCount(1)
+
+    await curveCandidate.dispatchEvent("pointerdown")
+
+    await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
+    await expect(
+      page.getByRole("complementary", { name: "Sketch task panel" }).getByText(/Circle 1/),
+    ).toBeVisible()
   })
 
   test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
