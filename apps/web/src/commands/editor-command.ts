@@ -27,6 +27,7 @@ export const editorCommandIds = {
   sketchMirror: "org.vibeshape.editor.sketch.modify.mirror",
   sketchOffset: "org.vibeshape.editor.sketch.modify.offset",
   sketchOrbitView: "org.vibeshape.editor.sketch.view.orbit",
+  sketchFinalContext: "org.vibeshape.editor.sketch.view.final-context",
   sketchInscribedPolygon: "org.vibeshape.editor.sketch.tool.inscribed-polygon",
   sketchPoint: "org.vibeshape.editor.sketch.tool.point",
   sketchRectangle: "org.vibeshape.editor.sketch.tool.rectangle",
@@ -82,6 +83,7 @@ export type EditorCommandIcon =
   | "mirror"
   | "offset"
   | "orbit-view"
+  | "final-context"
   | "inscribed-polygon"
   | "midpoint-line"
   | "model"
@@ -130,6 +132,7 @@ export type EditorCommandLabelKey =
   | "sketchMirror"
   | "sketchOffset"
   | "sketchOrbitView"
+  | "sketchFinalContext"
   | "sketchInscribedPolygon"
   | "sketchPoint"
   | "sketchRectangle"
@@ -154,6 +157,7 @@ export type EditorCommandDisabledReason =
   | "noSketchRedo"
   | "noSketchUndo"
   | "readOnly"
+  | "requiresExistingSketch"
   | "requiresSketch"
   | "selectProfile"
   | "selectTwoSolids"

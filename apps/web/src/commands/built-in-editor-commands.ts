@@ -34,6 +34,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     redoSketch: () => void
     setSketchCameraMode: (mode: SketchCameraMode) => void
     setSketchConstruction: (construction: boolean) => void
+    setSketchFinalContext: (visible: boolean) => void
     setSketchTool: (tool: SketchEditorTool) => void
     switchWorkspace: (workspace: EditorWorkspaceName) => void
     undoSketch: () => void
@@ -45,6 +46,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     extrusionAvailable: boolean
     sketchConstruction: boolean
     sketchCameraMode: SketchCameraMode
+    sketchFinalContext: boolean
     sketchRedoAvailable: boolean
     slotFromSelectionAvailable: boolean
     sketchTool: SketchEditorTool
@@ -385,6 +387,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "final-context",
+    id: editorCommandIds.sketchFinalContext,
+    labelKey: "sketchFinalContext",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-view",
+  },
+  {
+    group: "sketch",
     icon: "normal-view",
     id: editorCommandIds.sketchNormalView,
     labelKey: "sketchNormalView",
@@ -434,6 +444,12 @@ function requiresSketch(context: BuiltInEditorCommandContext) {
   return isActiveSketchEditorTool(context.state.activeSketchTool)
     ? editorCommandEnabled()
     : editorCommandDisabled("requiresSketch")
+}
+
+function requiresExistingSketch(context: BuiltInEditorCommandContext) {
+  return context.state.activeSketchTool?.kind === "edit-sketch"
+    ? editorCommandEnabled()
+    : editorCommandDisabled("requiresExistingSketch")
 }
 
 function sketchToolHandler(
@@ -636,6 +652,14 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     id: editorCommandIds.sketchNormalView,
     isActive: ({ state }) => state.sketchCameraMode === "normal",
     isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
+    ownerModuleId: sketchOwner,
+  },
+  {
+    execute: ({ actions, state }) => actions.setSketchFinalContext(!state.sketchFinalContext),
+    getEligibility: requiresExistingSketch,
+    id: editorCommandIds.sketchFinalContext,
+    isActive: ({ state }) => state.sketchFinalContext,
+    isToolbarVisible: ({ state }) => state.activeSketchTool?.kind === "edit-sketch",
     ownerModuleId: sketchOwner,
   },
   {

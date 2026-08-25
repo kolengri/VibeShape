@@ -127,6 +127,7 @@ type WorkspaceContentProps = Readonly<{
     selectedEntityIds: readonly SketchEntityId[]
     selectedProfile: SketchProfileSelector | null
     selectedSketch: SketchRecord | null
+    showFinalContext: boolean
   }>
   workspace: EditorWorkspaceName
 }>
@@ -241,15 +242,18 @@ export function ModelingSketchViewportStack({
   modeling,
   sketch,
   sketchActive,
+  status,
 }: Readonly<{
   modeling: ReactNode
   sketch: ReactNode
   sketchActive: boolean
+  status?: ReactNode
 }>) {
   return (
     <div className="relative grid min-h-0">
       {modeling}
       {sketchActive ? sketch : null}
+      {sketchActive ? status : null}
     </div>
   )
 }
@@ -309,6 +313,18 @@ function workspaceEditVisibility(
   return sketchActive && snapshot && activeSketchId
     ? sketchEditContextVisibility(snapshot, activeSketchId)
     : { featureIds: [], sketchIds: [] }
+}
+
+function workspaceDisplayVisibility(
+  rollbackVisibility: Readonly<{
+    featureIds: readonly FeatureId[]
+    sketchIds: readonly SketchId[]
+  }>,
+  activeSketchId: SketchId | undefined,
+  showFinalContext: boolean,
+) {
+  if (!showFinalContext || !activeSketchId) return rollbackVisibility
+  return { featureIds: [], sketchIds: [activeSketchId] }
 }
 
 function useWorkspaceExternalGeometry(
@@ -491,6 +507,7 @@ function WorkspaceContentView({
   sketchContext,
   supportFeatures,
   onDisplayChange,
+  showFinalContext,
 }: Readonly<{
   activeSketchDisplay: SketchDisplayRecord | null
   editVisibility: Readonly<{ featureIds: readonly FeatureId[]; sketchIds: readonly SketchId[] }>
@@ -502,7 +519,9 @@ function WorkspaceContentView({
   sketchContext: GeometryViewportSketchContext | undefined
   supportFeatures: readonly FeatureRecord[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
+  showFinalContext: boolean
 }>) {
+  const t = useTranslations("app.shell.viewport")
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
@@ -533,6 +552,18 @@ function WorkspaceContentView({
         />
       }
       sketchActive={sketchActive}
+      status={
+        showFinalContext ? (
+          <div
+            className="pointer-events-none absolute right-3 top-3 z-30 rounded-md border border-border/80 bg-background/90 px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur"
+            data-testid="sketch-final-context-status"
+          >
+            <span className="font-medium text-foreground">{t("finalContextLabel")}</span>
+            <span aria-hidden="true"> · </span>
+            {t("finalContextDisplayOnly")}
+          </div>
+        ) : null
+      }
     />
   )
 }
@@ -558,9 +589,14 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   )
   const sketchActive = props.workspace === "sketch"
   const activeSketchId = props.sketch.draft?.id
-  const editVisibility = useMemo(
+  const rollbackVisibility = useMemo(
     () => workspaceEditVisibility(snapshot, activeSketchId, sketchActive),
     [activeSketchId, sketchActive, snapshot],
+  )
+  const displayVisibility = useMemo(
+    () =>
+      workspaceDisplayVisibility(rollbackVisibility, activeSketchId, props.sketch.showFinalContext),
+    [activeSketchId, props.sketch.showFinalContext, rollbackVisibility],
   )
   const externalContextGeometry = useWorkspaceExternalGeometry(
     snapshot,
@@ -575,10 +611,10 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   )
   const visibleModelFeatureIds = useMemo(
     () =>
-      viewerMeshes(props.controller, props.model.hiddenFeatureIds, editVisibility.featureIds)
+      viewerMeshes(props.controller, props.model.hiddenFeatureIds, rollbackVisibility.featureIds)
         .filter(({ appearance }) => appearance !== "datum")
         .map(({ featureId }) => featureId as FeatureId),
-    [editVisibility.featureIds, props.controller, props.model.hiddenFeatureIds],
+    [props.controller, props.model.hiddenFeatureIds, rollbackVisibility.featureIds],
   )
   const t = useTranslations("app.shell.viewport")
   const projectedExternalModelCandidates = useMemo(() => {
@@ -631,7 +667,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   return (
     <WorkspaceContentView
       activeSketchDisplay={activeSketchDisplay}
-      editVisibility={editVisibility}
+      editVisibility={displayVisibility}
       externalContextGeometry={externalContextGeometry}
       externalModelCandidates={externalModelCandidates}
       externalPointCandidates={externalPointCandidates}
@@ -640,6 +676,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
       sketchContext={sketchContext}
       supportFeatures={supportFeatures}
       onDisplayChange={setActiveSketchDisplay}
+      showFinalContext={props.sketch.showFinalContext}
     />
   )
 }
@@ -693,6 +730,7 @@ type EditorWorkspaceProps = Readonly<{
   selection: ViewerSelection | null
   sketchConstruction: boolean
   sketchCameraMode: SketchCameraMode
+  sketchFinalContext: boolean
   sketchDraft: SketchRecord | null
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
@@ -790,6 +828,7 @@ function EditorContent({
         selectedEntityIds: props.sketchSelectedEntityIds,
         selectedProfile: props.sketchSelectedProfile,
         selectedSketch,
+        showFinalContext: props.sketchFinalContext,
       }}
     />
   )

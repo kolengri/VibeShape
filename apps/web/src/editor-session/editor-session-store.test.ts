@@ -202,6 +202,30 @@ describe("editor session store", () => {
     })
   })
 
+  it("shows final context only while editing a committed sketch and resets it between sessions", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch("Initial")
+
+    store.getState().actions.setSketchFinalContext(true)
+    expect(store.getState().sketch.showFinalContext).toBe(false)
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchFinalContext(true)
+    expect(store.getState().sketch.showFinalContext).toBe(true)
+
+    store.getState().actions.saveSketch(sketch)
+    expect(store.getState().sketch.showFinalContext).toBe(false)
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchFinalContext(true)
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().sketch.showFinalContext).toBe(false)
+
+    store.getState().actions.beginSketchCreate(sketch)
+    store.getState().actions.setSketchFinalContext(true)
+    expect(store.getState().sketch.showFinalContext).toBe(false)
+  })
+
   it("records bounded local sketch history and clears selection on undo and redo", () => {
     const store = createEditorSessionStore()
     const initial = createSketch("Draft 0")

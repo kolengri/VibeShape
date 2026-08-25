@@ -433,6 +433,12 @@ support-aligned editing view without recreating the viewer or changing the draft
 selection. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
 open parts of this slice.
 
+Editing an existing sketch also exposes **Show final result** as a transient presentation command. It keeps
+the active committed sketch hidden, restores downstream geometry behind the draft, and labels the result as
+display-only. Reference eligibility continues to use the rollback candidate set, so final-result geometry
+cannot be persisted through **Use**. The command does not replace the still-required interleaved History
+authority or rollback cursor.
+
 - Replace separate Sketches/Features presentation with History plus Bodies.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
 - Add a history cursor and rollback presentation while editing an earlier sketch or feature.
