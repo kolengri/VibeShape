@@ -1,8 +1,10 @@
 import type { z } from "zod"
 import {
+  documentGraphDiagnostic,
   domainDiagnostic,
   featureMutationDiagnostic,
   requireExistingDocumentRevision,
+  unavailableDependencyModelDiagnostic,
 } from "./command-support"
 import type {
   DocumentCommand,
@@ -11,6 +13,7 @@ import type {
   DomainDiagnostic,
 } from "./commands"
 import type { DocumentSnapshot } from "./document"
+import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import {
   addFeature,
   featureRecordsEqual,
@@ -20,7 +23,6 @@ import {
 } from "./feature-collection"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import type { draftIdSchema } from "./identifiers"
-import { isSketchExternalModelReference } from "./sketch"
 
 type FeatureCommand = Extract<
   DocumentCommand,
@@ -46,15 +48,20 @@ type FeatureEvent =
   | FeatureSuppressionChangedEvent
 type TransactionId = z.infer<typeof draftIdSchema> | null
 
-function featureSupportsSketch(snapshot: DocumentSnapshot, featureId: FeatureRecord["id"]) {
-  return snapshot.sketches.some(
-    ({ externalReferences, support }) =>
-      support?.reference.featureId === featureId ||
-      (externalReferences ?? []).some(
-        (reference) =>
-          isSketchExternalModelReference(reference) && reference.reference.featureId === featureId,
-      ),
-  )
+function featureDependents(snapshot: DocumentSnapshot, featureId: FeatureRecord["id"]) {
+  const graph = createDocumentDependencyGraphFromSnapshot(snapshot)
+  if (!graph.ok)
+    return { ok: false, diagnostic: documentGraphDiagnostic(graph.diagnostic) } as const
+  if (graph.graph.dependencyModelIssues.length > 0) {
+    return {
+      ok: false,
+      diagnostic: unavailableDependencyModelDiagnostic(graph.graph.dependencyModelIssues),
+    } as const
+  }
+  return {
+    ok: true,
+    blockers: graph.graph.deletionBlockersFor({ kind: "feature", id: featureId }),
+  } as const
 }
 
 function reduceAddedEvent(
@@ -154,16 +161,6 @@ function reduceRemovedEvent(
       ),
     }
   }
-  if (featureSupportsSketch(current.snapshot, event.feature.id)) {
-    return {
-      ok: false,
-      diagnostic: domainDiagnostic(
-        "invalid-event",
-        "A feature supporting or driving an existing sketch cannot be removed.",
-      ),
-    }
-  }
-
   const mutation = removeFeature(current.snapshot.features, event.feature.id)
 
   return mutation.ok
@@ -339,22 +336,27 @@ function createRemovedEvent(
       `Feature ${command.payload.featureId} does not exist in the document.`,
     )
   }
-  if (featureSupportsSketch(current.snapshot, command.payload.featureId)) {
-    return domainDiagnostic(
-      "feature-in-use",
-      `Feature ${command.payload.featureId} supports or drives an existing sketch.`,
-    )
+  const mutation = removeFeature(current.snapshot.features, command.payload.featureId)
+  if (!mutation.ok) return featureMutationDiagnostic(mutation.diagnostic)
+  const graph = featureDependents(current.snapshot, command.payload.featureId)
+  if (!graph.ok) return graph.diagnostic
+  if (graph.blockers.length > 0) {
+    return {
+      code: "feature-in-use",
+      message: `Feature ${command.payload.featureId} has document dependents.`,
+      retryable: false,
+      issues: graph.blockers.slice(0, 8).map((blocker) => ({
+        path: blocker.ownerPath,
+        message: `Remove or retarget the ${blocker.relation} dependency before deleting the feature.`,
+      })),
+    }
   }
 
-  const mutation = removeFeature(current.snapshot.features, command.payload.featureId)
-
-  return mutation.ok
-    ? {
-        ...eventEnvelope(command, transactionId),
-        type: "org.vibeshape.feature.removed",
-        feature: featureRecordSchema.parse(feature),
-      }
-    : featureMutationDiagnostic(mutation.diagnostic)
+  return {
+    ...eventEnvelope(command, transactionId),
+    type: "org.vibeshape.feature.removed",
+    feature: featureRecordSchema.parse(feature),
+  }
 }
 
 function createSuppressionChangedEvent(

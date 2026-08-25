@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The semantic document is the source of design intent. Its document dependency graph relates sketches and features, while the parametric **feature graph** retains B-Rep evaluation and body-input authority. B-Rep is the computed exact body state; the triangle mesh is a derived visualization and manufacturing state.
+The semantic document is the source of design intent. Its document dependency graph relates sketches and features, while the parametric **feature graph** retains B-Rep evaluation and body-input authority. Every accepted document command and replayed event now validates the resulting cross-kind graph before publishing a snapshot. Legacy schema-version-0 snapshots receive a deterministic, dependency-safe transient History order for this validation; the order is not persisted until the versioned History migration is complete. B-Rep is the computed exact body state; the triangle mesh is a derived visualization and manufacturing state.
 
 ```mermaid
 flowchart LR
@@ -162,6 +162,8 @@ SPK-003 implements policy version `1` with a `0.22` maximum score and `0.035` am
 - The last valid result may be shown as a ghost, but MUST be visibly marked stale and excluded from export by default.
 
 `@vibeshape/domain/feature-graph` now implements the pure scheduling boundary. Feature schema v0 binds a stable feature and type identity to bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and optional normalized labels. Graph creation preserves presentation order separately from a deterministic stable topological order and fails closed on invalid records, duplicates, missing dependencies, self-dependencies, undeclared reference owners, and cycles.
+
+`@vibeshape/domain/document-graph` is the whole-document integrity boundary for feature dependencies, topology references, extrusion profiles, sketch supports, and external sketch references. Commands use its incoming-edge queries for deletion protection, and both command reduction and event replay reject missing cross-kind owners or cycles. Schema-version-0 snapshots derive a bounded stable topological merge from the existing sketch and feature ordinals only for transient validation. Journal-aware migration, persisted interleaved History, and History-driven UI eligibility remain separate delivery slices under [ADR-0026](../adr/0026-document-dependency-graph-and-interleaved-history.md).
 
 The injected evaluator receives only the current immutable feature record, ordered dependency results, and its previous result. It may complete asynchronously, but the scheduler awaits one node at a time to preserve deterministic dependency order. Missing cache records and explicit edits mark transitive descendants dirty; independent successful or failed results are reused. A failed or suppressed feature blocks only its dependent branch, while independent branches continue. Rejected, thrown, and malformed evaluator results become stable diagnostics rather than leaking implementation details. The domain also assembles canonical feature-content identity version `0` from handler-projected semantic parameters, ordered input hashes, slot-relative topology references, and exact runtime/provider metadata. An injected digest port keeps hashing environment-neutral and validates lowercase SHA-256 output.
 

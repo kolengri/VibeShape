@@ -3,7 +3,10 @@ import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from 
 import { documentSnapshotSchema } from "./document"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import { sketchIdSchema } from "./identifiers"
+import { boxFeatureType } from "./part-design"
+import { datumPlaneFeatureType } from "./reference-geometry"
 import { createEmptySketch } from "./sketch-edit"
+import { createLengthQuantity } from "./units"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureIds = {
@@ -30,12 +33,7 @@ function feature(
   return featureRecordSchema.parse({
     schemaVersion: 0,
     id,
-    type: {
-      moduleId: "org.vibeshape.core.part-design",
-      moduleVersion: "0.1.0",
-      typeId: "org.vibeshape.feature.test",
-      schemaVersion: 1,
-    },
+    type: boxFeatureType.type,
     parameters: { length: 10 },
     dependencies,
     references: [],
@@ -270,7 +268,13 @@ describe("feature document commands", () => {
           featureId: root.id,
         }),
       ),
-    ).toMatchObject({ ok: false, diagnostic: { code: "feature-in-use" } })
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "feature-in-use",
+        issues: [{ path: "sketches.0.support.reference.featureId" }],
+      },
+    })
   })
 
   it("blocks removal of a feature referenced by model geometry in a sketch", () => {
@@ -318,7 +322,139 @@ describe("feature document commands", () => {
           featureId: root.id,
         }),
       ),
-    ).toMatchObject({ ok: false, diagnostic: { code: "feature-in-use" } })
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "feature-in-use",
+        issues: [{ path: "sketches.0.externalReferences.0.reference.featureId" }],
+      },
+    })
+  })
+
+  it("blocks feature deletion when an unavailable feature has no semantic-input model", () => {
+    const created = createDocument()
+    const root = feature(featureIds.root)
+    const addedRoot = applyFeatureCommand(
+      created.snapshot,
+      featureCommand("org.vibeshape.feature.add", 1, { feature: root }),
+    )
+    const unavailable = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureIds.dependent,
+      type: {
+        moduleId: "org.example.unavailable",
+        moduleVersion: "1.0.0",
+        typeId: "org.example.feature.target-consumer",
+        schemaVersion: 1,
+      },
+      parameters: { targetFeatureId: root.id },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    const snapshot = documentSnapshotSchema.parse({
+      ...addedRoot.snapshot,
+      features: [root, unavailable],
+    })
+
+    expect(
+      applyDocumentCommand(
+        snapshot,
+        featureCommand("org.vibeshape.feature.remove", snapshot.revision, {
+          featureId: root.id,
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "unavailable-dependency-model",
+        issues: [{ path: "features.1.type" }],
+      },
+    })
+  })
+
+  it("treats an undeclared Datum Plane support as an incomplete dependency model", () => {
+    const created = createDocument()
+    const root = feature(featureIds.root)
+    const addedRoot = applyFeatureCommand(
+      created.snapshot,
+      featureCommand("org.vibeshape.feature.add", 1, { feature: root }),
+    )
+    const invalidDatum = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: featureIds.dependent,
+      type: datumPlaneFeatureType.type,
+      parameters: {
+        mode: "offset",
+        support: {
+          kind: "feature-face",
+          reference: {
+            schemaVersion: 0,
+            featureId: root.id,
+            kind: "face",
+            semanticRole: "primitive.box.cap.end",
+            signature: {
+              kind: "face",
+              geometryClass: "PLANE",
+              measure: 400,
+              centroid: [0, 0, 10],
+              bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+              direction: [0, 0, 1],
+              directionMode: "oriented",
+              boundaryCount: 4,
+              adjacentGeometryClasses: ["PLANE"],
+            },
+          },
+        },
+        offset: createLengthQuantity(5),
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    const addedDatum = applyDocumentCommand(
+      addedRoot.snapshot,
+      featureCommand("org.vibeshape.feature.add", addedRoot.snapshot.revision, {
+        feature: invalidDatum,
+      }),
+    )
+    if (!addedDatum.ok) throw new Error(addedDatum.diagnostic.message)
+    const cleanRemoval = applyDocumentCommand(
+      addedRoot.snapshot,
+      featureCommand("org.vibeshape.feature.remove", addedRoot.snapshot.revision, {
+        featureId: root.id,
+      }),
+    )
+    if (!cleanRemoval.ok) throw new Error(cleanRemoval.diagnostic.message)
+
+    expect(
+      applyDocumentCommand(
+        addedDatum.snapshot,
+        featureCommand("org.vibeshape.feature.remove", addedDatum.snapshot.revision, {
+          featureId: root.id,
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "unavailable-dependency-model",
+        issues: [{ path: "features.1.type" }],
+      },
+    })
+    expect(
+      reduceDocumentEvent(addedDatum.snapshot, {
+        ...cleanRemoval.event,
+        commandId: commandIds[4],
+        baseRevision: addedDatum.snapshot.revision,
+        revision: addedDatum.snapshot.revision + 1,
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-event",
+        issues: [{ path: "features.1.type" }],
+      },
+    })
   })
 
   it("rejects tampered feature events even when their payloads remain schema-valid", () => {

@@ -2,7 +2,9 @@ import { z } from "zod"
 import {
   type DomainDiagnostic,
   domainDiagnostic as diagnostic,
+  documentGraphDiagnostic,
   requireExistingDocumentRevision,
+  unavailableDependencyModelDiagnostic,
   zodDiagnosticIssues,
 } from "./command-support"
 import {
@@ -12,6 +14,7 @@ import {
   documentNameInputSchema,
   documentNameSchema,
 } from "./document"
+import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import { createFeatureDocumentEvent, reduceFeatureDocumentEvent } from "./feature-document-commands"
 import { featureRecordSchema } from "./feature-graph"
 import {
@@ -627,6 +630,39 @@ function reduceParsedEvent(
   }
 }
 
+function validateReducedDocument(
+  result: DocumentEventResult,
+  invalidEvent: boolean,
+): DocumentEventResult {
+  if (!result.ok) return result
+  const graph = createDocumentDependencyGraphFromSnapshot(result.snapshot)
+  return graph.ok
+    ? result
+    : { ok: false, diagnostic: documentGraphDiagnostic(graph.diagnostic, invalidEvent) }
+}
+
+function validateDestructiveEventDependencyModel(
+  snapshot: DocumentSnapshot | null,
+  event: DocumentEvent,
+): Extract<DocumentEventResult, { ok: false }> | undefined {
+  if (
+    !snapshot ||
+    (event.type !== "org.vibeshape.sketch.removed" &&
+      event.type !== "org.vibeshape.feature.removed")
+  ) {
+    return
+  }
+  const graph = createDocumentDependencyGraphFromSnapshot(snapshot)
+  if (!graph.ok) {
+    return { ok: false, diagnostic: documentGraphDiagnostic(graph.diagnostic, true) }
+  }
+  if (graph.graph.dependencyModelIssues.length === 0) return
+  return {
+    ok: false,
+    diagnostic: unavailableDependencyModelDiagnostic(graph.graph.dependencyModelIssues, true),
+  }
+}
+
 function createDocumentDisplayUnitsChangedEvent(
   snapshot: DocumentSnapshot | null,
   command: Extract<DocumentCommand, { kind: "org.vibeshape.document.set-display-units" }>,
@@ -770,7 +806,7 @@ export function applyDocumentCommand(
     return { ok: false, diagnostic: event }
   }
 
-  const reduced = reduceParsedEvent(snapshot, event)
+  const reduced = validateReducedDocument(reduceParsedEvent(snapshot, event), false)
   return reduced.ok ? { ok: true, snapshot: reduced.snapshot, event } : reduced
 }
 
@@ -779,10 +815,11 @@ export function reduceDocumentEvent(
   input: unknown,
 ): DocumentEventResult {
   const parsed = documentEventSchema.safeParse(input)
-
-  return parsed.success
-    ? reduceParsedEvent(snapshot, parsed.data)
-    : { ok: false, diagnostic: invalidInputDiagnostic("invalid-event", parsed.error) }
+  if (!parsed.success) {
+    return { ok: false, diagnostic: invalidInputDiagnostic("invalid-event", parsed.error) }
+  }
+  const unavailable = validateDestructiveEventDependencyModel(snapshot, parsed.data)
+  return unavailable ?? validateReducedDocument(reduceParsedEvent(snapshot, parsed.data), true)
 }
 
 export function replayDocumentEvents(inputs: readonly unknown[]): DocumentEventResult {

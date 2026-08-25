@@ -1,8 +1,17 @@
 import { isAnyObject, isArray, isString } from "is-what"
 import { type ZodError, z } from "zod"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
+import { featureTypeKey } from "./feature-type-contracts"
 import { featureIdSchema, sketchIdSchema } from "./identifiers"
-import { readExtrusionFeatureParameters } from "./part-design"
+import {
+  booleanFeatureType,
+  boxFeatureType,
+  cylinderFeatureType,
+  extrusionFeatureType,
+  legacyExtrusionFeatureType,
+  readExtrusionFeatureParameters,
+} from "./part-design"
+import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import { isSketchExternalModelReference, type SketchRecord, sketchRecordSchema } from "./sketch"
 
 const MAX_NODES = 100_256
@@ -37,6 +46,18 @@ export type DocumentGraphEdge = Readonly<{
   relation: DocumentGraphEdgeRelation
 }>
 
+export type DocumentGraphDependencyBlocker = Readonly<{
+  dependent: DocumentNodeRef
+  ownerPath: string
+  relation: DocumentGraphEdgeRelation
+}>
+
+export type DocumentDependencyModelIssue = Readonly<{
+  featureId: FeatureRecord["id"]
+  ownerPath: string
+  typeKey: string
+}>
+
 export type DocumentGraphDiagnostic = Readonly<{
   code:
     | "invalid-sketch"
@@ -60,9 +81,11 @@ export type DocumentDependencyGraph = Readonly<{
   edges: readonly DocumentGraphEdge[]
   history: readonly HistoryItemRef[]
   evaluationOrder: readonly DocumentNodeRef[]
+  dependencyModelIssues: readonly DocumentDependencyModelIssue[]
   getNode: (ref: DocumentNodeRef) => DocumentGraphNode | undefined
   dependenciesOf: (ref: DocumentNodeRef) => readonly DocumentNodeRef[]
   dependentsOf: (ref: DocumentNodeRef) => readonly DocumentNodeRef[]
+  deletionBlockersFor: (ref: DocumentNodeRef) => readonly DocumentGraphDependencyBlocker[]
 }>
 
 export type DocumentDependencyGraphResult =
@@ -78,8 +101,49 @@ type Input = Readonly<{
   history: readonly unknown[]
 }>
 
+export type LegacyDocumentSnapshot = Readonly<Pick<Input, "sketches" | "features">>
+
+export type LegacyHistoryResult =
+  | Readonly<{ ok: true; history: readonly HistoryItemRef[] }>
+  | GraphFailure
+
 function key(ref: DocumentNodeRef) {
   return `${ref.kind}:${ref.id}`
+}
+
+const dependencyCompleteFeatureTypeKeys = new Set([
+  featureTypeKey(boxFeatureType.type),
+  featureTypeKey(cylinderFeatureType.type),
+  featureTypeKey(booleanFeatureType.type),
+])
+
+function hasCompleteDependencyModel(feature: FeatureRecord) {
+  const typeKey = featureTypeKey(feature.type)
+  if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
+  if (
+    typeKey === featureTypeKey(legacyExtrusionFeatureType.type) ||
+    typeKey === featureTypeKey(extrusionFeatureType.type)
+  ) {
+    return readExtrusionFeatureParameters(feature) !== null
+  }
+  if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {
+    return hasCompleteDatumPlaneDependencyModel(feature)
+  }
+  return false
+}
+
+function dependencyModelIssues(features: readonly FeatureRecord[]) {
+  return features.flatMap((feature, index): readonly DocumentDependencyModelIssue[] =>
+    hasCompleteDependencyModel(feature)
+      ? []
+      : [
+          {
+            featureId: feature.id,
+            ownerPath: `features.${index}.type`,
+            typeKey: featureTypeKey(feature.type),
+          },
+        ],
+  )
 }
 
 function diagnostic(
@@ -619,6 +683,20 @@ function assembleGraph(
   const refForKey = (nodeKey: string) => document.byKey.get(nodeKey)?.ref
   const refsFor = (values: ReadonlySet<string>) =>
     [...values].map(refForKey).filter((ref): ref is DocumentNodeRef => Boolean(ref))
+  const deletionBlockersFor = (ref: DocumentNodeRef) =>
+    collected.edges.flatMap((edge): readonly DocumentGraphDependencyBlocker[] =>
+      key(edge.source) === key(ref)
+        ? [
+            {
+              dependent: edge.target,
+              ownerPath:
+                collected.ownerPathByEdge.get(edgeKey(edge.source, edge.target, edge.relation)) ??
+                key(edge.target),
+              relation: edge.relation,
+            },
+          ]
+        : [],
+    )
   return {
     nodes: document.nodes,
     edges: collected.edges,
@@ -626,10 +704,162 @@ function assembleGraph(
     evaluationOrder: history.history
       .map((ref) => refForKey(key(ref)))
       .filter((ref): ref is DocumentNodeRef => Boolean(ref)),
+    dependencyModelIssues: dependencyModelIssues(document.features),
     getNode: (ref) => document.byKey.get(key(ref)),
     dependenciesOf: (ref) => refsFor(collected.dependencies.get(key(ref)) ?? new Set()),
     dependentsOf: (ref) => refsFor(collected.dependents.get(key(ref)) ?? new Set()),
+    deletionBlockersFor,
   }
+}
+
+type HeapItem = Readonly<{ nodeKey: string; ref: DocumentNodeRef }>
+type HeapCompare = (left: HeapItem, right: HeapItem) => number
+
+function legacyOrdinalMap(document: IndexedDocument) {
+  const ordinal = new Map<string, number>()
+  document.sketches.forEach((record, index) => {
+    ordinal.set(`sketch:${record.id}`, index)
+  })
+  document.features.forEach((record, index) => {
+    ordinal.set(`feature:${record.id}`, index)
+  })
+  return ordinal
+}
+
+function legacyHeapCompare(ordinal: ReadonlyMap<string, number>): HeapCompare {
+  return (left, right) => {
+    const ordinalDifference =
+      (ordinal.get(left.nodeKey) ?? Number.MAX_SAFE_INTEGER) -
+      (ordinal.get(right.nodeKey) ?? Number.MAX_SAFE_INTEGER)
+    if (ordinalDifference !== 0) return ordinalDifference
+    const kindDifference =
+      left.ref.kind < right.ref.kind ? -1 : left.ref.kind > right.ref.kind ? 1 : 0
+    if (kindDifference !== 0) return kindDifference
+    return left.ref.id < right.ref.id ? -1 : left.ref.id > right.ref.id ? 1 : 0
+  }
+}
+
+function heapPush(heap: HeapItem[], item: HeapItem, compare: HeapCompare) {
+  heap.push(item)
+  let index = heap.length - 1
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2)
+    if (compare(heap[parent] as HeapItem, item) <= 0) break
+    heap[index] = heap[parent] as HeapItem
+    index = parent
+  }
+  heap[index] = item
+}
+
+function heapPop(heap: HeapItem[], compare: HeapCompare): HeapItem | undefined {
+  const first = heap[0]
+  const last = heap.pop()
+  if (!first || !last || heap.length === 0) return first
+  let index = 0
+  while (true) {
+    const left = index * 2 + 1
+    if (left >= heap.length) break
+    const right = left + 1
+    const child =
+      right < heap.length && compare(heap[right] as HeapItem, heap[left] as HeapItem) < 0
+        ? right
+        : left
+    if (compare(heap[child] as HeapItem, last) >= 0) break
+    heap[index] = heap[child] as HeapItem
+    index = child
+  }
+  heap[index] = last
+  return first
+}
+
+function legacyIndegree(collected: CollectedEdges) {
+  return new Map(
+    [...collected.dependencies].map(([nodeKey, dependencies]) => [nodeKey, dependencies.size]),
+  )
+}
+
+function enqueueLegacyRoots(
+  document: IndexedDocument,
+  indegree: ReadonlyMap<string, number>,
+  heap: HeapItem[],
+  compare: HeapCompare,
+) {
+  for (const node of document.nodes) {
+    if (indegree.get(key(node.ref)) === 0)
+      heapPush(heap, { nodeKey: key(node.ref), ref: node.ref }, compare)
+  }
+}
+
+function releaseLegacyDependents(
+  item: HeapItem,
+  document: IndexedDocument,
+  collected: CollectedEdges,
+  indegree: Map<string, number>,
+  heap: HeapItem[],
+  compare: HeapCompare,
+) {
+  for (const dependent of collected.dependents.get(item.nodeKey) ?? []) {
+    const degree = (indegree.get(dependent) ?? 1) - 1
+    indegree.set(dependent, degree)
+    if (degree !== 0) continue
+    const ref = document.byKey.get(dependent)?.ref
+    if (ref) heapPush(heap, { nodeKey: dependent, ref }, compare)
+  }
+}
+
+function legacyCycleFailure(
+  document: IndexedDocument,
+  collected: CollectedEdges,
+  indegree: ReadonlyMap<string, number>,
+) {
+  const temporaryHistory: IndexedHistory = {
+    history: document.nodes.map((node) => node.ref),
+    historyIndex: new Map(document.nodes.map((node, index) => [key(node.ref), index])),
+  }
+  return diagnostic(
+    "cycle",
+    "Document dependencies must form an acyclic graph.",
+    cycleIssues(temporaryHistory, collected, indegree),
+  )
+}
+
+function deriveHeapOrder(
+  document: IndexedDocument,
+  collected: CollectedEdges,
+): LegacyHistoryResult {
+  const compare = legacyHeapCompare(legacyOrdinalMap(document))
+  const heap: HeapItem[] = []
+  const indegree = legacyIndegree(collected)
+  enqueueLegacyRoots(document, indegree, heap, compare)
+  const order: DocumentNodeRef[] = []
+  while (heap.length > 0) {
+    const item = heapPop(heap, compare)
+    if (!item) break
+    order.push(item.ref)
+    releaseLegacyDependents(item, document, collected, indegree, heap, compare)
+  }
+  if (order.length === document.nodes.length) return { ok: true, history: order }
+  return legacyCycleFailure(document, collected, indegree)
+}
+
+export function deriveLegacyHistory(input: LegacyDocumentSnapshot): LegacyHistoryResult {
+  try {
+    const document = parseRecords({ ...input, history: [] })
+    if (isFailure(document)) return document
+    const collected = collectEdges(document)
+    if (isFailure(collected)) return collected
+    return deriveHeapOrder(document, collected)
+  } catch {
+    return diagnostic("invalid-history", "Document graph input could not be evaluated safely.")
+  }
+}
+
+export function createDocumentDependencyGraphFromSnapshot(
+  input: LegacyDocumentSnapshot,
+): DocumentDependencyGraphResult {
+  const history = deriveLegacyHistory(input)
+  if (isFailure(history)) return history
+  return createDocumentDependencyGraph({ ...input, history: history.history })
 }
 
 export function createDocumentDependencyGraph(input: Input): DocumentDependencyGraphResult {

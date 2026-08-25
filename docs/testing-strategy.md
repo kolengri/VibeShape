@@ -27,9 +27,12 @@ forward-order failures, cross-kind cycles, deterministic independent-node orderi
 parent/child adjacency when two semantic relations share one node pair. Sketch and feature IDs are separate
 typed namespaces even when their UUID text matches.
 
-The initial graph is an integrity foundation only. Before it becomes authoritative for deletion, reorder,
-dirty propagation, persistence, or UI eligibility, tests must also cover unavailable feature dependency
-models and the migration/replay matrix required by
+Command and event tests require the same graph validation after reduction, including missing cross-kind
+sources, sketch-support/feature-profile cycles, tampered replay, and graph-owned deletion blockers. Legacy
+schema-version-0 snapshots derive a deterministic transient topological order for that validation without
+changing their persisted bytes. Before the graph becomes authoritative for reorder, dirty propagation,
+persistence, or UI eligibility, tests must also cover unavailable feature dependency models and the
+migration/replay matrix required by
 [ADR-0026](adr/0026-document-dependency-graph-and-interleaved-history.md): complete legacy journal replay,
 late snapshot plus suffix recovery, deterministic snapshot-derived fallback for snapshot-only or missing,
 corrupt, and inconsistent journal prefixes, migration idempotence, interrupted persistence, document copy, and
