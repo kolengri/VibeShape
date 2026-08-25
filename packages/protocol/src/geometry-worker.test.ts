@@ -120,6 +120,83 @@ describe("geometry worker protocol", () => {
     ).toBe(true)
   })
 
+  it("accepts exact circular edges and rejects malformed analytical frames", () => {
+    const base = {
+      candidateId: "edge:circle",
+      kind: "edge" as const,
+      lineageTokens: [],
+      signature: {
+        kind: "edge" as const,
+        geometryClass: "CIRCLE",
+        measure: Math.PI * 10,
+        centroid: [0, 0, 0],
+        bounds: { min: [-5, -5, 0], max: [5, 5, 0] },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }
+    const frame = {
+      center: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      radius: 5,
+    }
+
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: { kind: "circle-edge", ...frame },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "arc-edge",
+          ...frame,
+          start: [5, 0, 0],
+          middle: [0, 5, 0],
+          end: [-5, 0, 0],
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "circle-edge",
+          ...frame,
+          yAxis: [1, 0, 0],
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "arc-edge",
+          ...frame,
+          start: [5, 0, 0],
+          middle: [0, 4, 0],
+          end: [5, 0, 0],
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "arc-edge",
+          ...frame,
+          start: [5, 0, 0],
+          middle: [4, 0, 3],
+          end: [0, 5, 0],
+        },
+      }).success,
+    ).toBe(false)
+  })
+
   it("rejects mismatched, non-finite, and degenerate reference geometry", () => {
     const base = {
       candidateId: "vertex:0",

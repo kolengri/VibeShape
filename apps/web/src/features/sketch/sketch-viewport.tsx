@@ -699,7 +699,7 @@ function displayPoints(sketch: SketchRecord, solution: SolvedSketchWire | null) 
 type ExternalReference = NonNullable<SketchRecord["externalReferences"]>[number]
 
 function displayExternalCurve(
-  reference: Extract<ExternalReference, { kind: "curve" }>,
+  reference: Extract<ExternalReference, { kind: "curve" | "model-curve" }>,
   solvedById: ReadonlyMap<string, SketchPoint2>,
 ) {
   const projected = projectedExternalSketchEntities([reference])
@@ -732,34 +732,46 @@ function displayExternalLine(
   }
 }
 
+function displayExternalReference(
+  reference: ExternalReference,
+  solvedById: ReadonlyMap<string, SketchPoint2>,
+) {
+  if (reference.kind === "curve" || reference.kind === "model-curve") {
+    const curve = displayExternalCurve(reference, solvedById)
+    return curve ? { curves: [curve.curve], lines: [], points: curve.points } : null
+  }
+  if (reference.kind === "line" || reference.kind === "model-line") {
+    const line = displayExternalLine(reference, solvedById)
+    return line ? { curves: [], lines: [line], points: [] } : null
+  }
+  const point = solvedById.get(reference.projectedPointId)
+  return point
+    ? {
+        curves: [],
+        lines: [],
+        points: [
+          {
+            construction: true,
+            id: reference.projectedPointId,
+            x: point.x,
+            y: point.y,
+          } satisfies DisplayPoint,
+        ],
+      }
+    : null
+}
+
 function displayExternalGeometry(sketch: SketchRecord, solution: SolvedSketchWire | null) {
   const solvedById = new Map(solution?.points.map((point) => [point.entityId, point]))
   const externalPoints: DisplayPoint[] = []
   const externalLines: DisplayExternalLine[] = []
   const externalCurves: DisplayExternalCurve[] = []
   for (const reference of sketch.externalReferences ?? []) {
-    if (reference.kind === "curve") {
-      const curve = displayExternalCurve(reference, solvedById)
-      if (curve) {
-        externalCurves.push(curve.curve)
-        externalPoints.push(...curve.points)
-      }
-      continue
-    }
-    if (reference.kind !== "line" && reference.kind !== "model-line") {
-      const point = solvedById.get(reference.projectedPointId)
-      if (point) {
-        externalPoints.push({
-          construction: true,
-          id: reference.projectedPointId,
-          x: point.x,
-          y: point.y,
-        })
-      }
-      continue
-    }
-    const line = displayExternalLine(reference, solvedById)
-    if (line) externalLines.push(line)
+    const display = displayExternalReference(reference, solvedById)
+    if (!display) continue
+    externalCurves.push(...display.curves)
+    externalLines.push(...display.lines)
+    externalPoints.push(...display.points)
   }
   return { externalCurves, externalLines, externalPoints }
 }
@@ -1725,7 +1737,11 @@ function SketchGeometry({
 type ExternalUseCandidate = ExternalSketchGeometryCandidate | ExternalModelGeometryCandidate
 
 function candidateKey(candidate: ExternalUseCandidate) {
-  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
     return `${candidate.kind}:${candidate.featureId}:${candidate.candidateId}`
   }
   const entityId =
@@ -1750,7 +1766,11 @@ function contextGeometryKey(geometry: ExternalSketchContextGeometry) {
 function externalReferenceSourceKey(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
 ) {
-  if (reference.kind === "model-point" || reference.kind === "model-line") {
+  if (
+    reference.kind === "model-point" ||
+    reference.kind === "model-line" ||
+    reference.kind === "model-curve"
+  ) {
     return `model:${reference.reference.featureId}:${reference.id}`
   }
   const entityId =
@@ -1979,15 +1999,7 @@ function SketchAvailableExternalGeometry({
           key={candidateKey(candidate)}
           aria-label={candidate.label}
           className="cursor-crosshair outline-none focus-visible:[&>*]:stroke-amber-500"
-          data-sketch-available-external-geometry-id={
-            candidate.kind === "model-point" || candidate.kind === "model-line"
-              ? candidate.candidateId
-              : candidate.kind === "line"
-                ? candidate.sourceLineId
-                : candidate.kind === "curve"
-                  ? candidate.sourceEntityId
-                  : candidate.sourcePointId
-          }
+          data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
           onPointerDown={(event) => {
             event.stopPropagation()
             onUse(candidate)
@@ -2001,7 +2013,7 @@ function SketchAvailableExternalGeometry({
           role="button"
           tabIndex={0}
         >
-          {candidate.kind === "curve" ? (
+          {candidate.kind === "curve" || candidate.kind === "model-curve" ? (
             <>
               <polyline
                 fill="none"
@@ -2077,6 +2089,19 @@ function SketchAvailableExternalGeometry({
       ))}
     </g>
   )
+}
+
+function availableExternalGeometryId(candidate: ExternalUseCandidate) {
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
+    return candidate.candidateId
+  }
+  if (candidate.kind === "line") return candidate.sourceLineId
+  if (candidate.kind === "curve") return candidate.sourceEntityId
+  return candidate.sourcePointId
 }
 
 function SketchExternalContextGeometry({
@@ -2290,7 +2315,11 @@ function SketchContextGeometryBounds({
 }>) {
   useEffect(() => {
     const modelPoints = modelGeometry.flatMap<SketchPoint2>((candidate) =>
-      candidate.kind === "model-line" ? [candidate.start, candidate.end] : [candidate],
+      candidate.kind === "model-line"
+        ? [candidate.start, candidate.end]
+        : candidate.kind === "model-curve"
+          ? candidate.points
+          : [candidate],
     )
     const points = [
       ...geometry.flatMap((candidate) =>
@@ -5276,11 +5305,11 @@ function handleSketchCanvasPointerDown(input: {
     })
     return
   }
-  if (event.target !== event.currentTarget) return
   if (isSketchSelectionTool(input.editorTool)) {
-    input.onSelectionChange([])
+    if (event.target === event.currentTarget) input.onSelectionChange([])
     return
   }
+  if (isSketchModificationTool(input.editorTool)) return
   const point = input.eventPoint(event)
   if (!point) return
   const inference = input.inferredPlacement(
@@ -6558,7 +6587,9 @@ function useExternalReferenceInteraction({
     (candidate: ExternalUseCandidate) => {
       if (!draft) return
       const next =
-        candidate.kind === "model-point" || candidate.kind === "model-line"
+        candidate.kind === "model-point" ||
+        candidate.kind === "model-line" ||
+        candidate.kind === "model-curve"
           ? applyExternalModelCandidate(draft, candidate, selectedEntityIds)
           : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
       if (next !== draft) onDraftChange(next)

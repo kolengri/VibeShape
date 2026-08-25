@@ -75,6 +75,45 @@ const projectedCurvePointCount = {
   "elliptical-arc": 5,
 } as const satisfies Record<z.infer<typeof sketchExternalCurveTypeSchema>, number>
 
+export function projectedExternalCurvePointCount(
+  type: z.infer<typeof sketchExternalCurveTypeSchema>,
+) {
+  return projectedCurvePointCount[type]
+}
+
+function validateProjectedCurveIdentities(
+  reference: {
+    projectedEntityId: string
+    projectedPointIds: readonly string[]
+    projectedType: z.infer<typeof sketchExternalCurveTypeSchema>
+  },
+  context: z.RefinementCtx,
+) {
+  if (
+    reference.projectedPointIds.length !== projectedExternalCurvePointCount(reference.projectedType)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "A projected external curve requires the point identities owned by its curve type.",
+    })
+  }
+  if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "Projected external curve point IDs must be unique.",
+    })
+  }
+  if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedEntityId"],
+      message: "A projected external curve ID must differ from its point IDs.",
+    })
+  }
+}
+
 /**
  * A read-only analytical curve projected from an earlier sketch. The projected type is persisted so
  * a support-frame change that would change topology fails closed instead of rewriting constraints.
@@ -92,30 +131,7 @@ export const sketchExternalCurveReferenceSchema = z
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
   })
   .strict()
-  .superRefine((reference, context) => {
-    if (reference.projectedPointIds.length !== projectedCurvePointCount[reference.projectedType]) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedPointIds"],
-        message:
-          "A projected external curve requires the point identities owned by its curve type.",
-      })
-    }
-    if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedPointIds"],
-        message: "Projected external curve point IDs must be unique.",
-      })
-    }
-    if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedEntityId"],
-        message: "A projected external curve ID must differ from its point IDs.",
-      })
-    }
-  })
+  .superRefine(validateProjectedCurveIdentities)
 
 /** A read-only point projected from one stable model vertex. */
 export const sketchExternalModelPointReferenceSchema = z
@@ -144,12 +160,28 @@ export const sketchExternalModelLineReferenceSchema = z
     message: "A projected model line requires distinct endpoint IDs.",
   })
 
+/** A read-only analytical curve projected from one stable circular model edge. */
+export const sketchExternalModelCurveReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-curve"),
+    reference: edgeTopoRefSchema,
+    sourceType: z.enum(["circle", "arc"]),
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: sketchExternalCurveTypeSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine(validateProjectedCurveIdentities)
+
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
   sketchExternalCurveReferenceSchema,
   sketchExternalModelPointReferenceSchema,
   sketchExternalModelLineReferenceSchema,
+  sketchExternalModelCurveReferenceSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -167,7 +199,24 @@ export type SketchExternalModelPointReference = Readonly<
 export type SketchExternalModelLineReference = Readonly<
   z.infer<typeof sketchExternalModelLineReferenceSchema>
 >
+export type SketchExternalModelCurveReference = Readonly<
+  z.infer<typeof sketchExternalModelCurveReferenceSchema>
+>
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
+export type SketchExternalModelReference =
+  | SketchExternalModelPointReference
+  | SketchExternalModelLineReference
+  | SketchExternalModelCurveReference
+
+export function isSketchExternalModelReference(
+  reference: SketchExternalReference,
+): reference is SketchExternalModelReference {
+  return (
+    reference.kind === "model-point" ||
+    reference.kind === "model-line" ||
+    reference.kind === "model-curve"
+  )
+}
 
 const sketchEntityEnvelopeSchema = z.object({
   schemaVersion: z.literal(0),
@@ -460,7 +509,7 @@ function projectedExternalPoint(id: SketchEntityId): Extract<SketchEntity, { typ
 }
 
 function projectedExternalCurve(
-  reference: SketchExternalCurveReference,
+  reference: SketchExternalCurveReference | SketchExternalModelCurveReference,
 ): Exclude<SketchEntity, { type: "line" | "point" }> {
   const [centerPointId, firstPointId, secondPointId, startPointId, endPointId] =
     reference.projectedPointIds
@@ -521,7 +570,7 @@ export function projectedExternalSketchEntities(
   references: readonly SketchExternalReference[],
 ): readonly SketchEntity[] {
   return references.flatMap((reference): SketchEntity[] => {
-    if (reference.kind === "curve") {
+    if (reference.kind === "curve" || reference.kind === "model-curve") {
       return [
         ...reference.projectedPointIds.map(projectedExternalPoint),
         projectedExternalCurve(reference),

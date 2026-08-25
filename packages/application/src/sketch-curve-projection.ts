@@ -136,6 +136,34 @@ function projectRoundCurve(
   const start = entity.type === "arc" ? requiredPoint(points, entity.startPointId) : null
   const radius =
     entity.type === "circle" ? (circleRadius ?? entity.radius) : pointDistance(center, start)
+  const end = entity.type === "arc" ? requiredPoint(points, entity.endPointId) : null
+  return entity.type === "circle"
+    ? projectRoundCurveGeometry(sourceFrame, targetFrame, { type: "circle", center, radius })
+    : projectRoundCurveGeometry(sourceFrame, targetFrame, {
+        type: "arc",
+        center,
+        radius,
+        start,
+        end,
+      })
+}
+
+type RoundCurveGeometry =
+  | Readonly<{ type: "circle"; center: SketchPoint2; radius: number }>
+  | Readonly<{
+      type: "arc"
+      center: SketchPoint2
+      radius: number
+      start: SketchPoint2 | null
+      end: SketchPoint2 | null
+    }>
+
+function projectRoundCurveGeometry(
+  sourceFrame: SupportFrame,
+  targetFrame: SupportFrame,
+  geometry: RoundCurveGeometry,
+): ProjectedSketchCurve | null {
+  const { center, radius } = geometry
   if (!Number.isFinite(radius) || radius <= PROJECTION_TOLERANCE) return null
   const projection = ellipseProjection(
     sourceFrame,
@@ -148,10 +176,10 @@ function projectRoundCurve(
   const isRound =
     Math.abs(projection.primaryRadius - projection.secondaryRadius) <=
     PROJECTION_TOLERANCE * Math.max(1, projection.primaryRadius)
-  if (entity.type === "circle") {
+  if (geometry.type === "circle") {
     return projectedCircle(projection, isRound)
   }
-  return projectedArc(sourceFrame, targetFrame, entity, points, projection, isRound, start)
+  return projectedArc(sourceFrame, targetFrame, projection, isRound, geometry.start, geometry.end)
 }
 
 type EllipseProjection = NonNullable<ReturnType<typeof ellipseProjection>>
@@ -165,13 +193,11 @@ function projectedCircle(projection: EllipseProjection, isRound: boolean): Proje
 function projectedArc(
   sourceFrame: SupportFrame,
   targetFrame: SupportFrame,
-  entity: Extract<SketchCurveEntity, { type: "arc" }>,
-  points: SketchPointLookup,
   projection: EllipseProjection,
   isRound: boolean,
   start: SketchPoint2 | null,
+  end: SketchPoint2 | null,
 ): ProjectedSketchCurve | null {
-  const end = requiredPoint(points, entity.endPointId)
   if (!start || !end) return null
   const projectedStart = projectedPoint(sourceFrame, targetFrame, start)
   const projectedEnd = projectedPoint(sourceFrame, targetFrame, end)
@@ -197,6 +223,137 @@ function projectedArc(
       reflected ? projectedStart : projectedEnd,
     ],
   }
+}
+
+type Vector3 = readonly [number, number, number]
+const MAX_CIRCULAR_EDGE_DISPLAY_SEGMENTS = 4_096
+
+export type WorldCircularEdgeGeometry =
+  | Readonly<{
+      kind: "circle-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      radius: number
+    }>
+  | Readonly<{
+      kind: "arc-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      radius: number
+      start: Vector3
+      middle: Vector3
+      end: Vector3
+    }>
+
+function vectorDot3(left: Vector3, right: Vector3) {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+function localCircularPoint(frame: SupportFrame, point: Vector3): SketchPoint2 {
+  const relative = [
+    point[0] - frame.origin[0],
+    point[1] - frame.origin[1],
+    point[2] - frame.origin[2],
+  ] as const
+  return { x: vectorDot3(relative, frame.xAxis), y: vectorDot3(relative, frame.yAxis) }
+}
+
+function positiveAngle(point: SketchPoint2) {
+  const angle = Math.atan2(point.y, point.x)
+  return angle < 0 ? angle + Math.PI * 2 : angle
+}
+
+function positiveSweepContains(start: SketchPoint2, middle: SketchPoint2, end: SketchPoint2) {
+  const startAngle = positiveAngle(start)
+  const middleDelta = (positiveAngle(middle) - startAngle + Math.PI * 2) % (Math.PI * 2)
+  const endDelta = (positiveAngle(end) - startAngle + Math.PI * 2) % (Math.PI * 2)
+  return middleDelta <= endDelta + PROJECTION_TOLERANCE
+}
+
+function circularEdgeFrame(geometry: WorldCircularEdgeGeometry): SupportFrame {
+  const initial: SupportFrame = {
+    origin: [...geometry.center],
+    xAxis: [...geometry.xAxis],
+    yAxis: [...geometry.yAxis],
+    normal: [...geometry.normal],
+  }
+  if (geometry.kind === "circle-edge") return initial
+  const start = localCircularPoint(initial, geometry.start)
+  const middle = localCircularPoint(initial, geometry.middle)
+  const end = localCircularPoint(initial, geometry.end)
+  if (positiveSweepContains(start, middle, end)) return initial
+  return {
+    ...initial,
+    yAxis: initial.yAxis.map((coordinate) => -coordinate) as [number, number, number],
+    normal: initial.normal.map((coordinate) => -coordinate) as [number, number, number],
+  }
+}
+
+/** Projects exact circular model-edge geometry into a sketch support frame. */
+export function projectWorldCircularEdgeToSupport(
+  geometry: WorldCircularEdgeGeometry,
+  targetFrame: SupportFrame,
+): ProjectedSketchCurve | null {
+  const sourceFrame = circularEdgeFrame(geometry)
+  if (geometry.kind === "circle-edge") {
+    return projectRoundCurveGeometry(sourceFrame, targetFrame, {
+      type: "circle",
+      center: { x: 0, y: 0 },
+      radius: geometry.radius,
+    })
+  }
+  return projectRoundCurveGeometry(sourceFrame, targetFrame, {
+    type: "arc",
+    center: { x: 0, y: 0 },
+    radius: geometry.radius,
+    start: localCircularPoint(sourceFrame, geometry.start),
+    end: localCircularPoint(sourceFrame, geometry.end),
+  })
+}
+
+function worldCircularPoint(
+  frame: SupportFrame,
+  radius: number,
+  angle: number,
+): readonly [number, number, number] {
+  const x = Math.cos(angle) * radius
+  const y = Math.sin(angle) * radius
+  return [
+    frame.origin[0] + frame.xAxis[0] * x + frame.yAxis[0] * y,
+    frame.origin[1] + frame.xAxis[1] * x + frame.yAxis[1] * y,
+    frame.origin[2] + frame.xAxis[2] * x + frame.yAxis[2] * y,
+  ]
+}
+
+/** Samples transient display points without changing the analytical reference contract. */
+export function sampleWorldCircularEdge(
+  geometry: WorldCircularEdgeGeometry,
+  segmentCount = geometry.kind === "circle-edge" ? 64 : 48,
+): readonly Vector3[] {
+  if (
+    !Number.isSafeInteger(segmentCount) ||
+    segmentCount < 1 ||
+    segmentCount > MAX_CIRCULAR_EDGE_DISPLAY_SEGMENTS
+  ) {
+    throw new RangeError(
+      `Circular edge display segment count must be between 1 and ${MAX_CIRCULAR_EDGE_DISPLAY_SEGMENTS}.`,
+    )
+  }
+  const frame = circularEdgeFrame(geometry)
+  const start =
+    geometry.kind === "circle-edge" ? 0 : positiveAngle(localCircularPoint(frame, geometry.start))
+  const sweep =
+    geometry.kind === "circle-edge"
+      ? Math.PI * 2
+      : (positiveAngle(localCircularPoint(frame, geometry.end)) - start + Math.PI * 2) %
+        (Math.PI * 2)
+  return Array.from({ length: segmentCount + 1 }, (_, index) =>
+    worldCircularPoint(frame, geometry.radius, start + (sweep * index) / segmentCount),
+  )
 }
 
 function pointDistance(first: SketchPoint2, second: SketchPoint2 | null) {

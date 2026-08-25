@@ -678,7 +678,9 @@ function ExternalReferencesSection({
               >
                 <span className="min-w-0 flex-1 truncate text-xs">
                   {candidate?.label ??
-                    (reference.kind === "model-point" || reference.kind === "model-line"
+                    (reference.kind === "model-point" ||
+                    reference.kind === "model-line" ||
+                    reference.kind === "model-curve"
                       ? (reference.reference.semanticRole ?? reference.reference.featureId)
                       : reference.kind === "line"
                         ? reference.sourceLineId

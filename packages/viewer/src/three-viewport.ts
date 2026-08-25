@@ -111,12 +111,22 @@ export type ViewerModelLineCandidate = Readonly<{
   end: ViewerVector3
 }>
 
+export type ViewerModelCurveCandidate = Readonly<{
+  kind: "model-curve"
+  label: string
+  featureId: string
+  candidateId: string
+  points: readonly ViewerVector3[]
+  sourceType: "arc" | "circle"
+}>
+
 export type ViewerSketchReferenceCandidate =
   | ViewerSketchPointCandidate
   | ViewerSketchLineCandidate
   | ViewerSketchCurveCandidate
   | ViewerModelPointCandidate
   | ViewerModelLineCandidate
+  | ViewerModelCurveCandidate
 
 export type ViewerVector3 = readonly [number, number, number]
 
@@ -366,7 +376,11 @@ function sameSelection(left: ViewerSelection | null, right: ViewerSelection | nu
 
 function sketchReferenceCandidateKey(candidate: ViewerSketchReferenceCandidate | null) {
   if (!candidate) return null
-  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
     return `${candidate.kind}:${candidate.featureId}:${candidate.candidateId}`
   }
   const entityId =
@@ -386,12 +400,25 @@ function isViewerSketchPointCandidate(
 
 function isViewerSketchLineCandidate(
   candidate: ViewerSketchReferenceCandidate,
-): candidate is ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate {
-  return candidate.kind === "line" || candidate.kind === "curve" || candidate.kind === "model-line"
+): candidate is
+  | ViewerSketchLineCandidate
+  | ViewerSketchCurveCandidate
+  | ViewerModelLineCandidate
+  | ViewerModelCurveCandidate {
+  return (
+    candidate.kind === "line" ||
+    candidate.kind === "curve" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  )
 }
 
 function sketchReferenceEntityId(
-  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate,
+  candidate:
+    | ViewerSketchLineCandidate
+    | ViewerSketchCurveCandidate
+    | ViewerModelLineCandidate
+    | ViewerModelCurveCandidate,
 ) {
   if (candidate.kind === "line") return candidate.sourceLineId
   if (candidate.kind === "curve") return candidate.sourceEntityId
@@ -399,7 +426,11 @@ function sketchReferenceEntityId(
 }
 
 function sketchReferenceLinePositions(
-  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate,
+  candidate:
+    | ViewerSketchLineCandidate
+    | ViewerSketchCurveCandidate
+    | ViewerModelLineCandidate
+    | ViewerModelCurveCandidate,
 ) {
   if (candidate.kind === "line" || candidate.kind === "model-line") {
     return new Float32Array([...candidate.start, ...candidate.end])
@@ -605,7 +636,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchPointObject: Points | null = null
   #sketchLineObjects = new Map<
     LineSegments,
-    ViewerSketchLineCandidate | ViewerSketchCurveCandidate | ViewerModelLineCandidate
+    | ViewerSketchLineCandidate
+    | ViewerSketchCurveCandidate
+    | ViewerModelLineCandidate
+    | ViewerModelCurveCandidate
   >()
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"

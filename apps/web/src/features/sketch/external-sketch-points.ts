@@ -10,6 +10,8 @@ import type {
 } from "@vibeshape/domain"
 import {
   appendSketchConstraint,
+  isSketchExternalModelReference,
+  projectedExternalCurvePointCount,
   sketchEllipseGeometry,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
@@ -20,6 +22,7 @@ import {
   createBrowserSketchEntityId,
   createBrowserSketchExternalReferenceId,
 } from "../../document/document-controller"
+import type { ExternalModelGeometryCandidate } from "./external-model-geometry"
 
 type ProjectedSketchPoint = Readonly<{
   world: readonly [number, number, number]
@@ -52,13 +55,6 @@ export type ExternalSketchGeometryCandidate =
 
 type ExternalSketchCurveKind = Exclude<SketchEntity["type"], "line" | "point">
 
-const projectedCurvePointCount = {
-  arc: 3,
-  circle: 1,
-  ellipse: 3,
-  "elliptical-arc": 5,
-} as const satisfies Record<ExternalSketchCurveKind, number>
-
 export type ExternalSketchCurveContext = Readonly<{
   closed: boolean
   kind: "curve"
@@ -82,9 +78,16 @@ export type ExternalSketchGeometryLabels = Readonly<{
 
 export function externalReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
-  candidate: ExternalSketchGeometryCandidate,
+  candidate: ExternalSketchGeometryCandidate | ExternalModelGeometryCandidate,
 ) {
-  if (reference.kind === "model-point" || reference.kind === "model-line") return false
+  if (isSketchExternalModelReference(reference)) return false
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
+    return false
+  }
   if (reference.sourceSketchId !== candidate.sourceSketchId) return false
   if (candidate.kind === "curve") {
     return reference.kind === "curve" && reference.sourceEntityId === candidate.sourceEntityId
@@ -161,7 +164,7 @@ export function applyExternalSketchCandidate(
           projectedEntityId: createBrowserSketchEntityId(),
           projectedType: candidate.projectedType,
           projectedPointIds: Array.from(
-            { length: projectedCurvePointCount[candidate.projectedType] },
+            { length: projectedExternalCurvePointCount(candidate.projectedType) },
             () => createBrowserSketchEntityId(),
           ),
         },

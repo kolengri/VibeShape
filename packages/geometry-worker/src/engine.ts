@@ -575,13 +575,19 @@ function cylinderFeatureSemanticRole(
   context: TopologyCandidateContext,
   parameters: CylinderContentParameters,
 ) {
-  if (context.kind !== "face") return undefined
-  if (context.signature.geometryClass === "CYLINDRE") return "primitive.cylinder.wall"
-  if (context.signature.geometryClass !== "PLANE" || !context.signature.direction) return undefined
   const z = context.signature.centroid[2]
   const originZ = parameters.origin[2]
   const minimumZ = originZ + (parameters.centered ? -parameters.height / 2 : 0)
   const maximumZ = originZ + (parameters.centered ? parameters.height / 2 : parameters.height)
+  if (context.kind === "edge" && context.signature.geometryClass === "CIRCLE") {
+    return firstMatchingRole([
+      [nearlyEqual(z, minimumZ), "primitive.cylinder.edge.start"],
+      [nearlyEqual(z, maximumZ), "primitive.cylinder.edge.end"],
+    ])
+  }
+  if (context.kind !== "face") return undefined
+  if (context.signature.geometryClass === "CYLINDRE") return "primitive.cylinder.wall"
+  if (context.signature.geometryClass !== "PLANE" || !context.signature.direction) return undefined
   return firstMatchingRole([
     [nearlyEqual(z, minimumZ), "primitive.cylinder.cap.start"],
     [nearlyEqual(z, maximumZ), "primitive.cylinder.cap.end"],

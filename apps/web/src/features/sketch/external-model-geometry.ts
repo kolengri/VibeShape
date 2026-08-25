@@ -1,4 +1,8 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import {
+  projectWorldCircularEdgeToSupport,
+  sampleWorldCircularEdge,
+} from "@vibeshape/application/sketch-curve-projection"
 import { projectWorldPointToSupport, type SupportFrame } from "@vibeshape/application/support-frame"
 import type {
   TopologyCandidate as DomainTopologyCandidate,
@@ -9,7 +13,11 @@ import type {
   SketchRecord,
   VertexTopoRef,
 } from "@vibeshape/domain"
-import { featureIdSchema, resolveTopologyReference } from "@vibeshape/domain"
+import {
+  featureIdSchema,
+  projectedExternalCurvePointCount,
+  resolveTopologyReference,
+} from "@vibeshape/domain"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
   createBrowserSketchEntityId,
@@ -44,11 +52,24 @@ export type ExternalModelLineCandidate = Readonly<{
   start: ProjectedModelPoint
 }>
 
+export type ExternalModelCurveCandidate = Readonly<{
+  candidateId: string
+  featureId: FeatureId
+  kind: "model-curve"
+  label: string
+  points: readonly ProjectedModelPoint[]
+  projectedType: "circle" | "arc" | "ellipse" | "elliptical-arc"
+  reference: EdgeTopoRef
+  sourceType: "circle" | "arc"
+}>
+
 export type ExternalModelGeometryCandidate =
   | ExternalModelPointCandidate
   | ExternalModelLineCandidate
+  | ExternalModelCurveCandidate
 
 export type ExternalModelGeometryLabels = Readonly<{
+  curve: (featureLabel: string, kind: "circle" | "arc", ordinal: number) => string
   line: (featureLabel: string, ordinal: number) => string
   point: (featureLabel: string, ordinal: number) => string
 }>
@@ -77,7 +98,13 @@ function referencedCandidateKeys(
   const recordsByFeatureId = new Map(records.map((record) => [record.featureId, record]))
   const keys = new Set<string>()
   for (const external of draft.externalReferences ?? []) {
-    if (external.kind !== "model-point" && external.kind !== "model-line") continue
+    if (
+      external.kind !== "model-point" &&
+      external.kind !== "model-line" &&
+      external.kind !== "model-curve"
+    ) {
+      continue
+    }
     const record = recordsByFeatureId.get(external.reference.featureId)
     if (!record) continue
     const candidates = record.geometry.topologyCandidates.map(domainTopologyCandidate)
@@ -186,6 +213,131 @@ function createExternalModelLineCandidate(
   }
 }
 
+function createExternalModelCurveCandidate(
+  featureId: FeatureId,
+  featureLabel: string,
+  candidate: ProtocolTopologyCandidate,
+  targetFrame: SupportFrame,
+  ordinal: number,
+  labels: ExternalModelGeometryLabels,
+): ExternalModelCurveCandidate | null {
+  const geometry = candidate.referenceGeometry
+  if (
+    candidate.kind !== "edge" ||
+    candidate.signature.geometryClass !== "CIRCLE" ||
+    (geometry?.kind !== "circle-edge" && geometry?.kind !== "arc-edge")
+  ) {
+    return null
+  }
+  const projection = projectWorldCircularEdgeToSupport(geometry, targetFrame)
+  if (!projection) return null
+  const sourceType = geometry.kind === "circle-edge" ? "circle" : "arc"
+  const points = sampleWorldCircularEdge(geometry).map((world) => ({
+    world,
+    ...projectWorldPointToSupport(targetFrame, world),
+  }))
+  return {
+    candidateId: candidate.candidateId,
+    featureId,
+    kind: "model-curve",
+    label: labels.curve(featureLabel, sourceType, ordinal),
+    points,
+    projectedType: projection.type,
+    reference: stableEdgeReference(featureId, candidate),
+    sourceType,
+  }
+}
+
+function candidatesForRecord(
+  record: ExternalModelGeometryRecord,
+  featureId: FeatureId,
+  featureLabel: string,
+  used: ReadonlySet<string>,
+  targetFrame: SupportFrame,
+  labels: ExternalModelGeometryLabels,
+) {
+  const result: ExternalModelGeometryCandidate[] = []
+  let pointOrdinal = 0
+  let lineOrdinal = 0
+  let curveOrdinal = 0
+  for (const candidate of record.geometry.topologyCandidates) {
+    if (used.has(candidateKey(featureId, candidate))) continue
+    const point = createExternalModelPointCandidate(
+      featureId,
+      featureLabel,
+      candidate,
+      targetFrame,
+      pointOrdinal + 1,
+      labels,
+    )
+    if (point) {
+      pointOrdinal += 1
+      result.push(point)
+      continue
+    }
+    const line = createExternalModelLineCandidate(
+      featureId,
+      featureLabel,
+      candidate,
+      targetFrame,
+      lineOrdinal + 1,
+      labels,
+    )
+    if (line) {
+      lineOrdinal += 1
+      result.push(line)
+      continue
+    }
+    const curve = createExternalModelCurveCandidate(
+      featureId,
+      featureLabel,
+      candidate,
+      targetFrame,
+      curveOrdinal + 1,
+      labels,
+    )
+    if (!curve) continue
+    curveOrdinal += 1
+    result.push(curve)
+  }
+  return result
+}
+
+export function projectExternalModelGeometryCandidates(
+  records: readonly ExternalModelGeometryRecord[],
+  features: readonly FeatureRecord[],
+  visibleFeatureIds: readonly FeatureId[],
+  targetFrame: SupportFrame,
+  labels: ExternalModelGeometryLabels,
+): readonly ExternalModelGeometryCandidate[] {
+  const visible = new Set(visibleFeatureIds)
+  const featureLabels = new Map(features.map((feature) => [feature.id, feature.label]))
+  const used = new Set<string>()
+  return records.flatMap((record) => {
+    const featureId = featureIdSchema.parse(record.featureId)
+    if (!visible.has(featureId)) return []
+    const featureLabel = featureLabels.get(featureId) ?? featureId
+    return candidatesForRecord(record, featureId, featureLabel, used, targetFrame, labels)
+  })
+}
+
+export function availableExternalModelGeometryCandidates(
+  candidates: readonly ExternalModelGeometryCandidate[],
+  records: readonly ExternalModelGeometryRecord[],
+  draft: SketchRecord,
+) {
+  const used = referencedCandidateKeys(records, draft)
+  return candidates.filter(
+    (candidate) =>
+      !used.has(
+        candidateKey(candidate.featureId, {
+          candidateId: candidate.candidateId,
+          kind: candidate.kind === "model-point" ? "vertex" : "edge",
+        }),
+      ),
+  )
+}
+
 export function externalModelGeometryCandidates(
   records: readonly ExternalModelGeometryRecord[],
   features: readonly FeatureRecord[],
@@ -194,47 +346,17 @@ export function externalModelGeometryCandidates(
   targetFrame: SupportFrame,
   labels: ExternalModelGeometryLabels,
 ): readonly ExternalModelGeometryCandidate[] {
-  const visible = new Set(visibleFeatureIds)
-  const featureLabels = new Map(features.map((feature) => [feature.id, feature.label]))
-  const used = referencedCandidateKeys(records, draft)
-  const result: ExternalModelGeometryCandidate[] = []
-
-  for (const record of records) {
-    const featureId = featureIdSchema.parse(record.featureId)
-    if (!visible.has(featureId)) continue
-    const featureLabel = featureLabels.get(featureId) ?? featureId
-    let pointOrdinal = 0
-    let lineOrdinal = 0
-    for (const candidate of record.geometry.topologyCandidates) {
-      if (used.has(candidateKey(featureId, candidate))) continue
-      const point = createExternalModelPointCandidate(
-        featureId,
-        featureLabel,
-        candidate,
-        targetFrame,
-        pointOrdinal + 1,
-        labels,
-      )
-      if (point) {
-        pointOrdinal += 1
-        result.push(point)
-        continue
-      }
-      const line = createExternalModelLineCandidate(
-        featureId,
-        featureLabel,
-        candidate,
-        targetFrame,
-        lineOrdinal + 1,
-        labels,
-      )
-      if (line) {
-        lineOrdinal += 1
-        result.push(line)
-      }
-    }
-  }
-  return result
+  return availableExternalModelGeometryCandidates(
+    projectExternalModelGeometryCandidates(
+      records,
+      features,
+      visibleFeatureIds,
+      targetFrame,
+      labels,
+    ),
+    records,
+    draft,
+  )
 }
 
 export function applyExternalModelCandidate(
@@ -243,6 +365,27 @@ export function applyExternalModelCandidate(
   selectedEntityIds: readonly SketchEntityId[],
 ): SketchRecord {
   const references = draft.externalReferences ?? []
+  if (candidate.kind === "model-curve") {
+    return {
+      ...draft,
+      externalReferences: [
+        ...references,
+        {
+          schemaVersion: 0,
+          id: createBrowserSketchExternalReferenceId(),
+          kind: "model-curve",
+          reference: candidate.reference,
+          sourceType: candidate.sourceType,
+          projectedEntityId: createBrowserSketchEntityId(),
+          projectedType: candidate.projectedType,
+          projectedPointIds: Array.from(
+            { length: projectedExternalCurvePointCount(candidate.projectedType) },
+            () => createBrowserSketchEntityId(),
+          ),
+        },
+      ],
+    }
+  }
   if (candidate.kind === "model-line") {
     return {
       ...draft,

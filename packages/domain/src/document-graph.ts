@@ -3,7 +3,7 @@ import { type ZodError, z } from "zod"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import { featureIdSchema, sketchIdSchema } from "./identifiers"
 import { readExtrusionFeatureParameters } from "./part-design"
-import { type SketchRecord, sketchRecordSchema } from "./sketch"
+import { isSketchExternalModelReference, type SketchRecord, sketchRecordSchema } from "./sketch"
 
 const MAX_NODES = 100_256
 // Keep the retained graph bounded independently of larger per-record schema limits. The aggregate
@@ -408,7 +408,7 @@ function sketchCandidates(sketch: SketchRecord, sketchIndex: number) {
       ]
     : []
   const external = (sketch.externalReferences ?? []).map((reference, index): RelationCandidate => {
-    if (reference.kind === "model-point" || reference.kind === "model-line") {
+    if (isSketchExternalModelReference(reference)) {
       return {
         source: { kind: "feature", id: reference.reference.featureId },
         target,

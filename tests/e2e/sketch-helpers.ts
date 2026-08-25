@@ -62,9 +62,49 @@ export async function selectSketchEntities(
   await page.getByRole("button", { name: "Select", exact: true }).click()
   const entities = drawing.locator(`[data-sketch-entity-type="${type}"]`)
   for (const [selectionIndex, entityIndex] of indices.entries()) {
-    await entities.nth(entityIndex).click({
-      modifiers: selectionIndex > 0 ? ["Control"] : [],
-    })
+    await clickSketchEntity(page, entities.nth(entityIndex), selectionIndex > 0)
+  }
+}
+
+export async function clickSketchEntity(page: Page, entity: Locator, additive = false) {
+  return clickSketchEntityAt(page, entity, 0.37, additive)
+}
+
+export async function clickSketchEntityAt(
+  page: Page,
+  entity: Locator,
+  fraction: number,
+  additive = false,
+) {
+  const position = await entity.evaluate(
+    (element, normalizedFraction) => {
+      type ScreenPoint = Readonly<{
+        x: number
+        y: number
+        matrixTransform: (matrix: unknown) => ScreenPoint
+      }>
+      const geometry = element as unknown as {
+        getPointAtLength?: (length: number) => ScreenPoint
+        getScreenCTM?: () => unknown
+        getTotalLength?: () => number
+      }
+      if (!geometry.getPointAtLength || !geometry.getScreenCTM || !geometry.getTotalLength) {
+        throw new TypeError("Sketch entity selection requires SVG geometry.")
+      }
+      const matrix = geometry.getScreenCTM()
+      if (!matrix) throw new Error("Sketch entity is detached from the viewport.")
+      const point = geometry
+        .getPointAtLength(geometry.getTotalLength() * normalizedFraction)
+        .matrixTransform(matrix)
+      return { x: point.x, y: point.y }
+    },
+    Math.min(1, Math.max(0, fraction)),
+  )
+  if (additive) await page.keyboard.down("Control")
+  try {
+    await page.mouse.click(position.x, position.y)
+  } finally {
+    if (additive) await page.keyboard.up("Control")
   }
 }
 

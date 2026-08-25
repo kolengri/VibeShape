@@ -209,6 +209,41 @@ describe("document worker protocol", () => {
     expect(
       sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [reference] }),
     ).toMatchObject({ externalReferences: [reference] })
+
+    const curveReference = {
+      schemaVersion: 0,
+      id: externalReferenceId,
+      kind: "model-curve",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "edge",
+        semanticRole: "primitive.cylinder.edge.start",
+        signature: {
+          kind: "edge",
+          geometryClass: "CIRCLE",
+          measure: Math.PI * 10,
+          centroid: [0, 0, 0],
+          bounds: { min: [-5, -5, 0], max: [5, 5, 0] },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      sourceType: "circle",
+      projectedEntityId: projectedCurveId,
+      projectedType: "circle",
+      projectedPointIds: [projectedCurvePointId],
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [curveReference] }),
+    ).toMatchObject({ externalReferences: [curveReference] })
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [{ ...curveReference, projectedType: "arc" }],
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts a bounded document rebuild request", () => {

@@ -1,6 +1,7 @@
 import {
   type DocumentSnapshot,
   type FeatureId,
+  isSketchExternalModelReference,
   readExtrusionFeatureParameters,
   type SketchExternalReference,
   type SketchId,
@@ -27,7 +28,7 @@ function appendDependent(
 }
 
 function externalReferenceOwner(reference: SketchExternalReference): DocumentNode {
-  return reference.kind === "model-point" || reference.kind === "model-line"
+  return isSketchExternalModelReference(reference)
     ? { id: reference.reference.featureId, kind: "feature" }
     : { id: reference.sourceSketchId, kind: "sketch" }
 }

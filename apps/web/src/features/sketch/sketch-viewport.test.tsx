@@ -699,6 +699,68 @@ describe("SketchViewport", () => {
     expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
   })
 
+  it("uses one circular model edge overlay from the normal drawing", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3217") }
+    const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3218")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalModelCandidates: [
+        {
+          candidateId: "cylinder-rim-1",
+          featureId: sourceFeatureId,
+          kind: "model-curve",
+          label: "Cylinder 1 · Circular edge 1",
+          points: [
+            { world: [5, 0, 0], x: 5, y: 0 },
+            { world: [0, 5, 0], x: 0, y: 5 },
+            { world: [-5, 0, 0], x: -5, y: 0 },
+            { world: [0, -5, 0], x: 0, y: -5 },
+            { world: [5, 0, 0], x: 5, y: 0 },
+          ],
+          projectedType: "circle",
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "edge",
+            semanticRole: "primitive.cylinder.edge.start",
+            signature: {
+              kind: "edge",
+              geometryClass: "CIRCLE",
+              measure: Math.PI * 10,
+              centroid: [0, 0, 0],
+              bounds: { min: [-5, -5, 0], max: [5, 5, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
+            },
+          },
+          sourceType: "circle",
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    const sourceEdge = screen.getByRole("button", { name: "Cylinder 1 · Circular edge 1" })
+    expect(sourceEdge.querySelectorAll("polyline")).toHaveLength(2)
+    fireEvent.keyDown(sourceEdge, { key: " " })
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({
+            kind: "model-curve",
+            projectedType: "circle",
+            sourceType: "circle",
+          }),
+        ],
+      }),
+    )
+    expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
+  })
+
   it("uses an earlier analytical curve directly from the drawing", () => {
     const sourceCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3220")
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3221") }
@@ -2312,7 +2374,11 @@ describe("SketchViewport", () => {
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeNull()
     fireEvent.pointerMove(drawing, { clientX: 400, clientY: 324 })
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
-    fireEvent.pointerDown(drawing, { clientX: 400, clientY: 324 })
+    const referenceLineElement = document.querySelector(
+      `[data-sketch-entity-id="${sketch.entities.find(({ type }) => type === "line")?.id}"]`,
+    )
+    if (!referenceLineElement) throw new Error("The midpoint source line must be rendered.")
+    fireEvent.pointerDown(referenceLineElement, { clientX: 400, clientY: 324 })
 
     expect(onDraftChange).toHaveBeenCalledOnce()
     const draft = onDraftChange.mock.calls[0]?.[0]

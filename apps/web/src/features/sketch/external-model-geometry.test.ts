@@ -10,7 +10,9 @@ import type { TopologyCandidate } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
   applyExternalModelCandidate,
+  availableExternalModelGeometryCandidates,
   externalModelGeometryCandidates,
+  projectExternalModelGeometryCandidates,
 } from "./external-model-geometry"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005001")
@@ -18,6 +20,8 @@ const hiddenFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005
 const sketchId = "0195b5ac-b220-7a2c-8c33-000000005003"
 const selectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005004")
 const labels = {
+  curve: (feature: string, kind: "arc" | "circle", ordinal: number) =>
+    `${feature} · ${kind} ${ordinal}`,
   line: (feature: string, ordinal: number) => `${feature} · Edge ${ordinal}`,
   point: (feature: string, ordinal: number) => `${feature} · Vertex ${ordinal}`,
 }
@@ -75,6 +79,24 @@ function lineCandidate(
       (start[2] + end[2]) / 2,
     ]),
     referenceGeometry: { kind: "line-edge", start: [...start], end: [...end] },
+  }
+}
+
+function circleCandidate(candidateId: string): TopologyCandidate {
+  return {
+    candidateId,
+    kind: "edge",
+    semanticRole: `edge:${candidateId}`,
+    lineageTokens: [],
+    signature: signature("edge", "CIRCLE", [2, 3, 0]),
+    referenceGeometry: {
+      kind: "circle-edge",
+      center: [2, 3, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      radius: 5,
+    },
   }
 }
 
@@ -191,6 +213,78 @@ describe("external model geometry candidates", () => {
     ).toEqual([])
   })
 
+  it("offers one exact projected curve candidate for a circular model edge", () => {
+    const candidates = externalModelGeometryCandidates(
+      [geometryRecord(featureId, [circleCandidate("circle-1")])],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        candidateId: "circle-1",
+        kind: "model-curve",
+        label: "Mount · circle 1",
+        projectedType: "circle",
+        sourceType: "circle",
+      }),
+    )
+    expect(candidates[0]?.kind === "model-curve" ? candidates[0].points : []).toHaveLength(65)
+  })
+
+  it("does not duplicate a circular edge after its transient candidate identity changes", () => {
+    const current = circleCandidate("rebuilt-circle")
+    current.semanticRole = "primitive.cylinder.edge.start"
+    const existingReference = {
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000005009",
+      kind: "model-curve",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "edge",
+        semanticRole: "primitive.cylinder.edge.start",
+        signature: signature("edge", "CIRCLE", [2, 3, 0]),
+      },
+      sourceType: "circle",
+      projectedEntityId: "0195b5ac-b220-7a2c-8c33-000000005010",
+      projectedType: "circle",
+      projectedPointIds: ["0195b5ac-b220-7a2c-8c33-000000005011"],
+    }
+
+    expect(
+      externalModelGeometryCandidates(
+        [geometryRecord(featureId, [current])],
+        features as never,
+        [featureId],
+        draft([existingReference]),
+        targetFrame,
+        labels,
+      ),
+    ).toEqual([])
+  })
+
+  it("reuses projected circular samples while draft-only availability changes", () => {
+    const records = [geometryRecord(featureId, [circleCandidate("circle-1")])]
+    const projected = projectExternalModelGeometryCandidates(
+      records,
+      features as never,
+      [featureId],
+      targetFrame,
+      labels,
+    )
+    const available = availableExternalModelGeometryCandidates(projected, records, draft())
+
+    expect(available[0]).toBe(projected[0])
+    expect(available[0]?.kind === "model-curve" ? available[0].points : []).toBe(
+      projected[0]?.kind === "model-curve" ? projected[0].points : undefined,
+    )
+  })
+
   it("keeps ambiguous candidates available instead of hiding an arbitrary match", () => {
     const sharedRole = "coincident:vertex"
     const existingReference = {
@@ -274,5 +368,30 @@ describe("apply external model candidate", () => {
         reference.projectedEndPointId,
       ]).size,
     ).toBe(3)
+  })
+
+  it("persists only stable model-curve intent and projected identities", () => {
+    const [candidate] = externalModelGeometryCandidates(
+      [geometryRecord(featureId, [circleCandidate("circle-1")])],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+    if (candidate?.kind !== "model-curve") throw new Error("Expected a model curve candidate.")
+
+    const result = sketchRecordSchema.parse(applyExternalModelCandidate(draft(), candidate, []))
+    const reference = result.externalReferences?.[0]
+    expect(reference).toEqual(
+      expect.objectContaining({
+        kind: "model-curve",
+        reference: candidate.reference,
+        sourceType: "circle",
+        projectedType: "circle",
+      }),
+    )
+    expect(JSON.stringify(reference)).not.toContain("candidateId")
+    expect(JSON.stringify(reference)).not.toContain("referenceGeometry")
   })
 })

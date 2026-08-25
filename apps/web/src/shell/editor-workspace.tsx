@@ -37,8 +37,9 @@ import {
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
   applyExternalModelCandidate,
+  availableExternalModelGeometryCandidates,
   type ExternalModelGeometryCandidate,
-  externalModelGeometryCandidates,
+  projectExternalModelGeometryCandidates,
 } from "../features/sketch/external-model-geometry"
 import {
   applyExternalSketchCandidate,
@@ -394,6 +395,16 @@ function viewerModelReferenceCandidate(
       start: candidate.start.world,
     }
   }
+  if (candidate.kind === "model-curve") {
+    return {
+      candidateId: candidate.candidateId,
+      featureId: candidate.featureId,
+      kind: "model-curve",
+      label: candidate.label,
+      points: candidate.points.map(({ world }) => world),
+      sourceType: candidate.sourceType,
+    }
+  }
   return {
     candidateId: candidate.candidateId,
     featureId: candidate.featureId,
@@ -407,7 +418,9 @@ function matchingExternalCandidate(
   candidates: readonly ExternalSketchGeometryCandidate[],
   hit: ViewerSketchReferenceCandidate,
 ) {
-  if (hit.kind === "model-point" || hit.kind === "model-line") return undefined
+  if (hit.kind === "model-point" || hit.kind === "model-line" || hit.kind === "model-curve") {
+    return undefined
+  }
   return candidates.find((candidate) => {
     if (candidate.sourceSketchId !== hit.sourceSketchId || candidate.kind !== hit.kind) return false
     if (candidate.kind === "line") {
@@ -451,7 +464,7 @@ function useSelectExternalGeometry(
       const modelCandidate = modelCandidates.find(
         (candidate) =>
           candidate.kind === hit.kind &&
-          (hit.kind === "model-point" || hit.kind === "model-line") &&
+          (hit.kind === "model-point" || hit.kind === "model-line" || hit.kind === "model-curve") &&
           candidate.featureId === hit.featureId &&
           candidate.candidateId === hit.candidateId,
       )
@@ -568,28 +581,31 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     [editVisibility.featureIds, props.controller, props.model.hiddenFeatureIds],
   )
   const t = useTranslations("app.shell.viewport")
-  const externalModelCandidates = useMemo(() => {
+  const projectedExternalModelCandidates = useMemo(() => {
     const rebuild = props.controller.report?.rebuild
-    if (!snapshot || !props.sketch.draft || !frame || !rebuild?.ok) return []
-    return externalModelGeometryCandidates(
+    if (!snapshot || !frame || !rebuild?.ok) return []
+    return projectExternalModelGeometryCandidates(
       rebuild.response.geometry,
       snapshot.features,
       visibleModelFeatureIds,
-      props.sketch.draft,
       frame,
       {
+        curve: (feature, kind, ordinal) =>
+          t("externalModelCurveCandidate", { feature, kind, ordinal }),
         line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
         point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
       },
     )
-  }, [
-    frame,
-    props.controller.report?.rebuild,
-    props.sketch.draft,
-    snapshot,
-    t,
-    visibleModelFeatureIds,
-  ])
+  }, [frame, props.controller.report?.rebuild, snapshot, t, visibleModelFeatureIds])
+  const externalModelCandidates = useMemo(() => {
+    const rebuild = props.controller.report?.rebuild
+    if (!props.sketch.draft || !rebuild?.ok) return []
+    return availableExternalModelGeometryCandidates(
+      projectedExternalModelCandidates,
+      rebuild.response.geometry,
+      props.sketch.draft,
+    )
+  }, [projectedExternalModelCandidates, props.controller.report?.rebuild, props.sketch.draft])
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () => [
       ...externalPointCandidates.map(viewerReferenceCandidate),

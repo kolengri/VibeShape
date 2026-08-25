@@ -1,5 +1,6 @@
 import {
   type FeatureRecord,
+  isSketchExternalModelReference,
   readExtrusionFeatureParameters,
   type SketchId,
   type SketchRecord,
@@ -46,9 +47,7 @@ function sketchHasDependents(
     sketches.some((candidate) =>
       (candidate.externalReferences ?? []).some(
         (reference) =>
-          reference.kind !== "model-point" &&
-          reference.kind !== "model-line" &&
-          reference.sourceSketchId === sketch.id,
+          !isSketchExternalModelReference(reference) && reference.sourceSketchId === sketch.id,
       ),
     )
   )

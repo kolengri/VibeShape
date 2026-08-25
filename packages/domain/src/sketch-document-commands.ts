@@ -11,10 +11,10 @@ import type {
   DocumentEventResult,
   DomainDiagnostic,
 } from "./commands"
-import { documentSnapshotSchema, type DocumentSnapshot } from "./document"
+import { type DocumentSnapshot, documentSnapshotSchema } from "./document"
 import type { draftIdSchema } from "./identifiers"
 import { readExtrusionFeatureParameters } from "./part-design"
-import { type SketchRecord, sketchRecordSchema } from "./sketch"
+import { isSketchExternalModelReference, type SketchRecord, sketchRecordSchema } from "./sketch"
 
 type SketchCommand = Extract<
   DocumentCommand,
@@ -36,9 +36,7 @@ function sketchHasExternalDependents(snapshot: DocumentSnapshot, sketchId: strin
   return snapshot.sketches.some((sketch) =>
     (sketch.externalReferences ?? []).some(
       (reference) =>
-        reference.kind !== "model-point" &&
-        reference.kind !== "model-line" &&
-        reference.sourceSketchId === sketchId,
+        !isSketchExternalModelReference(reference) && reference.sourceSketchId === sketchId,
     ),
   )
 }

@@ -12,6 +12,7 @@ interface FeatureEvaluationHarnessState {
   positionedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
+  circularArcExtrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
   ellipticalArcExtrusion: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
@@ -71,6 +72,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   const positionedBox = requireResult(state.positionedBox)
   const cylinder = requireResult(state.cylinder)
   const extrusion = requireResult(state.extrusion)
+  const circularArcExtrusion = requireResult(state.circularArcExtrusion)
   const ellipseExtrusion = requireResult(state.ellipseExtrusion)
   const ellipticalArcExtrusion = requireResult(state.ellipticalArcExtrusion)
   const extrusionAdd = requireResult(state.extrusionAdd)
@@ -123,9 +125,22 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     expect.arrayContaining([
       "primitive.cylinder.cap.start",
       "primitive.cylinder.cap.end",
+      "primitive.cylinder.edge.start",
+      "primitive.cylinder.edge.end",
       "primitive.cylinder.wall",
     ]),
   )
+  const circularEdges = cylinder.topologyCandidates.filter(
+    (candidate) => candidate.referenceGeometry?.kind === "circle-edge",
+  )
+  expect(circularEdges).toHaveLength(2)
+  for (const edge of circularEdges) {
+    if (edge.referenceGeometry?.kind !== "circle-edge") continue
+    expect(edge.signature.geometryClass).toBe("CIRCLE")
+    expect(edge.referenceGeometry.center.slice(0, 2)).toEqual([0, 0])
+    expect(edge.referenceGeometry.radius).toBeCloseTo(5)
+    expect(Math.hypot(...edge.referenceGeometry.normal)).toBeCloseTo(1)
+  }
   expectMesh(cylinder)
 
   expect(extrusion.cache.brepHit).toBe(false)
@@ -144,6 +159,55 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     ]),
   )
   expectMesh(extrusion)
+
+  expect(circularArcExtrusion.cache.brepHit).toBe(false)
+  expect(circularArcExtrusion.shape.valid).toBe(true)
+  expect(circularArcExtrusion.shape.solidCount).toBe(1)
+  expect(circularArcExtrusion.shape.volume).toBeCloseTo((75 * Math.PI + 50) * 12, 5)
+  expectBounds(circularArcExtrusion.shape.bounds, {
+    min: [-10, -10, 0],
+    max: [10, 10, 12],
+  })
+  const circularArcEdges = circularArcExtrusion.topologyCandidates.filter(
+    (candidate) => candidate.referenceGeometry?.kind === "arc-edge",
+  )
+  expect(circularArcEdges).toHaveLength(2)
+  for (const edge of circularArcEdges) {
+    if (edge.referenceGeometry?.kind !== "arc-edge") continue
+    const geometry = edge.referenceGeometry
+    const angle = (point: readonly [number, number, number]) => {
+      const relative = [
+        point[0] - geometry.center[0],
+        point[1] - geometry.center[1],
+        point[2] - geometry.center[2],
+      ] as const
+      const x =
+        relative[0] * geometry.xAxis[0] +
+        relative[1] * geometry.xAxis[1] +
+        relative[2] * geometry.xAxis[2]
+      const y =
+        relative[0] * geometry.yAxis[0] +
+        relative[1] * geometry.yAxis[1] +
+        relative[2] * geometry.yAxis[2]
+      const value = Math.atan2(y, x)
+      return value < 0 ? value + Math.PI * 2 : value
+    }
+    const start = angle(geometry.start)
+    const middleDelta = (angle(geometry.middle) - start + Math.PI * 2) % (Math.PI * 2)
+    const endDelta = (angle(geometry.end) - start + Math.PI * 2) % (Math.PI * 2)
+    const sweep = middleDelta <= endDelta + 1e-9 ? endDelta : Math.PI * 2 - endDelta
+    for (const point of [geometry.start, geometry.middle, geometry.end]) {
+      expect(
+        Math.hypot(
+          point[0] - geometry.center[0],
+          point[1] - geometry.center[1],
+          point[2] - geometry.center[2],
+        ),
+      ).toBeCloseTo(10)
+    }
+    expect(sweep).toBeGreaterThan(Math.PI)
+  }
+  expectMesh(circularArcExtrusion)
 
   expect(ellipseExtrusion.cache.brepHit).toBe(false)
   expect(ellipseExtrusion.shape.valid).toBe(true)
@@ -201,7 +265,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 12 }).flatMap(() => [
+    ...Array.from({ length: 13 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -215,6 +279,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 11, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 12, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

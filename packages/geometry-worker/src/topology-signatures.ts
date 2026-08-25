@@ -2,6 +2,7 @@ import type { TopologyCandidate, TopologySignature } from "@vibeshape/protocol"
 import {
   type Edge,
   type Face,
+  getOC,
   measureShapeLinearProperties,
   measureShapeSurfaceProperties,
   type Shape3D,
@@ -12,6 +13,25 @@ type Vector3 = [number, number, number]
 type ReferenceGeometry =
   | { kind: "vertex"; position: Vector3 }
   | { kind: "line-edge"; start: Vector3; end: Vector3 }
+  | {
+      kind: "circle-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      radius: number
+    }
+  | {
+      kind: "arc-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      radius: number
+      start: Vector3
+      middle: Vector3
+      end: Vector3
+    }
 
 interface TopologySample {
   candidateId: string
@@ -66,6 +86,58 @@ function readBounds(shape: Face | Edge) {
   }
 }
 
+type OcctCoordinate = Readonly<{
+  X(): number
+  Y(): number
+  Z(): number
+  delete(): void
+}>
+
+function readOcctCoordinate(coordinate: OcctCoordinate): Vector3 {
+  try {
+    return [coordinate.X(), coordinate.Y(), coordinate.Z()]
+  } finally {
+    coordinate.delete()
+  }
+}
+
+function readCircularReferenceGeometry(edge: Edge): ReferenceGeometry | undefined {
+  if (edge.geomType !== "CIRCLE") return undefined
+  const opencascade = getOC()
+  const adaptor = new opencascade.BRepAdaptor_Curve_2(edge.wrapped)
+  try {
+    const circle = adaptor.Circle()
+    try {
+      const position = circle.Position()
+      try {
+        const geometry = {
+          center: readOcctCoordinate(position.Location()),
+          xAxis: readOcctCoordinate(position.XDirection()),
+          yAxis: readOcctCoordinate(position.YDirection()),
+          normal: readOcctCoordinate(position.Direction()),
+          radius: circle.Radius(),
+        }
+        if (adaptor.IsClosed()) return { kind: "circle-edge", ...geometry }
+        const first = adaptor.FirstParameter()
+        const last = adaptor.LastParameter()
+        return {
+          kind: "arc-edge",
+          ...geometry,
+          start: readOcctCoordinate(adaptor.Value(first)),
+          middle: readOcctCoordinate(adaptor.Value((first + last) / 2)),
+          end: readOcctCoordinate(adaptor.Value(last)),
+        }
+      } finally {
+        position.delete()
+      }
+    } finally {
+      circle.delete()
+    }
+  } finally {
+    adaptor.delete()
+  }
+}
+
 function readFaceSample(face: Face, index: number): TopologySample {
   const properties = measureShapeSurfaceProperties(face)
   const edges = face.edges
@@ -105,7 +177,7 @@ function readEdgeSample(edge: Edge, index: number) {
             start,
             end,
           }
-        : undefined
+        : readCircularReferenceGeometry(edge)
     return {
       endpoints: [start, end] as const,
       sample: {

@@ -405,6 +405,37 @@ const projectedCurvePointCount = {
   "elliptical-arc": 5,
 } as const satisfies Record<z.infer<typeof externalCurveTypeWireSchema>, number>
 
+function validateProjectedCurveWireIdentities(
+  reference: {
+    projectedEntityId: string
+    projectedPointIds: readonly string[]
+    projectedType: z.infer<typeof externalCurveTypeWireSchema>
+  },
+  context: z.RefinementCtx,
+) {
+  if (reference.projectedPointIds.length !== projectedCurvePointCount[reference.projectedType]) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "Projected curve point IDs must match the projected curve type.",
+    })
+  }
+  if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedPointIds"],
+      message: "Projected curve point IDs must be unique.",
+    })
+  }
+  if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
+    context.addIssue({
+      code: "custom",
+      path: ["projectedEntityId"],
+      message: "The projected curve ID must differ from every projected point ID.",
+    })
+  }
+}
+
 const externalCurveReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -418,29 +449,7 @@ const externalCurveReferenceWireSchema = z
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
   })
   .strict()
-  .superRefine((reference, context) => {
-    if (reference.projectedPointIds.length !== projectedCurvePointCount[reference.projectedType]) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedPointIds"],
-        message: "Projected curve point IDs must match the projected curve type.",
-      })
-    }
-    if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedPointIds"],
-        message: "Projected curve point IDs must be unique.",
-      })
-    }
-    if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
-      context.addIssue({
-        code: "custom",
-        path: ["projectedEntityId"],
-        message: "The projected curve ID must differ from every projected point ID.",
-      })
-    }
-  })
+  .superRefine(validateProjectedCurveWireIdentities)
 
 const externalModelPointReferenceWireSchema = z
   .object({
@@ -465,12 +474,27 @@ const externalModelLineReferenceWireSchema = z
   .strict()
   .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
 
+const externalModelCurveReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-curve"),
+    reference: edgeTopoRefWireSchema,
+    sourceType: z.enum(["circle", "arc"]),
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: externalCurveTypeWireSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine(validateProjectedCurveWireIdentities)
+
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
   externalCurveReferenceWireSchema,
   externalModelPointReferenceWireSchema,
   externalModelLineReferenceWireSchema,
+  externalModelCurveReferenceWireSchema,
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>
@@ -632,7 +656,7 @@ function wireProjectedPoint(id: string): Extract<WireEntity, { type: "point" }> 
 }
 
 function wireProjectedCurveEntity(
-  reference: Extract<WireExternalReference, { kind: "curve" }>,
+  reference: Extract<WireExternalReference, { kind: "curve" | "model-curve" }>,
 ): WireEntity | null {
   const [centerPointId, firstPointId, secondPointId, startPointId, endPointId] =
     reference.projectedPointIds
@@ -688,7 +712,9 @@ function wireProjectedExternalEntities(reference: WireExternalReference): readon
       },
     ]
   }
-  if (reference.kind !== "curve") return [wireProjectedPoint(reference.projectedPointId)]
+  if (reference.kind !== "curve" && reference.kind !== "model-curve") {
+    return [wireProjectedPoint(reference.projectedPointId)]
+  }
   const points = reference.projectedPointIds.map(wireProjectedPoint)
   const curve = wireProjectedCurveEntity(reference)
   return curve ? [...points, curve] : []
