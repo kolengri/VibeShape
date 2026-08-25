@@ -37,6 +37,10 @@ import {
   type ExternalSketchGeometryCandidate,
   externalSketchGeometryCandidates,
 } from "../features/sketch/external-sketch-points"
+import {
+  mergeSketchEditVisibility,
+  sketchEditContextVisibility,
+} from "../features/sketch/sketch-edit-context"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -167,16 +171,21 @@ function ModelingWorkspaceContent({
   sketch,
   sketchContext,
   activeSketchDisplay,
+  editVisibility,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
   activeSketchDisplay?: SketchDisplayRecord | null
+  editVisibility: Readonly<{
+    featureIds: readonly FeatureId[]
+    sketchIds: readonly SketchId[]
+  }>
   sketchContext?: GeometryViewportSketchContext
 }) {
   return (
     <GeometryViewport
       controller={controller}
       featurePreview={model.featurePreview}
-      hiddenFeatureIds={model.hiddenFeatureIds}
-      hiddenSketchIds={model.hiddenSketchIds}
+      hiddenFeatureIds={editVisibility.featureIds}
+      hiddenSketchIds={editVisibility.sketchIds}
       originPlaneVisibility={{
         visibility: model.originPlaneVisibility,
         onChange: actions.onOriginPlaneVisibilityChange,
@@ -238,6 +247,24 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     ],
   )
   const sketchActive = props.workspace === "sketch"
+  const activeSketchId = props.sketch.draft?.id
+  const editVisibility = useMemo(() => {
+    const configured = {
+      featureIds: props.model.hiddenFeatureIds,
+      sketchIds: props.model.hiddenSketchIds,
+    }
+    if (!sketchActive || !snapshot || !activeSketchId) return configured
+    return mergeSketchEditVisibility(
+      configured,
+      sketchEditContextVisibility(snapshot, activeSketchId),
+    )
+  }, [
+    activeSketchId,
+    props.model.hiddenFeatureIds,
+    props.model.hiddenSketchIds,
+    sketchActive,
+    snapshot,
+  ])
   const externalPointCandidates = useMemo(
     () =>
       snapshot && props.sketch.draft
@@ -333,6 +360,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           controller={props.controller}
           model={props.model}
           sketch={props.sketch}
+          editVisibility={editVisibility}
           {...(activeSketchDisplay ? { activeSketchDisplay } : {})}
           {...(sketchContext ? { sketchContext } : {})}
         />
