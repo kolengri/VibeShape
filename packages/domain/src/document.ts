@@ -68,13 +68,6 @@ function externalReferenceSourceSelector(reference: SketchExternalReference) {
 
 function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {
   const path = externalReferencePath(input)
-  if ((input.source.externalReferences?.length ?? 0) > 0) {
-    addDocumentIssue(
-      input.context,
-      [...path, "sourceSketchId"],
-      "External sketch references cannot chain in schema version 0.",
-    )
-  }
   const selector = externalReferenceSourceSelector(input.reference)
   const sourceEntity = input.source.entities.find(({ id }) => id === selector.entityId)
   if (sourceEntity?.type === selector.entityType) return

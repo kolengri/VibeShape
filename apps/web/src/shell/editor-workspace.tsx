@@ -34,8 +34,9 @@ import {
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
   applyExternalSketchCandidate,
+  type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
-  externalSketchGeometryCandidates,
+  externalSketchContextGeometry,
 } from "../features/sketch/external-sketch-points"
 import {
   mergeSketchEditVisibility,
@@ -124,9 +125,11 @@ function SketchWorkspaceContent({
   onDisplayChange,
   sketch,
   supportFeatures,
+  externalContextGeometry,
   externalPointCandidates,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
+  externalContextGeometry: readonly ExternalSketchContextGeometry[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   supportFeatures: readonly FeatureRecord[]
 }) {
@@ -137,6 +140,7 @@ function SketchWorkspaceContent({
         controller,
         draft: sketch.draft,
         editorTool: sketch.editorTool,
+        externalContextGeometry,
         externalPointCandidates,
         originPlaneVisibility: model.originPlaneVisibility,
         selectedConstraintId: sketch.selectedConstraintId,
@@ -265,20 +269,27 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     sketchActive,
     snapshot,
   ])
+  const externalContextGeometry = useMemo(() => {
+    if (!snapshot || !props.sketch.draft) return []
+    const hiddenSketchIds = new Set(props.model.hiddenSketchIds)
+    return externalSketchContextGeometry(
+      snapshot,
+      props.sketch.draft,
+      {
+        curve: (sketch, kind, ordinal) =>
+          viewportT("externalCurveContext", { kind, ordinal, sketch }),
+        line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
+        point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
+      },
+      supportFeatures,
+    ).filter(({ sourceSketchId }) => !hiddenSketchIds.has(sourceSketchId))
+  }, [props.model.hiddenSketchIds, props.sketch.draft, snapshot, supportFeatures, viewportT])
   const externalPointCandidates = useMemo(
     () =>
-      snapshot && props.sketch.draft
-        ? externalSketchGeometryCandidates(
-            snapshot,
-            props.sketch.draft,
-            {
-              line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
-              point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
-            },
-            supportFeatures,
-          )
-        : [],
-    [props.sketch.draft, snapshot, supportFeatures, viewportT],
+      externalContextGeometry.filter(
+        (geometry): geometry is ExternalSketchGeometryCandidate => geometry.kind !== "curve",
+      ),
+    [externalContextGeometry],
   )
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () =>
@@ -373,6 +384,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           onDisplayChange={setActiveSketchDisplay}
           sketch={props.sketch}
           supportFeatures={supportFeatures}
+          externalContextGeometry={externalContextGeometry}
           externalPointCandidates={externalPointCandidates}
         />
       }

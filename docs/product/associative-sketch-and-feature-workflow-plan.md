@@ -74,8 +74,8 @@ Those pieces do not yet form a complete associative workflow.
 | Evaluation dependencies | The feature DAG does not treat sketches as graph nodes. | One document dependency graph spanning sketch and feature nodes while retaining the feature DAG evaluator. | P0 |
 | Sketch support | Origin planes, Datum Plane, and a bounded set of planar feature faces work. | A typed support-frame union with stable origin/orientation and an explicit reference-coordinate-system option. | P0 |
 | Support selection | Supported planes and faces can be picked before editing. | The same graphical selection model must work for support replacement and all reference inputs. | P0 |
-| Editing context | The sketch editor is primarily an isolated normal-to-plane 2D canvas. | Earlier model geometry, origin/datum geometry, and eligible earlier sketches remain visible and inspectable. | P0 |
-| External references | Points and lines from earlier sketches can be projected across exact support frames; chains are forbidden. | Add arcs, circles, ellipses, feature edges, and vertices on the same stable reference path. | P0 |
+| Editing context | The normal-to-plane canvas keeps earlier visible sketch points, lines, circles, arcs, ellipses, and elliptical arcs as muted context; the mounted 3D scene retains earlier model and datum geometry. Model-tree visibility controls both representations. | Add source hover, overlap cycling, and solved rather than authored curve sampling throughout the passive 2D context. | P0 |
+| External references | Points and lines from earlier sketches can be projected across exact support frames, and ordered sketch-to-sketch reference chains resolve recursively through the document graph. Curved sources are visible but not yet materialized by Use. | Add analytical arcs, circles, ellipses, feature edges, and vertices on the same stable reference path. | P0 |
 | External selection | Use external geometry selects earlier sketch points and lines in 2D or the persistent 3D viewport with source hover labels. | Add source filters, overlap cycling, and feature-topology candidates. | P0 |
 | Intersection | Not implemented. | Select a face/surface and create an exact, associative sketch-plane intersection. | P0 |
 | External constraints | A projected point supports Coincident; a projected line is selectable and supports compatible line and point-on-line relations. | Add Point on curve, Tangent, Concentric, Pierce/Intersection, and curve dimensions where mathematically valid. | P0/P1 |
@@ -231,9 +231,9 @@ Evaluation rules:
 5. Produce exact bounded analytical solver input or fail with a typed diagnostic.
 6. Cache by source semantic hash, source frame hash, target frame hash, and projection policy.
 
-External chains may be enabled only after the document graph rejects every cycle and diagnostics can show
-the complete chain. Until then, direct references to the earliest authoritative source remain the safer
-contract.
+Ordered point-and-line chains are enabled because the document graph validates earlier-source ordering,
+rejects cycles, and gives the worker a deterministic recursive solve order. Diagnostics still need a
+complete user-facing provenance path before feature-topology and curved-reference chains are enabled.
 
 ### 5. Shared 3D sketch-editing viewport
 
@@ -425,8 +425,10 @@ and makes that surface inert, switches the viewer to camera-only interaction, an
 draft in world coordinates beside the model and reference geometry. While **Use external geometry** is
 active, earlier eligible sketch points and lines remain graphically selectable in orbit mode with hover
 preselection and source labels; selection creates the same stable reference used by the normal-to-sketch
-drawing and task panel. Cross-support point and line references are transformed through exact source and
-target frames before solve. **Normal to sketch** restores the exact
+drawing and task panel. Normal mode also renders every visible earlier analytical sketch curve as muted,
+non-interactive context; center points use a distinct square marker rather than appearing as duplicate
+circles. Cross-support point and line references are transformed through exact source and target frames
+before solve, and valid ordered reference chains recursively solve their earlier source intent. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
 selection. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
 open parts of this slice.
@@ -435,7 +437,8 @@ open parts of this slice.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
 - Add a history cursor and rollback presentation while editing an earlier sketch or feature.
 - Keep the Three.js context scene mounted under the analytical sketch interaction layer.
-- Show earlier bodies, datum geometry, and saved sketches during sketch edit.
+- Show earlier bodies, datum geometry, and saved sketches during sketch edit. Implemented for passive
+  analytical sketch context and model-tree visibility; solved curved-source projection remains open.
 - Add Normal to sketch and orbit-in-context. Implemented for resolved support frames with a temporary
   world-space display of the active draft.
 - Add a visible selection filter and bounded candidate cycling.
@@ -449,7 +452,8 @@ eligible without leaving the viewport.
 - Keep the implemented cross-support point selection and add graphical source-curve selection.
 - Project read-only line, circle, arc, ellipse, and elliptical-arc references.
 - Add supported external relations and the external-reference manager.
-- Allow valid reference chains only after graph cycle protection is active.
+- Keep the implemented graph-protected ordered point-and-line reference chains and extend the same
+  provenance diagnostics to analytical curves.
 - Add source visibility, hover preview, remove, missing, and conflict states.
 
 **Exit:** a layout sketch can associatively drive a detail sketch on the same support frame.

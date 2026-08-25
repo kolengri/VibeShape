@@ -723,6 +723,7 @@
       "viewport": {
         "externalLineCandidate": "{sketch} · Line {ordinal}",
         "externalPointCandidate": "{sketch} · Point {ordinal}",
+        "externalCurveContext": "{sketch} · {kind, select, circle {Circle} arc {Arc} ellipse {Ellipse} elliptical-arc {Elliptical arc} other {Curve}} {ordinal}",
         "ariaLabel": "3D viewport",
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",
@@ -759,6 +760,7 @@
         "empty": "Create a sketch or choose a saved sketch in the model tree.",
         "emptyDraft": "Empty sketch",
         "emptyDraftHint": "Choose a geometry tool from the toolbar to begin.",
+        "earlierSketchContext": "Earlier sketch context",
         "preview": "Unsaved preview",
         "previewDrawing": "Unsaved rectangular sketch preview",
         "draftDrawing": "Editable sketch geometry",

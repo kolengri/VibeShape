@@ -119,7 +119,16 @@ test.describe("full sketch editor", () => {
       .getByRole("button", { name: "Create sketch" })
       .click()
     await confirmSketchPlane(page, "xz")
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+    await page.getByRole("button", { name: "Hide Sketch 1" }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await page.getByRole("button", { name: "Show Sketch 1" }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
     await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await expect(
+      drawing.locator("[data-sketch-available-external-geometry-count='3']"),
+    ).toHaveCount(1)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
@@ -339,6 +348,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
     await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+    await expect(drawing.locator('rect[data-sketch-point-role="center"]')).toHaveCount(2)
     await expect(
       drawing.locator('[data-sketch-entity-type="circle"][stroke-dasharray="6 4"]'),
     ).toHaveCount(1)

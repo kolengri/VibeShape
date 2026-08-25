@@ -24,7 +24,7 @@ import {
   type SketchProfileLoop,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { resolveExternalSketchGeometry } from "./external-sketch-references"
+import { resolveExternalSketchGeometry, type SketchSolveCache } from "./external-sketch-references"
 import type { SketchSolvePort } from "./runtime"
 
 const TWO_PI = Math.PI * 2
@@ -228,8 +228,6 @@ function prepareExtrusion(
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
 }
 
-export type SketchSolveCache = Map<string, Promise<SolveSketchRecordResult>>
-
 export function solveSketchOnce(
   solvedBySketchId: SketchSolveCache,
   solveSketch: SketchSolvePort,
@@ -239,16 +237,21 @@ export function solveSketchOnce(
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
-  const pending = resolveExternalSketchGeometry(document, sketch, solveSketch, features).then(
-    (externalGeometry) =>
-      solveSketch({
-        sketch,
-        variables: [...document.variables],
-        revision: document.revision,
-        continuation: null,
-        draggedPoints: [],
-        ...externalGeometry,
-      }),
+  const pending = resolveExternalSketchGeometry(
+    document,
+    sketch,
+    solveSketch,
+    features,
+    solvedBySketchId,
+  ).then((externalGeometry) =>
+    solveSketch({
+      sketch,
+      variables: [...document.variables],
+      revision: document.revision,
+      continuation: null,
+      draggedPoints: [],
+      ...externalGeometry,
+    }),
   )
   solvedBySketchId.set(sketch.id, pending)
   return pending
