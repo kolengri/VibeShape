@@ -65,6 +65,7 @@ Key decisions:
 | [Feature specification](docs/product/feature-matrix.md) | Complete feature list by release |
 | [Design and UX guidelines](docs/product/design-and-ux-guidelines.md) | Visual system, interaction rules, accessibility, content, and UI acceptance criteria |
 | [UX and core flows](docs/product/ux-flows.md) | Interface structure and user journeys |
+| [Canvas-first sketch experience](docs/product/canvas-first-sketch-experience.md) | Onshape interaction research, VibeShape gap analysis, and the visual sketch delivery sequence |
 | [Sketch-first modeling plan](docs/product/sketch-first-modeling-plan.md) | Canonical Sketch-to-Feature workflow, invariants, and delivery slices |
 | [Architecture](docs/architecture/overview.md) | Layers, processes, worker protocol, and rebuild model |
 | [Technology stack](docs/architecture/technology-stack.md) | Libraries, alternatives, and reviewed versions |

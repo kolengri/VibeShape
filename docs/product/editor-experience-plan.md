@@ -6,6 +6,8 @@ This plan turns the product-level rules in [Design and UX Guidelines](design-and
 
 VibeShape adopts proven interaction principles from established CAD systems without copying their visual identity, source code, cloud architecture, or every historical convention.
 
+The detailed research-backed interaction contract and current gap analysis are maintained in [Canvas-first sketch experience](canvas-first-sketch-experience.md).
+
 ## Evidence and adopted patterns
 
 | Source product | Pattern to adopt | VibeShape interpretation |
@@ -31,6 +33,8 @@ The 2026-08-15 browser review at 1440 × 900 identified these concrete problems:
 - Finish and Cancel could scroll away with long constraint content;
 - workspace switching could discard an active command buffer without first finishing or canceling it;
 - the shell had no command palette, complete shortcut layer, responsive task-panel sheet, or saved panel-size preferences before UX-2 started.
+
+The 2026-08-25 follow-up audit found a deeper issue after the command set had expanded: spatial commands frequently leave the viewport to finish in remote task-panel forms. Dimension selection automatically focuses a panel field, applied constraints are primarily managed as a long list, and several exact-value modification tools expose their main completion step away from the pointer. The next production-sketch work therefore prioritizes the canvas-first SKX sequence before adding more tool breadth.
 
 ## Target interaction model
 
@@ -79,7 +83,7 @@ Select support -> Enter Sketch mode -> Draw and constrain -> Finish -> Select re
 
 - Creating a sketch starts with a selected plane or a clear plane-selection request.
 - The camera moves normal to the plane only after a valid support exists.
-- Geometry tools live in the contextual toolbar; the task panel owns support, constraint details, dimensions, conflicts, and Finish/Cancel.
+- Geometry tools live in the contextual toolbar; the viewport owns spatial selection, preview, annotation placement, inline exact entry, and direct manipulation. The task panel owns support provenance, accessible exact-edit alternatives, constraint diagnostics, conflicts, and Finish/Cancel.
 - `Escape` cancels an in-progress placement first, then the active tool, then the sketch command, then selection.
 - A tool shortcut never fires while focus is in an input, textarea, editable element, or IME composition.
 - Snapping is a geometric aid. An inferred relation becomes persistent only when the corresponding constraint is accepted.
@@ -158,6 +162,8 @@ Exit criterion: toolbar, palette, shortcut, and context menu invoke the same com
 Exit criterion: a user can locate, select, edit, hide, and diagnose any authored item without relying on the canvas alone.
 
 ### UX-4 — production sketch interaction
+
+The next delivery order inside UX-4 is defined by SKX-1 through SKX-6 in [Canvas-first sketch experience](canvas-first-sketch-experience.md). Spatial Dimension placement and creation-time numeric entry take precedence over adding more form-driven sketch tools.
 
 - Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, horizontal, vertical, parallel, perpendicular, and endpoint-tangent candidates now provide inference guides and accepted persistent constraints. Remembered wake-up references, point-to-point alignment, arc midpoint/quadrant candidates, and projected geometry remain open.
 - The [mandatory sketch precision toolset](sketch-toolset.md) is implemented for geometry, 13 geometric constraints, and eight driving dimensions. The registered Dimension command is available from the toolbar, palette, and `D`; it collects compatible canvas selections without a modifier and focuses the variable-aware exact-value field. Selection-driven icon tools still use the complete selection, applied canvas glyphs are selectable, and a selected dimension label opens the accessible expression editor.
