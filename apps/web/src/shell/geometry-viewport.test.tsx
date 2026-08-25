@@ -155,6 +155,16 @@ describe("GeometryViewport", () => {
     expect(withActiveSketchDisplay([sketchDisplay], null)).toEqual([sketchDisplay])
   })
 
+  it("keeps the active 3D sketch display out of the normal 2D editor", () => {
+    const activeDisplay = {
+      ...sketchDisplay,
+      curvePositions: new Float32Array([5, 0, 0, 25, 0, 0]),
+    }
+
+    expect(withActiveSketchDisplay([], activeDisplay, false)).toEqual([])
+    expect(withActiveSketchDisplay([], activeDisplay, true)).toEqual([activeDisplay])
+  })
+
   it("preserves the viewer and camera while passive context disables chrome and input", async () => {
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
