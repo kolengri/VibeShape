@@ -169,3 +169,7 @@ Error wording, persistence, focus behavior, and recovery actions follow the [fee
 Shortcuts become configurable in P1. macOS uses `Cmd`; Windows and Linux use `Ctrl`.
 
 The complete shortcut safety, toolbar navigation, escape hierarchy, and canvas-accessibility contract is defined in [Design and UX Guidelines](design-and-ux-guidelines.md#accessibility-contract).
+
+### Associative editing context
+
+Visible earlier sketches now remain in the normal drawing as muted points, lines, circles, arcs, ellipses, and elliptical arcs, while the mounted 3D context preserves their spatial relation to the model. The model-tree eye action controls the same source in both views. **Use external geometry** promotes compatible earlier points and lines to interactive candidates; graph-ordered point-and-line chains recursively resolve earlier solved source intent. Curved sources remain passive context until analytical curved Use references are implemented. Center points use square control markers so they cannot be mistaken for duplicate circles.

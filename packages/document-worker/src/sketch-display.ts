@@ -3,7 +3,8 @@ import {
   type SketchDisplayRecord,
 } from "@vibeshape/application/sketch-display"
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
-import { type SketchSolveCache, solveSketchOnce } from "./extrusion-content"
+import type { SketchSolveCache } from "./external-sketch-references"
+import { solveSketchOnce } from "./extrusion-content"
 import type { SketchSolvePort } from "./runtime"
 
 export async function createSketchDisplayRecords(

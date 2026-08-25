@@ -170,6 +170,9 @@ type SketchViewportTestProps = Readonly<{
   controller?: React.ComponentProps<typeof SketchViewport>["state"]["controller"]
   draft?: React.ComponentProps<typeof SketchViewport>["state"]["draft"]
   editorTool?: React.ComponentProps<typeof SketchViewport>["state"]["editorTool"]
+  externalContextGeometry?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["externalContextGeometry"]
   externalPointCandidates?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["externalPointCandidates"]
@@ -197,13 +200,21 @@ type SketchViewportTestProps = Readonly<{
   displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
 }>
 
+function valueOr<Value>(value: Value | undefined, fallback: Value): Value {
+  return value === undefined ? fallback : value
+}
+
 function viewportState(props: SketchViewportTestProps) {
   return {
     construction: false,
     controller: props.controller ?? controller,
     draft: props.draft ?? null,
     editorTool: props.editorTool ?? "select",
-    externalPointCandidates: props.externalPointCandidates ?? [],
+    externalContextGeometry: valueOr(
+      props.externalContextGeometry,
+      valueOr(props.externalPointCandidates, []),
+    ),
+    externalPointCandidates: valueOr(props.externalPointCandidates, []),
     originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
     selectedConstraintId: props.selectedConstraintId ?? null,
     selectedEntityIds: props.selectedEntityIds ?? [],
@@ -388,6 +399,97 @@ describe("SketchViewport", () => {
       }),
     )
     await waitFor(() => expect(onDisplayChange).toHaveBeenLastCalledWith(null))
+  })
+
+  it("keeps earlier sketch geometry visible before Use turns it into selection candidates", () => {
+    const sourcePoint = pointEntities[0]
+    if (!sourcePoint) throw new Error("The source sketch fixture must contain a point.")
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3208") }
+    const externalPointCandidates = [
+      {
+        kind: "point" as const,
+        label: "Source sketch · Point",
+        sourceSketchId: sketch.id,
+        sourcePointId: sourcePoint.id,
+        world: [sourcePoint.x, sourcePoint.y, 0] as const,
+        x: sourcePoint.x,
+        y: sourcePoint.y,
+      },
+    ]
+    const view = renderViewport({
+      draft: target,
+      editorTool: "select",
+      externalPointCandidates,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(document.querySelector("[data-sketch-context-geometry-count='1']")).toBeTruthy()
+    expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
+
+    view.rerender(
+      viewportElement({
+        draft: target,
+        editorTool: "use",
+        externalPointCandidates,
+        sketch: target,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }),
+    )
+
+    expect(document.querySelector("[data-sketch-context-geometry-count]")).toBeNull()
+    expect(
+      document.querySelector("[data-sketch-available-external-geometry-count='1']"),
+    ).toBeTruthy()
+  })
+
+  it("keeps unsupported prior curves visible as passive context while Use is active", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3209") }
+    const curveId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3210")
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalContextGeometry: [
+        {
+          closed: true,
+          kind: "curve",
+          label: "Source sketch · Circle 1",
+          points: [
+            { world: [5, 0, 0], x: 5, y: 0 },
+            { world: [0, 5, 0], x: 0, y: 5 },
+            { world: [-5, 0, 0], x: -5, y: 0 },
+            { world: [0, -5, 0], x: 0, y: -5 },
+            { world: [5, 0, 0], x: 5, y: 0 },
+          ],
+          sourceEntityId: curveId,
+          sourceSketchId: sketch.id,
+          sourceType: "circle",
+        },
+      ],
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeTruthy()
+    expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
+  })
+
+  it("renders circular centers as square control points instead of duplicate circles", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchCircle(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b253"),
+      perimeterPoint: { x: 5, y: 0 },
+    }).sketch
+    renderViewport({
+      draft: fixture,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    const centerMarker = document.querySelector('[data-sketch-point-role="center"]')
+    expect(centerMarker?.tagName.toLowerCase()).toBe("rect")
+    expect(document.querySelectorAll('[data-sketch-entity-type="circle"]')).toHaveLength(1)
   })
 
   it("uses an earlier coplanar sketch point directly from the drawing", () => {

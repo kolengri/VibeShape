@@ -37,8 +37,8 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
-import { resolveExternalSketchGeometry } from "./external-sketch-references"
-import { createDocumentFeatureContentPreparer, type SketchSolveCache } from "./extrusion-content"
+import { resolveExternalSketchGeometry, type SketchSolveCache } from "./external-sketch-references"
+import { createDocumentFeatureContentPreparer } from "./extrusion-content"
 import { createSketchDisplayRecords } from "./sketch-display"
 
 export interface DocumentWorkerEndpoint {

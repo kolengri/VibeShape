@@ -1156,6 +1156,8 @@ function ActiveSketchTaskPanel({
     report.snapshot,
     draft,
     {
+      curve: (sketch, kind, ordinal) =>
+        viewportT("externalCurveContext", { kind, ordinal, sketch }),
       line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
       point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
     },

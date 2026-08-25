@@ -1,7 +1,7 @@
 import {
   projectSketchPointBetweenFrames,
-  sketchFrame,
   type SupportFrame,
+  sketchFrame,
 } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
@@ -15,6 +15,8 @@ import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape
 export type SketchSolvePort = (
   input: SketchCompilationInput,
 ) => SolveSketchRecordResult | Promise<SolveSketchRecordResult>
+
+export type SketchSolveCache = Map<string, Promise<SolveSketchRecordResult>>
 
 function sourcePointResult(
   source: SketchRecord,
@@ -100,22 +102,28 @@ function resolveExternalLine(
 }
 
 function sourceSolve(
-  results: Map<string, Promise<SolveSketchRecordResult>>,
+  results: SketchSolveCache,
   document: DocumentSnapshot,
   source: SketchRecord,
   solveSketch: SketchSolvePort,
+  features: readonly FeatureRecord[],
 ) {
   const cached = results.get(source.id)
   if (cached) return cached
-  const pending = Promise.resolve(
+  const pending = resolveExternalSketchGeometry(
+    document,
+    source,
+    solveSketch,
+    features,
+    results,
+  ).then((externalGeometry) =>
     solveSketch({
       revision: document.revision,
       sketch: source,
       variables: [...document.variables],
       continuation: null,
       draggedPoints: [],
-      externalPoints: [],
-      externalLines: [],
+      ...externalGeometry,
     }),
   )
   results.set(source.id, pending)
@@ -128,10 +136,10 @@ export async function resolveExternalSketchGeometry(
   sketch: SketchRecord,
   solveSketch: SketchSolvePort,
   features: readonly FeatureRecord[] = document.features,
+  results: SketchSolveCache = new Map(),
 ): Promise<ResolvedExternalSketchGeometry> {
   const targetFrame = sketchFrame(sketch, document, features)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
-  const results = new Map<string, Promise<SolveSketchRecordResult>>()
   const points: NonNullable<SketchCompilationInput["externalPoints"]> = []
   const lines: NonNullable<SketchCompilationInput["externalLines"]> = []
   for (const reference of sketch.externalReferences ?? []) {
@@ -139,7 +147,7 @@ export async function resolveExternalSketchGeometry(
     if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
     const sourceFrame = sketchFrame(source, document, features)
     if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
-    const result = await sourceSolve(results, document, source, solveSketch)
+    const result = await sourceSolve(results, document, source, solveSketch, features)
     if (reference.kind === "line") {
       lines.push(resolveExternalLine(reference, source, result, sourceFrame, targetFrame))
       continue
