@@ -1,7 +1,7 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 10 as const
+export const GEOMETRY_PROTOCOL_VERSION = 11 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -449,6 +449,112 @@ export const topologySignatureSchema = z
       }
     }
   })
+
+const circularEdgeGeometryShape = {
+  center: topologyVector3Schema,
+  xAxis: topologyVector3Schema,
+  yAxis: topologyVector3Schema,
+  normal: topologyVector3Schema,
+  radius: finiteNumberSchema.positive(),
+} as const
+
+function validateCircularEdgeFrame(
+  geometry: {
+    xAxis: readonly [number, number, number]
+    yAxis: readonly [number, number, number]
+    normal: readonly [number, number, number]
+  },
+  context: z.RefinementCtx,
+) {
+  const axes = [geometry.xAxis, geometry.yAxis, geometry.normal]
+  if (axes.some((axis) => !isNormalized(axis))) {
+    context.addIssue({ code: "custom", message: "Circular edge axes must be normalized." })
+    return
+  }
+  if (
+    Math.abs(vectorDot(geometry.xAxis, geometry.yAxis)) > 1e-6 ||
+    Math.abs(vectorDot(geometry.xAxis, geometry.normal)) > 1e-6 ||
+    Math.abs(vectorDot(geometry.yAxis, geometry.normal)) > 1e-6
+  ) {
+    context.addIssue({ code: "custom", message: "Circular edge axes must be orthogonal." })
+    return
+  }
+  if (vectorDot(vectorCross(geometry.xAxis, geometry.yAxis), geometry.normal) < 1 - 1e-6) {
+    context.addIssue({ code: "custom", message: "Circular edge axes must be right-handed." })
+  }
+}
+
+function circularPointError(
+  geometry: { center: readonly number[]; radius: number },
+  point: readonly number[],
+) {
+  const distance = Math.hypot(
+    (point[0] ?? 0) - (geometry.center[0] ?? 0),
+    (point[1] ?? 0) - (geometry.center[1] ?? 0),
+    (point[2] ?? 0) - (geometry.center[2] ?? 0),
+  )
+  return Math.abs(distance - geometry.radius)
+}
+
+function circularPointPlaneError(
+  geometry: {
+    center: readonly [number, number, number]
+    normal: readonly [number, number, number]
+  },
+  point: readonly [number, number, number],
+) {
+  return Math.abs(
+    vectorDot(
+      [point[0] - geometry.center[0], point[1] - geometry.center[1], point[2] - geometry.center[2]],
+      geometry.normal,
+    ),
+  )
+}
+
+const circleEdgeReferenceGeometrySchema = z
+  .object({ kind: z.literal("circle-edge"), ...circularEdgeGeometryShape })
+  .strict()
+  .superRefine(validateCircularEdgeFrame)
+
+const arcEdgeReferenceGeometrySchema = z
+  .object({
+    kind: z.literal("arc-edge"),
+    ...circularEdgeGeometryShape,
+    start: topologyVector3Schema,
+    middle: topologyVector3Schema,
+    end: topologyVector3Schema,
+  })
+  .strict()
+  .superRefine((geometry, context) => {
+    validateCircularEdgeFrame(geometry, context)
+    for (const key of ["start", "middle", "end"] as const) {
+      const tolerance = 1e-6 * Math.max(1, geometry.radius)
+      if (
+        circularPointError(geometry, geometry[key]) > tolerance ||
+        circularPointPlaneError(geometry, geometry[key]) > tolerance
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: [key],
+          message: "Circular arc points must lie on the analytical circle.",
+        })
+      }
+    }
+    if (
+      Math.hypot(
+        geometry.end[0] - geometry.start[0],
+        geometry.end[1] - geometry.start[1],
+        geometry.end[2] - geometry.start[2],
+      ) <= 1e-9
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["end"],
+        message: "Circular arc endpoints must be distinct.",
+      })
+    }
+  })
+
 export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -468,9 +574,11 @@ export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
         Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) > 1e-9,
       { message: "Topology line-edge endpoints must be distinct.", path: ["end"] },
     ),
+  circleEdgeReferenceGeometrySchema,
+  arcEdgeReferenceGeometrySchema,
 ])
 
-export const topologyCandidateSchema = z
+const topologyCandidateBaseSchema = z
   .object({
     candidateId: identifierSchema,
     kind: topologyKindSchema,
@@ -481,6 +589,20 @@ export const topologyCandidateSchema = z
     signature: topologySignatureSchema,
   })
   .strict()
+
+function referenceGeometryMatchesCandidate(candidate: z.infer<typeof topologyCandidateBaseSchema>) {
+  const geometry = candidate.referenceGeometry
+  if (!geometry) return true
+  if (geometry.kind === "vertex") {
+    return candidate.kind === "vertex" && candidate.signature.geometryClass === "POINT"
+  }
+  if (geometry.kind === "line-edge") {
+    return candidate.kind === "edge" && candidate.signature.geometryClass === "LINE"
+  }
+  return candidate.kind === "edge" && candidate.signature.geometryClass === "CIRCLE"
+}
+
+export const topologyCandidateSchema = topologyCandidateBaseSchema
   .refine((candidate) => candidate.kind === candidate.signature.kind, {
     message: "Topology candidate kind must match its signature kind.",
     path: ["signature", "kind"],
@@ -489,20 +611,10 @@ export const topologyCandidateSchema = z
     message: "Only face topology candidates may declare a tessellation face ID.",
     path: ["meshFaceId"],
   })
-  .refine(
-    (candidate) =>
-      candidate.referenceGeometry === undefined ||
-      (candidate.referenceGeometry.kind === "vertex" &&
-        candidate.kind === "vertex" &&
-        candidate.signature.geometryClass === "POINT") ||
-      (candidate.referenceGeometry.kind === "line-edge" &&
-        candidate.kind === "edge" &&
-        candidate.signature.geometryClass === "LINE"),
-    {
-      message: "Topology reference geometry must match its candidate kind and geometry class.",
-      path: ["referenceGeometry", "kind"],
-    },
-  )
+  .refine(referenceGeometryMatchesCandidate, {
+    message: "Topology reference geometry must match its candidate kind and geometry class.",
+    path: ["referenceGeometry", "kind"],
+  })
 
 const topologyIntentSchema = z
   .object({

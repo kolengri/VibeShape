@@ -45,18 +45,19 @@ const faceReference = (featureId: string) => ({
   },
 })
 
-const vertexReference = (featureId: string) => ({
+const circleEdgeReference = (featureId: string) => ({
   schemaVersion: 0 as const,
   featureId: id(featureId),
-  kind: "vertex" as const,
+  kind: "edge" as const,
+  semanticRole: "primitive.cylinder.edge.start",
   signature: {
-    kind: "vertex" as const,
-    geometryClass: "POINT",
-    measure: 0,
+    kind: "edge" as const,
+    geometryClass: "CIRCLE",
+    measure: Math.PI * 10,
     centroid: [0, 0, 0] as [number, number, number],
     bounds: {
-      min: [0, 0, 0] as [number, number, number],
-      max: [0, 0, 0] as [number, number, number],
+      min: [-5, -5, 0] as [number, number, number],
+      max: [5, 5, 0] as [number, number, number],
     },
     boundaryCount: 0,
     adjacentGeometryClasses: [],
@@ -371,16 +372,19 @@ describe("createDocumentDependencyGraph", () => {
     })
   })
 
-  it("orders a sketch after the model feature referenced by Use", () => {
+  it("orders a sketch after the circular model edge referenced by Use", () => {
     const target = {
       ...sketch("2"),
       externalReferences: [
         {
           schemaVersion: 0 as const,
           id: id("7"),
-          kind: "model-point" as const,
-          reference: vertexReference("1"),
-          projectedPointId: id("8"),
+          kind: "model-curve" as const,
+          reference: circleEdgeReference("1"),
+          sourceType: "circle" as const,
+          projectedEntityId: id("8"),
+          projectedType: "circle" as const,
+          projectedPointIds: [id("9")],
         },
       ],
     }

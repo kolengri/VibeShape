@@ -280,6 +280,115 @@ describe("external sketch reference resolution", () => {
     )
   })
 
+  it("materializes an exact circular model edge as read-only curve geometry", async () => {
+    const featureId = id("4620")
+    const projectedEntityId = id("4621")
+    const projectedCenterId = id("4622")
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const signature = {
+      kind: "edge" as const,
+      geometryClass: "CIRCLE",
+      measure: Math.PI * 10,
+      centroid: [2, 3, 0],
+      bounds: { min: [-3, -2, 0], max: [7, 8, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(8, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4623"),
+          kind: "model-curve",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "edge.circular",
+            signature,
+          },
+          sourceType: "circle",
+          projectedEntityId,
+          projectedType: "circle",
+          projectedPointIds: [projectedCenterId],
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4624"),
+      revision: 1,
+      name: "Circular model reference",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+    const geometry = [
+      {
+        featureId,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "edge:rebuilt-circle",
+              kind: "edge",
+              semanticRole: "edge.circular",
+              lineageTokens: [],
+              signature,
+              referenceGeometry: {
+                kind: "circle-edge",
+                center: [2, 3, 0],
+                xAxis: [1, 0, 0],
+                yAxis: [0, 1, 0],
+                normal: [0, 0, 1],
+                radius: 5,
+              },
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometry,
+    )
+
+    expect(result.externalCurves).toEqual([
+      {
+        points: [expect.objectContaining({ id: projectedCenterId, x: 2, y: 3 })],
+        curve: expect.objectContaining({
+          id: projectedEntityId,
+          type: "circle",
+          centerPointId: projectedCenterId,
+          radius: 5,
+          construction: true,
+        }),
+      },
+    ])
+  })
+
   it("resolves a source sketch through its own external-reference chain", async () => {
     const first = pointSketch(1, 12)
     const second = sketchRecordSchema.parse({

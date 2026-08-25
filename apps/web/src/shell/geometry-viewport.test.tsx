@@ -270,6 +270,20 @@ describe("GeometryViewport", () => {
       start: [0, 0, 0] as const,
       end: [10, 0, 0] as const,
     }
+    const modelCurveCandidate = {
+      kind: "model-curve" as const,
+      label: "Cylinder · Circular edge 1",
+      featureId: boxId,
+      candidateId: "circle-1",
+      points: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [-5, 0, 0],
+        [0, -5, 0],
+        [5, 0, 0],
+      ] as const,
+      sourceType: "circle" as const,
+    }
     const onSelect = vi.fn()
     const controller = readyController([], [])
     const { createViewport, port } = renderViewport(
@@ -283,7 +297,13 @@ describe("GeometryViewport", () => {
         frame: null,
         mode: "orbit",
         referenceSelection: {
-          candidates: [candidate, lineCandidate, modelPointCandidate, modelLineCandidate],
+          candidates: [
+            candidate,
+            lineCandidate,
+            modelPointCandidate,
+            modelLineCandidate,
+            modelCurveCandidate,
+          ],
           onSelect,
         },
       },
@@ -295,6 +315,7 @@ describe("GeometryViewport", () => {
         lineCandidate,
         modelPointCandidate,
         modelLineCandidate,
+        modelCurveCandidate,
       ]),
     )
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("sketch-reference-select")
@@ -312,16 +333,18 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenCalledWith(lineCandidate)
     options?.onSketchReferenceSelectionChange?.(modelPointCandidate)
     options?.onSketchReferenceSelectionChange?.(modelLineCandidate)
+    options?.onSketchReferenceSelectionChange?.(modelCurveCandidate)
     expect(onSelect).toHaveBeenCalledWith(modelPointCandidate)
     expect(onSelect).toHaveBeenCalledWith(modelLineCandidate)
+    expect(onSelect).toHaveBeenCalledWith(modelCurveCandidate)
 
     fireEvent.change(
       screen.getByRole("combobox", { name: "Select a reference with the keyboard" }),
       {
-        target: { value: "3" },
+        target: { value: "4" },
       },
     )
-    expect(onSelect).toHaveBeenLastCalledWith(modelLineCandidate)
+    expect(onSelect).toHaveBeenLastCalledWith(modelCurveCandidate)
   })
 
   it("renders exact unsaved meshes as a distinct preview state", async () => {

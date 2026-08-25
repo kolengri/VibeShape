@@ -386,13 +386,15 @@ describe("sketchRecordSchema", () => {
     expect(parsed.success).toBe(true)
   })
 
-  test("accepts stable model vertex and line references as constraint targets", () => {
+  test("accepts stable model point, line, and curve references as constraint targets", () => {
     const fixture = validSketch()
     const featureId = "018f0000-0000-7000-8000-000000000401"
     const pointId = "018f0000-0000-7000-8000-000000000402"
     const startPointId = "018f0000-0000-7000-8000-000000000403"
     const endPointId = "018f0000-0000-7000-8000-000000000404"
     const lineId = "018f0000-0000-7000-8000-000000000405"
+    const circleId = "018f0000-0000-7000-8000-000000000408"
+    const centerId = "018f0000-0000-7000-8000-000000000409"
     const signature = {
       geometryClass: "POINT",
       measure: 0,
@@ -439,6 +441,26 @@ describe("sketchRecordSchema", () => {
           projectedStartPointId: startPointId,
           projectedEndPointId: endPointId,
         },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000410",
+          kind: "model-curve",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            signature: {
+              ...signature,
+              kind: "edge",
+              geometryClass: "CIRCLE",
+              measure: Math.PI * 10,
+            },
+          },
+          sourceType: "circle",
+          projectedEntityId: circleId,
+          projectedType: "circle",
+          projectedPointIds: [centerId],
+        },
       ],
       constraints: [
         {
@@ -447,6 +469,13 @@ describe("sketchRecordSchema", () => {
           type: "parallel",
           firstEntityId: lineA,
           secondEntityId: lineId,
+        },
+        {
+          schemaVersion: 0,
+          id: constraintId(207),
+          type: "point-on-curve",
+          pointId: pointA,
+          curveId: circleId,
         },
       ],
     })

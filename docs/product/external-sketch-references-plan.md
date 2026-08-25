@@ -53,14 +53,16 @@ and removes references; removal also removes constraints that target the project
 referenced source sketch is rejected.
 
 Sketch-to-sketch Use supports analytical circles, arcs, and ellipses plus ordered reference chains. The
-worker boundary now publishes exact vertex positions and exact LINE endpoints for generic Box and
-polygonal Extrusion topology candidates. Analytical Box boundaries and prepared source point/entity IDs give
-those candidates stable roles across supported parameter edits; distinct coincident source points remain
-unlabeled so resolution fails closed instead of choosing one by traversal order. Authoritative sketch solving
-resolves model references fail-closed. Graphical model-edge/vertex preselection and creation remain the next UI slice. Intersection,
-automatic external inference, curved model edges, and repair UI are not implemented. Persisted coordinates
-remain disposable: both UI preview and authoritative worker evaluation derive them from stable source
-identity and resolved support frames.
+worker boundary publishes exact vertex positions, linear endpoints, and analytical circle or bounded-arc
+frames for generic topology candidates. Analytical Box boundaries, Cylinder rim roles, and prepared source
+point/entity IDs give supported candidates stable roles across parameter edits; distinct coincident source
+points remain unlabeled so resolution fails closed instead of choosing one by traversal order. Authoritative
+sketch solving resolves model references fail-closed. Normal and orbit views provide the same graphical
+preselection and creation path for vertices, linear edges, circles, and circular arcs without persisting
+display samples. Circular display samples are cached per rebuild and support frame, while draft changes only
+re-evaluate stable-reference availability. Intersection, automatic external inference, non-circular curved model edges, overlap
+cycling, and repair UI are not implemented. Persisted coordinates remain disposable: both UI preview and
+authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
 
@@ -148,9 +150,10 @@ cannot alter evaluation order.
    solver semantics permit them.
 3. **Editor interaction**: provide the icon-only `Use external geometry` tool, external inference,
    visible preselection, source labels, a reference list, visibility toggle, and accessible removal.
-4. **Feature-edge Use**: the exact vertex/LINE payload, stable model-reference schema, progressive rebuild,
-   fail-closed worker resolution, and graphical normal/orbit candidate selection are implemented. Add
-   curved feature edges, overlap cycling, source filters, and repair diagnostics.
+4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
+   model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
+   candidate selection are implemented. Add non-circular curved edges, overlap cycling, source filters, and
+   repair diagnostics.
 5. **Intersection**: add bounded analytical face/surface intersections with `Intersection`/`Pierce`
    relations. Do not approximate this with mesh intersections.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace

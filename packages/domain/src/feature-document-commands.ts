@@ -20,6 +20,7 @@ import {
 } from "./feature-collection"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import type { draftIdSchema } from "./identifiers"
+import { isSketchExternalModelReference } from "./sketch"
 
 type FeatureCommand = Extract<
   DocumentCommand,
@@ -51,8 +52,7 @@ function featureSupportsSketch(snapshot: DocumentSnapshot, featureId: FeatureRec
       support?.reference.featureId === featureId ||
       (externalReferences ?? []).some(
         (reference) =>
-          (reference.kind === "model-point" || reference.kind === "model-line") &&
-          reference.reference.featureId === featureId,
+          isSketchExternalModelReference(reference) && reference.reference.featureId === featureId,
       ),
   )
 }

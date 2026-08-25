@@ -38,6 +38,7 @@ interface FeatureEvaluationHarnessState {
   positionedBox: FeatureResponse | null
   cylinder: FeatureResponse | null
   extrusion: FeatureResponse | null
+  circularArcExtrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
   ellipticalArcExtrusion: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
@@ -74,6 +75,7 @@ const ellipseExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33
 const ellipticalArcExtrusionFeatureId = featureIdSchema.parse(
   "0195b5ac-b220-7a2c-8c33-67a36a7f3111",
 )
+const circularArcExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3113")
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
@@ -81,10 +83,28 @@ const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3303",
   "0195b5ac-b220-7a2c-8c33-67a36a7f3304",
 ] as const
+const profilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3321",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3322",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3323",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3324",
+] as const
 const ellipseProfileEntityId = "0195b5ac-b220-7a2c-8c33-67a36a7f3310"
 const ellipticalArcProfileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3311",
   "0195b5ac-b220-7a2c-8c33-67a36a7f3312",
+] as const
+const ellipticalArcProfilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3331",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3332",
+] as const
+const circularArcProfileEntityIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3313",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3314",
+] as const
+const circularArcProfilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3333",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3334",
 ] as const
 const generation = 1
 const state: FeatureEvaluationHarnessState = {
@@ -94,6 +114,7 @@ const state: FeatureEvaluationHarnessState = {
   positionedBox: null,
   cylinder: null,
   extrusion: null,
+  circularArcExtrusion: null,
   ellipseExtrusion: null,
   ellipticalArcExtrusion: null,
   extrusionAdd: null,
@@ -144,10 +165,38 @@ const extrusionContentParameters = extrusionFeatureContentParametersSchema.parse
   outer: {
     sourceEntityIds: profileEntityIds,
     segments: [
-      { entityId: profileEntityIds[0], type: "line", start: [0, 0], end: [20, 0] },
-      { entityId: profileEntityIds[1], type: "line", start: [20, 0], end: [20, 10] },
-      { entityId: profileEntityIds[2], type: "line", start: [20, 10], end: [0, 10] },
-      { entityId: profileEntityIds[3], type: "line", start: [0, 10], end: [0, 0] },
+      {
+        entityId: profileEntityIds[0],
+        type: "line",
+        startPointId: profilePointIds[0],
+        endPointId: profilePointIds[1],
+        start: [0, 0],
+        end: [20, 0],
+      },
+      {
+        entityId: profileEntityIds[1],
+        type: "line",
+        startPointId: profilePointIds[1],
+        endPointId: profilePointIds[2],
+        start: [20, 0],
+        end: [20, 10],
+      },
+      {
+        entityId: profileEntityIds[2],
+        type: "line",
+        startPointId: profilePointIds[2],
+        endPointId: profilePointIds[3],
+        start: [20, 10],
+        end: [0, 10],
+      },
+      {
+        entityId: profileEntityIds[3],
+        type: "line",
+        startPointId: profilePointIds[3],
+        endPointId: profilePointIds[0],
+        start: [0, 10],
+        end: [0, 0],
+      },
     ],
   },
   holes: [],
@@ -186,6 +235,8 @@ const ellipticalArcExtrusionContentParameters = extrusionFeatureContentParameter
       {
         entityId: ellipticalArcProfileEntityIds[0],
         type: "elliptical-arc",
+        startPointId: ellipticalArcProfilePointIds[1],
+        endPointId: ellipticalArcProfilePointIds[0],
         center: [0, 0],
         primaryAxisPoint: [10, 0],
         secondaryAxisPoint: [0, 5],
@@ -195,7 +246,40 @@ const ellipticalArcExtrusionContentParameters = extrusionFeatureContentParameter
       {
         entityId: ellipticalArcProfileEntityIds[1],
         type: "line",
+        startPointId: ellipticalArcProfilePointIds[0],
+        endPointId: ellipticalArcProfilePointIds[1],
         start: [-10, 0],
+        end: [10, 0],
+      },
+    ],
+  },
+  holes: [],
+  distance: 12,
+  symmetric: false,
+  operation: "new",
+})
+
+const circularArcExtrusionContentParameters = extrusionFeatureContentParametersSchema.parse({
+  sketchId,
+  plane: "xy",
+  outer: {
+    sourceEntityIds: circularArcProfileEntityIds,
+    segments: [
+      {
+        entityId: circularArcProfileEntityIds[0],
+        type: "arc",
+        startPointId: circularArcProfilePointIds[0],
+        endPointId: circularArcProfilePointIds[1],
+        start: [10, 0],
+        middle: [-10, 0],
+        end: [0, -10],
+      },
+      {
+        entityId: circularArcProfileEntityIds[1],
+        type: "line",
+        startPointId: circularArcProfilePointIds[1],
+        endPointId: circularArcProfilePointIds[0],
+        start: [0, -10],
         end: [10, 0],
       },
     ],
@@ -448,6 +532,14 @@ async function run() {
       "new",
       [],
       ellipticalArcExtrusionContentParameters,
+    )
+    state.circularArcExtrusion = await evaluateExtrusion(
+      client,
+      environment,
+      circularArcExtrusionFeatureId,
+      "new",
+      [],
+      circularArcExtrusionContentParameters,
     )
     const extrusionTarget = [{ featureId: boxFeatureId, contentHash: box.contentHash }]
     state.extrusionAdd = await evaluateExtrusion(

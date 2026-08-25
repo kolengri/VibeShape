@@ -1,6 +1,10 @@
-import { sketchEntityIdSchema, type SketchEntity, type SketchPoint2 } from "@vibeshape/domain"
+import { type SketchEntity, type SketchPoint2, sketchEntityIdSchema } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
-import { projectSketchCurveBetweenFrames } from "./sketch-curve-projection"
+import {
+  projectSketchCurveBetweenFrames,
+  projectWorldCircularEdgeToSupport,
+  sampleWorldCircularEdge,
+} from "./sketch-curve-projection"
 import type { SupportFrame } from "./support-frame"
 
 const id = (suffix: string) =>
@@ -18,6 +22,88 @@ function pointMap(entries: readonly (readonly [string, SketchPoint2])[]) {
 }
 
 describe("analytical sketch curve projection", () => {
+  it("projects exact full-circle model edges without tessellation-derived dimensions", () => {
+    const projected = projectWorldCircularEdgeToSupport(
+      {
+        kind: "circle-edge",
+        center: [2, 3, 0],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+        radius: 5,
+      },
+      xy,
+    )
+
+    expect(projected).toEqual({ type: "circle", points: [{ x: 2, y: 3 }], radius: 5 })
+  })
+
+  it("uses the analytical middle point to preserve a model arc's major segment", () => {
+    const geometry = {
+      kind: "arc-edge" as const,
+      center: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+      radius: 5,
+      start: [5, 0, 0] as const,
+      middle: [-5, 0, 0] as const,
+      end: [0, -5, 0] as const,
+    }
+
+    const projected = projectWorldCircularEdgeToSupport(geometry, xy)
+    const sampled = sampleWorldCircularEdge(geometry, 4)
+
+    expect(projected).toEqual({
+      type: "arc",
+      points: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 0, y: -5 },
+      ],
+    })
+    expect(sampled[0]).toEqual([5, 0, 0])
+    expect(sampled.at(-1)?.[0]).toBeCloseTo(0)
+    expect(sampled.at(-1)?.[1]).toBeCloseTo(-5)
+    expect(sampled[2]?.[0]).toBeCloseTo(-Math.sqrt(12.5))
+  })
+
+  it("bounds transient circular display sampling", () => {
+    const geometry = {
+      kind: "circle-edge" as const,
+      center: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+      radius: 5,
+    }
+
+    expect(() => sampleWorldCircularEdge(geometry, 0)).toThrow(RangeError)
+    expect(() => sampleWorldCircularEdge(geometry, 4_097)).toThrow(RangeError)
+  })
+
+  it("fails closed when a circular model edge projects to a line", () => {
+    const yz: SupportFrame = {
+      origin: [0, 0, 0],
+      xAxis: [0, 1, 0],
+      yAxis: [0, 0, 1],
+      normal: [1, 0, 0],
+    }
+    expect(
+      projectWorldCircularEdgeToSupport(
+        {
+          kind: "circle-edge",
+          center: [0, 0, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 1, 0],
+          normal: [0, 0, 1],
+          radius: 5,
+        },
+        yz,
+      ),
+    ).toBeNull()
+  })
+
   it("keeps a circle analytical on an equivalent translated support", () => {
     const centerId = id("1")
     const circle: Extract<SketchEntity, { type: "circle" }> = {

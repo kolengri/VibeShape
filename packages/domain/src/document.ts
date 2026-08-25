@@ -1,7 +1,12 @@
 import { z } from "zod"
 import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
-import { type SketchExternalReference, type SketchRecord, sketchRecordsSchema } from "./sketch"
+import {
+  isSketchExternalModelReference,
+  type SketchExternalReference,
+  type SketchRecord,
+  sketchRecordsSchema,
+} from "./sketch"
 import { angleInputUnitSchema, lengthInputUnitSchema } from "./units"
 import { type VariableDefinition, variableDefinitionsSchema } from "./variables"
 
@@ -61,7 +66,7 @@ function validateExternalReferenceOrder(input: ExternalReferenceValidationInput)
 }
 
 function externalReferenceSourceSelector(reference: SketchExternalReference) {
-  if (reference.kind === "model-point" || reference.kind === "model-line") return null
+  if (isSketchExternalModelReference(reference)) return null
   if (reference.kind === "line") {
     return { entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const
   }
@@ -127,7 +132,7 @@ function validateDocumentSketchReferences(
       )
     }
     for (const [referenceIndex, reference] of (sketch.externalReferences ?? []).entries()) {
-      if (reference.kind === "model-point" || reference.kind === "model-line") {
+      if (isSketchExternalModelReference(reference)) {
         if (!featureIds.has(reference.reference.featureId)) {
           addDocumentIssue(
             context,
