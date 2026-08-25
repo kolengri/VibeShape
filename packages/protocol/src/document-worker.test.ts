@@ -5,7 +5,7 @@ import {
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
 } from "./document-worker"
-import { sketchProfileResultWireSchema } from "./sketch"
+import { sketchProfileResultWireSchema, sketchWireRecordSchema } from "./sketch"
 
 const documentId = "0195b5ac-b213-7f2c-9c33-67a36a7f21ac"
 const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3101"
@@ -19,6 +19,10 @@ const offsetLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
 const offsetConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
 const ellipseId = "0195b5ac-b220-7a2c-8c33-67a36a7f3209"
 const ellipseConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f3210"
+const externalReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3211"
+const sourceCurveId = "0195b5ac-b220-7a2c-8c33-67a36a7f3212"
+const projectedCurveId = "0195b5ac-b220-7a2c-8c33-67a36a7f3213"
+const projectedCurvePointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3214"
 
 function sketch() {
   return {
@@ -149,6 +153,36 @@ function envelope(revision = 1) {
 }
 
 describe("document worker protocol", () => {
+  it("accepts a bounded analytical external curve reference", () => {
+    const reference = {
+      schemaVersion: 0,
+      id: externalReferenceId,
+      kind: "curve",
+      sourceSketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      sourceEntityId: sourceCurveId,
+      sourceType: "circle",
+      projectedEntityId: projectedCurveId,
+      projectedType: "circle",
+      projectedPointIds: [projectedCurvePointId],
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [reference] }),
+    ).toMatchObject({ externalReferences: [reference] })
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [{ ...reference, projectedType: "ellipse" }],
+      }).success,
+    ).toBe(false)
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [{ ...reference, projectedEntityId: projectedCurvePointId }],
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts a bounded document rebuild request", () => {
     expect(
       documentWorkerRequestSchema.parse({

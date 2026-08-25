@@ -74,9 +74,9 @@ Those pieces do not yet form a complete associative workflow.
 | Evaluation dependencies | The feature DAG does not treat sketches as graph nodes. | One document dependency graph spanning sketch and feature nodes while retaining the feature DAG evaluator. | P0 |
 | Sketch support | Origin planes, Datum Plane, and a bounded set of planar feature faces work. | A typed support-frame union with stable origin/orientation and an explicit reference-coordinate-system option. | P0 |
 | Support selection | Supported planes and faces can be picked before editing. | The same graphical selection model must work for support replacement and all reference inputs. | P0 |
-| Editing context | The normal-to-plane canvas keeps earlier visible sketch points, lines, circles, arcs, ellipses, and elliptical arcs as muted context; the mounted 3D scene retains earlier model and datum geometry. Model-tree visibility controls both representations. | Add source hover, overlap cycling, and solved rather than authored curve sampling throughout the passive 2D context. | P0 |
-| External references | Points and lines from earlier sketches can be projected across exact support frames, and ordered sketch-to-sketch reference chains resolve recursively through the document graph. Curved sources are visible but not yet materialized by Use. | Add analytical arcs, circles, ellipses, feature edges, and vertices on the same stable reference path. | P0 |
-| External selection | Use external geometry selects earlier sketch points and lines in 2D or the persistent 3D viewport with source hover labels. | Add source filters, overlap cycling, and feature-topology candidates. | P0 |
+| Editing context | The normal-to-plane canvas keeps earlier visible solved sketch points, lines, circles, arcs, ellipses, and elliptical arcs as muted context; the mounted 3D scene retains earlier model and datum geometry. Model-tree visibility controls both representations. | Add source hover and overlap cycling. | P0 |
+| External references | Points, lines, circles, arcs, ellipses, and elliptical arcs from earlier sketches project analytically across non-degenerate support frames, and ordered sketch-to-sketch chains resolve recursively through the document graph. | Add feature edges and vertices on the same stable reference path. | P0 |
+| External selection | Use external geometry selects earlier sketch points, lines, and analytical curves in 2D or the persistent 3D viewport with source labels. Passive, selectable, and committed layers are mutually exclusive. | Add source filters, overlap cycling, and feature-topology candidates. | P0 |
 | Intersection | Not implemented. | Select a face/surface and create an exact, associative sketch-plane intersection. | P0 |
 | External constraints | A projected point supports Coincident; a projected line is selectable and supports compatible line and point-on-line relations. | Add Point on curve, Tangent, Concentric, Pierce/Intersection, and curve dimensions where mathematically valid. | P0/P1 |
 | Datum construction | Signed offset only. | Offset, Plane point, Line angle, Point normal, Three point, Mid plane, Curve point, and Tangent modes. | P1 |
@@ -437,8 +437,8 @@ open parts of this slice.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
 - Add a history cursor and rollback presentation while editing an earlier sketch or feature.
 - Keep the Three.js context scene mounted under the analytical sketch interaction layer.
-- Show earlier bodies, datum geometry, and saved sketches during sketch edit. Implemented for passive
-  analytical sketch context and model-tree visibility; solved curved-source projection remains open.
+- Show earlier bodies, datum geometry, and saved sketches during sketch edit. Implemented for solved
+  analytical sketch context and model-tree visibility.
 - Add Normal to sketch and orbit-in-context. Implemented for resolved support frames with a temporary
   world-space display of the active draft.
 - Add a visible selection filter and bounded candidate cycling.
@@ -446,14 +446,17 @@ open parts of this slice.
 **Exit:** a user can identify where a sketch exists, what supports it, and which earlier objects are
 eligible without leaving the viewport.
 
-### Slice 2 — complete sketch-to-sketch Use
+### Slice 2 — complete sketch-to-sketch Use (implemented for analytical entities)
 
-- Generalize the point-only schema to analytical sketch entities.
-- Keep the implemented cross-support point selection and add graphical source-curve selection.
-- Project read-only line, circle, arc, ellipse, and elliptical-arc references.
-- Add supported external relations and the external-reference manager.
-- Keep the implemented graph-protected ordered point-and-line reference chains and extend the same
-  provenance diagnostics to analytical curves.
+- Generalize the point-only schema to analytical sketch entities. Implemented.
+- Keep cross-support point selection and add graphical source-curve selection. Implemented in 2D and
+  the persistent 3D context.
+- Project read-only line, circle, arc, ellipse, and elliptical-arc references. Implemented with exact
+  affine projection and stable projected identities.
+- Add supported external relations and the external-reference manager. Relations and removal are
+  implemented; dedicated repair UI remains open.
+- Extend graph-protected ordered reference chains and provenance validation to analytical curves.
+  Implemented with recursive source solving and fail-closed type/rank validation.
 - Add source visibility, hover preview, remove, missing, and conflict states.
 
 **Exit:** a layout sketch can associatively drive a detail sketch on the same support frame.

@@ -1,9 +1,11 @@
 import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
+import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
 import type {
   DocumentSnapshot,
   FeatureRecord,
   SketchEntity,
   SketchEntityId,
+  SketchPoint2,
   SketchRecord,
 } from "@vibeshape/domain"
 import {
@@ -12,6 +14,7 @@ import {
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
 } from "@vibeshape/domain"
+import type { SolvedSketchWire } from "@vibeshape/protocol"
 import {
   createBrowserSketchConstraintId,
   createBrowserSketchEntityId,
@@ -45,8 +48,16 @@ export type ExternalSketchLineCandidate = Readonly<{
 export type ExternalSketchGeometryCandidate =
   | ExternalSketchPointCandidate
   | ExternalSketchLineCandidate
+  | (ExternalSketchCurveContext & { projectedType: ExternalSketchCurveKind })
 
 type ExternalSketchCurveKind = Exclude<SketchEntity["type"], "line" | "point">
+
+const projectedCurvePointCount = {
+  arc: 3,
+  circle: 1,
+  ellipse: 3,
+  "elliptical-arc": 5,
+} as const satisfies Record<ExternalSketchCurveKind, number>
 
 export type ExternalSketchCurveContext = Readonly<{
   closed: boolean
@@ -56,6 +67,7 @@ export type ExternalSketchCurveContext = Readonly<{
   sourceEntityId: SketchEntityId
   sourceSketchId: SketchRecord["id"]
   sourceType: ExternalSketchCurveKind
+  projectedType: ExternalSketchCurveKind | null
 }>
 
 export type ExternalSketchContextGeometry =
@@ -72,12 +84,12 @@ export function externalReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
   candidate: ExternalSketchGeometryCandidate,
 ) {
-  if (
-    reference.sourceSketchId !== candidate.sourceSketchId ||
-    (reference.kind ?? "point") !== candidate.kind
-  ) {
-    return false
+  if (reference.sourceSketchId !== candidate.sourceSketchId) return false
+  if (candidate.kind === "curve") {
+    return reference.kind === "curve" && reference.sourceEntityId === candidate.sourceEntityId
   }
+  if (reference.kind === "curve") return false
+  if ((reference.kind ?? "point") !== candidate.kind) return false
   return candidate.kind === "line"
     ? reference.kind === "line" && reference.sourceLineId === candidate.sourceLineId
     : reference.kind !== "line" && reference.sourcePointId === candidate.sourcePointId
@@ -133,6 +145,28 @@ export function applyExternalSketchCandidate(
       ],
     }
   }
+  if (candidate.kind === "curve") {
+    return {
+      ...draft,
+      externalReferences: [
+        ...references,
+        {
+          schemaVersion: 0,
+          id: createBrowserSketchExternalReferenceId(),
+          kind: "curve",
+          sourceSketchId: candidate.sourceSketchId,
+          sourceEntityId: candidate.sourceEntityId,
+          sourceType: candidate.sourceType,
+          projectedEntityId: createBrowserSketchEntityId(),
+          projectedType: candidate.projectedType,
+          projectedPointIds: Array.from(
+            { length: projectedCurvePointCount[candidate.projectedType] },
+            () => createBrowserSketchEntityId(),
+          ),
+        },
+      ],
+    }
+  }
   const projectedPointId = createBrowserSketchEntityId()
   return attachProjectedPoint(
     {
@@ -159,9 +193,17 @@ export function externalSketchGeometryCandidates(
   draft: SketchRecord,
   labels: ExternalSketchGeometryLabels,
   features: readonly FeatureRecord[] = document.features,
+  solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
 ): readonly ExternalSketchGeometryCandidate[] {
-  return externalSketchContextGeometry(document, draft, labels, features).filter(
-    (geometry): geometry is ExternalSketchGeometryCandidate => geometry.kind !== "curve",
+  return externalSketchContextGeometry(
+    document,
+    draft,
+    labels,
+    features,
+    solutionsBySketchId,
+  ).filter(
+    (geometry): geometry is ExternalSketchGeometryCandidate =>
+      geometry.kind !== "curve" || geometry.projectedType !== null,
   )
 }
 
@@ -170,13 +212,21 @@ export function externalSketchContextGeometry(
   draft: SketchRecord,
   labels: ExternalSketchGeometryLabels,
   features: readonly FeatureRecord[] = document.features,
+  solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
 ): readonly ExternalSketchContextGeometry[] {
   const targetFrame = sketchFrame(draft, document, features)
   if (!targetFrame) return []
   const draftIndex = document.sketches.findIndex((sketch) => sketch.id === draft.id)
   const sources = document.sketches.slice(0, draftIndex >= 0 ? draftIndex : undefined)
   return sources.flatMap((source) =>
-    externalGeometryFromSketch(source, document, features, targetFrame, labels),
+    externalGeometryFromSketch(
+      source,
+      document,
+      features,
+      targetFrame,
+      labels,
+      solutionsBySketchId.get(source.id) ?? null,
+    ),
   )
 }
 
@@ -191,19 +241,20 @@ function positiveSweep(
   return sweep > 0 ? sweep : sweep + Math.PI * 2
 }
 
-type SourceSketchPoints = ReadonlyMap<SketchEntityId, Extract<SketchEntity, { type: "point" }>>
+type SourceSketchPoints = ReadonlyMap<SketchEntityId, SketchPoint2>
 
 function sampledCirclePoints(
   entity: Extract<SketchEntity, { type: "circle" }>,
   points: SourceSketchPoints,
+  solvedRadius?: number,
 ) {
   const center = points.get(entity.centerPointId)
   if (!center) return []
   return Array.from({ length: 65 }, (_, index) => {
     const angle = (Math.PI * 2 * index) / 64
     return {
-      x: center.x + Math.cos(angle) * entity.radius,
-      y: center.y + Math.sin(angle) * entity.radius,
+      x: center.x + Math.cos(angle) * (solvedRadius ?? entity.radius),
+      y: center.y + Math.sin(angle) * (solvedRadius ?? entity.radius),
     }
   })
 }
@@ -278,12 +329,13 @@ const curveSamplers = {
 function sampledCurvePoints(
   entity: Exclude<SketchEntity, { type: "line" | "point" }>,
   points: SourceSketchPoints,
+  solvedRadius?: number,
 ): readonly { x: number; y: number }[] {
   switch (entity.type) {
     case "arc":
       return curveSamplers.arc(entity, points)
     case "circle":
-      return curveSamplers.circle(entity, points)
+      return curveSamplers.circle(entity, points, solvedRadius)
     case "ellipse":
       return curveSamplers.ellipse(entity, points)
     case "elliptical-arc":
@@ -295,13 +347,14 @@ type SketchSupportFrame = NonNullable<ReturnType<typeof sketchFrame>>
 
 function projectedPointContext(
   entity: Extract<SketchEntity, { type: "point" }>,
+  position: SketchPoint2,
   source: SketchRecord,
   sourceFrame: SketchSupportFrame,
   targetFrame: SketchSupportFrame,
   label: string,
   center: boolean,
 ): ExternalSketchPointCandidate {
-  const projected = projectSketchPointBetweenFrames(sourceFrame, targetFrame, entity)
+  const projected = projectSketchPointBetweenFrames(sourceFrame, targetFrame, position)
   return {
     kind: "point",
     label,
@@ -344,8 +397,16 @@ function projectedCurveContext(
   sourceFrame: SketchSupportFrame,
   targetFrame: SketchSupportFrame,
   label: string,
+  solvedRadius?: number,
 ): ExternalSketchCurveContext | null {
-  const projected = sampledCurvePoints(entity, points).map((point) => {
+  const projection = projectSketchCurveBetweenFrames(
+    sourceFrame,
+    targetFrame,
+    entity,
+    points,
+    entity.type === "circle" ? (solvedRadius ?? entity.radius) : undefined,
+  )
+  const projected = sampledCurvePoints(entity, points, solvedRadius).map((point) => {
     const result = projectSketchPointBetweenFrames(sourceFrame, targetFrame, point)
     return { world: result.world, ...result.local }
   })
@@ -358,8 +419,62 @@ function projectedCurveContext(
         sourceEntityId: entity.id,
         sourceSketchId: source.id,
         sourceType: entity.type,
+        projectedType: projection?.type ?? null,
       }
     : null
+}
+
+type ExternalGeometryProjectionContext = Readonly<{
+  centerPointIds: ReadonlySet<SketchEntityId>
+  curveOrdinals: Map<ExternalSketchCurveKind, number>
+  labels: ExternalSketchGeometryLabels
+  lineOrdinal: { value: number }
+  pointOrdinal: { value: number }
+  points: SourceSketchPoints
+  solvedRadii: ReadonlyMap<string, number>
+  source: SketchRecord
+  sourceFrame: SketchSupportFrame
+  targetFrame: SketchSupportFrame
+}>
+
+function projectSourceEntity(
+  entity: SketchEntity,
+  context: ExternalGeometryProjectionContext,
+): ExternalSketchContextGeometry | null {
+  if (entity.type === "point") {
+    context.pointOrdinal.value += 1
+    return projectedPointContext(
+      entity,
+      context.points.get(entity.id) ?? entity,
+      context.source,
+      context.sourceFrame,
+      context.targetFrame,
+      context.labels.point(context.source.label, context.pointOrdinal.value),
+      context.centerPointIds.has(entity.id),
+    )
+  }
+  if (entity.type === "line") {
+    context.lineOrdinal.value += 1
+    return projectedLineContext(
+      entity,
+      context.points,
+      context.source,
+      context.sourceFrame,
+      context.targetFrame,
+      context.labels.line(context.source.label, context.lineOrdinal.value),
+    )
+  }
+  const ordinal = (context.curveOrdinals.get(entity.type) ?? 0) + 1
+  context.curveOrdinals.set(entity.type, ordinal)
+  return projectedCurveContext(
+    entity,
+    context.points,
+    context.source,
+    context.sourceFrame,
+    context.targetFrame,
+    context.labels.curve(context.source.label, entity.type, ordinal),
+    entity.type === "circle" ? context.solvedRadii.get(entity.id) : undefined,
+  )
 }
 
 function externalGeometryFromSketch(
@@ -368,12 +483,17 @@ function externalGeometryFromSketch(
   features: readonly FeatureRecord[],
   targetFrame: NonNullable<ReturnType<typeof sketchFrame>>,
   labels: ExternalSketchGeometryLabels,
+  solution: SolvedSketchWire | null,
 ): readonly ExternalSketchContextGeometry[] {
   const sourceFrame = sketchFrame(source, document, features)
   if (!sourceFrame) return []
+  const solvedPoints = new Map(solution?.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
+  const solvedRadii = new Map(solution?.circles.map(({ entityId, radius }) => [entityId, radius]))
   const points = new Map(
     source.entities.flatMap((entity) =>
-      entity.type === "point" ? ([[entity.id, entity]] as const) : [],
+      entity.type === "point"
+        ? ([[entity.id, solvedPoints.get(entity.id) ?? entity]] as const)
+        : [],
     ),
   )
   const centerPointIds = new Set(
@@ -383,49 +503,20 @@ function externalGeometryFromSketch(
         : [],
     ),
   )
-  let pointOrdinal = 0
-  let lineOrdinal = 0
-  const curveOrdinals = new Map<ExternalSketchCurveKind, number>()
-  const result: ExternalSketchContextGeometry[] = []
-  for (const entity of source.entities) {
-    if (entity.type === "point") {
-      pointOrdinal += 1
-      result.push(
-        projectedPointContext(
-          entity,
-          source,
-          sourceFrame,
-          targetFrame,
-          labels.point(source.label, pointOrdinal),
-          centerPointIds.has(entity.id),
-        ),
-      )
-      continue
-    }
-    if (entity.type === "line") {
-      lineOrdinal += 1
-      const line = projectedLineContext(
-        entity,
-        points,
-        source,
-        sourceFrame,
-        targetFrame,
-        labels.line(source.label, lineOrdinal),
-      )
-      if (line) result.push(line)
-      continue
-    }
-    const ordinal = (curveOrdinals.get(entity.type) ?? 0) + 1
-    curveOrdinals.set(entity.type, ordinal)
-    const curve = projectedCurveContext(
-      entity,
-      points,
-      source,
-      sourceFrame,
-      targetFrame,
-      labels.curve(source.label, entity.type, ordinal),
-    )
-    if (curve) result.push(curve)
+  const context: ExternalGeometryProjectionContext = {
+    centerPointIds,
+    curveOrdinals: new Map(),
+    labels,
+    lineOrdinal: { value: 0 },
+    pointOrdinal: { value: 0 },
+    points,
+    solvedRadii,
+    source,
+    sourceFrame,
+    targetFrame,
   }
-  return result
+  return source.entities.flatMap((entity) => {
+    const projected = projectSourceEntity(entity, context)
+    return projected ? [projected] : []
+  })
 }

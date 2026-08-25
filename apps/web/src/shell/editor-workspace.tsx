@@ -1,6 +1,7 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import { sketchFrame } from "@vibeshape/application/support-frame"
 import type {
+  DocumentSnapshot,
   FeatureId,
   FeatureRecord,
   SketchConstraintId,
@@ -10,6 +11,7 @@ import type {
   SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import type { SolvedSketchWire } from "@vibeshape/protocol"
 import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
@@ -18,11 +20,12 @@ import type {
   ViewerSelection,
   ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
-import { type ReactNode, useCallback, useMemo, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import {
   type DocumentControllerState,
   removeSketch,
   resolveDocumentFeatureParameters,
+  solveActiveSketch,
   updateFeature,
   updateSketch,
 } from "../document/document-controller"
@@ -229,137 +232,210 @@ export function ModelingSketchViewportStack({
   )
 }
 
-function WorkspaceContent(props: WorkspaceContentProps) {
-  const viewportT = useTranslations("app.shell.viewport")
-  const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
-  const snapshot = props.controller.report?.snapshot
-  const supportFeatures = useMemo(
-    () => (snapshot ? resolveDocumentFeatureParameters(snapshot) : EMPTY_GEOMETRY),
-    [snapshot],
-  )
-  const frame = useMemo(
-    () =>
-      snapshot && props.sketch.draft
-        ? sketchFrame(props.sketch.draft, snapshot, supportFeatures)
-        : null,
-    [
-      props.sketch.draft?.id,
-      props.sketch.draft?.plane,
-      props.sketch.draft?.support,
-      snapshot,
-      supportFeatures,
-    ],
-  )
-  const sketchActive = props.workspace === "sketch"
-  const activeSketchId = props.sketch.draft?.id
-  const editVisibility = useMemo(() => {
-    const configured = {
-      featureIds: props.model.hiddenFeatureIds,
-      sketchIds: props.model.hiddenSketchIds,
+function useExternalSketchSolutions(
+  snapshot: DocumentSnapshot | undefined,
+  draftId: SketchId | undefined,
+  hiddenSketchIds: readonly SketchId[],
+) {
+  const [solutions, setSolutions] = useState<ReadonlyMap<SketchId, SolvedSketchWire>>(new Map())
+  useEffect(() => {
+    if (!snapshot || !draftId) {
+      setSolutions(new Map())
+      return
     }
-    if (!sketchActive || !snapshot || !activeSketchId) return configured
-    return mergeSketchEditVisibility(
-      configured,
-      sketchEditContextVisibility(snapshot, activeSketchId),
-    )
-  }, [
-    activeSketchId,
-    props.model.hiddenFeatureIds,
-    props.model.hiddenSketchIds,
-    sketchActive,
-    snapshot,
-  ])
-  const externalContextGeometry = useMemo(() => {
-    if (!snapshot || !props.sketch.draft) return []
-    const hiddenSketchIds = new Set(props.model.hiddenSketchIds)
+    const draftIndex = snapshot.sketches.findIndex(({ id }) => id === draftId)
+    const hidden = new Set(hiddenSketchIds)
+    const sources = snapshot.sketches
+      .slice(0, draftIndex >= 0 ? draftIndex : undefined)
+      .filter(({ id }) => !hidden.has(id))
+    let active = true
+    void Promise.all(
+      sources.map(async (source) => {
+        const result = await solveActiveSketch(snapshot.revision, source.id)
+        return result.ok ? ([source.id, result.response.solution] as const) : null
+      }),
+    ).then((entries) => {
+      if (!active) return
+      setSolutions(
+        new Map(entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)),
+      )
+    })
+    return () => {
+      active = false
+    }
+  }, [draftId, hiddenSketchIds, snapshot])
+  return solutions
+}
+
+function resolvedWorkspaceSketchFrame(
+  snapshot: DocumentSnapshot | undefined,
+  draft: SketchRecord | null,
+  supportFeatures: readonly FeatureRecord[],
+) {
+  return snapshot && draft ? sketchFrame(draft, snapshot, supportFeatures) : null
+}
+
+function resolvedWorkspaceFeatures(snapshot: DocumentSnapshot | undefined) {
+  return snapshot ? resolveDocumentFeatureParameters(snapshot) : EMPTY_GEOMETRY
+}
+
+function workspaceEditVisibility(
+  snapshot: DocumentSnapshot | undefined,
+  activeSketchId: SketchId | undefined,
+  sketchActive: boolean,
+  hiddenFeatureIds: readonly FeatureId[],
+  hiddenSketchIds: readonly SketchId[],
+) {
+  const configured = { featureIds: hiddenFeatureIds, sketchIds: hiddenSketchIds }
+  return sketchActive && snapshot && activeSketchId
+    ? mergeSketchEditVisibility(configured, sketchEditContextVisibility(snapshot, activeSketchId))
+    : configured
+}
+
+function useWorkspaceExternalGeometry(
+  snapshot: DocumentSnapshot | undefined,
+  draft: SketchRecord | null,
+  hiddenSketchIds: readonly SketchId[],
+  supportFeatures: readonly FeatureRecord[],
+  solutions: ReadonlyMap<SketchId, SolvedSketchWire>,
+) {
+  const t = useTranslations("app.shell.viewport")
+  return useMemo(() => {
+    if (!snapshot || !draft) return []
+    const hidden = new Set(hiddenSketchIds)
     return externalSketchContextGeometry(
       snapshot,
-      props.sketch.draft,
+      draft,
       {
         curve: (sketch, kind, ordinal) =>
-          viewportT("externalCurveContext", { kind, ordinal, sketch }),
-        line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
-        point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
+          t("externalCurveContext", {
+            kind: kind === "elliptical-arc" ? "ellipticalArc" : kind,
+            ordinal,
+            sketch,
+          }),
+        line: (sketch, ordinal) => t("externalLineCandidate", { sketch, ordinal }),
+        point: (sketch, ordinal) => t("externalPointCandidate", { sketch, ordinal }),
       },
       supportFeatures,
-    ).filter(({ sourceSketchId }) => !hiddenSketchIds.has(sourceSketchId))
-  }, [props.model.hiddenSketchIds, props.sketch.draft, snapshot, supportFeatures, viewportT])
-  const externalPointCandidates = useMemo(
-    () =>
-      externalContextGeometry.filter(
-        (geometry): geometry is ExternalSketchGeometryCandidate => geometry.kind !== "curve",
-      ),
-    [externalContextGeometry],
+      solutions,
+    ).filter(({ sourceSketchId }) => !hidden.has(sourceSketchId))
+  }, [draft, hiddenSketchIds, snapshot, solutions, supportFeatures, t])
+}
+
+function usableExternalGeometryCandidates(
+  geometry: readonly ExternalSketchContextGeometry[],
+): readonly ExternalSketchGeometryCandidate[] {
+  return geometry.filter(
+    (item): item is ExternalSketchGeometryCandidate =>
+      item.kind !== "curve" || item.projectedType !== null,
   )
-  const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
-    () =>
-      externalPointCandidates.map(
-        (candidate): ViewerSketchReferenceCandidate =>
-          candidate.kind === "line"
-            ? {
-                kind: "line",
-                label: candidate.label,
-                start: candidate.start.world,
-                end: candidate.end.world,
-                sourceLineId: candidate.sourceLineId,
-                sourceSketchId: candidate.sourceSketchId,
-              }
-            : {
-                kind: "point",
-                label: candidate.label,
-                position: candidate.world,
-                sourcePointId: candidate.sourcePointId,
-                sourceSketchId: candidate.sourceSketchId,
-              },
-      ),
-    [externalPointCandidates],
-  )
-  const selectExternalPoint = useCallback(
-    (hit: ViewerSketchReferenceCandidate) => {
-      const draft = props.sketch.draft
-      if (!draft) return
-      const candidate = externalPointCandidates.find((item) => {
-        if (item.sourceSketchId !== hit.sourceSketchId || item.kind !== hit.kind) return false
-        return item.kind === "line"
-          ? hit.kind === "line" && item.sourceLineId === hit.sourceLineId
-          : hit.kind !== "line" && item.sourcePointId === hit.sourcePointId
-      })
-      if (!candidate) return
-      const next = applyExternalSketchCandidate(draft, candidate, props.sketch.selectedEntityIds)
-      if (next !== draft) props.actions.onSketchDraftChange(next)
-    },
-    [
-      externalPointCandidates,
-      props.actions.onSketchDraftChange,
-      props.sketch.draft,
-      props.sketch.selectedEntityIds,
-    ],
-  )
-  const sketchContext = useMemo(
-    () =>
-      sketchActive
-        ? {
-            frame,
-            mode: props.sketch.cameraMode,
-            ...(props.sketch.editorTool === "use"
-              ? {
-                  referenceSelection: {
-                    candidates: viewerPointCandidates,
-                    onSelect: selectExternalPoint,
-                  },
-                }
-              : {}),
-          }
-        : undefined,
-    [
+}
+
+function viewerReferenceCandidate(
+  candidate: ExternalSketchGeometryCandidate,
+): ViewerSketchReferenceCandidate {
+  if (candidate.kind === "line") {
+    return {
+      kind: "line",
+      label: candidate.label,
+      start: candidate.start.world,
+      end: candidate.end.world,
+      sourceLineId: candidate.sourceLineId,
+      sourceSketchId: candidate.sourceSketchId,
+    }
+  }
+  if (candidate.kind === "curve") {
+    return {
+      kind: "curve",
+      label: candidate.label,
+      points: candidate.points.map(({ world }) => world),
+      sourceEntityId: candidate.sourceEntityId,
+      sourceSketchId: candidate.sourceSketchId,
+      sourceType: candidate.sourceType,
+    }
+  }
+  return {
+    kind: "point",
+    label: candidate.label,
+    position: candidate.world,
+    sourcePointId: candidate.sourcePointId,
+    sourceSketchId: candidate.sourceSketchId,
+  }
+}
+
+function matchingExternalCandidate(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  hit: ViewerSketchReferenceCandidate,
+) {
+  return candidates.find((candidate) => {
+    if (candidate.sourceSketchId !== hit.sourceSketchId || candidate.kind !== hit.kind) return false
+    if (candidate.kind === "line") {
+      return hit.kind === "line" && candidate.sourceLineId === hit.sourceLineId
+    }
+    if (candidate.kind === "curve") {
+      return hit.kind === "curve" && candidate.sourceEntityId === hit.sourceEntityId
+    }
+    return hit.kind === "point" && candidate.sourcePointId === hit.sourcePointId
+  })
+}
+
+function useWorkspaceSketchContext(
+  active: boolean,
+  frame: ReturnType<typeof resolvedWorkspaceSketchFrame>,
+  mode: SketchCameraMode,
+  editorTool: SketchEditorTool,
+  candidates: readonly ViewerSketchReferenceCandidate[],
+  onSelect: (candidate: ViewerSketchReferenceCandidate) => void,
+) {
+  return useMemo<GeometryViewportSketchContext | undefined>(() => {
+    if (!active) return undefined
+    return {
       frame,
-      props.sketch.cameraMode,
-      props.sketch.editorTool,
-      selectExternalPoint,
-      sketchActive,
-      viewerPointCandidates,
-    ],
+      mode,
+      ...(editorTool === "use" ? { referenceSelection: { candidates, onSelect } } : {}),
+    }
+  }, [active, candidates, editorTool, frame, mode, onSelect])
+}
+
+function useSelectExternalGeometry(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  draft: SketchRecord | null,
+  selectedEntityIds: readonly SketchEntityId[],
+  onDraftChange: (draft: SketchRecord) => void,
+) {
+  return useCallback(
+    (hit: ViewerSketchReferenceCandidate) => {
+      if (!draft) return
+      const candidate = matchingExternalCandidate(candidates, hit)
+      if (!candidate) return
+      const next = applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+      if (next !== draft) onDraftChange(next)
+    },
+    [candidates, draft, onDraftChange, selectedEntityIds],
   )
+}
+
+function WorkspaceContentView({
+  activeSketchDisplay,
+  editVisibility,
+  externalContextGeometry,
+  externalPointCandidates,
+  props,
+  sketchActive,
+  sketchContext,
+  supportFeatures,
+  onDisplayChange,
+}: Readonly<{
+  activeSketchDisplay: SketchDisplayRecord | null
+  editVisibility: Readonly<{ featureIds: readonly FeatureId[]; sketchIds: readonly SketchId[] }>
+  externalContextGeometry: readonly ExternalSketchContextGeometry[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
+  props: WorkspaceContentProps
+  sketchActive: boolean
+  sketchContext: GeometryViewportSketchContext | undefined
+  supportFeatures: readonly FeatureRecord[]
+  onDisplayChange: (display: SketchDisplayRecord | null) => void
+}>) {
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
@@ -381,7 +457,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
           actions={props.actions}
           controller={props.controller}
           model={props.model}
-          onDisplayChange={setActiveSketchDisplay}
+          onDisplayChange={onDisplayChange}
           sketch={props.sketch}
           supportFeatures={supportFeatures}
           externalContextGeometry={externalContextGeometry}
@@ -389,6 +465,88 @@ function WorkspaceContent(props: WorkspaceContentProps) {
         />
       }
       sketchActive={sketchActive}
+    />
+  )
+}
+
+function WorkspaceContent(props: WorkspaceContentProps) {
+  const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
+  const snapshot = props.controller.report?.snapshot
+  const supportFeatures = useMemo(() => resolvedWorkspaceFeatures(snapshot), [snapshot])
+  const externalSketchSolutions = useExternalSketchSolutions(
+    snapshot,
+    props.sketch.draft?.id,
+    props.model.hiddenSketchIds,
+  )
+  const frame = useMemo(
+    () => resolvedWorkspaceSketchFrame(snapshot, props.sketch.draft, supportFeatures),
+    [
+      props.sketch.draft?.id,
+      props.sketch.draft?.plane,
+      props.sketch.draft?.support,
+      snapshot,
+      supportFeatures,
+    ],
+  )
+  const sketchActive = props.workspace === "sketch"
+  const activeSketchId = props.sketch.draft?.id
+  const editVisibility = useMemo(
+    () =>
+      workspaceEditVisibility(
+        snapshot,
+        activeSketchId,
+        sketchActive,
+        props.model.hiddenFeatureIds,
+        props.model.hiddenSketchIds,
+      ),
+    [
+      activeSketchId,
+      props.model.hiddenFeatureIds,
+      props.model.hiddenSketchIds,
+      sketchActive,
+      snapshot,
+    ],
+  )
+  const externalContextGeometry = useWorkspaceExternalGeometry(
+    snapshot,
+    props.sketch.draft,
+    props.model.hiddenSketchIds,
+    supportFeatures,
+    externalSketchSolutions,
+  )
+  const externalPointCandidates = useMemo(
+    () => usableExternalGeometryCandidates(externalContextGeometry),
+    [externalContextGeometry],
+  )
+  const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
+    () => externalPointCandidates.map(viewerReferenceCandidate),
+    [externalPointCandidates],
+  )
+  const selectExternalPoint = useSelectExternalGeometry(
+    externalPointCandidates,
+    props.sketch.draft,
+    props.sketch.selectedEntityIds,
+    props.actions.onSketchDraftChange,
+  )
+  const sketchContext = useWorkspaceSketchContext(
+    sketchActive,
+    frame,
+    props.sketch.cameraMode,
+    props.sketch.editorTool,
+    viewerPointCandidates,
+    selectExternalPoint,
+  )
+  return (
+    <WorkspaceContentView
+      activeSketchDisplay={activeSketchDisplay}
+      editVisibility={editVisibility}
+      externalContextGeometry={externalContextGeometry}
+      externalPointCandidates={externalPointCandidates}
+      props={props}
+      sketchActive={sketchActive}
+      sketchContext={sketchContext}
+      supportFeatures={supportFeatures}
+      onDisplayChange={setActiveSketchDisplay}
     />
   )
 }

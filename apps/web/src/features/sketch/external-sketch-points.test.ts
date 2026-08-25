@@ -1,4 +1,5 @@
 import { documentSnapshotSchema, sketchRecordSchema } from "@vibeshape/domain"
+import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
   externalSketchContextGeometry,
@@ -65,6 +66,19 @@ describe("external sketch point candidates", () => {
         y: 0,
       },
     ])
+    const solvedSource = {
+      points: [{ entityId: sourcePointId, x: 8, y: 11 }],
+      circles: [],
+    } as unknown as SolvedSketchWire
+    expect(
+      externalSketchGeometryCandidates(
+        document,
+        target,
+        labels,
+        document.features,
+        new Map([[source.id, solvedSource]]),
+      ),
+    ).toEqual([expect.objectContaining({ sourcePointId, world: [8, 11, 0], x: 11, y: 0 })])
   })
 
   it("projects an earlier sketch line into the active support with world-space endpoints", () => {
@@ -117,7 +131,7 @@ describe("external sketch point candidates", () => {
     })
   })
 
-  it("keeps a prior circle as one sampled context curve without making it a Use candidate", () => {
+  it("offers a prior circle as one analytical Use candidate", () => {
     const circleId = "0195b5ac-b220-7a2c-8c33-000000004008"
     const source = sketchRecordSchema.parse({
       schemaVersion: 0,
@@ -162,6 +176,7 @@ describe("external sketch point candidates", () => {
       expect.objectContaining({
         closed: true,
         kind: "curve",
+        projectedType: "circle",
         sourceEntityId: circleId,
         sourceType: "circle",
       }),
@@ -174,8 +189,8 @@ describe("external sketch point candidates", () => {
     expect(context).toContainEqual(
       expect.objectContaining({ kind: "point", role: "center", sourcePointId }),
     )
-    expect(externalSketchGeometryCandidates(document, target, labels)).not.toContainEqual(
-      expect.objectContaining({ sourceEntityId: circleId }),
+    expect(externalSketchGeometryCandidates(document, target, labels)).toContainEqual(
+      expect.objectContaining({ sourceEntityId: circleId, projectedType: "circle" }),
     )
   })
 

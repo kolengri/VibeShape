@@ -376,9 +376,55 @@ const externalLineReferenceWireSchema = z
   .strict()
   .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
 
+const externalCurveTypeWireSchema = z.enum(["circle", "arc", "ellipse", "elliptical-arc"])
+const projectedCurvePointCount = {
+  arc: 3,
+  circle: 1,
+  ellipse: 3,
+  "elliptical-arc": 5,
+} as const satisfies Record<z.infer<typeof externalCurveTypeWireSchema>, number>
+
+const externalCurveReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("curve"),
+    sourceSketchId: sketchWireIdSchema,
+    sourceEntityId: sketchEntityIdSchema,
+    sourceType: externalCurveTypeWireSchema,
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: externalCurveTypeWireSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    if (reference.projectedPointIds.length !== projectedCurvePointCount[reference.projectedType]) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedPointIds"],
+        message: "Projected curve point IDs must match the projected curve type.",
+      })
+    }
+    if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedPointIds"],
+        message: "Projected curve point IDs must be unique.",
+      })
+    }
+    if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedEntityId"],
+        message: "The projected curve ID must differ from every projected point ID.",
+      })
+    }
+  })
+
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
+  externalCurveReferenceWireSchema,
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>
@@ -533,6 +579,79 @@ function wireConstraintReferencesAreValid(
   })
 }
 
+type WireExternalReference = NonNullable<SketchWireStructure["externalReferences"]>[number]
+
+function wireProjectedPoint(id: string): Extract<WireEntity, { type: "point" }> {
+  return { schemaVersion: 0, id, type: "point", construction: true, x: 0, y: 0 }
+}
+
+function wireProjectedCurveEntity(
+  reference: Extract<WireExternalReference, { kind: "curve" }>,
+): WireEntity | null {
+  const [centerPointId, firstPointId, secondPointId, startPointId, endPointId] =
+    reference.projectedPointIds
+  if (!centerPointId) return null
+  const base = { schemaVersion: 0 as const, id: reference.projectedEntityId, construction: true }
+  if (reference.projectedType === "circle") {
+    return { ...base, type: "circle", centerPointId, radius: 1 }
+  }
+  if (!firstPointId || !secondPointId) return null
+  if (reference.projectedType === "arc") {
+    return {
+      ...base,
+      type: "arc",
+      centerPointId,
+      startPointId: firstPointId,
+      endPointId: secondPointId,
+    }
+  }
+  if (reference.projectedType === "ellipse") {
+    return {
+      ...base,
+      type: "ellipse",
+      centerPointId,
+      primaryAxisPointId: firstPointId,
+      secondaryAxisPointId: secondPointId,
+    }
+  }
+  return startPointId && endPointId
+    ? {
+        ...base,
+        type: "elliptical-arc",
+        centerPointId,
+        primaryAxisPointId: firstPointId,
+        secondaryAxisPointId: secondPointId,
+        startPointId,
+        endPointId,
+      }
+    : null
+}
+
+function wireProjectedExternalEntities(reference: WireExternalReference): readonly WireEntity[] {
+  if (reference.kind === "line") {
+    return [
+      wireProjectedPoint(reference.projectedStartPointId),
+      wireProjectedPoint(reference.projectedEndPointId),
+      {
+        schemaVersion: 0,
+        id: reference.projectedLineId,
+        type: "line",
+        construction: true,
+        startPointId: reference.projectedStartPointId,
+        endPointId: reference.projectedEndPointId,
+      },
+    ]
+  }
+  if (reference.kind !== "curve") return [wireProjectedPoint(reference.projectedPointId)]
+  const points = reference.projectedPointIds.map(wireProjectedPoint)
+  const curve = wireProjectedCurveEntity(reference)
+  return curve ? [...points, curve] : []
+}
+
+function wireProjectedExternalGeometry(sketch: SketchWireStructure) {
+  return (sketch.externalReferences ?? []).flatMap(wireProjectedExternalEntities)
+}
+
 function nativeWireConstraintCount(sketch: SketchWireStructure) {
   const authored = sketch.constraints.reduce(
     (count, constraint) =>
@@ -546,10 +665,12 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
     if (entity.type === "ellipse") return count + 1
     return entity.type === "elliptical-arc" ? count + 11 : count
   }, 0)
-  const external = (sketch.externalReferences ?? []).reduce(
-    (count, reference) => count + (reference.kind === "line" ? 2 : 1),
-    0,
-  )
+  const external = wireProjectedExternalGeometry(sketch).reduce((count, entity) => {
+    if (entity.type === "point" || entity.type === "circle" || entity.type === "ellipse") {
+      return count + 1
+    }
+    return entity.type === "elliptical-arc" ? count + 11 : count
+  }, 0)
   return authored + internal + external
 }
 
@@ -576,15 +697,15 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   return {
     entities:
       authored.entities +
-      (sketch.externalReferences ?? []).reduce(
-        (count, reference) => count + (reference.kind === "line" ? 3 : 1),
+      wireProjectedExternalGeometry(sketch).reduce(
+        (count, entity) => count + nativeWireEntityCapacity[entity.type].entities,
         0,
       ) +
       projectionCount * 3,
     parameters:
       authored.parameters +
-      (sketch.externalReferences ?? []).reduce(
-        (count, reference) => count + (reference.kind === "line" ? 4 : 2),
+      wireProjectedExternalGeometry(sketch).reduce(
+        (count, entity) => count + nativeWireEntityCapacity[entity.type].parameters,
         0,
       ) +
       projectionCount * 4,
@@ -596,43 +717,8 @@ function wireConstraintEntitiesWithExternalGeometry(
   entities: ReadonlyMap<string, WireEntity>,
 ) {
   const constraintEntities = new Map(entities)
-  for (const reference of sketch.externalReferences ?? []) {
-    if (reference.kind === "line") {
-      constraintEntities.set(reference.projectedStartPointId, {
-        schemaVersion: 0,
-        id: reference.projectedStartPointId,
-        type: "point",
-        construction: true,
-        x: 0,
-        y: 0,
-      })
-      constraintEntities.set(reference.projectedEndPointId, {
-        schemaVersion: 0,
-        id: reference.projectedEndPointId,
-        type: "point",
-        construction: true,
-        x: 0,
-        y: 0,
-      })
-      constraintEntities.set(reference.projectedLineId, {
-        schemaVersion: 0,
-        id: reference.projectedLineId,
-        type: "line",
-        construction: true,
-        startPointId: reference.projectedStartPointId,
-        endPointId: reference.projectedEndPointId,
-      })
-      continue
-    }
-    constraintEntities.set(reference.projectedPointId, {
-      schemaVersion: 0,
-      id: reference.projectedPointId,
-      type: "point",
-      construction: true,
-      x: 0,
-      y: 0,
-    })
-  }
+  for (const entity of wireProjectedExternalGeometry(sketch))
+    constraintEntities.set(entity.id, entity)
   return constraintEntities
 }
 
@@ -648,14 +734,7 @@ function validateWireExternalReferenceIds(sketch: SketchWireStructure, context: 
         message: "External sketch reference IDs must be unique.",
       })
     }
-    const projectedIds =
-      reference.kind === "line"
-        ? [
-            reference.projectedStartPointId,
-            reference.projectedEndPointId,
-            reference.projectedLineId,
-          ]
-        : [reference.projectedPointId]
+    const projectedIds = wireProjectedExternalEntities(reference).map(({ id }) => id)
     for (const projectedId of projectedIds) {
       if (projectedEntityIds.has(projectedId) || entityIds.has(projectedId)) {
         context.addIssue({

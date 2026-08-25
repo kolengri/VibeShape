@@ -464,6 +464,7 @@ describe("SketchViewport", () => {
           sourceEntityId: curveId,
           sourceSketchId: sketch.id,
           sourceType: "circle",
+          projectedType: null,
         },
       ],
       sketch: target,
@@ -474,7 +475,7 @@ describe("SketchViewport", () => {
     expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
   })
 
-  it("renders circular centers as square control points instead of duplicate circles", () => {
+  it("renders circular centers as crosshairs instead of duplicate circles", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const fixture = appendSketchCircle(emptySketch, {
       center: { kind: "new", point: { x: 0, y: 0 } },
@@ -488,7 +489,8 @@ describe("SketchViewport", () => {
     })
 
     const centerMarker = document.querySelector('[data-sketch-point-role="center"]')
-    expect(centerMarker?.tagName.toLowerCase()).toBe("rect")
+    expect(centerMarker?.tagName.toLowerCase()).toBe("g")
+    expect(centerMarker?.querySelectorAll("line")).toHaveLength(2)
     expect(document.querySelectorAll('[data-sketch-entity-type="circle"]')).toHaveLength(1)
   })
 
@@ -574,6 +576,59 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("uses an earlier analytical curve directly from the drawing", () => {
+    const sourceCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3220")
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3221") }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalPointCandidates: [
+        {
+          closed: true,
+          kind: "curve",
+          label: "Source sketch · Circle",
+          points: [
+            { world: [5, 0, 0], x: 5, y: 0 },
+            { world: [0, 5, 0], x: 0, y: 5 },
+            { world: [-5, 0, 0], x: -5, y: 0 },
+            { world: [0, -5, 0], x: 0, y: -5 },
+            { world: [5, 0, 0], x: 5, y: 0 },
+          ],
+          projectedType: "circle",
+          sourceEntityId: sourceCircleId,
+          sourceSketchId: sketch.id,
+          sourceType: "circle",
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const sourceCurve = document.querySelector(
+      `[data-sketch-available-external-geometry-id="${sourceCircleId}"]`,
+    )
+    if (!sourceCurve) throw new Error("The source curve must be selectable on the drawing.")
+    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeNull()
+    expect(sourceCurve.querySelectorAll("polyline")).toHaveLength(2)
+
+    fireEvent.pointerDown(sourceCurve)
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({
+            kind: "curve",
+            sourceEntityId: sourceCircleId,
+            sourceType: "circle",
+            projectedType: "circle",
+            projectedPointIds: [expect.any(String)],
+          }),
+        ],
+      }),
+    )
+  })
+
   it("renders a solved external line as selectable read-only geometry", async () => {
     const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3231")
     const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3232")
@@ -627,6 +682,52 @@ describe("SketchViewport", () => {
     if (!externalLine) throw new Error("The projected line must expose a selection target.")
     fireEvent.pointerDown(externalLine)
     expect(onSelectionChange).toHaveBeenCalledWith([projectedLineId])
+  })
+
+  it("renders a used external circle once with a crosshair center", async () => {
+    const projectedCurveId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3241")
+    const projectedCenterId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3242")
+    const draft = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3243"),
+          kind: "curve" as const,
+          sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3244"),
+          sourceEntityId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3245"),
+          sourceType: "circle" as const,
+          projectedEntityId: projectedCurveId,
+          projectedType: "circle" as const,
+          projectedPointIds: [projectedCenterId],
+        },
+      ],
+    }
+    const base = solveResult()
+    if (!base.ok || base.response.type !== "sketchSolved") throw new Error("Expected solve result.")
+    renderViewport({
+      draft,
+      sketch: draft,
+      solveSketch: vi.fn(async () => ({
+        ...base,
+        response: {
+          ...base.response,
+          solution: {
+            ...base.response.solution,
+            points: [...base.response.solution.points, { entityId: projectedCenterId, x: 5, y: 6 }],
+            circles: [...base.response.solution.circles, { entityId: projectedCurveId, radius: 8 }],
+          },
+        },
+      })),
+    })
+
+    await waitFor(() =>
+      expect(document.querySelector("[data-sketch-external-curve-count='1']")).toBeTruthy(),
+    )
+    const center = document.querySelector(`[data-sketch-external-point-id="${projectedCenterId}"]`)
+    expect(center?.querySelector("circle")?.getAttribute("stroke")).toBe("none")
+    expect(center?.querySelectorAll("line")).toHaveLength(2)
+    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeNull()
   })
 
   it("keeps individually toggleable origin references visible while editing a sketch", () => {

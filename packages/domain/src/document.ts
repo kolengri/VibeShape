@@ -61,9 +61,17 @@ function validateExternalReferenceOrder(input: ExternalReferenceValidationInput)
 }
 
 function externalReferenceSourceSelector(reference: SketchExternalReference) {
-  return reference.kind === "line"
-    ? ({ entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const)
-    : ({ entityId: reference.sourcePointId, entityType: "point", path: "sourcePointId" } as const)
+  if (reference.kind === "line") {
+    return { entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const
+  }
+  if (reference.kind === "curve") {
+    return {
+      entityId: reference.sourceEntityId,
+      entityType: reference.sourceType,
+      path: "sourceEntityId",
+    } as const
+  }
+  return { entityId: reference.sourcePointId, entityType: "point", path: "sourcePointId" } as const
 }
 
 function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {

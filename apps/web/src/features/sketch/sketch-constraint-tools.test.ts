@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest"
 import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
+  compatibleSketchDimensionToolsForSelection,
   createSketchDimensionConstraint,
   nextSketchDimensionSelection,
 } from "./sketch-constraint-tools"
@@ -153,6 +154,13 @@ describe("sketch constraint tools", () => {
     expect(nextSketchDimensionSelection(dimensionSketch, [line.id], line.id)).toEqual([])
     expect(nextSketchDimensionSelection(dimensionSketch, [firstPoint.id], circle.id)).toEqual([
       circle.id,
+    ])
+  })
+
+  it("does not offer a driving dimension for read-only external geometry alone", () => {
+    expect(compatibleSketchDimensionToolsForSelection(dimensionSketch, [entityId(99)])).toEqual([])
+    expect(compatibleSketchDimensionToolsForSelection(dimensionSketch, [line.id])).toEqual([
+      "distance",
     ])
   })
 })

@@ -66,9 +66,61 @@ export const sketchExternalLineReferenceSchema = z
     message: "A projected external line requires distinct endpoint IDs.",
   })
 
+export const sketchExternalCurveTypeSchema = z.enum(["circle", "arc", "ellipse", "elliptical-arc"])
+
+const projectedCurvePointCount = {
+  arc: 3,
+  circle: 1,
+  ellipse: 3,
+  "elliptical-arc": 5,
+} as const satisfies Record<z.infer<typeof sketchExternalCurveTypeSchema>, number>
+
+/**
+ * A read-only analytical curve projected from an earlier sketch. The projected type is persisted so
+ * a support-frame change that would change topology fails closed instead of rewriting constraints.
+ */
+export const sketchExternalCurveReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("curve"),
+    sourceSketchId: sketchIdSchema,
+    sourceEntityId: sketchEntityIdSchema,
+    sourceType: sketchExternalCurveTypeSchema,
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: sketchExternalCurveTypeSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    if (reference.projectedPointIds.length !== projectedCurvePointCount[reference.projectedType]) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedPointIds"],
+        message:
+          "A projected external curve requires the point identities owned by its curve type.",
+      })
+    }
+    if (new Set(reference.projectedPointIds).size !== reference.projectedPointIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedPointIds"],
+        message: "Projected external curve point IDs must be unique.",
+      })
+    }
+    if (reference.projectedPointIds.includes(reference.projectedEntityId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["projectedEntityId"],
+        message: "A projected external curve ID must differ from its point IDs.",
+      })
+    }
+  })
+
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
+  sketchExternalCurveReferenceSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -76,6 +128,9 @@ export type SketchExternalPointReference = Readonly<
 >
 export type SketchExternalLineReference = Readonly<
   z.infer<typeof sketchExternalLineReferenceSchema>
+>
+export type SketchExternalCurveReference = Readonly<
+  z.infer<typeof sketchExternalCurveReferenceSchema>
 >
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
 
@@ -365,40 +420,82 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
 export type SketchEntity = Readonly<z.infer<typeof sketchEntitySchema>>
 export type SketchConstraint = Readonly<z.infer<typeof sketchConstraintSchema>>
 
+function projectedExternalPoint(id: SketchEntityId): Extract<SketchEntity, { type: "point" }> {
+  return { schemaVersion: 0, id, type: "point", x: 0, y: 0, construction: true }
+}
+
+function projectedExternalCurve(
+  reference: SketchExternalCurveReference,
+): Exclude<SketchEntity, { type: "line" | "point" }> {
+  const [centerPointId, firstPointId, secondPointId, startPointId, endPointId] =
+    reference.projectedPointIds
+  if (!centerPointId) throw new TypeError("A projected external curve requires a center point ID.")
+  if (reference.projectedType === "circle") {
+    return {
+      schemaVersion: 0,
+      id: reference.projectedEntityId,
+      type: "circle",
+      construction: true,
+      centerPointId,
+      radius: 1,
+    }
+  }
+  if (!firstPointId || !secondPointId) {
+    throw new TypeError("A projected external curve requires its defining point IDs.")
+  }
+  if (reference.projectedType === "arc") {
+    return {
+      schemaVersion: 0,
+      id: reference.projectedEntityId,
+      type: "arc",
+      construction: true,
+      centerPointId,
+      startPointId: firstPointId,
+      endPointId: secondPointId,
+    }
+  }
+  if (reference.projectedType === "ellipse") {
+    return {
+      schemaVersion: 0,
+      id: reference.projectedEntityId,
+      type: "ellipse",
+      construction: true,
+      centerPointId,
+      primaryAxisPointId: firstPointId,
+      secondaryAxisPointId: secondPointId,
+    }
+  }
+  if (!startPointId || !endPointId) {
+    throw new TypeError("A projected external elliptical arc requires endpoint IDs.")
+  }
+  return {
+    schemaVersion: 0,
+    id: reference.projectedEntityId,
+    type: "elliptical-arc",
+    construction: true,
+    centerPointId,
+    primaryAxisPointId: firstPointId,
+    secondaryAxisPointId: secondPointId,
+    startPointId,
+    endPointId,
+  }
+}
+
 /** Materializes identity-only geometry for reference validation and UI selection. */
 export function projectedExternalSketchEntities(
   references: readonly SketchExternalReference[],
 ): readonly SketchEntity[] {
   return references.flatMap((reference): SketchEntity[] => {
-    if (reference.kind !== "line") {
+    if (reference.kind === "curve") {
       return [
-        {
-          schemaVersion: 0,
-          id: reference.projectedPointId,
-          type: "point",
-          x: 0,
-          y: 0,
-          construction: true,
-        },
+        ...reference.projectedPointIds.map(projectedExternalPoint),
+        projectedExternalCurve(reference),
       ]
     }
+    if (reference.kind !== "line") return [projectedExternalPoint(reference.projectedPointId)]
     return [
-      {
-        schemaVersion: 0,
-        id: reference.projectedStartPointId,
-        type: "point",
-        x: 0,
-        y: 0,
-        construction: true,
-      },
-      {
-        schemaVersion: 0,
-        id: reference.projectedEndPointId,
-        type: "point",
-        x: 0,
-        y: 0,
-        construction: true,
-      },
+      projectedExternalPoint(reference.projectedStartPointId),
+      projectedExternalPoint(reference.projectedEndPointId),
       {
         schemaVersion: 0,
         id: reference.projectedLineId,
@@ -574,8 +671,13 @@ function nativeConstraintCount(structure: SketchStructure) {
     if (entity.type === "ellipse") return count + 1
     return entity.type === "elliptical-arc" ? count + 11 : count
   }, 0)
-  const external = (structure.externalReferences ?? []).reduce(
-    (count, reference) => count + (reference.kind === "line" ? 2 : 1),
+  const external = projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
+    (count, entity) => {
+      if (entity.type === "point" || entity.type === "circle" || entity.type === "ellipse") {
+        return count + 1
+      }
+      return entity.type === "elliptical-arc" ? count + 11 : count
+    },
     0,
   )
   return authored + internal + external
@@ -607,15 +709,15 @@ function nativeSketchCapacity(structure: SketchStructure) {
   return {
     entities:
       authored.entities +
-      (structure.externalReferences ?? []).reduce(
-        (count, reference) => count + (reference.kind === "line" ? 3 : 1),
+      projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
+        (count, entity) => count + nativeEntityCapacity[entity.type].entities,
         0,
       ) +
       projectionCount * 3,
     parameters:
       authored.parameters +
-      (structure.externalReferences ?? []).reduce(
-        (count, reference) => count + (reference.kind === "line" ? 4 : 2),
+      projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
+        (count, entity) => count + nativeEntityCapacity[entity.type].parameters,
         0,
       ) +
       projectionCount * 4,
@@ -653,14 +755,7 @@ function validateExternalReferenceIds(sketch: SketchStructure, context: z.Refine
         message: "External sketch reference IDs must be unique.",
       })
     }
-    const projectedIds =
-      reference.kind === "line"
-        ? [
-            reference.projectedStartPointId,
-            reference.projectedEndPointId,
-            reference.projectedLineId,
-          ]
-        : [reference.projectedPointId]
+    const projectedIds = projectedExternalSketchEntities([reference]).map(({ id }) => id)
     for (const projectedId of projectedIds) {
       if (projectedEntityIds.has(projectedId)) {
         context.addIssue({

@@ -85,7 +85,19 @@ export type ViewerSketchLineCandidate = Readonly<{
   sourceSketchId: string
 }>
 
-export type ViewerSketchReferenceCandidate = ViewerSketchPointCandidate | ViewerSketchLineCandidate
+export type ViewerSketchCurveCandidate = Readonly<{
+  kind: "curve"
+  label: string
+  points: readonly ViewerVector3[]
+  sourceEntityId: string
+  sourceSketchId: string
+  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc"
+}>
+
+export type ViewerSketchReferenceCandidate =
+  | ViewerSketchPointCandidate
+  | ViewerSketchLineCandidate
+  | ViewerSketchCurveCandidate
 
 export type ViewerVector3 = readonly [number, number, number]
 
@@ -335,8 +347,26 @@ function sameSelection(left: ViewerSelection | null, right: ViewerSelection | nu
 
 function sketchReferenceCandidateKey(candidate: ViewerSketchReferenceCandidate | null) {
   if (!candidate) return null
-  const entityId = candidate.kind === "line" ? candidate.sourceLineId : candidate.sourcePointId
+  const entityId =
+    candidate.kind === "line"
+      ? candidate.sourceLineId
+      : candidate.kind === "curve"
+        ? candidate.sourceEntityId
+        : candidate.sourcePointId
   return `${candidate.kind ?? "point"}:${candidate.sourceSketchId}:${entityId}`
+}
+
+function sketchReferenceLinePositions(
+  candidate: ViewerSketchLineCandidate | ViewerSketchCurveCandidate,
+) {
+  if (candidate.kind === "line") return new Float32Array([...candidate.start, ...candidate.end])
+  const positions: number[] = []
+  for (let index = 1; index < candidate.points.length; index += 1) {
+    const start = candidate.points[index - 1]
+    const end = candidate.points[index]
+    if (start && end) positions.push(...start, ...end)
+  }
+  return new Float32Array(positions)
 }
 
 function sameSketchReferenceCandidate(
@@ -529,7 +559,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   #selection: ViewerSelection | null = null
   #sketchPointCandidates: readonly ViewerSketchPointCandidate[] = []
   #sketchPointObject: Points | null = null
-  #sketchLineObjects = new Map<LineSegments, ViewerSketchLineCandidate>()
+  #sketchLineObjects = new Map<
+    LineSegments,
+    ViewerSketchLineCandidate | ViewerSketchCurveCandidate
+  >()
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
 
@@ -710,7 +743,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchPointPreselection(null)
     disposeModelGroup(this.#sketchPointCandidateGroup)
     this.#sketchPointCandidates = candidates.filter(
-      (candidate): candidate is ViewerSketchPointCandidate => candidate.kind !== "line",
+      (candidate): candidate is ViewerSketchPointCandidate =>
+        candidate.kind !== "line" && candidate.kind !== "curve",
     )
     this.#sketchLineObjects.clear()
     this.#sketchPointObject = null
@@ -729,12 +763,14 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#sketchPointCandidateGroup.add(points)
     }
     for (const candidate of candidates) {
-      if (candidate.kind !== "line") continue
+      if (candidate.kind !== "line" && candidate.kind !== "curve") continue
       const line = new LineSegments(
-        createViewerSketchGeometry(new Float32Array([...candidate.start, ...candidate.end])),
+        createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
         this.#sketchLineCandidateMaterial,
       )
-      line.name = `sketch-reference-line:${candidate.sourceLineId}`
+      line.name = `sketch-reference-${candidate.kind}:${
+        candidate.kind === "line" ? candidate.sourceLineId : candidate.sourceEntityId
+      }`
       line.renderOrder = 8
       this.#sketchLineObjects.set(line, candidate)
       this.#sketchPointCandidateGroup.add(line)
@@ -996,9 +1032,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (sameSketchReferenceCandidate(candidate, this.#sketchPointPreselection)) return
     this.#sketchPointPreselection = candidate
     disposeModelGroup(this.#sketchPointPreselectionGroup)
-    if (candidate?.kind === "line") {
+    if (candidate?.kind === "line" || candidate?.kind === "curve") {
       const line = new LineSegments(
-        createViewerSketchGeometry(new Float32Array([...candidate.start, ...candidate.end])),
+        createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
         this.#sketchLinePreselectionMaterial,
       )
       line.renderOrder = 9

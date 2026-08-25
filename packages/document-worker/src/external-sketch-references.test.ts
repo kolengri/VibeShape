@@ -113,4 +113,104 @@ describe("external sketch reference resolution", () => {
       solveSketch.mock.calls.find(([input]) => input.sketch.id === second.id)?.[0].externalPoints,
     ).toEqual([expect.objectContaining({ x: 12, y: 0 })])
   })
+
+  it("materializes a solved source circle as stable read-only external geometry", async () => {
+    const centerId = sketchEntityIdSchema.parse(id("4501"))
+    const circleId = sketchEntityIdSchema.parse(id("4502"))
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4503"),
+      label: "Source circle",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: centerId,
+          type: "point",
+          construction: false,
+          x: 2,
+          y: 3,
+        },
+        {
+          schemaVersion: 0,
+          id: circleId,
+          type: "circle",
+          construction: false,
+          centerPointId: centerId,
+          radius: 5,
+        },
+      ],
+      constraints: [],
+    })
+    const projectedCenterId = sketchEntityIdSchema.parse(id("4504"))
+    const projectedCircleId = sketchEntityIdSchema.parse(id("4505"))
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4506"),
+      label: "Target",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4507"),
+          kind: "curve",
+          sourceSketchId: source.id,
+          sourceEntityId: circleId,
+          sourceType: "circle",
+          projectedEntityId: projectedCircleId,
+          projectedType: "circle",
+          projectedPointIds: [projectedCenterId],
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4508"),
+      revision: 2,
+      name: "Curve reference",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [source, target],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+    const solveSketch = vi.fn<SketchSolvePort>((input) => {
+      const points = [{ entityId: centerId, x: 10, y: 12 }]
+      const circles = [{ entityId: circleId, radius: 7 }]
+      return {
+        ok: true,
+        solution: {
+          schemaVersion: 0,
+          sketchId: sketchIdSchema.parse(input.sketch.id),
+          sourceRevision: input.revision,
+          status: "under-constrained",
+          degreesOfFreedom: 3,
+          maximumResidual: 0,
+          points,
+          circles,
+          failedConstraintIds: [],
+          profileResult: detectSketchProfiles(source, { points, circles }),
+          heapCapacityBytes: 1024,
+          solverBuild: SKETCH_SOLVER_BUILD,
+        },
+      }
+    })
+
+    const result = await resolveExternalSketchGeometry(document, target, solveSketch)
+
+    expect(result.externalCurves).toEqual([
+      {
+        points: [expect.objectContaining({ id: projectedCenterId, x: 10, y: 12 })],
+        curve: expect.objectContaining({
+          id: projectedCircleId,
+          type: "circle",
+          centerPointId: projectedCenterId,
+          radius: 7,
+        }),
+      },
+    ])
+  })
 })
