@@ -454,6 +454,23 @@ describe("GeometryViewport", () => {
     expect(viewerMeshes(controller, [datumId])).toEqual([{ featureId: boxId, ...mesh }])
   })
 
+  it("reveals the previous terminal body only for transient sketch-edit rollback", () => {
+    const controller = readyController(
+      [
+        { id: boxId, dependencies: [] },
+        { id: booleanId, dependencies: [boxId] },
+      ],
+      [
+        { featureId: boxId, geometry: { mesh } },
+        { featureId: booleanId, geometry: { mesh } },
+      ],
+    )
+
+    expect(viewerMeshes(controller)).toEqual([{ featureId: booleanId, ...mesh }])
+    expect(viewerMeshes(controller, [booleanId])).toEqual([])
+    expect(viewerMeshes(controller, [], [booleanId])).toEqual([{ featureId: boxId, ...mesh }])
+  })
+
   it("initializes an empty 3D viewport for origin-plane preselection and selection", async () => {
     const onSelect = vi.fn()
     const { createViewport, port } = renderViewport(readyController([], []), null, {

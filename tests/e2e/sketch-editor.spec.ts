@@ -29,7 +29,10 @@ test.describe("full sketch editor", () => {
       element.dataset.testViewportIdentity = "persistent"
     })
 
-    await page.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
     await confirmSketchPlane(page)
 
     const passiveViewport = page.locator("section[data-passive='true']")

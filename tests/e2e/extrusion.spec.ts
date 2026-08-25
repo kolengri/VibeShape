@@ -161,6 +161,21 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    const sketchContext = page.locator("section[data-sketch-context-mode='normal']")
+    await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await page.getByRole("button", { name: "Hide Box 1" }).click()
+    await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "0")
+    await page.getByRole("button", { name: "Show Box 1" }).click()
+    await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
+      "data-rendered-feature-count",
+      "1",
+    )
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   })
 
   test("starts a sketch from an extrusion cap during support selection", async ({ page }) => {
