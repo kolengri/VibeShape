@@ -386,6 +386,74 @@ describe("sketchRecordSchema", () => {
     expect(parsed.success).toBe(true)
   })
 
+  test("accepts stable model vertex and line references as constraint targets", () => {
+    const fixture = validSketch()
+    const featureId = "018f0000-0000-7000-8000-000000000401"
+    const pointId = "018f0000-0000-7000-8000-000000000402"
+    const startPointId = "018f0000-0000-7000-8000-000000000403"
+    const endPointId = "018f0000-0000-7000-8000-000000000404"
+    const lineId = "018f0000-0000-7000-8000-000000000405"
+    const signature = {
+      geometryClass: "POINT",
+      measure: 0,
+      centroid: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    } as const
+    const parsed = sketchRecordSchema.safeParse({
+      ...fixture,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000406",
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "vertex",
+            signature: { ...signature, kind: "vertex" },
+          },
+          projectedPointId: pointId,
+        },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000407",
+          kind: "model-line",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            signature: {
+              ...signature,
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 10,
+              bounds: { min: [0, 0, 0], max: [10, 0, 0] },
+              direction: [1, 0, 0],
+              directionMode: "axis",
+              boundaryCount: 2,
+            },
+          },
+          projectedLineId: lineId,
+          projectedStartPointId: startPointId,
+          projectedEndPointId: endPointId,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(206),
+          type: "parallel",
+          firstEntityId: lineA,
+          secondEntityId: lineId,
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(true)
+  })
+
   test("accepts a read-only external curve as an associative constraint target", () => {
     const fixture = validSketch()
     const projectedCircleId = "018f0000-0000-7000-8000-000000000307"

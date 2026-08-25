@@ -97,6 +97,20 @@ export const topoRefSchema = topoRefContentSchema
   .safeExtend({ featureId: featureIdSchema })
   .strict()
 
+export const vertexTopoRefSchema = topoRefSchema
+  .safeExtend({
+    kind: z.literal("vertex"),
+    signature: topologySignatureSchema.safeExtend({ kind: z.literal("vertex") }),
+  })
+  .strict()
+
+export const edgeTopoRefSchema = topoRefSchema
+  .safeExtend({
+    kind: z.literal("edge"),
+    signature: topologySignatureSchema.safeExtend({ kind: z.literal("edge") }),
+  })
+  .strict()
+
 export const planarFaceTopoRefSchema = topoRefSchema
   .safeExtend({
     kind: z.literal("face"),
@@ -165,6 +179,8 @@ export const TOPOLOGY_RESOLUTION_POLICY = topologyResolutionPolicySchema.parse({
 })
 
 export type TopoRef = Readonly<z.infer<typeof topoRefSchema>>
+export type VertexTopoRef = Readonly<z.infer<typeof vertexTopoRefSchema>>
+export type EdgeTopoRef = Readonly<z.infer<typeof edgeTopoRefSchema>>
 export type TopologySignature = Readonly<z.infer<typeof topologySignatureSchema>>
 export type TopologyCandidate = Readonly<z.infer<typeof topologyCandidateSchema>>
 export type TopologyResolutionPolicy = Readonly<z.infer<typeof topologyResolutionPolicySchema>>

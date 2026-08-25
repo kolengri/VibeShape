@@ -12,6 +12,12 @@ import type { GeometryWorkerResponse } from "../../packages/protocol/src"
 import { topologySpikeBaselineRoles } from "../../packages/test-models/src"
 
 type TopologyResponse = Extract<GeometryWorkerResponse, { type: "topologySpikeCompleted" }>
+type FeatureResponse = Extract<GeometryWorkerResponse, { type: "featureEvaluated" }>
+type ProtocolTopologyCandidate = FeatureResponse["topologyCandidates"][number]
+
+function asDomainCandidates(candidates: readonly ProtocolTopologyCandidate[]) {
+  return candidates.map(({ referenceGeometry: _referenceGeometry, ...candidate }) => candidate)
+}
 
 interface TopologyScenarioResult {
   name: string
@@ -23,7 +29,70 @@ interface TopologySpikeHarnessState {
   state: "running" | "passed" | "failed"
   currentScenario: string | null
   scenarios: TopologyScenarioResult[]
+  featureScenarios: Array<{ name: string; result: FeatureResponse }>
   error: string | null
+}
+
+function requireFeatureScenario(state: TopologySpikeHarnessState, name: string) {
+  const scenario = state.featureScenarios.find((item) => item.name === name)
+  if (!scenario) throw new Error(`The topology harness did not publish ${name}.`)
+  const candidates = scenario.result.topologyCandidates as ProtocolTopologyCandidate[]
+  expect(scenario.result.shape).toMatchObject({ valid: true, solidCount: 1 })
+  const roles = candidates.flatMap((candidate) =>
+    candidate.semanticRole ? [candidate.semanticRole] : [],
+  )
+  expect(new Set(roles).size, `${name} published duplicate semantic roles.`).toBe(roles.length)
+  return candidates
+}
+
+function assertStableFeatureRole(
+  role: string,
+  baselineCandidates: ProtocolTopologyCandidate[],
+  editedCandidates: ProtocolTopologyCandidate[],
+) {
+  const baseline = asDomainCandidates(baselineCandidates)
+  const edited = asDomainCandidates(editedCandidates)
+  const reference = createReference(requireCandidateByRole(baseline, role))
+  expect(resolveTopologyReference(reference, edited)).toMatchObject({
+    status: "resolved",
+    method: "semantic",
+  })
+}
+
+function verifyFeatureTopology(state: TopologySpikeHarnessState) {
+  const boxBaseline = requireFeatureScenario(state, "box-baseline")
+  const boxEdited = requireFeatureScenario(state, "box-edited")
+  assertStableFeatureRole("primitive.box.vertex.x-min.y-min.z-min", boxBaseline, boxEdited)
+  assertStableFeatureRole("primitive.box.edge.x.y-min.z-min", boxBaseline, boxEdited)
+
+  const extrusionBaseline = requireFeatureScenario(state, "extrusion-baseline")
+  const extrusionEdited = requireFeatureScenario(state, "extrusion-edited")
+  assertStableFeatureRole(
+    "extrusion.vertex.0195b5ac-b220-7a2c-8c33-67a36a7f3202.cap.end",
+    extrusionBaseline,
+    extrusionEdited,
+  )
+  assertStableFeatureRole(
+    "extrusion.edge.0195b5ac-b220-7a2c-8c33-67a36a7f3211.cap.start",
+    extrusionBaseline,
+    extrusionEdited,
+  )
+  assertStableFeatureRole(
+    "extrusion.edge.0195b5ac-b220-7a2c-8c33-67a36a7f3202.span",
+    extrusionBaseline,
+    extrusionEdited,
+  )
+
+  const coincident = requireFeatureScenario(state, "extrusion-coincident-points")
+  const ambiguousVertices = coincident.filter(
+    (candidate) =>
+      candidate.kind === "vertex" &&
+      candidate.referenceGeometry?.kind === "vertex" &&
+      Math.abs(candidate.referenceGeometry.position[0] - 20) <= 1e-6 &&
+      Math.abs(candidate.referenceGeometry.position[1]) <= 1e-6,
+  )
+  expect(ambiguousVertices).toHaveLength(2)
+  expect(ambiguousVertices.every((candidate) => candidate.semanticRole === undefined)).toBe(true)
 }
 
 interface ScenarioEvidence {
@@ -136,7 +205,7 @@ function duplicateRoleDiagnostics(candidates: TopologyCandidate[]) {
 }
 
 function assertScenarioCandidates(scenario: TopologyScenarioResult) {
-  const candidates = scenario.result.topologyCandidates as TopologyCandidate[]
+  const candidates = asDomainCandidates(scenario.result.topologyCandidates)
   expect(scenario.result.shape).toMatchObject({ valid: true, solidCount: 1 })
   expect(new Set(candidates.map((candidate) => candidate.candidateId)).size).toBe(candidates.length)
   const semanticRoles = candidates.flatMap((candidate) =>
@@ -289,11 +358,13 @@ test("records fail-closed stable topology evidence from the local OCCT corpus", 
   await expect(status).toHaveAttribute("data-state", "passed")
   expect(spike.error).toBeNull()
   expect(spike.scenarios.length).toBeGreaterThan(10)
+  expect(spike.featureScenarios).toHaveLength(5)
+  verifyFeatureTopology(spike)
 
   const baseline = spike.scenarios[0]
   if (!baseline) throw new Error("The topology corpus did not publish a baseline scenario.")
 
-  const baselineCandidates = baseline.result.topologyCandidates as TopologyCandidate[]
+  const baselineCandidates = asDomainCandidates(baseline.result.topologyCandidates)
   const references = topologySpikeBaselineRoles.map((role) =>
     createReference(requireCandidateByRole(baselineCandidates, role)),
   )
@@ -318,6 +389,7 @@ test("records fail-closed stable topology evidence from the local OCCT corpus", 
     recordedAt: new Date().toISOString(),
     browser: `Chromium ${browser.version()}`,
     scenarioCount: spike.scenarios.length,
+    featureScenarioCount: spike.featureScenarios.length,
     baselineReferenceCount: references.length,
     resolvedCount: sum(results, "semanticResolved"),
     missingCount: sum(results, "semanticMissing"),

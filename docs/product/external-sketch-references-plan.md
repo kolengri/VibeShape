@@ -38,12 +38,13 @@ part of this first slice. See [Derived](https://cad.onshape.com/help/Content/Par
 ### Implemented point-and-line foundation
 
 The delivered foundation lets a dependent sketch retain a **projected point or line reference** to an
-earlier saved sketch. A point can attach one authored point with a Coincident relation. A projected line is
-read-only construction geometry whose fixed projected endpoints can drive Point on line, Parallel,
+earlier saved sketch or a stable model vertex or linear feature edge. A point can attach one authored point
+with a Coincident relation. A projected line is read-only construction geometry whose fixed projected endpoints can drive Point on line, Parallel,
 Perpendicular, Equal, Angle, and other compatible solver relations without becoming a profile boundary. A
-reference persists only stable source and projected entity IDs; the document worker resolves current source
-coordinates before every solve, transforms them from the exact source support through world space into the
-target support, and rejects a line whose projection degenerates to a point.
+sketch references persist only stable source and projected entity IDs. Model references persist a versioned
+`TopoRef` plus projected entity IDs; they never persist candidate IDs, mesh ordinals, native hashes, or
+coordinates. The document worker resolves current source coordinates before every solve, transforms them
+through world space into the target support, and rejects a line whose projection degenerates to a point.
 
 The icon-only **Use external geometry** tool exposes compatible source points and lines on the
 normal-to-sketch drawing and in the persistent 3D viewport. Orbit mode provides graphical hover
@@ -51,10 +52,15 @@ preselection, a source label, and direct selection without recreating the camera
 and removes references; removal also removes constraints that target the projected geometry. Deleting a
 referenced source sketch is rejected.
 
-This increment does not yet support circles, arcs, ellipses, feature edges, intersection, automatic external
-inference, solved-source preselection data, or chained references. A source must be earlier in presentation
-order and have no own external references. Persisted coordinates remain disposable: both UI preview and
-authoritative worker evaluation derive them from stable source identity and resolved support frames.
+Sketch-to-sketch Use supports analytical circles, arcs, and ellipses plus ordered reference chains. The
+worker boundary now publishes exact vertex positions and exact LINE endpoints for generic Box and
+polygonal Extrusion topology candidates. Analytical Box boundaries and prepared source point/entity IDs give
+those candidates stable roles across supported parameter edits; distinct coincident source points remain
+unlabeled so resolution fails closed instead of choosing one by traversal order. Authoritative sketch solving
+resolves model references fail-closed. Graphical model-edge/vertex preselection and creation remain the next UI slice. Intersection,
+automatic external inference, curved model edges, and repair UI are not implemented. Persisted coordinates
+remain disposable: both UI preview and authoritative worker evaluation derive them from stable source
+identity and resolved support frames.
 
 ### Reference types
 
@@ -142,8 +148,9 @@ cannot alter evaluation order.
    solver semantics permit them.
 3. **Editor interaction**: provide the icon-only `Use external geometry` tool, external inference,
    visible preselection, source labels, a reference list, visibility toggle, and accessible removal.
-4. **Feature-edge Use**: resolve a selected feature edge through the existing stable topology-reference
-   policy, project it to the sketch frame, and add repair diagnostics.
+4. **Feature-edge Use**: the exact vertex/LINE payload, stable model-reference schema, progressive rebuild,
+   and fail-closed worker resolution are implemented. Add graphical model candidate preselection, direct
+   creation, and repair diagnostics.
 5. **Intersection**: add bounded analytical face/surface intersections with `Intersection`/`Pierce`
    relations. Do not approximate this with mesh intersections.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace

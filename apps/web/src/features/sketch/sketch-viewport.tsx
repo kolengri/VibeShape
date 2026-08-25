@@ -715,7 +715,7 @@ function displayExternalCurve(
 }
 
 function displayExternalLine(
-  reference: Extract<ExternalReference, { kind: "line" }>,
+  reference: Extract<ExternalReference, { kind: "line" | "model-line" }>,
   solvedById: ReadonlyMap<string, SketchPoint2>,
 ): DisplayExternalLine | null {
   const start = solvedById.get(reference.projectedStartPointId)
@@ -742,7 +742,7 @@ function displayExternalGeometry(sketch: SketchRecord, solution: SolvedSketchWir
       }
       continue
     }
-    if (reference.kind !== "line") {
+    if (reference.kind !== "line" && reference.kind !== "model-line") {
       const point = solvedById.get(reference.projectedPointId)
       if (point) {
         externalPoints.push({
@@ -1741,6 +1741,9 @@ function contextGeometryKey(geometry: ExternalSketchContextGeometry) {
 function externalReferenceSourceKey(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
 ) {
+  if (reference.kind === "model-point" || reference.kind === "model-line") {
+    return `model:${reference.reference.featureId}:${reference.id}`
+  }
   const entityId =
     reference.kind === "line"
       ? reference.sourceLineId

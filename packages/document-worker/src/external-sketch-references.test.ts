@@ -1,3 +1,4 @@
+import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   documentSnapshotSchema,
   type SketchRecord,
@@ -77,6 +78,208 @@ function solved(input: Parameters<SketchSolvePort>[0]): SolveSketchRecordResult 
 }
 
 describe("external sketch reference resolution", () => {
+  it("projects resolved model vertices and edges from feature geometry", async () => {
+    const featureId = id("4600")
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(6, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4601"),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "vertex",
+            semanticRole: "vertex.source",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [3, 4, 9],
+              bounds: { min: [3, 4, 9], max: [3, 4, 9] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: id("4602"),
+        },
+        {
+          schemaVersion: 0,
+          id: id("4603"),
+          kind: "model-line",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "edge.source",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 5,
+              centroid: [2, 0, 2.5],
+              bounds: { min: [0, 0, 0], max: [4, 0, 5] },
+              direction: [0.8, 0, 0.6],
+              directionMode: "oriented",
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedLineId: id("4604"),
+          projectedStartPointId: id("4605"),
+          projectedEndPointId: id("4606"),
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      ...documentSnapshotSchema.parse({
+        schemaVersion: 0,
+        id: id("4607"),
+        revision: 1,
+        name: "Model reference",
+        displayUnits: { length: "mm", angle: "deg" },
+        variables: [],
+        sketches: [target],
+        features: [feature],
+        createdAt: "2026-08-25T00:00:00.000Z",
+        updatedAt: "2026-08-25T00:00:00.000Z",
+      }),
+    })
+    const candidate = (
+      kind: "vertex" | "edge",
+      semanticRole: string,
+      referenceGeometry: unknown,
+    ) => ({
+      candidateId: id(`46${kind === "vertex" ? "08" : "09"}`),
+      kind,
+      semanticRole,
+      lineageTokens: [],
+      referenceGeometry,
+      signature: {
+        kind,
+        geometryClass: kind === "vertex" ? "POINT" : "LINE",
+        measure: kind === "vertex" ? 0 : 5,
+        centroid: kind === "vertex" ? [3, 4, 9] : [2, 0, 2.5],
+        bounds:
+          kind === "vertex"
+            ? { min: [3, 4, 9], max: [3, 4, 9] }
+            : { min: [0, 0, 0], max: [4, 0, 5] },
+        ...(kind === "edge"
+          ? { direction: [0.8, 0, 0.6], directionMode: "oriented" as const }
+          : {}),
+        boundaryCount: kind === "vertex" ? 0 : 2,
+        adjacentGeometryClasses: [],
+      },
+    })
+    const geometry = [
+      {
+        featureId,
+        geometry: {
+          topologyCandidates: [
+            candidate("vertex", "vertex.source", { kind: "vertex", position: [3, 4, 9] }),
+            candidate("edge", "edge.source", {
+              kind: "line-edge",
+              start: [0, 0, 0],
+              end: [4, 0, 5],
+            }),
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometry,
+    )
+
+    expect(result.externalPoints).toEqual([expect.objectContaining({ x: 3, y: 4 })])
+    expect(result.externalLines?.[0]).toEqual(
+      expect.objectContaining({
+        startPoint: expect.objectContaining({ x: 0, y: 0 }),
+        endPoint: expect.objectContaining({ x: 4, y: 0 }),
+      }),
+    )
+  })
+
+  it("fails closed when model reference geometry payload is missing", async () => {
+    const sourceFeatureId = id("4610")
+    const feature = {
+      schemaVersion: 0 as const,
+      id: sourceFeatureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(7, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4611"),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "vertex",
+            signature: {
+              kind: "vertex",
+              geometryClass: "VERTEX",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: id("4612"),
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4613"),
+      revision: 1,
+      name: "Missing model geometry",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+
+    await expect(resolveExternalSketchGeometry(document, target, vi.fn(solved))).rejects.toThrow(
+      "geometry is unavailable",
+    )
+  })
+
   it("resolves a source sketch through its own external-reference chain", async () => {
     const first = pointSketch(1, 12)
     const second = sketchRecordSchema.parse({

@@ -34,7 +34,12 @@ function sketchesEqual(left: SketchRecord, right: SketchRecord) {
 
 function sketchHasExternalDependents(snapshot: DocumentSnapshot, sketchId: string) {
   return snapshot.sketches.some((sketch) =>
-    (sketch.externalReferences ?? []).some((reference) => reference.sourceSketchId === sketchId),
+    (sketch.externalReferences ?? []).some(
+      (reference) =>
+        reference.kind !== "model-point" &&
+        reference.kind !== "model-line" &&
+        reference.sourceSketchId === sketchId,
+    ),
   )
 }
 

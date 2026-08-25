@@ -7,7 +7,7 @@ import {
   sketchExternalReferenceIdSchema,
   sketchIdSchema,
 } from "./identifiers"
-import { planarFaceTopoRefSchema } from "./topology"
+import { edgeTopoRefSchema, planarFaceTopoRefSchema, vertexTopoRefSchema } from "./topology"
 import { angleQuantitySchema, lengthQuantitySchema } from "./units"
 
 export const MAX_SKETCHES_PER_DOCUMENT = 256
@@ -117,10 +117,39 @@ export const sketchExternalCurveReferenceSchema = z
     }
   })
 
+/** A read-only point projected from one stable model vertex. */
+export const sketchExternalModelPointReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-point"),
+    reference: vertexTopoRefSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
+/** A read-only line projected from one stable linear model edge. */
+export const sketchExternalModelLineReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-line"),
+    reference: edgeTopoRefSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId, {
+    message: "A projected model line requires distinct endpoint IDs.",
+  })
+
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
   sketchExternalCurveReferenceSchema,
+  sketchExternalModelPointReferenceSchema,
+  sketchExternalModelLineReferenceSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -131,6 +160,12 @@ export type SketchExternalLineReference = Readonly<
 >
 export type SketchExternalCurveReference = Readonly<
   z.infer<typeof sketchExternalCurveReferenceSchema>
+>
+export type SketchExternalModelPointReference = Readonly<
+  z.infer<typeof sketchExternalModelPointReferenceSchema>
+>
+export type SketchExternalModelLineReference = Readonly<
+  z.infer<typeof sketchExternalModelLineReferenceSchema>
 >
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
 
@@ -492,7 +527,9 @@ export function projectedExternalSketchEntities(
         projectedExternalCurve(reference),
       ]
     }
-    if (reference.kind !== "line") return [projectedExternalPoint(reference.projectedPointId)]
+    if (reference.kind !== "line" && reference.kind !== "model-line") {
+      return [projectedExternalPoint(reference.projectedPointId)]
+    }
     return [
       projectedExternalPoint(reference.projectedStartPointId),
       projectedExternalPoint(reference.projectedEndPointId),

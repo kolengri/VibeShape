@@ -8,6 +8,7 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
+  topologyCandidateSchema,
   topologySignatureSchema,
   topologySpikeParametersSchema,
 } from "./geometry-worker"
@@ -76,6 +77,94 @@ const historyStats = {
 }
 
 describe("geometry worker protocol", () => {
+  it("accepts finite rebuild-local vertex and line-edge reference geometry", () => {
+    const signature = {
+      kind: "vertex" as const,
+      geometryClass: "POINT",
+      measure: 0,
+      centroid: [1, 2, 3],
+      bounds: { min: [1, 2, 3], max: [1, 2, 3] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    }
+    expect(
+      topologyCandidateSchema.safeParse({
+        candidateId: "vertex:0",
+        kind: "vertex",
+        lineageTokens: [],
+        signature,
+        referenceGeometry: { kind: "vertex", position: [1, 2, 3] },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        candidateId: "edge:0",
+        kind: "edge",
+        lineageTokens: [],
+        signature: { ...signature, kind: "edge", geometryClass: "LINE" },
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 0], end: [1, 0, 0] },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        candidateId: "vertex:far",
+        kind: "vertex",
+        lineageTokens: [],
+        signature: {
+          ...signature,
+          centroid: [150_000, 0, 0],
+          bounds: { min: [150_000, 0, 0], max: [150_000, 0, 0] },
+        },
+        referenceGeometry: { kind: "vertex", position: [150_000, 0, 0] },
+      }).success,
+    ).toBe(true)
+  })
+
+  it("rejects mismatched, non-finite, and degenerate reference geometry", () => {
+    const base = {
+      candidateId: "vertex:0",
+      kind: "vertex" as const,
+      lineageTokens: [],
+      signature: {
+        kind: "vertex" as const,
+        geometryClass: "POINT",
+        measure: 0,
+        centroid: [0, 0, 0],
+        bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 0], end: [1, 0, 0] },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        kind: "edge",
+        signature: { ...base.signature, kind: "edge", geometryClass: "CIRCLE" },
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 0], end: [1, 0, 0] },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: { kind: "vertex", position: [Number.NaN, 0, 0] },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        kind: "edge",
+        signature: { ...base.signature, kind: "edge", geometryClass: "LINE" },
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 0], end: [0, 0, 0] },
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts a finite versioned kernel spike request", () => {
     const parsed = geometryWorkerRequestSchema.parse({
       ...validEnvelope,
@@ -192,12 +281,16 @@ describe("geometry worker protocol", () => {
           {
             entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
             type: "line",
+            startPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3221",
+            endPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3222",
             start: [0, 0],
             end: [20, 0],
           },
           {
             entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
             type: "arc",
+            startPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3222",
+            endPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3223",
             start: [20, 0],
             middle: [25, 5],
             end: [20, 10],
@@ -303,6 +396,8 @@ describe("geometry worker protocol", () => {
           {
             entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
             type: "elliptical-arc",
+            startPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3221",
+            endPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3222",
             center: [0, 0],
             primaryAxisPoint: [10, 0],
             secondaryAxisPoint: [0, 5],
@@ -312,6 +407,8 @@ describe("geometry worker protocol", () => {
           {
             entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
             type: "line",
+            startPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3222",
+            endPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3221",
             start: [-10, 0],
             end: [10, 0],
           },

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest"
-import { createTopologyCandidates } from "./topology-signatures"
+import type { Shape3D } from "replicad"
+import { describe, expect, it, vi } from "vitest"
+import { captureReplicadTopologySnapshot, createTopologyCandidates } from "./topology-signatures"
 
 function sample(
   candidateId: string,
-  kind: "edge" | "face",
+  kind: "vertex" | "edge" | "face",
   ownKey: number,
   boundaryKeys: number[],
   geometryClass: string,
@@ -54,5 +55,39 @@ describe("createTopologyCandidates", () => {
       semanticRole: "extrude.cap.end",
       lineageTokens: ["extrude:source-face:4"],
     })
+  })
+
+  it("preserves rebuild-local references without transient shape keys", () => {
+    const candidates = createTopologyCandidates([
+      {
+        ...sample("vertex:0", "vertex", 7, [], "POINT"),
+        referenceGeometry: { kind: "vertex", position: [1, 2, 3] },
+      },
+      {
+        ...sample("edge:0", "edge", 8, [], "LINE"),
+        referenceGeometry: { kind: "line-edge", start: [0, 0, 0], end: [1, 0, 0] },
+      },
+    ])
+
+    expect(candidates.map(({ referenceGeometry }) => referenceGeometry)).toEqual([
+      { kind: "vertex", position: [1, 2, 3] },
+      { kind: "line-edge", start: [0, 0, 0], end: [1, 0, 0] },
+    ])
+    expect(JSON.stringify(candidates)).not.toContain("ownKey")
+  })
+
+  it("releases acquired wrappers when a later topology accessor fails", () => {
+    const face = { delete: vi.fn() }
+    const shape = {
+      get faces() {
+        return [face]
+      },
+      get edges(): never {
+        throw new Error("edge access failed")
+      },
+    } as unknown as Shape3D
+
+    expect(() => captureReplicadTopologySnapshot(shape)).toThrow("edge access failed")
+    expect(face.delete).toHaveBeenCalledOnce()
   })
 })

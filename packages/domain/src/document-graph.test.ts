@@ -45,6 +45,24 @@ const faceReference = (featureId: string) => ({
   },
 })
 
+const vertexReference = (featureId: string) => ({
+  schemaVersion: 0 as const,
+  featureId: id(featureId),
+  kind: "vertex" as const,
+  signature: {
+    kind: "vertex" as const,
+    geometryClass: "POINT",
+    measure: 0,
+    centroid: [0, 0, 0] as [number, number, number],
+    bounds: {
+      min: [0, 0, 0] as [number, number, number],
+      max: [0, 0, 0] as [number, number, number],
+    },
+    boundaryCount: 0,
+    adjacentGeometryClasses: [],
+  },
+})
+
 const supportedSketch = (value: string, supportFeatureId: string) => ({
   ...sketch(value),
   support: { kind: "feature-face" as const, reference: faceReference(supportFeatureId) },
@@ -350,6 +368,37 @@ describe("createDocumentDependencyGraph", () => {
         code: "missing-node",
         issues: [{ path: "sketches.0.externalReferences.0.sourceSketchId" }],
       },
+    })
+  })
+
+  it("orders a sketch after the model feature referenced by Use", () => {
+    const target = {
+      ...sketch("2"),
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: id("7"),
+          kind: "model-point" as const,
+          reference: vertexReference("1"),
+          projectedPointId: id("8"),
+        },
+      ],
+    }
+    const result = createDocumentDependencyGraph({
+      sketches: [target],
+      features: [feature("1")],
+      history: [
+        { kind: "feature", id: id("1") },
+        { kind: "sketch", id: id("2") },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.graph.edges).toContainEqual({
+      source: { kind: "feature", id: id("1") },
+      target: { kind: "sketch", id: id("2") },
+      relation: "feature-topology-reference",
     })
   })
 

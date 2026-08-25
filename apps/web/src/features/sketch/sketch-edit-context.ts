@@ -2,6 +2,7 @@ import {
   type DocumentSnapshot,
   type FeatureId,
   readExtrusionFeatureParameters,
+  type SketchExternalReference,
   type SketchId,
 } from "@vibeshape/domain"
 
@@ -25,9 +26,17 @@ function appendDependent(
   index.set(key, dependents)
 }
 
-function dependentNodeIndex(snapshot: Pick<DocumentSnapshot, "features" | "sketches">) {
-  const dependents = new Map<string, DocumentNode[]>()
-  for (const feature of snapshot.features) {
+function externalReferenceOwner(reference: SketchExternalReference): DocumentNode {
+  return reference.kind === "model-point" || reference.kind === "model-line"
+    ? { id: reference.reference.featureId, kind: "feature" }
+    : { id: reference.sourceSketchId, kind: "sketch" }
+}
+
+function indexFeatureDependents(
+  dependents: Map<string, DocumentNode[]>,
+  features: DocumentSnapshot["features"],
+) {
+  for (const feature of features) {
     const dependent = { id: feature.id, kind: "feature" } as const
     for (const featureId of new Set([
       ...feature.dependencies,
@@ -40,7 +49,13 @@ function dependentNodeIndex(snapshot: Pick<DocumentSnapshot, "features" | "sketc
       appendDependent(dependents, { id: extrusion.profile.sketchId, kind: "sketch" }, dependent)
     }
   }
-  for (const sketch of snapshot.sketches) {
+}
+
+function indexSketchDependents(
+  dependents: Map<string, DocumentNode[]>,
+  sketches: DocumentSnapshot["sketches"],
+) {
+  for (const sketch of sketches) {
     const dependent = { id: sketch.id, kind: "sketch" } as const
     if (sketch.support) {
       appendDependent(
@@ -50,9 +65,15 @@ function dependentNodeIndex(snapshot: Pick<DocumentSnapshot, "features" | "sketc
       )
     }
     for (const reference of sketch.externalReferences ?? []) {
-      appendDependent(dependents, { id: reference.sourceSketchId, kind: "sketch" }, dependent)
+      appendDependent(dependents, externalReferenceOwner(reference), dependent)
     }
   }
+}
+
+function dependentNodeIndex(snapshot: Pick<DocumentSnapshot, "features" | "sketches">) {
+  const dependents = new Map<string, DocumentNode[]>()
+  indexFeatureDependents(dependents, snapshot.features)
+  indexSketchDependents(dependents, snapshot.sketches)
   return dependents
 }
 

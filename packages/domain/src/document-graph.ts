@@ -407,8 +407,20 @@ function sketchCandidates(sketch: SketchRecord, sketchIndex: number) {
         },
       ]
     : []
-  const external = (sketch.externalReferences ?? []).map(
-    (reference, index): RelationCandidate => ({
+  const external = (sketch.externalReferences ?? []).map((reference, index): RelationCandidate => {
+    if (reference.kind === "model-point" || reference.kind === "model-line") {
+      return {
+        source: { kind: "feature", id: reference.reference.featureId },
+        target,
+        relation: "feature-topology-reference",
+        missingMessage: "External model reference is missing its source feature.",
+        issue: {
+          path: `sketches.${sketchIndex}.externalReferences.${index}.reference.featureId`,
+          message: "Referenced feature does not exist.",
+        },
+      }
+    }
+    return {
       source: { kind: "sketch", id: reference.sourceSketchId },
       target,
       relation: "external-sketch",
@@ -417,8 +429,8 @@ function sketchCandidates(sketch: SketchRecord, sketchIndex: number) {
         path: `sketches.${sketchIndex}.externalReferences.${index}.sourceSketchId`,
         message: "Referenced sketch does not exist.",
       },
-    }),
-  )
+    }
+  })
   return [...support, ...external]
 }
 

@@ -19,27 +19,48 @@ const expressionSchema = z
   .refine((expression) => expression.trim() === expression)
 
 const supportVectorSchema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()])
+const topologyIntentWireSchema = z
+  .object({
+    nearPoint: supportVectorSchema.optional(),
+    expectedDirection: supportVectorSchema.optional(),
+  })
+  .strict()
+const topoRefWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    featureId: featureIdSchema,
+    kind: z.enum(["vertex", "edge", "face"]),
+    semanticRole: z.string().min(1).max(256).optional(),
+    lineageToken: z.string().min(1).max(256).optional(),
+    signature: topologySignatureSchema,
+    intent: topologyIntentWireSchema.optional(),
+  })
+  .strict()
+  .refine((reference) => reference.kind === reference.signature.kind, {
+    message: "Topology reference kind must match its signature kind.",
+  })
+const vertexTopoRefWireSchema = topoRefWireSchema
+  .safeExtend({
+    kind: z.literal("vertex"),
+    signature: topologySignatureSchema.safeExtend({ kind: z.literal("vertex") }),
+  })
+  .strict()
+const edgeTopoRefWireSchema = topoRefWireSchema
+  .safeExtend({
+    kind: z.literal("edge"),
+    signature: topologySignatureSchema.safeExtend({ kind: z.literal("edge") }),
+  })
+  .strict()
 const sketchFeatureFaceSupportWireSchema = z
   .object({
     kind: z.literal("feature-face"),
-    reference: z
-      .object({
-        schemaVersion: z.literal(0),
-        featureId: featureIdSchema,
+    reference: topoRefWireSchema
+      .safeExtend({
         kind: z.literal("face"),
-        semanticRole: z.string().min(1).max(256).optional(),
-        lineageToken: z.string().min(1).max(256).optional(),
         signature: topologySignatureSchema.safeExtend({
           kind: z.literal("face"),
           geometryClass: z.literal("PLANE"),
         }),
-        intent: z
-          .object({
-            nearPoint: supportVectorSchema.optional(),
-            expectedDirection: supportVectorSchema.optional(),
-          })
-          .strict()
-          .optional(),
       })
       .strict(),
   })
@@ -421,10 +442,35 @@ const externalCurveReferenceWireSchema = z
     }
   })
 
+const externalModelPointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-point"),
+    reference: vertexTopoRefWireSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
+const externalModelLineReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-line"),
+    reference: edgeTopoRefWireSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
+
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
   externalCurveReferenceWireSchema,
+  externalModelPointReferenceWireSchema,
+  externalModelLineReferenceWireSchema,
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>
@@ -628,7 +674,7 @@ function wireProjectedCurveEntity(
 }
 
 function wireProjectedExternalEntities(reference: WireExternalReference): readonly WireEntity[] {
-  if (reference.kind === "line") {
+  if (reference.kind === "line" || reference.kind === "model-line") {
     return [
       wireProjectedPoint(reference.projectedStartPointId),
       wireProjectedPoint(reference.projectedEndPointId),

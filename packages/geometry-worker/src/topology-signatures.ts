@@ -9,13 +9,17 @@ import {
 } from "replicad"
 
 type Vector3 = [number, number, number]
+type ReferenceGeometry =
+  | { kind: "vertex"; position: Vector3 }
+  | { kind: "line-edge"; start: Vector3; end: Vector3 }
 
 interface TopologySample {
   candidateId: string
-  kind: "edge" | "face"
-  ownKey: number
+  kind: "vertex" | "edge" | "face"
+  ownKey?: number
   boundaryKeys: number[]
   signature: Omit<TopologySignature, "adjacentGeometryClasses">
+  referenceGeometry?: ReferenceGeometry
 }
 
 export interface TopologyCandidateContext {
@@ -88,28 +92,70 @@ function readFaceSample(face: Face, index: number): TopologySample {
   }
 }
 
-function readEdgeSample(edge: Edge, index: number): TopologySample {
+function readEdgeSample(edge: Edge, index: number) {
   const properties = measureShapeLinearProperties(edge)
   try {
     const direction = normalizedDirection(edge.tangentAt(0.5))
+    const start = readVector(edge.startPoint)
+    const end = readVector(edge.endPoint)
+    const referenceGeometry =
+      edge.geomType === "LINE"
+        ? {
+            kind: "line-edge" as const,
+            start,
+            end,
+          }
+        : undefined
     return {
-      candidateId: `edge:${index}`,
-      kind: "edge",
-      ownKey: edge.hashCode,
-      boundaryKeys: [],
-      signature: {
-        kind: "edge",
-        geometryClass: edge.geomType,
-        measure: properties.length,
-        centroid: properties.centerOfMass,
-        bounds: readBounds(edge),
-        ...(direction ? { direction, directionMode: "axis" as const } : {}),
-        boundaryCount: edge.isClosed ? 0 : 2,
+      endpoints: [start, end] as const,
+      sample: {
+        candidateId: `edge:${index}`,
+        kind: "edge" as const,
+        ownKey: edge.hashCode,
+        boundaryKeys: [],
+        signature: {
+          kind: "edge" as const,
+          geometryClass: edge.geomType,
+          measure: properties.length,
+          centroid: properties.centerOfMass,
+          bounds: readBounds(edge),
+          ...(direction ? { direction, directionMode: "axis" as const } : {}),
+          boundaryCount: edge.isClosed ? 0 : 2,
+        },
+        ...(referenceGeometry ? { referenceGeometry } : {}),
       },
     }
   } finally {
     properties.delete()
   }
+}
+
+function readVertexSample(position: Vector3, index: number): TopologySample {
+  return {
+    candidateId: `vertex:${index}`,
+    kind: "vertex",
+    boundaryKeys: [],
+    signature: {
+      kind: "vertex",
+      geometryClass: "POINT",
+      measure: 0,
+      centroid: position,
+      bounds: { min: position, max: position },
+      boundaryCount: 0,
+    },
+    referenceGeometry: { kind: "vertex", position },
+  }
+}
+
+function vertexSamples(edgeSamples: readonly ReturnType<typeof readEdgeSample>[]) {
+  const positions = new Map<string, Vector3>()
+  for (const { endpoints } of edgeSamples) {
+    for (const position of endpoints) {
+      const key = position.map((coordinate) => Math.round(coordinate * 1e9)).join(":")
+      if (!positions.has(key)) positions.set(key, position)
+    }
+  }
+  return [...positions.values()].map(readVertexSample)
 }
 
 function adjacentClasses(sample: TopologySample, samples: TopologySample[]) {
@@ -125,10 +171,10 @@ function adjacentClasses(sample: TopologySample, samples: TopologySample[]) {
       .map((candidate) => candidate.signature.geometryClass)
       .sort()
   }
+  if (sample.ownKey === undefined) return []
+  const ownKey = sample.ownKey
   return samples
-    .filter(
-      (candidate) => candidate.kind === "face" && candidate.boundaryKeys.includes(sample.ownKey),
-    )
+    .filter((candidate) => candidate.kind === "face" && candidate.boundaryKeys.includes(ownKey))
     .map((candidate) => candidate.signature.geometryClass)
     .sort()
 }
@@ -147,15 +193,15 @@ export function createTopologyCandidates(
       kind: sample.kind,
       signature,
     }
+    const semanticRole = annotations.semanticRole?.(context)
     return {
       candidateId: sample.candidateId,
       kind: sample.kind,
       ...(sample.kind === "face" ? { meshFaceId: sample.ownKey } : {}),
       signature,
+      ...(sample.referenceGeometry ? { referenceGeometry: sample.referenceGeometry } : {}),
       lineageTokens: annotations.lineageTokens?.(context) ?? [],
-      ...(annotations.semanticRole?.(context)
-        ? { semanticRole: annotations.semanticRole(context) }
-        : {}),
+      ...(semanticRole ? { semanticRole } : {}),
     }
   })
 }
@@ -171,16 +217,24 @@ export function captureReplicadTopologySnapshot(
   shape: Shape3D,
   annotations: TopologyCandidateAnnotations = {},
 ): TopologyCaptureSnapshot {
-  const faces = shape.faces
-  const edges = shape.edges
+  const faces: Face[] = []
+  const edges: Edge[] = []
   try {
+    faces.push(...shape.faces)
+    edges.push(...shape.edges)
+    const capturedEdges = edges.map((edge, index) => readEdgeSample(edge, index))
     const samples = [
+      ...vertexSamples(capturedEdges),
       ...faces.map((face, index) => readFaceSample(face, index)),
-      ...edges.map((edge, index) => readEdgeSample(edge, index)),
+      ...capturedEdges.map(({ sample }) => sample),
     ]
     return {
       candidates: createTopologyCandidates(samples, annotations),
-      transientShapeKeys: new Map(samples.map((sample) => [sample.candidateId, sample.ownKey])),
+      transientShapeKeys: new Map(
+        samples.flatMap((sample) =>
+          sample.ownKey === undefined ? [] : [[sample.candidateId, sample.ownKey]],
+        ),
+      ),
     }
   } finally {
     for (const face of faces) face.delete()

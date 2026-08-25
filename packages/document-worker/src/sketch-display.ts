@@ -1,3 +1,4 @@
+import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   materializeSketchDisplay,
   type SketchDisplayRecord,
@@ -12,13 +13,21 @@ export async function createSketchDisplayRecords(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: SketchSolveCache,
   features: readonly FeatureRecord[] = document.features,
+  geometry: readonly FeatureGeometryRecord[] = [],
 ): Promise<readonly SketchDisplayRecord[]> {
   const records: SketchDisplayRecord[] = []
   for (const sketch of document.sketches) {
     let result = null
     if (solveSketch) {
       try {
-        result = await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features)
+        result = await solveSketchOnce(
+          solvedBySketchId,
+          solveSketch,
+          document,
+          sketch,
+          features,
+          geometry,
+        )
       } catch {
         // The authored fallback keeps a broken sketch inspectable without failing the solid rebuild.
       }
