@@ -17,7 +17,7 @@ Choose a tool -> point at geometry -> see a candidate -> click to accept intent
 
 The side dialog confirms sketch-level state and exposes secondary diagnostics. It does not make the user repeatedly translate a spatial selection into a remote form.
 
-VibeShape currently implements many of the necessary domain operations, but several primary loops leave the viewport at their most important moment. In particular, Dimension collects entities on the drawing and then moves focus to `#sketch-dimension-expression` in the task panel. Compatible constraints are also duplicated in the task panel, and applied constraints are primarily managed as a long form/list. These paths are technically exact but spatially discontinuous.
+Before SKX-1, VibeShape implemented many of the necessary domain operations, but several primary loops left the viewport at their most important moment. Dimension collected entities on the drawing and then moved focus to `#sketch-dimension-expression` in the task panel. The first SKX-1 slice removed that DOM focus bridge: Dimension now collects geometry, previews witness leaders at the pointer, places an anchored variable-aware editor, preserves the clicked annotation location, supports staged `Escape`, edits an existing value by double-click, and moves a label as presentation-only state without solving or rebuilding. The task-panel field remains the accessible fallback. Reference dimensions and durable cross-session label-layout metadata remain follow-up work.
 
 ## Observed Onshape interaction model
 
@@ -215,7 +215,7 @@ It MUST NOT be the required next focus after a normal pointer selection, dimensi
 - The task panel and canvas consume the same command state and stable constraint identities. They do not synchronize by querying DOM element IDs.
 - Product copy, accessible names, validation, and status messages remain in typed ICU catalogs.
 
-The first structural correction is to remove `document.getElementById("sketch-dimension-expression")?.focus()` as the bridge between the viewport and panel. A typed sketch interaction state must carry the dimension placement and editor request instead.
+The first structural correction removed `document.getElementById("sketch-dimension-expression")?.focus()` as the bridge between the viewport and panel. Typed sketch interaction state now carries dimension placement and the editor request; selection-first Dimension activation uses the same registered editor tool instead of querying a panel element.
 
 ## Delivery plan
 

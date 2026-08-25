@@ -191,21 +191,45 @@ test.describe("full sketch editor", () => {
     const drawing = await drawRectangle(page)
 
     await page.getByRole("button", { name: "Dimension", exact: true }).click()
-    await drawing.locator('[data-sketch-entity-type="line"]').first().dispatchEvent("pointerdown")
+    const selectedLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    await selectedLine.dispatchEvent("pointerdown")
     await expect(
-      page.getByText("Dimension · Enter the exact driving value in Sketch definition."),
+      page.getByText("Dimension · Move the pointer to place the annotation, then click."),
     ).toBeVisible()
-    await expect(page.getByRole("combobox", { name: "Driving expression" })).toBeFocused()
-    await addDimension(page, "Distance", "30 mm")
+    const lineBounds = await selectedLine.boundingBox()
+    if (!lineBounds) throw new Error("The selected line is not visible.")
+    await page.mouse.click(lineBounds.x + lineBounds.width / 2, lineBounds.y - 44)
+    const inlineExpression = page.getByRole("combobox", {
+      name: "Driving dimension expression",
+    })
+    await expect(inlineExpression).toBeFocused()
+    await inlineExpression.fill("30 mm")
+    await page.getByRole("button", { name: "Apply dimension" }).click()
     const distanceConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 30 mm" })
     await expect(distanceConstraint).toBeVisible()
 
-    await page
+    const dimensionAnnotation = page
       .getByRole("region", { name: "2D sketch workspace" })
       .getByRole("button", { name: "Edit dimension 30 mm" })
-      .click()
-    await distanceConstraint.getByRole("combobox", { name: "Driving expression" }).fill("35 mm")
-    await distanceConstraint.getByRole("button", { name: "Save dimension" }).click()
+    const annotationBeforeDrag = await dimensionAnnotation.boundingBox()
+    if (!annotationBeforeDrag) throw new Error("The dimension annotation is not visible.")
+    await page.mouse.move(
+      annotationBeforeDrag.x + annotationBeforeDrag.width / 2,
+      annotationBeforeDrag.y + annotationBeforeDrag.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      annotationBeforeDrag.x + annotationBeforeDrag.width / 2 + 64,
+      annotationBeforeDrag.y + annotationBeforeDrag.height / 2 + 32,
+      { steps: 4 },
+    )
+    await page.mouse.up()
+    const annotationAfterDrag = await dimensionAnnotation.boundingBox()
+    if (!annotationAfterDrag) throw new Error("The moved dimension annotation is not visible.")
+    expect(annotationAfterDrag.x).toBeGreaterThan(annotationBeforeDrag.x + 15)
+    await dimensionAnnotation.dblclick()
+    await inlineExpression.fill("35 mm")
+    await page.getByRole("button", { name: "Apply dimension" }).click()
 
     await expect(page.getByText("Distance · 35 mm", { exact: true })).toBeVisible()
   })

@@ -1,9 +1,5 @@
 import {
   appendSketchConstraint,
-  createAngleQuantity,
-  createLengthQuantity,
-  evaluateExpression,
-  evaluateVariableDefinitions,
   removeSketchConstraints,
   removeSketchExternalReference,
   type SketchConstraintDefinition,
@@ -27,7 +23,6 @@ import { createBrowserSketchConstraintId } from "../../document/document-control
 import {
   defaultAngleExpression,
   defaultLengthExpression,
-  normalizeExpressionWithDisplayUnit,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { VariableExpressionField } from "../variables/variable-expression-field"
@@ -39,10 +34,13 @@ import {
 import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionTools,
-  createSketchDimensionConstraint,
   type SketchDimensionKind,
   selectedSketchConstraintEntities,
 } from "./sketch-constraint-tools"
+import {
+  createSketchDimensionDefinition,
+  evaluateSketchDimensionValue,
+} from "./sketch-dimension-value"
 
 type SketchEditorPanelCopy = Readonly<{
   addConstraint: string
@@ -150,44 +148,6 @@ function dimensionOptions(entities: readonly SketchEntity[], copy: SketchEditorP
   return compatibleSketchDimensionTools(entities).map((kind) => ({ kind, label: labels[kind] }))
 }
 
-function evaluateDimensionValue(
-  kind: SketchDimensionKind,
-  expression: string,
-  variables: readonly VariableDefinition[],
-  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
-): SketchDimensionValue | null {
-  const evaluatedVariables = evaluateVariableDefinitions(variables)
-  if (!evaluatedVariables.ok) return null
-  const normalizedExpression = normalizeExpressionWithDisplayUnit(
-    expression,
-    kind === "angle" ? displayUnits.angle : displayUnits.length,
-  )
-  const evaluated = evaluateExpression(normalizedExpression, evaluatedVariables.valuesByName)
-  if (!evaluated.ok) return null
-  if (kind === "angle") {
-    return evaluated.value.dimension === "angle"
-      ? createAngleQuantity(evaluated.value.value, "rad", normalizedExpression)
-      : null
-  }
-  const validLength =
-    evaluated.value.dimension === "length" &&
-    (kind === "offset" ? evaluated.value.value !== 0 : evaluated.value.value > 0)
-  return validLength
-    ? createLengthQuantity(evaluated.value.value, "mm", normalizedExpression)
-    : null
-}
-
-function dimensionDefinition(
-  kind: SketchDimensionKind,
-  expression: string,
-  entities: readonly SketchEntity[],
-  variables: readonly VariableDefinition[],
-  displayUnits: ReturnType<typeof useDocumentDisplayUnits>,
-) {
-  const value = evaluateDimensionValue(kind, expression, variables, displayUnits)
-  return value ? createSketchDimensionConstraint(kind, entities, value) : null
-}
-
 function SketchDimensionForm({
   copy,
   entities,
@@ -214,7 +174,7 @@ function SketchDimensionForm({
           : defaultLengthExpression(10, displayUnits.length),
     },
     onSubmit: ({ value }) => {
-      const definition = dimensionDefinition(
+      const definition = createSketchDimensionDefinition(
         value.kind,
         value.expression,
         entities,
@@ -508,7 +468,7 @@ function SketchDimensionEditForm({
   const form = useAppForm({
     defaultValues: { expression: constraintValue(constraint) ?? "" },
     onSubmit: ({ value }) => {
-      const nextValue = evaluateDimensionValue(
+      const nextValue = evaluateSketchDimensionValue(
         constraint.type,
         value.expression,
         variables,
