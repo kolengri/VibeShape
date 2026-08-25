@@ -472,50 +472,103 @@ type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParamet
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
-function boxFeatureSemanticRole(
-  context: TopologyCandidateContext,
-  parameters: BoxContentParameters,
-) {
-  if (context.kind !== "face" || context.signature.geometryClass !== "PLANE") {
-    return undefined
-  }
-  const { centroid, direction } = context.signature
-  if (!direction) return undefined
+function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
+  const { centroid } = context.signature
   const [originX, originY, originZ] = parameters.origin
   const minimumZ = originZ + (parameters.centered ? -parameters.height / 2 : 0)
   const maximumZ = originZ + (parameters.centered ? parameters.height / 2 : parameters.height)
-  const axes = [
+  return [
     {
+      name: "x",
       coordinate: centroid[0],
-      normal: direction[0],
       minimum: originX - parameters.width / 2,
       maximum: originX + parameters.width / 2,
       minimumRole: "primitive.box.side.x-min",
       maximumRole: "primitive.box.side.x-max",
     },
     {
+      name: "y",
       coordinate: centroid[1],
-      normal: direction[1],
       minimum: originY - parameters.depth / 2,
       maximum: originY + parameters.depth / 2,
       minimumRole: "primitive.box.side.y-min",
       maximumRole: "primitive.box.side.y-max",
     },
     {
+      name: "z",
       coordinate: centroid[2],
-      normal: direction[2],
       minimum: minimumZ,
       maximum: maximumZ,
       minimumRole: "primitive.box.cap.start",
       maximumRole: "primitive.box.cap.end",
     },
-  ]
-  const axis = axes.find(({ normal }) => Math.abs(normal) > 0.999)
+  ] as const
+}
+
+type BoxTopologyAxis = ReturnType<typeof boxTopologyAxes>[number]
+
+function boxBoundary(axis: BoxTopologyAxis) {
+  return firstMatchingRole([
+    [nearlyEqual(axis.coordinate, axis.minimum), "min"],
+    [nearlyEqual(axis.coordinate, axis.maximum), "max"],
+  ])
+}
+
+function boxVertexRole(axes: ReturnType<typeof boxTopologyAxes>) {
+  const boundaries = axes.map(boxBoundary)
+  return boundaries.every((value) => value !== undefined)
+    ? `primitive.box.vertex.x-${boundaries[0]}.y-${boundaries[1]}.z-${boundaries[2]}`
+    : undefined
+}
+
+function boxEdgeRole(
+  axes: ReturnType<typeof boxTopologyAxes>,
+  direction: readonly [number, number, number],
+) {
+  const varyingAxis = axes.findIndex((_, index) => Math.abs(direction[index] ?? 0) > 0.999)
+  const varying = axes[varyingAxis]
+  if (!varying) return undefined
+  const fixedBoundaries = axes.map((axis, index) =>
+    index === varyingAxis ? null : boxBoundary(axis),
+  )
+  if (fixedBoundaries.some((value, index) => index !== varyingAxis && value === undefined)) {
+    return undefined
+  }
+  const fixedRole = axes
+    .map((axis, index) => (index === varyingAxis ? null : `${axis.name}-${fixedBoundaries[index]}`))
+    .filter((value) => value !== null)
+    .join(".")
+  return `primitive.box.edge.${varying.name}.${fixedRole}`
+}
+
+function boxFaceRole(
+  axes: ReturnType<typeof boxTopologyAxes>,
+  direction: readonly [number, number, number],
+) {
+  const axis = axes.find((_, index) => Math.abs(direction[index] ?? 0) > 0.999)
   if (!axis) return undefined
   return firstMatchingRole([
     [nearlyEqual(axis.coordinate, axis.minimum), axis.minimumRole],
     [nearlyEqual(axis.coordinate, axis.maximum), axis.maximumRole],
   ])
+}
+
+export function boxFeatureSemanticRole(
+  context: TopologyCandidateContext,
+  parameters: BoxContentParameters,
+) {
+  const axes = boxTopologyAxes(context, parameters)
+  if (context.kind === "vertex" && context.signature.geometryClass === "POINT") {
+    return boxVertexRole(axes)
+  }
+  const { direction } = context.signature
+  if (!direction) return undefined
+  if (context.kind === "edge" && context.signature.geometryClass === "LINE") {
+    return boxEdgeRole(axes, direction)
+  }
+  return context.kind === "face" && context.signature.geometryClass === "PLANE"
+    ? boxFaceRole(axes, direction)
+    : undefined
 }
 
 function cylinderFeatureSemanticRole(
@@ -920,14 +973,154 @@ function extrusionCurvedSideRole(
   return curvedSegments.length === 1 ? `extrusion.side.${curvedSegments[0]?.entityId}` : undefined
 }
 
-function extrusionFeatureSemanticRole(
+export function extrusionFeatureSemanticRole(
   context: TopologyCandidateContext,
   parameters: ExtrusionContentParameters,
+  roleIndex = createExtrusionRoleIndex(parameters),
 ) {
+  const segmentRole = extrusionVertexOrEdgeRole(context, parameters, roleIndex)
   return (
+    segmentRole ??
     extrusionCapRole(context, parameters) ??
     extrusionLineSideRole(context, parameters) ??
     extrusionCurvedSideRole(context, parameters)
+  )
+}
+
+type LocalRoleEntry = Readonly<{ id: string; point: readonly [number, number] }>
+type ExtrusionRoleIndex = Readonly<{
+  endpointBuckets: ReadonlyMap<string, readonly LocalRoleEntry[]>
+  lineBuckets: ReadonlyMap<string, readonly LocalRoleEntry[]>
+}>
+
+const ROLE_COORDINATE_TOLERANCE = 1e-6
+
+function roleBucketCoordinate(value: number) {
+  return Math.floor(value / ROLE_COORDINATE_TOLERANCE)
+}
+
+function roleBucketKey(x: number, y: number) {
+  return `${roleBucketCoordinate(x)}:${roleBucketCoordinate(y)}`
+}
+
+function addRoleEntry(buckets: Map<string, LocalRoleEntry[]>, entry: LocalRoleEntry) {
+  const key = roleBucketKey(entry.point[0], entry.point[1])
+  const entries = buckets.get(key) ?? []
+  entries.push(entry)
+  buckets.set(key, entries)
+}
+
+function createExtrusionRoleIndex(parameters: ExtrusionContentParameters): ExtrusionRoleIndex {
+  const endpointBuckets = new Map<string, LocalRoleEntry[]>()
+  const lineBuckets = new Map<string, LocalRoleEntry[]>()
+  const segments = [parameters.outer, ...parameters.holes].flatMap(({ segments }) => segments)
+  const polygonal = segments.every((segment) => segment.type === "line")
+  for (const segment of segments) {
+    if (segment.type !== "line") continue
+    if (polygonal) {
+      addRoleEntry(endpointBuckets, { id: segment.startPointId, point: segment.start })
+      addRoleEntry(endpointBuckets, { id: segment.endPointId, point: segment.end })
+    }
+    addRoleEntry(lineBuckets, {
+      id: segment.entityId,
+      point: [(segment.start[0] + segment.end[0]) / 2, (segment.start[1] + segment.end[1]) / 2],
+    })
+  }
+  return { endpointBuckets, lineBuckets }
+}
+
+function matchingRoleIds(
+  buckets: ReadonlyMap<string, readonly LocalRoleEntry[]>,
+  point: readonly [number, number],
+) {
+  const bucketX = roleBucketCoordinate(point[0])
+  const bucketY = roleBucketCoordinate(point[1])
+  const ids = new Set<string>()
+  for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+    for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+      const entries = buckets.get(`${bucketX + deltaX}:${bucketY + deltaY}`) ?? []
+      for (const entry of entries) {
+        if (
+          Math.hypot(point[0] - entry.point[0], point[1] - entry.point[1]) <=
+          ROLE_COORDINATE_TOLERANCE
+        ) {
+          ids.add(entry.id)
+        }
+      }
+    }
+  }
+  return [...ids]
+}
+
+function extrusionVertexRole(
+  endpointId: string | undefined,
+  coordinate: number,
+  startOffset: number,
+  endOffset: number,
+) {
+  if (!endpointId) return undefined
+  return firstMatchingRole([
+    [nearlyEqual(coordinate, startOffset), `extrusion.vertex.${endpointId}.cap.start`],
+    [nearlyEqual(coordinate, endOffset), `extrusion.vertex.${endpointId}.cap.end`],
+  ])
+}
+
+function extrusionLineEdgeRole(
+  context: TopologyCandidateContext,
+  plane: ExtrusionPlane,
+  roleIndex: ExtrusionRoleIndex,
+  localCentroid: readonly [number, number],
+  endpointId: string | undefined,
+  startOffset: number,
+  endOffset: number,
+) {
+  const direction = context.signature.direction
+  if (!direction) return undefined
+  const coordinate = plane.coordinate(context.signature.centroid)
+  if (Math.abs(dot3(direction, plane.normal)) > 0.999) {
+    return endpointId && nearlyEqual(coordinate, (startOffset + endOffset) / 2)
+      ? `extrusion.edge.${endpointId}.span`
+      : undefined
+  }
+  const cap = firstMatchingRole([
+    [nearlyEqual(coordinate, startOffset), "start"],
+    [nearlyEqual(coordinate, endOffset), "end"],
+  ])
+  if (!cap) return undefined
+  const lineIds = matchingRoleIds(roleIndex.lineBuckets, localCentroid)
+  return lineIds.length === 1 ? `extrusion.edge.${lineIds[0]}.cap.${cap}` : undefined
+}
+
+function extrusionVertexOrEdgeRole(
+  context: TopologyCandidateContext,
+  parameters: ExtrusionContentParameters,
+  roleIndex: ExtrusionRoleIndex,
+) {
+  if (
+    (context.kind !== "vertex" || context.signature.geometryClass !== "POINT") &&
+    (context.kind !== "edge" || context.signature.geometryClass !== "LINE")
+  ) {
+    return undefined
+  }
+  const plane = extrusionPlane(parameters)
+  const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
+  const endOffset = startOffset + parameters.distance
+  const coordinate = plane.coordinate(context.signature.centroid)
+  const localCentroid = plane.local(context.signature.centroid)
+  const endpointIds = matchingRoleIds(roleIndex.endpointBuckets, localCentroid)
+  const endpointId = endpointIds.length === 1 ? endpointIds[0] : undefined
+
+  if (context.kind === "vertex") {
+    return extrusionVertexRole(endpointId, coordinate, startOffset, endOffset)
+  }
+  return extrusionLineEdgeRole(
+    context,
+    plane,
+    roleIndex,
+    localCentroid,
+    endpointId,
+    startOffset,
+    endOffset,
   )
 }
 
@@ -1087,6 +1280,8 @@ function createExtrusionShape(
 
 function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   if (feature.kind === "boolean") return captureReplicadTopologyCandidates(shape)
+  const extrusionRoleIndex =
+    feature.kind === "extrusion" ? createExtrusionRoleIndex(feature.parameters) : undefined
   return captureReplicadTopologyCandidates(shape, {
     semanticRole: (context) =>
       feature.kind === "box"
@@ -1100,7 +1295,7 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
               Math.abs(dot3(context.signature.direction, feature.parameters.frame.normal)) > 0.999
               ? "datum.plane"
               : undefined
-            : extrusionFeatureSemanticRole(context, feature.parameters),
+            : extrusionFeatureSemanticRole(context, feature.parameters, extrusionRoleIndex),
   })
 }
 

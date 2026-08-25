@@ -7,6 +7,7 @@ import {
   createModuleRegistry,
   cylinderFeatureType,
   documentCoreModule,
+  extrusionFeatureType,
   type FeatureGraph,
   type FeatureId,
   type FeatureRecord,
@@ -16,6 +17,7 @@ import {
   partDesignModule,
 } from "@vibeshape/domain"
 import {
+  extrusionFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   featureEvaluationEngineResultSchema,
 } from "@vibeshape/protocol"
@@ -178,6 +180,112 @@ function successfulPort(
     return { ok: true, geometry: geometry() }
   }
 }
+
+const schedulingSketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3901"
+const schedulingCircleId = "0195b5ac-b220-7a2c-8c33-67a36a7f3902"
+const schedulingCenterId = "0195b5ac-b220-7a2c-8c33-67a36a7f3903"
+const schedulingReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3904"
+const schedulingProjectedPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3905"
+
+function modelReferencedExtrusionDocument(revision: number, sourceWidth: number) {
+  const source = box(featureIds.box, sourceWidth)
+  const sketch = {
+    schemaVersion: 0 as const,
+    id: schedulingSketchId,
+    label: "Model-referenced profile",
+    plane: "xy" as const,
+    entities: [
+      {
+        schemaVersion: 0 as const,
+        id: schedulingCenterId,
+        type: "point" as const,
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0 as const,
+        id: schedulingCircleId,
+        type: "circle" as const,
+        centerPointId: schedulingCenterId,
+        radius: 5,
+        construction: false,
+      },
+    ],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0 as const,
+        id: schedulingReferenceId,
+        kind: "model-point" as const,
+        reference: {
+          schemaVersion: 0 as const,
+          featureId: source.id,
+          kind: "vertex" as const,
+          signature: {
+            kind: "vertex" as const,
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0] as const,
+            bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: schedulingProjectedPointId,
+      },
+    ],
+  }
+  const extrusion: FeatureRecord = {
+    schemaVersion: 0,
+    id: featureIds.independent,
+    type: extrusionFeatureType.type,
+    parameters: {
+      profile: {
+        schemaVersion: 0,
+        sketchId: schedulingSketchId,
+        outerBoundaryEntityIds: [schedulingCircleId],
+        holeBoundaryEntityIds: [],
+      },
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      operation: "new",
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  }
+  return {
+    schemaVersion: 0 as const,
+    id: documentIds.primary,
+    revision,
+    name: "Model reference scheduling",
+    displayUnits: { length: "mm" as const, angle: "deg" as const },
+    variables: [],
+    sketches: [sketch],
+    features: [extrusion, source],
+    createdAt: "2026-08-25T00:00:00.000Z",
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  }
+}
+
+const preparedSchedulingExtrusion = extrusionFeatureContentParametersSchema.parse({
+  sketchId: schedulingSketchId,
+  frame: {
+    origin: [0, 0, 0],
+    xAxis: [1, 0, 0],
+    yAxis: [0, 1, 0],
+    normal: [0, 0, 1],
+  },
+  outer: {
+    sourceEntityIds: [schedulingCircleId],
+    segments: [{ entityId: schedulingCircleId, type: "circle", center: [0, 0], radius: 5 }],
+  },
+  holes: [],
+  distance: 10,
+  symmetric: false,
+  operation: "new",
+})
 
 function rebuildInput(
   featureGraph: FeatureGraph,
@@ -594,6 +702,94 @@ describe("feature rebuild coordination", () => {
     })
     expect(changed.ok).toBe(true)
     expect(changedRequests[0]?.content.feature.parameters).toMatchObject({ width: 32 })
+  })
+
+  it("prepares document feature content against geometry produced earlier in the DAG", async () => {
+    const observedGeometry = new Map<string, readonly string[]>()
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildDocumentFeatures({
+      document: documentSnapshot([box(featureIds.box), cylinder(), boolean()]),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry: successfulPort(requests),
+      prepareFeatureContent: ({ feature, geometry: availableGeometry = [] }) => {
+        observedGeometry.set(
+          feature.id,
+          availableGeometry.map(({ featureId }) => featureId),
+        )
+        return null
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(observedGeometry.get(featureIds.box)).toEqual([])
+    expect(observedGeometry.get(featureIds.cylinder)).toEqual([featureIds.box])
+    expect(observedGeometry.get(featureIds.boolean)).toEqual([featureIds.box, featureIds.cylinder])
+  })
+
+  it("orders model-reference consumers after fresh source geometry and blocks stale failures", async () => {
+    const preparedSourceHashes: string[] = []
+    const hash = contentHasher()
+    const rebuild = (
+      revision: number,
+      sourceWidth: number,
+      previous?: Extract<Awaited<ReturnType<typeof rebuildDocumentFeatures>>, { ok: true }>,
+      failSource = false,
+    ) =>
+      rebuildDocumentFeatures({
+        document: modelReferencedExtrusionDocument(revision, sourceWidth),
+        generation: 1,
+        registry: registry(),
+        environment,
+        mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+        hash,
+        evaluateGeometry: (request) =>
+          failSource && request.featureId === featureIds.box
+            ? { ok: false, diagnosticCode: "worker-request-failed" }
+            : { ok: true, geometry: geometry() },
+        prepareFeatureContent: ({ feature, geometry: availableGeometry = [] }) => {
+          if (feature.id !== featureIds.independent) return null
+          const sourceGeometry = availableGeometry.find(
+            ({ featureId }) => featureId === featureIds.box,
+          )
+          if (!sourceGeometry) {
+            return {
+              ok: false,
+              diagnostic: {
+                code: "org.vibeshape.feature.content-preparation-failed",
+                values: { reason: "source-unavailable" },
+              },
+            }
+          }
+          preparedSourceHashes.push(sourceGeometry.contentHash)
+          return { ok: true, parameters: preparedSchedulingExtrusion }
+        },
+        shouldPrepareFeatureContent: ({ id }) => id === featureIds.independent,
+        ...(previous ? { previous } : {}),
+      })
+
+    const initial = await rebuild(1, 20)
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+    expect(initial.evaluation.evaluatedFeatureIds).toEqual([featureIds.box, featureIds.independent])
+
+    const updated = await rebuild(2, 25, initial)
+    expect(updated.ok).toBe(true)
+    if (!updated.ok) return
+    expect(new Set(preparedSourceHashes).size).toBe(2)
+
+    const failed = await rebuild(3, 30, updated, true)
+    expect(failed.ok).toBe(true)
+    if (!failed.ok) return
+    expect(failed.evaluation.records).toEqual([
+      expect.objectContaining({ featureId: featureIds.independent, status: "blocked" }),
+      expect.objectContaining({ featureId: featureIds.box, status: "failed" }),
+    ])
+    expect(failed.geometry).toEqual([])
+    expect(preparedSourceHashes).toHaveLength(2)
   })
 
   it("contains thrown and malformed feature-content preparation", async () => {

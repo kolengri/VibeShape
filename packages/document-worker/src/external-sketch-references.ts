@@ -1,18 +1,25 @@
+import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
 import {
   projectSketchPointBetweenFrames,
+  projectWorldPointToSupport,
   type SupportFrame,
   sketchFrame,
 } from "@vibeshape/application/support-frame"
-import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
 import type {
   DocumentSnapshot,
   FeatureRecord,
   SketchExternalCurveReference,
   SketchExternalLineReference,
+  SketchExternalModelLineReference,
+  SketchExternalModelPointReference,
   SketchExternalPointReference,
   SketchPoint2,
   SketchRecord,
+  TopologyCandidate,
 } from "@vibeshape/domain"
+import { resolveTopologyReference } from "@vibeshape/domain"
+import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 
 export type SketchSolvePort = (
@@ -20,6 +27,10 @@ export type SketchSolvePort = (
 ) => SolveSketchRecordResult | Promise<SolveSketchRecordResult>
 
 export type SketchSolveCache = Map<string, Promise<SolveSketchRecordResult>>
+
+export type FeatureGeometryLookup =
+  | ReadonlyMap<string, FeatureGeometryRecord>
+  | readonly FeatureGeometryRecord[]
 
 function sourcePointResult(
   source: SketchRecord,
@@ -116,6 +127,102 @@ function sourcePointMap(source: SketchRecord, result: SolveSketchRecordResult) {
 
 function projectedPointEntity(id: string, point: SketchPoint2) {
   return { schemaVersion: 0 as const, id, type: "point" as const, construction: true, ...point }
+}
+
+function geometryRecord(
+  lookup: FeatureGeometryLookup | undefined,
+  featureId: string,
+): FeatureGeometryRecord | undefined {
+  if (!lookup) return undefined
+  if ("get" in lookup) return lookup.get(featureId)
+  return lookup.find((record) => record.featureId === featureId)
+}
+
+function domainTopologyCandidate(candidate: ProtocolTopologyCandidate): TopologyCandidate {
+  const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
+  return domainCandidate
+}
+
+function resolvedModelCandidate(
+  reference: SketchExternalModelPointReference | SketchExternalModelLineReference,
+  lookup: FeatureGeometryLookup | undefined,
+): ProtocolTopologyCandidate {
+  const record = geometryRecord(lookup, reference.reference.featureId)
+  if (!record) {
+    throw new Error(
+      `External model feature ${reference.reference.featureId} geometry is unavailable.`,
+    )
+  }
+  const candidates = record.geometry.topologyCandidates
+  const resolution = resolveTopologyReference(
+    reference.reference,
+    candidates.map(domainTopologyCandidate),
+  )
+  if (resolution.status !== "resolved") {
+    throw new Error(
+      `External model reference ${reference.id} is ${resolution.status} (${reference.reference.featureId}).`,
+    )
+  }
+  const candidate = candidates.find(({ candidateId }) => candidateId === resolution.candidateId)
+  if (!candidate) {
+    throw new Error(`External model reference ${reference.id} resolved to missing geometry.`)
+  }
+  return candidate
+}
+
+function resolveExternalModelPoint(
+  reference: SketchExternalModelPointReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+): NonNullable<SketchCompilationInput["externalPoints"]>[number] {
+  const candidate = resolvedModelCandidate(reference, lookup)
+  if (
+    candidate.kind !== "vertex" ||
+    candidate.signature.geometryClass !== "POINT" ||
+    candidate.referenceGeometry?.kind !== "vertex"
+  ) {
+    throw new Error(`External model point ${reference.id} has mismatched geometry.`)
+  }
+  const projected = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.position)
+  return {
+    schemaVersion: 0,
+    id: reference.projectedPointId,
+    type: "point",
+    construction: true,
+    ...projected,
+  }
+}
+
+function resolveExternalModelLine(
+  reference: SketchExternalModelLineReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+): NonNullable<SketchCompilationInput["externalLines"]>[number] {
+  const candidate = resolvedModelCandidate(reference, lookup)
+  if (
+    candidate.kind !== "edge" ||
+    candidate.signature.geometryClass !== "LINE" ||
+    candidate.referenceGeometry?.kind !== "line-edge"
+  ) {
+    throw new Error(`External model line ${reference.id} has mismatched geometry.`)
+  }
+  const start = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.start)
+  const end = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.end)
+  if (Math.hypot(end.x - start.x, end.y - start.y) <= 1e-9) {
+    throw new Error(`External model line ${reference.id} has a degenerate projection.`)
+  }
+  return {
+    startPoint: projectedPointEntity(reference.projectedStartPointId, start),
+    endPoint: projectedPointEntity(reference.projectedEndPointId, end),
+    line: {
+      schemaVersion: 0,
+      id: reference.projectedLineId,
+      type: "line",
+      construction: true,
+      startPointId: reference.projectedStartPointId,
+      endPointId: reference.projectedEndPointId,
+    },
+  }
 }
 
 type ExternalCurveInput = NonNullable<SketchCompilationInput["externalCurves"]>[number]
@@ -261,6 +368,7 @@ function sourceSolve(
   source: SketchRecord,
   solveSketch: SketchSolvePort,
   features: readonly FeatureRecord[],
+  geometryLookup: FeatureGeometryLookup | undefined,
 ) {
   const cached = results.get(source.id)
   if (cached) return cached
@@ -270,6 +378,7 @@ function sourceSolve(
     solveSketch,
     features,
     results,
+    geometryLookup,
   ).then((externalGeometry) =>
     solveSketch({
       revision: document.revision,
@@ -291,6 +400,7 @@ export async function resolveExternalSketchGeometry(
   solveSketch: SketchSolvePort,
   features: readonly FeatureRecord[] = document.features,
   results: SketchSolveCache = new Map(),
+  geometryLookup?: FeatureGeometryLookup,
 ): Promise<ResolvedExternalSketchGeometry> {
   const targetFrame = sketchFrame(sketch, document, features)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
@@ -298,11 +408,26 @@ export async function resolveExternalSketchGeometry(
   const lines: NonNullable<SketchCompilationInput["externalLines"]> = []
   const curves: NonNullable<SketchCompilationInput["externalCurves"]> = []
   for (const reference of sketch.externalReferences ?? []) {
+    if (reference.kind === "model-point") {
+      points.push(resolveExternalModelPoint(reference, targetFrame, geometryLookup))
+      continue
+    }
+    if (reference.kind === "model-line") {
+      lines.push(resolveExternalModelLine(reference, targetFrame, geometryLookup))
+      continue
+    }
     const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
     if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
     const sourceFrame = sketchFrame(source, document, features)
     if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
-    const result = await sourceSolve(results, document, source, solveSketch, features)
+    const result = await sourceSolve(
+      results,
+      document,
+      source,
+      solveSketch,
+      features,
+      geometryLookup,
+    )
     if (reference.kind === "line") {
       lines.push(resolveExternalLine(reference, source, result, sourceFrame, targetFrame))
       continue

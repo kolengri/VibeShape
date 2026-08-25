@@ -84,6 +84,7 @@ export function externalReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
   candidate: ExternalSketchGeometryCandidate,
 ) {
+  if (reference.kind === "model-point" || reference.kind === "model-line") return false
   if (reference.sourceSketchId !== candidate.sourceSketchId) return false
   if (candidate.kind === "curve") {
     return reference.kind === "curve" && reference.sourceEntityId === candidate.sourceEntityId

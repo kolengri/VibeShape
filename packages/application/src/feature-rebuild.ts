@@ -13,7 +13,6 @@ import {
   type FeatureEvaluationRecord,
   type FeatureGraph,
   type FeatureGraphEvaluation,
-  type FeatureParameters,
   type FeatureRecord,
   featureEvaluationRecordSchema,
   featureParametersSchema,
@@ -21,6 +20,7 @@ import {
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
 import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
+import { readExtrusionFeatureParameters } from "@vibeshape/domain/part-design"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
   type FeatureContentIdentity,
@@ -148,7 +148,12 @@ export type FeatureRebuildInput = Readonly<{
 
 type CoordinatedFeatureRebuildInput = FeatureRebuildInput &
   Readonly<{
-    contentParametersByFeatureId?: ReadonlyMap<FeatureId, FeatureParameters>
+    contentFeatures?: readonly FeatureRecord[]
+    documentContentPreparation?: Readonly<{
+      document: DocumentSnapshot
+      prepareFeatureContent: DocumentFeatureContentPreparationPort
+      shouldPrepareFeatureContent?: (feature: FeatureRecord) => boolean
+    }>
     forcedDirtyFeatureIds?: readonly FeatureId[]
     preflightFailures?: ReadonlyMap<FeatureId, FeatureDiagnostic>
   }>
@@ -172,6 +177,7 @@ export type DocumentFeatureRebuildInput = Readonly<{
   hash: FeatureContentHasher
   evaluateGeometry: FeatureGeometryEvaluationPort
   prepareFeatureContent?: DocumentFeatureContentPreparationPort
+  shouldPrepareFeatureContent?: (feature: FeatureRecord) => boolean
   onProgress?: (featureId: FeatureId, stage: GeometryProgressStage, fraction: number) => void
 }>
 
@@ -184,6 +190,7 @@ export type DocumentFeatureContentPreparationPort = (
     document: DocumentSnapshot
     feature: FeatureRecord
     features?: readonly FeatureRecord[]
+    geometry?: readonly FeatureGeometryRecord[]
   }>,
 ) =>
   | DocumentFeatureContentPreparationResult
@@ -367,13 +374,22 @@ function schedulingFingerprint(feature: FeatureRecord) {
   return serializeFeatureRecord(evaluationInput)
 }
 
-function detectChangedFeatureIds(graph: FeatureGraph, previousFeatures: readonly FeatureRecord[]) {
+function detectChangedFeatureIds(
+  features: readonly FeatureRecord[],
+  previousFeatures: readonly FeatureRecord[],
+) {
   const previousById = new Map(
     previousFeatures.map((feature) => [feature.id, schedulingFingerprint(feature)]),
   )
-  return graph.features
+  return features
     .filter((feature) => previousById.get(feature.id) !== schedulingFingerprint(feature))
     .map((feature) => feature.id)
+}
+
+function contentFeature(input: CoordinatedFeatureRebuildInput, featureId: FeatureId) {
+  return (
+    input.contentFeatures?.find(({ id }) => id === featureId) ?? input.graph.getFeature(featureId)
+  )
 }
 
 type PreparedFeatureRebuild = Readonly<{
@@ -503,15 +519,25 @@ async function scheduledFeatureContent(
   prepared: PreparedFeatureRebuild,
   context: FeatureEvaluationContext,
 ) {
-  const dependencies = successfulDependencies(context.dependencies)
-  const preparedParameters = input.contentParametersByFeatureId?.get(context.feature.id)
+  const feature = contentFeature(input, context.feature.id) as FeatureRecord
+  const dependencyIds = new Set(feature.dependencies)
+  const dependencies = successfulDependencies(
+    context.dependencies.filter(({ featureId }) => dependencyIds.has(featureId)),
+  )
+  const preparedParameters = await prepareScheduledFeatureContent(input, prepared, feature)
+  if (preparedParameters && !preparedParameters.ok) {
+    return {
+      ok: false as const,
+      result: failed(preparedParameters.diagnostic.code, preparedParameters.diagnostic.values),
+    }
+  }
   const content = await computeFeatureContentHash(
     input.registry,
     {
-      feature: context.feature,
+      feature,
       dependencies,
       environment: prepared.environment,
-      ...(preparedParameters ? { contentParameters: preparedParameters } : {}),
+      ...(preparedParameters ? { contentParameters: preparedParameters.parameters } : {}),
     },
     input.hash,
   )
@@ -535,6 +561,43 @@ async function scheduledFeatureContent(
         ok: false as const,
         result: failed("org.vibeshape.feature.worker-contract-rejected"),
       } as const)
+}
+
+async function prepareScheduledFeatureContent(
+  input: CoordinatedFeatureRebuildInput,
+  prepared: PreparedFeatureRebuild,
+  feature: FeatureRecord,
+) {
+  const preparation = input.documentContentPreparation
+  if (!preparation || preparation.shouldPrepareFeatureContent?.(feature) === false) return null
+  let result: DocumentFeatureContentPreparationResult | null
+  try {
+    result = await preparation.prepareFeatureContent({
+      document: preparation.document,
+      feature,
+      features: input.graph.features,
+      geometry: [...prepared.previous.geometryById.values()],
+    })
+  } catch {
+    return {
+      ok: false as const,
+      diagnostic: {
+        code: "org.vibeshape.feature.content-preparation-failed",
+        values: { reason: "preparation-threw" },
+      },
+    }
+  }
+  if (!result?.ok) return result
+  const parameters = featureParametersSchema.safeParse(result.parameters)
+  return parameters.success
+    ? { ok: true as const, parameters: parameters.data }
+    : {
+        ok: false as const,
+        diagnostic: {
+          code: "org.vibeshape.feature.content-preparation-failed",
+          values: { reason: "invalid-prepared-parameters" },
+        },
+      }
 }
 
 function canReuseScheduledFeature(
@@ -614,13 +677,21 @@ async function evaluateScheduledFeature(
   context: FeatureEvaluationContext,
 ) {
   const preflightFailure = input.preflightFailures?.get(context.feature.id)
-  if (preflightFailure) return failed(preflightFailure.code, preflightFailure.values)
+  if (preflightFailure) {
+    prepared.previous.geometryById.delete(context.feature.id)
+    return failed(preflightFailure.code, preflightFailure.values)
+  }
   const content = await scheduledFeatureContent(input, prepared, context)
-  if (!content.ok) return content.result
+  if (!content.ok) {
+    prepared.previous.geometryById.delete(context.feature.id)
+    return content.result
+  }
   if (canReuseScheduledFeature(prepared, context, content.contentHash)) {
     return { status: "succeeded", contentHash: content.contentHash } as const
   }
-  return requestFeatureGeometry(input, prepared, context, content)
+  const result = await requestFeatureGeometry(input, prepared, context, content)
+  if (result.status !== "succeeded") prepared.previous.geometryById.delete(context.feature.id)
+  return result
 }
 
 async function runFeatureRebuild(
@@ -630,9 +701,10 @@ async function runFeatureRebuild(
   if (!preparation.ok) return preparation.result
   const { identity, environment, mesh, previous } = preparation.prepared
 
+  const currentFeatures = input.contentFeatures ?? input.graph.features
   const detectedChangedFeatureIds = previous.reusable
-    ? detectChangedFeatureIds(input.graph, previous.features)
-    : input.graph.features.map((feature) => feature.id)
+    ? detectChangedFeatureIds(currentFeatures, previous.features)
+    : currentFeatures.map((feature) => feature.id)
   const changedFeatureIds = [
     ...new Set([...detectedChangedFeatureIds, ...(input.forcedDirtyFeatureIds ?? [])]),
   ]
@@ -648,7 +720,7 @@ async function runFeatureRebuild(
     documentId: identity.documentId,
     revision: identity.revision,
     generation: identity.generation,
-    features: input.graph.features,
+    features: currentFeatures,
     evaluation: evaluation.evaluation,
     geometry: presentGeometry(input.graph, evaluation.evaluation, previous.geometryById),
     environment,
@@ -697,57 +769,48 @@ export function resolveDocumentFeatureParameters(
     : document.features
 }
 
-async function callFeatureContentPreparer(
-  prepareFeatureContent: DocumentFeatureContentPreparationPort,
+function sketchModelFeatureIds(
   document: DocumentSnapshot,
-  feature: FeatureRecord,
-  features: readonly FeatureRecord[],
-) {
-  try {
-    return await prepareFeatureContent({ document, feature, features })
-  } catch {
-    return {
-      ok: false as const,
-      diagnostic: {
-        code: "org.vibeshape.feature.content-preparation-failed",
-        values: { reason: "preparation-threw" },
-      },
-    }
-  }
-}
-
-async function prepareDocumentFeatureContent(
-  input: DocumentFeatureRebuildInput,
-  document: DocumentSnapshot,
-  features: readonly FeatureRecord[],
-  preflightFailures: Map<FeatureId, FeatureDiagnostic>,
-) {
-  const parametersByFeatureId = new Map<FeatureId, FeatureParameters>()
-  if (!input.prepareFeatureContent) return parametersByFeatureId
-  for (const feature of features) {
-    if (preflightFailures.has(feature.id)) continue
-    const prepared = await callFeatureContentPreparer(
-      input.prepareFeatureContent,
-      document,
-      feature,
-      features,
-    )
-    if (!prepared) continue
-    if (!prepared.ok) {
-      preflightFailures.set(feature.id, prepared.diagnostic)
+  sketchId: string,
+  visitedSketchIds = new Set<string>(),
+): readonly FeatureId[] {
+  if (visitedSketchIds.has(sketchId)) return []
+  visitedSketchIds.add(sketchId)
+  const sketch = document.sketches.find(({ id }) => id === sketchId)
+  if (!sketch) return []
+  const featureIds = new Set<FeatureId>()
+  for (const reference of sketch.externalReferences ?? []) {
+    if (reference.kind === "model-point" || reference.kind === "model-line") {
+      featureIds.add(reference.reference.featureId)
       continue
     }
-    const parameters = featureParametersSchema.safeParse(prepared.parameters)
-    if (parameters.success) {
-      parametersByFeatureId.set(feature.id, parameters.data)
-    } else {
-      preflightFailures.set(feature.id, {
-        code: "org.vibeshape.feature.content-preparation-failed",
-        values: { reason: "invalid-prepared-parameters" },
-      })
+    for (const featureId of sketchModelFeatureIds(
+      document,
+      reference.sourceSketchId,
+      visitedSketchIds,
+    )) {
+      featureIds.add(featureId)
     }
   }
-  return parametersByFeatureId
+  return [...featureIds]
+}
+
+function documentSchedulingFeatures(
+  document: DocumentSnapshot,
+  features: readonly FeatureRecord[],
+) {
+  return features.map((feature) => {
+    const extrusion = readExtrusionFeatureParameters(feature)
+    return {
+      ...feature,
+      dependencies: [
+        ...new Set([
+          ...feature.dependencies,
+          ...(extrusion ? sketchModelFeatureIds(document, extrusion.profile.sketchId) : []),
+        ]),
+      ],
+    }
+  })
 }
 
 export async function rebuildDocumentFeatures(
@@ -764,29 +827,35 @@ export async function rebuildDocumentFeatures(
     input.registry,
     variables,
   )
-  const graph = createFeatureGraph(features)
+  const graph = createFeatureGraph(documentSchedulingFeatures(document.data, features))
   if (!graph.ok) return invalidDocumentSnapshot(graph.diagnostic.message)
-  const contentParametersByFeatureId = await prepareDocumentFeatureContent(
-    input,
-    document.data,
-    features,
-    preflightFailures,
-  )
-
   return runFeatureRebuild({
     documentId: document.data.id,
     revision: document.data.revision,
     generation: input.generation,
     graph: graph.graph,
+    contentFeatures: features,
     registry: input.registry,
     environment: input.environment,
     mesh: input.mesh,
     hash: input.hash,
     evaluateGeometry: input.evaluateGeometry,
-    contentParametersByFeatureId,
-    forcedDirtyFeatureIds: [
-      ...new Set([...preflightFailures.keys(), ...contentParametersByFeatureId.keys()]),
-    ],
+    ...(input.prepareFeatureContent
+      ? {
+          documentContentPreparation: {
+            document: document.data,
+            prepareFeatureContent: input.prepareFeatureContent,
+            ...(input.shouldPrepareFeatureContent
+              ? { shouldPrepareFeatureContent: input.shouldPrepareFeatureContent }
+              : {}),
+          },
+        }
+      : {}),
+    forcedDirtyFeatureIds: input.prepareFeatureContent
+      ? features
+          .filter((feature) => input.shouldPrepareFeatureContent?.(feature) !== false)
+          .map(({ id }) => id)
+      : [...preflightFailures.keys()],
     preflightFailures,
     ...(input.previous ? { previous: input.previous } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),

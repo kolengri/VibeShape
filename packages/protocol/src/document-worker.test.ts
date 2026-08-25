@@ -183,6 +183,34 @@ describe("document worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts stable external model topology references", () => {
+    const reference = {
+      schemaVersion: 0,
+      id: externalReferenceId,
+      kind: "model-point",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "vertex",
+        semanticRole: "primitive.box.vertex.0",
+        signature: {
+          kind: "vertex",
+          geometryClass: "POINT",
+          measure: 0,
+          centroid: [0, 0, 0],
+          bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      projectedPointId: projectedCurvePointId,
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [reference] }),
+    ).toMatchObject({ externalReferences: [reference] })
+  })
+
   it("accepts a bounded document rebuild request", () => {
     expect(
       documentWorkerRequestSchema.parse({

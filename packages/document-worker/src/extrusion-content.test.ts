@@ -378,15 +378,17 @@ describe("document extrusion content preparation", () => {
       parameters: {
         outer: {
           segments: expect.arrayContaining([
-            {
+            expect.objectContaining({
               entityId: "0195b5ac-b220-7a2c-8c33-000000003415",
               type: "elliptical-arc",
+              startPointId: "0195b5ac-b220-7a2c-8c33-000000003412",
+              endPointId: "0195b5ac-b220-7a2c-8c33-000000003414",
               center: [0, 0],
               primaryAxisPoint: [10, 0],
               secondaryAxisPoint: [0, 5],
               start: expect.any(Array),
               end: expect.any(Array),
-            },
+            }),
           ]),
         },
       },

@@ -1,6 +1,7 @@
 import type {
   DocumentFeatureContentPreparationPort,
   DocumentFeatureContentPreparationResult,
+  FeatureGeometryRecord,
 } from "@vibeshape/application/feature-rebuild"
 import {
   datumPlaneFrame,
@@ -49,6 +50,12 @@ function solvedPoint(
   return points.get(entityId) ?? null
 }
 
+type SolvedPoint = NonNullable<ReturnType<typeof solvedPoint>>
+
+function allPointsSolved(points: Array<SolvedPoint | null>): points is SolvedPoint[] {
+  return points.every((point) => point !== null)
+}
+
 function lineSegment(
   entity: Extract<SketchEntity, { type: "line" }>,
   reversed: boolean,
@@ -62,6 +69,8 @@ function lineSegment(
   return {
     entityId: entity.id,
     type: "line" as const,
+    startPointId: reversed ? entity.endPointId : entity.startPointId,
+    endPointId: reversed ? entity.startPointId : entity.endPointId,
     start: [start.x, start.y] as const,
     end: [end.x, end.y] as const,
   }
@@ -90,6 +99,8 @@ function arcSegment(
   return {
     entityId: entity.id,
     type: "arc" as const,
+    startPointId: reversed ? entity.endPointId : entity.startPointId,
+    endPointId: reversed ? entity.startPointId : entity.endPointId,
     start: [start.x, start.y] as const,
     middle,
     end: [end.x, end.y] as const,
@@ -136,17 +147,28 @@ function ellipticalArcSegment(
   reversed: boolean,
   points: ReadonlyMap<string, Readonly<{ x: number; y: number }>>,
 ) {
-  const center = solvedPoint(points, entity.centerPointId)
-  const primaryAxisPoint = solvedPoint(points, entity.primaryAxisPointId)
-  const secondaryAxisPoint = solvedPoint(points, entity.secondaryAxisPointId)
-  const first = solvedPoint(points, entity.startPointId)
-  const second = solvedPoint(points, entity.endPointId)
-  if (!center || !primaryAxisPoint || !secondaryAxisPoint || !first || !second) return null
+  const solved = [
+    solvedPoint(points, entity.centerPointId),
+    solvedPoint(points, entity.primaryAxisPointId),
+    solvedPoint(points, entity.secondaryAxisPointId),
+    solvedPoint(points, entity.startPointId),
+    solvedPoint(points, entity.endPointId),
+  ]
+  if (!allPointsSolved(solved)) return null
+  const [center, primaryAxisPoint, secondaryAxisPoint, first, second] = solved as [
+    SolvedPoint,
+    SolvedPoint,
+    SolvedPoint,
+    SolvedPoint,
+    SolvedPoint,
+  ]
   const start = reversed ? second : first
   const end = reversed ? first : second
   return {
     entityId: entity.id,
     type: "elliptical-arc" as const,
+    startPointId: reversed ? entity.endPointId : entity.startPointId,
+    endPointId: reversed ? entity.startPointId : entity.endPointId,
     center: [center.x, center.y] as const,
     primaryAxisPoint: [primaryAxisPoint.x, primaryAxisPoint.y] as const,
     secondaryAxisPoint: [secondaryAxisPoint.x, secondaryAxisPoint.y] as const,
@@ -234,6 +256,7 @@ export function solveSketchOnce(
   document: DocumentSnapshot,
   sketch: SketchRecord,
   features: readonly FeatureRecord[] = document.features,
+  geometry: readonly FeatureGeometryRecord[] = [],
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
@@ -243,6 +266,7 @@ export function solveSketchOnce(
     solveSketch,
     features,
     solvedBySketchId,
+    geometry,
   ).then((externalGeometry) =>
     solveSketch({
       sketch,
@@ -281,6 +305,7 @@ async function prepareFeatureContent(
   features: readonly FeatureRecord[],
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
+  geometry: readonly FeatureGeometryRecord[],
 ) {
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
@@ -311,17 +336,23 @@ async function prepareFeatureContent(
     return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
   }
   const result = validatedSolution(
-    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features),
+    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features, geometry),
     document,
     sketch,
   )
   return result.ok ? prepareExtrusion(sketch, result.solution, parameters, frame) : result
 }
 
+export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
+  return Boolean(
+    readDatumPlaneFeatureParameters(feature) || readExtrusionFeatureParameters(feature),
+  )
+}
+
 export function createDocumentFeatureContentPreparer(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: SketchSolveCache = new Map(),
 ): DocumentFeatureContentPreparationPort {
-  return ({ document, feature, features = document.features }) =>
-    prepareFeatureContent(document, feature, features, solveSketch, solvedBySketchId)
+  return ({ document, feature, features = document.features, geometry = [] }) =>
+    prepareFeatureContent(document, feature, features, solveSketch, solvedBySketchId, geometry)
 }

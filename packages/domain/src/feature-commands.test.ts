@@ -273,6 +273,54 @@ describe("feature document commands", () => {
     ).toMatchObject({ ok: false, diagnostic: { code: "feature-in-use" } })
   })
 
+  it("blocks removal of a feature referenced by model geometry in a sketch", () => {
+    const created = createDocument()
+    const root = feature(featureIds.root)
+    const addedRoot = applyFeatureCommand(
+      created.snapshot,
+      featureCommand("org.vibeshape.feature.add", 1, { feature: root }),
+    )
+    const sketch = {
+      ...createEmptySketch({
+        id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202"),
+        label: "Referenced sketch",
+        plane: "xy",
+      }),
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f3203",
+          kind: "model-point" as const,
+          reference: {
+            schemaVersion: 0 as const,
+            featureId: root.id,
+            kind: "vertex" as const,
+            signature: {
+              kind: "vertex" as const,
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0] as const,
+              bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3204",
+        },
+      ],
+    }
+    const snapshot = documentSnapshotSchema.parse({ ...addedRoot.snapshot, sketches: [sketch] })
+
+    expect(
+      applyDocumentCommand(
+        snapshot,
+        featureCommand("org.vibeshape.feature.remove", snapshot.revision, {
+          featureId: root.id,
+        }),
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "feature-in-use" } })
+  })
+
   it("rejects tampered feature events even when their payloads remain schema-valid", () => {
     const created = createDocument()
     const root = feature(featureIds.root)

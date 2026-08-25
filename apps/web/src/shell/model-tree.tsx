@@ -45,7 +45,10 @@ function sketchHasDependents(
     ) ||
     sketches.some((candidate) =>
       (candidate.externalReferences ?? []).some(
-        (reference) => reference.sourceSketchId === sketch.id,
+        (reference) =>
+          reference.kind !== "model-point" &&
+          reference.kind !== "model-line" &&
+          reference.sourceSketchId === sketch.id,
       ),
     )
   )

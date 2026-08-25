@@ -1,7 +1,7 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 9 as const
+export const GEOMETRY_PROTOCOL_VERSION = 10 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -34,6 +34,7 @@ const identifierSchema = z.string().trim().min(1).max(128)
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
+const topologyVector3Schema = z.tuple([finiteNumberSchema, finiteNumberSchema, finiteNumberSchema])
 
 function vectorDot(
   left: readonly [number, number, number],
@@ -111,6 +112,8 @@ const extrusionLineSegmentSchema = z
   .object({
     entityId: sketchEntityIdSchema,
     type: z.literal("line"),
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
     start: vector2Schema,
     end: vector2Schema,
   })
@@ -120,6 +123,8 @@ const extrusionArcSegmentSchema = z
   .object({
     entityId: sketchEntityIdSchema,
     type: z.literal("arc"),
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
     start: vector2Schema,
     middle: vector2Schema,
     end: vector2Schema,
@@ -176,6 +181,8 @@ const extrusionEllipticalArcSegmentSchema = z
   .object({
     entityId: sketchEntityIdSchema,
     type: z.literal("elliptical-arc"),
+    startPointId: sketchEntityIdSchema,
+    endPointId: sketchEntityIdSchema,
     center: vector2Schema,
     primaryAxisPoint: vector2Schema,
     secondaryAxisPoint: vector2Schema,
@@ -408,9 +415,9 @@ export const topologySignatureSchema = z
     kind: topologyKindSchema,
     geometryClass: z.string().min(1).max(64),
     measure: finiteNumberSchema.nonnegative(),
-    centroid: vector3Schema,
-    bounds: z.object({ min: vector3Schema, max: vector3Schema }).strict(),
-    direction: vector3Schema.optional(),
+    centroid: topologyVector3Schema,
+    bounds: z.object({ min: topologyVector3Schema, max: topologyVector3Schema }).strict(),
+    direction: topologyVector3Schema.optional(),
     directionMode: z.enum(["oriented", "axis"]).optional(),
     boundaryCount: nonNegativeIntegerSchema,
     adjacentGeometryClasses: z.array(z.string().min(1).max(64)).max(256),
@@ -442,11 +449,33 @@ export const topologySignatureSchema = z
       }
     }
   })
+export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("vertex"),
+      position: topologyVector3Schema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("line-edge"),
+      start: topologyVector3Schema,
+      end: topologyVector3Schema,
+    })
+    .strict()
+    .refine(
+      ({ end, start }) =>
+        Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]) > 1e-9,
+      { message: "Topology line-edge endpoints must be distinct.", path: ["end"] },
+    ),
+])
+
 export const topologyCandidateSchema = z
   .object({
     candidateId: identifierSchema,
     kind: topologyKindSchema,
     meshFaceId: nonNegativeIntegerSchema.optional(),
+    referenceGeometry: topologyReferenceGeometrySchema.optional(),
     semanticRole: z.string().min(1).max(256).optional(),
     lineageTokens: z.array(z.string().min(1).max(256)).max(256),
     signature: topologySignatureSchema,
@@ -460,6 +489,20 @@ export const topologyCandidateSchema = z
     message: "Only face topology candidates may declare a tessellation face ID.",
     path: ["meshFaceId"],
   })
+  .refine(
+    (candidate) =>
+      candidate.referenceGeometry === undefined ||
+      (candidate.referenceGeometry.kind === "vertex" &&
+        candidate.kind === "vertex" &&
+        candidate.signature.geometryClass === "POINT") ||
+      (candidate.referenceGeometry.kind === "line-edge" &&
+        candidate.kind === "edge" &&
+        candidate.signature.geometryClass === "LINE"),
+    {
+      message: "Topology reference geometry must match its candidate kind and geometry class.",
+      path: ["referenceGeometry", "kind"],
+    },
+  )
 
 const topologyIntentSchema = z
   .object({

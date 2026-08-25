@@ -38,7 +38,10 @@ import {
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
 import { resolveExternalSketchGeometry, type SketchSolveCache } from "./external-sketch-references"
-import { createDocumentFeatureContentPreparer } from "./extrusion-content"
+import {
+  createDocumentFeatureContentPreparer,
+  shouldPrepareDocumentFeatureContent,
+} from "./extrusion-content"
 import { createSketchDisplayRecords } from "./sketch-display"
 
 export interface DocumentWorkerEndpoint {
@@ -457,6 +460,8 @@ export class DocumentWorkerRuntime {
         context.sketch,
         this.solveSketch,
         resolveDocumentFeatureParameters(context.document, this.registry),
+        new Map(),
+        this.#states.get(request.documentId)?.geometry ?? [],
       )
       const result = await this.solveSketch({
         revision: request.revision,
@@ -497,6 +502,7 @@ export class DocumentWorkerRuntime {
         this.solveSketch,
         solvedBySketchId,
       ),
+      shouldPrepareFeatureContent: shouldPrepareDocumentFeatureContent,
       evaluateGeometry: async (evaluation) => {
         const evaluated = await this.engine.evaluateFeature(
           { ...evaluation, dependencies: [...evaluation.dependencies] },
@@ -530,6 +536,7 @@ export class DocumentWorkerRuntime {
       this.solveSketch,
       solvedBySketchId,
       result.features,
+      result.geometry,
     )
     if (this.#isStale(request)) {
       this.#postFailure(

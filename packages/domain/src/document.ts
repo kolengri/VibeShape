@@ -61,6 +61,7 @@ function validateExternalReferenceOrder(input: ExternalReferenceValidationInput)
 }
 
 function externalReferenceSourceSelector(reference: SketchExternalReference) {
+  if (reference.kind === "model-point" || reference.kind === "model-line") return null
   if (reference.kind === "line") {
     return { entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const
   }
@@ -77,6 +78,7 @@ function externalReferenceSourceSelector(reference: SketchExternalReference) {
 function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {
   const path = externalReferencePath(input)
   const selector = externalReferenceSourceSelector(input.reference)
+  if (!selector) return
   const sourceEntity = input.source.entities.find(({ id }) => id === selector.entityId)
   if (sourceEntity?.type === selector.entityType) return
   addDocumentIssue(
@@ -125,6 +127,23 @@ function validateDocumentSketchReferences(
       )
     }
     for (const [referenceIndex, reference] of (sketch.externalReferences ?? []).entries()) {
+      if (reference.kind === "model-point" || reference.kind === "model-line") {
+        if (!featureIds.has(reference.reference.featureId)) {
+          addDocumentIssue(
+            context,
+            [
+              "sketches",
+              sketchIndex,
+              "externalReferences",
+              referenceIndex,
+              "reference",
+              "featureId",
+            ],
+            "An external model reference must reference an existing feature.",
+          )
+        }
+        continue
+      }
       validateExternalSketchReference({
         context,
         reference,
