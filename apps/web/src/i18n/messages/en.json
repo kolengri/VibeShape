@@ -237,6 +237,7 @@
         "noSketchRedo": "There is no sketch change to redo.",
         "noSketchUndo": "There is no sketch change to undo.",
         "readOnly": "Open the document with write access.",
+        "requiresExistingSketch": "Edit an existing sketch first.",
         "requiresSketch": "Start or edit a sketch first.",
         "selectSketchLine": "Select exactly one sketch line first.",
         "selectProfile": "Select a closed sketch profile first.",
@@ -335,6 +336,10 @@
         "sketchOrbitView": {
           "label": "Orbit 3D view",
           "keywords": "orbit sketch context|rotate 3d view|inspect support|camera"
+        },
+        "sketchFinalContext": {
+          "label": "Show final result",
+          "keywords": "final result|downstream context|edit rollback|display only"
         },
         "sketchTransform": {
           "label": "Transform",
@@ -727,6 +732,8 @@
         "externalModelPointCandidate": "{feature} · Vertex {ordinal}",
         "externalPointCandidate": "{sketch} · Point {ordinal}",
         "externalCurveContext": "{sketch} · {kind, select, circle {Circle} arc {Arc} ellipse {Ellipse} ellipticalArc {Elliptical arc} other {Curve}} {ordinal}",
+        "finalContextLabel": "Final result",
+        "finalContextDisplayOnly": "display only",
         "ariaLabel": "3D viewport",
         "clearSelection": "Clear selection",
         "empty": "Create a feature to display its rebuilt geometry.",

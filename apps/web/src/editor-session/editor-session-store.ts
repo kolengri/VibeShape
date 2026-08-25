@@ -39,6 +39,7 @@ export type SketchEditorSessionState = Readonly<{
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
+  showFinalContext: boolean
   undoStack: readonly SketchRecord[]
 }>
 
@@ -78,6 +79,7 @@ export type EditorSessionActions = Readonly<{
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
+  setSketchFinalContext: (visible: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
@@ -108,6 +110,7 @@ function createSketchState(): SketchEditorSessionState {
     selectedConstraintId: null,
     selectedEntityIds: [],
     selectedProfile: null,
+    showFinalContext: false,
     undoStack: [],
   }
 }
@@ -146,6 +149,7 @@ function resetSketchPresentation(
   sketch.selectedConstraintId = null
   sketch.selectedEntityIds = []
   sketch.selectedProfile = null
+  sketch.showFinalContext = false
 }
 
 function resetSketchDraft(sketch: Draft<SketchEditorSessionState>, draft: SketchRecord | null) {
@@ -223,6 +227,7 @@ export function createEditorSessionStore() {
             state.sketch.failedConstraintIds = []
             state.sketch.selectedConstraintId = null
             state.sketch.selectedEntityIds = []
+            state.sketch.showFinalContext = false
             if (presentation) {
               state.sketch.profiles = [...presentation.profiles]
               state.sketch.selectedProfile = presentation.selectedProfile
@@ -299,6 +304,11 @@ export function createEditorSessionStore() {
               return
             }
             state.sketch.cameraMode = mode
+          }),
+        setSketchFinalContext: (visible) =>
+          set((state) => {
+            if (state.sketch.activeSketchTool?.kind !== "edit-sketch") return
+            state.sketch.showFinalContext = visible
           }),
         setSketchDraft: (sketch, mode = "record") => {
           const current = get().sketch.draft

@@ -1,3 +1,4 @@
+import type { SketchId } from "@vibeshape/domain"
 import { describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import {
@@ -53,6 +54,7 @@ function commandContext(
       redoSketch: vi.fn(),
       setSketchCameraMode: vi.fn(),
       setSketchConstruction: vi.fn(),
+      setSketchFinalContext: vi.fn(),
       setSketchTool: vi.fn(),
       switchWorkspace: vi.fn(),
       undoSketch: vi.fn(),
@@ -64,6 +66,7 @@ function commandContext(
       extrusionAvailable: false,
       sketchConstruction: false,
       sketchCameraMode: "normal",
+      sketchFinalContext: false,
       sketchRedoAvailable: false,
       slotFromSelectionAvailable: false,
       sketchTool: "select",
@@ -266,6 +269,34 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchCameraMode).toHaveBeenNthCalledWith(1, "orbit")
     expect(context.actions.setSketchCameraMode).toHaveBeenNthCalledWith(2, "normal")
     expect(context.actions.setSketchTool).not.toHaveBeenCalled()
+  })
+
+  it("offers final result context only while editing an existing sketch", () => {
+    const creating = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const editing = commandContext({
+      activeSketchTool: { kind: "edit-sketch", sketchId: "sketch-1" as SketchId },
+      sketchFinalContext: true,
+      workspace: "sketch",
+    })
+    const createCommand = resolveBuiltInEditorCommands(creating).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchFinalContext,
+    )
+    const editCommand = resolveBuiltInEditorCommands(editing).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchFinalContext,
+    )
+
+    expect(createCommand?.toolbarVisible).toBe(false)
+    expect(createCommand?.eligibility).toEqual({
+      enabled: false,
+      reason: "requiresExistingSketch",
+    })
+    expect(editCommand?.toolbarVisible).toBe(true)
+    expect(editCommand?.active).toBe(true)
+    editCommand?.invoke()
+    expect(editing.actions.setSketchFinalContext).toHaveBeenCalledWith(false)
   })
 
   it("routes aligned rectangles, polygons, slots, and tangent arc through trusted sketch tool handlers", () => {

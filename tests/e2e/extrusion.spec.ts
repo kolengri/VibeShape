@@ -60,10 +60,22 @@ test.describe("selector-backed extrusion", () => {
     const normalSketchViewport = page.locator("section[data-sketch-context-mode='normal']")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
+    await page.getByRole("button", { name: "Show final result", exact: true }).click()
+    await expect(page.getByTestId("sketch-final-context-status")).toContainText(
+      "Final result · display only",
+    )
+    await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(normalSketchViewport).toHaveAttribute("data-sketch-reference-candidate-count", "0")
+    await expect(
+      page.getByRole("button", { name: "Use external geometry", exact: true }),
+    ).toHaveCount(0)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitSketchViewport = page.locator("section[data-sketch-context-mode='orbit']")
-    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
+    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(orbitSketchViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    await page.getByRole("button", { name: "Show final result", exact: true }).click()
+    await expect(page.getByTestId("sketch-final-context-status")).toHaveCount(0)
+    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
@@ -169,11 +181,27 @@ test.describe("selector-backed extrusion", () => {
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "0")
     await page.getByRole("button", { name: "Show Box 1" }).click()
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
-    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
-    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
-      "data-rendered-feature-count",
-      "1",
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const normalCandidateCount = await sketchContext.getAttribute(
+      "data-sketch-reference-candidate-count",
     )
+    expect(Number(normalCandidateCount)).toBeGreaterThan(0)
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const orbitContext = page.locator("section[data-sketch-context-mode='orbit']")
+    await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "1")
+    const referenceSelect = page.getByRole("combobox", {
+      name: "Select a reference with the keyboard",
+    })
+    const rollbackCandidateLabels = await referenceSelect.locator("option").allTextContents()
+    await page.getByRole("button", { name: "Show final result", exact: true }).click()
+    await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "2")
+    await expect(orbitContext).toHaveAttribute(
+      "data-sketch-reference-candidate-count",
+      normalCandidateCount ?? "0",
+    )
+    await expect(referenceSelect.locator("option")).toHaveText(rollbackCandidateLabels)
+    await page.getByRole("button", { name: "Show final result", exact: true }).click()
+    await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
   })
