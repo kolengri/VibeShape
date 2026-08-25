@@ -9,6 +9,7 @@ import {
   appendSketchRectangle,
   createLengthQuantity,
   createRectangleSketch,
+  featureIdSchema,
   moveSketchPoint,
   type SketchEntity,
   type SketchRecord,
@@ -173,6 +174,9 @@ type SketchViewportTestProps = Readonly<{
   externalContextGeometry?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["externalContextGeometry"]
+  externalModelCandidates?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["externalModelCandidates"]
   externalPointCandidates?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["externalPointCandidates"]
@@ -214,6 +218,7 @@ function viewportState(props: SketchViewportTestProps) {
       props.externalContextGeometry,
       valueOr(props.externalPointCandidates, []),
     ),
+    externalModelCandidates: valueOr(props.externalModelCandidates, []),
     externalPointCandidates: valueOr(props.externalPointCandidates, []),
     originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
     selectedConstraintId: props.selectedConstraintId ?? null,
@@ -574,6 +579,124 @@ describe("SketchViewport", () => {
         ],
       }),
     )
+  })
+
+  it("uses a model vertex directly from the normal sketch drawing", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3213") }
+    const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3214")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalModelCandidates: [
+        {
+          candidateId: "box-vertex-1",
+          featureId: sourceFeatureId,
+          kind: "model-point",
+          label: "Box 1 · Vertex 1",
+          position: [5, 6, 0],
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "vertex",
+            semanticRole: "box.vertex.min-min-min",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [5, 6, 0],
+              bounds: { min: [5, 6, 0], max: [5, 6, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          x: 5,
+          y: 6,
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const sourceVertex = document.querySelector(
+      '[data-sketch-available-external-geometry-id="box-vertex-1"]',
+    )
+    if (!sourceVertex) throw new Error("The model vertex must be selectable on the drawing.")
+
+    fireEvent.pointerDown(sourceVertex)
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({
+            kind: "model-point",
+            reference: expect.objectContaining({
+              featureId: sourceFeatureId,
+              semanticRole: "box.vertex.min-min-min",
+            }),
+          }),
+        ],
+      }),
+    )
+    expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
+  })
+
+  it("uses a model line from the normal drawing with the keyboard", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3215") }
+    const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3216")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalModelCandidates: [
+        {
+          candidateId: "box-edge-1",
+          featureId: sourceFeatureId,
+          kind: "model-line",
+          label: "Box 1 · Edge 1",
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "edge",
+            semanticRole: "box.edge.x.min-min",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 20,
+              centroid: [10, 0, 0],
+              bounds: { min: [0, 0, 0], max: [20, 0, 0] },
+              direction: [1, 0, 0],
+              directionMode: "axis",
+              boundaryCount: 2,
+              adjacentGeometryClasses: ["PLANE", "PLANE"],
+            },
+          },
+          start: { world: [0, 0, 0], x: 0, y: 0 },
+          end: { world: [20, 0, 0], x: 20, y: 0 },
+        },
+      ],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const sourceEdge = screen.getByRole("button", { name: "Box 1 · Edge 1" })
+
+    fireEvent.keyDown(sourceEdge, { key: "Enter" })
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalReferences: [
+          expect.objectContaining({
+            kind: "model-line",
+            reference: expect.objectContaining({
+              featureId: sourceFeatureId,
+              semanticRole: "box.edge.x.min-min",
+            }),
+          }),
+        ],
+      }),
+    )
+    expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
   })
 
   it("uses an earlier analytical curve directly from the drawing", () => {

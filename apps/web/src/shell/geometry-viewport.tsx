@@ -1,6 +1,7 @@
 import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   defaultViewerOriginPlaneVisibility,
@@ -208,11 +209,23 @@ function synchronizeViewportSketchContext(
   viewport: GeometryViewportPort,
   context: GeometryViewportSketchContext | null,
 ) {
-  viewport.setSketchReferenceCandidates(context?.referenceSelection?.candidates ?? [])
-  viewport.setInteractionMode(
-    context?.referenceSelection ? "sketch-reference-select" : context ? "camera-only" : "select",
-  )
+  const referenceSelection = orbitReferenceSelection(context)
+  viewport.setSketchReferenceCandidates(referenceSelection?.candidates ?? [])
+  viewport.setInteractionMode(viewportInteractionMode(context, referenceSelection !== undefined))
   if (context?.mode === "normal" && context.frame) viewport.orientToFrame(context.frame)
+}
+
+function orbitReferenceSelection(context: GeometryViewportSketchContext | null) {
+  if (context?.mode !== "orbit") return undefined
+  return context.referenceSelection
+}
+
+function viewportInteractionMode(
+  context: GeometryViewportSketchContext | null,
+  referenceSelectionActive: boolean,
+) {
+  if (referenceSelectionActive) return "sketch-reference-select"
+  return context ? "camera-only" : "select"
 }
 
 function useLatestViewportInputs({
@@ -867,6 +880,7 @@ function SketchContextChrome({
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null
+  const candidates = context.referenceSelection?.candidates ?? []
   return (
     <>
       <WorldAxesLegend />
@@ -884,6 +898,28 @@ function SketchContextChrome({
           role="status"
         >
           {t("sketchReferenceCandidate", { label: preselection.label })}
+        </div>
+      ) : null}
+      {context.referenceSelection && candidates.length > 0 ? (
+        <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
+          <span className="text-xs font-medium">{t("sketchReferenceKeyboardSelection")}</span>
+          <NativeSelect
+            aria-label={t("sketchReferenceKeyboardSelection")}
+            className="h-8 max-w-72 text-xs"
+            defaultValue=""
+            onChange={(event) => {
+              const candidate = candidates[Number(event.currentTarget.value)]
+              if (candidate) context.referenceSelection?.onSelect(candidate)
+              event.currentTarget.value = ""
+            }}
+          >
+            <option value="">{t("sketchReferenceKeyboardPlaceholder")}</option>
+            {candidates.map((candidate, index) => (
+              <option key={`${candidate.kind}:${candidate.label}:${index}`} value={index}>
+                {candidate.label}
+              </option>
+            ))}
+          </NativeSelect>
         </div>
       ) : null}
     </>

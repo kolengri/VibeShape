@@ -184,7 +184,22 @@ describe("GeometryViewport", () => {
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.fit).toHaveBeenCalledOnce()
 
-    rerenderSketchContext({ frame, mode: "normal" })
+    rerenderSketchContext({
+      frame,
+      mode: "normal",
+      referenceSelection: {
+        candidates: [
+          {
+            kind: "model-point",
+            label: "Box · Vertex 1",
+            featureId: boxId,
+            candidateId: "vertex-1",
+            position: [0, 0, 0],
+          },
+        ],
+        onSelect: vi.fn(),
+      },
+    })
     const viewport = container.querySelector<HTMLElement>("[data-passive='true']")
     expect(viewport).not.toBeNull()
     if (!viewport) return
@@ -199,6 +214,7 @@ describe("GeometryViewport", () => {
     expect(createViewport).toHaveBeenCalledOnce()
     expect(port.fit).toHaveBeenCalledOnce()
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
+    expect(port.setSketchReferenceCandidates).toHaveBeenLastCalledWith([])
     expect(port.orientToFrame).toHaveBeenCalledOnce()
     expect(port.orientToFrame).toHaveBeenCalledWith(frame)
     expect(port.dispose).not.toHaveBeenCalled()
@@ -239,6 +255,21 @@ describe("GeometryViewport", () => {
       sourceLineId: "line-1",
       sourceSketchId: "sketch-1",
     }
+    const modelPointCandidate = {
+      kind: "model-point" as const,
+      label: "Box · Vertex 1",
+      featureId: boxId,
+      candidateId: "vertex-1",
+      position: [2, 3, 4] as const,
+    }
+    const modelLineCandidate = {
+      kind: "model-line" as const,
+      label: "Box · Edge 1",
+      featureId: boxId,
+      candidateId: "edge-1",
+      start: [0, 0, 0] as const,
+      end: [10, 0, 0] as const,
+    }
     const onSelect = vi.fn()
     const controller = readyController([], [])
     const { createViewport, port } = renderViewport(
@@ -251,12 +282,20 @@ describe("GeometryViewport", () => {
       {
         frame: null,
         mode: "orbit",
-        referenceSelection: { candidates: [candidate, lineCandidate], onSelect },
+        referenceSelection: {
+          candidates: [candidate, lineCandidate, modelPointCandidate, modelLineCandidate],
+          onSelect,
+        },
       },
     )
 
     await waitFor(() =>
-      expect(port.setSketchReferenceCandidates).toHaveBeenCalledWith([candidate, lineCandidate]),
+      expect(port.setSketchReferenceCandidates).toHaveBeenCalledWith([
+        candidate,
+        lineCandidate,
+        modelPointCandidate,
+        modelLineCandidate,
+      ]),
     )
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("sketch-reference-select")
     const options = createViewport.mock.calls[0]?.[1]
@@ -271,6 +310,18 @@ describe("GeometryViewport", () => {
     expect(screen.getByText("Use reference: Source · Line", { exact: true })).toBeTruthy()
     options?.onSketchReferenceSelectionChange?.(lineCandidate)
     expect(onSelect).toHaveBeenCalledWith(lineCandidate)
+    options?.onSketchReferenceSelectionChange?.(modelPointCandidate)
+    options?.onSketchReferenceSelectionChange?.(modelLineCandidate)
+    expect(onSelect).toHaveBeenCalledWith(modelPointCandidate)
+    expect(onSelect).toHaveBeenCalledWith(modelLineCandidate)
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Select a reference with the keyboard" }),
+      {
+        target: { value: "3" },
+      },
+    )
+    expect(onSelect).toHaveBeenLastCalledWith(modelLineCandidate)
   })
 
   it("renders exact unsaved meshes as a distinct preview state", async () => {

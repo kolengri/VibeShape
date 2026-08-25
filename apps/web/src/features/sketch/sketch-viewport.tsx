@@ -38,8 +38,8 @@ import {
   MAX_SKETCH_PATTERN_PREVIEW_INSTANCES,
   MIN_REGULAR_POLYGON_SIDES,
   moveSketchPoint,
-  projectPointToSketchEllipse,
   projectedExternalSketchEntities,
+  projectPointToSketchEllipse,
   type RegularPolygonMode,
   regularPolygonGeometry,
   removeSketchEntities,
@@ -126,6 +126,10 @@ import {
   formatDisplayLength,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import {
+  applyExternalModelCandidate,
+  type ExternalModelGeometryCandidate,
+} from "./external-model-geometry"
 import {
   applyExternalSketchCandidate,
   type ExternalSketchContextGeometry,
@@ -1718,7 +1722,12 @@ function SketchGeometry({
   )
 }
 
-function candidateKey(candidate: ExternalSketchGeometryCandidate) {
+type ExternalUseCandidate = ExternalSketchGeometryCandidate | ExternalModelGeometryCandidate
+
+function candidateKey(candidate: ExternalUseCandidate) {
+  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+    return `${candidate.kind}:${candidate.featureId}:${candidate.candidateId}`
+  }
   const entityId =
     candidate.kind === "line"
       ? candidate.sourceLineId
@@ -1954,8 +1963,8 @@ function SketchAvailableExternalGeometry({
   candidates,
   onUse,
 }: Readonly<{
-  candidates: readonly ExternalSketchGeometryCandidate[]
-  onUse: (candidate: ExternalSketchGeometryCandidate) => void
+  candidates: readonly ExternalUseCandidate[]
+  onUse: (candidate: ExternalUseCandidate) => void
 }>) {
   if (candidates.length === 0) return null
   return (
@@ -1965,20 +1974,32 @@ function SketchAvailableExternalGeometry({
       transform="scale(1 -1)"
     >
       {candidates.map((candidate) => (
+        /* biome-ignore lint/a11y/useSemanticElements: SVG groups cannot contain HTML buttons; equivalent focus and keyboard activation are provided. */
         <g
           key={candidateKey(candidate)}
-          className="cursor-crosshair"
+          aria-label={candidate.label}
+          className="cursor-crosshair outline-none focus-visible:[&>*]:stroke-amber-500"
           data-sketch-available-external-geometry-id={
-            candidate.kind === "line"
-              ? candidate.sourceLineId
-              : candidate.kind === "curve"
-                ? candidate.sourceEntityId
-                : candidate.sourcePointId
+            candidate.kind === "model-point" || candidate.kind === "model-line"
+              ? candidate.candidateId
+              : candidate.kind === "line"
+                ? candidate.sourceLineId
+                : candidate.kind === "curve"
+                  ? candidate.sourceEntityId
+                  : candidate.sourcePointId
           }
           onPointerDown={(event) => {
             event.stopPropagation()
             onUse(candidate)
           }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return
+            event.preventDefault()
+            event.stopPropagation()
+            onUse(candidate)
+          }}
+          role="button"
+          tabIndex={0}
         >
           {candidate.kind === "curve" ? (
             <>
@@ -1998,7 +2019,7 @@ function SketchAvailableExternalGeometry({
                 vectorEffect="non-scaling-stroke"
               />
             </>
-          ) : candidate.kind === "line" ? (
+          ) : candidate.kind === "line" || candidate.kind === "model-line" ? (
             <>
               <line
                 x1={candidate.start.x}
@@ -2145,7 +2166,7 @@ function SketchExternalReferencePresentation({
   onSelect,
   onUse,
 }: Readonly<{
-  availableCandidates: readonly ExternalSketchGeometryCandidate[]
+  availableCandidates: readonly ExternalUseCandidate[]
   contextGeometry: readonly ExternalSketchContextGeometry[]
   editorTool: SketchEditorTool
   externalCurves: readonly DisplayExternalCurve[]
@@ -2157,7 +2178,7 @@ function SketchExternalReferencePresentation({
   solvedCircles: ReadonlyMap<string, number>
   onAttach: (projectedPointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
-  onUse: (candidate: ExternalSketchGeometryCandidate) => void
+  onUse: (candidate: ExternalUseCandidate) => void
 }>) {
   return (
     <>
@@ -2199,6 +2220,7 @@ function SketchExternalReferenceLayer({
   externalLines,
   externalPoints,
   markerScale,
+  modelCandidates,
   pointsById,
   selectedEntityIds,
   solvedCircles,
@@ -2213,6 +2235,7 @@ function SketchExternalReferenceLayer({
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   markerScale: number
+  modelCandidates: readonly ExternalModelGeometryCandidate[]
   selectedEntityIds: readonly SketchEntityId[]
   pointsById: SketchPointLookup
   solvedCircles: ReadonlyMap<string, number>
@@ -2223,6 +2246,7 @@ function SketchExternalReferenceLayer({
     candidates,
     draft,
     editorTool,
+    modelCandidates,
     onDraftChange,
     selectedEntityIds,
   })
@@ -2257,21 +2281,29 @@ function SketchExternalReferenceLayer({
 
 function SketchContextGeometryBounds({
   geometry = [],
+  modelGeometry = [],
   setBounds,
 }: Readonly<{
   geometry: readonly ExternalSketchContextGeometry[]
+  modelGeometry: readonly ExternalModelGeometryCandidate[]
   setBounds: Dispatch<SetStateAction<SketchBounds>>
 }>) {
   useEffect(() => {
-    const points = geometry.flatMap((candidate) =>
-      candidate.kind === "curve"
-        ? candidate.points
-        : candidate.kind === "line"
-          ? [candidate.start, candidate.end]
-          : [candidate],
+    const modelPoints = modelGeometry.flatMap<SketchPoint2>((candidate) =>
+      candidate.kind === "model-line" ? [candidate.start, candidate.end] : [candidate],
     )
+    const points = [
+      ...geometry.flatMap((candidate) =>
+        candidate.kind === "curve"
+          ? candidate.points
+          : candidate.kind === "line"
+            ? [candidate.start, candidate.end]
+            : [candidate],
+      ),
+      ...modelPoints,
+    ]
     setBounds((bounds) => expandedSketchBounds(bounds, points))
-  }, [geometry, setBounds])
+  }, [geometry, modelGeometry, setBounds])
   return null
 }
 
@@ -5795,6 +5827,7 @@ function SketchDrawingView({
           externalLines={state.geometry.externalLines}
           externalPoints={state.geometry.externalPoints}
           markerScale={markerScale}
+          modelCandidates={configuration.externalModelCandidates}
           pointsById={state.geometry.pointsById}
           selectedEntityIds={configuration.selectedEntityIds}
           solvedCircles={state.geometry.solvedCircles}
@@ -6499,6 +6532,7 @@ function useExternalReferenceInteraction({
   candidates,
   draft,
   editorTool,
+  modelCandidates,
   onDraftChange,
   selectedEntityIds,
 }: Pick<
@@ -6506,6 +6540,7 @@ function useExternalReferenceInteraction({
   "draft" | "editorTool" | "onDraftChange" | "selectedEntityIds"
 > & {
   candidates: readonly ExternalSketchGeometryCandidate[]
+  modelCandidates: readonly ExternalModelGeometryCandidate[]
 }) {
   const contextCandidates = useMemo(() => {
     if (!draft) return []
@@ -6516,13 +6551,16 @@ function useExternalReferenceInteraction({
     )
   }, [candidates, draft])
   const availableCandidates = useMemo(
-    () => (editorTool === "use" ? contextCandidates : []),
-    [contextCandidates, editorTool],
+    () => (editorTool === "use" ? [...contextCandidates, ...modelCandidates] : []),
+    [contextCandidates, editorTool, modelCandidates],
   )
   const use = useCallback(
-    (candidate: ExternalSketchGeometryCandidate) => {
+    (candidate: ExternalUseCandidate) => {
       if (!draft) return
-      const next = applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+      const next =
+        candidate.kind === "model-point" || candidate.kind === "model-line"
+          ? applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+          : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
       if (next !== draft) onDraftChange(next)
     },
     [draft, onDraftChange, selectedEntityIds],
@@ -7316,6 +7354,7 @@ function SketchDrawing({
     <>
       <SketchContextGeometryBounds
         geometry={configuration.externalContextGeometry}
+        modelGeometry={configuration.externalModelCandidates}
         setBounds={setBounds}
       />
       <SketchDrawingView
@@ -7507,6 +7546,7 @@ type SketchDrawingConfiguration = Readonly<{
   construction: boolean
   draft: SketchRecord | null
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
@@ -7692,11 +7732,13 @@ function SketchExternalReferenceToolbar({
   candidates,
   draft,
   editorTool,
+  modelCandidateCount,
   onEditorToolChange,
 }: Readonly<{
   candidates: readonly ExternalSketchGeometryCandidate[]
   draft: SketchRecord | null
   editorTool: SketchEditorTool
+  modelCandidateCount: number
   onEditorToolChange: (tool: SketchEditorTool) => void
 }>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
@@ -7708,7 +7750,7 @@ function SketchExternalReferenceToolbar({
         !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
     )
   }, [candidates, draft])
-  if (!draft || availableCandidates.length === 0) return null
+  if (!draft || availableCandidates.length + modelCandidateCount === 0) return null
   const active = editorTool === "use"
   return (
     <Tooltip>
@@ -7735,6 +7777,7 @@ type SketchViewportState = Readonly<{
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   selectedConstraintId: SketchConstraintId | null
@@ -7838,6 +7881,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
     editDimensionLabel,
     editorTool,
     externalContextGeometry,
+    externalModelCandidates,
     externalPointCandidates,
     onConstraintSelectionChange,
     onDraftChange,
@@ -7867,6 +7911,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
       editDimensionLabel,
       editorTool,
       externalContextGeometry,
+      externalModelCandidates,
       externalPointCandidates,
       onConstraintSelectionChange,
       onDraftChange,
@@ -7970,6 +8015,7 @@ export function SketchViewport({
     draft,
     editorTool,
     externalContextGeometry,
+    externalModelCandidates,
     externalPointCandidates,
     originPlaneVisibility,
     selectedConstraintId,
@@ -8009,6 +8055,7 @@ export function SketchViewport({
     construction,
     draft,
     externalContextGeometry,
+    externalModelCandidates,
     externalPointCandidates,
     editDimensionLabel: presentation.editDimensionLabel,
     editorTool,
@@ -8060,6 +8107,7 @@ export function SketchViewport({
           candidates={externalPointCandidates}
           draft={draft}
           editorTool={editorTool}
+          modelCandidateCount={externalModelCandidates.length}
           onEditorToolChange={onEditorToolChange}
         />
         <SketchPrecisionToolbar
