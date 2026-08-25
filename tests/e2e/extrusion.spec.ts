@@ -56,6 +56,17 @@ test.describe("selector-backed extrusion", () => {
     })
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    const normalSketchViewport = page.locator("section[data-sketch-context-mode='normal']")
+    await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
+    await expect(normalSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const orbitSketchViewport = page.locator("section[data-sketch-context-mode='orbit']")
+    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
+    await expect(orbitSketchViewport).toHaveAttribute("data-rendered-sketch-count", "1")
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
     await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit extrusion" })
     await expect(editForm.getByRole("combobox", { name: "Distance" })).toHaveValue("#depth")
