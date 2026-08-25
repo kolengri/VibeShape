@@ -2125,22 +2125,60 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("edits an existing dimension in place without replacing its identity", async () => {
+    const dimensionConstraint = sketch.constraints.find((constraint) => "value" in constraint)
+    if (!dimensionConstraint) throw new Error("The rectangle fixture must contain a dimension.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const dimension = document.querySelector(
+      `[data-sketch-constraint-id="${dimensionConstraint.id}"]`,
+    )
+    if (!dimension) throw new Error("The dimension annotation must be rendered.")
+
+    fireEvent.doubleClick(dimension)
+    const expression = screen.getByRole("combobox", { name: "Driving dimension expression" })
+    fireEvent.change(expression, { target: { value: "44 mm" } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
+
+    await waitFor(() =>
+      expect(onDraftChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          constraints: expect.arrayContaining([
+            expect.objectContaining({
+              id: dimensionConstraint.id,
+              value: expect.objectContaining({ value: 44 }),
+            }),
+          ]),
+        }),
+      ),
+    )
+  })
+
   it("offers icon-only precision tools for the current sketch selection", () => {
     const selectedLine = sketch.entities.find((entity) => entity.type === "line")
     if (!selectedLine) throw new Error("The rectangle fixture must contain a line.")
     const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
     renderViewport({
       draft: sketch,
       sketch,
       selectedEntityIds: [selectedLine.id],
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
       onDraftChange,
+      onEditorToolChange,
     })
 
     expect(screen.getByRole("toolbar", { name: "Sketch precision tools" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Horizontal" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Vertical" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Add drawing dimension" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Add drawing dimension" }))
+    expect(onEditorToolChange).toHaveBeenCalledWith("dimension")
     fireEvent.click(screen.getByRole("button", { name: "Vertical" }))
     expect(onDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2164,7 +2202,7 @@ describe("SketchViewport", () => {
     })
 
     expect(
-      screen.getByText("Dimension · Enter the exact driving value in Sketch definition."),
+      screen.getByText("Dimension · Move the pointer to place the annotation, then click."),
     ).toBeTruthy()
     expect(screen.queryByRole("toolbar", { name: "Sketch precision tools" })).toBeNull()
 
@@ -2176,6 +2214,107 @@ describe("SketchViewport", () => {
     if (!target) throw new Error("Dimension mode must expose sketch geometry selection targets.")
     fireEvent.pointerDown(target)
     expect(onSelectionChange).toHaveBeenCalledWith([selectedLine.id, otherLine.id])
+  })
+
+  it("places and commits a driving dimension without focusing the task panel", async () => {
+    const selectedLine = requiredSketchEntity(sketch, "line")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      editorTool: "dimension",
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 240 })
+    fireEvent.pointerDown(drawing, { button: 0, clientX: 520, clientY: 240 })
+
+    expect(document.querySelector("[data-sketch-dimension-placement-preview]")).toBeTruthy()
+    expect(screen.getByRole("form", { name: "Dimension value" })).toBeTruthy()
+    const expression = screen.getByRole("combobox", { name: "Driving dimension expression" })
+    fireEvent.change(expression, { target: { value: "42 mm" } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
+
+    await waitFor(() =>
+      expect(onDraftChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          constraints: expect.arrayContaining([
+            expect.objectContaining({
+              type: "distance",
+              firstPointId: selectedLine.startPointId,
+              secondPointId: selectedLine.endPointId,
+            }),
+          ]),
+        }),
+      ),
+    )
+  })
+
+  it("cancels dimension input, collected geometry, and the tool in separate Escape stages", () => {
+    const selectedLine = requiredSketchEntity(sketch, "line")
+    const onEditorToolChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: sketch,
+      editorTool: "dimension",
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onEditorToolChange,
+      onSelectionChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    fireEvent.pointerMove(drawing, { clientX: 520, clientY: 240 })
+    fireEvent.pointerDown(drawing, { button: 0, clientX: 520, clientY: 240 })
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Driving dimension expression" }), {
+      key: "Escape",
+    })
+    expect(screen.queryByRole("form", { name: "Dimension value" })).toBeNull()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    expect(onSelectionChange).toHaveBeenCalledWith([])
+    view.rerender(
+      viewportElement({
+        draft: sketch,
+        editorTool: "dimension",
+        sketch,
+        selectedEntityIds: [],
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+        onEditorToolChange,
+        onSelectionChange,
+      }),
+    )
+    fireEvent.keyDown(screen.getByRole("img", { name: "Editable sketch geometry" }), {
+      key: "Escape",
+    })
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
   })
 
   it("forwards the previous exact solution and active point drag to the solver", async () => {

@@ -56,6 +56,7 @@ import {
   type SketchPointTarget,
   type SketchProfileSelector,
   type SketchRecord,
+  setSketchDimensionValue,
   sketchConstraintIdSchema,
   sketchCurvePointIds,
   sketchEllipseGeometry,
@@ -86,7 +87,7 @@ import { mirrorSketchEntities } from "@vibeshape/domain/sketch-transform-edit"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
-import { Button } from "@vibeshape/ui/components/button"
+import { Button, buttonVariants } from "@vibeshape/ui/components/button"
 import { Link2, Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
@@ -138,10 +139,22 @@ import {
   compatibleSketchDimensionTools,
   nextSketchDimensionSelection,
   type SketchConstraintToolKind,
+  type SketchDimensionKind,
   selectedSketchConstraintEntities,
   selectedSketchEntities,
   selectedSketchLineId,
 } from "./sketch-constraint-tools"
+import {
+  SketchDimensionInlineEditor,
+  type SketchDimensionInlineEditorResult,
+  type SketchDimensionOption,
+} from "./sketch-dimension-inline-editor"
+import {
+  inferSketchDimensionKind,
+  type SketchDimensionGeometry,
+  sketchDimensionCanonicalValue,
+  sketchDimensionWitnessPoints,
+} from "./sketch-dimension-placement"
 import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
@@ -2317,8 +2330,11 @@ function useSketchViewportSize(svgRef: RefObject<SVGSVGElement | null>) {
 
 function ConstraintAnnotations({
   bounds,
+  dimensionLabelPositions,
   editDimensionLabel,
   interactive,
+  onEditDimension,
+  onDimensionPositionChange,
   onSelect,
   selectedConstraintId,
   selectConstraintLabel,
@@ -2327,8 +2343,11 @@ function ConstraintAnnotations({
   viewport,
 }: {
   bounds: SketchBounds
+  dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
   editDimensionLabel: (label: string) => string
   interactive: boolean
+  onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onSelect: (constraintId: SketchConstraintId) => void
   selectedConstraintId: SketchConstraintId | null
   selectConstraintLabel: (label: string) => string
@@ -2337,33 +2356,142 @@ function ConstraintAnnotations({
   viewport: SketchViewportSize
 }) {
   const pointerEventsClass = interactive ? "pointer-events-auto" : "pointer-events-none"
+  const dragRef = useRef<{
+    clientX: number
+    clientY: number
+    element: HTMLButtonElement
+    id: SketchConstraintId
+    lastClientX: number
+    lastClientY: number
+    point: SketchPoint2
+    pointerId: number
+    scale: number
+  } | null>(null)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
+  const suppressClickRef = useRef(false)
+  const scale = Math.min(viewport.width / bounds.width, viewport.height / bounds.height)
+  useEffect(
+    () => () => {
+      dragCleanupRef.current?.()
+    },
+    [],
+  )
+  const glyphs = constraintGlyphs(sketch, solution).map((glyph) => {
+    const position = glyph.dimensional ? dimensionLabelPositions.get(glyph.id) : null
+    return position ? { ...glyph, point: position } : glyph
+  })
   return (
     <div className="pointer-events-none absolute inset-0">
-      {constraintGlyphs(sketch, solution).map((glyph) => (
-        <Button
+      {glyphs.map((glyph) => (
+        <button
           key={glyph.id}
           type="button"
-          size="xs"
-          variant={selectedConstraintId === glyph.id ? "secondary" : "ghost"}
           data-sketch-constraint-id={glyph.id}
           data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
           aria-label={
             glyph.dimensional ? editDimensionLabel(glyph.label) : selectConstraintLabel(glyph.label)
           }
           aria-pressed={selectedConstraintId === glyph.id}
-          className={
+          className={cn(
+            buttonVariants({
+              size: "xs",
+              variant: selectedConstraintId === glyph.id ? "secondary" : "ghost",
+            }),
             glyph.dimensional
               ? `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] text-foreground shadow-xs`
-              : `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs`
-          }
+              : `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs`,
+          )}
           style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
           onClick={(event) => {
             event.stopPropagation()
+            if (suppressClickRef.current) {
+              suppressClickRef.current = false
+              return
+            }
             onSelect(glyph.id)
+          }}
+          onDoubleClick={(event) => {
+            if (!glyph.dimensional) return
+            event.preventDefault()
+            event.stopPropagation()
+            onEditDimension(glyph.id, glyph.point)
+          }}
+          onPointerDown={(event) => {
+            if (!glyph.dimensional || event.button !== 0) return
+            event.preventDefault()
+            event.stopPropagation()
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+            dragCleanupRef.current?.()
+            suppressClickRef.current = false
+            const overlayRectangle = event.currentTarget.parentElement?.getBoundingClientRect()
+            const pointerScale = overlayRectangle
+              ? Math.min(
+                  overlayRectangle.width / bounds.width,
+                  overlayRectangle.height / bounds.height,
+                )
+              : scale
+            dragRef.current = {
+              clientX: event.clientX,
+              clientY: event.clientY,
+              element: event.currentTarget,
+              id: glyph.id,
+              lastClientX: event.clientX,
+              lastClientY: event.clientY,
+              point: glyph.point,
+              pointerId: event.pointerId,
+              scale: pointerScale,
+            }
+            const move = (moveEvent: globalThis.PointerEvent) => {
+              const drag = dragRef.current
+              if (
+                !drag ||
+                drag.pointerId !== moveEvent.pointerId ||
+                !Number.isFinite(drag.scale) ||
+                drag.scale <= 0
+              ) {
+                return
+              }
+              const deltaX = moveEvent.clientX - drag.clientX
+              const deltaY = moveEvent.clientY - drag.clientY
+              if (Math.hypot(deltaX, deltaY) < 3) return
+              suppressClickRef.current = true
+              drag.lastClientX = moveEvent.clientX
+              drag.lastClientY = moveEvent.clientY
+              drag.element.style.translate = `${deltaX}px ${deltaY}px`
+            }
+            const cleanup = () => {
+              window.removeEventListener("pointermove", move)
+              window.removeEventListener("pointerup", finish)
+              window.removeEventListener("pointercancel", finish)
+              dragCleanupRef.current = null
+            }
+            const finish = (finishEvent: globalThis.PointerEvent) => {
+              if (dragRef.current?.pointerId !== finishEvent.pointerId) return
+              const drag = dragRef.current
+              const deltaX = drag.lastClientX - drag.clientX
+              const deltaY = drag.lastClientY - drag.clientY
+              dragRef.current = null
+              drag.element.style.translate = ""
+              if (
+                Math.hypot(deltaX, deltaY) >= 3 &&
+                Number.isFinite(drag.scale) &&
+                drag.scale > 0
+              ) {
+                onDimensionPositionChange(drag.id, {
+                  x: drag.point.x + deltaX / drag.scale,
+                  y: drag.point.y - deltaY / drag.scale,
+                })
+              }
+              cleanup()
+            }
+            dragCleanupRef.current = cleanup
+            window.addEventListener("pointermove", move)
+            window.addEventListener("pointerup", finish)
+            window.addEventListener("pointercancel", finish)
           }}
         >
           {glyph.label}
-        </Button>
+        </button>
       ))}
     </div>
   )
@@ -2373,14 +2501,25 @@ const StableConstraintAnnotations = memo(ConstraintAnnotations)
 
 function SketchDrawingAnnotations({
   configuration,
+  dimensionLabelPositions,
+  onEditDimension,
+  onDimensionPositionChange,
   sketch,
   state,
-}: Pick<SketchDrawingViewProps, "configuration" | "sketch" | "state">) {
+}: Pick<SketchDrawingViewProps, "configuration" | "sketch" | "state"> &
+  Readonly<{
+    dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
+    onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+    onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  }>) {
   return (
     <StableConstraintAnnotations
       bounds={state.bounds}
+      dimensionLabelPositions={dimensionLabelPositions}
       editDimensionLabel={configuration.editDimensionLabel}
       interactive={state.editable && isSketchSelectionTool(configuration.editorTool)}
+      onEditDimension={onEditDimension}
+      onDimensionPositionChange={onDimensionPositionChange}
       selectedConstraintId={configuration.selectedConstraintId}
       selectConstraintLabel={configuration.selectConstraintLabel}
       sketch={sketch}
@@ -4993,6 +5132,8 @@ type SketchDrawingViewProps = Readonly<{
     onCircularPatternCancel: () => void
     onCircularPatternPreview: (value: CircularSketchPatternDefinition | null) => void
     onCurveAction: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
+    onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+    onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
     onKeyDown: (event: KeyboardEvent<SVGSVGElement>) => void
     onLinearPatternApply: (value: LinearSketchPatternDefinition) => void
     onLinearPatternCancel: () => void
@@ -5014,6 +5155,11 @@ type SketchDrawingViewProps = Readonly<{
     cursor: SketchPoint2 | null
     dragTarget: SketchDragTarget | null
     draggingPointId: SketchEntityId | null
+    dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
+    dimensionPreview: Readonly<{
+      anchor: SketchPoint2
+      witnesses: readonly SketchPoint2[]
+    }> | null
     editable: boolean
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
@@ -5168,6 +5314,43 @@ function SketchCircularPatternPresentation({
           vectorEffect="non-scaling-stroke"
         />
       </g>
+    </g>
+  )
+}
+
+function SketchDimensionPlacementPreview({
+  value,
+}: Readonly<{
+  value: SketchDrawingViewProps["state"]["dimensionPreview"]
+}>) {
+  if (!value) return null
+  return (
+    <g
+      className="pointer-events-none stroke-primary"
+      data-sketch-dimension-placement-preview
+      transform="scale(1 -1)"
+    >
+      {value.witnesses.map((point, index) => (
+        <line
+          key={`${point.x}:${point.y}:${index}`}
+          x1={point.x}
+          y1={point.y}
+          x2={value.anchor.x}
+          y2={value.anchor.y}
+          opacity={0.65}
+          strokeDasharray="4 3"
+          strokeWidth={1.25}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+      <circle
+        cx={value.anchor.x}
+        cy={value.anchor.y}
+        fill="var(--color-viewport-background)"
+        r={3.5}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
     </g>
   )
 }
@@ -5343,10 +5526,18 @@ function SketchDrawingView({
           geometry={state.geometry}
           pattern={state.circularPattern}
         />
+        <SketchDimensionPlacementPreview value={state.dimensionPreview} />
         <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
         <InferenceGlyph bounds={state.bounds} inference={state.inference} />
       </svg>
-      <SketchDrawingAnnotations configuration={configuration} sketch={sketch} state={state} />
+      <SketchDrawingAnnotations
+        configuration={configuration}
+        dimensionLabelPositions={state.dimensionLabelPositions}
+        onEditDimension={handlers.onEditDimension}
+        onDimensionPositionChange={handlers.onDimensionPositionChange}
+        sketch={sketch}
+        state={state}
+      />
       <SketchMirrorInstruction
         editorTool={configuration.editorTool}
         pending={state.pending}
@@ -5554,14 +5745,6 @@ function SketchDimensionInstruction({
     )
   }, [draft, editorTool, selectedEntityIds])
 
-  useEffect(() => {
-    if (!ready) return
-    const frame = requestAnimationFrame(() => {
-      document.getElementById("sketch-dimension-expression")?.focus()
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [ready, selectedEntityIds])
-
   if (editorTool !== "dimension") return null
   return (
     <div
@@ -5569,7 +5752,7 @@ function SketchDimensionInstruction({
       data-sketch-dimension-instruction
       role="status"
     >
-      {t(ready ? "dimensionSetValue" : "dimensionSelectGeometry")}
+      {t(ready ? "dimensionPlace" : "dimensionSelectGeometry")}
     </div>
   )
 }
@@ -6116,6 +6299,399 @@ function applyMirrorAction({
   if (resolution) publish(resolution.result, resolution.keepSelectingSources)
 }
 
+type SketchDimensionEditorState =
+  | Readonly<{
+      anchor: SketchPoint2
+      entityIds: readonly SketchEntityId[]
+      initialKind: SketchDimensionKind
+      kind: "create"
+    }>
+  | Readonly<{
+      anchor: SketchPoint2
+      constraintId: SketchConstraintId
+      initialKind: SketchDimensionKind
+      kind: "edit"
+    }>
+
+type DimensionKindLabelKey =
+  | "dimensionKindAngle"
+  | "dimensionKindDiameter"
+  | "dimensionKindDistance"
+  | "dimensionKindHorizontalDistance"
+  | "dimensionKindOffset"
+  | "dimensionKindPrimaryAxisDiameter"
+  | "dimensionKindRadius"
+  | "dimensionKindSecondaryAxisDiameter"
+  | "dimensionKindVerticalDistance"
+
+function dimensionKindLabels(t: (key: DimensionKindLabelKey) => string) {
+  return {
+    angle: t("dimensionKindAngle"),
+    diameter: t("dimensionKindDiameter"),
+    distance: t("dimensionKindDistance"),
+    "horizontal-distance": t("dimensionKindHorizontalDistance"),
+    offset: t("dimensionKindOffset"),
+    "primary-axis-diameter": t("dimensionKindPrimaryAxisDiameter"),
+    radius: t("dimensionKindRadius"),
+    "secondary-axis-diameter": t("dimensionKindSecondaryAxisDiameter"),
+    "vertical-distance": t("dimensionKindVerticalDistance"),
+  } satisfies Record<SketchDimensionKind, string>
+}
+
+type SketchDimensionLabels = ReturnType<typeof dimensionKindLabels>
+
+function createSketchDimensionGeometry(
+  geometry: SketchGeometryPresentation,
+  entities: readonly SketchEntity[],
+): SketchDimensionGeometry {
+  const points = new Map(
+    [...geometry.points, ...geometry.externalPoints].map((point) => [point.id, point]),
+  )
+  return {
+    entities,
+    point: (id) => points.get(id) ?? null,
+    solvedCircleRadius: (id) => geometry.solvedCircles.get(id) ?? null,
+  }
+}
+
+function useSketchDimensionPresentation({
+  configuration,
+  cursor,
+  editor,
+  geometry,
+  sketch,
+}: Readonly<{
+  configuration: SketchDrawingConfiguration
+  cursor: SketchPoint2 | null
+  editor: SketchDimensionEditorState | null
+  geometry: SketchGeometryPresentation
+  sketch: SketchRecord
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  const selectedEntities = useMemo(
+    () =>
+      selectedSketchConstraintEntities(
+        configuration.draft ?? sketch,
+        configuration.selectedEntityIds,
+      ),
+    [configuration.draft, configuration.selectedEntityIds, sketch],
+  )
+  const dimensionGeometry = useMemo(
+    () => createSketchDimensionGeometry(geometry, selectedEntities),
+    [geometry, selectedEntities],
+  )
+  const labels = useMemo(() => dimensionKindLabels(t), [t])
+  const options = useMemo<readonly SketchDimensionOption[]>(
+    () =>
+      compatibleSketchDimensionTools(selectedEntities).flatMap((kind) => {
+        const value = sketchDimensionCanonicalValue(kind, dimensionGeometry)
+        return value === null ? [] : [{ kind, label: labels[kind], value }]
+      }),
+    [dimensionGeometry, labels, selectedEntities],
+  )
+  const preview = useMemo(() => {
+    if (configuration.editorTool !== "dimension" || options.length === 0) return null
+    const anchor = editor?.kind === "create" ? editor.anchor : cursor
+    if (!anchor) return null
+    const kind =
+      editor?.kind === "create"
+        ? editor.initialKind
+        : inferSketchDimensionKind(
+            options.map((option) => option.kind),
+            dimensionGeometry,
+            anchor,
+          )
+    return kind
+      ? { anchor, witnesses: sketchDimensionWitnessPoints(kind, dimensionGeometry) }
+      : null
+  }, [configuration.editorTool, cursor, dimensionGeometry, editor, options])
+  return { dimensionGeometry, labels, options, preview }
+}
+
+function editedDimensionConstraint(editor: SketchDimensionEditorState, sketch: SketchRecord) {
+  if (editor.kind !== "edit") return null
+  return sketch.constraints.find(({ id }) => id === editor.constraintId) ?? null
+}
+
+function dimensionEditorOptions(
+  editor: SketchDimensionEditorState,
+  constraint: SketchRecord["constraints"][number] | null,
+  labels: SketchDimensionLabels,
+  options: readonly SketchDimensionOption[],
+): readonly SketchDimensionOption[] {
+  if (editor.kind !== "edit" || !constraint || !("value" in constraint)) return options
+  return [
+    {
+      kind: editor.initialKind,
+      label: labels[editor.initialKind],
+      value: constraint.value.value,
+    },
+  ]
+}
+
+function SketchDimensionEditorOverlay({
+  bounds,
+  configuration,
+  editor,
+  labels,
+  moveLabel,
+  onClose,
+  options,
+  viewportSize,
+}: Readonly<{
+  bounds: SketchBounds
+  configuration: SketchDrawingConfiguration
+  editor: SketchDimensionEditorState
+  labels: SketchDimensionLabels
+  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onClose: () => void
+  options: readonly SketchDimensionOption[]
+  viewportSize: SketchViewportSize
+}>) {
+  const displayUnits = useDocumentDisplayUnits()
+  const draft = configuration.draft
+  if (!draft) return null
+  const editedConstraint = editedDimensionConstraint(editor, draft)
+  const editorOptions = dimensionEditorOptions(editor, editedConstraint, labels, options)
+  if (editorOptions.length === 0) return null
+  const submit = (result: SketchDimensionInlineEditorResult) => {
+    if (result.kind === "create") {
+      const nextDraft = appendSketchConstraint(
+        draft,
+        result.definition,
+        createBrowserSketchConstraintId,
+      )
+      const previousIds = new Set(draft.constraints.map(({ id }) => id))
+      const created = nextDraft.constraints.find(({ id }) => !previousIds.has(id))
+      if (created) moveLabel(created.id, editor.anchor)
+      configuration.onDraftChange(nextDraft)
+      configuration.onSelectionChange([])
+    } else if (editor.kind === "edit") {
+      configuration.onDraftChange(setSketchDimensionValue(draft, editor.constraintId, result.value))
+    }
+    onClose()
+  }
+  return (
+    <SketchDimensionInlineEditor
+      key={`${editor.kind}:${editor.kind === "edit" ? editor.constraintId : editor.entityIds.join(":")}`}
+      displayUnits={displayUnits}
+      entities={
+        editor.kind === "create" ? selectedSketchConstraintEntities(draft, editor.entityIds) : []
+      }
+      {...(editor.kind === "edit" && editedConstraint
+        ? { initialExpression: dimensionalLabel(editedConstraint) ?? "" }
+        : {})}
+      initialKind={editor.initialKind}
+      mode={editor.kind}
+      options={editorOptions}
+      position={constraintAnnotationPosition(editor.anchor, bounds, viewportSize)}
+      variables={configuration.variables}
+      onCancel={onClose}
+      onSubmit={submit}
+    />
+  )
+}
+
+function useSketchDimensionInteraction({
+  bounds,
+  configuration,
+  cursor,
+  geometry,
+  sketch,
+  svgRef,
+  viewportSize,
+}: Readonly<{
+  bounds: SketchBounds
+  configuration: SketchDrawingConfiguration
+  cursor: SketchPoint2 | null
+  geometry: SketchGeometryPresentation
+  sketch: SketchRecord
+  svgRef: RefObject<SVGSVGElement | null>
+  viewportSize: SketchViewportSize
+}>) {
+  const [editor, setEditor] = useState<SketchDimensionEditorState | null>(null)
+  const [labelPositions, setLabelPositions] = useState<
+    ReadonlyMap<SketchConstraintId, SketchPoint2>
+  >(() => new Map())
+  const { dimensionGeometry, labels, options, preview } = useSketchDimensionPresentation({
+    configuration,
+    cursor,
+    editor,
+    geometry,
+    sketch,
+  })
+  const openEditor = useCallback(
+    (constraintId: SketchConstraintId, anchor: SketchPoint2) => {
+      const constraint = (configuration.draft ?? sketch).constraints.find(
+        ({ id }) => id === constraintId,
+      )
+      if (!constraint || !("value" in constraint)) return
+      setEditor({ anchor, constraintId, initialKind: constraint.type, kind: "edit" })
+    },
+    [configuration.draft, sketch],
+  )
+  const moveLabel = useCallback((constraintId: SketchConstraintId, point: SketchPoint2) => {
+    setLabelPositions((current) => new Map(current).set(constraintId, point))
+  }, [])
+  const resetEditor = useCallback(() => setEditor(null), [])
+  const place = useCallback(
+    (anchor: SketchPoint2) => {
+      const initialKind = inferSketchDimensionKind(
+        options.map((option) => option.kind),
+        dimensionGeometry,
+        anchor,
+      )
+      if (!initialKind) return false
+      setEditor({
+        anchor,
+        entityIds: [...configuration.selectedEntityIds],
+        initialKind,
+        kind: "create",
+      })
+      return true
+    },
+    [configuration.selectedEntityIds, dimensionGeometry, options],
+  )
+  const consumeEscape = useCallback(
+    (event: KeyboardEvent<SVGSVGElement>) => {
+      if (event.key !== "Escape" || configuration.editorTool !== "dimension") return false
+      event.preventDefault()
+      if (configuration.selectedEntityIds.length > 0) {
+        setEditor(null)
+        configuration.onSelectionChange([])
+      } else {
+        configuration.onEditorToolChange("select")
+      }
+      return true
+    },
+    [
+      configuration.editorTool,
+      configuration.onEditorToolChange,
+      configuration.onSelectionChange,
+      configuration.selectedEntityIds,
+    ],
+  )
+  const closeEditor = useCallback(() => {
+    setEditor(null)
+    requestAnimationFrame(() => svgRef.current?.focus())
+  }, [svgRef])
+  const overlay = editor ? (
+    <SketchDimensionEditorOverlay
+      bounds={bounds}
+      configuration={configuration}
+      editor={editor}
+      labels={labels}
+      moveLabel={moveLabel}
+      onClose={closeEditor}
+      options={options}
+      viewportSize={viewportSize}
+    />
+  ) : null
+  return {
+    consumeEscape,
+    labelPositions,
+    moveLabel,
+    openEditor,
+    options,
+    overlay,
+    place,
+    preview,
+    resetEditor,
+  }
+}
+
+function consumeDimensionCanvasPointerDown({
+  editorTool,
+  event,
+  eventPoint,
+  hasOptions,
+  place,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  event: PointerEvent<SVGSVGElement>
+  eventPoint: (event: PointerEvent<SVGElement>) => SketchPoint2 | null
+  hasOptions: boolean
+  place: (anchor: SketchPoint2) => boolean
+}>) {
+  if (
+    editorTool !== "dimension" ||
+    !hasOptions ||
+    event.button !== 0 ||
+    event.target !== event.currentTarget
+  ) {
+    return false
+  }
+  const anchor = eventPoint(event)
+  if (anchor && place(anchor)) event.preventDefault()
+  return true
+}
+
+function applySketchCurveAction({
+  circularPatternSelect,
+  draft,
+  editorTool,
+  entityId,
+  event,
+  eventPoint,
+  linearPatternSelect,
+  mirror,
+  offset,
+  publish,
+  splitCircle,
+  splitEllipse,
+  transformSelect,
+}: Readonly<{
+  circularPatternSelect: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  entityId: SketchEntityId
+  event: PointerEvent<SVGElement>
+  eventPoint: (event: PointerEvent<SVGElement>) => SketchPoint2 | null
+  linearPatternSelect: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
+  mirror: (entityId: SketchEntityId) => void
+  offset: (entityId: SketchEntityId) => void
+  publish: (draft: SketchRecord) => void
+  splitCircle: (entity: Extract<SketchEntity, { type: "circle" }>, point: SketchPoint2) => void
+  splitEllipse: (entity: Extract<SketchEntity, { type: "ellipse" }>, point: SketchPoint2) => void
+  transformSelect: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
+}>) {
+  if (!draft) return
+  const entity = draft.entities.find(({ id }) => id === entityId)
+  const actionKind = sketchCurveActionKind(editorTool, entity)
+  if (!actionKind) return
+  const actions = {
+    "circular-pattern": () => circularPatternSelect(event, entityId),
+    "linear-pattern": () => linearPatternSelect(event, entityId),
+    mirror: () => mirror(entityId),
+    offset: () => offset(entityId),
+    transform: () => transformSelect(event, entityId),
+    "split-circle": () => {
+      const point = eventPoint(event)
+      if (point && entity?.type === "circle") splitCircle(entity, point)
+    },
+    "split-ellipse": () => {
+      const point = eventPoint(event)
+      if (point && entity?.type === "ellipse") splitEllipse(entity, point)
+    },
+    direct: () => {
+      const point = eventPoint(event)
+      if (!point || !isDirectSketchModificationTool(editorTool)) return
+      const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
+      if (nextDraft) publish(nextDraft)
+    },
+  } satisfies Record<SketchCurveActionKind, () => void>
+  actions[actionKind]()
+}
+
+function useSketchCanvasViewport(geometry: SketchGeometryPresentation) {
+  const [bounds, setBounds] = useState(() =>
+    sketchBounds([...geometry.points, ...geometry.externalPoints]),
+  )
+  const svgRef = useRef<SVGSVGElement>(null)
+  const viewportSize = useSketchViewportSize(svgRef)
+  return { bounds, setBounds, svgRef, viewportSize }
+}
+
 function SketchDrawing({
   configuration,
   sketch,
@@ -6141,14 +6717,20 @@ function SketchDrawing({
     () => createSketchGeometryPresentation(sketch, solution),
     [sketch, solution],
   )
-  const [bounds, setBounds] = useState(() =>
-    sketchBounds([...geometry.points, ...geometry.externalPoints]),
-  )
+  const { bounds, setBounds, svgRef, viewportSize } = useSketchCanvasViewport(geometry)
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
-  const svgRef = useRef<SVGSVGElement>(null)
-  const viewportSize = useSketchViewportSize(svgRef)
+  const dimensions = useSketchDimensionInteraction({
+    bounds,
+    configuration,
+    cursor,
+    geometry,
+    sketch,
+    svgRef,
+    viewportSize,
+  })
+  const resetDimensionEditor = dimensions.resetEditor
   const editable = draft !== null
   const { circularPattern, linearPattern, transform } = useSketchModificationInteractions({
     bounds,
@@ -6195,7 +6777,6 @@ function SketchDrawing({
         : configuration.releasedDragTarget,
     [configuration.releasedDragTarget, cursor, draggingPointId],
   )
-
   const eventPoint = (event: PointerEvent<SVGElement>) => {
     const svg = svgRef.current
     return svg ? pointerToSketchPoint(event, svg.getBoundingClientRect(), bounds) : null
@@ -6255,6 +6836,7 @@ function SketchDrawing({
     if (transform.consumeKeyDown(event)) return
     if (circularPattern.consumeKeyDown(event)) return
     if (linearPattern.consumeKeyDown(event)) return
+    if (dimensions.consumeEscape(event)) return
     handleSketchKeyDown({
       appendAt,
       cursor,
@@ -6276,6 +6858,16 @@ function SketchDrawing({
     if (transform.consumeCanvasPointerDown(event)) return
     if (circularPattern.consumeCanvasPointerDown(event)) return
     if (linearPattern.consumeCanvasPointerDown(event)) return
+    if (
+      consumeDimensionCanvasPointerDown({
+        editorTool,
+        event,
+        eventPoint,
+        hasOptions: dimensions.options.length > 0,
+        place: dimensions.place,
+      })
+    )
+      return
     const offsetDraft = offsetDraftFromCanvasPointer({
       draft,
       editorTool,
@@ -6346,32 +6938,21 @@ function SketchDrawing({
     setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
   }
   const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
-    if (!draft) return
-    const entity = draft.entities.find(({ id }) => id === entityId)
-    const actionKind = sketchCurveActionKind(editorTool, entity)
-    if (!actionKind) return
-    const actions = {
-      "circular-pattern": () => circularPattern.selectEntity(event, entityId),
-      "linear-pattern": () => linearPattern.selectEntity(event, entityId),
-      mirror: () => handleMirrorAction(entityId),
-      offset: () => handleOffsetSourceAction(entityId),
-      transform: () => transform.selectEntity(event, entityId),
-      "split-circle": () => {
-        const point = eventPoint(event)
-        if (point && entity?.type === "circle") splitCircle(entity, point)
-      },
-      "split-ellipse": () => {
-        const point = eventPoint(event)
-        if (point && entity?.type === "ellipse") splitEllipse(entity, point)
-      },
-      direct: () => {
-        const point = eventPoint(event)
-        if (!point || !isDirectSketchModificationTool(editorTool)) return
-        const nextDraft = safeSketchModificationUpdate(editorTool, draft, entityId, point)
-        if (nextDraft) publishModificationDraft(nextDraft)
-      },
-    } satisfies Record<SketchCurveActionKind, () => void>
-    actions[actionKind]()
+    applySketchCurveAction({
+      circularPatternSelect: circularPattern.selectEntity,
+      draft,
+      editorTool,
+      entityId,
+      event,
+      eventPoint,
+      linearPatternSelect: linearPattern.selectEntity,
+      mirror: handleMirrorAction,
+      offset: handleOffsetSourceAction,
+      publish: publishModificationDraft,
+      splitCircle,
+      splitEllipse,
+      transformSelect: transform.selectEntity,
+    })
   }
   const handlePointerUp = (event: PointerEvent<SVGSVGElement>) => {
     if (transform.consumePointerUp(event)) return
@@ -6396,13 +6977,14 @@ function SketchDrawing({
   )
   const handleSelection = useCallback(
     (entityId: SketchEntityId, additive: boolean) => {
+      resetDimensionEditor()
       onSelectionChange(
         editorTool === "dimension" && draft && !additive
           ? nextSketchDimensionSelection(draft, selectedEntityIds, entityId)
           : toggleSelection(selectedEntityIds, entityId, additive),
       )
     },
-    [draft, editorTool, onSelectionChange, selectedEntityIds],
+    [draft, editorTool, onSelectionChange, resetDimensionEditor, selectedEntityIds],
   )
   return (
     <>
@@ -6420,6 +7002,8 @@ function SketchDrawing({
           onCircularPatternCancel: circularPattern.cancel,
           onCircularPatternPreview: circularPattern.preview,
           onCurveAction: handleCurveAction,
+          onDimensionPositionChange: dimensions.moveLabel,
+          onEditDimension: dimensions.openEditor,
           onKeyDown: handleKeyDown,
           onLinearPatternApply: linearPattern.apply,
           onLinearPatternCancel: linearPattern.cancel,
@@ -6442,6 +7026,8 @@ function SketchDrawing({
           cursor,
           dragTarget,
           draggingPointId,
+          dimensionLabelPositions: dimensions.labelPositions,
+          dimensionPreview: dimensions.preview,
           editable,
           geometry,
           inference,
@@ -6452,6 +7038,7 @@ function SketchDrawing({
         }}
         svgRef={svgRef}
       />
+      {dimensions.overlay}
     </>
   )
 }
@@ -6691,11 +7278,13 @@ function SketchPrecisionToolbar({
   draft,
   editorTool,
   onDraftChange,
+  onEditorToolChange,
   selectedEntityIds,
 }: Readonly<{
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
   selectedEntityIds: readonly SketchEntityId[]
 }>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
@@ -6758,9 +7347,8 @@ function SketchPrecisionToolbar({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-controls="sketch-dimension-expression"
               aria-label={viewportT("dimensionTool")}
-              onClick={() => document.getElementById("sketch-dimension-expression")?.focus()}
+              onClick={() => onEditorToolChange("dimension")}
             >
               <Ruler aria-hidden="true" />
             </Button>
@@ -7146,6 +7734,7 @@ export function SketchViewport({
           editorTool={editorTool}
           selectedEntityIds={selectedEntityIds}
           onDraftChange={onDraftChange}
+          onEditorToolChange={onEditorToolChange}
         />
       </div>
       <div className="absolute bottom-3 right-3">

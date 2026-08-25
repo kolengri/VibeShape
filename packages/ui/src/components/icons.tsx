@@ -1,6 +1,7 @@
 export {
   ArrowUpRight,
   Box,
+  Check,
   ChevronDown,
   Circle,
   CircleDashed,
