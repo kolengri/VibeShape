@@ -303,6 +303,81 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
+  test("chooses one overlapping earlier-sketch line graphically", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const drawingBounds = await drawing.boundingBox()
+    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    const start = {
+      x: drawingBounds.x + drawingBounds.width * 0.42,
+      y: drawingBounds.y + drawingBounds.height * 0.5,
+    }
+    const end = {
+      x: drawingBounds.x + drawingBounds.width * 0.64,
+      y: drawingBounds.y + drawingBounds.height * 0.5,
+    }
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(start.x, start.y)
+    await page.mouse.click(end.x, end.y)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(start.x, start.y)
+    await page.mouse.click(end.x, end.y)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const availableLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(availableLines).toHaveCount(2)
+    const overlapPoint = await availableLines
+      .last()
+      .locator("line.stroke-transparent")
+      .evaluate((element) => {
+        const line = element as unknown as {
+          getAttribute(name: string): string | null
+          getScreenCTM(): {
+            a: number
+            b: number
+            c: number
+            d: number
+            e: number
+            f: number
+          } | null
+        }
+        const matrix = line.getScreenCTM()
+        if (!matrix) throw new Error("The overlapping line requires a screen transform.")
+        const x = (Number(line.getAttribute("x1")) + Number(line.getAttribute("x2"))) / 2
+        const y = (Number(line.getAttribute("y1")) + Number(line.getAttribute("y2"))) / 2
+        return {
+          x: matrix.a * x + matrix.c * y + matrix.e,
+          y: matrix.b * x + matrix.d * y + matrix.f,
+        }
+      })
+    await page.mouse.click(overlapPoint.x, overlapPoint.y)
+
+    const chooser = page.getByRole("dialog", { name: "Choose overlapping geometry" })
+    await expect(chooser).toBeVisible()
+    await expect(chooser.getByRole("button")).toHaveCount(2)
+    await chooser.getByRole("button", { name: /Sketch 1 · Line 1/ }).click()
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await expect(chooser).toHaveCount(0)
+  })
+
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

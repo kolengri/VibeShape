@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import {
   appendSketchArc,
   appendSketchCircle,
@@ -627,6 +627,91 @@ describe("SketchViewport", () => {
         ],
       }),
     )
+  })
+
+  it("chooses a specific source when external geometry overlaps", () => {
+    const firstSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3260")
+    const secondSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3261")
+    const firstSourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3262")
+    const secondSourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3263")
+    const target = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3264"),
+      entities: [],
+      constraints: [],
+    }
+    const firstCandidate = {
+      kind: "point" as const,
+      label: "Layout A · Point 1",
+      sourceSketchId: firstSourceSketchId,
+      sourcePointId: firstSourcePointId,
+      world: [5, 6, 0] as const,
+      x: 5,
+      y: 6,
+    }
+    const secondCandidate = {
+      ...firstCandidate,
+      label: "Layout B · Point 1",
+      sourceSketchId: secondSourceSketchId,
+      sourcePointId: secondSourcePointId,
+    }
+    const thirdCandidate = {
+      ...firstCandidate,
+      label: "Layout C · Point 1",
+      sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3265"),
+      sourcePointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3266"),
+      x: 20,
+      y: 20,
+      world: [20, 20, 0] as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      externalPointCandidates: [firstCandidate, secondCandidate, thirdCandidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, firstCandidate)
+
+    const primaryChoiceTrigger = screen.getByRole("button", { name: firstCandidate.label })
+    fireEvent.pointerDown(primaryChoiceTrigger, pointer)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    const chooser = screen.getByRole("dialog", { name: "Choose overlapping geometry" })
+    const choices = within(chooser).getAllByRole("button")
+    expect(choices.map(({ textContent }) => textContent)).toEqual([
+      firstCandidate.label,
+      secondCandidate.label,
+    ])
+
+    fireEvent.keyDown(document, { key: "Escape" })
+
+    expect(screen.queryByRole("dialog", { name: "Choose overlapping geometry" })).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(primaryChoiceTrigger, pointer)
+    fireEvent.pointerDown(screen.getByRole("button", { name: thirdCandidate.label }))
+
+    expect(screen.queryByRole("dialog", { name: "Choose overlapping geometry" })).toBeNull()
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(primaryChoiceTrigger, pointer)
+    const reopenedChooser = screen.getByRole("dialog", { name: "Choose overlapping geometry" })
+
+    fireEvent.click(within(reopenedChooser).getByRole("button", { name: secondCandidate.label }))
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(updated.externalReferences).toEqual([
+      expect.objectContaining({
+        sourcePointId: secondSourcePointId,
+        sourceSketchId: secondSourceSketchId,
+      }),
+    ])
   })
 
   it("uses an earlier sketch line directly from the drawing", () => {
