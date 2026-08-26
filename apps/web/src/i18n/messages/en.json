@@ -787,6 +787,7 @@
         "emptyDraft": "Empty sketch",
         "emptyDraftHint": "Choose a geometry tool from the toolbar to begin.",
         "earlierSketchContext": "Earlier sketch context",
+        "externalInferenceSource": "External inference · {label}",
         "preview": "Unsaved preview",
         "previewDrawing": "Unsaved rectangular sketch preview",
         "draftDrawing": "Editable sketch geometry",

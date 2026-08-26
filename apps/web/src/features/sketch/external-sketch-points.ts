@@ -42,8 +42,10 @@ export type ExternalSketchPointCandidate = Readonly<{
 export type ExternalSketchLineCandidate = Readonly<{
   kind: "line"
   label: string
+  sourceEndPointId: SketchEntityId
   sourceLineId: SketchEntityId
   sourceSketchId: SketchRecord["id"]
+  sourceStartPointId: SketchEntityId
   start: ProjectedSketchPoint
   end: ProjectedSketchPoint
 }>
@@ -127,53 +129,181 @@ export function applyExternalSketchCandidate(
   candidate: ExternalSketchGeometryCandidate,
   selectedEntityIds: readonly SketchEntityId[],
 ): SketchRecord {
+  const materialized = materializeExternalSketchCandidate(draft, candidate)
+  return materialized.kind === "point"
+    ? attachExternalProjectedPoint(
+        materialized.sketch,
+        materialized.projectedPointId,
+        selectedEntityIds,
+      )
+    : materialized.sketch
+}
+
+export type MaterializedExternalSketchCandidate =
+  | Readonly<{
+      kind: "point"
+      projectedPointId: SketchEntityId
+      sketch: SketchRecord
+    }>
+  | Readonly<{
+      kind: "line"
+      projectedEndPointId: SketchEntityId
+      projectedLineId: SketchEntityId
+      projectedStartPointId: SketchEntityId
+      sketch: SketchRecord
+    }>
+  | Readonly<{
+      kind: "curve"
+      projectedEntityId: SketchEntityId
+      projectedPointIds: readonly SketchEntityId[]
+      sketch: SketchRecord
+    }>
+
+function existingLineMaterialization(
+  draft: SketchRecord,
+  candidate: ExternalSketchLineCandidate,
+): MaterializedExternalSketchCandidate | null {
   const references = draft.externalReferences ?? []
-  if (references.some((reference) => externalReferenceMatchesCandidate(reference, candidate))) {
-    return draft
+  const existing = references.find(
+    (reference) =>
+      !isSketchExternalModelReference(reference) &&
+      reference.kind === "line" &&
+      reference.sourceSketchId === candidate.sourceSketchId &&
+      reference.sourceLineId === candidate.sourceLineId,
+  )
+  if (!existing || isSketchExternalModelReference(existing) || existing.kind !== "line") {
+    return null
   }
+  return {
+    kind: "line",
+    projectedEndPointId: existing.projectedEndPointId,
+    projectedLineId: existing.projectedLineId,
+    projectedStartPointId: existing.projectedStartPointId,
+    sketch: draft,
+  }
+}
+
+function existingCurveMaterialization(
+  draft: SketchRecord,
+  candidate: Extract<ExternalSketchGeometryCandidate, { kind: "curve" }>,
+): MaterializedExternalSketchCandidate | null {
+  const references = draft.externalReferences ?? []
+  const existing = references.find(
+    (reference) =>
+      !isSketchExternalModelReference(reference) &&
+      reference.kind === "curve" &&
+      reference.sourceSketchId === candidate.sourceSketchId &&
+      reference.sourceEntityId === candidate.sourceEntityId,
+  )
+  if (!existing || isSketchExternalModelReference(existing) || existing.kind !== "curve") {
+    return null
+  }
+  return {
+    kind: "curve",
+    projectedEntityId: existing.projectedEntityId,
+    projectedPointIds: existing.projectedPointIds,
+    sketch: draft,
+  }
+}
+
+function existingPointMaterialization(
+  draft: SketchRecord,
+  candidate: ExternalSketchPointCandidate,
+): MaterializedExternalSketchCandidate | null {
+  const references = draft.externalReferences ?? []
+  const existing = references.find(
+    (reference) =>
+      !isSketchExternalModelReference(reference) &&
+      reference.kind !== "line" &&
+      reference.kind !== "curve" &&
+      reference.sourceSketchId === candidate.sourceSketchId &&
+      reference.sourcePointId === candidate.sourcePointId,
+  )
+  return existing &&
+    !isSketchExternalModelReference(existing) &&
+    existing.kind !== "line" &&
+    existing.kind !== "curve"
+    ? { kind: "point", projectedPointId: existing.projectedPointId, sketch: draft }
+    : null
+}
+
+function existingMaterialization(
+  draft: SketchRecord,
+  candidate: ExternalSketchGeometryCandidate,
+): MaterializedExternalSketchCandidate | null {
+  if (candidate.kind === "line") return existingLineMaterialization(draft, candidate)
+  if (candidate.kind === "curve") return existingCurveMaterialization(draft, candidate)
+  return existingPointMaterialization(draft, candidate)
+}
+
+export function materializeExternalSketchCandidate(
+  draft: SketchRecord,
+  candidate: ExternalSketchGeometryCandidate,
+): MaterializedExternalSketchCandidate {
+  const existing = existingMaterialization(draft, candidate)
+  if (existing) return existing
+  const references = draft.externalReferences ?? []
   if (candidate.kind === "line") {
+    const projectedEndPointId = createBrowserSketchEntityId()
+    const projectedLineId = createBrowserSketchEntityId()
+    const projectedStartPointId = createBrowserSketchEntityId()
     return {
-      ...draft,
-      externalReferences: [
-        ...references,
-        {
-          schemaVersion: 0,
-          id: createBrowserSketchExternalReferenceId(),
-          kind: "line",
-          sourceSketchId: candidate.sourceSketchId,
-          sourceLineId: candidate.sourceLineId,
-          projectedLineId: createBrowserSketchEntityId(),
-          projectedStartPointId: createBrowserSketchEntityId(),
-          projectedEndPointId: createBrowserSketchEntityId(),
-        },
-      ],
+      kind: "line",
+      projectedEndPointId,
+      projectedLineId,
+      projectedStartPointId,
+      sketch: {
+        ...draft,
+        externalReferences: [
+          ...references,
+          {
+            schemaVersion: 0,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "line",
+            sourceSketchId: candidate.sourceSketchId,
+            sourceLineId: candidate.sourceLineId,
+            projectedLineId,
+            projectedStartPointId,
+            projectedEndPointId,
+          },
+        ],
+      },
     }
   }
   if (candidate.kind === "curve") {
+    const projectedEntityId = createBrowserSketchEntityId()
+    const projectedPointIds = Array.from(
+      { length: projectedExternalCurvePointCount(candidate.projectedType) },
+      () => createBrowserSketchEntityId(),
+    )
     return {
-      ...draft,
-      externalReferences: [
-        ...references,
-        {
-          schemaVersion: 0,
-          id: createBrowserSketchExternalReferenceId(),
-          kind: "curve",
-          sourceSketchId: candidate.sourceSketchId,
-          sourceEntityId: candidate.sourceEntityId,
-          sourceType: candidate.sourceType,
-          projectedEntityId: createBrowserSketchEntityId(),
-          projectedType: candidate.projectedType,
-          projectedPointIds: Array.from(
-            { length: projectedExternalCurvePointCount(candidate.projectedType) },
-            () => createBrowserSketchEntityId(),
-          ),
-        },
-      ],
+      kind: "curve",
+      projectedEntityId,
+      projectedPointIds,
+      sketch: {
+        ...draft,
+        externalReferences: [
+          ...references,
+          {
+            schemaVersion: 0,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "curve",
+            sourceSketchId: candidate.sourceSketchId,
+            sourceEntityId: candidate.sourceEntityId,
+            sourceType: candidate.sourceType,
+            projectedEntityId,
+            projectedType: candidate.projectedType,
+            projectedPointIds,
+          },
+        ],
+      },
     }
   }
   const projectedPointId = createBrowserSketchEntityId()
-  return attachExternalProjectedPoint(
-    {
+  return {
+    kind: "point",
+    projectedPointId,
+    sketch: {
       ...draft,
       externalReferences: [
         ...references,
@@ -187,9 +317,7 @@ export function applyExternalSketchCandidate(
         },
       ],
     },
-    projectedPointId,
-    selectedEntityIds,
-  )
+  }
 }
 
 export function externalSketchGeometryCandidates(
@@ -394,8 +522,10 @@ function projectedLineContext(
   return {
     kind: "line",
     label,
+    sourceEndPointId: entity.endPointId,
     sourceLineId: entity.id,
     sourceSketchId: source.id,
+    sourceStartPointId: entity.startPointId,
     start: { world: start.world, ...start.local },
     end: { world: end.world, ...end.local },
   }

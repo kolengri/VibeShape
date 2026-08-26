@@ -240,6 +240,69 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
+  test("wakes an earlier sketch line while placing geometry without activating Use", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const drawingBounds = await drawing.boundingBox()
+    if (!drawingBounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(
+      drawingBounds.x + drawingBounds.width * 0.42,
+      drawingBounds.y + drawingBounds.height * 0.5,
+    )
+    await page.mouse.click(
+      drawingBounds.x + drawingBounds.width * 0.64,
+      drawingBounds.y + drawingBounds.height * 0.5,
+    )
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    const contextLine = drawing.locator("[data-sketch-context-geometry-count] line").first()
+    await expect(contextLine).toHaveCount(1)
+    const wakeupPoint = await contextLine.evaluate((element) => {
+      const line = element as unknown as {
+        getAttribute(name: string): string | null
+        getScreenCTM(): { a: number; b: number; c: number; d: number; e: number; f: number } | null
+      }
+      const matrix = line.getScreenCTM()
+      if (!matrix) throw new Error("The earlier sketch line requires a screen transform.")
+      const x = Number(line.getAttribute("x1")) * 0.7 + Number(line.getAttribute("x2")) * 0.3
+      const y = Number(line.getAttribute("y1")) * 0.7 + Number(line.getAttribute("y2")) * 0.3
+      return {
+        x: matrix.a * x + matrix.c * y + matrix.e,
+        y: matrix.b * x + matrix.d * y + matrix.f,
+      }
+    })
+
+    await page.mouse.move(wakeupPoint.x, wakeupPoint.y)
+
+    await expect(drawing.locator('[data-sketch-inference="point-on-line"]')).toBeVisible()
+    await expect(page.locator("[data-sketch-external-inference-label]")).toContainText(
+      "Sketch 1 · Line",
+    )
+    await expect(drawing.locator("[data-sketch-external-inference-source]")).toHaveAttribute(
+      "data-sketch-external-inference-source",
+      /Sketch 1 · Line/,
+    )
+
+    await page.mouse.click(wakeupPoint.x, wakeupPoint.y)
+
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
+  })
+
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

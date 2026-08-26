@@ -18,6 +18,7 @@ import {
   sketchEntityIdSchema,
   sketchExternalReferenceIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -642,6 +643,8 @@ describe("SketchViewport", () => {
           label: "Source sketch · Line",
           sourceSketchId: sketch.id,
           sourceLineId: sourceLine.id,
+          sourceStartPointId: sourceLine.startPointId,
+          sourceEndPointId: sourceLine.endPointId,
           start: { world: [0, 0, 0], x: 0, y: 0 },
           end: { world: [20, 0, 0], x: 20, y: 0 },
         },
@@ -666,6 +669,291 @@ describe("SketchViewport", () => {
             sourceLineId: sourceLine.id,
           }),
         ],
+      }),
+    )
+  })
+
+  it("wakes an earlier sketch point and commits one associative coincidence", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3232")
+    const collidingSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3231")
+    const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3233")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3234"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "point" as const,
+      label: "Layout · Point 1",
+      sourceSketchId,
+      sourcePointId,
+      world: [5, 6, 0] as const,
+      x: 5,
+      y: 6,
+    }
+    const collidingCandidate = {
+      ...candidate,
+      label: "Other layout · Point 1",
+      sourceSketchId: collidingSourceSketchId,
+      world: [50, 60, 0] as const,
+      x: 50,
+      y: 60,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate, collidingCandidate],
+      externalPointCandidates: [candidate, collidingCandidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, candidate)
+
+    fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-sketch-inference]")).toBeNull()
+    expect(document.querySelector("[data-sketch-external-inference-label]")).toBeNull()
+
+    fireEvent.pointerMove(drawing, pointer)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Point 1"]'),
+    ).toBeTruthy()
+    expect(document.querySelector("[data-sketch-external-inference-label]")?.textContent).toBe(
+      "External inference · Layout · Point 1",
+    )
+
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference?.kind).toBe("point")
+    if (reference?.kind !== "point" || !localPoint) {
+      throw new Error("Wake-up must create one point reference and one local point.")
+    }
+    expect(reference.sourceSketchId).toBe(sourceSketchId)
+    expect(localPoint.id).not.toBe(reference.projectedPointId)
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: localPoint.id,
+        secondPointId: reference.projectedPointId,
+      }),
+    )
+  })
+
+  it("wakes an earlier sketch line and commits one associative point-on-line relation", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3235")
+    const collidingSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3230")
+    const sourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3236")
+    const sourceStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3237")
+    const sourceEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3238")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3239"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "line" as const,
+      label: "Layout · Line 1",
+      sourceSketchId,
+      sourceLineId,
+      sourceStartPointId,
+      sourceEndPointId,
+      start: { world: [0, 4, 0] as const, x: 0, y: 4 },
+      end: { world: [20, 4, 0] as const, x: 20, y: 4 },
+    }
+    const collidingCandidate = {
+      ...candidate,
+      label: "Other layout · Line 1",
+      sourceSketchId: collidingSourceSketchId,
+      start: { world: [0, 40, 0] as const, x: 0, y: 40 },
+      end: { world: [20, 40, 0] as const, x: 20, y: 40 },
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate, collidingCandidate],
+      externalPointCandidates: [candidate, collidingCandidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 4, y: 4 })
+
+    fireEvent.pointerMove(drawing, pointer)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-inference="point-on-line"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Line 1"]'),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference?.kind).toBe("line")
+    if (reference?.kind !== "line" || !localPoint) {
+      throw new Error("Wake-up must create one line reference and one local point.")
+    }
+    expect(reference.sourceSketchId).toBe(sourceSketchId)
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-line",
+        pointId: localPoint.id,
+        lineId: reference.projectedLineId,
+      }),
+    )
+  })
+
+  it("materializes both source sketches when colliding line IDs wake an intersection", () => {
+    const firstSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3250")
+    const secondSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3251")
+    const sharedSourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3252")
+    const firstEndpointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3253")
+    const secondEndpointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3254")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3255"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const horizontal = {
+      kind: "line" as const,
+      label: "Horizontal layout · Line 1",
+      sourceSketchId: firstSourceSketchId,
+      sourceLineId: sharedSourceLineId,
+      sourceStartPointId: firstEndpointId,
+      sourceEndPointId: secondEndpointId,
+      start: { world: [0, 5, 0] as const, x: 0, y: 5 },
+      end: { world: [10, 5, 0] as const, x: 10, y: 5 },
+    }
+    const vertical = {
+      ...horizontal,
+      label: "Vertical layout · Line 1",
+      sourceSketchId: secondSourceSketchId,
+      start: { world: [5, 0, 0] as const, x: 5, y: 0 },
+      end: { world: [5, 10, 0] as const, x: 5, y: 10 },
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [horizontal, vertical],
+      externalPointCandidates: [horizontal, vertical],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const intersection = clientPointForSketch(drawing, { x: 5, y: 5 })
+
+    fireEvent.pointerMove(drawing, intersection)
+
+    expect(document.querySelector('[data-sketch-inference="intersection"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, intersection)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const references = updated.externalReferences?.filter((reference) => reference.kind === "line")
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(references).toHaveLength(2)
+    expect(new Set(references?.map(({ sourceSketchId }) => sourceSketchId))).toEqual(
+      new Set([firstSourceSketchId, secondSourceSketchId]),
+    )
+    if (!localPoint || !references) {
+      throw new Error("Intersection wake-up must create one local point and two references.")
+    }
+    expect(
+      updated.constraints.filter(
+        (constraint) => constraint.type === "point-on-line" && constraint.pointId === localPoint.id,
+      ),
+    ).toEqual(
+      expect.arrayContaining(
+        references.map((reference) =>
+          expect.objectContaining({ lineId: reference.projectedLineId }),
+        ),
+      ),
+    )
+  })
+
+  it("defers point wake-up materialization until a line placement commits", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3240")
+    const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3241")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3242"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "point" as const,
+      label: "Layout · Endpoint",
+      sourceSketchId,
+      sourcePointId,
+      world: [5, 6, 0] as const,
+      x: 5,
+      y: 6,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "line",
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const start = clientPointForSketch(drawing, candidate)
+
+    fireEvent.pointerMove(drawing, start)
+    fireEvent.pointerDown(drawing, start)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy()
+
+    const end = clientPointForSketch(drawing, { x: 18, y: 14 })
+    fireEvent.pointerMove(drawing, end)
+    fireEvent.pointerDown(drawing, end)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const line = updated.entities.find((entity) => entity.type === "line")
+    expect(reference?.kind).toBe("point")
+    if (reference?.kind !== "point" || !line) {
+      throw new Error("Committed line must retain its woken external endpoint.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: line.startPointId,
+        secondPointId: reference.projectedPointId,
       }),
     )
   })
