@@ -3,10 +3,14 @@ import {
   commandActorsEqual,
   type DocumentEvent,
   type DocumentId,
+  type DocumentMigrationDiagnostic,
   type DocumentSnapshot,
+  type DocumentSnapshotV1,
   documentEventSchema,
   documentIdSchema,
   documentSnapshotSchema,
+  type MigrationProvenance,
+  migrateDocumentSnapshot,
   reduceDocumentEvent,
   sessionIdSchema,
 } from "@vibeshape/domain"
@@ -70,6 +74,15 @@ export interface RecoveryReport {
   corruptRecords: string[]
 }
 
+export interface MigratedRecoveryReport extends Omit<RecoveryReport, "snapshot"> {
+  snapshot: DocumentSnapshotV1
+  migration: {
+    provenance: MigrationProvenance
+    diagnostic: DocumentMigrationDiagnostic | null
+    unavailableRecords: readonly string[]
+  }
+}
+
 export interface PortableProject {
   snapshot: DocumentSnapshot
   events: readonly DocumentEvent[]
@@ -91,6 +104,7 @@ export interface ProjectDeleteReport {
 
 const MAX_LOCAL_PROJECTS = 4_096
 const MAX_LOCAL_PROJECT_THUMBNAIL_BYTES = 16 * 1024 * 1024
+const MAX_LEGACY_HISTORY_EVENTS = 100_000
 
 export interface ProjectThumbnailWriteReport {
   documentId: DocumentId
@@ -456,7 +470,11 @@ function snapshotMetadataMatches(record: SnapshotRecord, snapshot: DocumentSnaps
 }
 
 function eventMetadataMatches(record: EventRecord, event: DocumentEvent) {
-  return [event.documentId === record.documentId, event.revision === record.revision].every(Boolean)
+  return [
+    event.documentId === record.documentId,
+    event.revision === record.revision,
+    event.commandId === record.commandId,
+  ].every(Boolean)
 }
 
 async function validStoredEvent(record: EventRecord) {
@@ -539,6 +557,43 @@ async function recoverDocumentSnapshot(database: VibeShapeDatabase, project: Pro
     throw persistenceInvariantError("corrupt-history", "No valid document revision remains.")
   }
   return { snapshot, corruptRecords: valid.corruptRecords }
+}
+
+async function completeStoredEventPrefix(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  throughRevision: number,
+) {
+  if (throughRevision < 1 || throughRevision > MAX_LEGACY_HISTORY_EVENTS)
+    return { events: null, unavailableRecords: ["event-prefix:limit"] } as const
+  const records = await database.events
+    .where("[documentId+revision]")
+    .between([documentId, 1], [documentId, throughRevision], true, true)
+    .sortBy("revision")
+  const events: DocumentEvent[] = []
+  for (let revision = 1; revision <= throughRevision; revision += 1) {
+    const record = records[revision - 1]
+    if (!record || record.revision !== revision)
+      return { events: null, unavailableRecords: [`event:${revision}`] } as const
+    const event = await validStoredEvent(record)
+    if (!event) return { events: null, unavailableRecords: [`event:${revision}`] } as const
+    events.push(event)
+  }
+  return { events, unavailableRecords: [] } as const
+}
+
+async function migrateRecoveredSnapshot(database: VibeShapeDatabase, snapshot: DocumentSnapshot) {
+  const prefix = await completeStoredEventPrefix(database, snapshot.id, snapshot.revision)
+  const migrated = migrateDocumentSnapshot(snapshot, prefix.events ?? [])
+  if (!migrated.ok) throw persistenceInvariantError("corrupt-history", migrated.diagnostic.message)
+  return {
+    snapshot: migrated.snapshot,
+    migration: {
+      provenance: migrated.provenance,
+      diagnostic: migrated.diagnostic ?? null,
+      unavailableRecords: prefix.unavailableRecords,
+    },
+  }
 }
 
 function semanticWriteTransaction(database: VibeShapeDatabase, operation: () => Promise<void>) {
@@ -770,6 +825,26 @@ export class LocalDocumentRepository {
           recoveredRevision: recovered.snapshot.revision,
           lostRevisionCount,
           corruptRecords: recovered.corruptRecords,
+        },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  async recoverMigrated(
+    documentIdInput: unknown,
+  ): Promise<PersistenceResult<MigratedRecoveryReport>> {
+    const recovered = await this.recover(documentIdInput)
+    if (!recovered.ok) return recovered
+    try {
+      const migrated = await migrateRecoveredSnapshot(this.database, recovered.value.snapshot)
+      return {
+        ok: true,
+        value: {
+          ...recovered.value,
+          snapshot: migrated.snapshot,
+          migration: migrated.migration,
         },
       }
     } catch (error) {

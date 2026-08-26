@@ -1,4 +1,4 @@
-import { applyDocumentCommand, type DocumentSnapshot } from "@vibeshape/domain"
+import { applyDocumentCommand, canonicalJson, type DocumentSnapshot } from "@vibeshape/domain"
 import {
   acquireDocumentLease,
   classifyPersistenceError,
@@ -122,7 +122,7 @@ async function createHistory(repository: LocalDocumentRepository) {
       }),
     ),
   )
-  requirePersistenceValue(
+  const createCommit = requirePersistenceValue(
     await repository.commit({
       sessionId: ownerA,
       lease: null,
@@ -162,7 +162,7 @@ async function createHistory(repository: LocalDocumentRepository) {
       snapshot: renamed.snapshot,
     }),
   )
-  return { created, renamed, renameCommit, writerLease }
+  return { created, renamed, createCommit, renameCommit, writerLease }
 }
 
 async function verifyStaleCommit(
@@ -206,8 +206,25 @@ async function verifyStaleCommit(
 async function verifyRecovery(
   repository: LocalDocumentRepository,
   database: VibeShapeDatabase,
-  checksums: { eventChecksum: string; snapshotChecksum: string },
+  checksums: {
+    createEventChecksum: string
+    eventChecksum: string
+    snapshotChecksum: string
+  },
 ) {
+  const journalStorageBefore = await semanticStorageIdentity(database)
+  const journalDerived = requirePersistenceValue(await repository.recoverMigrated(documentId))
+  requireCondition(
+    [
+      journalDerived.snapshot.schemaVersion === 1,
+      journalDerived.migration.provenance === "journal-derived",
+    ].every(Boolean),
+    "A complete stored journal did not produce a journal-derived History migration.",
+  )
+  requireCondition(
+    (await semanticStorageIdentity(database)) === journalStorageBefore,
+    "Journal-derived recovery mutated semantic persistence records.",
+  )
   await database.snapshots.update([documentId, 2], { checksum: "0".repeat(64) })
   const replayed = requirePersistenceValue(await repository.recover(documentId))
   requireCondition(
@@ -222,9 +239,70 @@ async function verifyRecovery(
     [boundedLoss.recoveredRevision === 1, boundedLoss.lostRevisionCount === 1].every(Boolean),
     "Corrupt snapshot and event recovery exceeded the one-revision loss bound.",
   )
+  const boundedStorageBefore = await semanticStorageIdentity(database)
+  const boundedMigration = requirePersistenceValue(await repository.recoverMigrated(documentId))
+  requireCondition(
+    [
+      boundedMigration.recoveredRevision === 1,
+      boundedMigration.snapshot.revision === 1,
+      boundedMigration.migration.provenance === "journal-derived",
+      (await semanticStorageIdentity(database)) === boundedStorageBefore,
+    ].every(Boolean),
+    "Migrated recovery did not derive against the actual bounded-loss revision.",
+  )
   await database.snapshots.update([documentId, 2], { checksum: checksums.snapshotChecksum })
   await database.events.update([documentId, 2], { checksum: checksums.eventChecksum })
-  return { replayed, boundedLoss }
+  await database.events.update([documentId, 1], { checksum: "0".repeat(64) })
+  const degradedStorageBefore = await semanticStorageIdentity(database)
+  const snapshotDerived = requirePersistenceValue(await repository.recoverMigrated(documentId))
+  requireCondition(
+    [
+      snapshotDerived.migration.provenance === "snapshot-derived",
+      snapshotDerived.migration.unavailableRecords.includes("event:1"),
+      snapshotDerived.migration.diagnostic?.code === "legacy-journal-unavailable",
+    ].every(Boolean),
+    "A corrupt journal prefix did not produce an explicit snapshot-derived migration.",
+  )
+  requireCondition(
+    (await semanticStorageIdentity(database)) === degradedStorageBefore,
+    "Snapshot-derived recovery mutated semantic persistence records.",
+  )
+  const storedSnapshot = await database.snapshots.get([documentId, 2])
+  const storedSnapshotSchema = storedSnapshot
+    ? Reflect.get(JSON.parse(storedSnapshot.payload), "schemaVersion")
+    : null
+  requireCondition(
+    storedSnapshotSchema === 0,
+    "Read-only History migration rewrote the stored legacy snapshot.",
+  )
+  await database.events.update([documentId, 1], { checksum: checksums.createEventChecksum })
+  return {
+    replayed,
+    boundedLoss,
+    migration: {
+      journalProvenance: journalDerived.migration.provenance,
+      degradedProvenance: snapshotDerived.migration.provenance,
+      boundedRevision: boundedMigration.recoveredRevision,
+      boundedProvenance: boundedMigration.migration.provenance,
+      unavailableRecords: snapshotDerived.migration.unavailableRecords,
+      storedSnapshotSchema,
+    },
+  }
+}
+
+async function semanticStorageIdentity(database: VibeShapeDatabase) {
+  const snapshots = (
+    await database.snapshots.where("documentId").equals(documentId).toArray()
+  ).sort((left, right) => left.revision - right.revision)
+  const events = (await database.events.where("documentId").equals(documentId).toArray()).sort(
+    (left, right) => left.revision - right.revision,
+  )
+  return canonicalJson({
+    project: (await database.projects.get(documentId)) ?? null,
+    snapshots,
+    events,
+    recovery: (await database.recovery.get(documentId)) ?? null,
+  })
 }
 
 async function verifyLeases(
@@ -409,7 +487,10 @@ async function runFullSpike() {
   )
   const quotaFailure = await runStage("quota-rollback", () => verifyQuotaRollback(database))
   const recovery = await runStage("recovery", () =>
-    verifyRecovery(repository, database, history.renameCommit),
+    verifyRecovery(repository, database, {
+      ...history.renameCommit,
+      createEventChecksum: history.createCommit.eventChecksum,
+    }),
   )
   const leases = await runStage("writer-leases", () =>
     verifyLeases(database, repository, history.writerLease, history.renamed.snapshot),
@@ -446,6 +527,7 @@ async function runFullSpike() {
       boundedLossRevision: recovery.boundedLoss.recoveredRevision,
       lostRevisionCount: recovery.boundedLoss.lostRevisionCount,
       cleanStatus: clean.status,
+      migration: recovery.migration,
     },
     leases,
     rejectedCleanClose,
