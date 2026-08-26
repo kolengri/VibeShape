@@ -11,6 +11,7 @@ import {
   viewerSketchProjectionTarget,
   viewerSketchProjectionViewHeight,
 } from "./three-viewport"
+import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import { viewerBodyColor } from "./viewer-appearance"
 
 const mesh: ViewerMesh = {
@@ -98,6 +99,24 @@ describe("Three viewport geometry", () => {
     expect(geometry.boundingBox?.max.toArray()).toEqual([12, 0, 0])
 
     geometry.dispose()
+  })
+
+  it("shares one stable identity for sketch and model reference candidates", () => {
+    const point = {
+      label: "Point",
+      position: [0, 0, 0] as const,
+      sourcePointId: "point-1",
+      sourceSketchId: "sketch-1",
+    }
+    expect(viewerSketchReferenceCandidateKey(point)).toBe("sketch-1:point-1")
+    expect(viewerSketchReferenceCandidateKey({ ...point, kind: "point" })).toBe("sketch-1:point-1")
+    expect(
+      viewerSketchReferenceCandidateKey({
+        candidateId: "edge-1",
+        featureId: "box-1",
+        kind: "model-line",
+      }),
+    ).toBe("model-line:box-1:edge-1")
   })
 
   it("keeps a valid orthographic projection for measured and zero-sized viewports", () => {

@@ -99,6 +99,7 @@ function renderViewport(
     setFeatureSelection: vi.fn(),
     setMeshes: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
+    setSketchReferencePreselection: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
@@ -384,6 +385,65 @@ describe("GeometryViewport", () => {
     expect(screen.getByText("Use reference: Source · Point", { exact: true }).textContent).toBe(
       "Use reference: Source · Point",
     )
+
+    act(() =>
+      options?.onSketchReferenceCandidateStackChange?.([
+        candidate,
+        lineCandidate,
+        modelPointCandidate,
+      ]),
+    )
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    const selectOther = screen.getByRole("listbox", { name: "Select other reference" })
+    expect(document.activeElement).toBe(selectOther)
+    expect(selectOther.getAttribute("aria-activedescendant")).toBe(
+      "sketch-reference-select-other-0",
+    )
+    expect(
+      screen.getByRole("option", { name: "1/3 Source · Point" }).getAttribute("aria-selected"),
+    ).toBe("true")
+    expect(port.setSketchReferencePreselection).toHaveBeenLastCalledWith(candidate)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    expect(
+      screen.getByRole("option", { name: "2/3 Source · Line" }).getAttribute("aria-selected"),
+    ).toBe("true")
+    expect(selectOther.getAttribute("aria-activedescendant")).toBe(
+      "sketch-reference-select-other-1",
+    )
+    expect(port.setSketchReferencePreselection).toHaveBeenLastCalledWith(lineCandidate)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`", shiftKey: true })
+    expect(
+      screen.getByRole("option", { name: "1/3 Source · Point" }).getAttribute("aria-selected"),
+    ).toBe("true")
+    fireEvent.keyDown(viewport, { key: "Enter" })
+    expect(onSelect).toHaveBeenLastCalledWith(candidate)
+    expect(screen.queryByRole("listbox", { name: "Select other reference" })).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    fireEvent.keyDown(viewport, { key: "Escape" })
+    expect(screen.queryByRole("listbox", { name: "Select other reference" })).toBeNull()
+    expect(port.setSketchReferencePreselection).toHaveBeenLastCalledWith(candidate)
+
+    fireEvent.pointerLeave(viewport)
+    expect(port.setSketchReferencePreselection).toHaveBeenLastCalledWith(null)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    fireEvent.click(screen.getByRole("option", { name: "3/3 Box · Vertex 1" }))
+    expect(onSelect).toHaveBeenLastCalledWith(modelPointCandidate)
+    expect(screen.queryByRole("listbox", { name: "Select other reference" })).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    expect(document.activeElement).toBe(
+      screen.getByRole("listbox", { name: "Select other reference" }),
+    )
+    act(() => options?.onSketchReferenceCandidateStackChange?.([]))
+    expect(screen.queryByRole("listbox", { name: "Select other reference" })).toBeNull()
+    expect(document.activeElement).toBe(viewport)
 
     options?.onSketchReferenceSelectionChange?.(candidate)
     expect(onSelect).toHaveBeenCalledWith(candidate)

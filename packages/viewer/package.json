@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./origin-planes": "./src/origin-planes.ts",
     "./project-thumbnail": "./src/project-thumbnail.ts",
+    "./sketch-reference-identity": "./src/sketch-reference-identity.ts",
     "./three-viewport": "./src/three-viewport.ts"
   },
   "scripts": {

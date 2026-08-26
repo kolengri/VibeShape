@@ -248,7 +248,10 @@ Exit criterion: users can predict which relation will be created before clicking
 
 ### SKX-4 — visual external geometry
 
-- Make Use fully hover-preview-click in normal and orbit context.
+- Keep Use fully hover-preview-click in normal and orbit context. Overlapping normal-view sources use a
+  compact pointer chooser. Overlapping orbit-view sources expose the viewer's closest-first hit stack through
+  Select Other: grave accent cycles forward, Shift+grave accent cycles backward, Enter or pointer activation
+  commits, and Escape dismisses without changing the draft.
 - Separate wake-up inference, persistent Use projection, Intersection, and Pierce in state and rendering.
 - Add broken-reference and provenance inspection in the task panel.
 
