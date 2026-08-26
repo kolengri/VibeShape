@@ -9,6 +9,7 @@ import {
   appendSketchRectangle,
   createLengthQuantity,
   createRectangleSketch,
+  documentSnapshotSchema,
   featureIdSchema,
   moveSketchPoint,
   type SketchEntity,
@@ -37,6 +38,7 @@ import {
   SketchProjectionProvider,
   useSketchProjectionStoreApi,
 } from "./sketch-projection-store"
+import { externalSketchContextGeometry } from "./external-sketch-points"
 import { SketchViewport } from "./sketch-viewport"
 
 const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
@@ -536,6 +538,93 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
     const candidate = document.querySelector("[data-sketch-available-external-geometry-id]")
     expect(candidate?.querySelector("circle.opacity-0")).toBeTruthy()
+  })
+
+  it("distinguishes regular and construction geometry in earlier sketch context", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3267") }
+    const regularLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3268")
+    const constructionLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3269")
+    const projectedPoint = (x: number, y: number) => ({ world: [x, y, 0] as const, x, y })
+    const line = (sourceLineId: typeof regularLineId, construction: boolean, y: number) => ({
+      construction,
+      kind: "line" as const,
+      label: construction ? "Layout · Construction line" : "Layout · Line",
+      sourceEndPointId: sketchEntityIdSchema.parse(
+        construction
+          ? "0195b5ac-b220-7a2c-8c33-67a36a7f3270"
+          : "0195b5ac-b220-7a2c-8c33-67a36a7f3271",
+      ),
+      sourceLineId,
+      sourceSketchId: sketch.id,
+      sourceStartPointId: sketchEntityIdSchema.parse(
+        construction
+          ? "0195b5ac-b220-7a2c-8c33-67a36a7f3272"
+          : "0195b5ac-b220-7a2c-8c33-67a36a7f3273",
+      ),
+      start: projectedPoint(0, y),
+      end: projectedPoint(10, y),
+    })
+    renderViewport({
+      draft: target,
+      externalContextGeometry: [line(regularLineId, false, 0), line(constructionLineId, true, 5)],
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    const regular = document.querySelector(`[data-sketch-context-entity-id="${regularLineId}"]`)
+    const construction = document.querySelector(
+      `[data-sketch-context-entity-id="${constructionLineId}"]`,
+    )
+    expect(regular?.getAttribute("stroke-dasharray")).toBeNull()
+    expect(regular?.classList.contains("stroke-muted-foreground/75")).toBe(true)
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("5 3")
+    expect(construction?.classList.contains("stroke-muted-foreground/50")).toBe(true)
+  })
+
+  it("renders projected construction geometry from a saved source as dashed", () => {
+    const sourceLine = requiredSketchEntity(sketch, "line")
+    const source = {
+      ...sketch,
+      entities: sketch.entities.map((entity) =>
+        entity.id === sourceLine.id ? { ...entity, construction: true } : entity,
+      ),
+    }
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3274",
+      label: "Projected context target",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    })
+    const snapshot = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3275",
+      revision: 1,
+      name: "Projected construction context",
+      sketches: [source, target],
+      features: [],
+      createdAt: "2026-08-26T00:00:00.000Z",
+      updatedAt: "2026-08-26T00:00:00.000Z",
+    })
+    const geometry = externalSketchContextGeometry(snapshot, target, {
+      curve: (sourceLabel, kind, ordinal) => `${sourceLabel} · ${kind} ${ordinal}`,
+      line: (sourceLabel, ordinal) => `${sourceLabel} · Line ${ordinal}`,
+      point: (sourceLabel, ordinal) => `${sourceLabel} · Point ${ordinal}`,
+    })
+
+    renderViewport({
+      draft: target,
+      externalContextGeometry: geometry,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    const construction = document.querySelector(
+      `[data-sketch-context-entity-id="${sourceLine.id}"]`,
+    )
+    expect(construction?.getAttribute("data-sketch-context-construction")).toBe("true")
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("5 3")
   })
 
   it("keeps unsupported prior curves visible as passive context while Use is active", () => {

@@ -152,6 +152,70 @@ test.describe("full sketch editor", () => {
     await expect(restoredViewport).toHaveAttribute("data-rendered-sketch-count", "1")
   })
 
+  test("reopens a saved later sketch with earlier sketch and upstream body context", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+
+    const createSketch = toolbar.getByRole("button", { name: "Create sketch", exact: true })
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The first saved sketch canvas is not visible.")
+    const firstStart = { x: bounds.x + bounds.width * 0.42, y: bounds.y + bounds.height * 0.5 }
+    const firstEnd = { x: bounds.x + bounds.width * 0.62, y: bounds.y + bounds.height * 0.5 }
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(firstStart.x, firstStart.y)
+    await page.mouse.click(firstEnd.x, firstEnd.y)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xz")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.46, bounds.y + bounds.height * 0.58)
+    await page.mouse.click(bounds.x + bounds.width * 0.66, bounds.y + bounds.height * 0.44)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    const normalContext = page.locator("section[data-sketch-context-mode='normal']")
+    await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
+    const earlierLine = drawing.locator("line[data-sketch-context-source-sketch-id]")
+    await expect(earlierLine).toHaveCount(1)
+    await expect(earlierLine).not.toHaveAttribute("stroke-dasharray")
+
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const orbitContext = page.locator("section[data-sketch-context-mode='orbit']")
+    await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "2")
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+    await page.getByRole("button", { name: "Hide Sketch 1" }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await page.getByRole("button", { name: "Show Sketch 1" }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
+  })
+
   test("selects an earlier sketch line graphically in 3D across support frames", async ({
     page,
   }) => {

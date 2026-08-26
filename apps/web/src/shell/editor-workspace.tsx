@@ -203,6 +203,7 @@ function SketchWorkspaceContent({
 function ModelingWorkspaceContent({
   actions,
   controller,
+  externalContextGeometry,
   model,
   sketch,
   sketchContext,
@@ -214,15 +215,26 @@ function ModelingWorkspaceContent({
     featureIds: readonly FeatureId[]
     sketchIds: readonly SketchId[]
   }>
+  externalContextGeometry: readonly ExternalSketchContextGeometry[]
   sketchContext?: GeometryViewportSketchContext
 }) {
+  const projectedSketchIds = useMemo(
+    () =>
+      sketch.cameraMode === "normal"
+        ? [...new Set(externalContextGeometry.map(({ sourceSketchId }) => sourceSketchId))]
+        : [],
+    [externalContextGeometry, sketch.cameraMode],
+  )
   const hiddenSketchIds = useMemo(
     () =>
       mergeSketchEditVisibility(
-        { featureIds: [], sketchIds: model.hiddenSketchIds },
+        {
+          featureIds: [],
+          sketchIds: [...model.hiddenSketchIds, ...projectedSketchIds],
+        },
         editVisibility,
       ).sketchIds,
-    [editVisibility, model.hiddenSketchIds],
+    [editVisibility, model.hiddenSketchIds, projectedSketchIds],
   )
   return (
     <GeometryViewport
@@ -632,6 +644,7 @@ function WorkspaceContentView({
         <ModelingWorkspaceContent
           actions={props.actions}
           controller={props.controller}
+          externalContextGeometry={externalContextGeometry}
           model={props.model}
           sketch={props.sketch}
           editVisibility={editVisibility}

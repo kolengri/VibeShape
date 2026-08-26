@@ -2328,7 +2328,7 @@ function SketchExternalContextGeometry({
   return (
     <g
       aria-label={t("earlierSketchContext")}
-      className="pointer-events-none stroke-muted-foreground/55"
+      className="pointer-events-none"
       data-sketch-context-geometry-count={geometry.length}
       transform="scale(1 -1)"
     >
@@ -2350,70 +2350,117 @@ function SketchExternalContextCandidate({
   candidate: ExternalSketchContextGeometry
   highlighted: boolean
 }>) {
-  const className = highlighted ? "stroke-amber-500" : undefined
-  const sourceLabel = highlighted ? candidate.label : undefined
-  const strokeWidth = highlighted ? 2.5 : 1.25
-  if (candidate.kind === "curve") {
-    return (
-      <polyline
-        className={className}
-        data-sketch-context-curve-type={candidate.sourceType}
-        fill="none"
-        points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
-        strokeDasharray="5 3"
-        strokeWidth={strokeWidth}
-        vectorEffect="non-scaling-stroke"
-      >
-        <title>{candidate.label}</title>
-      </polyline>
-    )
+  if (candidate.kind === "curve")
+    return <SketchExternalContextCurve candidate={candidate} highlighted={highlighted} />
+  if (candidate.kind === "line")
+    return <SketchExternalContextLine candidate={candidate} highlighted={highlighted} />
+  return <SketchExternalContextPoint candidate={candidate} highlighted={highlighted} />
+}
+
+function externalContextPresentation(
+  candidate: ExternalSketchContextGeometry,
+  highlighted: boolean,
+) {
+  return {
+    className: highlighted
+      ? "stroke-amber-500"
+      : candidate.construction
+        ? "stroke-muted-foreground/50"
+        : "stroke-muted-foreground/75",
+    sourceLabel: highlighted ? candidate.label : undefined,
+    strokeDasharray: candidate.construction ? "5 3" : undefined,
+    strokeWidth: highlighted ? 2.5 : 1.25,
   }
-  if (candidate.kind === "line") {
-    return (
-      <line
-        className={className}
-        data-sketch-external-inference-source={sourceLabel}
-        x1={candidate.start.x}
-        y1={candidate.start.y}
-        x2={candidate.end.x}
-        y2={candidate.end.y}
-        strokeDasharray="5 3"
-        strokeWidth={strokeWidth}
-        vectorEffect="non-scaling-stroke"
-      >
-        <title>{candidate.label}</title>
-      </line>
-    )
+}
+
+function SketchExternalContextCurve({
+  candidate,
+  highlighted,
+}: Readonly<{
+  candidate: Extract<ExternalSketchContextGeometry, { kind: "curve" }>
+  highlighted: boolean
+}>) {
+  const presentation = externalContextPresentation(candidate, highlighted)
+  return (
+    <polyline
+      className={presentation.className}
+      data-sketch-context-construction={candidate.construction ? "true" : undefined}
+      data-sketch-context-curve-type={candidate.sourceType}
+      data-sketch-context-entity-id={candidate.sourceEntityId}
+      data-sketch-context-source-sketch-id={candidate.sourceSketchId}
+      fill="none"
+      points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
+      strokeDasharray={presentation.strokeDasharray}
+      strokeWidth={presentation.strokeWidth}
+      vectorEffect="non-scaling-stroke"
+    >
+      <title>{candidate.label}</title>
+    </polyline>
+  )
+}
+
+function SketchExternalContextLine({
+  candidate,
+  highlighted,
+}: Readonly<{
+  candidate: Extract<ExternalSketchContextGeometry, { kind: "line" }>
+  highlighted: boolean
+}>) {
+  const presentation = externalContextPresentation(candidate, highlighted)
+  return (
+    <line
+      className={presentation.className}
+      data-sketch-context-construction={candidate.construction ? "true" : undefined}
+      data-sketch-context-entity-id={candidate.sourceLineId}
+      data-sketch-context-source-sketch-id={candidate.sourceSketchId}
+      data-sketch-external-inference-source={presentation.sourceLabel}
+      strokeDasharray={presentation.strokeDasharray}
+      strokeWidth={presentation.strokeWidth}
+      vectorEffect="non-scaling-stroke"
+      x1={candidate.start.x}
+      x2={candidate.end.x}
+      y1={candidate.start.y}
+      y2={candidate.end.y}
+    >
+      <title>{candidate.label}</title>
+    </line>
+  )
+}
+
+function SketchExternalContextPoint({
+  candidate,
+  highlighted,
+}: Readonly<{
+  candidate: Extract<ExternalSketchContextGeometry, { kind: "point" }>
+  highlighted: boolean
+}>) {
+  const presentation = externalContextPresentation(candidate, highlighted)
+  const sharedProps = {
+    className: presentation.className,
+    "data-sketch-context-construction": candidate.construction ? "true" : undefined,
+    "data-sketch-context-entity-id": candidate.sourcePointId,
+    "data-sketch-context-source-sketch-id": candidate.sourceSketchId,
+    "data-sketch-external-inference-source": presentation.sourceLabel,
+    fill: "var(--color-viewport-background)",
+    strokeWidth: presentation.strokeWidth,
+    vectorEffect: "non-scaling-stroke" as const,
   }
   if (candidate.role === "center") {
     return (
       <rect
-        className={className}
+        {...sharedProps}
         data-sketch-context-point-role="center"
-        data-sketch-external-inference-source={sourceLabel}
-        fill="var(--color-viewport-background)"
         height={5}
         width={5}
         x={candidate.x - 2.5}
         y={candidate.y - 2.5}
-        strokeWidth={strokeWidth}
-        vectorEffect="non-scaling-stroke"
       >
         <title>{candidate.label}</title>
       </rect>
     )
   }
   return (
-    <circle
-      className={className}
-      cx={candidate.x}
-      data-sketch-external-inference-source={sourceLabel}
-      cy={candidate.y}
-      fill="var(--color-viewport-background)"
-      r={2.5}
-      strokeWidth={strokeWidth}
-      vectorEffect="non-scaling-stroke"
-    >
+    <circle {...sharedProps} cx={candidate.x} cy={candidate.y} r={2.5}>
       <title>{candidate.label}</title>
     </circle>
   )
