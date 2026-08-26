@@ -146,6 +146,13 @@ pure migration with verified full-journal replay and an explicit snapshot-derive
 portable-format, command, and application adoption remain separate transactions so an unsuccessful integration
 cannot overwrite legacy data.
 
+Persistence now exposes an opt-in, read-only migrated recovery path. It first performs the existing bounded
+semantic recovery, then independently loads the complete checksummed event prefix through the actually recovered
+revision. A complete prefix may produce `journal-derived` History; a missing or corrupt prefix produces explicit
+`snapshot-derived` provenance and unavailable-record evidence. Existing recovery callers still receive the strict
+version-0 snapshot, and migrated recovery never rewrites snapshots, events, project heads, or recovery markers.
+Atomic version-1 writes and application adoption remain pending.
+
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
 

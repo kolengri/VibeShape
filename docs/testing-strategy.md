@@ -44,6 +44,13 @@ projection, unavailable extension declarations, strict version-0 compatibility, 
 and byte-idempotent remigration. Persistence recovery, interrupted writes, document copy, and `.vshape` round trips
 remain required before schema version 1 becomes a storage or application default.
 
+The local SPK-005 browser evidence additionally verifies the opt-in migrated recovery seam: a complete checksummed
+prefix returns a schema-version-1 `journal-derived` snapshot, a corrupt earlier prefix returns successful explicit
+`snapshot-derived` recovery with the owning event record, and both paths leave the stored version-0 payload
+unchanged. A corrupt suffix separately proves that migration uses the actually recovered revision rather than the
+project head. Canonical before/after checks cover the project record, every snapshot, every event, and the recovery
+marker. This remains read-only evidence; atomic version-1 persistence is still an open gate.
+
 The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
 branch, keeps Datum Planes in History but out of Bodies, lists only terminal solid results under Bodies, exposes
 origin-plane and feature/profile provenance, and preserves stable sketch and feature activation. It also proves

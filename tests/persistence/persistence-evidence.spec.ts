@@ -20,6 +20,18 @@ const reportSchema = z
         boundedLossRevision: z.literal(1),
         lostRevisionCount: z.literal(1),
         cleanStatus: z.literal("clean"),
+        migration: z
+          .object({
+            journalProvenance: z.literal("journal-derived"),
+            degradedProvenance: z.literal("snapshot-derived"),
+            boundedRevision: z.literal(1),
+            boundedProvenance: z.literal("journal-derived"),
+            unavailableRecords: z
+              .array(z.string())
+              .refine((records) => records.includes("event:1")),
+            storedSnapshotSchema: z.literal(0),
+          })
+          .strict(),
       })
       .strict(),
     leases: z
