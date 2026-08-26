@@ -65,7 +65,7 @@ face in the persistent 3D viewport and asks OCCT for exactly one bounded linear 
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
 closed. Point and Line placement now wake visible earlier-sketch points and lines, highlight and label the source, and atomically create the stable reference plus inferred constraint only after acceptance. General surfaces, multi-curve results, Pierce, curve and model-topology wake-up, non-circular curved
-model edges, overlap cycling, and repair UI are not implemented. Persisted coordinates remain disposable: both UI preview and
+model edges, 3D overlap disambiguation, grave-accent cycling, and repair UI are not implemented. Normal-view Use provides a bounded labeled chooser when candidates overlap. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
@@ -156,7 +156,7 @@ cannot alter evaluation order.
    visible preselection, source labels, a reference list, visibility toggle, and accessible removal are implemented. Extend automatic inference to curves and stable model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
-   candidate selection are implemented. Add non-circular curved edges, overlap cycling, source filters, and
+   candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and
    repair diagnostics.
 5. **Intersection**: one planar face to one bounded linear section is implemented with graphical 3D
    selection and exact OCCT evaluation. Add analytical curved and multi-segment face/surface results plus

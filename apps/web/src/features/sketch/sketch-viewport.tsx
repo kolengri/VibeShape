@@ -115,6 +115,7 @@ import {
   useState,
   type WheelEvent,
 } from "react"
+import { createPortal } from "react-dom"
 import { OriginPlaneVisibilityControls } from "../../components/origin-plane-visibility-controls"
 import {
   type ActiveSketchSolveOptions,
@@ -2010,115 +2011,294 @@ function SketchExternalCurves({
 }
 
 function SketchAvailableExternalGeometry({
+  bounds,
   candidates,
   onUse,
 }: Readonly<{
+  bounds: SketchBounds
   candidates: readonly ExternalUseCandidate[]
   onUse: (candidate: ExternalUseCandidate) => void
 }>) {
+  const t = useTranslations("app.sketch.viewport")
+  const [chooser, setChooser] = useState<ExternalUseOverlapChooser | null>(null)
+  const chooserRef = useRef<HTMLDivElement>(null)
+  const firstChoiceRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!chooser) return
+    firstChoiceRef.current?.focus()
+    const closeOnPointerDown = (event: globalThis.PointerEvent) => {
+      if (chooserRef.current?.contains(event.target as Node)) return
+      event.preventDefault()
+      event.stopPropagation()
+      chooser.focusTarget.focus()
+      setChooser(null)
+    }
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      chooser.focusTarget.focus()
+      setChooser(null)
+    }
+    document.addEventListener("pointerdown", closeOnPointerDown, true)
+    document.addEventListener("keydown", closeOnEscape, true)
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown, true)
+      document.removeEventListener("keydown", closeOnEscape, true)
+    }
+  }, [chooser])
   if (candidates.length === 0) return null
   return (
-    <g
-      aria-label="Available external sketch geometry"
-      data-sketch-available-external-geometry-count={candidates.length}
-      transform="scale(1 -1)"
-    >
-      {candidates.map((candidate) => (
-        /* biome-ignore lint/a11y/useSemanticElements: SVG groups cannot contain HTML buttons; equivalent focus and keyboard activation are provided. */
-        <g
-          key={candidateKey(candidate)}
-          aria-label={candidate.label}
-          className="group cursor-crosshair outline-none"
-          data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            onUse(candidate)
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return
-            event.preventDefault()
-            event.stopPropagation()
-            onUse(candidate)
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          {candidate.kind === "curve" || candidate.kind === "model-curve" ? (
-            <>
-              <polyline
-                fill="none"
-                points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
-                className="stroke-transparent"
-                strokeWidth={12}
-                vectorEffect="non-scaling-stroke"
-              />
-              <polyline
-                fill="none"
-                points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
-                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                strokeDasharray="5 3"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            </>
-          ) : candidate.kind === "line" || candidate.kind === "model-line" ? (
-            <>
-              <line
-                x1={candidate.start.x}
-                y1={candidate.start.y}
-                x2={candidate.end.x}
-                y2={candidate.end.y}
-                className="stroke-transparent"
-                strokeWidth={12}
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1={candidate.start.x}
-                y1={candidate.start.y}
-                x2={candidate.end.x}
-                y2={candidate.end.y}
-                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                strokeDasharray="5 3"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
-            </>
-          ) : (
-            <>
-              <circle cx={candidate.x} cy={candidate.y} r={10} fill="transparent" stroke="none" />
-              <circle
-                cx={candidate.x}
-                cy={candidate.y}
-                r={5}
-                className="pointer-events-none fill-background/75 stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                strokeDasharray="3 2"
-                strokeWidth={1.5}
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1={candidate.x - 8}
-                x2={candidate.x + 8}
-                y1={candidate.y}
-                y2={candidate.y}
-                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                strokeWidth={1}
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1={candidate.x}
-                x2={candidate.x}
-                y1={candidate.y - 8}
-                y2={candidate.y + 8}
-                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                strokeWidth={1}
-                vectorEffect="non-scaling-stroke"
-              />
-            </>
-          )}
-          <title>{candidate.label}</title>
-        </g>
-      ))}
-    </g>
+    <>
+      <g
+        aria-label="Available external sketch geometry"
+        data-sketch-available-external-geometry-count={candidates.length}
+        transform="scale(1 -1)"
+      >
+        {candidates.map((candidate) => (
+          /* biome-ignore lint/a11y/useSemanticElements: SVG groups cannot contain HTML buttons; equivalent focus and keyboard activation are provided. */
+          <g
+            key={candidateKey(candidate)}
+            aria-label={candidate.label}
+            className="group cursor-crosshair outline-none"
+            data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return
+              event.preventDefault()
+              event.stopPropagation()
+              const rectangle = event.currentTarget.ownerSVGElement?.getBoundingClientRect()
+              if (!rectangle) return onUse(candidate)
+              const point = pointerToSketchPoint(event, rectangle, bounds)
+              const choices = overlappingExternalUseCandidates(
+                candidates,
+                candidate,
+                point,
+                externalUseHitTolerance(bounds, rectangle),
+              )
+              if (choices.length === 1) return onUse(candidate)
+              setChooser({
+                choices,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                focusTarget: event.currentTarget,
+              })
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return
+              event.preventDefault()
+              event.stopPropagation()
+              onUse(candidate)
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <SketchAvailableExternalCandidate candidate={candidate} />
+          </g>
+        ))}
+      </g>
+      {chooser
+        ? createPortal(
+            <div
+              ref={chooserRef}
+              aria-label={t("overlapChooser")}
+              className="fixed z-50 grid max-h-72 w-72 gap-1 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+              data-sketch-external-overlap-chooser={chooser.choices.length}
+              role="dialog"
+              style={externalOverlapChooserPosition(chooser)}
+            >
+              <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                {t("overlapChooser")}
+              </p>
+              {chooser.choices.map((choice, index) => (
+                <Button
+                  key={candidateKey(choice)}
+                  ref={index === 0 ? firstChoiceRef : undefined}
+                  type="button"
+                  className="h-auto justify-start whitespace-normal px-2 py-1.5 text-left"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setChooser(null)
+                    onUse(choice)
+                  }}
+                >
+                  {choice.label}
+                </Button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  )
+}
+
+const MAX_EXTERNAL_OVERLAP_CHOICES = 8
+
+type ExternalUseOverlapChooser = Readonly<{
+  choices: readonly ExternalUseCandidate[]
+  clientX: number
+  clientY: number
+  focusTarget: SVGGElement
+}>
+
+function externalOverlapChooserPosition(chooser: ExternalUseOverlapChooser): CSSProperties {
+  return {
+    left: Math.min(Math.max(8, chooser.clientX + 8), Math.max(8, window.innerWidth - 296)),
+    top: Math.min(Math.max(8, chooser.clientY + 8), Math.max(8, window.innerHeight - 296)),
+  }
+}
+
+function externalUseHitTolerance(
+  bounds: SketchBounds,
+  rectangle: Readonly<{ width: number; height: number }>,
+) {
+  const worldPerPixel = Math.max(
+    rectangle.width > 0 ? bounds.width / rectangle.width : 0,
+    rectangle.height > 0 ? bounds.height / rectangle.height : 0,
+  )
+  return worldPerPixel * 10
+}
+
+function squaredDistanceToSegment(point: SketchPoint2, start: SketchPoint2, end: SketchPoint2) {
+  const x = end.x - start.x
+  const y = end.y - start.y
+  const lengthSquared = x * x + y * y
+  if (lengthSquared === 0) return (point.x - start.x) ** 2 + (point.y - start.y) ** 2
+  const parameter = Math.min(
+    1,
+    Math.max(0, ((point.x - start.x) * x + (point.y - start.y) * y) / lengthSquared),
+  )
+  const projected = { x: start.x + parameter * x, y: start.y + parameter * y }
+  return (point.x - projected.x) ** 2 + (point.y - projected.y) ** 2
+}
+
+function externalUseCandidateHit(
+  candidate: ExternalUseCandidate,
+  point: SketchPoint2,
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  if (candidate.kind === "point" || candidate.kind === "model-point") {
+    return (point.x - candidate.x) ** 2 + (point.y - candidate.y) ** 2 <= maximumDistance
+  }
+  if (candidate.kind === "line" || candidate.kind === "model-line") {
+    return squaredDistanceToSegment(point, candidate.start, candidate.end) <= maximumDistance
+  }
+  return candidate.points.some(
+    (segmentEnd, index) =>
+      index > 0 &&
+      squaredDistanceToSegment(point, candidate.points[index - 1] ?? segmentEnd, segmentEnd) <=
+        maximumDistance,
+  )
+}
+
+function overlappingExternalUseCandidates(
+  candidates: readonly ExternalUseCandidate[],
+  primary: ExternalUseCandidate,
+  point: SketchPoint2,
+  tolerance: number,
+) {
+  const primaryKey = candidateKey(primary)
+  const unique = new Map<string, ExternalUseCandidate>()
+  for (const candidate of candidates) {
+    if (externalUseCandidateHit(candidate, point, tolerance)) {
+      unique.set(candidateKey(candidate), candidate)
+    }
+  }
+  unique.set(primaryKey, primary)
+  return [
+    primary,
+    ...[...unique]
+      .filter(([key]) => key !== primaryKey)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, candidate]) => candidate),
+  ].slice(0, MAX_EXTERNAL_OVERLAP_CHOICES)
+}
+
+function SketchAvailableExternalCandidate({
+  candidate,
+}: Readonly<{ candidate: ExternalUseCandidate }>) {
+  if (candidate.kind === "curve" || candidate.kind === "model-curve") {
+    const points = candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")
+    return (
+      <>
+        <polyline
+          fill="none"
+          points={points}
+          className="stroke-transparent"
+          strokeWidth={12}
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          fill="none"
+          points={points}
+          className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+          strokeDasharray="5 3"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        <title>{candidate.label}</title>
+      </>
+    )
+  }
+  if (candidate.kind === "line" || candidate.kind === "model-line") {
+    return (
+      <>
+        <line
+          x1={candidate.start.x}
+          y1={candidate.start.y}
+          x2={candidate.end.x}
+          y2={candidate.end.y}
+          className="stroke-transparent"
+          strokeWidth={12}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={candidate.start.x}
+          y1={candidate.start.y}
+          x2={candidate.end.x}
+          y2={candidate.end.y}
+          className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+          strokeDasharray="5 3"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        <title>{candidate.label}</title>
+      </>
+    )
+  }
+  return (
+    <>
+      <circle cx={candidate.x} cy={candidate.y} r={10} fill="transparent" stroke="none" />
+      <circle
+        cx={candidate.x}
+        cy={candidate.y}
+        r={5}
+        className="pointer-events-none fill-background/75 stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+        strokeDasharray="3 2"
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+      />
+      <line
+        x1={candidate.x - 8}
+        x2={candidate.x + 8}
+        y1={candidate.y}
+        y2={candidate.y}
+        className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+      <line
+        x1={candidate.x}
+        x2={candidate.x}
+        y1={candidate.y - 8}
+        y2={candidate.y + 8}
+        className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+      <title>{candidate.label}</title>
+    </>
   )
 }
 
@@ -2241,6 +2421,7 @@ function SketchExternalContextCandidate({
 
 function SketchExternalReferencePresentation({
   availableCandidates,
+  bounds,
   contextGeometry,
   editorTool,
   highlightedCandidate,
@@ -2256,6 +2437,7 @@ function SketchExternalReferencePresentation({
   onUse,
 }: Readonly<{
   availableCandidates: readonly ExternalUseCandidate[]
+  bounds: SketchBounds
   contextGeometry: readonly ExternalSketchContextGeometry[]
   editorTool: SketchEditorTool
   highlightedCandidate: ExternalSketchWakeupCandidate | null
@@ -2277,7 +2459,11 @@ function SketchExternalReferencePresentation({
         highlightedCandidate={highlightedCandidate}
       />
       {editorTool === "use" ? (
-        <SketchAvailableExternalGeometry candidates={availableCandidates} onUse={onUse} />
+        <SketchAvailableExternalGeometry
+          bounds={bounds}
+          candidates={availableCandidates}
+          onUse={onUse}
+        />
       ) : null}
       <SketchExternalLines
         editorTool={editorTool}
@@ -2305,6 +2491,7 @@ function SketchExternalReferencePresentation({
 }
 
 function SketchExternalReferenceLayer({
+  bounds,
   candidates,
   contextGeometry = [],
   draft,
@@ -2321,6 +2508,7 @@ function SketchExternalReferenceLayer({
   onDraftChange,
   onSelect,
 }: Readonly<{
+  bounds: SketchBounds
   candidates: readonly ExternalSketchGeometryCandidate[]
   contextGeometry: readonly ExternalSketchContextGeometry[]
   draft: SketchRecord | null
@@ -2357,6 +2545,7 @@ function SketchExternalReferenceLayer({
   return (
     <SketchExternalReferencePresentation
       availableCandidates={externalReferences.availableCandidates}
+      bounds={bounds}
       contextGeometry={passiveContextGeometry}
       editorTool={editorTool}
       highlightedCandidate={highlightedCandidate}
@@ -6119,6 +6308,7 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <SketchExternalReferenceLayer
+          bounds={state.bounds}
           candidates={configuration.externalPointCandidates}
           contextGeometry={configuration.externalContextGeometry}
           draft={configuration.draft}

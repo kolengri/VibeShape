@@ -788,6 +788,7 @@
         "emptyDraftHint": "Choose a geometry tool from the toolbar to begin.",
         "earlierSketchContext": "Earlier sketch context",
         "externalInferenceSource": "External inference · {label}",
+        "overlapChooser": "Choose overlapping geometry",
         "preview": "Unsaved preview",
         "previewDrawing": "Unsaved rectangular sketch preview",
         "draftDrawing": "Editable sketch geometry",
