@@ -3071,10 +3071,13 @@ describe("SketchViewport", () => {
     const dimensionConstraint = sketch.constraints.find((constraint) => "value" in constraint)
     if (!dimensionConstraint) throw new Error("The rectangle fixture must contain a dimension.")
     const onDraftChange = vi.fn()
+    const onConstraintSelectionChange = vi.fn()
     renderViewport({
       draft: sketch,
+      selectedConstraintId: dimensionConstraint.id,
       sketch,
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onConstraintSelectionChange,
       onDraftChange,
     })
     const dimension = document.querySelector(
@@ -3087,6 +3090,10 @@ describe("SketchViewport", () => {
     fireEvent.change(expression, { target: { value: "44 mm" } })
     fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
 
+    await waitFor(() => {
+      expect(screen.queryByRole("form", { name: "Dimension value" })).toBeNull()
+      expect(onConstraintSelectionChange).toHaveBeenCalledWith(null)
+    })
     await waitFor(() =>
       expect(onDraftChange).toHaveBeenCalledWith(
         expect.objectContaining({

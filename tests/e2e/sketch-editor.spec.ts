@@ -420,7 +420,60 @@ test.describe("full sketch editor", () => {
     await inlineExpression.fill("35 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
 
-    await expect(page.getByText("Distance · 35 mm", { exact: true })).toBeVisible()
+    const updatedConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 35 mm" })
+    await expect(updatedConstraint).toBeVisible()
+    await expect(page.getByRole("form", { name: "Dimension value" })).toHaveCount(0)
+    await expect(
+      updatedConstraint.getByRole("combobox", { name: "Driving expression" }),
+    ).toHaveCount(0)
+
+    await updatedConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await expect(
+      updatedConstraint.getByRole("combobox", { name: "Driving expression" }),
+    ).toHaveValue("35 mm")
+  })
+
+  test("closes the stale task-panel editor after a canvas dimension edit", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+
+    await page.getByRole("button", { name: "Dimension", exact: true }).click()
+    const selectedLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    await selectedLine.dispatchEvent("pointerdown")
+    const lineBounds = await selectedLine.boundingBox()
+    if (!lineBounds) throw new Error("The selected line is not visible.")
+    await page.mouse.click(lineBounds.x + lineBounds.width / 2, lineBounds.y - 44)
+    const canvasExpression = page.getByRole("combobox", {
+      name: "Driving dimension expression",
+    })
+    await canvasExpression.fill("30 mm")
+    await page.getByRole("button", { name: "Apply dimension" }).click()
+
+    const dimensionAnnotation = page
+      .getByRole("region", { name: "2D sketch workspace" })
+      .getByRole("button", { name: "Edit dimension 30 mm" })
+    await dimensionAnnotation.dblclick()
+    const panelExpression = page
+      .getByRole("complementary", { name: "Sketch task panel" })
+      .getByRole("combobox", { name: "Driving expression" })
+    await expect(panelExpression).toHaveValue("30 mm")
+    await canvasExpression.fill("35 mm")
+    await page.getByRole("button", { name: "Apply dimension" }).click()
+
+    const updatedConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 35 mm" })
+    await expect(updatedConstraint).toBeVisible()
+    await expect(page.getByRole("form", { name: "Dimension value" })).toHaveCount(0)
+    await expect(panelExpression).toHaveCount(0)
+    await updatedConstraint.getByRole("button", { name: "Edit dimension" }).click()
+    await expect(
+      updatedConstraint.getByRole("combobox", { name: "Driving expression" }),
+    ).toHaveValue("35 mm")
   })
 
   test("keeps a dragged endpoint responsive while sketch solves are coalesced", async ({
