@@ -345,6 +345,7 @@ function EditorApplication({
         hiddenFeatureIds={session.hiddenFeatureIds}
         hiddenSketchIds={session.hiddenSketchIds}
         originPlaneVisibility={session.originPlaneVisibility}
+        onSketchFinalContextChange={sessionActions.setSketchFinalContext}
         preselectedFeatureId={session.preselectedFeatureId}
         workspace={session.workspace}
         selection={session.selection}

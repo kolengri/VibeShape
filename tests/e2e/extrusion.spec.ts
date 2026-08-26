@@ -60,7 +60,19 @@ test.describe("selector-backed extrusion", () => {
     const normalSketchViewport = page.locator("section[data-sketch-context-mode='normal']")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "0")
     await expect(normalSketchViewport).toHaveAttribute("data-rendered-sketch-count", "0")
-    await page.getByRole("button", { name: "Show final result", exact: true }).click()
+    const rollbackGuidance = page.getByTestId("sketch-rollback-guidance")
+    await expect(rollbackGuidance).toContainText(
+      "No earlier solid exists at this point in History.",
+    )
+    const showFinalResult = rollbackGuidance.getByRole("button", { name: "Show final result" })
+    await showFinalResult.focus()
+    await page.keyboard.press("Enter")
+    await expect(rollbackGuidance).toHaveCount(0)
+    await expect(
+      page.getByTestId("sketch-final-context-status").getByRole("button", {
+        name: "Hide final result",
+      }),
+    ).toBeFocused()
     await expect(page.getByTestId("sketch-final-context-status")).toContainText(
       "Final result · display only",
     )
@@ -177,6 +189,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     const sketchContext = page.locator("section[data-sketch-context-mode='normal']")
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(page.getByTestId("sketch-rollback-guidance")).toHaveCount(0)
     await page.getByRole("button", { name: "Hide Box 1" }).click()
     await expect(sketchContext).toHaveAttribute("data-rendered-feature-count", "0")
     await page.getByRole("button", { name: "Show Box 1" }).click()
