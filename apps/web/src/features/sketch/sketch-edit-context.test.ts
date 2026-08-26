@@ -1,8 +1,10 @@
 import {
+  boxFeatureType,
   createLengthQuantity,
   type DocumentSnapshot,
   type FeatureId,
   type FeatureRecord,
+  featureRecordSchema,
   type SketchId,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
@@ -79,8 +81,26 @@ function sketch(id: SketchId, supportFeatureId?: FeatureId) {
   } as unknown as DocumentSnapshot["sketches"][number]
 }
 
+function box(id: FeatureId, label: string) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id,
+    type: boxFeatureType.type,
+    parameters: {
+      width: createLengthQuantity(20),
+      depth: createLengthQuantity(20),
+      height: createLengthQuantity(20),
+      centered: false,
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+    label,
+  })
+}
+
 describe("sketch edit context visibility", () => {
-  it("hides the committed sketch and its complete dependent branch", () => {
+  it("hides the complete dependent branch when legacy History cannot be derived", () => {
     const snapshot = {
       sketches: [
         sketch(ids.activeSketch, ids.supportFeature),
@@ -99,6 +119,33 @@ describe("sketch edit context visibility", () => {
     expect(sketchEditContextVisibility(snapshot, ids.activeSketch)).toEqual({
       featureIds: [ids.dependentExtrusion, ids.dependentBoolean, ids.nestedExtrusion],
       sketchIds: [ids.activeSketch, ids.dependentSketch],
+    })
+  })
+
+  it("rolls back an independent sketch that appears later in derived History", () => {
+    const active = sketch(ids.activeSketch)
+    const later = sketch(ids.independentSketch)
+
+    expect(
+      sketchEditContextVisibility({ features: [], sketches: [active, later] }, ids.activeSketch),
+    ).toEqual({
+      featureIds: [],
+      sketchIds: [ids.activeSketch, ids.independentSketch],
+    })
+  })
+
+  it("rolls back an independent feature that appears later in derived History", () => {
+    const upstream = box(ids.supportFeature, "Upstream box")
+    const later = box(ids.independentFeature, "Later box")
+
+    expect(
+      sketchEditContextVisibility(
+        { features: [upstream, later], sketches: [sketch(ids.activeSketch)] },
+        ids.activeSketch,
+      ),
+    ).toEqual({
+      featureIds: [ids.independentFeature],
+      sketchIds: [ids.activeSketch],
     })
   })
 

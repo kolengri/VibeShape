@@ -10,6 +10,7 @@ import type {
 } from "@vibeshape/domain"
 import {
   appendSketchConstraint,
+  createDocumentDependencyGraphFromSnapshot,
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
   sketchEllipseGeometry,
@@ -25,6 +26,7 @@ import {
 import type { ExternalModelGeometryCandidate } from "./external-model-geometry"
 
 type ProjectedSketchPoint = Readonly<{
+  construction?: boolean
   world: readonly [number, number, number]
   x: number
   y: number
@@ -40,6 +42,7 @@ export type ExternalSketchPointCandidate = Readonly<{
   ProjectedSketchPoint
 
 export type ExternalSketchLineCandidate = Readonly<{
+  construction?: boolean
   kind: "line"
   label: string
   sourceEndPointId: SketchEntityId
@@ -59,6 +62,7 @@ type ExternalSketchCurveKind = Exclude<SketchEntity["type"], "line" | "point">
 
 export type ExternalSketchCurveContext = Readonly<{
   closed: boolean
+  construction?: boolean
   kind: "curve"
   label: string
   points: readonly ProjectedSketchPoint[]
@@ -340,9 +344,27 @@ export function externalSketchGeometryCandidates(
 }
 
 export function earlierSketchesForDraft(
-  document: Pick<DocumentSnapshot, "sketches">,
+  document: Pick<DocumentSnapshot, "sketches"> & Partial<Pick<DocumentSnapshot, "features">>,
   draftId: SketchRecord["id"],
 ) {
+  if (document.features) {
+    const graph = createDocumentDependencyGraphFromSnapshot({
+      features: document.features,
+      sketches: document.sketches,
+    })
+    const historyIndex = graph.ok
+      ? graph.graph.history.findIndex((item) => item.kind === "sketch" && item.id === draftId)
+      : -1
+    if (graph.ok && historyIndex >= 0) {
+      const earlierSketchIds = new Set(
+        graph.graph.history
+          .slice(0, historyIndex)
+          .filter((item) => item.kind === "sketch")
+          .map(({ id }) => id),
+      )
+      return document.sketches.filter(({ id }) => earlierSketchIds.has(id))
+    }
+  }
   const draftIndex = document.sketches.findIndex(({ id }) => id === draftId)
   return document.sketches.slice(0, draftIndex >= 0 ? draftIndex : document.sketches.length)
 }
@@ -495,6 +517,7 @@ function projectedPointContext(
 ): ExternalSketchPointCandidate {
   const projected = projectSketchPointBetweenFrames(sourceFrame, targetFrame, position)
   return {
+    construction: entity.construction,
     kind: "point",
     label,
     role: center ? "center" : "vertex",
@@ -520,6 +543,7 @@ function projectedLineContext(
   const end = projectSketchPointBetweenFrames(sourceFrame, targetFrame, sourceEnd)
   if (Math.hypot(end.local.x - start.local.x, end.local.y - start.local.y) <= 1e-9) return null
   return {
+    construction: entity.construction,
     kind: "line",
     label,
     sourceEndPointId: entity.endPointId,
@@ -554,6 +578,7 @@ function projectedCurveContext(
   return projected.length > 1
     ? {
         closed: entity.type === "circle" || entity.type === "ellipse",
+        construction: entity.construction,
         kind: "curve",
         label,
         points: projected,

@@ -152,6 +152,7 @@ describe("external sketch point candidates", () => {
 
     expect(externalSketchGeometryCandidates(document, target, labels)).toEqual([
       {
+        construction: false,
         kind: "point",
         label: "Source · Point 1",
         role: "vertex",
@@ -218,6 +219,7 @@ describe("external sketch point candidates", () => {
     })
 
     expect(externalSketchGeometryCandidates(document, target, labels)).toContainEqual({
+      construction: false,
       kind: "line",
       label: "Layout · Line 1",
       sourceEndPointId,

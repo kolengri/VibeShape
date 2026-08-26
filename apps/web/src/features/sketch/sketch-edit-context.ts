@@ -1,4 +1,5 @@
 import {
+  createDocumentDependencyGraphFromSnapshot,
   type DocumentSnapshot,
   type FeatureId,
   isSketchExternalModelReference,
@@ -11,6 +12,8 @@ export type SketchEditContextVisibility = Readonly<{
   featureIds: readonly FeatureId[]
   sketchIds: readonly SketchId[]
 }>
+
+type SketchEditContextSnapshot = Pick<DocumentSnapshot, "features" | "sketches">
 
 type DocumentNode =
   | Readonly<{ id: FeatureId; kind: "feature" }>
@@ -78,17 +81,36 @@ function dependentNodeIndex(snapshot: Pick<DocumentSnapshot, "features" | "sketc
   return dependents
 }
 
+function appendLaterHistoryItems(
+  snapshot: SketchEditContextSnapshot,
+  activeSketchId: SketchId,
+  featureIds: Set<FeatureId>,
+  sketchIds: Set<SketchId>,
+) {
+  const graph = createDocumentDependencyGraphFromSnapshot(snapshot)
+  if (!graph.ok) return
+  const activeIndex = graph.graph.history.findIndex(
+    (item) => item.kind === "sketch" && item.id === activeSketchId,
+  )
+  if (activeIndex < 0) return
+  for (const item of graph.graph.history.slice(activeIndex + 1)) {
+    if (item.kind === "feature") featureIds.add(item.id)
+    else sketchIds.add(item.id)
+  }
+}
+
 function nodeKey(node: DocumentNode) {
   return `${node.kind}:${node.id}`
 }
 
 export function sketchEditContextVisibility(
-  snapshot: Pick<DocumentSnapshot, "features" | "sketches">,
+  snapshot: SketchEditContextSnapshot,
   activeSketchId: SketchId,
 ): SketchEditContextVisibility {
   const dependents = dependentNodeIndex(snapshot)
   const featureIds = new Set<FeatureId>()
   const sketchIds = new Set<SketchId>([activeSketchId])
+  appendLaterHistoryItems(snapshot, activeSketchId, featureIds, sketchIds)
   const visited = new Set<string>([`sketch:${activeSketchId}`])
   const queue: DocumentNode[] = [{ id: activeSketchId, kind: "sketch" }]
 
