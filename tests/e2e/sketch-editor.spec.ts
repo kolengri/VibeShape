@@ -127,7 +127,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Show Sketch 1" }).click()
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
     await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
-    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
     await expect(
       drawing.locator("[data-sketch-available-external-geometry-count='3']"),
     ).toHaveCount(1)
@@ -182,6 +182,10 @@ test.describe("full sketch editor", () => {
       "[data-sketch-available-external-geometry-count] > g:has(polyline)",
     )
     await expect(curveCandidate).toHaveCount(1)
+    const preselection = curveCandidate.locator("polyline").nth(1)
+    await expect(preselection).toHaveCSS("opacity", "0")
+    await curveCandidate.focus()
+    await expect(preselection).toHaveCSS("opacity", "1")
 
     await curveCandidate.dispatchEvent("pointerdown")
 

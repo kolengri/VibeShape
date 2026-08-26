@@ -501,10 +501,12 @@ describe("SketchViewport", () => {
       }),
     )
 
-    expect(document.querySelector("[data-sketch-context-geometry-count]")).toBeNull()
+    expect(document.querySelector("[data-sketch-context-geometry-count='1']")).toBeTruthy()
     expect(
       document.querySelector("[data-sketch-available-external-geometry-count='1']"),
     ).toBeTruthy()
+    const candidate = document.querySelector("[data-sketch-available-external-geometry-id]")
+    expect(candidate?.querySelector("circle.opacity-0")).toBeTruthy()
   })
 
   it("keeps unsupported prior curves visible as passive context while Use is active", () => {
@@ -853,8 +855,9 @@ describe("SketchViewport", () => {
       `[data-sketch-available-external-geometry-id="${sourceCircleId}"]`,
     )
     if (!sourceCurve) throw new Error("The source curve must be selectable on the drawing.")
-    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeNull()
+    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeTruthy()
     expect(sourceCurve.querySelectorAll("polyline")).toHaveLength(2)
+    expect(sourceCurve.querySelector("polyline.opacity-0")).toBeTruthy()
 
     fireEvent.pointerDown(sourceCurve)
 
