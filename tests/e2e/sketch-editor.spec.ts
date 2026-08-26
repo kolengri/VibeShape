@@ -11,6 +11,65 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("intersects a planar model face through the real OCCT worker and rebuilds the saved sketch", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+
+    const noReferences = page.getByText("No external geometry is in use.", { exact: true })
+    await expect(noReferences).toBeVisible()
+    await page.getByRole("button", { name: "Intersect planar face", exact: true }).click()
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+
+    const viewport = page.locator("section[data-sketch-context-mode='orbit']")
+    const canvasBounds = await viewport.locator("canvas").boundingBox()
+    if (!canvasBounds) throw new Error("The 3D intersection-selection canvas is not visible.")
+
+    const centerX = canvasBounds.x + canvasBounds.width / 2
+    const centerY = canvasBounds.y + canvasBounds.height / 2
+    await page.mouse.move(centerX, centerY)
+    await page.mouse.down({ button: "middle" })
+    await page.mouse.move(centerX + 100, centerY - 60, { steps: 8 })
+    await page.mouse.up({ button: "middle" })
+
+    let selected = false
+    for (let offsetY = -120; offsetY <= 120 && !selected; offsetY += 16) {
+      for (let offsetX = -180; offsetX <= 180; offsetX += 16) {
+        await page.mouse.click(centerX + offsetX, centerY + offsetY)
+        if (!(await noReferences.isVisible())) {
+          selected = true
+          break
+        }
+      }
+    }
+    expect(selected).toBe(true)
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    await expect(drawing.locator("[data-sketch-external-line-id]")).toHaveCount(1)
+    await expect(drawing.getByText("Empty sketch", { exact: true })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "1",
+    )
+  })
+
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({
     page,
   }) => {

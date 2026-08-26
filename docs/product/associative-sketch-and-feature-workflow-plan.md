@@ -75,9 +75,9 @@ Those pieces do not yet form a complete associative workflow.
 | Sketch support | Origin planes, Datum Plane, and a bounded set of planar feature faces work. | A typed support-frame union with stable origin/orientation and an explicit reference-coordinate-system option. | P0 |
 | Support selection | Supported planes and faces can be picked before editing. | The same graphical selection model must work for support replacement and all reference inputs. | P0 |
 | Editing context | The normal-to-plane canvas keeps earlier visible solved sketch points, lines, circles, arcs, ellipses, and elliptical arcs as muted context; the mounted 3D scene retains earlier model and datum geometry. Model-tree visibility controls both representations. | Add source hover and overlap cycling. | P0 |
-| External references | Points, lines, circles, arcs, ellipses, and elliptical arcs from earlier sketches project analytically across non-degenerate support frames, and ordered sketch-to-sketch chains resolve recursively through the document graph. Stable model vertex, linear-edge, circle-edge, and arc-edge records also resolve through exact rebuild-local geometry without persisting transient topology IDs. | Add non-circular curved feature edges, intersection records, and repair diagnostics. | P0 |
+| External references | Points, lines, circles, arcs, ellipses, and elliptical arcs from earlier sketches project analytically across non-degenerate support frames, and ordered sketch-to-sketch chains resolve recursively through the document graph. Stable model vertex, linear-edge, circle-edge, arc-edge, and planar-face Intersection records resolve through exact rebuild-local geometry without persisting transient topology IDs. | Add non-circular curved feature edges, general surface intersections, and repair diagnostics. | P0 |
 | External selection | Use external geometry selects earlier sketch points, lines, and analytical curves plus visible committed model vertices, linear edges, circles, and circular arcs in 2D or the persistent 3D viewport with source labels. Passive, selectable, and committed layers are mutually exclusive, and renderer-local candidate IDs never persist. | Add non-circular curved feature-topology candidates, source filters, and overlap cycling. | P0 |
-| Intersection | Not implemented. | Select a face/surface and create an exact, associative sketch-plane intersection. | P0 |
+| Intersection | The icon-only tool selects one visible planar model face in orbit mode and creates exactly one bounded associative linear OCCT section. Parallel/coplanar and unsupported results fail closed. | Add curved surfaces, multiple analytical result segments, Pierce semantics, and graphical repair. | P0 |
 | External constraints | A projected point supports Coincident; a projected line is selectable and supports compatible line and point-on-line relations. | Add Point on curve, Tangent, Concentric, Pierce/Intersection, and curve dimensions where mathematically valid. | P0/P1 |
 | Datum construction | Signed offset only. | Offset, Plane point, Line angle, Point normal, Three point, Mid plane, Curve point, and Tangent modes. | P1 |
 | History tools | No rollback cursor, interleaved reorder, or parent/child view. | Rollback, insert-at-cursor, dependency inspection, validated reorder, and suppression. | P0/P1 |
@@ -520,7 +520,8 @@ dimension changes.
 
 ### Slice 4 — Intersection and external inference
 
-- Add exact plane/face and plane/surface intersection preparation in the geometry worker.
+- Exact plane/planar-face preparation for one bounded linear result is implemented in the geometry worker;
+  extend it to supported curved surfaces and multiple analytical results.
 - Represent supported results analytically and provide Intersection/Pierce relations.
 - Wake eligible external points, curves, and directions during placement and drag.
 - Add `Shift` suppression, deterministic candidate ranking, and visible relation previews.

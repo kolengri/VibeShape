@@ -2,6 +2,7 @@ import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebui
 import type { SupportFrame } from "@vibeshape/application/support-frame"
 import {
   featureIdSchema,
+  type PlanarFaceTopoRef,
   sketchEntityIdSchema,
   sketchRecordSchema,
   type TopologySignature,
@@ -10,8 +11,10 @@ import type { TopologyCandidate } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
   applyExternalModelCandidate,
+  applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   externalModelGeometryCandidates,
+  planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
 } from "./external-model-geometry"
 
@@ -319,6 +322,62 @@ describe("external model geometry candidates", () => {
 })
 
 describe("apply external model candidate", () => {
+  it("rejects planar faces parallel to the sketch before persisting an intersection", () => {
+    const reference: PlanarFaceTopoRef = {
+      schemaVersion: 0,
+      featureId,
+      kind: "face",
+      signature: {
+        ...signature("face", "PLANE", [0, 0, 10]),
+        kind: "face",
+        geometryClass: "PLANE",
+        direction: [0, 0, 1],
+        directionMode: "oriented",
+      },
+    }
+
+    expect(planarFaceCanIntersectSketch(reference, targetFrame)).toBe(false)
+    expect(
+      planarFaceCanIntersectSketch(
+        { ...reference, signature: { ...reference.signature, direction: [1, 0, 0] } },
+        targetFrame,
+      ),
+    ).toBe(true)
+  })
+
+  it("persists one stable planar-face intersection without transient selection identity", () => {
+    const reference: PlanarFaceTopoRef = {
+      schemaVersion: 0,
+      featureId,
+      kind: "face",
+      semanticRole: "primitive.box.side.x-max",
+      signature: {
+        ...signature("face", "PLANE", [10, 0, 5]),
+        kind: "face",
+        geometryClass: "PLANE",
+        direction: [1, 0, 0],
+        directionMode: "oriented",
+        boundaryCount: 4,
+      },
+    }
+
+    const result = sketchRecordSchema.parse(applyExternalModelIntersection(draft(), reference))
+    const external = result.externalReferences?.[0]
+    expect(external).toEqual(expect.objectContaining({ kind: "model-intersection", reference }))
+    if (external?.kind !== "model-intersection") {
+      throw new Error("Expected a model intersection reference.")
+    }
+    expect(
+      new Set([
+        external.projectedLineId,
+        external.projectedStartPointId,
+        external.projectedEndPointId,
+      ]).size,
+    ).toBe(3)
+    expect(JSON.stringify(external)).not.toContain("meshFaceId")
+    expect(JSON.stringify(external)).not.toContain("candidateId")
+  })
+
   it("creates a projected model point and attaches it to one selected authored point", () => {
     const [candidate] = externalModelGeometryCandidates(
       [geometryRecord(featureId, [pointCandidate("vertex-1", [1, 2, 3])])],

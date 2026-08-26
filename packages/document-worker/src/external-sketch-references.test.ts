@@ -78,6 +78,124 @@ function solved(input: Parameters<SketchSolvePort>[0]): SolveSketchRecordResult 
 }
 
 describe("external sketch reference resolution", () => {
+  it("materializes an exact planar-face section through the current worker-local face key", async () => {
+    const featureId = id("4640")
+    const contentHash = "a".repeat(64)
+    const signature = {
+      kind: "face" as const,
+      geometryClass: "PLANE",
+      measure: 100,
+      centroid: [0, 5, 5] as [number, number, number],
+      bounds: {
+        min: [0, 0, 0] as [number, number, number],
+        max: [0, 10, 10] as [number, number, number],
+      },
+      direction: [1, 0, 0] as [number, number, number],
+      directionMode: "oriented" as const,
+      boundaryCount: 4,
+      adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+    }
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(9, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4641"),
+          kind: "model-intersection",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "face",
+            semanticRole: "primitive.box.side.x-max",
+            signature,
+          },
+          projectedLineId: id("4642"),
+          projectedStartPointId: id("4643"),
+          projectedEndPointId: id("4644"),
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4645"),
+      revision: 1,
+      name: "Planar face intersection",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-26T00:00:00.000Z",
+      updatedAt: "2026-08-26T00:00:00.000Z",
+    })
+    const geometry = [
+      {
+        featureId,
+        contentHash,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "face:current",
+              kind: "face",
+              meshFaceId: 313,
+              semanticRole: "primitive.box.side.x-max",
+              lineageTokens: [],
+              signature,
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+    const sectionPlanarFace = vi.fn(async () => ({
+      ok: true as const,
+      endpoints: [
+        [0, 2, 0],
+        [0, 8, 0],
+      ] as const,
+    }))
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometry,
+      sectionPlanarFace,
+    )
+
+    expect(sectionPlanarFace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: document.id,
+        sourceFeatureId: featureId,
+        sourceContentHash: contentHash,
+        resolvedFaceKey: 313,
+        planeOrigin: [0, 0, 0],
+        planeNormal: [0, 0, 1],
+      }),
+    )
+    expect(result.externalLines).toEqual([
+      expect.objectContaining({
+        startPoint: expect.objectContaining({ x: 0, y: 2 }),
+        endPoint: expect.objectContaining({ x: 0, y: 8 }),
+      }),
+    ])
+  })
+
   it("projects resolved model vertices and edges from feature geometry", async () => {
     const featureId = id("4600")
     const feature = {

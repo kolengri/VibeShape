@@ -39,9 +39,11 @@ import {
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
   applyExternalModelCandidate,
+  applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   type ExternalModelGeometryCandidate,
   projectExternalModelGeometryCandidates,
+  planarFaceCanIntersectSketch,
 } from "../features/sketch/external-model-geometry"
 import {
   applyExternalSketchCandidate,
@@ -63,6 +65,7 @@ import type {
   SketchDraftChangeMode,
   SketchEditorTool,
 } from "../features/sketch/sketch-tool"
+import { selectedPlanarFaceReferenceFromController } from "../features/sketch/sketch-support"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import {
@@ -483,6 +486,7 @@ function useWorkspaceSketchContext(
   editorTool: SketchEditorTool,
   candidates: readonly ViewerSketchReferenceCandidate[],
   onSelect: (candidate: ViewerSketchReferenceCandidate) => void,
+  onIntersectionSelect: (selection: ViewerSelection) => void,
   projectionStore: ReturnType<typeof useSketchProjectionStoreApi>,
 ) {
   return useMemo<GeometryViewportSketchContext | undefined>(() => {
@@ -492,8 +496,30 @@ function useWorkspaceSketchContext(
       mode,
       ...(projectionStore ? { projectionStore } : {}),
       ...(editorTool === "use" ? { referenceSelection: { candidates, onSelect } } : {}),
+      ...(editorTool === "intersection"
+        ? { faceIntersectionSelection: { onSelect: onIntersectionSelect } }
+        : {}),
     }
-  }, [active, candidates, editorTool, frame, mode, onSelect, projectionStore])
+  }, [active, candidates, editorTool, frame, mode, onIntersectionSelect, onSelect, projectionStore])
+}
+
+function useSelectModelIntersection(
+  controller: DocumentControllerState,
+  draft: SketchRecord | null,
+  targetFrame: SupportFrame | null,
+  onDraftChange: (draft: SketchRecord) => void,
+  onEditorToolChange: (tool: SketchEditorTool) => void,
+) {
+  return useCallback(
+    (selection: ViewerSelection) => {
+      if (!draft || !targetFrame) return
+      const reference = selectedPlanarFaceReferenceFromController(controller, selection)
+      if (!reference || !planarFaceCanIntersectSketch(reference, targetFrame)) return
+      onDraftChange(applyExternalModelIntersection(draft, reference))
+      onEditorToolChange("select")
+    },
+    [controller, draft, onDraftChange, onEditorToolChange, targetFrame],
+  )
 }
 
 function useSelectExternalGeometry(
@@ -808,6 +834,13 @@ function useWorkspaceReferenceSelection({
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
   )
+  const selectModelIntersection = useSelectModelIntersection(
+    props.controller,
+    props.sketch.draft,
+    frame,
+    props.actions.onSketchDraftChange,
+    props.actions.onSketchEditorToolChange,
+  )
   return useWorkspaceSketchContext(
     sketchActive,
     frame,
@@ -815,6 +848,7 @@ function useWorkspaceReferenceSelection({
     props.sketch.editorTool,
     viewerPointCandidates,
     selectExternalPoint,
+    selectModelIntersection,
     projectionStore,
   )
 }

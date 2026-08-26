@@ -175,6 +175,22 @@ export const sketchExternalModelCurveReferenceSchema = z
   .strict()
   .superRefine(validateProjectedCurveIdentities)
 
+/** A read-only bounded line created by intersecting one stable planar model face with the sketch. */
+export const sketchExternalModelIntersectionReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-intersection"),
+    reference: planarFaceTopoRefSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId, {
+    message: "A projected model intersection requires distinct endpoint IDs.",
+  })
+
 export const sketchExternalReferenceSchema = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
@@ -182,6 +198,7 @@ export const sketchExternalReferenceSchema = z.union([
   sketchExternalModelPointReferenceSchema,
   sketchExternalModelLineReferenceSchema,
   sketchExternalModelCurveReferenceSchema,
+  sketchExternalModelIntersectionReferenceSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -202,11 +219,15 @@ export type SketchExternalModelLineReference = Readonly<
 export type SketchExternalModelCurveReference = Readonly<
   z.infer<typeof sketchExternalModelCurveReferenceSchema>
 >
+export type SketchExternalModelIntersectionReference = Readonly<
+  z.infer<typeof sketchExternalModelIntersectionReferenceSchema>
+>
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
 export type SketchExternalModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
+  | SketchExternalModelIntersectionReference
 
 export function isSketchExternalModelReference(
   reference: SketchExternalReference,
@@ -214,7 +235,8 @@ export function isSketchExternalModelReference(
   return (
     reference.kind === "model-point" ||
     reference.kind === "model-line" ||
-    reference.kind === "model-curve"
+    reference.kind === "model-curve" ||
+    reference.kind === "model-intersection"
   )
 }
 
@@ -576,7 +598,11 @@ export function projectedExternalSketchEntities(
         projectedExternalCurve(reference),
       ]
     }
-    if (reference.kind !== "line" && reference.kind !== "model-line") {
+    if (
+      reference.kind !== "line" &&
+      reference.kind !== "model-line" &&
+      reference.kind !== "model-intersection"
+    ) {
       return [projectedExternalPoint(reference.projectedPointId)]
     }
     return [

@@ -25,7 +25,11 @@ import {
   type SketchProfileLoop,
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
-import { resolveExternalSketchGeometry, type SketchSolveCache } from "./external-sketch-references"
+import {
+  type PlanarFaceSectionPort,
+  resolveExternalSketchGeometry,
+  type SketchSolveCache,
+} from "./external-sketch-references"
 import type { SketchSolvePort } from "./runtime"
 
 const TWO_PI = Math.PI * 2
@@ -257,6 +261,7 @@ export function solveSketchOnce(
   sketch: SketchRecord,
   features: readonly FeatureRecord[] = document.features,
   geometry: readonly FeatureGeometryRecord[] = [],
+  sectionPlanarFace?: PlanarFaceSectionPort,
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
@@ -267,6 +272,7 @@ export function solveSketchOnce(
     features,
     solvedBySketchId,
     geometry,
+    sectionPlanarFace,
   ).then((externalGeometry) =>
     solveSketch({
       sketch,
@@ -306,6 +312,7 @@ async function prepareFeatureContent(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
   geometry: readonly FeatureGeometryRecord[],
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
 ) {
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
@@ -336,7 +343,15 @@ async function prepareFeatureContent(
     return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
   }
   const result = validatedSolution(
-    await solveSketchOnce(solvedBySketchId, solveSketch, document, sketch, features, geometry),
+    await solveSketchOnce(
+      solvedBySketchId,
+      solveSketch,
+      document,
+      sketch,
+      features,
+      geometry,
+      sectionPlanarFace,
+    ),
     document,
     sketch,
   )
@@ -352,7 +367,16 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
 export function createDocumentFeatureContentPreparer(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: SketchSolveCache = new Map(),
+  sectionPlanarFace?: PlanarFaceSectionPort,
 ): DocumentFeatureContentPreparationPort {
   return ({ document, feature, features = document.features, geometry = [] }) =>
-    prepareFeatureContent(document, feature, features, solveSketch, solvedBySketchId, geometry)
+    prepareFeatureContent(
+      document,
+      feature,
+      features,
+      solveSketch,
+      solvedBySketchId,
+      geometry,
+      sectionPlanarFace,
+    )
 }

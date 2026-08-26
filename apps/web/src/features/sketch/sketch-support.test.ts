@@ -1,6 +1,6 @@
 import { featureIdSchema, topologyCandidateSchema } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
-import { selectedSketchSupport } from "./sketch-support"
+import { selectedPlanarFaceReference, selectedSketchSupport } from "./sketch-support"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
 
@@ -47,5 +47,31 @@ describe("selectedSketchSupport", () => {
     expect(
       selectedSketchSupport(featureId, 42, [candidate({ semanticRole: undefined })]),
     ).toBeNull()
+  })
+})
+
+describe("selectedPlanarFaceReference", () => {
+  it("creates stable face intent without retaining the mesh face identity", () => {
+    const reference = selectedPlanarFaceReference(featureId, 42, [
+      candidate({ semanticRole: "extrusion.side.source-line" }),
+    ])
+
+    expect(reference).toMatchObject({
+      featureId,
+      kind: "face",
+      semanticRole: "extrusion.side.source-line",
+      intent: { nearPoint: [0, 0, 10], expectedDirection: [0, 0, 1] },
+    })
+    expect(reference).not.toHaveProperty("meshFaceId")
+    expect(reference).not.toHaveProperty("candidateId")
+  })
+
+  it("rejects curved faces and unknown mesh hits", () => {
+    expect(
+      selectedPlanarFaceReference(featureId, 42, [
+        candidate({ signature: { ...candidate().signature, geometryClass: "CYLINDRE" } }),
+      ]),
+    ).toBeNull()
+    expect(selectedPlanarFaceReference(featureId, 7, [candidate()])).toBeNull()
   })
 })

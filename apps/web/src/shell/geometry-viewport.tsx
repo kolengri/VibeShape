@@ -58,6 +58,9 @@ export type GeometryViewportSketchContext = Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
   }>
+  faceIntersectionSelection?: Readonly<{
+    onSelect: (selection: ViewerSelection) => void
+  }>
 }>
 
 const ignoreOriginPlaneSelection = () => undefined
@@ -215,7 +218,13 @@ function synchronizeViewportSketchContext(
 ) {
   const referenceSelection = orbitReferenceSelection(context)
   viewport.setSketchReferenceCandidates(referenceSelection?.candidates ?? [])
-  viewport.setInteractionMode(viewportInteractionMode(context, referenceSelection !== undefined))
+  viewport.setInteractionMode(
+    viewportInteractionMode(
+      context,
+      referenceSelection !== undefined,
+      orbitFaceIntersectionSelection(context) !== undefined,
+    ),
+  )
   synchronizeViewportSketchProjection(viewport, context)
 }
 
@@ -242,11 +251,18 @@ function orbitReferenceSelection(context: GeometryViewportSketchContext | null) 
   return context.referenceSelection
 }
 
+function orbitFaceIntersectionSelection(context: GeometryViewportSketchContext | null) {
+  if (context?.mode !== "orbit") return undefined
+  return context.faceIntersectionSelection
+}
+
 function viewportInteractionMode(
   context: GeometryViewportSketchContext | null,
   referenceSelectionActive: boolean,
+  faceIntersectionSelectionActive: boolean,
 ) {
   if (referenceSelectionActive) return "sketch-reference-select"
+  if (faceIntersectionSelectionActive) return "select"
   return context ? "camera-only" : "select"
 }
 
@@ -330,7 +346,14 @@ function useViewportRenderer(
       createViewport,
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
-      onSelectionChange,
+      (selection) => {
+        const faceSelection = orbitFaceIntersectionSelection(latest.sketchContextRef.current)
+        if (selection && faceSelection) {
+          faceSelection.onSelect(selection)
+          return
+        }
+        onSelectionChange(selection)
+      },
       setSketchPointPreselection,
       (candidate) => latest.sketchContextRef.current?.referenceSelection?.onSelect(candidate),
       mount,
@@ -962,6 +985,14 @@ function SketchContextChrome({
           role="status"
         >
           {t("sketchReferenceSelection")}
+        </div>
+      ) : null}
+      {context.faceIntersectionSelection ? (
+        <div
+          className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          {t("sketchIntersectionSelection")}
         </div>
       ) : null}
       {preselection ? (
