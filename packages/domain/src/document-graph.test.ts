@@ -4,7 +4,9 @@ import {
   createDocumentDependencyGraphFromSnapshot,
   type DocumentNodeRef,
   deriveLegacyHistory,
+  deriveLegacyHistoryWithPreferredOrder,
 } from "./document-graph"
+import { featureRecordV1Schema } from "./feature-graph"
 import { createLengthQuantity } from "./units"
 
 const id = (value: string) => `00000000-0000-7000-8000-00000000000${value}`
@@ -136,6 +138,135 @@ describe("createDocumentDependencyGraph", () => {
       ],
     })
     expect(deriveLegacyHistory(snapshot)).toEqual(deriveLegacyHistory(snapshot))
+  })
+
+  it("stabilizes a preferred presentation order against dependencies", () => {
+    const snapshot = { sketches: [], features: [feature("2", ["1"]), feature("1")] }
+
+    expect(
+      deriveLegacyHistoryWithPreferredOrder(snapshot, [
+        { kind: "feature", id: id("2") },
+        { kind: "feature", id: id("1") },
+      ]),
+    ).toEqual({
+      ok: true,
+      history: [
+        { kind: "feature", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+  })
+
+  it("uses v1 semantic declarations as graph edges and flags incomplete declarations", () => {
+    const source = featureRecordV1Schema.parse({
+      ...feature("1"),
+      schemaVersion: 1,
+      semanticInputs: [],
+    })
+    const consumer = featureRecordV1Schema.parse({
+      ...feature("2"),
+      schemaVersion: 1,
+      semanticInputs: [{ kind: "feature", id: source.id }],
+    })
+    const result = createDocumentDependencyGraph({
+      sketches: [],
+      features: [source, consumer],
+      history: [
+        { kind: "feature", id: source.id },
+        { kind: "feature", id: consumer.id },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      graph: {
+        edges: [
+          {
+            relation: "semantic-input",
+            source: { kind: "feature", id: source.id },
+            target: { kind: "feature", id: consumer.id },
+          },
+        ],
+      },
+    })
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [],
+        features: [{ ...consumer, semanticInputs: null }],
+        history: [{ kind: "feature", id: consumer.id }],
+      }),
+    ).toMatchObject({ ok: true, graph: { dependencyModelIssues: [{ featureId: consumer.id }] } })
+  })
+
+  it("cross-checks first-party semantic declarations against validated parameters", () => {
+    const profile = sketch("1")
+    const feature = featureRecordV1Schema.parse({
+      ...extrusion("2", "1"),
+      schemaVersion: 1,
+      semanticInputs: [],
+    })
+
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [profile],
+        features: [feature],
+        history: [
+          { kind: "sketch", id: profile.id },
+          { kind: "feature", id: feature.id },
+        ],
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.0.semanticInputs" }],
+      },
+    })
+  })
+
+  it("preflights aggregate semantic-input limits before parsing records", () => {
+    const semanticInputs = Array.from({ length: 1_024 }, () => ({
+      kind: "feature",
+      id: id("1"),
+    }))
+
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [],
+        features: Array.from({ length: 98 }, () => ({ semanticInputs })),
+        history: [],
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "edge-limit" } })
+  })
+
+  it("reports the durable semantic-input path for forward History references", () => {
+    const source = featureRecordV1Schema.parse({
+      ...feature("1"),
+      schemaVersion: 1,
+      semanticInputs: [],
+    })
+    const consumer = featureRecordV1Schema.parse({
+      ...feature("2"),
+      schemaVersion: 1,
+      semanticInputs: [{ kind: "feature", id: source.id }],
+    })
+
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [],
+        features: [source, consumer],
+        history: [
+          { kind: "feature", id: consumer.id },
+          { kind: "feature", id: source.id },
+        ],
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "forward-reference",
+        issues: [{ path: "features.1.semanticInputs.0" }],
+      },
+    })
   })
 
   it("fails snapshot derivation for missing sources and cycles", () => {

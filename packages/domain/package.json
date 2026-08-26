@@ -12,6 +12,8 @@
     "./commands": "./src/commands.ts",
     "./document": "./src/document.ts",
     "./document-graph": "./src/document-graph.ts",
+    "./document-migration": "./src/document-migration.ts",
+    "./document-node": "./src/document-node.ts",
     "./drafts": "./src/drafts.ts",
     "./feature-content-identity": "./src/feature-content-identity.ts",
     "./feature-graph": "./src/feature-graph.ts",

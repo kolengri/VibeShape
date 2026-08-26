@@ -1,5 +1,12 @@
 import { z } from "zod"
-import { type FeatureRecord, featureRecordsSchema } from "./feature-graph"
+import { createDocumentDependencyGraph } from "./document-graph"
+import { historyItemsSchema } from "./document-node"
+import {
+  type FeatureRecord,
+  type FeatureRecordV1,
+  featureRecordsSchema,
+  featureRecordsV1Schema,
+} from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
 import {
   isSketchExternalModelReference,
@@ -32,7 +39,7 @@ export const documentDisplayUnitsSchema = z
 export type DocumentDisplayUnits = Readonly<z.infer<typeof documentDisplayUnitsSchema>>
 
 type DocumentReferenceValidationInput = Readonly<{
-  features: readonly FeatureRecord[]
+  features: readonly Pick<FeatureRecord, "id">[]
   sketches: readonly SketchRecord[]
 }>
 
@@ -189,3 +196,52 @@ export type DocumentSnapshot = Readonly<
     features: readonly FeatureRecord[]
   }
 >
+
+export const documentSnapshotV0Schema = documentSnapshotSchema
+
+export const documentSnapshotV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: documentIdSchema,
+    revision: revisionSchema,
+    name: documentNameSchema,
+    displayUnits: documentDisplayUnitsSchema,
+    variables: variableDefinitionsSchema,
+    sketches: sketchRecordsSchema,
+    features: featureRecordsV1Schema,
+    history: historyItemsSchema,
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+  })
+  .strict()
+  .superRefine((document, context) => {
+    validateDocumentSketchReferences(document, context)
+    const graph = createDocumentDependencyGraph(document)
+    if (graph.ok) return
+    context.addIssue({
+      code: "custom",
+      path: ["history"],
+      message: graph.diagnostic.message,
+    })
+    for (const issue of graph.diagnostic.issues.slice(0, 8))
+      context.addIssue({
+        code: "custom",
+        path: issue.path.split(".").filter(Boolean),
+        message: issue.message,
+      })
+  })
+
+type ParsedDocumentSnapshotV1 = z.infer<typeof documentSnapshotV1Schema>
+export type DocumentSnapshotV1 = Readonly<
+  Omit<ParsedDocumentSnapshotV1, "features" | "sketches" | "variables" | "history"> & {
+    variables: readonly VariableDefinition[]
+    sketches: readonly SketchRecord[]
+    features: readonly FeatureRecordV1[]
+    history: ParsedDocumentSnapshotV1["history"]
+  }
+>
+export const versionedDocumentSnapshotSchema = z.union([
+  documentSnapshotSchema,
+  documentSnapshotV1Schema,
+])
+export type VersionedDocumentSnapshot = DocumentSnapshot | DocumentSnapshotV1
