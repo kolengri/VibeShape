@@ -12,6 +12,8 @@ import type {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
+import { Button } from "@vibeshape/ui/components/button"
+import { Eye, EyeOff } from "@vibeshape/ui/components/icons"
 import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
@@ -49,6 +51,7 @@ import {
 } from "../features/sketch/external-sketch-points"
 import {
   mergeSketchEditVisibility,
+  type SketchEditContextVisibility,
   sketchEditContextVisibility,
 } from "../features/sketch/sketch-edit-context"
 import {
@@ -109,6 +112,7 @@ type WorkspaceContentProps = Readonly<{
     onSketchRedo: () => void
     onSketchConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
     onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+    onSketchFinalContextChange: (visible: boolean) => void
     onSketchUndo: () => void
   }>
   controller: DocumentControllerState
@@ -334,6 +338,22 @@ function workspaceDisplayVisibility(
   return { featureIds: [], sketchIds: [activeSketchId] }
 }
 
+function shouldOfferSketchFinalContext({
+  finalModelAvailable,
+  rollbackFeatureCount,
+  rollbackModelCount,
+  showFinalContext,
+}: Readonly<{
+  finalModelAvailable: boolean
+  rollbackFeatureCount: number
+  rollbackModelCount: number
+  showFinalContext: boolean
+}>) {
+  return (
+    !showFinalContext && finalModelAvailable && rollbackFeatureCount > 0 && rollbackModelCount === 0
+  )
+}
+
 function useWorkspaceExternalGeometry(
   snapshot: DocumentSnapshot | undefined,
   draft: SketchRecord | null,
@@ -505,6 +525,51 @@ function useSelectExternalGeometry(
   )
 }
 
+function SketchContextStatus({
+  offerFinalContext,
+  showFinalContext,
+  onFinalContextChange,
+}: Readonly<{
+  offerFinalContext: boolean
+  showFinalContext: boolean
+  onFinalContextChange: (visible: boolean) => void
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  if (!showFinalContext && !offerFinalContext) return null
+  return (
+    <div
+      className={
+        showFinalContext
+          ? "absolute right-3 top-3 z-30 flex items-center gap-2 rounded-md border border-border/80 bg-background/90 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur"
+          : "absolute bottom-3 left-1/2 z-30 flex max-w-[min(32rem,calc(100%-1.5rem))] -translate-x-1/2 items-center gap-3 rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur"
+      }
+      data-testid={showFinalContext ? "sketch-final-context-status" : "sketch-rollback-guidance"}
+    >
+      <span className="text-muted-foreground" role="status">
+        {showFinalContext ? (
+          <>
+            <span className="font-medium text-foreground">{t("finalContextLabel")}</span>
+            <span aria-hidden="true"> · </span>
+            {t("finalContextDisplayOnly")}
+          </>
+        ) : (
+          t("rollbackContextUnavailable")
+        )}
+      </span>
+      <Button
+        className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
+        size="sm"
+        type="button"
+        variant="secondary"
+        onClick={() => onFinalContextChange(!showFinalContext)}
+      >
+        {showFinalContext ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+        {showFinalContext ? t("hideFinalContext") : t("showFinalContext")}
+      </Button>
+    </div>
+  )
+}
+
 function WorkspaceContentView({
   activeSketchDisplay,
   editVisibility,
@@ -517,6 +582,7 @@ function WorkspaceContentView({
   sketchContext,
   supportFeatures,
   onDisplayChange,
+  offerFinalContext,
   showFinalContext,
 }: Readonly<{
   activeSketchDisplay: SketchDisplayRecord | null
@@ -530,9 +596,9 @@ function WorkspaceContentView({
   supportFeatures: readonly FeatureRecord[]
   frame: ReturnType<typeof resolvedWorkspaceSketchFrame>
   onDisplayChange: (display: SketchDisplayRecord | null) => void
+  offerFinalContext: boolean
   showFinalContext: boolean
 }>) {
-  const t = useTranslations("app.shell.viewport")
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
@@ -565,16 +631,11 @@ function WorkspaceContentView({
       }
       sketchActive={sketchActive}
       status={
-        showFinalContext ? (
-          <div
-            className="pointer-events-none absolute right-3 top-3 z-30 rounded-md border border-border/80 bg-background/90 px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur"
-            data-testid="sketch-final-context-status"
-          >
-            <span className="font-medium text-foreground">{t("finalContextLabel")}</span>
-            <span aria-hidden="true"> · </span>
-            {t("finalContextDisplayOnly")}
-          </div>
-        ) : null
+        <SketchContextStatus
+          offerFinalContext={offerFinalContext}
+          showFinalContext={showFinalContext}
+          onFinalContextChange={props.actions.onSketchFinalContextChange}
+        />
       }
     />
   )
@@ -621,9 +682,7 @@ function useAvailableWorkspaceModelCandidates(
   }, [controller.report?.rebuild, draft, projectedCandidates])
 }
 
-function WorkspaceContent(props: WorkspaceContentProps) {
-  const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
-  const projectionStore = useSketchProjectionStoreApi()
+function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
   const snapshot = props.controller.report?.snapshot
   const supportFeatures = useMemo(() => resolvedWorkspaceFeatures(snapshot), [snapshot])
   const externalSketchSolutions = useExternalSketchSolutions(
@@ -663,6 +722,29 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     () => usableExternalGeometryCandidates(externalContextGeometry),
     [externalContextGeometry],
   )
+  return {
+    displayVisibility,
+    externalContextGeometry,
+    externalPointCandidates,
+    frame,
+    rollbackVisibility,
+    sketchActive,
+    snapshot,
+    supportFeatures,
+  }
+}
+
+function useWorkspaceModelGeometry({
+  frame,
+  props,
+  rollbackVisibility,
+  snapshot,
+}: Readonly<{
+  frame: SupportFrame | null
+  props: WorkspaceContentProps
+  rollbackVisibility: SketchEditContextVisibility
+  snapshot: DocumentSnapshot | undefined
+}>) {
   const visibleModelFeatureIds = useMemo(
     () =>
       viewerMeshes(props.controller, props.model.hiddenFeatureIds, rollbackVisibility.featureIds)
@@ -670,17 +752,48 @@ function WorkspaceContent(props: WorkspaceContentProps) {
         .map(({ featureId }) => featureId as FeatureId),
     [props.controller, props.model.hiddenFeatureIds, rollbackVisibility.featureIds],
   )
-  const projectedExternalModelCandidates = useProjectedWorkspaceModelCandidates(
+  const finalModelAvailable = useMemo(
+    () =>
+      viewerMeshes(props.controller, props.model.hiddenFeatureIds).some(
+        ({ appearance }) => appearance !== "datum",
+      ),
+    [props.controller, props.model.hiddenFeatureIds],
+  )
+  const projectedCandidates = useProjectedWorkspaceModelCandidates(
     props.controller,
     snapshot,
     frame,
     visibleModelFeatureIds,
   )
-  const externalModelCandidates = useAvailableWorkspaceModelCandidates(
-    props.controller,
-    props.sketch.draft,
-    projectedExternalModelCandidates,
-  )
+  return {
+    externalModelCandidates: useAvailableWorkspaceModelCandidates(
+      props.controller,
+      props.sketch.draft,
+      projectedCandidates,
+    ),
+    offerFinalContext: shouldOfferSketchFinalContext({
+      finalModelAvailable,
+      rollbackFeatureCount: rollbackVisibility.featureIds.length,
+      rollbackModelCount: visibleModelFeatureIds.length,
+      showFinalContext: props.sketch.showFinalContext,
+    }),
+  }
+}
+
+function useWorkspaceReferenceSelection({
+  externalModelCandidates,
+  externalPointCandidates,
+  frame,
+  props,
+  sketchActive,
+}: Readonly<{
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
+  externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
+  frame: SupportFrame | null
+  props: WorkspaceContentProps
+  sketchActive: boolean
+}>) {
+  const projectionStore = useSketchProjectionStoreApi()
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () => [
       ...externalPointCandidates.map(viewerReferenceCandidate),
@@ -695,7 +808,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
   )
-  const sketchContext = useWorkspaceSketchContext(
+  return useWorkspaceSketchContext(
     sketchActive,
     frame,
     props.sketch.cameraMode,
@@ -704,19 +817,38 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     selectExternalPoint,
     projectionStore,
   )
+}
+
+function WorkspaceContent(props: WorkspaceContentProps) {
+  const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
+  const sketchGeometry = useWorkspaceSketchGeometry(props)
+  const modelGeometry = useWorkspaceModelGeometry({
+    frame: sketchGeometry.frame,
+    props,
+    rollbackVisibility: sketchGeometry.rollbackVisibility,
+    snapshot: sketchGeometry.snapshot,
+  })
+  const sketchContext = useWorkspaceReferenceSelection({
+    externalModelCandidates: modelGeometry.externalModelCandidates,
+    externalPointCandidates: sketchGeometry.externalPointCandidates,
+    frame: sketchGeometry.frame,
+    props,
+    sketchActive: sketchGeometry.sketchActive,
+  })
   return (
     <WorkspaceContentView
       activeSketchDisplay={activeSketchDisplay}
-      editVisibility={displayVisibility}
-      externalContextGeometry={externalContextGeometry}
-      externalModelCandidates={externalModelCandidates}
-      externalPointCandidates={externalPointCandidates}
+      editVisibility={sketchGeometry.displayVisibility}
+      externalContextGeometry={sketchGeometry.externalContextGeometry}
+      externalModelCandidates={modelGeometry.externalModelCandidates}
+      externalPointCandidates={sketchGeometry.externalPointCandidates}
       props={props}
-      sketchActive={sketchActive}
+      sketchActive={sketchGeometry.sketchActive}
       sketchContext={sketchContext}
-      frame={frame}
-      supportFeatures={supportFeatures}
+      frame={sketchGeometry.frame}
+      supportFeatures={sketchGeometry.supportFeatures}
       onDisplayChange={setActiveSketchDisplay}
+      offerFinalContext={modelGeometry.offerFinalContext}
       showFinalContext={props.sketch.showFinalContext}
     />
   )
@@ -767,6 +899,7 @@ type EditorWorkspaceProps = Readonly<{
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  onSketchFinalContextChange: (visible: boolean) => void
   preselectedFeatureId: FeatureId | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
@@ -846,6 +979,7 @@ function EditorContent({
         onSketchRedo: actions.redoSketchDraft,
         onSketchConstraintSelectionChange: actions.setSketchSelectedConstraintId,
         onSketchSelectionChange: actions.setSketchSelectedEntityIds,
+        onSketchFinalContextChange: props.onSketchFinalContextChange,
         onSketchUndo: actions.undoSketchDraft,
       }}
       controller={controller}
