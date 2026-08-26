@@ -154,8 +154,19 @@ Exit criterion: toolbar, palette, shortcut, and context menu invoke the same com
 
 ### UX-3 — model tree and selection synchronization
 
-- Add collapsible Origin, Sketches, Features, and Bodies nodes with meaningful icons and counts.
+Status: initial unified History presentation implemented.
+
+- Replace the separate Sketches and Features branches with one dependency-safe History presentation and a
+  separate Bodies result list. The initial schema-version-0 adapter is implemented with distinct sketch, Datum
+  Plane, modeling-feature, and body icons; persisted authored order remains part of the versioned History
+  migration.
 - Add keyboard tree navigation, visibility controls, rename, selection synchronization, and diagnostic ownership.
+  History and Bodies now use real collapsible groups with a roving tab stop, arrow/Home/End navigation, and
+  feature-owned body activation; complete diagnostic ownership remains open.
+- Show compact sketch-support, Datum Plane support, and extrusion-profile provenance in the tree. Implemented;
+  expandable parent/child inspection remains open.
+- Show a transient rollback boundary while editing a sketch and mute later History rows as final-result context.
+  Implemented for sketch editing without persisting UI state or changing the authoritative model graph.
 - Add viewport selection filters and candidate cycling for occluded entities.
 - Add selection-related history filtering without hiding the full history permanently.
 

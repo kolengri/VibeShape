@@ -12,7 +12,7 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("toolbar", { name: "Model commands" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Model tree" })).toBeVisible()
     await expect(page.getByRole("tree", { name: "Project features" })).toBeVisible()
-    await expect(page.getByRole("treeitem")).toHaveCount(5)
+    await expect(page.getByRole("treeitem")).toHaveCount(4)
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
     await expect(page.locator("footer[role='status']")).toContainText("Ready")
@@ -127,10 +127,9 @@ test.describe("foundation CAD shell", () => {
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
 
     await page.keyboard.press("r")
-    await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    )
+    await expect(
+      page.getByRole("button", { name: "Center rectangle", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true")
 
     await page.keyboard.press("Escape")
     await expect(page.getByRole("button", { name: "Select", exact: true })).toHaveAttribute(
