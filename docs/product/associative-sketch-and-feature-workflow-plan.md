@@ -409,6 +409,9 @@ part of the rebuild integration work.
 
 ### Slice 0C — versioned History migration
 
+Status: pure domain schema and migration foundation implemented; persistence, portable archive, revisioned
+History commands, and application adoption remain open.
+
 - Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
 - Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a
   complete verified journal prefix is unavailable, corrupt, or inconsistent.
@@ -417,6 +420,13 @@ part of the rebuild integration work.
 
 **Exit:** every schema-version-1 document has one validated interleaved History order, while recoverable legacy
 documents remain openable without changing geometry or overwriting their source records prematurely.
+
+The implemented foundation keeps version 0 strict, validates exact and dependency-safe version 1 History
+coverage, and migrates known first-party semantic inputs without inspecting arbitrary parameter JSON. A complete
+legacy journal is accepted only when revisions are contiguous and full replay is canonically equal to the selected
+snapshot. Missing, corrupt, or inconsistent journals produce an explicit `snapshot-derived` result. Unknown
+legacy extension features migrate with `semanticInputs: null`, preserving restricted fail-closed behavior until a
+handler can prove a complete declaration.
 
 ### Slice 1 — understandable History and editing context
 

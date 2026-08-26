@@ -6,6 +6,7 @@ import {
   type FeatureEvaluationRecord,
   type FeatureRecord,
   featureRecordSchema,
+  featureRecordV1Schema,
   serializeFeatureRecord,
 } from "./feature-graph"
 import { topologySignatureSchema, topoRefSchema } from "./topology"
@@ -58,6 +59,34 @@ function recordById(records: readonly FeatureEvaluationRecord[], featureId: stri
 }
 
 describe("feature graph", () => {
+  it("keeps v0 strict and validates bounded nullable v1 semantic inputs", () => {
+    const legacy = feature(featureIds.a)
+    const input = { kind: "feature" as const, id: featureIds.b }
+
+    expect(featureRecordSchema.safeParse({ ...legacy, semanticInputs: [] }).success).toBe(false)
+    expect(
+      featureRecordV1Schema.safeParse({ ...legacy, schemaVersion: 1, semanticInputs: null })
+        .success,
+    ).toBe(true)
+    expect(
+      featureRecordV1Schema.safeParse({
+        ...legacy,
+        schemaVersion: 1,
+        semanticInputs: [input, input],
+      }).success,
+    ).toBe(false)
+    expect(
+      featureRecordV1Schema.safeParse({
+        ...legacy,
+        schemaVersion: 1,
+        semanticInputs: Array.from({ length: 1_025 }, (_, index) => ({
+          kind: "feature",
+          id: `0195b5ac-b220-7a2c-8c33-${index.toString().padStart(12, "0")}`,
+        })),
+      }).success,
+    ).toBe(false)
+  })
+
   it("builds a stable topological order without replacing presentation order", () => {
     const graph = requireGraph([
       feature(featureIds.c, [featureIds.b]),

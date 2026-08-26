@@ -38,6 +38,12 @@ late snapshot plus suffix recovery, deterministic snapshot-derived fallback for 
 corrupt, and inconsistent journal prefixes, migration idempotence, interrupted persistence, document copy, and
 `.vshape` canonical equality.
 
+The pure domain portion of that matrix now covers complete replay-equivalent journals, remove-and-readd authored
+order, dependency-safe stabilization, missing/corrupt/inconsistent journal fallback, built-in semantic-input
+projection, unavailable extension declarations, strict version-0 compatibility, exact version-1 History coverage,
+and byte-idempotent remigration. Persistence recovery, interrupted writes, document copy, and `.vshape` round trips
+remain required before schema version 1 becomes a storage or application default.
+
 The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
 branch, keeps Datum Planes in History but out of Bodies, lists only terminal solid results under Bodies, exposes
 origin-plane and feature/profile provenance, and preserves stable sketch and feature activation. It also proves

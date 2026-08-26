@@ -1,8 +1,13 @@
 import { isAnyObject, isArray, isString } from "is-what"
-import { type ZodError, z } from "zod"
-import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
+import type { ZodError } from "zod"
+import { type DocumentNodeRef, documentNodeRefSchema, type HistoryItemRef } from "./document-node"
+import {
+  type FeatureRecord,
+  type FeatureRecordV1,
+  versionedFeatureRecordSchema,
+} from "./feature-graph"
+import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import { featureTypeKey } from "./feature-type-contracts"
-import { featureIdSchema, sketchIdSchema } from "./identifiers"
 import {
   booleanFeatureType,
   boxFeatureType,
@@ -20,17 +25,12 @@ const MAX_NODES = 100_256
 const MAX_EDGES = 100_000
 const MAX_DIAGNOSTICS = 8
 
-export const documentNodeRefSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("sketch"), id: sketchIdSchema }).strict(),
-  z.object({ kind: z.literal("feature"), id: featureIdSchema }).strict(),
-])
-
-export type DocumentNodeRef = Readonly<z.infer<typeof documentNodeRefSchema>>
-export type HistoryItemRef = DocumentNodeRef
+export type { DocumentNodeRef, HistoryItemRef }
+export { documentNodeRefSchema }
 
 export type DocumentGraphNode = Readonly<{
   ref: DocumentNodeRef
-  record: SketchRecord | FeatureRecord
+  record: SketchRecord | FeatureRecord | FeatureRecordV1
 }>
 
 export type DocumentGraphEdgeRelation =
@@ -39,6 +39,7 @@ export type DocumentGraphEdgeRelation =
   | "extrusion-profile"
   | "sketch-support"
   | "external-sketch"
+  | "semantic-input"
 
 export type DocumentGraphEdge = Readonly<{
   source: DocumentNodeRef
@@ -92,6 +93,22 @@ export type DocumentDependencyGraphResult =
   | Readonly<{ ok: true; graph: DocumentDependencyGraph }>
   | Readonly<{ ok: false; diagnostic: DocumentGraphDiagnostic }>
 
+export type LegacyDocumentGraphNode = Readonly<{
+  ref: DocumentNodeRef
+  record: SketchRecord | FeatureRecord
+}>
+
+export type LegacyDocumentDependencyGraph = Readonly<
+  Omit<DocumentDependencyGraph, "nodes" | "getNode"> & {
+    nodes: readonly LegacyDocumentGraphNode[]
+    getNode: (ref: DocumentNodeRef) => LegacyDocumentGraphNode | undefined
+  }
+>
+
+export type LegacyDocumentDependencyGraphResult =
+  | Readonly<{ ok: true; graph: LegacyDocumentDependencyGraph }>
+  | Readonly<{ ok: false; diagnostic: DocumentGraphDiagnostic }>
+
 // Slice 0 intentionally derives only the durable built-in relation fields; extension parameters
 // are opaque unless a trusted built-in reader recognizes them.
 
@@ -100,6 +117,7 @@ type Input = Readonly<{
   features: readonly unknown[]
   history: readonly unknown[]
 }>
+type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
 
 export type LegacyDocumentSnapshot = Readonly<Pick<Input, "sketches" | "features">>
 
@@ -117,7 +135,8 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(booleanFeatureType.type),
 ])
 
-function hasCompleteDependencyModel(feature: FeatureRecord) {
+function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
+  if (feature.schemaVersion === 1) return feature.semanticInputs !== null
   const typeKey = featureTypeKey(feature.type)
   if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
   if (
@@ -132,7 +151,7 @@ function hasCompleteDependencyModel(feature: FeatureRecord) {
   return false
 }
 
-function dependencyModelIssues(features: readonly FeatureRecord[]) {
+function dependencyModelIssues(features: readonly VersionedFeatureRecord[]) {
   return features.flatMap((feature, index): readonly DocumentDependencyModelIssue[] =>
     hasCompleteDependencyModel(feature)
       ? []
@@ -172,7 +191,7 @@ function asRef(value: unknown) {
 
 type IndexedDocument = Readonly<{
   sketches: readonly SketchRecord[]
-  features: readonly FeatureRecord[]
+  features: readonly VersionedFeatureRecord[]
   nodes: readonly DocumentGraphNode[]
   byKey: ReadonlyMap<string, DocumentGraphNode>
 }>
@@ -211,8 +230,10 @@ function selfFeatureDependencyIndex(value: unknown) {
   return index >= 0 ? index : undefined
 }
 
-function parseFeatures(values: readonly unknown[]): GraphFailure | readonly FeatureRecord[] {
-  const features: FeatureRecord[] = []
+function parseFeatures(
+  values: readonly unknown[],
+): GraphFailure | readonly VersionedFeatureRecord[] {
+  const features: VersionedFeatureRecord[] = []
   for (const [index, value] of values.entries()) {
     const dependencyIndex = selfFeatureDependencyIndex(value)
     if (dependencyIndex !== undefined)
@@ -222,7 +243,7 @@ function parseFeatures(values: readonly unknown[]): GraphFailure | readonly Feat
           message: "A feature cannot depend on itself.",
         },
       ])
-    const parsed = featureRecordSchema.safeParse(value)
+    const parsed = versionedFeatureRecordSchema.safeParse(value)
     if (!parsed.success) return invalidRecord("invalid-feature", index, parsed.error)
     features.push(parsed.data)
   }
@@ -231,7 +252,7 @@ function parseFeatures(values: readonly unknown[]): GraphFailure | readonly Feat
 
 function indexNodes(
   sketches: readonly SketchRecord[],
-  features: readonly FeatureRecord[],
+  features: readonly VersionedFeatureRecord[],
 ): GraphFailure | Pick<IndexedDocument, "nodes" | "byKey"> {
   const nodes: DocumentGraphNode[] = [
     ...sketches.map((record) => ({
@@ -261,6 +282,7 @@ function shallowFeatureRelationCount(features: readonly unknown[]) {
     if (!isAnyObject(feature)) continue
     if (isArray(feature.dependencies)) count += feature.dependencies.length
     if (isArray(feature.references)) count += feature.references.length
+    if (isArray(feature.semanticInputs)) count += feature.semanticInputs.length
     if (count > MAX_EDGES) return count
   }
   return count
@@ -356,7 +378,9 @@ function relationCount(document: IndexedDocument) {
   let count = 0
   for (const feature of document.features) {
     count += feature.dependencies.length + feature.references.length
-    if (readExtrusionFeatureParameters(feature)) count += 1
+    if (feature.schemaVersion === 1 && feature.semanticInputs)
+      count += feature.semanticInputs.length
+    if (readExtrusionFeatureParameters(feature as FeatureRecord)) count += 1
   }
   for (const sketch of document.sketches)
     count += (sketch.support ? 1 : 0) + (sketch.externalReferences?.length ?? 0)
@@ -446,12 +470,33 @@ function extrusionProfileCandidate(
   }
 }
 
-function featureCandidates(feature: FeatureRecord, featureIndex: number) {
-  const profile = extrusionProfileCandidate(feature, featureIndex)
+function semanticInputCandidates(
+  feature: VersionedFeatureRecord,
+  featureIndex: number,
+): RelationCandidate[] {
+  return feature.schemaVersion === 1 && feature.semanticInputs
+    ? feature.semanticInputs.map(
+        (input, index): RelationCandidate => ({
+          source: input,
+          target: { kind: "feature", id: feature.id },
+          relation: "semantic-input",
+          missingMessage: "A semantic input references a missing document node.",
+          issue: {
+            path: `features.${featureIndex}.semanticInputs.${index}`,
+            message: "Referenced document node does not exist.",
+          },
+        }),
+      )
+    : []
+}
+
+function featureCandidates(feature: VersionedFeatureRecord, featureIndex: number) {
+  const profile = extrusionProfileCandidate(feature as FeatureRecord, featureIndex)
   return [
-    ...featureDependencyCandidates(feature, featureIndex),
-    ...featureTopologyCandidates(feature, featureIndex),
+    ...featureDependencyCandidates(feature as FeatureRecord, featureIndex),
+    ...featureTopologyCandidates(feature as FeatureRecord, featureIndex),
     ...(profile ? [profile] : []),
+    ...semanticInputCandidates(feature, featureIndex),
   ]
 }
 
@@ -515,17 +560,57 @@ function validateCandidates(
   }
 }
 
+function validateFirstPartySemanticInputs(
+  feature: FeatureRecordV1,
+  index: number,
+): GraphFailure | undefined {
+  const projection = projectFirstPartyFeatureSemanticInputs(feature)
+  if (!projection.recognized) return
+  if (!projection.ok)
+    return diagnostic("invalid-feature", projection.message, [
+      { path: `features.${index}.parameters`, message: projection.message },
+    ])
+  if (sameDocumentNodeRefs(feature.semanticInputs, projection.inputs)) return
+  return diagnostic(
+    "invalid-feature",
+    "A first-party feature semantic-input declaration does not match its parameters.",
+    [
+      {
+        path: `features.${index}.semanticInputs`,
+        message: "Semantic inputs must exactly match the first-party feature parameters.",
+      },
+    ],
+  )
+}
+
 function validateFeatureSources(document: IndexedDocument): GraphFailure | undefined {
   for (const [index, feature] of document.features.entries()) {
-    const profile = extrusionProfileCandidate(feature, index)
-    const candidates = [
-      ...featureTopologyCandidates(feature, index),
-      ...featureDependencyCandidates(feature, index),
+    const semanticFailure =
+      feature.schemaVersion === 1 ? validateFirstPartySemanticInputs(feature, index) : undefined
+    if (semanticFailure) return semanticFailure
+    const profile = extrusionProfileCandidate(feature as FeatureRecord, index)
+    const invalid = validateCandidates(document, [
+      ...featureTopologyCandidates(feature as FeatureRecord, index),
+      ...featureDependencyCandidates(feature as FeatureRecord, index),
       ...(profile ? [profile] : []),
-    ]
-    const invalid = validateCandidates(document, candidates)
+      ...semanticInputCandidates(feature, index),
+    ])
     if (invalid) return invalid
   }
+}
+
+function sameDocumentNodeRefs(
+  actual: readonly DocumentNodeRef[] | null,
+  expected: readonly DocumentNodeRef[],
+) {
+  return (
+    actual !== null &&
+    actual.length === expected.length &&
+    actual.every((ref, index) => {
+      const expectedRef = expected[index]
+      return expectedRef !== undefined && key(ref) === key(expectedRef)
+    })
+  )
 }
 
 function validateSketchSources(document: IndexedDocument): GraphFailure | undefined {
@@ -669,7 +754,9 @@ function validateGraph(
   if (!invalid) return
   return diagnostic("forward-reference", "References must precede their consumers in history.", [
     {
-      path: `${key(invalid.target)}.${invalid.relation}`,
+      path:
+        collected.ownerPathByEdge.get(edgeKey(invalid.source, invalid.target, invalid.relation)) ??
+        key(invalid.target),
       message: `Source ${key(invalid.source)} must precede target.`,
     },
   ])
@@ -724,6 +811,10 @@ function legacyOrdinalMap(document: IndexedDocument) {
     ordinal.set(`feature:${record.id}`, index)
   })
   return ordinal
+}
+
+function preferredOrdinalMap(history: readonly HistoryItemRef[]) {
+  return new Map(history.map((ref, index) => [key(ref), index]))
 }
 
 function legacyHeapCompare(ordinal: ReadonlyMap<string, number>): HeapCompare {
@@ -826,8 +917,9 @@ function legacyCycleFailure(
 function deriveHeapOrder(
   document: IndexedDocument,
   collected: CollectedEdges,
+  ordinal: ReadonlyMap<string, number>,
 ): LegacyHistoryResult {
-  const compare = legacyHeapCompare(legacyOrdinalMap(document))
+  const compare = legacyHeapCompare(ordinal)
   const heap: HeapItem[] = []
   const indegree = legacyIndegree(collected)
   enqueueLegacyRoots(document, indegree, heap, compare)
@@ -848,12 +940,38 @@ export function deriveLegacyHistory(input: LegacyDocumentSnapshot): LegacyHistor
     if (isFailure(document)) return document
     const collected = collectEdges(document)
     if (isFailure(collected)) return collected
-    return deriveHeapOrder(document, collected)
+    return deriveHeapOrder(document, collected, legacyOrdinalMap(document))
   } catch {
     return diagnostic("invalid-history", "Document graph input could not be evaluated safely.")
   }
 }
 
+export function deriveLegacyHistoryWithPreferredOrder(
+  input: LegacyDocumentSnapshot,
+  preferredHistory: readonly unknown[],
+): LegacyHistoryResult {
+  try {
+    const document = parseRecords({ ...input, history: [] })
+    if (isFailure(document)) return document
+    const preferred = indexHistory(preferredHistory, document)
+    if (isFailure(preferred)) return preferred
+    const collected = collectEdges(document)
+    if (isFailure(collected)) return collected
+    return deriveHeapOrder(document, collected, preferredOrdinalMap(preferred.history))
+  } catch {
+    return diagnostic("invalid-history", "Document graph input could not be evaluated safely.")
+  }
+}
+
+export function createDocumentDependencyGraphFromSnapshot(
+  input: Readonly<{
+    sketches: readonly SketchRecord[]
+    features: readonly FeatureRecord[]
+  }>,
+): LegacyDocumentDependencyGraphResult
+export function createDocumentDependencyGraphFromSnapshot(
+  input: LegacyDocumentSnapshot,
+): DocumentDependencyGraphResult
 export function createDocumentDependencyGraphFromSnapshot(
   input: LegacyDocumentSnapshot,
 ): DocumentDependencyGraphResult {

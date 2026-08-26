@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { canonicalJson } from "./canonical-json"
+import { documentNodeRefSchema } from "./document-node"
 import {
   type FeatureId,
   featureIdSchema,
@@ -56,49 +57,76 @@ function encodedParameterBytes(parameters: Record<string, unknown>) {
   }, 0)
 }
 
+const featureRecordShape = {
+  id: featureIdSchema,
+  type: featureTypeSchema,
+  parameters: featureParametersSchema,
+  dependencies: z.array(featureIdSchema).max(MAX_DEPENDENCIES),
+  references: z.array(topoRefSchema).max(MAX_REFERENCES),
+  suppressed: z.boolean(),
+  label: featureLabelSchema.optional(),
+}
+
+function validateFeatureRecord(
+  feature: {
+    id: FeatureId
+    dependencies: readonly FeatureId[]
+    references: readonly z.infer<typeof topoRefSchema>[]
+    parameters: Record<string, unknown>
+  },
+  context: z.RefinementCtx,
+) {
+  if (!hasUniqueValues(feature.dependencies))
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message: "Feature dependencies must be unique.",
+    })
+  if (feature.dependencies.includes(feature.id))
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message: "A feature cannot depend on itself.",
+    })
+  const dependencyIds = new Set(feature.dependencies)
+  if (!feature.references.every((reference) => dependencyIds.has(reference.featureId)))
+    context.addIssue({
+      code: "custom",
+      path: ["references"],
+      message: "Every topology reference must target a declared feature dependency.",
+    })
+  if (encodedParameterBytes(feature.parameters) > MAX_PARAMETER_BYTES)
+    context.addIssue({
+      code: "custom",
+      path: ["parameters"],
+      message: "Feature parameters exceed the encoded-size limit.",
+    })
+}
+
 export const featureRecordSchema = z
+  .object({ schemaVersion: z.literal(0), ...featureRecordShape })
+  .strict()
+  .superRefine(validateFeatureRecord)
+
+const semanticInputsSchema = z
+  .array(documentNodeRefSchema)
+  .max(1_024)
+  .superRefine((refs, context) => {
+    const keys = refs.map((ref) => `${ref.kind}:${ref.id}`)
+    if (new Set(keys).size !== keys.length)
+      context.addIssue({ code: "custom", message: "Semantic inputs must be unique." })
+  })
+
+export const featureRecordV1Schema = z
   .object({
-    schemaVersion: z.literal(0),
-    id: featureIdSchema,
-    type: featureTypeSchema,
-    parameters: featureParametersSchema,
-    dependencies: z.array(featureIdSchema).max(MAX_DEPENDENCIES),
-    references: z.array(topoRefSchema).max(MAX_REFERENCES),
-    suppressed: z.boolean(),
-    label: featureLabelSchema.optional(),
+    schemaVersion: z.literal(1),
+    ...featureRecordShape,
+    semanticInputs: semanticInputsSchema.nullable(),
   })
   .strict()
-  .superRefine((feature, context) => {
-    if (!hasUniqueValues(feature.dependencies)) {
-      context.addIssue({
-        code: "custom",
-        path: ["dependencies"],
-        message: "Feature dependencies must be unique.",
-      })
-    }
-    if (feature.dependencies.includes(feature.id)) {
-      context.addIssue({
-        code: "custom",
-        path: ["dependencies"],
-        message: "A feature cannot depend on itself.",
-      })
-    }
-    const dependencyIds = new Set(feature.dependencies)
-    if (!feature.references.every((reference) => dependencyIds.has(reference.featureId))) {
-      context.addIssue({
-        code: "custom",
-        path: ["references"],
-        message: "Every topology reference must target a declared feature dependency.",
-      })
-    }
-    if (encodedParameterBytes(feature.parameters) > MAX_PARAMETER_BYTES) {
-      context.addIssue({
-        code: "custom",
-        path: ["parameters"],
-        message: "Feature parameters exceed the encoded-size limit.",
-      })
-    }
-  })
+  .superRefine(validateFeatureRecord)
+
+export const versionedFeatureRecordSchema = z.union([featureRecordSchema, featureRecordV1Schema])
 
 export const featureDiagnosticSchema = z
   .object({
@@ -152,6 +180,8 @@ export const featureEvaluationRecordSchema = z.discriminatedUnion("status", [
 ])
 
 export type FeatureRecord = Readonly<z.infer<typeof featureRecordSchema>>
+export type FeatureRecordV1 = Readonly<z.infer<typeof featureRecordV1Schema>>
+export type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
 export type FeatureParameters = Readonly<z.infer<typeof featureParametersSchema>>
 export type FeatureDiagnostic = Readonly<z.infer<typeof featureDiagnosticSchema>>
 export type FeatureEvaluationOutcome = Readonly<z.infer<typeof featureEvaluationOutcomeSchema>>
@@ -450,6 +480,8 @@ export const featureRecordsSchema = z
       })
     }
   })
+
+export const featureRecordsV1Schema = z.array(featureRecordV1Schema).max(MAX_FEATURES)
 
 function evaluationDiagnostic(
   code: FeatureEvaluationDiagnostic["code"],

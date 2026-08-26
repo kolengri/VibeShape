@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { documentSnapshotSchema } from "./document"
+import { documentSnapshotSchema, documentSnapshotV1Schema } from "./document"
+import { featureRecordV1Schema } from "./feature-graph"
 
 const id = (suffix: string) => `0195b5ac-b220-7a2c-8c33-67a36a7f${suffix}`
 
@@ -132,5 +133,72 @@ describe("document sketch references", () => {
         ],
       }).success,
     ).toBe(false)
+  })
+})
+
+describe("document snapshot v1", () => {
+  const feature = (suffix: string, semanticInputs: readonly unknown[]) =>
+    featureRecordV1Schema.parse({
+      schemaVersion: 1,
+      id: id(suffix),
+      type: {
+        moduleId: "org.example.extension",
+        moduleVersion: "1.0.0",
+        typeId: "org.example.feature.reference",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      semanticInputs,
+      suppressed: false,
+    })
+  const base = {
+    schemaVersion: 1 as const,
+    id: id("3600"),
+    revision: 1,
+    name: "Versioned history",
+    displayUnits: { length: "mm" as const, angle: "deg" as const },
+    variables: [],
+    sketches: [],
+    createdAt: "2026-08-26T00:00:00.000Z",
+    updatedAt: "2026-08-26T00:00:00.000Z",
+  }
+
+  it("requires History and exact dependency-safe coverage", () => {
+    const source = feature("3601", [])
+    const consumer = feature("3602", [{ kind: "feature", id: source.id }])
+
+    expect(
+      documentSnapshotV1Schema.safeParse({ ...base, features: [source], history: undefined })
+        .success,
+    ).toBe(false)
+    expect(
+      documentSnapshotV1Schema.safeParse({
+        ...base,
+        features: [source, consumer],
+        history: [{ kind: "feature", id: source.id }],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentSnapshotV1Schema.safeParse({
+        ...base,
+        features: [source, consumer],
+        history: [
+          { kind: "feature", id: consumer.id },
+          { kind: "feature", id: source.id },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentSnapshotV1Schema.safeParse({
+        ...base,
+        features: [source, consumer],
+        history: [
+          { kind: "feature", id: source.id },
+          { kind: "feature", id: consumer.id },
+        ],
+      }).success,
+    ).toBe(true)
   })
 })

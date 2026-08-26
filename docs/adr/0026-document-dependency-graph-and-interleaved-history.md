@@ -77,6 +77,11 @@ schema-validated semantic-input declaration for non-B-Rep document nodes. An ins
 cross-check that declaration against its validated parameters. An unavailable handler leaves the declaration
 intact and inspectable.
 
+Schema version 1 defines the declaration precisely: `[]` means that the feature has no additional semantic
+document inputs, a non-empty array is the complete set of declared inputs, and `null` means that the dependency
+model is unavailable or incomplete. `null` is therefore preserved for legacy extension features and keeps
+dependency-sensitive mutations fail-closed; it is not equivalent to an empty declaration.
+
 A legacy or unavailable feature without a complete semantic-input model may be opened in the existing
 restricted, non-destructive mode. History reorder, cross-kind deletion, or another mutation that requires
 dependency completeness fails closed with an `unavailable-dependency-model` diagnostic. Metadata inspection,
@@ -134,6 +139,12 @@ Implementation proceeds in integrity-first slices:
 3. Add the multi-version snapshot/event migration, old-format fixtures, persistence recovery, `.vshape`
    round-trip, and interleaved History commands.
 4. Expose History, rollback, dependency inspection, and insertion workflows in the UI.
+
+The pure schema and migration foundation from step 3 is implemented. It keeps the strict schema-version-0
+snapshot and feature parsers as compatibility APIs, adds strict schema-version-1 records, and provides a bounded
+pure migration with verified full-journal replay and an explicit snapshot-derived degraded fallback. Persistence,
+portable-format, command, and application adoption remain separate transactions so an unsuccessful integration
+cannot overwrite legacy data.
 
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
