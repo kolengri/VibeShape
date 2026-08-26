@@ -269,6 +269,7 @@ type SketchBounds = Readonly<{
 type DisplayPoint = Readonly<{
   construction: boolean
   id: SketchEntityId
+  reusable?: boolean
   x: number
   y: number
 }>
@@ -715,7 +716,15 @@ function displayExternalCurve(
   const solvedPoints = points.flatMap((point) => {
     const solved = solvedById.get(point.id)
     return solved
-      ? [{ construction: true, id: point.id, x: solved.x, y: solved.y } satisfies DisplayPoint]
+      ? [
+          {
+            construction: true,
+            id: point.id,
+            reusable: false,
+            x: solved.x,
+            y: solved.y,
+          } satisfies DisplayPoint,
+        ]
       : []
   })
   return curve && solvedPoints.length === points.length ? { curve, points: solvedPoints } : null
@@ -730,8 +739,18 @@ function displayExternalLine(
   if (!start || !end) return null
   return {
     id: reference.projectedLineId,
-    start: { construction: true, id: reference.projectedStartPointId, ...start },
-    end: { construction: true, id: reference.projectedEndPointId, ...end },
+    start: {
+      construction: true,
+      id: reference.projectedStartPointId,
+      reusable: false,
+      ...start,
+    },
+    end: {
+      construction: true,
+      id: reference.projectedEndPointId,
+      reusable: false,
+      ...end,
+    },
   }
 }
 
@@ -756,6 +775,7 @@ function displayExternalReference(
           {
             construction: true,
             id: reference.projectedPointId,
+            reusable: false,
             x: point.x,
             y: point.y,
           } satisfies DisplayPoint,
@@ -3802,6 +3822,9 @@ function appendInferredPointRelations(
   relations: readonly SketchPointRelationInference[],
 ) {
   return relations.reduce((current, relation) => {
+    if (relation.type === "coincident") {
+      return appendInferredCoincidence(current, pointId, relation.pointId)
+    }
     const exists = current.constraints.some(
       (constraint) =>
         constraint.type === relation.type &&
@@ -4973,7 +4996,13 @@ const EMPTY_INFERENCE_REFERENCES: SketchInferenceReferences = {
 function sketchInferenceReferences(
   presentation: SketchGeometryPresentation,
 ): SketchInferenceReferences {
-  const lines: SketchInferenceLine[] = []
+  const lines: SketchInferenceLine[] = presentation.externalLines.map((line) => ({
+    id: line.id,
+    startPointId: line.start.id,
+    endPointId: line.end.id,
+    start: line.start,
+    end: line.end,
+  }))
   const arcs: SketchInferenceArc[] = []
   for (const entity of presentation.curves) {
     if (entity.type === "line") {
@@ -5001,7 +5030,12 @@ function sketchInferenceReferences(
       }
     }
   }
-  return { arcs, lines, points: presentation.points }
+  const externalLinePoints = presentation.externalLines.flatMap(({ start, end }) => [start, end])
+  return {
+    arcs,
+    lines,
+    points: [...presentation.points, ...presentation.externalPoints, ...externalLinePoints],
+  }
 }
 
 function supportsPersistentPointRelations(editorTool: SketchEditorTool) {

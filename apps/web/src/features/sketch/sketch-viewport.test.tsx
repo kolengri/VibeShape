@@ -12,6 +12,7 @@ import {
   featureIdSchema,
   moveSketchPoint,
   type SketchEntity,
+  type SketchEntityId,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -99,8 +100,9 @@ const controller = {
 } as unknown as DocumentControllerState
 
 function solveResult(
-  pointOverrides: ReadonlyMap<string, Readonly<{ x: number; y: number }>> = new Map(),
+  pointOverrides: ReadonlyMap<SketchEntityId, Readonly<{ x: number; y: number }>> = new Map(),
 ): ActiveSketchSolveResult {
+  const authoredPointIds = new Set(pointEntities.map(({ id }) => id))
   return {
     ok: true,
     response: {
@@ -117,10 +119,16 @@ function solveResult(
         status: "fully-constrained",
         degreesOfFreedom: 0,
         maximumResidual: 0,
-        points: pointEntities.map(({ id, x, y }) => ({
-          entityId: id,
-          ...(pointOverrides.get(id) ?? { x, y }),
-        })),
+        points: pointEntities
+          .map(({ id, x, y }) => ({
+            entityId: id,
+            ...(pointOverrides.get(id) ?? { x, y }),
+          }))
+          .concat(
+            [...pointOverrides].flatMap(([entityId, point]) =>
+              authoredPointIds.has(entityId) ? [] : [{ entityId, ...point }],
+            ),
+          ),
         circles: [],
         failedConstraintIds: [],
         profileResult: {
@@ -343,6 +351,26 @@ function mockDrawingRectangle(drawing: HTMLElement) {
     y: 0,
     toJSON: () => ({}),
   })
+}
+
+function clientPointForSketch(drawing: HTMLElement, point: Readonly<{ x: number; y: number }>) {
+  const [minX, svgMinY, width, height] = (drawing.getAttribute("viewBox") ?? "")
+    .split(" ")
+    .map(Number)
+  if (
+    minX === undefined ||
+    svgMinY === undefined ||
+    width === undefined ||
+    height === undefined ||
+    ![minX, svgMinY, width, height].every(Number.isFinite)
+  ) {
+    throw new Error("The sketch drawing requires a finite viewBox.")
+  }
+  const maximumY = -svgMinY
+  return {
+    clientX: ((point.x - minX) / width) * 800,
+    clientY: ((maximumY - point.y) / height) * 600,
+  }
 }
 
 function StatefulSketchViewport(
@@ -820,6 +848,134 @@ describe("SketchViewport", () => {
       }),
     )
     expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
+  })
+
+  it("starts a line from a committed external point", async () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3222")
+    const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3223")
+    const projectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3224")
+    const target: SketchRecord = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3225"),
+          kind: "point",
+          sourceSketchId,
+          sourcePointId,
+          projectedPointId,
+        },
+      ],
+    }
+    const onDraftChange = vi.fn()
+    const externalPoint = { x: 40, y: 30 }
+    renderViewport({
+      draft: target,
+      editorTool: "line",
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(async () => solveResult(new Map([[projectedPointId, externalPoint]]))),
+    })
+
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-sketch-external-point-id="${projectedPointId}"]`),
+      ).toBeTruthy(),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, externalPoint)
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+    expect(onDraftChange).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy(),
+    )
+    const endpoint = clientPointForSketch(drawing, { x: 60, y: 10 })
+    fireEvent.pointerMove(drawing, endpoint)
+    fireEvent.pointerDown(drawing, endpoint)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const createdLine = sketchEntitiesOfType(updated, "line").at(-1)
+    expect(createdLine?.startPointId).not.toBe(projectedPointId)
+    expect(updated.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "coincident",
+          firstPointId: createdLine?.startPointId,
+          secondPointId: projectedPointId,
+        }),
+      ]),
+    )
+  })
+
+  it("infers point-on-line from a committed external line", async () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3226")
+    const sourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3227")
+    const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3228")
+    const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3229")
+    const projectedEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3230")
+    const target: SketchRecord = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3231"),
+          kind: "line",
+          sourceSketchId,
+          sourceLineId,
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    }
+    const onDraftChange = vi.fn()
+    const start = { x: 0, y: 30 }
+    const end = { x: 20, y: 30 }
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(async () =>
+        solveResult(
+          new Map([
+            [projectedStartPointId, start],
+            [projectedEndPointId, end],
+          ]),
+        ),
+      ),
+    })
+
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-sketch-external-line-id="${projectedLineId}"]`),
+      ).toBeTruthy(),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 6, y: 30 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-line"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    const createdPoint = updated.entities.filter(({ type }) => type === "point").at(-1)
+    expect(updated.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "point-on-line",
+          pointId: createdPoint?.id,
+          lineId: projectedLineId,
+        }),
+      ]),
+    )
   })
 
   it("uses an earlier analytical curve directly from the drawing", () => {

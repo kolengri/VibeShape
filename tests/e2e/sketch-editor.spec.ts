@@ -158,6 +158,27 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    const externalLine = drawing.locator("[data-sketch-external-line-id] line").last()
+    const snapPoint = await externalLine.evaluate((element) => {
+      const line = element as unknown as {
+        getAttribute(name: string): string | null
+        getScreenCTM(): { a: number; b: number; c: number; d: number; e: number; f: number } | null
+      }
+      const matrix = line.getScreenCTM()
+      if (!matrix) throw new Error("The external line requires a screen transform.")
+      const x = Number(line.getAttribute("x1")) * 0.7 + Number(line.getAttribute("x2")) * 0.3
+      const y = Number(line.getAttribute("y1")) * 0.7 + Number(line.getAttribute("y2")) * 0.3
+      return {
+        x: matrix.a * x + matrix.c * y + matrix.e,
+        y: matrix.b * x + matrix.d * y + matrix.f,
+      }
+    })
+    await page.mouse.move(snapPoint.x, snapPoint.y)
+    await expect(drawing.locator('[data-sketch-inference="point-on-line"]')).toBeVisible()
+    await page.mouse.click(snapPoint.x, snapPoint.y)
+    await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
@@ -1359,6 +1380,11 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await page.getByRole("button", { name: "Cancel" }).click()
     await expect(page.getByRole("img", { name: "Solved sketch geometry" })).toBeVisible()
 
