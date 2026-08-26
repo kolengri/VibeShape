@@ -409,8 +409,9 @@ part of the rebuild integration work.
 
 ### Slice 0C — versioned History migration
 
-Status: pure domain schema/migration and opt-in read-only persistence recovery implemented; version-1 writes,
-portable archive migration, revisioned History commands, and application adoption remain open.
+Status: pure domain schema/migration, opt-in read-only persistence recovery, and strict parallel `.vshape` v1
+codecs implemented; version-1 persistence writes, revisioned History commands, and application adoption remain
+open.
 
 - Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
 - Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a
@@ -432,6 +433,11 @@ The concrete persistence repository also exposes migrated recovery without chang
 session port. It derives against the returned recovered revision, not merely the latest stored snapshot, and loads
 the full event prefix independently from suffix replay. Prefix corruption degrades History provenance without
 mutating IndexedDB. This seam is intentionally not yet an automatic storage migration.
+
+The format layer can now deterministically write and read a version-1 snapshot with the unchanged legacy event
+journal, and an explicit dispatcher distinguishes v0 from v1 archives. Migration-aware replay equality rejects a
+tampered or merely schema-valid History even when archive checksums are recomputed. Existing product backup APIs
+remain v0-only until the application session can consume version-1 commands and snapshots.
 
 ### Slice 1 — understandable History and editing context
 

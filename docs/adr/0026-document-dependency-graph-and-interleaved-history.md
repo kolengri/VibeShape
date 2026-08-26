@@ -153,6 +153,12 @@ revision. A complete prefix may produce `journal-derived` History; a missing or 
 version-0 snapshot, and migrated recovery never rewrites snapshots, events, project heads, or recovery markers.
 Atomic version-1 writes and application adoption remain pending.
 
+The native-format package now provides parallel strict version-1 writer, reader, and explicit version-dispatch
+APIs while leaving the product-facing version-0 codec unchanged. Version-1 archives retain the original legacy
+event journal and prove the enclosed History by replaying that journal, migrating its version-0 result, and
+requiring canonical equality with the enclosed version-1 snapshot. The current product import remains version 0
+until persistence and application can adopt version 1 atomically.
+
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
 
