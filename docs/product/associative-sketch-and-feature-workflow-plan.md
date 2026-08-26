@@ -423,7 +423,10 @@ documents remain openable without changing geometry or overwriting their source 
 Status: in progress. The context layer keeps the same Three.js viewport mounted across Model/Sketch
 transitions and resolves the active sketch's exact support frame for origin planes and the currently
 supported planar feature and Datum Plane roles. Normal mode aligns the existing orthographic camera to that
-frame and leaves pointer ownership with the transparent analytical sketch surface. **Orbit 3D view** hides
+frame, then imperatively shares the analytical surface's live pan and cursor-centered zoom bounds with the
+mounted Three.js viewport through a latest-value, once-per-frame update. Editable geometry and a visible final result therefore retain one center and
+scale instead of appearing as duplicated, offset profiles. Pointer ownership stays with the transparent
+analytical sketch surface. **Orbit 3D view** clears this temporary projection without changing the camera, hides
 and makes that surface inert, switches the viewer to camera-only interaction, and displays the unsaved solved
 draft in world coordinates beside the model and reference geometry. While **Use external geometry** is
 active, earlier eligible sketch points and lines remain graphically selectable in orbit mode with hover
@@ -433,7 +436,7 @@ non-interactive context; center points use a distinct square marker rather than 
 circles. Cross-support point and line references are transformed through exact source and target frames
 before solve, and valid ordered reference chains recursively solve their earlier source intent. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
-selection. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
+selection; it reapplies the latest analytical projection after orbiting. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
 open parts of this slice.
 
 Editing an existing sketch also exposes **Show final result** as a transient presentation command. It keeps

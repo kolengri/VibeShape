@@ -12,6 +12,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import { createSketchProjectionStore } from "../features/sketch/sketch-projection-store"
 import { i18n } from "../i18n"
 import {
   GeometryViewport,
@@ -90,7 +91,9 @@ function renderViewport(
   sketchContext?: GeometryViewportSketchContext,
 ) {
   const port: GeometryViewportPort = {
+    clearSketchProjection: vi.fn(),
     orientToFrame: vi.fn(() => true),
+    setSketchProjection: vi.fn(() => true),
     setInteractionMode: vi.fn(),
     setFeaturePreselection: vi.fn(),
     setFeatureSelection: vi.fn(),
@@ -137,7 +140,10 @@ function renderViewport(
   }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 beforeEach(() => {
   saveActiveProjectThumbnailMock.mockReset()
@@ -237,6 +243,60 @@ describe("GeometryViewport", () => {
 
     unmount()
     expect(port.dispose).toHaveBeenCalledOnce()
+  })
+
+  it("applies sketch projection updates imperatively without remounting the viewer", async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const frame = {
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    } as const
+    const store = createSketchProjectionStore()
+    const firstBounds = { minX: -100, minY: -75, width: 200, height: 150 }
+    store.getState().publish({ frame, bounds: firstBounds })
+    const { createViewport, port, rerenderSketchContext } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { frame, mode: "normal", projectionStore: store },
+    )
+
+    await waitFor(() => expect(port.setSketchProjection).toHaveBeenCalledWith(frame, firstBounds))
+    expect(createViewport).toHaveBeenCalledOnce()
+    const referenceCandidateCalls = vi.mocked(port.setSketchReferenceCandidates).mock.calls.length
+    const interactionModeCalls = vi.mocked(port.setInteractionMode).mock.calls.length
+    const secondBounds = { minX: -50, minY: -40, width: 100, height: 80 }
+    const latestBounds = { minX: -40, minY: -30, width: 80, height: 60 }
+    act(() => store.getState().publish({ frame, bounds: secondBounds }))
+    act(() => store.getState().publish({ frame, bounds: latestBounds }))
+    expect(frames).toHaveLength(1)
+    expect(port.setSketchProjection).toHaveBeenCalledOnce()
+    const projectionFrame = frames.shift()
+    if (!projectionFrame) throw new Error("The latest sketch projection must schedule a frame.")
+    act(() => projectionFrame(0))
+    expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, latestBounds)
+    expect(port.setSketchReferenceCandidates).toHaveBeenCalledTimes(referenceCandidateCalls)
+    expect(port.setInteractionMode).toHaveBeenCalledTimes(interactionModeCalls)
+
+    rerenderSketchContext({ frame, mode: "orbit", projectionStore: store })
+    expect(port.clearSketchProjection).toHaveBeenCalled()
+    const callsBeforeOrbitUpdate = vi.mocked(port.setSketchProjection).mock.calls.length
+    act(() => store.getState().publish({ frame, bounds: firstBounds }))
+    expect(vi.mocked(port.setSketchProjection).mock.calls).toHaveLength(callsBeforeOrbitUpdate)
+
+    rerenderSketchContext({ frame, mode: "normal", projectionStore: store })
+    expect(port.setSketchProjection).toHaveBeenLastCalledWith(frame, firstBounds)
+    expect(createViewport).toHaveBeenCalledOnce()
+    expect(port.dispose).not.toHaveBeenCalled()
   })
 
   it("routes graphical sketch-reference hover and selection through the persistent 3D viewer", async () => {

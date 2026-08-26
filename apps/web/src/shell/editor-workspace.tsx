@@ -1,5 +1,5 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
-import { sketchFrame } from "@vibeshape/application/support-frame"
+import { type SupportFrame, sketchFrame } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
   FeatureId,
@@ -51,6 +51,10 @@ import {
   mergeSketchEditVisibility,
   sketchEditContextVisibility,
 } from "../features/sketch/sketch-edit-context"
+import {
+  SketchProjectionProvider,
+  useSketchProjectionStoreApi,
+} from "../features/sketch/sketch-projection-store"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
@@ -142,12 +146,14 @@ function SketchWorkspaceContent({
   externalContextGeometry,
   externalModelCandidates,
   externalPointCandidates,
+  frame,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   supportFeatures: readonly FeatureRecord[]
+  frame: ReturnType<typeof resolvedWorkspaceSketchFrame>
 }) {
   return (
     <SketchViewport
@@ -165,6 +171,7 @@ function SketchWorkspaceContent({
         selectedProfile: sketch.selectedProfile,
         sketch: sketch.selectedSketch,
         supportFeatures,
+        projectionFrame: frame,
       }}
       actions={{
         onDisplayChange,
@@ -456,15 +463,17 @@ function useWorkspaceSketchContext(
   editorTool: SketchEditorTool,
   candidates: readonly ViewerSketchReferenceCandidate[],
   onSelect: (candidate: ViewerSketchReferenceCandidate) => void,
+  projectionStore: ReturnType<typeof useSketchProjectionStoreApi>,
 ) {
   return useMemo<GeometryViewportSketchContext | undefined>(() => {
     if (!active) return undefined
     return {
       frame,
       mode,
+      ...(projectionStore ? { projectionStore } : {}),
       ...(editorTool === "use" ? { referenceSelection: { candidates, onSelect } } : {}),
     }
-  }, [active, candidates, editorTool, frame, mode, onSelect])
+  }, [active, candidates, editorTool, frame, mode, onSelect, projectionStore])
 }
 
 function useSelectExternalGeometry(
@@ -502,6 +511,7 @@ function WorkspaceContentView({
   externalContextGeometry,
   externalModelCandidates,
   externalPointCandidates,
+  frame,
   props,
   sketchActive,
   sketchContext,
@@ -518,6 +528,7 @@ function WorkspaceContentView({
   sketchActive: boolean
   sketchContext: GeometryViewportSketchContext | undefined
   supportFeatures: readonly FeatureRecord[]
+  frame: ReturnType<typeof resolvedWorkspaceSketchFrame>
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   showFinalContext: boolean
 }>) {
@@ -545,6 +556,7 @@ function WorkspaceContentView({
           model={props.model}
           onDisplayChange={onDisplayChange}
           sketch={props.sketch}
+          frame={frame}
           supportFeatures={supportFeatures}
           externalContextGeometry={externalContextGeometry}
           externalModelCandidates={externalModelCandidates}
@@ -568,8 +580,50 @@ function WorkspaceContentView({
   )
 }
 
+function useProjectedWorkspaceModelCandidates(
+  controller: DocumentControllerState,
+  snapshot: DocumentSnapshot | undefined,
+  frame: SupportFrame | null,
+  visibleModelFeatureIds: readonly FeatureId[],
+) {
+  const t = useTranslations("app.shell.viewport")
+  return useMemo(() => {
+    const rebuild = controller.report?.rebuild
+    if (!snapshot || !frame || !rebuild?.ok) return []
+    return projectExternalModelGeometryCandidates(
+      rebuild.response.geometry,
+      snapshot.features,
+      visibleModelFeatureIds,
+      frame,
+      {
+        curve: (feature, kind, ordinal) =>
+          t("externalModelCurveCandidate", { feature, kind, ordinal }),
+        line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
+        point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
+      },
+    )
+  }, [controller.report?.rebuild, frame, snapshot, t, visibleModelFeatureIds])
+}
+
+function useAvailableWorkspaceModelCandidates(
+  controller: DocumentControllerState,
+  draft: SketchRecord | null,
+  projectedCandidates: readonly ExternalModelGeometryCandidate[],
+) {
+  return useMemo(() => {
+    const rebuild = controller.report?.rebuild
+    if (!draft || !rebuild?.ok) return []
+    return availableExternalModelGeometryCandidates(
+      projectedCandidates,
+      rebuild.response.geometry,
+      draft,
+    )
+  }, [controller.report?.rebuild, draft, projectedCandidates])
+}
+
 function WorkspaceContent(props: WorkspaceContentProps) {
   const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
+  const projectionStore = useSketchProjectionStoreApi()
   const snapshot = props.controller.report?.snapshot
   const supportFeatures = useMemo(() => resolvedWorkspaceFeatures(snapshot), [snapshot])
   const externalSketchSolutions = useExternalSketchSolutions(
@@ -616,32 +670,17 @@ function WorkspaceContent(props: WorkspaceContentProps) {
         .map(({ featureId }) => featureId as FeatureId),
     [props.controller, props.model.hiddenFeatureIds, rollbackVisibility.featureIds],
   )
-  const t = useTranslations("app.shell.viewport")
-  const projectedExternalModelCandidates = useMemo(() => {
-    const rebuild = props.controller.report?.rebuild
-    if (!snapshot || !frame || !rebuild?.ok) return []
-    return projectExternalModelGeometryCandidates(
-      rebuild.response.geometry,
-      snapshot.features,
-      visibleModelFeatureIds,
-      frame,
-      {
-        curve: (feature, kind, ordinal) =>
-          t("externalModelCurveCandidate", { feature, kind, ordinal }),
-        line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
-        point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
-      },
-    )
-  }, [frame, props.controller.report?.rebuild, snapshot, t, visibleModelFeatureIds])
-  const externalModelCandidates = useMemo(() => {
-    const rebuild = props.controller.report?.rebuild
-    if (!props.sketch.draft || !rebuild?.ok) return []
-    return availableExternalModelGeometryCandidates(
-      projectedExternalModelCandidates,
-      rebuild.response.geometry,
-      props.sketch.draft,
-    )
-  }, [projectedExternalModelCandidates, props.controller.report?.rebuild, props.sketch.draft])
+  const projectedExternalModelCandidates = useProjectedWorkspaceModelCandidates(
+    props.controller,
+    snapshot,
+    frame,
+    visibleModelFeatureIds,
+  )
+  const externalModelCandidates = useAvailableWorkspaceModelCandidates(
+    props.controller,
+    props.sketch.draft,
+    projectedExternalModelCandidates,
+  )
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () => [
       ...externalPointCandidates.map(viewerReferenceCandidate),
@@ -663,6 +702,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     props.sketch.editorTool,
     viewerPointCandidates,
     selectExternalPoint,
+    projectionStore,
   )
   return (
     <WorkspaceContentView
@@ -674,6 +714,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
       props={props}
       sketchActive={sketchActive}
       sketchContext={sketchContext}
+      frame={frame}
       supportFeatures={supportFeatures}
       onDisplayChange={setActiveSketchDisplay}
       showFinalContext={props.sketch.showFinalContext}
@@ -878,10 +919,12 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     props.activeTool,
   )
   return (
-    <div className="cad-workspace-grid min-h-0">
-      <EditorModelTree props={props} />
-      <EditorContent featurePreview={featurePreview} props={props} />
-      <EditorTaskPanel onFeaturePreviewChange={setPreviewFeature} props={props} />
-    </div>
+    <SketchProjectionProvider>
+      <div className="cad-workspace-grid min-h-0">
+        <EditorModelTree props={props} />
+        <EditorContent featurePreview={featurePreview} props={props} />
+        <EditorTaskPanel onFeaturePreviewChange={setPreviewFeature} props={props} />
+      </div>
+    </SketchProjectionProvider>
   )
 }

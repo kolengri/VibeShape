@@ -153,10 +153,19 @@ export type OrthographicFrustum = Readonly<{
   bottom: number
 }>
 
+export type ViewerSketchProjectionBounds = Readonly<{
+  minX: number
+  minY: number
+  width: number
+  height: number
+}>
+
 type ViewerCameraClipping = Readonly<{ far: number; near: number }>
 
 export type GeometryViewport = Readonly<{
+  clearSketchProjection: () => void
   orientToFrame: (frame: ViewerFrame) => boolean
+  setSketchProjection: (frame: ViewerFrame, bounds: ViewerSketchProjectionBounds) => boolean
   setInteractionMode: (mode: ViewerInteractionMode) => void
   setFeaturePreselection: (mesh: ViewerMesh | null) => void
   setFeatureSelection: (mesh: ViewerMesh | null) => void
@@ -254,6 +263,42 @@ export function isValidViewerFrame(frame: ViewerFrame): boolean {
     (xAxis[2] * yAxis[0] - xAxis[0] * yAxis[2]) * normal[1] +
     (xAxis[0] * yAxis[1] - xAxis[1] * yAxis[0]) * normal[2]
   return handedness >= 1 - FRAME_TOLERANCE
+}
+
+export function isValidViewerProjectionBounds(bounds: ViewerSketchProjectionBounds): boolean {
+  return (
+    !!bounds &&
+    Number.isFinite(bounds.minX) &&
+    Number.isFinite(bounds.minY) &&
+    Number.isFinite(bounds.width) &&
+    Number.isFinite(bounds.height) &&
+    bounds.width > 0 &&
+    bounds.height > 0
+  )
+}
+
+/** Returns the orthographic height required by SVG's xMidYMid meet behavior. */
+export function viewerSketchProjectionViewHeight(
+  bounds: ViewerSketchProjectionBounds,
+  aspect: number,
+): number {
+  if (!isValidViewerProjectionBounds(bounds)) return DEFAULT_VIEW_HEIGHT
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1
+  return Math.max(bounds.height, bounds.width / safeAspect)
+}
+
+export function viewerSketchProjectionTarget(
+  frame: ViewerFrame,
+  bounds: ViewerSketchProjectionBounds,
+): ViewerVector3 | null {
+  if (!isValidViewerFrame(frame) || !isValidViewerProjectionBounds(bounds)) return null
+  const centerX = bounds.minX + bounds.width / 2
+  const centerY = bounds.minY + bounds.height / 2
+  return [
+    frame.origin[0] + frame.xAxis[0] * centerX + frame.yAxis[0] * centerY,
+    frame.origin[1] + frame.xAxis[1] * centerX + frame.yAxis[1] * centerY,
+    frame.origin[2] + frame.xAxis[2] * centerX + frame.yAxis[2] * centerY,
+  ]
 }
 
 /** Derives an orthographic camera pose without mutating a renderer or camera. */
@@ -643,6 +688,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   >()
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
+  #sketchProjection: Readonly<{ bounds: ViewerSketchProjectionBounds }> | null = null
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
@@ -886,6 +932,32 @@ class ThreeGeometryViewport implements GeometryViewport {
     return true
   }
 
+  setSketchProjection(frame: ViewerFrame, bounds: ViewerSketchProjectionBounds) {
+    if (this.#disposed) return false
+    const target = viewerSketchProjectionTarget(frame, bounds)
+    if (!target) return false
+    const distance = this.#camera.position.distanceTo(this.#controls.target)
+    const pose = viewerCameraPoseForFrame({ ...frame, origin: target }, distance)
+    if (!pose) return false
+    this.#sketchProjection = { bounds }
+    this.#controls.target.set(...pose.target)
+    this.#camera.position.set(...pose.position)
+    this.#camera.up.set(...pose.up)
+    const aspect = this.#canvas.clientWidth / Math.max(this.#canvas.clientHeight, 1)
+    this.#viewHeight = viewerSketchProjectionViewHeight(bounds, aspect)
+    this.#updateClippingToScene()
+    this.#updateProjection()
+    this.#controls.update()
+    this.#render()
+    return true
+  }
+
+  clearSketchProjection() {
+    if (this.#disposed) return
+    this.#sketchProjection = null
+    this.#render()
+  }
+
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
     this.#interactionMode = mode
@@ -1003,6 +1075,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   #updateProjection(aspect?: number) {
     const resolvedAspect =
       aspect ?? this.#canvas.clientWidth / Math.max(this.#canvas.clientHeight, 1)
+    if (this.#sketchProjection) {
+      this.#viewHeight = viewerSketchProjectionViewHeight(
+        this.#sketchProjection.bounds,
+        resolvedAspect,
+      )
+    }
     setCameraFrustum(this.#camera, this.#viewHeight, resolvedAspect)
   }
 
