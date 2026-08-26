@@ -96,6 +96,7 @@ import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
+import type { ViewerFrame } from "@vibeshape/viewer/three-viewport"
 import {
   type CSSProperties,
   type Dispatch,
@@ -107,6 +108,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -165,6 +167,7 @@ import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
 } from "./sketch-linear-pattern-form"
+import { useSketchProjectionStoreApi } from "./sketch-projection-store"
 import {
   isSketchModificationTool,
   isSketchSelectionTool,
@@ -7087,11 +7090,31 @@ function useSketchCanvasViewport(geometry: SketchGeometryPresentation) {
   return { bounds, setBounds, svgRef, viewportSize }
 }
 
+function usePublishSketchProjection(bounds: SketchBounds, projectionFrame?: ViewerFrame | null) {
+  const projectionStore = useSketchProjectionStoreApi()
+  useLayoutEffect(() => {
+    if (!projectionStore) return
+    if (projectionFrame && bounds.width > 0 && bounds.height > 0) {
+      projectionStore.getState().publish({ frame: projectionFrame, bounds })
+      return
+    }
+    projectionStore.getState().clear()
+  }, [bounds, projectionFrame, projectionStore])
+  useEffect(
+    () => () => {
+      projectionStore?.getState().clear()
+    },
+    [projectionStore],
+  )
+}
+
 function SketchDrawing({
   configuration,
+  projectionFrame,
   sketch,
 }: {
   configuration: SketchDrawingConfiguration
+  projectionFrame?: ViewerFrame | null
   sketch: SketchRecord
 }) {
   const {
@@ -7113,6 +7136,7 @@ function SketchDrawing({
     [sketch, solution],
   )
   const { bounds, setBounds, svgRef, viewportSize } = useSketchCanvasViewport(geometry)
+  usePublishSketchProjection(bounds, projectionFrame)
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
@@ -7604,10 +7628,12 @@ function SketchViewportContent({
   activeSketch,
   configuration,
   emptyMessage,
+  projectionFrame,
 }: {
   activeSketch: SketchRecord | null
   configuration: SketchDrawingConfiguration
   emptyMessage: string
+  projectionFrame?: ViewerFrame | null
 }) {
   if (!activeSketch) {
     return (
@@ -7616,7 +7642,14 @@ function SketchViewportContent({
       </div>
     )
   }
-  return <SketchDrawing key={activeSketch.id} configuration={configuration} sketch={activeSketch} />
+  return (
+    <SketchDrawing
+      key={activeSketch.id}
+      configuration={configuration}
+      projectionFrame={projectionFrame ?? null}
+      sketch={activeSketch}
+    />
+  )
 }
 
 const StableSketchViewportContent = memo(SketchViewportContent)
@@ -7816,6 +7849,7 @@ type SketchViewportState = Readonly<{
   selectedProfile: SketchProfileSelector | null
   sketch: SketchRecord | null
   supportFeatures: readonly FeatureRecord[]
+  projectionFrame?: ViewerFrame | null
 }>
 
 type SketchViewportActions = Readonly<{
@@ -8126,6 +8160,7 @@ export function SketchViewport({
         activeSketch={activeSketch}
         emptyMessage={presentation.emptyMessage}
         configuration={drawingConfiguration}
+        projectionFrame={state.projectionFrame ?? null}
       />
       <SketchSolveOverlay
         active={activeSketch !== null}

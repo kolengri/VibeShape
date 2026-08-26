@@ -8,6 +8,8 @@ import {
   type ViewerMesh,
   viewerCameraPoseForFrame,
   viewerFaceOrdinal,
+  viewerSketchProjectionTarget,
+  viewerSketchProjectionViewHeight,
 } from "./three-viewport"
 import { viewerBodyColor } from "./viewer-appearance"
 
@@ -111,6 +113,38 @@ describe("Three viewport geometry", () => {
       top: 50,
       bottom: -50,
     })
+  })
+
+  it("matches SVG meet scaling for sketch projection bounds", () => {
+    const bounds = { minX: -10, minY: -5, width: 20, height: 10 }
+    expect(viewerSketchProjectionViewHeight(bounds, 2)).toBe(10)
+    expect(viewerSketchProjectionViewHeight(bounds, 1)).toBe(20)
+    expect(viewerSketchProjectionViewHeight({ ...bounds, width: Number.NaN }, 2)).toBe(100)
+  })
+
+  it("maps a planar projection center through the sketch frame", () => {
+    expect(
+      viewerSketchProjectionTarget(
+        {
+          origin: [10, 20, 30],
+          xAxis: [0, 1, 0],
+          yAxis: [0, 0, 1],
+          normal: [1, 0, 0],
+        },
+        { minX: 2, minY: 4, width: 6, height: 8 },
+      ),
+    ).toEqual([10, 25, 38])
+    expect(
+      viewerSketchProjectionTarget(
+        {
+          origin: [0, 0, 0],
+          xAxis: [1, 0, 0],
+          yAxis: [0, 1, 0],
+          normal: [0, 0, 1],
+        },
+        { minX: 0, minY: 0, width: 0, height: 10 },
+      ),
+    ).toBeNull()
   })
 
   it("extracts the exact selected face triangles and derives a friendly ordinal", () => {

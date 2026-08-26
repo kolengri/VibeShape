@@ -36,6 +36,9 @@ import {
 import { useDocumentDisplayUnits } from "../document/document-display-units"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
+import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
+
+const EMPTY_IDS = [] as const
 
 type ViewportFactory = (
   canvas: HTMLCanvasElement,
@@ -50,6 +53,7 @@ type ViewportMount = {
 export type GeometryViewportSketchContext = Readonly<{
   frame: ViewerFrame | null
   mode: "normal" | "orbit"
+  projectionStore?: SketchProjectionStoreApi
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
@@ -212,6 +216,24 @@ function synchronizeViewportSketchContext(
   const referenceSelection = orbitReferenceSelection(context)
   viewport.setSketchReferenceCandidates(referenceSelection?.candidates ?? [])
   viewport.setInteractionMode(viewportInteractionMode(context, referenceSelection !== undefined))
+  synchronizeViewportSketchProjection(viewport, context)
+}
+
+function activeSketchProjection(context: GeometryViewportSketchContext | null) {
+  if (context?.mode !== "normal") return null
+  return context.projectionStore?.getState().projection ?? null
+}
+
+function synchronizeViewportSketchProjection(
+  viewport: GeometryViewportPort,
+  context: GeometryViewportSketchContext | null,
+) {
+  const projection = activeSketchProjection(context)
+  if (context?.mode === "normal" && projection) {
+    viewport.setSketchProjection(projection.frame, projection.bounds)
+    return
+  }
+  viewport.clearSketchProjection()
   if (context?.mode === "normal" && context.frame) viewport.orientToFrame(context.frame)
 }
 
@@ -675,15 +697,84 @@ function translatedViewportMessage(
   )
 }
 
+function useSketchProjectionSynchronization(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  sketchContext: GeometryViewportSketchContext | undefined,
+) {
+  const frameRequestRef = useRef<number | null>(null)
+  useEffect(() => {
+    const store = sketchContext?.projectionStore
+    if (!store || sketchContext.mode !== "normal") return
+    const unsubscribe = store.subscribe(() => {
+      if (frameRequestRef.current !== null) return
+      frameRequestRef.current = window.requestAnimationFrame(() => {
+        frameRequestRef.current = null
+        const viewport = viewportRef.current
+        if (viewport) synchronizeViewportSketchProjection(viewport, sketchContext)
+      })
+    })
+    return () => {
+      unsubscribe()
+      if (frameRequestRef.current === null) return
+      window.cancelAnimationFrame(frameRequestRef.current)
+      frameRequestRef.current = null
+    }
+  }, [sketchContext, viewportRef])
+}
+
+function useViewportMeshPresentation({
+  contextualHiddenFeatureIds,
+  controller,
+  featurePreview,
+  hiddenFeatureIds,
+}: Pick<
+  GeometryViewportProps,
+  "contextualHiddenFeatureIds" | "controller" | "featurePreview" | "hiddenFeatureIds"
+>) {
+  const contextualIds = contextualHiddenFeatureIds ?? EMPTY_IDS
+  const hiddenIds = hiddenFeatureIds ?? EMPTY_IDS
+  const allCommittedMeshes = useMemo(
+    () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
+    [controller],
+  )
+  const allHiddenFeatureIds = useMemo(
+    () => [...new Set([...hiddenIds, ...contextualIds])],
+    [contextualIds, hiddenIds],
+  )
+  const committedMeshes = useMemo(
+    () => viewerMeshes(controller, hiddenIds, contextualIds),
+    [contextualIds, controller, hiddenIds],
+  )
+  const meshes = useMemo(() => {
+    const hidden = new Set(allHiddenFeatureIds)
+    return previewMeshes(featurePreview, committedMeshes).filter(
+      ({ featureId }) => !hidden.has(featureId),
+    )
+  }, [allHiddenFeatureIds, committedMeshes, featurePreview])
+  return { allCommittedMeshes, allHiddenFeatureIds, meshes }
+}
+
+function useViewportSketchPresentation({
+  activeSketchDisplay,
+  controller,
+  hiddenSketchIds,
+  sketchContext,
+}: Pick<
+  GeometryViewportProps,
+  "activeSketchDisplay" | "controller" | "hiddenSketchIds" | "sketchContext"
+>) {
+  const hiddenIds = hiddenSketchIds ?? EMPTY_IDS
+  return useMemo(() => {
+    const committed = viewerSketches(controller, hiddenIds)
+    return withActiveSketchDisplay(committed, activeSketchDisplay, sketchContext?.mode === "orbit")
+  }, [activeSketchDisplay, controller, hiddenIds, sketchContext?.mode])
+}
+
 function useGeometryViewportModel(props: GeometryViewportProps) {
   const {
-    activeSketchDisplay,
     controller,
     createViewport = loadGeometryViewport,
-    contextualHiddenFeatureIds = [],
     featurePreview,
-    hiddenFeatureIds = [],
-    hiddenSketchIds = [],
     originPlaneSelection,
     originPlaneVisibility,
     onSelectionChange,
@@ -693,28 +784,8 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     sketchContext,
   } = props
   const t = useTranslations("app.shell.viewport")
-  const allCommittedMeshes = useMemo(
-    () => viewerMeshes(controller).filter(({ appearance }) => appearance !== "datum"),
-    [controller],
-  )
-  const allHiddenFeatureIds = useMemo(
-    () => [...new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])],
-    [contextualHiddenFeatureIds, hiddenFeatureIds],
-  )
-  const committedMeshes = useMemo(
-    () => viewerMeshes(controller, hiddenFeatureIds, contextualHiddenFeatureIds),
-    [contextualHiddenFeatureIds, controller, hiddenFeatureIds],
-  )
-  const meshes = useMemo(() => {
-    const hiddenIds = new Set(allHiddenFeatureIds)
-    return previewMeshes(featurePreview, committedMeshes).filter(
-      ({ featureId }) => !hiddenIds.has(featureId),
-    )
-  }, [allHiddenFeatureIds, committedMeshes, featurePreview])
-  const sketches = useMemo(() => {
-    const committed = viewerSketches(controller, hiddenSketchIds)
-    return withActiveSketchDisplay(committed, activeSketchDisplay, sketchContext?.mode === "orbit")
-  }, [activeSketchDisplay, controller, hiddenSketchIds, sketchContext?.mode])
+  const { allCommittedMeshes, allHiddenFeatureIds, meshes } = useViewportMeshPresentation(props)
+  const sketches = useViewportSketchPresentation(props)
   const featurePreselection = useMemo(
     () =>
       highlightedFeatureMesh(controller, preselectedFeatureId, allHiddenFeatureIds, featurePreview),
@@ -743,6 +814,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   )
   useProjectThumbnail(controller, allCommittedMeshes)
   useClearInvalidSelection(meshes, selection, onSelectionChange)
+  useSketchProjectionSynchronization(viewportRef, sketchContext)
   const message = translatedViewportMessage(
     controller,
     rendererFailed,

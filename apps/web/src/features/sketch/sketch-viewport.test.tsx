@@ -22,7 +22,7 @@ import {
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type {
   ActiveSketchSolveResult,
@@ -30,6 +30,11 @@ import type {
 } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
+import {
+  type SketchProjection,
+  SketchProjectionProvider,
+  useSketchProjectionStoreApi,
+} from "./sketch-projection-store"
 import { SketchViewport } from "./sketch-viewport"
 
 const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
@@ -202,6 +207,8 @@ type SketchViewportTestProps = Readonly<{
   sketch: React.ComponentProps<typeof SketchViewport>["state"]["sketch"]
   solveSketch: NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>
   displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
+  onProjectionChange?: (projection: SketchProjection | null) => void
+  projectionFrame?: React.ComponentProps<typeof SketchViewport>["state"]["projectionFrame"]
 }>
 
 function valueOr<Value>(value: Value | undefined, fallback: Value): Value {
@@ -226,7 +233,20 @@ function viewportState(props: SketchViewportTestProps) {
     selectedProfile: null,
     sketch: props.sketch,
     supportFeatures: props.controller?.report?.snapshot.features ?? [],
+    projectionFrame: props.projectionFrame ?? null,
   } satisfies React.ComponentProps<typeof SketchViewport>["state"]
+}
+
+function ProjectionProbe({
+  onChange,
+}: Readonly<{ onChange?: (projection: SketchProjection | null) => void }>) {
+  const store = useSketchProjectionStoreApi()
+  useEffect(() => {
+    if (!store || !onChange) return
+    onChange(store.getState().projection)
+    return store.subscribe((state) => onChange(state.projection))
+  }, [onChange, store])
+  return null
 }
 
 function viewportActions(props: SketchViewportTestProps) {
@@ -247,21 +267,26 @@ function viewportActions(props: SketchViewportTestProps) {
 
 function viewportElement(props: SketchViewportTestProps) {
   return (
-    <I18nProvider i18n={i18n} initialLocale="en">
-      <DocumentDisplayUnitsProvider
-        displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
-      >
-        <TooltipProvider delayDuration={0}>
-          <SketchViewport
-            {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
-            {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
-            solveSketch={props.solveSketch}
-            state={viewportState(props)}
-            actions={viewportActions(props)}
-          />
-        </TooltipProvider>
-      </DocumentDisplayUnitsProvider>
-    </I18nProvider>
+    <SketchProjectionProvider>
+      <ProjectionProbe
+        {...(props.onProjectionChange ? { onChange: props.onProjectionChange } : {})}
+      />
+      <I18nProvider i18n={i18n} initialLocale="en">
+        <DocumentDisplayUnitsProvider
+          displayUnits={props.displayUnits ?? { length: "mm", angle: "deg" }}
+        >
+          <TooltipProvider delayDuration={0}>
+            <SketchViewport
+              {...(props.interactive === undefined ? {} : { interactive: props.interactive })}
+              {...(props.overlay === undefined ? {} : { overlay: props.overlay })}
+              solveSketch={props.solveSketch}
+              state={viewportState(props)}
+              actions={viewportActions(props)}
+            />
+          </TooltipProvider>
+        </DocumentDisplayUnitsProvider>
+      </I18nProvider>
+    </SketchProjectionProvider>
   )
 }
 
@@ -343,6 +368,40 @@ afterEach(() => {
 })
 
 describe("SketchViewport", () => {
+  it("publishes the live sketch view bounds for the aligned 3D projection", async () => {
+    const onProjectionChange = vi.fn<(projection: SketchProjection | null) => void>()
+    const frame = {
+      origin: [10, 20, 30],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    } as const
+    renderViewport({
+      onProjectionChange,
+      projectionFrame: frame,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    await waitFor(() =>
+      expect(onProjectionChange).toHaveBeenLastCalledWith({
+        frame,
+        bounds: { minX: -85, minY: -69, width: 200, height: 150 },
+      }),
+    )
+    const drawing = screen.getByRole("img")
+    mockDrawingRectangle(drawing)
+
+    fireEvent.wheel(drawing, { clientX: 400, clientY: 300, deltaY: 100 })
+
+    await waitFor(() => {
+      const projection = onProjectionChange.mock.lastCall?.[0]
+      expect(projection?.frame).toBe(frame)
+      expect(projection?.bounds.width).toBeGreaterThan(200)
+      expect(projection?.bounds.height).toBeGreaterThan(150)
+    })
+  })
+
   it("uses a transparent surface in overlay mode", () => {
     const view = renderViewport({
       overlay: true,
