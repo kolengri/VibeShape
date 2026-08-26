@@ -89,7 +89,7 @@ import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button, buttonVariants } from "@vibeshape/ui/components/button"
-import { Link2, Ruler } from "@vibeshape/ui/components/icons"
+import { IntersectionIcon, Link2, Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import type {
@@ -731,7 +731,7 @@ function displayExternalCurve(
 }
 
 function displayExternalLine(
-  reference: Extract<ExternalReference, { kind: "line" | "model-line" }>,
+  reference: Extract<ExternalReference, { kind: "line" | "model-line" | "model-intersection" }>,
   solvedById: ReadonlyMap<string, SketchPoint2>,
 ): DisplayExternalLine | null {
   const start = solvedById.get(reference.projectedStartPointId)
@@ -762,7 +762,11 @@ function displayExternalReference(
     const curve = displayExternalCurve(reference, solvedById)
     return curve ? { curves: [curve.curve], lines: [], points: curve.points } : null
   }
-  if (reference.kind === "line" || reference.kind === "model-line") {
+  if (
+    reference.kind === "line" ||
+    reference.kind === "model-line" ||
+    reference.kind === "model-intersection"
+  ) {
     const line = displayExternalLine(reference, solvedById)
     return line ? { curves: [], lines: [line], points: [] } : null
   }
@@ -1792,7 +1796,8 @@ function externalReferenceSourceKey(
   if (
     reference.kind === "model-point" ||
     reference.kind === "model-line" ||
-    reference.kind === "model-curve"
+    reference.kind === "model-curve" ||
+    reference.kind === "model-intersection"
   ) {
     return `model:${reference.reference.featureId}:${reference.id}`
   }
@@ -4510,12 +4515,18 @@ const placementBuilders = {
   "three-point-arc": placeThreePointArc,
   "three-point-circle": placeThreePointCircle,
 } satisfies Record<
-  Exclude<SketchEditorTool, "dimension" | "select" | "use" | SketchModificationTool>,
+  Exclude<
+    SketchEditorTool,
+    "dimension" | "intersection" | "select" | "use" | SketchModificationTool
+  >,
   (input: PlacementInput) => PlacementUpdate
 >
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return isSketchSelectionTool(tool) || tool === "use" || isSketchModificationTool(tool)
+  return isSketchSelectionTool(tool) ||
+    tool === "use" ||
+    tool === "intersection" ||
+    isSketchModificationTool(tool)
     ? null
     : placementBuilders[tool](input)
 }
@@ -4946,6 +4957,7 @@ const pointInferenceSupport = {
   dimension: neverSupportsPointInference,
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
+  intersection: neverSupportsPointInference,
   line: alwaysSupportsPointInference,
   "linear-pattern": neverSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
@@ -7850,22 +7862,42 @@ function SketchExternalReferenceToolbar({
   }, [candidates, draft])
   if (!draft || availableCandidates.length + modelCandidateCount === 0) return null
   const active = editorTool === "use"
+  const intersectionActive = editorTool === "intersection"
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant={active ? "secondary" : "ghost"}
-          aria-label={t("useExternalGeometry")}
-          aria-pressed={active}
-          onClick={() => onEditorToolChange(active ? "select" : "use")}
-        >
-          <Link2 aria-hidden="true" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
-    </Tooltip>
+    <div className="flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant={active ? "secondary" : "ghost"}
+            aria-label={t("useExternalGeometry")}
+            aria-pressed={active}
+            onClick={() => onEditorToolChange(active ? "select" : "use")}
+          >
+            <Link2 aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
+      </Tooltip>
+      {modelCandidateCount > 0 ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={intersectionActive ? "secondary" : "ghost"}
+              aria-label={t("intersection")}
+              aria-pressed={intersectionActive}
+              onClick={() => onEditorToolChange(intersectionActive ? "select" : "intersection")}
+            >
+              <IntersectionIcon aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("intersection")}</TooltipContent>
+        </Tooltip>
+      ) : null}
+    </div>
   )
 }
 
@@ -7931,7 +7963,9 @@ function useSketchViewportPresentation(
       profile: (area, perimeter) => t("profile", { area, perimeter }),
       underConstrained: t("underConstrained"),
     },
-    empty: activeSketch === null || activeSketch.entities.length === 0,
+    empty:
+      activeSketch === null ||
+      (activeSketch.entities.length === 0 && (activeSketch.externalReferences?.length ?? 0) === 0),
     formatNumber: (value) => formatter.number(value, { maximumFractionDigits: 6 }),
     lengthUnit: displayUnits.length,
     solution,

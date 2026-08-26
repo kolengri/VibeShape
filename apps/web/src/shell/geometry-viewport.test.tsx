@@ -407,6 +407,37 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenLastCalledWith(modelCurveCandidate)
   })
 
+  it("routes planar-face intersection selection through normal face picking in orbit mode", async () => {
+    const selection = { featureId: boxId, faceId: 17, faceOrdinal: 3 }
+    const onSelect = vi.fn()
+    const { createViewport, onSelectionChange, port } = renderViewport(
+      readyController(
+        [{ id: boxId, dependencies: [] }],
+        [{ featureId: boxId, geometry: { mesh } }],
+      ),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        frame: null,
+        mode: "orbit",
+        faceIntersectionSelection: { onSelect },
+      },
+    )
+
+    await waitFor(() => expect(port.setInteractionMode).toHaveBeenLastCalledWith("select"))
+    expect(screen.getByText("Intersection · Select one planar model face")).toBeTruthy()
+    const options = createViewport.mock.calls[0]?.[1]
+    options?.onSelectionChange?.(selection)
+    expect(onSelect).toHaveBeenCalledWith(selection)
+    expect(onSelectionChange).not.toHaveBeenCalled()
+
+    options?.onSelectionChange?.(null)
+    expect(onSelectionChange).toHaveBeenCalledWith(null)
+  })
+
   it("renders exact unsaved meshes as a distinct preview state", async () => {
     const previewMesh = { featureId: boxId, appearance: "preview" as const, ...mesh }
     const { port } = renderViewport(readyController([], []), null, undefined, {
@@ -435,8 +466,10 @@ describe("GeometryViewport", () => {
     await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
     expect(createViewport).toHaveBeenCalledWith(
       expect.any(HTMLCanvasElement),
-      expect.objectContaining({ onSelectionChange }),
+      expect.objectContaining({ onSelectionChange: expect.any(Function) }),
     )
+    createViewport.mock.calls[0]?.[1].onSelectionChange?.(selection)
+    expect(onSelectionChange).toHaveBeenCalledWith(selection)
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
     expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith({ xy: true, xz: true, yz: true })
     expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null)

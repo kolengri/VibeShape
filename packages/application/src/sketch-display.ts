@@ -5,6 +5,8 @@ import {
   type SketchEntity,
   type SketchPoint2,
   type SketchRecord,
+  projectedExternalSketchEntities,
+  sketchCurvePointIds,
   sketchEllipseGeometry,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
@@ -25,11 +27,11 @@ const CURVE_SEGMENTS = 64
 const MAX_SKETCH_DISPLAY_SEGMENTS = 100_000
 const TWO_PI = Math.PI * 2
 
-function solvedGeometry(sketch: SketchRecord, solution: SketchDisplaySolution | null) {
+function solvedGeometry(entities: readonly SketchEntity[], solution: SketchDisplaySolution | null) {
   const solvedPoints = new Map(solution?.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
   const solvedRadii = new Map(solution?.circles.map(({ entityId, radius }) => [entityId, radius]))
   const points = new Map<string, SketchPoint2>()
-  for (const entity of sketch.entities) {
+  for (const entity of entities) {
     if (entity.type !== "point") continue
     points.set(entity.id, solvedPoints.get(entity.id) ?? { x: entity.x, y: entity.y })
   }
@@ -189,6 +191,55 @@ function appendSegments(
   return segmentCount
 }
 
+function resolvedExternalDisplayEntities(
+  sketch: SketchRecord,
+  solution: SketchDisplaySolution | null,
+) {
+  if (!solution) return []
+  const solvedPointIds = new Set(solution.points.map(({ entityId }) => entityId))
+  const solvedCircleIds = new Set(solution.circles.map(({ entityId }) => entityId))
+  return projectedExternalSketchEntities(sketch.externalReferences ?? []).filter((entity) => {
+    if (entity.type === "point") return solvedPointIds.has(entity.id)
+    if (!sketchCurvePointIds(entity).every((pointId) => solvedPointIds.has(pointId))) return false
+    return entity.type !== "circle" || solvedCircleIds.has(entity.id)
+  })
+}
+
+type SketchDisplayBuffers = Readonly<{
+  curvePositions: number[]
+  constructionCurvePositions: number[]
+  pointPositions: number[]
+  constructionPointPositions: number[]
+}>
+
+function appendDisplayEntity(
+  entity: SketchEntity,
+  buffers: SketchDisplayBuffers,
+  frame: SupportFrame,
+  points: PointLookup,
+  radii: ReadonlyMap<string, number>,
+  remainingSegments: number,
+) {
+  if (entity.type === "point") {
+    const displayPoint = points.get(entity.id)
+    if (displayPoint) {
+      appendPoint(
+        entity.construction ? buffers.constructionPointPositions : buffers.pointPositions,
+        frame,
+        displayPoint,
+      )
+    }
+    return 0
+  }
+  if (remainingSegments <= 0) return 0
+  return appendSegments(
+    entity.construction ? buffers.constructionCurvePositions : buffers.curvePositions,
+    frame,
+    curveSamples(entity, points, radii),
+    remainingSegments,
+  )
+}
+
 export function materializeSketchDisplay(
   document: DocumentSnapshot,
   sketch: SketchRecord,
@@ -197,39 +248,32 @@ export function materializeSketchDisplay(
 ): SketchDisplayRecord | null {
   const frame = sketchFrame(sketch, document, features)
   if (!frame) return null
-  const { points, radii } = solvedGeometry(sketch, solution)
-  const curvePositions: number[] = []
-  const constructionCurvePositions: number[] = []
-  const pointPositions: number[] = []
-  const constructionPointPositions: number[] = []
+  const entities = [...sketch.entities, ...resolvedExternalDisplayEntities(sketch, solution)]
+  const { points, radii } = solvedGeometry(entities, solution)
+  const buffers: SketchDisplayBuffers = {
+    curvePositions: [],
+    constructionCurvePositions: [],
+    pointPositions: [],
+    constructionPointPositions: [],
+  }
   let segmentCount = 0
 
-  for (const entity of sketch.entities) {
-    if (entity.type === "point") {
-      const displayPoint = points.get(entity.id)
-      if (displayPoint) {
-        appendPoint(
-          entity.construction ? constructionPointPositions : pointPositions,
-          frame,
-          displayPoint,
-        )
-      }
-      continue
-    }
-    if (segmentCount >= MAX_SKETCH_DISPLAY_SEGMENTS) continue
-    segmentCount += appendSegments(
-      entity.construction ? constructionCurvePositions : curvePositions,
+  for (const entity of entities) {
+    segmentCount += appendDisplayEntity(
+      entity,
+      buffers,
       frame,
-      curveSamples(entity, points, radii),
+      points,
+      radii,
       MAX_SKETCH_DISPLAY_SEGMENTS - segmentCount,
     )
   }
 
   return {
     sketchId: sketch.id,
-    curvePositions: new Float32Array(curvePositions),
-    constructionCurvePositions: new Float32Array(constructionCurvePositions),
-    pointPositions: new Float32Array(pointPositions),
-    constructionPointPositions: new Float32Array(constructionPointPositions),
+    curvePositions: new Float32Array(buffers.curvePositions),
+    constructionCurvePositions: new Float32Array(buffers.constructionCurvePositions),
+    pointPositions: new Float32Array(buffers.pointPositions),
+    constructionPointPositions: new Float32Array(buffers.constructionPointPositions),
   }
 }

@@ -455,6 +455,7 @@ export class DocumentWorkerRuntime {
       return
     }
     try {
+      const sectionPlanarFace = this.engine.sectionPlanarFace?.bind(this.engine)
       const externalGeometry = await resolveExternalSketchGeometry(
         context.document,
         context.sketch,
@@ -462,6 +463,7 @@ export class DocumentWorkerRuntime {
         resolveDocumentFeatureParameters(context.document, this.registry),
         new Map(),
         this.#states.get(request.documentId)?.geometry ?? [],
+        sectionPlanarFace,
       )
       const result = await this.solveSketch({
         revision: request.revision,
@@ -491,6 +493,7 @@ export class DocumentWorkerRuntime {
       return
     }
     const solvedBySketchId: SketchSolveCache = new Map()
+    const sectionPlanarFace = this.engine.sectionPlanarFace?.bind(this.engine)
     const result = await rebuildDocumentFeatures({
       document: request.document,
       generation: request.generation,
@@ -501,6 +504,7 @@ export class DocumentWorkerRuntime {
       prepareFeatureContent: createDocumentFeatureContentPreparer(
         this.solveSketch,
         solvedBySketchId,
+        sectionPlanarFace,
       ),
       shouldPrepareFeatureContent: shouldPrepareDocumentFeatureContent,
       evaluateGeometry: async (evaluation) => {
@@ -537,6 +541,7 @@ export class DocumentWorkerRuntime {
       solvedBySketchId,
       result.features,
       result.geometry,
+      sectionPlanarFace,
     )
     if (this.#isStale(request)) {
       this.#postFailure(

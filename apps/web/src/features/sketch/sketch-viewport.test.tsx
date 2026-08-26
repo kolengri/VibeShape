@@ -788,6 +788,49 @@ describe("SketchViewport", () => {
     expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
   })
 
+  it("activates graphical planar-face intersection from an icon-only toolbar control", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3250") }
+    const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3251")
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: target,
+      externalModelCandidates: [
+        {
+          candidateId: "box-vertex-intersection-context",
+          featureId: sourceFeatureId,
+          kind: "model-point",
+          label: "Box 1 · Vertex 1",
+          position: [0, 0, 0],
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "vertex",
+            semanticRole: "primitive.box.vertex.x-min.y-min.z-min",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          x: 0,
+          y: 0,
+        },
+      ],
+      onEditorToolChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    const button = screen.getByRole("button", { name: "Intersect planar face" })
+    fireEvent.click(button)
+    expect(onEditorToolChange).toHaveBeenCalledWith("intersection")
+    expect(button.textContent).toBe("")
+  })
+
   it("uses one circular model edge overlay from the normal drawing", () => {
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3217") }
     const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3218")
@@ -956,6 +999,7 @@ describe("SketchViewport", () => {
         document.querySelector(`[data-sketch-external-line-id="${projectedLineId}"]`),
       ).toBeTruthy(),
     )
+    expect(screen.queryByText("Empty sketch")).toBeNull()
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
     mockDrawingRectangle(drawing)
     const pointer = clientPointForSketch(drawing, { x: 6, y: 30 })

@@ -9,6 +9,7 @@ import type {
   EdgeTopoRef,
   FeatureId,
   FeatureRecord,
+  PlanarFaceTopoRef,
   SketchEntityId,
   SketchRecord,
   VertexTopoRef,
@@ -421,4 +422,39 @@ export function applyExternalModelCandidate(
     projectedPointId,
     selectedEntityIds,
   )
+}
+
+export function applyExternalModelIntersection(
+  draft: SketchRecord,
+  reference: PlanarFaceTopoRef,
+): SketchRecord {
+  return {
+    ...draft,
+    externalReferences: [
+      ...(draft.externalReferences ?? []),
+      {
+        schemaVersion: 0,
+        id: createBrowserSketchExternalReferenceId(),
+        kind: "model-intersection",
+        reference,
+        projectedLineId: createBrowserSketchEntityId(),
+        projectedStartPointId: createBrowserSketchEntityId(),
+        projectedEndPointId: createBrowserSketchEntityId(),
+      },
+    ],
+  }
+}
+
+export function planarFaceCanIntersectSketch(
+  reference: PlanarFaceTopoRef,
+  targetFrame: SupportFrame,
+) {
+  const faceNormal = reference.signature.direction
+  if (!faceNormal) return false
+  const alignment = Math.abs(
+    faceNormal[0] * targetFrame.normal[0] +
+      faceNormal[1] * targetFrame.normal[1] +
+      faceNormal[2] * targetFrame.normal[2],
+  )
+  return alignment < 1 - 1e-6
 }

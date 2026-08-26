@@ -657,6 +657,25 @@ function ExternalReferencesSection({
   onDraftChange: (draft: SketchRecord) => void
 }) {
   const references = draft.externalReferences ?? []
+
+  function referenceLabel(reference: (typeof references)[number]) {
+    const candidate = candidates.find((value) =>
+      externalReferenceMatchesCandidate(reference, value),
+    )
+    if (candidate) return candidate.label
+    if (
+      reference.kind === "model-point" ||
+      reference.kind === "model-line" ||
+      reference.kind === "model-curve" ||
+      reference.kind === "model-intersection"
+    ) {
+      return reference.reference.semanticRole ?? reference.reference.featureId
+    }
+    if (reference.kind === "line") return reference.sourceLineId
+    if (reference.kind === "curve") return reference.sourceEntityId
+    return reference.sourcePointId
+  }
+
   return (
     <section className="grid gap-2 border-t pt-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -668,26 +687,12 @@ function ExternalReferencesSection({
       ) : (
         <ul className="grid gap-1">
           {references.map((reference) => {
-            const candidate = candidates.find((value) =>
-              externalReferenceMatchesCandidate(reference, value),
-            )
             return (
               <li
                 key={reference.id}
                 className="flex items-center gap-2 rounded-sm border px-2 py-1"
               >
-                <span className="min-w-0 flex-1 truncate text-xs">
-                  {candidate?.label ??
-                    (reference.kind === "model-point" ||
-                    reference.kind === "model-line" ||
-                    reference.kind === "model-curve"
-                      ? (reference.reference.semanticRole ?? reference.reference.featureId)
-                      : reference.kind === "line"
-                        ? reference.sourceLineId
-                        : reference.kind === "curve"
-                          ? reference.sourceEntityId
-                          : reference.sourcePointId)}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-xs">{referenceLabel(reference)}</span>
                 <Button
                   type="button"
                   size="icon-xs"

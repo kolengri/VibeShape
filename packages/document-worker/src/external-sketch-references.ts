@@ -15,6 +15,7 @@ import type {
   SketchExternalCurveReference,
   SketchExternalLineReference,
   SketchExternalModelCurveReference,
+  SketchExternalModelIntersectionReference,
   SketchExternalModelLineReference,
   SketchExternalModelPointReference,
   SketchExternalPointReference,
@@ -23,6 +24,10 @@ import type {
   TopologyCandidate,
 } from "@vibeshape/domain"
 import { resolveTopologyReference } from "@vibeshape/domain"
+import type {
+  PlanarFaceSectionInput,
+  PlanarFaceSectionResult,
+} from "@vibeshape/geometry-worker/engine"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 
@@ -35,6 +40,10 @@ export type SketchSolveCache = Map<string, Promise<SolveSketchRecordResult>>
 export type FeatureGeometryLookup =
   | ReadonlyMap<string, FeatureGeometryRecord>
   | readonly FeatureGeometryRecord[]
+
+export type PlanarFaceSectionPort = (
+  input: PlanarFaceSectionInput,
+) => PlanarFaceSectionResult | Promise<PlanarFaceSectionResult>
 
 function sourcePointResult(
   source: SketchRecord,
@@ -147,13 +156,14 @@ function domainTopologyCandidate(candidate: ProtocolTopologyCandidate): Topology
   return domainCandidate
 }
 
-function resolvedModelCandidate(
+function resolvedModelCandidateWithRecord(
   reference:
     | SketchExternalModelPointReference
     | SketchExternalModelLineReference
-    | SketchExternalModelCurveReference,
+    | SketchExternalModelCurveReference
+    | SketchExternalModelIntersectionReference,
   lookup: FeatureGeometryLookup | undefined,
-): ProtocolTopologyCandidate {
+): Readonly<{ candidate: ProtocolTopologyCandidate; record: FeatureGeometryRecord }> {
   const record = geometryRecord(lookup, reference.reference.featureId)
   if (!record) {
     throw new Error(
@@ -174,7 +184,17 @@ function resolvedModelCandidate(
   if (!candidate) {
     throw new Error(`External model reference ${reference.id} resolved to missing geometry.`)
   }
-  return candidate
+  return { candidate, record }
+}
+
+function resolvedModelCandidate(
+  reference:
+    | SketchExternalModelPointReference
+    | SketchExternalModelLineReference
+    | SketchExternalModelCurveReference,
+  lookup: FeatureGeometryLookup | undefined,
+) {
+  return resolvedModelCandidateWithRecord(reference, lookup).candidate
 }
 
 function resolveExternalModelPoint(
@@ -217,6 +237,53 @@ function resolveExternalModelLine(
   const end = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.end)
   if (Math.hypot(end.x - start.x, end.y - start.y) <= 1e-9) {
     throw new Error(`External model line ${reference.id} has a degenerate projection.`)
+  }
+  return {
+    startPoint: projectedPointEntity(reference.projectedStartPointId, start),
+    endPoint: projectedPointEntity(reference.projectedEndPointId, end),
+    line: {
+      schemaVersion: 0,
+      id: reference.projectedLineId,
+      type: "line",
+      construction: true,
+      startPointId: reference.projectedStartPointId,
+      endPointId: reference.projectedEndPointId,
+    },
+  }
+}
+
+async function resolveExternalModelIntersection(
+  documentId: string,
+  reference: SketchExternalModelIntersectionReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
+): Promise<NonNullable<SketchCompilationInput["externalLines"]>[number]> {
+  if (!sectionPlanarFace) {
+    throw new Error("Exact planar-face intersection is unavailable in this build.")
+  }
+  const { candidate, record } = resolvedModelCandidateWithRecord(reference, lookup)
+  if (
+    candidate.kind !== "face" ||
+    candidate.signature.geometryClass !== "PLANE" ||
+    candidate.meshFaceId === undefined
+  ) {
+    throw new Error(`External model intersection ${reference.id} has mismatched geometry.`)
+  }
+  const result = await sectionPlanarFace({
+    documentId,
+    sourceFeatureId: reference.reference.featureId,
+    sourceContentHash: record.contentHash,
+    reference: reference.reference,
+    resolvedFaceKey: candidate.meshFaceId,
+    planeOrigin: targetFrame.origin,
+    planeNormal: targetFrame.normal,
+  })
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  const start = projectWorldPointToSupport(targetFrame, result.endpoints[0])
+  const end = projectWorldPointToSupport(targetFrame, result.endpoints[1])
+  if (Math.hypot(end.x - start.x, end.y - start.y) <= 1e-9) {
+    throw new Error(`External model intersection ${reference.id} has a degenerate projection.`)
   }
   return {
     startPoint: projectedPointEntity(reference.projectedStartPointId, start),
@@ -398,6 +465,7 @@ function sourceSolve(
   solveSketch: SketchSolvePort,
   features: readonly FeatureRecord[],
   geometryLookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
 ) {
   const cached = results.get(source.id)
   if (cached) return cached
@@ -408,6 +476,7 @@ function sourceSolve(
     features,
     results,
     geometryLookup,
+    sectionPlanarFace,
   ).then((externalGeometry) =>
     solveSketch({
       revision: document.revision,
@@ -445,6 +514,7 @@ async function resolveExternalReference(
   features: readonly FeatureRecord[],
   results: SketchSolveCache,
   geometryLookup?: FeatureGeometryLookup,
+  sectionPlanarFace?: PlanarFaceSectionPort,
 ): Promise<ResolvedReference> {
   if (reference.kind === "model-point") {
     return {
@@ -461,11 +531,31 @@ async function resolveExternalReference(
       value: resolveExternalModelCurve(reference, targetFrame, geometryLookup),
     }
   }
+  if (reference.kind === "model-intersection") {
+    return {
+      kind: "line",
+      value: await resolveExternalModelIntersection(
+        document.id,
+        reference,
+        targetFrame,
+        geometryLookup,
+        sectionPlanarFace,
+      ),
+    }
+  }
   const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
   if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
   const sourceFrame = sketchFrame(source, document, features)
   if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
-  const result = await sourceSolve(results, document, source, solveSketch, features, geometryLookup)
+  const result = await sourceSolve(
+    results,
+    document,
+    source,
+    solveSketch,
+    features,
+    geometryLookup,
+    sectionPlanarFace,
+  )
   if (reference.kind === "line") {
     return {
       kind: "line",
@@ -492,6 +582,7 @@ export async function resolveExternalSketchGeometry(
   features: readonly FeatureRecord[] = document.features,
   results: SketchSolveCache = new Map(),
   geometryLookup?: FeatureGeometryLookup,
+  sectionPlanarFace?: PlanarFaceSectionPort,
 ): Promise<ResolvedExternalSketchGeometry> {
   const targetFrame = sketchFrame(sketch, document, features)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
@@ -507,6 +598,7 @@ export async function resolveExternalSketchGeometry(
       features,
       results,
       geometryLookup,
+      sectionPlanarFace,
     )
     if (resolved.kind === "point") points.push(resolved.value)
     if (resolved.kind === "line") lines.push(resolved.value)

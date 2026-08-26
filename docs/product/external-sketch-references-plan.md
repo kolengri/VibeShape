@@ -60,8 +60,12 @@ points remain unlabeled so resolution fails closed instead of choosing one by tr
 sketch solving resolves model references fail-closed. Normal and orbit views provide the same graphical
 preselection and creation path for vertices, linear edges, circles, and circular arcs without persisting
 display samples. Circular display samples are cached per rebuild and support frame, while draft changes only
-re-evaluate stable-reference availability. Intersection, automatic external inference, non-circular curved model edges, overlap
-cycling, and repair UI are not implemented. Persisted coordinates remain disposable: both UI preview and
+re-evaluate stable-reference availability. The first Intersection slice selects one visible planar model
+face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
+sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
+worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
+closed. General surfaces, multi-curve results, Pierce, automatic external inference, non-circular curved
+model edges, overlap cycling, and repair UI are not implemented. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
@@ -154,8 +158,9 @@ cannot alter evaluation order.
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection are implemented. Add non-circular curved edges, overlap cycling, source filters, and
    repair diagnostics.
-5. **Intersection**: add bounded analytical face/surface intersections with `Intersection`/`Pierce`
-   relations. Do not approximate this with mesh intersections.
+5. **Intersection**: one planar face to one bounded linear section is implemented with graphical 3D
+   selection and exact OCCT evaluation. Add analytical curved and multi-segment face/surface results plus
+   explicit `Pierce` relations without approximating them from the display mesh.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace
    locking, update policy, and permissions as a later architectural slice.
 

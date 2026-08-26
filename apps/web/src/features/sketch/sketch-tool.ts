@@ -17,6 +17,7 @@ export type SketchEditorTool =
   | "select"
   | "dimension"
   | "use"
+  | "intersection"
   | "point"
   | "line"
   | "midpoint-line"

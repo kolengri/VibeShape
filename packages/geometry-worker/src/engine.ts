@@ -29,6 +29,7 @@ import {
   makeLine,
   makePolygon,
   makeThreePointArc,
+  measureShapeSurfaceProperties,
   type Shape3D,
   type SimplePoint,
   setOC,
@@ -103,6 +104,43 @@ export type FeatureEvaluationResult =
       }>
     }
 
+export type PlanarFaceSectionInput = Readonly<{
+  documentId: string
+  sourceFeatureId: string
+  sourceContentHash: string
+  /** Worker-local hash resolved from the current rebuild; never persisted or returned. */
+  resolvedFaceKey: number
+  reference: Readonly<{
+    featureId: string
+    kind: "face"
+  }>
+  planeOrigin: readonly [number, number, number]
+  planeNormal: readonly [number, number, number]
+}>
+
+export type PlanarFaceSectionResult =
+  | Readonly<{
+      ok: true
+      endpoints: readonly [readonly [number, number, number], readonly [number, number, number]]
+    }>
+  | Readonly<{
+      ok: false
+      diagnostic: Readonly<{
+        code:
+          | "missing-body"
+          | "missing-face"
+          | "non-planar-face"
+          | "invalid-plane"
+          | "parallel-plane"
+          | "coplanar-plane"
+          | "disjoint-plane"
+          | "multiple-edges"
+          | "non-linear-edge"
+          | "zero-length"
+        message: string
+      }>
+    }>
+
 export type DocumentGeometryExportInput = Readonly<{
   documentId: string
   features: readonly FeatureEvaluationDependency[]
@@ -147,6 +185,204 @@ const DATUM_PLANE_FEATURE_TYPE_KEY =
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
+}
+
+const SECTION_TOLERANCE_MM = 1e-7
+
+function sectionFailure(
+  code: Exclude<PlanarFaceSectionResult, { ok: true }>["diagnostic"]["code"],
+  message: string,
+): PlanarFaceSectionResult {
+  return { ok: false, diagnostic: { code, message } }
+}
+
+type SectionNormal = readonly [number, number, number]
+
+function normalizedSectionNormal(input: PlanarFaceSectionInput): SectionNormal | null {
+  const length = Math.hypot(...input.planeNormal)
+  if (
+    !Number.isFinite(length) ||
+    length <= Number.EPSILON ||
+    input.planeOrigin.some((value) => !Number.isFinite(value))
+  ) {
+    return null
+  }
+  return input.planeNormal.map((value) => value / length) as [number, number, number]
+}
+
+function takeResolvedFace(shape: Shape3D, resolvedFaceKey: number) {
+  const faces = shape.faces
+  const resolved = faces.find((candidate) => candidate.hashCode === resolvedFaceKey)
+  for (const candidate of faces) {
+    if (candidate !== resolved) candidate.delete()
+  }
+  return resolved
+}
+
+function readFaceNormal(face: ReturnType<typeof takeResolvedFace>): SectionNormal {
+  if (!face) throw new Error("Cannot read the normal of a missing face.")
+  const vector = face.normalAt()
+  try {
+    return vector.toTuple()
+  } finally {
+    vector.delete()
+  }
+}
+
+function parallelFaceFailure(
+  face: NonNullable<ReturnType<typeof takeResolvedFace>>,
+  targetNormal: SectionNormal,
+  planeOrigin: PlanarFaceSectionInput["planeOrigin"],
+): PlanarFaceSectionResult | null {
+  const faceNormal = readFaceNormal(face)
+  const alignment = Math.abs(
+    faceNormal[0] * targetNormal[0] +
+      faceNormal[1] * targetNormal[1] +
+      faceNormal[2] * targetNormal[2],
+  )
+  if (Math.abs(alignment - 1) > 1e-6) return null
+
+  const properties = measureShapeSurfaceProperties(face)
+  let centroid: readonly [number, number, number]
+  try {
+    centroid = properties.centerOfMass
+  } finally {
+    properties.delete()
+  }
+  const distance = Math.abs(
+    (centroid[0] - planeOrigin[0]) * targetNormal[0] +
+      (centroid[1] - planeOrigin[1]) * targetNormal[1] +
+      (centroid[2] - planeOrigin[2]) * targetNormal[2],
+  )
+  const coplanar = distance <= SECTION_TOLERANCE_MM
+  return sectionFailure(
+    coplanar ? "coplanar-plane" : "parallel-plane",
+    coplanar
+      ? "The target plane is coplanar with the face."
+      : "The target plane is parallel to the face.",
+  )
+}
+
+function collectSectionEdges(
+  opencascade: OpenCascadeModule,
+  section: InstanceType<OpenCascadeModule["BRepAlgoAPI_Section_5"]>,
+) {
+  const edgeType = opencascade.TopAbs_ShapeEnum.TopAbs_EDGE as TopAbs_ShapeEnum
+  const shapeType = opencascade.TopAbs_ShapeEnum.TopAbs_SHAPE as TopAbs_ShapeEnum
+  const resultShape = section.Shape()
+  const explorer = new opencascade.TopExp_Explorer_2(resultShape, edgeType, shapeType)
+  const edges: ReturnType<typeof opencascade.TopoDS.Edge_1>[] = []
+  try {
+    while (explorer.More()) {
+      const rawEdge = explorer.Current()
+      try {
+        edges.push(opencascade.TopoDS.Edge_1(rawEdge))
+      } finally {
+        rawEdge.delete()
+      }
+      explorer.Next()
+    }
+    return edges
+  } finally {
+    explorer.delete()
+    resultShape.delete()
+  }
+}
+
+function readLinearSectionEndpoints(
+  opencascade: OpenCascadeModule,
+  edge: ReturnType<typeof opencascade.TopoDS.Edge_1>,
+): PlanarFaceSectionResult {
+  const adaptor = new opencascade.BRepAdaptor_Curve_2(edge)
+  try {
+    if (adaptor.GetType() !== opencascade.GeomAbs_CurveType.GeomAbs_Line) {
+      return sectionFailure("non-linear-edge", "The planar section edge is not linear.")
+    }
+    const start = adaptor.Value(adaptor.FirstParameter())
+    const end = adaptor.Value(adaptor.LastParameter())
+    try {
+      const endpoints = [
+        [start.X(), start.Y(), start.Z()],
+        [end.X(), end.Y(), end.Z()],
+      ] as const
+      const length = Math.hypot(
+        endpoints[1][0] - endpoints[0][0],
+        endpoints[1][1] - endpoints[0][1],
+        endpoints[1][2] - endpoints[0][2],
+      )
+      return length <= SECTION_TOLERANCE_MM
+        ? sectionFailure("zero-length", "The planar section edge has zero length.")
+        : { ok: true, endpoints }
+    } finally {
+      start.delete()
+      end.delete()
+    }
+  } finally {
+    adaptor.delete()
+  }
+}
+
+function sectionEdgesResult(
+  opencascade: OpenCascadeModule,
+  edges: readonly ReturnType<typeof opencascade.TopoDS.Edge_1>[],
+): PlanarFaceSectionResult {
+  if (edges.length === 0) {
+    return sectionFailure("disjoint-plane", "The target plane does not intersect the face.")
+  }
+  if (edges.length !== 1) {
+    return sectionFailure("multiple-edges", "The planar section produced multiple edges.")
+  }
+  const edge = edges[0]
+  return edge
+    ? readLinearSectionEndpoints(opencascade, edge)
+    : sectionFailure("multiple-edges", "The planar section produced no usable edge.")
+}
+
+function sectionPlanarFace(
+  opencascade: OpenCascadeModule,
+  shape: Shape3D,
+  input: PlanarFaceSectionInput,
+): PlanarFaceSectionResult {
+  if (input.reference.featureId !== input.sourceFeatureId) {
+    return sectionFailure("missing-face", "The planar-face reference belongs to another feature.")
+  }
+  const targetNormal = normalizedSectionNormal(input)
+  if (!targetNormal) {
+    return sectionFailure("invalid-plane", "The target plane has an invalid origin or normal.")
+  }
+
+  const face = takeResolvedFace(shape, input.resolvedFaceKey)
+  if (!face) return sectionFailure("missing-face", "The resolved planar face is unavailable.")
+  try {
+    if (face.geomType !== "PLANE") {
+      return sectionFailure("non-planar-face", "The resolved face is not planar.")
+    }
+    const parallelFailure = parallelFaceFailure(face, targetNormal, input.planeOrigin)
+    if (parallelFailure) return parallelFailure
+
+    const point = new opencascade.gp_Pnt_3(...input.planeOrigin)
+    const direction = new opencascade.gp_Dir_4(...targetNormal)
+    const plane = new opencascade.gp_Pln_3(point, direction)
+    const progress = new opencascade.Message_ProgressRange_1()
+    const section = new opencascade.BRepAlgoAPI_Section_5(face.wrapped, plane, false)
+    try {
+      section.Build(progress)
+      const edges = collectSectionEdges(opencascade, section)
+      try {
+        return sectionEdgesResult(opencascade, edges)
+      } finally {
+        for (const edge of edges) edge.delete()
+      }
+    } finally {
+      section.delete()
+      progress.delete()
+      plane.delete()
+      direction.delete()
+      point.delete()
+    }
+  } finally {
+    face.delete()
+  }
 }
 
 type OpenCascadeInitializer = (options: {
@@ -1483,6 +1719,7 @@ export interface GeometryKernelEngine {
     input: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
   ): Promise<FeatureEvaluationResult>
+  sectionPlanarFace?(input: PlanarFaceSectionInput): Promise<PlanarFaceSectionResult>
   exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult>
   exportPrintMeshes(input: DocumentPrintMeshExportInput): Promise<DocumentPrintMeshExportResult>
   runKernelSpike(
@@ -1647,6 +1884,20 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           : "Feature geometry evaluation failed and temporary shape cleanup did not complete.",
       )
     }
+  }
+
+  async sectionPlanarFace(input: PlanarFaceSectionInput): Promise<PlanarFaceSectionResult> {
+    await this.initialize()
+    const opencascade = this.#opencascade
+    if (!opencascade) return sectionFailure("invalid-plane", "OpenCascade did not initialize.")
+    const shape = this.#featureShapes.get(
+      input.documentId,
+      input.sourceFeatureId,
+      input.sourceContentHash,
+    )
+    if (!shape)
+      return sectionFailure("missing-body", "The exact source feature body is unavailable.")
+    return sectionPlanarFace(opencascade, shape, input)
   }
 
   async exportDocument(input: DocumentGeometryExportInput): Promise<DocumentGeometryExportResult> {

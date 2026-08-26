@@ -181,6 +181,7 @@ export const TOPOLOGY_RESOLUTION_POLICY = topologyResolutionPolicySchema.parse({
 export type TopoRef = Readonly<z.infer<typeof topoRefSchema>>
 export type VertexTopoRef = Readonly<z.infer<typeof vertexTopoRefSchema>>
 export type EdgeTopoRef = Readonly<z.infer<typeof edgeTopoRefSchema>>
+export type PlanarFaceTopoRef = Readonly<z.infer<typeof planarFaceTopoRefSchema>>
 export type TopologySignature = Readonly<z.infer<typeof topologySignatureSchema>>
 export type TopologyCandidate = Readonly<z.infer<typeof topologyCandidateSchema>>
 export type TopologyResolutionPolicy = Readonly<z.infer<typeof topologyResolutionPolicySchema>>

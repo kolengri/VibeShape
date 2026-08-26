@@ -51,18 +51,19 @@ const edgeTopoRefWireSchema = topoRefWireSchema
     signature: topologySignatureSchema.safeExtend({ kind: z.literal("edge") }),
   })
   .strict()
+const planarFaceTopoRefWireSchema = topoRefWireSchema
+  .safeExtend({
+    kind: z.literal("face"),
+    signature: topologySignatureSchema.safeExtend({
+      kind: z.literal("face"),
+      geometryClass: z.literal("PLANE"),
+    }),
+  })
+  .strict()
 const sketchFeatureFaceSupportWireSchema = z
   .object({
     kind: z.literal("feature-face"),
-    reference: topoRefWireSchema
-      .safeExtend({
-        kind: z.literal("face"),
-        signature: topologySignatureSchema.safeExtend({
-          kind: z.literal("face"),
-          geometryClass: z.literal("PLANE"),
-        }),
-      })
-      .strict(),
+    reference: planarFaceTopoRefWireSchema,
   })
   .strict()
   .refine(({ reference }) => reference.signature.geometryClass === "PLANE", {
@@ -488,6 +489,19 @@ const externalModelCurveReferenceWireSchema = z
   .strict()
   .superRefine(validateProjectedCurveWireIdentities)
 
+const externalModelIntersectionReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-intersection"),
+    reference: planarFaceTopoRefWireSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+  })
+  .strict()
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
+
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
@@ -495,6 +509,7 @@ const externalReferenceWireSchema = z.union([
   externalModelPointReferenceWireSchema,
   externalModelLineReferenceWireSchema,
   externalModelCurveReferenceWireSchema,
+  externalModelIntersectionReferenceWireSchema,
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>
@@ -698,7 +713,11 @@ function wireProjectedCurveEntity(
 }
 
 function wireProjectedExternalEntities(reference: WireExternalReference): readonly WireEntity[] {
-  if (reference.kind === "line" || reference.kind === "model-line") {
+  if (
+    reference.kind === "line" ||
+    reference.kind === "model-line" ||
+    reference.kind === "model-intersection"
+  ) {
     return [
       wireProjectedPoint(reference.projectedStartPointId),
       wireProjectedPoint(reference.projectedEndPointId),
