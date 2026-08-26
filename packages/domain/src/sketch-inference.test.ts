@@ -243,6 +243,24 @@ describe("sketch inference", () => {
     expect(perpendicular.direction).toEqual({ type: "perpendicular", lineId: firstLineId })
   })
 
+  it("keeps connected direction inference separate from locally queried relation lines", () => {
+    const diagonalLine = {
+      ...horizontalLine,
+      end: { x: 10, y: 10 },
+    }
+    const inference = inferSketchPoint({
+      anchor: { x: 0, y: 0 },
+      anchorPointId: firstPointId,
+      directionLines: [diagonalLine],
+      lines: [],
+      point: { x: 6, y: -6.2 },
+      points: [],
+      tolerance: 0.5,
+    })
+
+    expect(inference.direction).toEqual({ type: "perpendicular", lineId: firstLineId })
+  })
+
   it("prefers a tangent direction when a line starts at an arc endpoint", () => {
     const inference = inferSketchPoint({
       anchor: { x: 10, y: 0 },

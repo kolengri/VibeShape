@@ -64,7 +64,7 @@ re-evaluate stable-reference availability. The first Intersection slice selects 
 face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
-closed. General surfaces, multi-curve results, Pierce, automatic external inference, non-circular curved
+closed. Point and Line placement now wake visible earlier-sketch points and lines, highlight and label the source, and atomically create the stable reference plus inferred constraint only after acceptance. General surfaces, multi-curve results, Pierce, curve and model-topology wake-up, non-circular curved
 model edges, overlap cycling, and repair UI are not implemented. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
@@ -152,8 +152,8 @@ cannot alter evaluation order.
    equivalent frames. Resolve exact source geometry, show it read-only, and allow Coincident,
    Horizontal/Vertical, Parallel, Perpendicular, Concentric, Tangent, and dimensional relations where
    solver semantics permit them.
-3. **Editor interaction**: provide the icon-only `Use external geometry` tool, external inference,
-   visible preselection, source labels, a reference list, visibility toggle, and accessible removal.
+3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
+   visible preselection, source labels, a reference list, visibility toggle, and accessible removal are implemented. Extend automatic inference to curves and stable model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection are implemented. Add non-circular curved edges, overlap cycling, source filters, and

@@ -525,7 +525,7 @@ dimension changes.
 - Exact plane/planar-face preparation for one bounded linear result is implemented in the geometry worker;
   extend it to supported curved surfaces and multiple analytical results.
 - Represent supported results analytically and provide Intersection/Pierce relations.
-- Wake eligible external points, curves, and directions during placement and drag.
+- Wake eligible earlier-sketch points and lines during Point and Line placement with disposable hover, visible source feedback, `Shift` suppression, and atomic stable-reference materialization. Implemented. Extend wake-up to analytical curves, model topology, additional directions, and drag.
 - Add `Shift` suppression, deterministic candidate ranking, and visible relation previews.
 
 **Exit:** cross-plane ribs, holes, and locating geometry can be constrained from existing solids without

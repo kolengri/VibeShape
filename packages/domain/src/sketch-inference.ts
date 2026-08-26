@@ -622,7 +622,7 @@ function candidateDirection(input: Parameters<typeof inferSketchPoint>[0], point
   const directionInput = {
     anchor: input.anchor,
     arcs: input.arcs ?? [],
-    lines: input.lines ?? [],
+    lines: input.directionLines ?? input.lines ?? [],
     point,
     tolerance: input.tolerance,
   }
@@ -672,6 +672,7 @@ export function inferSketchPoint(input: {
   anchor?: SketchPoint2
   anchorPointId?: SketchEntityId
   arcs?: readonly SketchInferenceArc[]
+  directionLines?: readonly SketchInferenceLine[]
   lines?: readonly SketchInferenceLine[]
   point: SketchPoint2
   points: readonly SketchInferencePoint[]

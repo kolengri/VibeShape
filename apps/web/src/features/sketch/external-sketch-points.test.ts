@@ -106,7 +106,9 @@ describe("external sketch point candidates", () => {
       }),
     )
 
-    expect(earlierSketchesForDraft({ sketches }, sketches[1]!.id).map(({ id }) => id)).toEqual([
+    const target = sketches[1]
+    if (!target) throw new Error("The target sketch fixture is required.")
+    expect(earlierSketchesForDraft({ sketches }, target.id).map(({ id }) => id)).toEqual([
       sourceSketchId,
     ])
   })
@@ -218,8 +220,10 @@ describe("external sketch point candidates", () => {
     expect(externalSketchGeometryCandidates(document, target, labels)).toContainEqual({
       kind: "line",
       label: "Layout · Line 1",
+      sourceEndPointId,
       sourceLineId,
       sourceSketchId,
+      sourceStartPointId: sourcePointId,
       start: { world: [2, 3, 0], x: 3, y: 0 },
       end: { world: [2, 8, 0], x: 8, y: 0 },
     })

@@ -51,6 +51,7 @@ import {
   type SketchInferenceArc,
   type SketchInferenceCandidateQuery,
   type SketchInferenceLine,
+  type SketchInferencePoint,
   type SketchPoint2,
   type SketchPointInference,
   type SketchPointRelationInference,
@@ -137,6 +138,7 @@ import {
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
   externalReferenceMatchesCandidate,
+  materializeExternalSketchCandidate,
 } from "./external-sketch-points"
 import {
   defaultCircularSketchPatternDefinition,
@@ -2135,11 +2137,14 @@ function availableExternalGeometryId(candidate: ExternalUseCandidate) {
 
 function SketchExternalContextGeometry({
   geometry,
+  highlightedCandidate,
 }: Readonly<{
   geometry: readonly ExternalSketchContextGeometry[]
+  highlightedCandidate: ExternalSketchWakeupCandidate | null
 }>) {
   const t = useTranslations("app.sketch.viewport")
   if (geometry.length === 0) return null
+  const highlightedKey = highlightedCandidate ? candidateKey(highlightedCandidate) : null
   return (
     <g
       aria-label={t("earlierSketchContext")}
@@ -2147,61 +2152,90 @@ function SketchExternalContextGeometry({
       data-sketch-context-geometry-count={geometry.length}
       transform="scale(1 -1)"
     >
-      {geometry.map((candidate) =>
-        candidate.kind === "curve" ? (
-          <polyline
-            key={contextGeometryKey(candidate)}
-            data-sketch-context-curve-type={candidate.sourceType}
-            fill="none"
-            points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
-            strokeDasharray="5 3"
-            strokeWidth={1.25}
-            vectorEffect="non-scaling-stroke"
-          >
-            <title>{candidate.label}</title>
-          </polyline>
-        ) : candidate.kind === "line" ? (
-          <line
-            key={contextGeometryKey(candidate)}
-            x1={candidate.start.x}
-            y1={candidate.start.y}
-            x2={candidate.end.x}
-            y2={candidate.end.y}
-            strokeDasharray="5 3"
-            strokeWidth={1.25}
-            vectorEffect="non-scaling-stroke"
-          >
-            <title>{candidate.label}</title>
-          </line>
-        ) : candidate.role === "center" ? (
-          <rect
-            key={contextGeometryKey(candidate)}
-            data-sketch-context-point-role="center"
-            fill="var(--color-viewport-background)"
-            height={5}
-            width={5}
-            x={candidate.x - 2.5}
-            y={candidate.y - 2.5}
-            strokeWidth={1.25}
-            vectorEffect="non-scaling-stroke"
-          >
-            <title>{candidate.label}</title>
-          </rect>
-        ) : (
-          <circle
-            key={contextGeometryKey(candidate)}
-            cx={candidate.x}
-            cy={candidate.y}
-            fill="var(--color-viewport-background)"
-            r={2.5}
-            strokeWidth={1.25}
-            vectorEffect="non-scaling-stroke"
-          >
-            <title>{candidate.label}</title>
-          </circle>
-        ),
-      )}
+      {geometry.map((candidate) => (
+        <SketchExternalContextCandidate
+          key={contextGeometryKey(candidate)}
+          candidate={candidate}
+          highlighted={highlightedKey === contextGeometryKey(candidate)}
+        />
+      ))}
     </g>
+  )
+}
+
+function SketchExternalContextCandidate({
+  candidate,
+  highlighted,
+}: Readonly<{
+  candidate: ExternalSketchContextGeometry
+  highlighted: boolean
+}>) {
+  const className = highlighted ? "stroke-amber-500" : undefined
+  const sourceLabel = highlighted ? candidate.label : undefined
+  const strokeWidth = highlighted ? 2.5 : 1.25
+  if (candidate.kind === "curve") {
+    return (
+      <polyline
+        className={className}
+        data-sketch-context-curve-type={candidate.sourceType}
+        fill="none"
+        points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
+        strokeDasharray="5 3"
+        strokeWidth={strokeWidth}
+        vectorEffect="non-scaling-stroke"
+      >
+        <title>{candidate.label}</title>
+      </polyline>
+    )
+  }
+  if (candidate.kind === "line") {
+    return (
+      <line
+        className={className}
+        data-sketch-external-inference-source={sourceLabel}
+        x1={candidate.start.x}
+        y1={candidate.start.y}
+        x2={candidate.end.x}
+        y2={candidate.end.y}
+        strokeDasharray="5 3"
+        strokeWidth={strokeWidth}
+        vectorEffect="non-scaling-stroke"
+      >
+        <title>{candidate.label}</title>
+      </line>
+    )
+  }
+  if (candidate.role === "center") {
+    return (
+      <rect
+        className={className}
+        data-sketch-context-point-role="center"
+        data-sketch-external-inference-source={sourceLabel}
+        fill="var(--color-viewport-background)"
+        height={5}
+        width={5}
+        x={candidate.x - 2.5}
+        y={candidate.y - 2.5}
+        strokeWidth={strokeWidth}
+        vectorEffect="non-scaling-stroke"
+      >
+        <title>{candidate.label}</title>
+      </rect>
+    )
+  }
+  return (
+    <circle
+      className={className}
+      cx={candidate.x}
+      data-sketch-external-inference-source={sourceLabel}
+      cy={candidate.y}
+      fill="var(--color-viewport-background)"
+      r={2.5}
+      strokeWidth={strokeWidth}
+      vectorEffect="non-scaling-stroke"
+    >
+      <title>{candidate.label}</title>
+    </circle>
   )
 }
 
@@ -2209,6 +2243,7 @@ function SketchExternalReferencePresentation({
   availableCandidates,
   contextGeometry,
   editorTool,
+  highlightedCandidate,
   externalCurves,
   externalLines,
   externalPoints,
@@ -2223,6 +2258,7 @@ function SketchExternalReferencePresentation({
   availableCandidates: readonly ExternalUseCandidate[]
   contextGeometry: readonly ExternalSketchContextGeometry[]
   editorTool: SketchEditorTool
+  highlightedCandidate: ExternalSketchWakeupCandidate | null
   externalCurves: readonly DisplayExternalCurve[]
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
@@ -2236,7 +2272,10 @@ function SketchExternalReferencePresentation({
 }>) {
   return (
     <>
-      <SketchExternalContextGeometry geometry={contextGeometry} />
+      <SketchExternalContextGeometry
+        geometry={contextGeometry}
+        highlightedCandidate={highlightedCandidate}
+      />
       {editorTool === "use" ? (
         <SketchAvailableExternalGeometry candidates={availableCandidates} onUse={onUse} />
       ) : null}
@@ -2273,6 +2312,7 @@ function SketchExternalReferenceLayer({
   externalCurves,
   externalLines,
   externalPoints,
+  highlightedCandidate,
   markerScale,
   modelCandidates,
   pointsById,
@@ -2288,6 +2328,7 @@ function SketchExternalReferenceLayer({
   externalCurves: readonly DisplayExternalCurve[]
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
+  highlightedCandidate: ExternalSketchWakeupCandidate | null
   markerScale: number
   modelCandidates: readonly ExternalModelGeometryCandidate[]
   selectedEntityIds: readonly SketchEntityId[]
@@ -2318,6 +2359,7 @@ function SketchExternalReferenceLayer({
       availableCandidates={externalReferences.availableCandidates}
       contextGeometry={passiveContextGeometry}
       editorTool={editorTool}
+      highlightedCandidate={highlightedCandidate}
       externalCurves={externalCurves}
       externalLines={externalLines}
       externalPoints={externalPoints}
@@ -4848,6 +4890,106 @@ function placementInputWithInference(input: {
   }
 }
 
+function inferredExternalEntityIds(
+  inference: SketchPointInference | undefined,
+  pending: PendingGeometry | null,
+) {
+  const ids = new Set<SketchEntityId>()
+  const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
+    for (const relation of relations) {
+      ids.add(relation.type === "coincident" ? relation.pointId : relation.lineId)
+    }
+  }
+  if (pending?.kind === "line") appendRelations(pending.startRelations)
+  if (inference) {
+    appendRelations(inference.relations)
+    if (inference.direction?.type === "parallel" || inference.direction?.type === "perpendicular") {
+      ids.add(inference.direction.lineId)
+    }
+  }
+  return ids
+}
+
+function remapPointRelation(
+  relation: SketchPointRelationInference,
+  projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
+): SketchPointRelationInference {
+  if (relation.type === "coincident") {
+    return { ...relation, pointId: projectedIds.get(relation.pointId) ?? relation.pointId }
+  }
+  return { ...relation, lineId: projectedIds.get(relation.lineId) ?? relation.lineId }
+}
+
+function remapInferenceDirection(
+  direction: SketchDirectionInference | null,
+  projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
+): SketchDirectionInference | null {
+  if (direction?.type !== "parallel" && direction?.type !== "perpendicular") return direction
+  return { ...direction, lineId: projectedIds.get(direction.lineId) ?? direction.lineId }
+}
+
+function remapPendingExternalInference(
+  pending: PendingGeometry | null,
+  projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
+): PendingGeometry | null {
+  return pending?.kind === "line"
+    ? {
+        ...pending,
+        startRelations: pending.startRelations.map((relation) =>
+          remapPointRelation(relation, projectedIds),
+        ),
+      }
+    : pending
+}
+
+function materializeExternalInference(input: {
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>
+  draft: SketchRecord
+  inference: SketchPointInference | undefined
+  pending: PendingGeometry | null
+}) {
+  let draft = input.draft
+  const projectedIds = new Map<SketchEntityId, SketchEntityId>()
+  for (const sourceEntityId of inferredExternalEntityIds(input.inference, input.pending)) {
+    const candidate = input.candidatesByInferenceId.get(sourceEntityId)
+    if (!candidate) continue
+    const materialized = materializeExternalSketchCandidate(draft, candidate)
+    draft = materialized.sketch
+    if (candidate.kind === "point" && materialized.kind === "point") {
+      projectedIds.set(sourceEntityId, materialized.projectedPointId)
+    }
+    if (candidate.kind === "line" && materialized.kind === "line") {
+      projectedIds.set(sourceEntityId, materialized.projectedLineId)
+    }
+  }
+  const inference = input.inference
+    ? {
+        ...input.inference,
+        direction: remapInferenceDirection(input.inference.direction, projectedIds),
+        relations: input.inference.relations.map((relation) =>
+          remapPointRelation(relation, projectedIds),
+        ),
+      }
+    : undefined
+  return {
+    draft,
+    inference,
+    pending: remapPendingExternalInference(input.pending, projectedIds),
+  }
+}
+
+function externalWakeupCandidateForInference(
+  inference: SketchPointInference | null,
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>,
+) {
+  if (!inference) return null
+  for (const entityId of inferredExternalEntityIds(inference, null)) {
+    const candidate = candidatesByInferenceId.get(entityId)
+    if (candidate) return candidate
+  }
+  return null
+}
+
 function publishPlacementResolution(
   resolution: ReturnType<typeof safePlacementUpdate>,
   actions: {
@@ -4999,10 +5141,84 @@ type SketchInferenceReferences = Readonly<{
   points: readonly DisplayPoint[]
 }>
 
+type SketchPlacementInferenceReferences = Readonly<{
+  arcs: readonly SketchInferenceArc[]
+  lines: readonly SketchInferenceLine[]
+  points: readonly SketchInferencePoint[]
+}>
+
+type ExternalSketchWakeupCandidate = Extract<
+  ExternalSketchGeometryCandidate,
+  { kind: "line" | "point" }
+>
+
+type ExternalSketchWakeupReferences = Readonly<{
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>
+  lines: readonly SketchInferenceLine[]
+  points: readonly SketchInferencePoint[]
+}>
+
 const EMPTY_INFERENCE_REFERENCES: SketchInferenceReferences = {
   arcs: [],
   lines: [],
   points: [],
+}
+
+const EMPTY_EXTERNAL_WAKEUP_REFERENCES: ExternalSketchWakeupReferences = {
+  candidatesByInferenceId: new Map(),
+  lines: [],
+  points: [],
+}
+
+function externalSketchWakeupReferences(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  draft: SketchRecord,
+): ExternalSketchWakeupReferences {
+  const available = candidates.filter(
+    (candidate): candidate is ExternalSketchWakeupCandidate =>
+      candidate.kind !== "curve" &&
+      !(draft.externalReferences ?? []).some((reference) =>
+        externalReferenceMatchesCandidate(reference, candidate),
+      ),
+  )
+  const candidatesByInferenceId = new Map<SketchEntityId, ExternalSketchWakeupCandidate>()
+  const inferenceIdByCandidateKey = new Map<string, SketchEntityId>()
+  const lines: SketchInferenceLine[] = []
+  const points: SketchInferencePoint[] = []
+  for (const candidate of available) {
+    if (candidate.kind !== "point") continue
+    const inferenceId = createBrowserSketchEntityId()
+    inferenceIdByCandidateKey.set(candidateKey(candidate), inferenceId)
+    candidatesByInferenceId.set(inferenceId, candidate)
+    points.push({ id: inferenceId, reusable: false, x: candidate.x, y: candidate.y })
+  }
+  for (const candidate of available) {
+    if (candidate.kind !== "line") continue
+    const inferenceId = createBrowserSketchEntityId()
+    const endpointInferenceId = (sourcePointId: SketchEntityId) =>
+      inferenceIdByCandidateKey.get(`${candidate.sourceSketchId}:${sourcePointId}`) ??
+      createBrowserSketchEntityId()
+    candidatesByInferenceId.set(inferenceId, candidate)
+    lines.push({
+      id: inferenceId,
+      startPointId: endpointInferenceId(candidate.sourceStartPointId),
+      endPointId: endpointInferenceId(candidate.sourceEndPointId),
+      start: candidate.start,
+      end: candidate.end,
+    })
+  }
+  return { candidatesByInferenceId, lines, points }
+}
+
+function mergeSketchInferenceReferences(
+  base: SketchInferenceReferences,
+  wakeup: ExternalSketchWakeupReferences,
+): SketchPlacementInferenceReferences {
+  return {
+    arcs: base.arcs,
+    lines: [...base.lines, ...wakeup.lines],
+    points: [...base.points, ...wakeup.points],
+  }
 }
 
 function sketchInferenceReferences(
@@ -5068,11 +5284,13 @@ function sketchInferenceTolerance(
 function placementInference(input: {
   bounds: SketchBounds
   draft: SketchRecord | null
+  directionLines: readonly SketchInferenceLine[]
   editorTool: SketchEditorTool
   pending: PendingGeometry | null
   point: SketchPoint2
   rectangle: Readonly<{ width: number; height: number }>
-  references: SketchInferenceReferences
+  candidateQuery: SketchInferenceCandidateQuery<SketchInferencePoint>
+  references: Pick<SketchPlacementInferenceReferences, "arcs">
   suppressed?: boolean
 }): SketchPointInference {
   if (
@@ -5084,6 +5302,8 @@ function placementInference(input: {
   }
   const anchor = lineInferenceAnchor(input.editorTool, input.pending, input.draft)
   const supportsRelations = supportsPersistentPointRelations(input.editorTool)
+  const tolerance = sketchInferenceTolerance(input.bounds, input.rectangle)
+  const candidates = input.candidateQuery(input.point, tolerance)
   return inferSketchPoint({
     ...(anchor
       ? {
@@ -5092,10 +5312,11 @@ function placementInference(input: {
         }
       : {}),
     arcs: input.editorTool === "line" ? input.references.arcs : [],
-    lines: supportsRelations ? input.references.lines : [],
+    directionLines: supportsRelations ? input.directionLines : [],
+    lines: supportsRelations ? candidates.lines : [],
     point: input.point,
-    points: input.references.points,
-    tolerance: sketchInferenceTolerance(input.bounds, input.rectangle),
+    points: candidates.points,
+    tolerance,
   })
 }
 
@@ -5579,6 +5800,7 @@ type SketchDrawingViewProps = Readonly<{
       witnesses: readonly SketchPoint2[]
     }> | null
     editable: boolean
+    externalInferenceCandidate: ExternalSketchWakeupCandidate | null
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
     circularPattern: Readonly<{
@@ -5904,6 +6126,7 @@ function SketchDrawingView({
           externalCurves={state.geometry.externalCurves}
           externalLines={state.geometry.externalLines}
           externalPoints={state.geometry.externalPoints}
+          highlightedCandidate={state.externalInferenceCandidate}
           markerScale={markerScale}
           modelCandidates={configuration.externalModelCandidates}
           pointsById={state.geometry.pointsById}
@@ -5964,6 +6187,7 @@ function SketchDrawingView({
         sketch={sketch}
         state={state}
       />
+      <SketchExternalInferenceInstruction candidate={state.externalInferenceCandidate} />
       <SketchMirrorInstruction
         editorTool={configuration.editorTool}
         pending={state.pending}
@@ -6090,6 +6314,24 @@ function viewerOriginPlaneReferences(activePlane: ViewerOriginPlane) {
     ],
   }
   return references[activePlane]
+}
+
+function SketchExternalInferenceInstruction({
+  candidate,
+}: Readonly<{
+  candidate: ExternalSketchWakeupCandidate | null
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (!candidate) return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border border-amber-500/50 bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-external-inference-label={candidate.label}
+      role="status"
+    >
+      {t("externalInferenceSource", { label: candidate.label })}
+    </div>
+  )
 }
 
 function SketchMirrorInstruction({
@@ -6588,22 +6830,60 @@ function useSketchModificationInteractions(
 function useSketchInferencePresentation(input: {
   cellSize: number
   draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  externalCandidates: readonly ExternalSketchGeometryCandidate[]
   geometry: SketchGeometryPresentation
+  inference: SketchPointInference | null
 }) {
-  const references = useMemo(
+  const baseReferences = useMemo(
     () => (input.draft ? sketchInferenceReferences(input.geometry) : EMPTY_INFERENCE_REFERENCES),
     [input.draft, input.geometry],
   )
-  const candidateQuery = useMemo(
+  const wakeupReferences = useMemo(
+    () =>
+      input.draft && supportsPersistentPointRelations(input.editorTool)
+        ? externalSketchWakeupReferences(input.externalCandidates, input.draft)
+        : EMPTY_EXTERNAL_WAKEUP_REFERENCES,
+    [input.draft, input.editorTool, input.externalCandidates],
+  )
+  const placementReferences = useMemo(
+    () => mergeSketchInferenceReferences(baseReferences, wakeupReferences),
+    [baseReferences, wakeupReferences],
+  )
+  const dragCandidateQuery = useMemo(
     () =>
       createSketchInferenceCandidateQuery({
         cellSize: input.cellSize,
-        lines: references.lines,
-        points: references.points,
+        lines: baseReferences.lines,
+        points: baseReferences.points,
       }),
-    [input.cellSize, references],
+    [baseReferences, input.cellSize],
   )
-  return { candidateQuery, references }
+  const placementCandidateQuery = useMemo(
+    () =>
+      createSketchInferenceCandidateQuery({
+        cellSize: input.cellSize,
+        lines: placementReferences.lines,
+        points: placementReferences.points,
+      }),
+    [input.cellSize, placementReferences],
+  )
+  const externalInferenceCandidate = useMemo(
+    () =>
+      externalWakeupCandidateForInference(
+        input.inference,
+        wakeupReferences.candidatesByInferenceId,
+      ),
+    [input.inference, wakeupReferences.candidatesByInferenceId],
+  )
+  return {
+    baseReferences,
+    dragCandidateQuery,
+    externalInferenceCandidate,
+    externalCandidatesByInferenceId: wakeupReferences.candidatesByInferenceId,
+    placementCandidateQuery,
+    references: placementReferences,
+  }
 }
 
 function useExternalReferenceInteraction({
@@ -7154,6 +7434,22 @@ function usePublishSketchProjection(bounds: SketchBounds, projectionFrame?: View
   )
 }
 
+function beginSketchOffsetFromSource(input: {
+  draft: SketchRecord | null
+  entityId: SketchEntityId
+  onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+  setInference: Dispatch<SetStateAction<SketchPointInference | null>>
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}) {
+  if (!input.draft) return
+  const entity = input.draft.entities.find(({ id }) => id === input.entityId)
+  if (entity?.type !== "line") return
+  const lineIds = connectedSketchOffsetLineIds(input.draft, entity.id)
+  input.onSelectionChange(lineIds)
+  input.setInference(null)
+  input.setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
+}
+
 function SketchDrawing({
   configuration,
   projectionFrame,
@@ -7215,7 +7511,10 @@ function SketchDrawing({
   const inferencePresentation = useSketchInferencePresentation({
     cellSize: dragInferenceCellSize(bounds, viewportSize),
     draft,
+    editorTool,
+    externalCandidates: configuration.externalPointCandidates,
     geometry,
+    inference,
   })
   const handleDragPreview = useCallback((preview: SketchPointDragPreview) => {
     setCursor(preview.point)
@@ -7229,7 +7528,7 @@ function SketchDrawing({
   } = useSketchPointDrag({
     bounds,
     draft,
-    inferenceCandidateQuery: inferencePresentation.candidateQuery,
+    inferenceCandidateQuery: inferencePresentation.dragCandidateQuery,
     onDraftChange,
     onDraggingPointChange,
     onPreview: handleDragPreview,
@@ -7253,7 +7552,9 @@ function SketchDrawing({
   ) =>
     placementInference({
       bounds,
+      candidateQuery: inferencePresentation.placementCandidateQuery,
       draft,
+      directionLines: inferencePresentation.baseReferences.lines,
       editorTool,
       pending,
       point,
@@ -7264,12 +7565,21 @@ function SketchDrawing({
   const appendAt = useCallback(
     (target: SketchPointTarget, pointInference?: SketchPointInference) => {
       if (!draft) return
-      const point = pointForTarget(draft, target)
+      const commitsPlacement = editorTool !== "line" || pending?.kind === "line"
+      const materialized = commitsPlacement
+        ? materializeExternalInference({
+            candidatesByInferenceId: inferencePresentation.externalCandidatesByInferenceId,
+            draft,
+            inference: pointInference,
+            pending,
+          })
+        : { draft, inference: pointInference, pending }
+      const point = pointForTarget(materialized.draft, target)
       const input = placementInputWithInference({
         construction,
-        draft,
-        inference: pointInference,
-        pending,
+        draft: materialized.draft,
+        inference: materialized.inference,
+        pending: materialized.pending,
         point,
         target,
       })
@@ -7280,7 +7590,15 @@ function SketchDrawing({
         setPending,
       })
     },
-    [construction, draft, editorTool, onDraftChange, onEditorToolChange, pending],
+    [
+      construction,
+      draft,
+      editorTool,
+      inferencePresentation.externalCandidatesByInferenceId,
+      onDraftChange,
+      onEditorToolChange,
+      pending,
+    ],
   )
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (transform.consumePointerMove(event)) return
@@ -7393,15 +7711,14 @@ function SketchDrawing({
       setInference,
       setPending,
     })
-  const handleOffsetSourceAction = (entityId: SketchEntityId) => {
-    if (!draft) return
-    const entity = draft.entities.find(({ id }) => id === entityId)
-    if (entity?.type !== "line") return
-    const lineIds = connectedSketchOffsetLineIds(draft, entity.id)
-    onSelectionChange(lineIds)
-    setInference(null)
-    setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
-  }
+  const handleOffsetSourceAction = (entityId: SketchEntityId) =>
+    beginSketchOffsetFromSource({
+      draft,
+      entityId,
+      onSelectionChange,
+      setInference,
+      setPending,
+    })
   const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
     applySketchCurveAction({
       circularPatternSelect: circularPattern.selectEntity,
@@ -7494,6 +7811,7 @@ function SketchDrawing({
           dimensionLabelPositions: dimensions.labelPositions,
           dimensionPreview: dimensions.preview,
           editable,
+          externalInferenceCandidate: inferencePresentation.externalInferenceCandidate,
           geometry,
           inference,
           linearPattern: linearPattern.presentation,
