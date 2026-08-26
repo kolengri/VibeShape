@@ -568,7 +568,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #sketchPointCandidateMaterial = new PointsMaterial({
     color: new Color("#65a9ee"),
     depthTest: false,
-    opacity: 1,
+    depthWrite: false,
+    opacity: 0,
     size: 10,
     sizeAttenuation: false,
     transparent: true,
@@ -582,7 +583,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #sketchLineCandidateMaterial = new LineBasicMaterial({
     color: new Color("#65a9ee"),
     depthTest: false,
-    opacity: 1,
+    depthWrite: false,
+    opacity: 0,
     transparent: true,
   })
   readonly #sketchLinePreselectionMaterial = new LineBasicMaterial({

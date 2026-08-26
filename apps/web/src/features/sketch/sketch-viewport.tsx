@@ -2001,7 +2001,7 @@ function SketchAvailableExternalGeometry({
         <g
           key={candidateKey(candidate)}
           aria-label={candidate.label}
-          className="cursor-crosshair outline-none focus-visible:[&>*]:stroke-amber-500"
+          className="group cursor-crosshair outline-none"
           data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
           onPointerDown={(event) => {
             event.stopPropagation()
@@ -2028,7 +2028,7 @@ function SketchAvailableExternalGeometry({
               <polyline
                 fill="none"
                 points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
-                className="stroke-sky-400"
+                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
                 strokeDasharray="5 3"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
@@ -2050,7 +2050,7 @@ function SketchAvailableExternalGeometry({
                 y1={candidate.start.y}
                 x2={candidate.end.x}
                 y2={candidate.end.y}
-                className="stroke-sky-400"
+                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
                 strokeDasharray="5 3"
                 strokeWidth={2}
                 vectorEffect="non-scaling-stroke"
@@ -2058,11 +2058,12 @@ function SketchAvailableExternalGeometry({
             </>
           ) : (
             <>
+              <circle cx={candidate.x} cy={candidate.y} r={10} fill="transparent" stroke="none" />
               <circle
                 cx={candidate.x}
                 cy={candidate.y}
                 r={5}
-                className="fill-background/75 stroke-sky-400"
+                className="pointer-events-none fill-background/75 stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
                 strokeDasharray="3 2"
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
@@ -2072,7 +2073,7 @@ function SketchAvailableExternalGeometry({
                 x2={candidate.x + 8}
                 y1={candidate.y}
                 y2={candidate.y}
-                className="stroke-sky-400"
+                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
                 strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
               />
@@ -2081,7 +2082,7 @@ function SketchAvailableExternalGeometry({
                 x2={candidate.x}
                 y1={candidate.y - 8}
                 y2={candidate.y + 8}
-                className="stroke-sky-400"
+                className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
                 strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
               />
@@ -2279,15 +2280,14 @@ function SketchExternalReferenceLayer({
     selectedEntityIds,
   })
   const passiveContextGeometry = useMemo(() => {
-    const availableKeys = new Set(externalReferences.availableCandidates.map(candidateKey))
     const referencedKeys = new Set(
       (draft?.externalReferences ?? []).map(externalReferenceSourceKey),
     )
     return contextGeometry.filter((geometry) => {
       const key = contextGeometryKey(geometry)
-      return !availableKeys.has(key) && !referencedKeys.has(key)
+      return !referencedKeys.has(key)
     })
-  }, [contextGeometry, draft, externalReferences.availableCandidates])
+  }, [contextGeometry, draft])
   return (
     <SketchExternalReferencePresentation
       availableCandidates={externalReferences.availableCandidates}
