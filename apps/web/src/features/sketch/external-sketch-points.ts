@@ -211,6 +211,14 @@ export function externalSketchGeometryCandidates(
   )
 }
 
+export function earlierSketchesForDraft(
+  document: Pick<DocumentSnapshot, "sketches">,
+  draftId: SketchRecord["id"],
+) {
+  const draftIndex = document.sketches.findIndex(({ id }) => id === draftId)
+  return document.sketches.slice(0, draftIndex >= 0 ? draftIndex : document.sketches.length)
+}
+
 export function externalSketchContextGeometry(
   document: DocumentSnapshot,
   draft: SketchRecord,
@@ -220,8 +228,7 @@ export function externalSketchContextGeometry(
 ): readonly ExternalSketchContextGeometry[] {
   const targetFrame = sketchFrame(draft, document, features)
   if (!targetFrame) return []
-  const draftIndex = document.sketches.findIndex((sketch) => sketch.id === draft.id)
-  const sources = document.sketches.slice(0, draftIndex >= 0 ? draftIndex : undefined)
+  const sources = earlierSketchesForDraft(document, draft.id)
   return sources.flatMap((source) =>
     externalGeometryFromSketch(
       source,

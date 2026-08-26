@@ -2,6 +2,7 @@ import { documentSnapshotSchema, sketchRecordSchema } from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
+  earlierSketchesForDraft,
   externalSketchContextGeometry,
   externalSketchGeometryCandidates,
 } from "./external-sketch-points"
@@ -9,6 +10,7 @@ import {
 const sourcePointId = "0195b5ac-b220-7a2c-8c33-000000004001"
 const sourceSketchId = "0195b5ac-b220-7a2c-8c33-000000004002"
 const targetSketchId = "0195b5ac-b220-7a2c-8c33-000000004003"
+const laterSketchId = "0195b5ac-b220-7a2c-8c33-000000004004"
 const labels = {
   curve: (sourceLabel: string, kind: string, ordinal: number) =>
     `${sourceLabel} · ${kind} ${ordinal}`,
@@ -17,6 +19,98 @@ const labels = {
 }
 
 describe("external sketch point candidates", () => {
+  it("uses every committed sketch as context for a new unsaved draft", () => {
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sourceSketchId,
+      label: "Layout",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: sourcePointId,
+          type: "point",
+          x: 2,
+          y: 3,
+          construction: false,
+        },
+      ],
+      constraints: [],
+    })
+    const unsavedTarget = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label: "New sketch",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    })
+    const secondSource = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: laterSketchId,
+      label: "Reference",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004005",
+          type: "point",
+          x: 5,
+          y: 7,
+          construction: false,
+        },
+      ],
+      constraints: [],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004099",
+      revision: 1,
+      name: "Unsaved target context",
+      sketches: [source, secondSource],
+      features: [],
+      createdAt: "2026-08-24T00:00:00.000Z",
+      updatedAt: "2026-08-24T00:00:00.000Z",
+    })
+
+    expect(externalSketchContextGeometry(document, unsavedTarget, labels)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "point",
+          sourcePointId,
+          sourceSketchId,
+          world: [2, 3, 0],
+          x: 2,
+          y: 3,
+        }),
+        expect.objectContaining({
+          kind: "point",
+          sourceSketchId: laterSketchId,
+          world: [5, 7, 0],
+          x: 5,
+          y: 7,
+        }),
+      ]),
+    )
+  })
+
+  it("excludes the active sketch and later sketches from existing-draft context", () => {
+    const sketches = [sourceSketchId, targetSketchId, laterSketchId].map((id, index) =>
+      sketchRecordSchema.parse({
+        schemaVersion: 0,
+        id,
+        label: `Sketch ${index + 1}`,
+        plane: "xy",
+        entities: [],
+        constraints: [],
+      }),
+    )
+
+    expect(earlierSketchesForDraft({ sketches }, sketches[1]!.id).map(({ id }) => id)).toEqual([
+      sourceSketchId,
+    ])
+  })
+
   it("projects an earlier sketch point into the active support while retaining its world position", () => {
     const source = sketchRecordSchema.parse({
       schemaVersion: 0,
