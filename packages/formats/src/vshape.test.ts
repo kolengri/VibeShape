@@ -1,9 +1,17 @@
 import { applyDocumentCommand, type DocumentEvent } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
+import { migrateDocumentSnapshot } from "@vibeshape/domain/document-migration"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { describe, expect, it } from "vitest"
-import { readVShape, VSHAPE_MEDIA_TYPE, writeVShape } from "./vshape"
+import {
+  readVersionedVShape,
+  readVShape,
+  readVShapeV1,
+  VSHAPE_MEDIA_TYPE,
+  writeVShape,
+  writeVShapeV1,
+} from "./vshape"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
 const widthVariableId = "0195b5ac-b220-7a2c-8c33-67a36a7f21bc"
@@ -290,6 +298,96 @@ describe(".vshape v0", () => {
           createdBy: { application: "Independent VibeShape writer" },
         },
       },
+    })
+  })
+})
+
+describe(".vshape v1", () => {
+  async function migratedProject() {
+    const legacy = configurableProject()
+    const migrated = migrateDocumentSnapshot(legacy.snapshot, legacy.events)
+    if (!migrated.ok) throw new Error(migrated.diagnostic.message)
+    return { ...legacy, snapshot: migrated.snapshot }
+  }
+
+  it("round-trips deterministic History and semanticInputs", async () => {
+    const project = await migratedProject()
+    const first = await writeVShapeV1({ ...project, ...metadata })
+    const second = await writeVShapeV1({ ...project, ...metadata })
+    expect(first).toEqual(second)
+    if (!first.ok) throw new Error(first.diagnostic.message)
+    await expect(readVShapeV1(first.value)).resolves.toMatchObject({
+      ok: true,
+      value: {
+        manifest: { schemaVersion: 1, formatVersion: 1, minimumReaderVersion: 1 },
+        snapshot: {
+          schemaVersion: 1,
+          history: [
+            { kind: "sketch", id: sketchId },
+            { kind: "feature", id: featureId },
+          ],
+          features: [{ semanticInputs: null }],
+        },
+      },
+    })
+  })
+
+  it("rejects wrong or tampered History even when entry checksums are recomputed", async () => {
+    const project = await migratedProject()
+    const wrongHistory = {
+      ...project,
+      snapshot: { ...project.snapshot, history: [...project.snapshot.history].reverse() },
+    }
+    await expect(writeVShapeV1({ ...wrongHistory, ...metadata })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "history-mismatch" },
+    })
+
+    const written = await writeVShapeV1({ ...project, ...metadata })
+    if (!written.ok) throw new Error(written.diagnostic.message)
+    const files = unzipSync(written.value)
+    const snapshot = JSON.parse(strFromU8(files["document.json"] as Uint8Array))
+    snapshot.history = [...snapshot.history].reverse()
+    files["document.json"] = strToU8(JSON.stringify(snapshot))
+    const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array))
+    const digest = await (
+      globalThis as typeof globalThis & {
+        crypto: {
+          subtle: { digest: (algorithm: string, data: Uint8Array) => Promise<ArrayBuffer> }
+        }
+      }
+    ).crypto.subtle.digest("SHA-256", files["document.json"] as Uint8Array)
+    manifest.semanticEntries[0].bytes = files["document.json"].byteLength
+    manifest.semanticEntries[0].sha256 = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+    files["manifest.json"] = strToU8(JSON.stringify(manifest))
+    await expect(readVShapeV1(zipSync(files))).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "history-mismatch" },
+    })
+  })
+
+  it("dispatches versions and rejects v0 archives as v1", async () => {
+    const legacy = await writeVShape({ ...configurableProject(), ...metadata })
+    if (!legacy.ok) throw new Error(legacy.diagnostic.message)
+    await expect(readVShapeV1(legacy.value)).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-manifest" },
+    })
+    await expect(readVersionedVShape(legacy.value)).resolves.toMatchObject({
+      ok: true,
+      value: { version: 0 },
+    })
+    const current = await writeVShapeV1({ ...(await migratedProject()), ...metadata })
+    if (!current.ok) throw new Error(current.diagnostic.message)
+    await expect(readVShape(current.value)).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "unsupported-version" },
+    })
+    await expect(readVersionedVShape(current.value)).resolves.toMatchObject({
+      ok: true,
+      value: { version: 1, project: { manifest: { formatVersion: 1 } } },
     })
   })
 })

@@ -4,7 +4,13 @@ import {
   documentEventSchema,
   replayDocumentEvents,
 } from "@vibeshape/domain/commands"
-import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
+import {
+  type DocumentSnapshot,
+  type DocumentSnapshotV1,
+  documentSnapshotSchema,
+  documentSnapshotV1Schema,
+} from "@vibeshape/domain/document"
+import { migrateDocumentSnapshot } from "@vibeshape/domain/document-migration"
 import { documentIdSchema, timestampSchema } from "@vibeshape/domain/identifiers"
 import { strFromU8, strToU8, type Zippable, zipSync } from "fflate"
 import { z } from "zod"
@@ -12,6 +18,7 @@ import { readSafeZip, SafeZipError } from "./safe-zip"
 
 export const VSHAPE_MEDIA_TYPE = "application/vnd.vibeshape.project+zip" as const
 export const VSHAPE_FORMAT_VERSION = 0 as const
+export const VSHAPE_V1_FORMAT_VERSION = 1 as const
 export const VSHAPE_MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 
 const MANIFEST_PATH = "manifest.json"
@@ -52,6 +59,31 @@ const engineSchema = z
   })
   .strict()
 
+function validateSemanticEntries(
+  manifest: { semanticEntries: readonly z.infer<typeof semanticEntrySchema>[] },
+  context: z.RefinementCtx,
+) {
+  const entries = new Map(manifest.semanticEntries.map((entry) => [entry.path, entry]))
+  if (entries.size !== 2)
+    context.addIssue({
+      code: "custom",
+      path: ["semanticEntries"],
+      message: "Every semantic project entry must be declared exactly once.",
+    })
+  if (entries.get(DOCUMENT_PATH)?.mediaType !== "application/json")
+    context.addIssue({
+      code: "custom",
+      path: ["semanticEntries"],
+      message: "The root document must use application/json.",
+    })
+  if (entries.get(JOURNAL_PATH)?.mediaType !== "application/x-ndjson")
+    context.addIssue({
+      code: "custom",
+      path: ["semanticEntries"],
+      message: "The event journal must use application/x-ndjson.",
+    })
+}
+
 export const vShapeManifestSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -80,30 +112,37 @@ export const vShapeManifestSchema = z
     coordinateSystem: z.literal("right-handed-z-up"),
   })
   .strict()
-  .superRefine((manifest, context) => {
-    const entries = new Map(manifest.semanticEntries.map((entry) => [entry.path, entry]))
-    if (entries.size !== 2) {
-      context.addIssue({
-        code: "custom",
-        path: ["semanticEntries"],
-        message: "Every semantic project entry must be declared exactly once.",
+  .superRefine(validateSemanticEntries)
+
+export const vShapeManifestV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    format: z.literal("vshape"),
+    formatVersion: z.literal(VSHAPE_V1_FORMAT_VERSION),
+    minimumReaderVersion: z.literal(VSHAPE_V1_FORMAT_VERSION),
+    documentId: documentIdSchema,
+    documentRevision: z.number().int().positive().safe(),
+    createdBy: z
+      .object({
+        application: z.string().min(1).max(120),
+        version: z.string().min(1).max(64),
+        build: z.string().min(1).max(128).nullable(),
       })
-    }
-    if (entries.get(DOCUMENT_PATH)?.mediaType !== "application/json") {
-      context.addIssue({
-        code: "custom",
-        path: ["semanticEntries"],
-        message: "The root document must use application/json.",
-      })
-    }
-    if (entries.get(JOURNAL_PATH)?.mediaType !== "application/x-ndjson") {
-      context.addIssue({
-        code: "custom",
-        path: ["semanticEntries"],
-        message: "The event journal must use application/x-ndjson.",
-      })
-    }
+      .strict(),
+    engine: engineSchema.nullable(),
+    rootDocument: z.literal(DOCUMENT_PATH),
+    eventJournal: z.literal(JOURNAL_PATH),
+    compression: z.literal("deflate"),
+    semanticEntries: z.array(semanticEntrySchema).length(2),
+    requiredCapabilities: z.array(z.string().min(1).max(120)).max(64),
+    extensionsLockChecksum: sha256Schema.nullable(),
+    createdAt: timestampSchema,
+    exportedAt: timestampSchema,
+    units: z.literal("millimeter"),
+    coordinateSystem: z.literal("right-handed-z-up"),
   })
+  .strict()
+  .superRefine(validateSemanticEntries)
 
 const writeVShapeInputSchema = z
   .object({
@@ -121,6 +160,10 @@ const writeVShapeInputSchema = z
   })
   .strict()
 
+const writeVShapeV1InputSchema = writeVShapeInputSchema.extend({
+  snapshot: documentSnapshotV1Schema,
+})
+
 const vShapeManifestHeaderSchema = z
   .object({
     format: z.literal("vshape"),
@@ -130,10 +173,16 @@ const vShapeManifestHeaderSchema = z
   .passthrough()
 
 export type VShapeManifest = Readonly<z.infer<typeof vShapeManifestSchema>>
+export type VShapeManifestV1 = Readonly<z.infer<typeof vShapeManifestV1Schema>>
 export type VShapeEngine = Readonly<z.infer<typeof engineSchema>>
 export type VShapeProject = Readonly<{
   manifest: VShapeManifest
   snapshot: DocumentSnapshot
+  events: readonly DocumentEvent[]
+}>
+export type VShapeProjectV1 = Readonly<{
+  manifest: VShapeManifestV1
+  snapshot: DocumentSnapshotV1
   events: readonly DocumentEvent[]
 }>
 
@@ -182,7 +231,7 @@ async function sha256Bytes(value: Uint8Array) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
-function encodeSemanticProject(snapshot: DocumentSnapshot, events: readonly DocumentEvent[]) {
+function encodeSemanticProject(snapshot: unknown, events: readonly DocumentEvent[]) {
   return {
     documentBytes: strToU8(canonicalJson(snapshot)),
     journalBytes: strToU8(`${events.map(canonicalJson).join("\n")}\n`),
@@ -236,6 +285,47 @@ async function createManifest(
     requiredCapabilities: [],
     extensionsLockChecksum: null,
     createdAt: input.snapshot.createdAt,
+    exportedAt: input.exportedAt,
+    units: "millimeter",
+    coordinateSystem: "right-handed-z-up",
+  })
+}
+
+async function createManifestV1(
+  input: Pick<z.output<typeof writeVShapeInputSchema>, "createdBy" | "engine" | "exportedAt">,
+  snapshot: DocumentSnapshotV1,
+  documentBytes: Uint8Array,
+  journalBytes: Uint8Array,
+) {
+  return vShapeManifestV1Schema.parse({
+    schemaVersion: VSHAPE_V1_FORMAT_VERSION,
+    format: "vshape",
+    formatVersion: VSHAPE_V1_FORMAT_VERSION,
+    minimumReaderVersion: VSHAPE_V1_FORMAT_VERSION,
+    documentId: snapshot.id,
+    documentRevision: snapshot.revision,
+    createdBy: input.createdBy,
+    engine: input.engine,
+    rootDocument: DOCUMENT_PATH,
+    eventJournal: JOURNAL_PATH,
+    compression: "deflate",
+    semanticEntries: [
+      {
+        path: DOCUMENT_PATH,
+        mediaType: "application/json",
+        bytes: documentBytes.byteLength,
+        sha256: await sha256Bytes(documentBytes),
+      },
+      {
+        path: JOURNAL_PATH,
+        mediaType: "application/x-ndjson",
+        bytes: journalBytes.byteLength,
+        sha256: await sha256Bytes(journalBytes),
+      },
+    ],
+    requiredCapabilities: [],
+    extensionsLockChecksum: null,
+    createdAt: snapshot.createdAt,
     exportedAt: input.exportedAt,
     units: "millimeter",
     coordinateSystem: "right-handed-z-up",
@@ -319,6 +409,21 @@ function parseJsonFile<Output>(
 }
 
 function parseManifest(files: UnzippedProjectFiles) {
+  const input = parseManifestInput(files)
+  const header = vShapeManifestHeaderSchema.safeParse(input)
+  requireVShape(header.success, "invalid-manifest", "The project manifest header is invalid.")
+  requireVShape(
+    header.data.formatVersion === VSHAPE_FORMAT_VERSION &&
+      header.data.minimumReaderVersion <= VSHAPE_FORMAT_VERSION,
+    "unsupported-version",
+    "This project requires a newer VibeShape reader.",
+  )
+  const manifest = vShapeManifestSchema.safeParse(input)
+  requireVShape(manifest.success, "invalid-manifest", "The project manifest is invalid.")
+  return manifest.data
+}
+
+function parseManifestInput(files: UnzippedProjectFiles) {
   const bytes = files[MANIFEST_PATH]
   requireVShape(bytes !== undefined, "invalid-manifest", "The project manifest is missing.")
   requireVShape(
@@ -333,17 +438,19 @@ function parseManifest(files: UnzippedProjectFiles) {
     if (error instanceof VShapeError) throw error
     throw new VShapeError("invalid-manifest", "The project manifest is invalid.")
   }
-  const header = vShapeManifestHeaderSchema.safeParse(input)
-  requireVShape(header.success, "invalid-manifest", "The project manifest header is invalid.")
-  requireVShape(
-    header.data.formatVersion === VSHAPE_FORMAT_VERSION &&
-      header.data.minimumReaderVersion <= VSHAPE_FORMAT_VERSION,
-    "unsupported-version",
-    "This project requires a newer VibeShape reader.",
-  )
-  const manifest = vShapeManifestSchema.safeParse(input)
+  return input
+}
+
+function parseManifestV1(files: UnzippedProjectFiles) {
+  const manifest = vShapeManifestV1Schema.safeParse(parseManifestInput(files))
   requireVShape(manifest.success, "invalid-manifest", "The project manifest is invalid.")
   return manifest.data
+}
+
+function parseManifestHeader(files: UnzippedProjectFiles) {
+  const header = vShapeManifestHeaderSchema.safeParse(parseManifestInput(files))
+  requireVShape(header.success, "invalid-manifest", "The project manifest header is invalid.")
+  return header.data
 }
 
 function parseJournal(files: UnzippedProjectFiles) {
@@ -375,7 +482,10 @@ function parseJournal(files: UnzippedProjectFiles) {
   }
 }
 
-async function requireSemanticIntegrity(manifest: VShapeManifest, files: UnzippedProjectFiles) {
+async function requireSemanticIntegrity(
+  manifest: Pick<VShapeManifest, "semanticEntries">,
+  files: UnzippedProjectFiles,
+) {
   const declaredPaths = manifest.semanticEntries.map(({ path }) => path)
   requireVShape(
     declaredPaths.length === 2 && new Set(declaredPaths).size === 2,
@@ -397,7 +507,10 @@ async function requireSemanticIntegrity(manifest: VShapeManifest, files: Unzippe
   }
 }
 
-function requireManifestRelationship(manifest: VShapeManifest, snapshot: DocumentSnapshot) {
+function requireManifestRelationship(
+  manifest: Pick<VShapeManifest, "createdAt" | "documentId" | "documentRevision">,
+  snapshot: Pick<DocumentSnapshot, "createdAt" | "id" | "revision">,
+) {
   requireVShape(
     manifest.documentId === snapshot.id && manifest.documentRevision === snapshot.revision,
     "history-mismatch",
@@ -410,17 +523,108 @@ function requireManifestRelationship(manifest: VShapeManifest, snapshot: Documen
   )
 }
 
+function requireV1ReplayProof(snapshot: DocumentSnapshotV1, events: readonly DocumentEvent[]) {
+  const replayed = replayDocumentEvents(events)
+  requireVShape(
+    replayed.ok,
+    "history-mismatch",
+    "The event journal could not be replayed to a legacy document.",
+  )
+  const migrated = migrateDocumentSnapshot(replayed.snapshot, events)
+  requireVShape(
+    migrated.ok && canonicalJson(migrated.snapshot) === canonicalJson(snapshot),
+    "history-mismatch",
+    "The event journal migration does not reproduce the document snapshot.",
+  )
+}
+
+async function decodeVShape(files: UnzippedProjectFiles): Promise<VShapeProject> {
+  requireExactEntries(files)
+  const manifest = parseManifest(files)
+  await requireSemanticIntegrity(manifest, files)
+  const snapshot = parseJsonFile(files, DOCUMENT_PATH, documentSnapshotSchema, "invalid-document")
+  const events = parseJournal(files)
+  requireManifestRelationship(manifest, snapshot)
+  requirePortableHistory(snapshot, events)
+  return { manifest, snapshot, events }
+}
+
+async function decodeVShapeV1(files: UnzippedProjectFiles): Promise<VShapeProjectV1> {
+  requireExactEntries(files)
+  const manifest = parseManifestV1(files)
+  await requireSemanticIntegrity(manifest, files)
+  const snapshot = parseJsonFile(files, DOCUMENT_PATH, documentSnapshotV1Schema, "invalid-document")
+  const events = parseJournal(files)
+  requireManifestRelationship(manifest, snapshot)
+  requireV1ReplayProof(snapshot, events)
+  return { manifest, snapshot, events }
+}
+
 export async function readVShape(bytes: unknown): Promise<VShapeResult<VShapeProject>> {
   try {
+    return { ok: true, value: await decodeVShape(await readSafeZip(bytes, VSHAPE_LIMITS)) }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+export async function writeVShapeV1(inputValue: unknown): Promise<VShapeResult<Uint8Array>> {
+  const input = writeVShapeV1InputSchema.safeParse(inputValue)
+  if (!input.success) {
+    return {
+      ok: false,
+      diagnostic: { code: "invalid-document", message: "The portable project input is invalid." },
+    }
+  }
+  try {
+    const semantic = encodeSemanticProject(input.data.snapshot, input.data.events)
+    requireV1ReplayProof(input.data.snapshot, input.data.events)
+    const manifest = await createManifestV1(
+      input.data,
+      input.data.snapshot,
+      semantic.documentBytes,
+      semantic.journalBytes,
+    )
+    const archive: Zippable = {
+      [MANIFEST_PATH]: strToU8(canonicalJson(manifest)),
+      [DOCUMENT_PATH]: semantic.documentBytes,
+      [JOURNAL_PATH]: semantic.journalBytes,
+    }
+    const result = zipSync(archive, { level: 6, mtime: ZIP_MTIME })
+    requireVShape(
+      result.byteLength <= VSHAPE_LIMITS.archiveBytes,
+      "resource-limit",
+      "The project archive exceeds the compressed-size limit.",
+    )
+    return { ok: true, value: result }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+export async function readVShapeV1(bytes: unknown): Promise<VShapeResult<VShapeProjectV1>> {
+  try {
+    return { ok: true, value: await decodeVShapeV1(await readSafeZip(bytes, VSHAPE_LIMITS)) }
+  } catch (error) {
+    return { ok: false, diagnostic: vShapeDiagnostic(error) }
+  }
+}
+
+export type VersionedVShapeProject =
+  | Readonly<{ version: 0; project: VShapeProject }>
+  | Readonly<{ version: 1; project: VShapeProjectV1 }>
+
+export async function readVersionedVShape(
+  bytes: unknown,
+): Promise<VShapeResult<VersionedVShapeProject>> {
+  try {
     const files = await readSafeZip(bytes, VSHAPE_LIMITS)
-    requireExactEntries(files)
-    const manifest = parseManifest(files)
-    await requireSemanticIntegrity(manifest, files)
-    const snapshot = parseJsonFile(files, DOCUMENT_PATH, documentSnapshotSchema, "invalid-document")
-    const events = parseJournal(files)
-    requireManifestRelationship(manifest, snapshot)
-    requirePortableHistory(snapshot, events)
-    return { ok: true, value: { manifest, snapshot, events } }
+    const header = parseManifestHeader(files)
+    if (header.formatVersion === VSHAPE_FORMAT_VERSION)
+      return { ok: true, value: { version: 0, project: await decodeVShape(files) } }
+    if (header.formatVersion === VSHAPE_V1_FORMAT_VERSION)
+      return { ok: true, value: { version: 1, project: await decodeVShapeV1(files) } }
+    throw new VShapeError("unsupported-version", "This project requires a newer VibeShape reader.")
   } catch (error) {
     return { ok: false, diagnostic: vShapeDiagnostic(error) }
   }

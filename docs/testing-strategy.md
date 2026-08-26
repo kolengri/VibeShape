@@ -51,6 +51,11 @@ unchanged. A corrupt suffix separately proves that migration uses the actually r
 project head. Canonical before/after checks cover the project record, every snapshot, every event, and the recovery
 marker. This remains read-only evidence; atomic version-1 persistence is still an open gate.
 
+Native-format tests separately require deterministic `.vshape` v1 bytes, a strict version-1 manifest, exact
+three-entry/resource enforcement, explicit v0/v1 dispatch, and replay-to-migration canonical equality. They also
+recompute semantic-entry checksums after tampering with History and require the reader to reject the archive.
+Legacy `readVShape` and `writeVShape` remain strict v0 compatibility gates.
+
 The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
 branch, keeps Datum Planes in History but out of Bodies, lists only terminal solid results under Bodies, exposes
 origin-plane and feature/profile provenance, and preserves stable sketch and feature activation. It also proves
