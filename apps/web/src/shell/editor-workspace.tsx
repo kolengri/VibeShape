@@ -49,6 +49,7 @@ import {
   applyExternalSketchCandidate,
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
+  earlierSketchesForDraft,
   externalSketchContextGeometry,
 } from "../features/sketch/external-sketch-points"
 import {
@@ -283,11 +284,8 @@ function useExternalSketchSolutions(
       setSolutions(new Map())
       return
     }
-    const draftIndex = snapshot.sketches.findIndex(({ id }) => id === draftId)
     const hidden = new Set(hiddenSketchIds)
-    const sources = snapshot.sketches
-      .slice(0, draftIndex >= 0 ? draftIndex : undefined)
-      .filter(({ id }) => !hidden.has(id))
+    const sources = earlierSketchesForDraft(snapshot, draftId).filter(({ id }) => !hidden.has(id))
     let active = true
     void Promise.all(
       sources.map(async (source) => {

@@ -466,7 +466,9 @@ non-interactive context; center points use a distinct square marker rather than 
 circles. Cross-support point and line references are transformed through exact source and target frames
 before solve, and valid ordered reference chains recursively solve their earlier source intent. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
-selection; it reapplies the latest analytical projection after orbiting. Complete parent/child inspection,
+selection; it reapplies the latest analytical projection after orbiting. A new unsaved sketch uses every
+committed sketch as eligible earlier context, while an existing sketch stops at its own document-order boundary.
+Complete parent/child inspection,
 persisted History rollback, and bounded candidate cycling remain open parts of this slice.
 
 Editing an existing sketch also exposes **Show final result** as a transient presentation command. It keeps
