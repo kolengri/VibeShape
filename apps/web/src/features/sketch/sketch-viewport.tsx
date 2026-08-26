@@ -7192,6 +7192,7 @@ function SketchDimensionEditorOverlay({
       configuration.onSelectionChange([])
     } else if (editor.kind === "edit") {
       configuration.onDraftChange(setSketchDimensionValue(draft, editor.constraintId, result.value))
+      configuration.onConstraintSelectionChange(null)
     }
     onClose()
   }
@@ -7969,7 +7970,7 @@ type SketchDrawingConfiguration = Readonly<{
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   editDimensionLabel: (label: string) => string
   editorTool: SketchEditorTool
-  onConstraintSelectionChange: (constraintId: SketchConstraintId) => void
+  onConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onDraggingPointChange: (pointId: SketchEntityId | null, point?: SketchPoint2) => void
   onEditorToolChange: (tool: SketchEditorTool) => void
