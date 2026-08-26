@@ -38,6 +38,22 @@ describe("sketch inference", () => {
     })
   })
 
+  it("creates a coincident relation instead of reusing a read-only reference point", () => {
+    expect(
+      inferSketchPoint({
+        point: { x: 10.25, y: 20.25 },
+        points: [{ id: firstPointId, reusable: false, x: 10, y: 20 }],
+        tolerance: 1,
+      }),
+    ).toEqual({
+      direction: null,
+      kind: "coincident",
+      point: { x: 10, y: 20 },
+      relations: [{ type: "coincident", pointId: firstPointId }],
+      target: { kind: "new", point: { x: 10, y: 20 } },
+    })
+  })
+
   it("infers the closest horizontal or vertical axis from an anchor", () => {
     expect(
       inferSketchPoint({

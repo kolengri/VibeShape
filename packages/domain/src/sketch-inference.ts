@@ -1,7 +1,12 @@
 import type { SketchEntityId } from "./identifiers"
 import { type SketchPoint2, type SketchPointTarget, sketchLineIntersection } from "./sketch-edit"
 
-export type SketchInferencePoint = SketchPoint2 & Readonly<{ id: SketchEntityId }>
+export type SketchInferencePoint = SketchPoint2 &
+  Readonly<{
+    id: SketchEntityId
+    /** False when the point is a read-only reference and must be related instead of reused. */
+    reusable?: boolean
+  }>
 
 export type SketchInferenceLine = Readonly<{
   end: SketchPoint2
@@ -19,6 +24,7 @@ export type SketchInferenceArc = Readonly<{
 }>
 
 export type SketchPointRelationInference =
+  | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
   | Readonly<{ lineId: SketchEntityId; type: "midpoint" }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
 
@@ -592,10 +598,20 @@ function inferredDirection(input: {
 }
 
 function coincidentInference(snappedPoint: SketchInferencePoint): SketchPointInference {
+  const point = { x: snappedPoint.x, y: snappedPoint.y }
+  if (snappedPoint.reusable === false) {
+    return {
+      direction: null,
+      kind: "coincident",
+      point,
+      relations: [{ type: "coincident", pointId: snappedPoint.id }],
+      target: { kind: "new", point },
+    }
+  }
   return {
     direction: null,
     kind: "coincident",
-    point: { x: snappedPoint.x, y: snappedPoint.y },
+    point,
     relations: [],
     target: { kind: "existing", pointId: snappedPoint.id },
   }

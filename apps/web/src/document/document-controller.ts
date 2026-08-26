@@ -407,6 +407,10 @@ async function commitDocumentCommand(
   publish({ ...state, saveStatus: "saving", diagnostic: null })
   const result = await session.commit(createCommand(session.snapshot.id))
   if (!result.ok) {
+    if (result.diagnostic.sourceCode === "command-no-op") {
+      publish({ ...state, saveStatus: "saved", diagnostic: null })
+      return { ok: true }
+    }
     publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
     return result
   }
