@@ -6,6 +6,7 @@ import {
   boxFeatureType,
   createEmptySketch,
   createLengthQuantity,
+  datumPlaneFeatureType,
   featureIdSchema,
   featureRecordSchema,
   sketchIdSchema,
@@ -36,6 +37,20 @@ const feature = featureRecordSchema.parse({
 })
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2603")
 const sketch = createEmptySketch({ id: sketchId, label: "Profile", plane: "xy" })
+const datumFeature = featureRecordSchema.parse({
+  schemaVersion: 0,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2605"),
+  type: datumPlaneFeatureType.type,
+  parameters: {
+    mode: "offset",
+    support: { kind: "origin-plane", plane: "xz" },
+    offset: createLengthQuantity(8),
+  },
+  dependencies: [],
+  references: [],
+  suppressed: false,
+  label: "Offset plane",
+})
 
 const controller = {
   status: "ready",
@@ -59,6 +74,9 @@ type ModelTreeProps = ComponentProps<typeof ModelTree>
 type RenderTreeOptions = Partial<
   Pick<
     ModelTreeProps,
+    | "activeSketchId"
+    | "activeWorkspace"
+    | "controller"
     | "onFeatureActivate"
     | "onFeatureRename"
     | "onFeaturePreselectionChange"
@@ -68,6 +86,7 @@ type RenderTreeOptions = Partial<
     | "onSketchRemove"
     | "onSketchRename"
     | "onSketchVisibilityChange"
+    | "onWorkspaceChange"
     | "sketchRenameBlockedId"
     | "hiddenFeatureIds"
     | "hiddenSketchIds"
@@ -75,6 +94,9 @@ type RenderTreeOptions = Partial<
 >
 
 function renderTree({
+  activeSketchId = null,
+  activeWorkspace = "model",
+  controller: treeController = controller,
   onFeatureActivate = vi.fn(),
   onFeatureRename = vi.fn().mockResolvedValue({ ok: true }),
   onFeaturePreselectionChange = vi.fn(),
@@ -84,6 +106,7 @@ function renderTree({
   onSketchRemove = vi.fn().mockResolvedValue({ ok: true }),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
   onSketchVisibilityChange = vi.fn(),
+  onWorkspaceChange = vi.fn(),
   sketchRenameBlockedId = null,
   hiddenFeatureIds = [],
   hiddenSketchIds = [],
@@ -93,9 +116,9 @@ function renderTree({
       <TooltipProvider>
         <ModelTree
           activeFeatureId={featureId}
-          activeSketchId={null}
-          activeWorkspace="model"
-          controller={controller}
+          activeSketchId={activeSketchId}
+          activeWorkspace={activeWorkspace}
+          controller={treeController}
           hiddenFeatureIds={hiddenFeatureIds}
           hiddenSketchIds={hiddenSketchIds}
           onFeatureActivate={onFeatureActivate}
@@ -107,7 +130,7 @@ function renderTree({
           onSketchRemove={onSketchRemove}
           onSketchRename={onSketchRename}
           onSketchVisibilityChange={onSketchVisibilityChange}
-          onWorkspaceChange={vi.fn()}
+          onWorkspaceChange={onWorkspaceChange}
           sketchRenameBlockedId={sketchRenameBlockedId}
         />
       </TooltipProvider>
@@ -115,7 +138,142 @@ function renderTree({
   )
 }
 
-describe("ModelTree", () => {
+describe("ModelTree History presentation", () => {
+  it("renders one graph-ordered History and terminal Bodies presentation", () => {
+    const { container } = renderTree()
+
+    expect(screen.getByRole("treeitem", { name: "History" })).toBeTruthy()
+    expect(screen.getByRole("treeitem", { name: "Bodies" })).toBeTruthy()
+    expect(screen.queryByRole("treeitem", { name: "Features" })).toBeNull()
+    expect(screen.queryByRole("treeitem", { name: "Sketches" })).toBeNull()
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-history-id]")].map(
+        (element) => `${element.dataset.historyKind}:${element.dataset.historyId}`,
+      ),
+    ).toEqual([`feature:${featureId}`, `sketch:${sketchId}`])
+    expect(screen.getByRole("treeitem", { name: "Body 1" })).toBeTruthy()
+    expect(screen.getByText("Result of Box 1")).toBeTruthy()
+    expect(screen.getByRole("treeitem", { name: "Box 1" }).querySelector("svg")).toBeTruthy()
+    expect(screen.getByText("Supported by XY plane")).toBeTruthy()
+  })
+
+  it("shows a transient rollback boundary only during active sketch editing", () => {
+    const downstreamSketch = createEmptySketch({
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2604"),
+      label: "Downstream profile",
+      plane: "xz",
+    })
+    const editController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [feature], revision: 7, sketches: [sketch, downstreamSketch] },
+      },
+    } as unknown as DocumentControllerState
+    const first = renderTree({
+      activeSketchId: sketchId,
+      activeWorkspace: "sketch",
+      controller: editController,
+    })
+
+    expect(screen.getByText(/Rollback context/)).toBeTruthy()
+    expect(
+      first.container
+        .querySelector(`[data-history-id="${downstreamSketch.id}"]`)
+        ?.getAttribute("data-history-rolled-back"),
+    ).toBe("true")
+
+    first.unmount()
+    const normal = renderTree({ controller: editController })
+    expect(screen.queryByText(/Rollback context/)).toBeNull()
+    expect(normal.container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+  })
+
+  it("keeps datum geometry in History and out of Bodies", () => {
+    const datumController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [feature, datumFeature], revision: 7, sketches: [sketch] },
+      },
+    } as unknown as DocumentControllerState
+    const { container } = renderTree({ controller: datumController })
+
+    expect(
+      container
+        .querySelector(`[data-history-id="${datumFeature.id}"]`)
+        ?.getAttribute("data-history-feature-kind"),
+    ).toBe("datum")
+    expect(screen.getByRole("treeitem", { name: "Offset plane" }).querySelector("svg")).toBeTruthy()
+    expect(screen.queryByText("Result of Offset plane")).toBeNull()
+    expect(screen.getByText("Supported by XZ plane")).toBeTruthy()
+  })
+})
+
+describe("ModelTree History disclosure", () => {
+  it("collapses History and Bodies without leaving an active sketch", async () => {
+    const user = userEvent.setup()
+    const onWorkspaceChange = vi.fn()
+    renderTree({
+      activeSketchId: sketchId,
+      activeWorkspace: "sketch",
+      onWorkspaceChange,
+    })
+
+    const history = screen.getByRole("treeitem", { name: "History" })
+    await user.click(history)
+    expect(history.getAttribute("aria-expanded")).toBe("false")
+    expect(screen.queryByRole("treeitem", { name: "Profile" })).toBeNull()
+
+    await user.click(history)
+    const bodies = screen.getByRole("treeitem", { name: "Bodies" })
+    await user.click(bodies)
+    expect(bodies.getAttribute("aria-expanded")).toBe("false")
+    expect(screen.queryByRole("treeitem", { name: "Body 1" })).toBeNull()
+    expect(onWorkspaceChange).not.toHaveBeenCalled()
+  })
+
+  it("navigates visible tree items and disclosure groups with the keyboard", async () => {
+    const user = userEvent.setup()
+    renderTree()
+
+    const variables = screen.getByRole("treeitem", { name: "Variables" })
+    variables.focus()
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}")
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: "Box 1" }))
+
+    await user.keyboard("{ArrowLeft}")
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: "History" }))
+    await user.keyboard("{ArrowLeft}")
+    expect(screen.getByRole("treeitem", { name: "History" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    )
+  })
+})
+
+describe("ModelTree History failure", () => {
+  it("exposes a bounded status instead of a rollback claim when graph ordering fails", () => {
+    const invalidFeature = { ...feature, dependencies: [feature.id] }
+    const invalidController = {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [invalidFeature], revision: 7, sketches: [sketch] },
+      },
+    } as unknown as DocumentControllerState
+    const { container } = renderTree({
+      activeSketchId: sketchId,
+      activeWorkspace: "sketch",
+      controller: invalidController,
+    })
+
+    expect(screen.getByRole("status").textContent).toContain("History ordering is unavailable")
+    expect(screen.queryByText(/Rollback context/)).toBeNull()
+    expect(container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+  })
+})
+
+describe("ModelTree selection", () => {
   it("exposes the active feature and activates it by stable feature identity", async () => {
     const user = userEvent.setup()
     const onFeatureActivate = vi.fn()
@@ -155,7 +313,9 @@ describe("ModelTree", () => {
 
     expect(onSketchActivate).toHaveBeenCalledWith(sketchId)
   })
+})
 
+describe("ModelTree visibility and deletion", () => {
   it("toggles terminal feature visibility from an icon-only accessible action", async () => {
     const user = userEvent.setup()
     const onFeatureVisibilityChange = vi.fn()
@@ -200,7 +360,9 @@ describe("ModelTree", () => {
     expect(onSketchRemove).toHaveBeenCalledWith(7, sketchId)
     expect(onSketchDeleted).toHaveBeenCalledOnce()
   })
+})
 
+describe("ModelTree rename", () => {
   it("renames a feature once from its discoverable model-tree action", async () => {
     const user = userEvent.setup()
     const onFeatureRename = vi.fn().mockResolvedValue({ ok: true })

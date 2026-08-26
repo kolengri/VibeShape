@@ -38,6 +38,16 @@ late snapshot plus suffix recovery, deterministic snapshot-derived fallback for 
 corrupt, and inconsistent journal prefixes, migration idempotence, interrupted persistence, document copy, and
 `.vshape` canonical equality.
 
+The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
+branch, keeps Datum Planes in History but out of Bodies, lists only terminal solid results under Bodies, exposes
+origin-plane and feature/profile provenance, and preserves stable sketch and feature activation. It also proves
+that the sketch-edit rollback marker is transient, marks only later rows, disappears outside sketch mode, and is
+never claimed when graph construction fails. These component tests do not substitute for the Slice 0C migration
+matrix or claim persisted authored order. Disclosure tests also prove that collapsing History or Bodies never
+switches workspaces or closes an active sketch, while keyboard tests cover the roving tab stop and hierarchical
+arrow navigation. A large independent fixture verifies that source-label lookup remains linear rather than
+rescanning History for every row.
+
 ## Geometry assertions
 
 Prefer:

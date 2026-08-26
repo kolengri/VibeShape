@@ -420,6 +420,7 @@
         "items": {
           "bodies": "Bodies",
           "features": "Features",
+          "history": "History",
           "origin": "Origin",
           "sketches": "Sketches",
           "variables": "Variables"
@@ -439,7 +440,15 @@
         "deleteSketchReadOnly": "Open the document with write access to delete sketches.",
         "title": "Model tree",
         "unnamedFeature": "Unnamed feature",
-        "unnamedSketch": "Unnamed sketch"
+        "bodyLabel": "Body {number}",
+        "bodySource": "Result of {feature}",
+        "unnamedSketch": "Unnamed sketch",
+        "historyUnavailable": "History ordering is unavailable; items are shown in separate deterministic lists.",
+        "dependencySummary": "Depends on {parents, plural, =0 {nothing} one {# item} other {# items}}; used by {children, plural, =0 {nothing} one {# item} other {# items}}.",
+        "profileFromSketch": "Profile from {sketch}",
+        "supportedByFeature": "Supported by {feature}",
+        "supportedByPlane": "Supported by {plane} plane",
+        "rollbackMarker": "Rollback context: later history remains visible as final-result context."
       },
       "statusBar": {
         "filter": "Filter: {filter}",

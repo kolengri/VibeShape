@@ -420,7 +420,16 @@ documents remain openable without changing geometry or overwriting their source 
 
 ### Slice 1 — understandable History and editing context
 
-Status: in progress. The context layer keeps the same Three.js viewport mounted across Model/Sketch
+Status: initial History presentation and editing context implemented; persisted History remains in Slice 0C.
+The model tree now derives one dependency-safe History presentation from the schema-version-0 document graph,
+interleaves sketches, Datum Planes, and modeling features, and lists terminal solid results separately under
+Bodies. This is a transitional read-only projection: it does not persist authored order, a cursor, or rollback
+state. During sketch editing, the active row exposes a transient boundary and later rows remain visibly muted as
+final-result context. Graph failure disables that rollback claim and exposes a bounded status instead of guessing
+an order. Row icons distinguish sketches, datum geometry, and solid-producing features; compact support and
+profile-source summaries expose the most important upstream relationship without opening another form.
+
+The context layer keeps the same Three.js viewport mounted across Model/Sketch
 transitions and resolves the active sketch's exact support frame for origin planes and the currently
 supported planar feature and Datum Plane roles. Normal mode aligns the existing orthographic camera to that
 frame, then imperatively shares the analytical surface's live pan and cursor-centered zoom bounds with the
@@ -436,8 +445,8 @@ non-interactive context; center points use a distinct square marker rather than 
 circles. Cross-support point and line references are transformed through exact source and target frames
 before solve, and valid ordered reference chains recursively solve their earlier source intent. **Normal to sketch** restores the exact
 support-aligned editing view without recreating the viewer or changing the draft, local history, profile, or
-selection; it reapplies the latest analytical projection after orbiting. Graphical curved/feature source selection, History rollback, and bounded candidate cycling remain
-open parts of this slice.
+selection; it reapplies the latest analytical projection after orbiting. Complete parent/child inspection,
+persisted History rollback, and bounded candidate cycling remain open parts of this slice.
 
 Editing an existing sketch also exposes **Show final result** as a transient presentation command. It keeps
 the active committed sketch hidden, restores downstream geometry behind the draft, and labels the result as
@@ -445,9 +454,13 @@ display-only. Reference eligibility continues to use the rollback candidate set,
 cannot be persisted through **Use**. The command does not replace the still-required interleaved History
 authority or rollback cursor.
 
-- Replace separate Sketches/Features presentation with History plus Bodies.
+- Replace separate Sketches/Features presentation with History plus Bodies. Implemented as a graph-derived
+  schema-version-0 presentation; persisted authored order remains in Slice 0C.
 - Add cross-highlighting, support/source summaries, parent/child inspection, and distinct visibility states.
-- Add a history cursor and rollback presentation while editing an earlier sketch or feature.
+  Compact support/profile summaries and existing feature hover preselection are implemented; complete
+  dependency inspection remains open.
+- Add a history cursor and rollback presentation while editing an earlier sketch or feature. The transient sketch
+  boundary is implemented; a persisted cursor, feature rollback, and insertion semantics remain open.
 - Keep the Three.js context scene mounted under the analytical sketch interaction layer.
 - Show earlier bodies, datum geometry, and saved sketches during sketch edit. Implemented for solved
   analytical sketch context and model-tree visibility.
