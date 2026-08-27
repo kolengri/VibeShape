@@ -48,6 +48,8 @@ const copy = {
   distance: "Distance",
   externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
+  cancelReferenceRepair: "Cancel reference replacement",
+  repairReference: "Replace reference",
   unavailableExternalReference: "Unavailable reference",
   attachSelectedPoint: "Attach",
   editConstraint: "Edit dimension",
@@ -133,6 +135,12 @@ function renderPanel(
   externalReferenceLabels: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["externalReferenceLabels"] = new Map(),
+  repairReferenceId: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["state"]["repairReferenceId"] = null,
+  onReferenceRepairChange: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["actions"]["onReferenceRepairChange"] = vi.fn(),
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -149,6 +157,7 @@ function renderPanel(
               failedConstraintIds,
               message: null,
               profiles: extrusion?.profile ? [extrusion.profile] : [],
+              repairReferenceId,
               selectedConstraintId,
               selectedEntityIds,
               selectedProfile: extrusion?.profile ?? null,
@@ -159,6 +168,7 @@ function renderPanel(
               onDraftChange,
               onExtrude: extrusion?.onExtrude ?? vi.fn(async () => true),
               onFinish: vi.fn(async () => undefined),
+              onReferenceRepairChange,
               onSelectedConstraintChange: vi.fn(),
               onSelectedProfileChange: vi.fn(),
             }}
@@ -222,6 +232,100 @@ describe("SketchEditorPanel", () => {
 
     expect(screen.getByText("Box 1 · Edge 1")).toBeTruthy()
     expect(screen.queryByText(/primitive\.box/)).toBeNull()
+  })
+
+  it("starts graphical replacement from a model reference row", async () => {
+    const user = userEvent.setup()
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f4112",
+    )
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4113")
+    const sketch = sketchRecordSchema.parse({
+      ...lineSketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "vertex",
+            semanticRole: "primitive.box.vertex.x-min.y-min.z-min",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: createEntityId(),
+        },
+      ],
+    })
+    const onReferenceRepairChange = vi.fn()
+
+    renderPanel(
+      sketch,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map([[referenceId, "Box 1 · Vertex 1"]]),
+      null,
+      onReferenceRepairChange,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Replace reference" }))
+    expect(onReferenceRepairChange).toHaveBeenCalledWith(referenceId)
+
+    cleanup()
+    const onDraftChange = vi.fn()
+    const onActiveRepairChange = vi.fn()
+    renderPanel(
+      sketch,
+      [],
+      onDraftChange,
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map([[referenceId, "Box 1 · Vertex 1"]]),
+      referenceId,
+      onActiveRepairChange,
+    )
+    await user.click(screen.getByRole("button", { name: "Cancel reference replacement" }))
+    expect(onActiveRepairChange).toHaveBeenCalledWith(null)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    cleanup()
+    const onRemoveDraftChange = vi.fn()
+    const onRemoveRepairChange = vi.fn()
+    renderPanel(
+      sketch,
+      [],
+      onRemoveDraftChange,
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map([[referenceId, "Box 1 · Vertex 1"]]),
+      referenceId,
+      onRemoveRepairChange,
+    )
+    await user.click(screen.getByRole("button", { name: "Remove" }))
+    expect(onRemoveRepairChange).toHaveBeenCalledWith(null)
+    expect(onRemoveDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({ externalReferences: [] }),
+    )
   })
 
   it("offers a single-flight Extrude action for a selected closed profile", async () => {

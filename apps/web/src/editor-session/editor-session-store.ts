@@ -2,10 +2,12 @@ import type {
   FeatureId,
   SketchConstraintId,
   SketchEntityId,
+  SketchExternalReferenceId,
   SketchId,
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
+import { isSketchExternalModelReference } from "@vibeshape/domain"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -36,6 +38,7 @@ export type SketchEditorSessionState = Readonly<{
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
   redoStack: readonly SketchRecord[]
+  repairReferenceId: SketchExternalReferenceId | null
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -84,6 +87,7 @@ export type EditorSessionActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchReferenceRepair: (referenceId: SketchExternalReferenceId | null) => void
   setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
   setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
@@ -107,6 +111,7 @@ function createSketchState(): SketchEditorSessionState {
     failedConstraintIds: [],
     profiles: [],
     redoStack: [],
+    repairReferenceId: null,
     selectedConstraintId: null,
     selectedEntityIds: [],
     selectedProfile: null,
@@ -146,6 +151,7 @@ function resetSketchPresentation(
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
+  sketch.repairReferenceId = null
   sketch.selectedConstraintId = null
   sketch.selectedEntityIds = []
   sketch.selectedProfile = null
@@ -324,6 +330,7 @@ export function createEditorSessionStore() {
         setSketchEditorTool: (tool) =>
           set((state) => {
             state.sketch.editorTool = tool
+            state.sketch.repairReferenceId = null
           }),
         setSketchFailedConstraintIds: (constraintIds) =>
           set((state) => {
@@ -338,6 +345,20 @@ export function createEditorSessionStore() {
               ? profiles.find((profile) => sameProfile(profile, selectedProfile))
               : undefined
             state.sketch.selectedProfile = matchingProfile ?? profiles[0] ?? null
+          }),
+        setSketchReferenceRepair: (referenceId) =>
+          set((state) => {
+            if (!referenceId) {
+              state.sketch.editorTool = "select"
+              state.sketch.repairReferenceId = null
+              return
+            }
+            const reference = state.sketch.draft?.externalReferences?.find(
+              ({ id }) => id === referenceId,
+            )
+            if (!reference || !isSketchExternalModelReference(reference)) return
+            state.sketch.editorTool = "use"
+            state.sketch.repairReferenceId = referenceId
           }),
         setSketchSelectedConstraintId: (constraintId) =>
           set((state) => {

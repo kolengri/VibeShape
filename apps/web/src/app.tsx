@@ -227,6 +227,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchVisibility: sessionActions.setSketchVisibility,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
         setSketchProfiles: sessionActions.setSketchProfiles,
+        setSketchReferenceRepair: sessionActions.setSketchReferenceRepair,
         setSketchSelectedConstraintId: sessionActions.setSketchSelectedConstraintId,
         setSketchSelectedEntityIds: sessionActions.setSketchSelectedEntityIds,
         setSketchSelectedProfile: sessionActions.setSketchSelectedProfile,
@@ -354,6 +355,7 @@ function EditorApplication({
         sketchFinalContext={session.sketch.showFinalContext}
         sketchDraft={session.sketch.draft}
         sketchEditorTool={session.sketch.editorTool}
+        sketchRepairReferenceId={session.sketch.repairReferenceId}
         sketchFailedConstraintIds={session.sketch.failedConstraintIds}
         sketchProfiles={session.sketch.profiles}
         sketchSelectedConstraintId={session.sketch.selectedConstraintId}

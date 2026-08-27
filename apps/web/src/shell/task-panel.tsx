@@ -3,6 +3,7 @@ import {
   type FeatureRecord,
   type SketchConstraintId,
   type SketchEntityId,
+  type SketchExternalReferenceId,
   type SketchId,
   type SketchProfileSelector,
   type SketchRecord,
@@ -73,6 +74,7 @@ type TaskPanelProps = Readonly<{
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
+  onSketchReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (
@@ -85,6 +87,7 @@ type TaskPanelProps = Readonly<{
   sketchDraft: SketchRecord | null
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchRepairReferenceId: SketchExternalReferenceId | null
   sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
@@ -125,6 +128,8 @@ function useSketchEditorCopy() {
     distance: t("distance"),
     externalReferenceDescription: t("externalReferenceDescription"),
     externalReferences: t("externalReferences"),
+    cancelReferenceRepair: t("cancelReferenceRepair"),
+    repairReference: t("repairReference"),
     unavailableExternalReference: t("unavailableExternalReference"),
     attachSelectedPoint: t("attachSelectedPoint"),
     noExternalReferences: t("noExternalReferences"),
@@ -1097,6 +1102,7 @@ type ActiveSketchTaskPanelState = Readonly<{
   profiles: readonly SketchProfileSelector[]
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
+  repairReferenceId: SketchExternalReferenceId | null
   selectedProfile: SketchProfileSelector | null
 }>
 
@@ -1104,6 +1110,7 @@ type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
   onCreateExtrusion: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (
@@ -1138,6 +1145,7 @@ function ActiveSketchTaskPanel({
     draft,
     failedConstraintIds,
     profiles,
+    repairReferenceId,
     selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
@@ -1146,6 +1154,7 @@ function ActiveSketchTaskPanel({
     onCloseTool,
     onCreateExtrusion,
     onDraftChange,
+    onReferenceRepairChange,
     onSelectedConstraintChange,
     onSelectedProfileChange,
     onSketchSaved,
@@ -1237,6 +1246,7 @@ function ActiveSketchTaskPanel({
             failedConstraintIds,
             message,
             profiles,
+            repairReferenceId,
             selectedConstraintId,
             selectedEntityIds,
             selectedProfile,
@@ -1247,6 +1257,7 @@ function ActiveSketchTaskPanel({
             onDraftChange,
             onExtrude: extrude,
             onFinish: finish,
+            onReferenceRepairChange,
             onSelectedConstraintChange,
             onSelectedProfileChange,
           }}
@@ -1446,6 +1457,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
           draft: props.sketchDraft,
           failedConstraintIds: props.sketchFailedConstraintIds,
           profiles: props.sketchProfiles,
+          repairReferenceId: props.sketchRepairReferenceId,
           selectedConstraintId: props.sketchSelectedConstraintId,
           selectedEntityIds: props.sketchSelectedEntityIds,
           selectedProfile: props.sketchSelectedProfile,
@@ -1454,6 +1466,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
           onCloseTool: props.onCloseTool,
           onCreateExtrusion: props.onCreateExtrusion,
           onDraftChange: props.onSketchDraftChange,
+          onReferenceRepairChange: props.onSketchReferenceRepairChange,
           onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,
           onSketchSaved: props.onSketchSaved,

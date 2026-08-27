@@ -33,12 +33,12 @@ import type {
 } from "../../document/document-controller"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
+import { externalSketchContextGeometry } from "./external-sketch-points"
 import {
   type SketchProjection,
   SketchProjectionProvider,
   useSketchProjectionStoreApi,
 } from "./sketch-projection-store"
-import { externalSketchContextGeometry } from "./external-sketch-points"
 import { SketchViewport } from "./sketch-viewport"
 
 const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
@@ -220,6 +220,7 @@ type SketchViewportTestProps = Readonly<{
   displayUnits?: React.ComponentProps<typeof DocumentDisplayUnitsProvider>["displayUnits"]
   onProjectionChange?: (projection: SketchProjection | null) => void
   projectionFrame?: React.ComponentProps<typeof SketchViewport>["state"]["projectionFrame"]
+  repairReferenceId?: React.ComponentProps<typeof SketchViewport>["state"]["repairReferenceId"]
 }>
 
 function valueOr<Value>(value: Value | undefined, fallback: Value): Value {
@@ -239,6 +240,7 @@ function viewportState(props: SketchViewportTestProps) {
     externalModelCandidates: valueOr(props.externalModelCandidates, []),
     externalPointCandidates: valueOr(props.externalPointCandidates, []),
     originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
+    repairReferenceId: valueOr(props.repairReferenceId, null),
     selectedConstraintId: props.selectedConstraintId ?? null,
     selectedEntityIds: props.selectedEntityIds ?? [],
     selectedProfile: null,
@@ -1249,6 +1251,93 @@ describe("SketchViewport", () => {
       }),
     )
     expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
+  })
+
+  it("replaces a model line in place and leaves repair mode", () => {
+    const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3260")
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3261",
+    )
+    const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3262")
+    const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3263")
+    const projectedEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3264")
+    const target = sketchRecordSchema.parse({
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3265"),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "model-line",
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "edge",
+            semanticRole: "box.edge.old",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 20,
+              centroid: [10, 0, 0],
+              bounds: { min: [0, 0, 0], max: [20, 0, 0] },
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    })
+    const onDraftChange = vi.fn()
+    const onEditorToolChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "use",
+      repairReferenceId: referenceId,
+      externalModelCandidates: [
+        {
+          candidateId: "replacement-edge",
+          featureId: sourceFeatureId,
+          kind: "model-line",
+          label: "Box 1 · Edge 2",
+          reference: {
+            schemaVersion: 0,
+            featureId: sourceFeatureId,
+            kind: "edge",
+            semanticRole: "box.edge.new",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 20,
+              centroid: [10, 5, 0],
+              bounds: { min: [0, 5, 0], max: [20, 5, 0] },
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          start: { world: [0, 5, 0], x: 0, y: 5 },
+          end: { world: [20, 5, 0], x: 20, y: 5 },
+        },
+      ],
+      onDraftChange,
+      onEditorToolChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Box 1 · Edge 2" }), { key: "Enter" })
+
+    const repaired = sketchRecordSchema.parse(onDraftChange.mock.lastCall?.[0])
+    expect(repaired.externalReferences?.[0]).toMatchObject({
+      id: referenceId,
+      projectedLineId,
+      projectedStartPointId,
+      projectedEndPointId,
+      reference: { semanticRole: "box.edge.new" },
+    })
+    expect(onEditorToolChange).toHaveBeenCalledWith("select")
   })
 
   it("activates graphical planar-face intersection from an icon-only toolbar control", () => {

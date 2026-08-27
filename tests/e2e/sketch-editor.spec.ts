@@ -110,6 +110,46 @@ test.describe("full sketch editor", () => {
 
     await expect(taskPanel.getByText(edgeLabel, { exact: true })).toBeVisible()
     await expect(taskPanel.getByText(/primitive\.box\.edge/)).toHaveCount(0)
+
+    await taskPanel.getByRole("button", { name: "Replace reference" }).click()
+    const cancelReplacement = taskPanel.getByRole("button", {
+      name: "Cancel reference replacement",
+    })
+    await expect(cancelReplacement).toHaveAttribute("aria-pressed", "true")
+    await cancelReplacement.click()
+    await expect(taskPanel.getByText(edgeLabel, { exact: true })).toBeVisible()
+    await expect(taskPanel.getByRole("button", { name: "Replace reference" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
+
+    await taskPanel.getByRole("button", { name: "Replace reference" }).click()
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const replacementSelect = page.getByRole("combobox", {
+      name: "Select a reference with the keyboard",
+    })
+    const replacementOptions = replacementSelect
+      .locator("option")
+      .filter({ hasText: /Box 1 · Edge \d+/ })
+    const replacementLabels = await replacementOptions.allTextContents()
+    const replacementIndex = replacementLabels.findIndex((label) => label !== edgeLabel)
+    if (replacementIndex < 0) {
+      throw new Error("A different Box edge replacement must be available.")
+    }
+    const replacementOption = replacementOptions.nth(replacementIndex)
+    const replacementLabel = replacementLabels[replacementIndex]
+    const replacementValue = await replacementOption.getAttribute("value")
+    if (!replacementLabel || !replacementValue) {
+      throw new Error("The replacement Box edge option must be valid.")
+    }
+    await replacementSelect.selectOption(replacementValue)
+    await expect(taskPanel.getByText(replacementLabel, { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText(edgeLabel, { exact: true })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(taskPanel.getByText(replacementLabel, { exact: true })).toBeVisible()
   })
 
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({

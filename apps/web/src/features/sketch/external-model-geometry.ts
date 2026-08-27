@@ -11,6 +11,7 @@ import type {
   FeatureRecord,
   PlanarFaceTopoRef,
   SketchEntityId,
+  SketchExternalReferenceId,
   SketchRecord,
   VertexTopoRef,
 } from "@vibeshape/domain"
@@ -19,6 +20,7 @@ import {
   featureIdSchema,
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
+  replaceSketchExternalReference,
 } from "@vibeshape/domain"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
@@ -502,6 +504,26 @@ export function availableExternalModelGeometryCandidates(
   )
 }
 
+export function repairExternalModelGeometryCandidates(
+  candidates: readonly ExternalModelGeometryCandidate[],
+  draft: SketchRecord,
+  referenceId: SketchExternalReferenceId | null,
+) {
+  if (!referenceId) return candidates
+  const reference = draft.externalReferences?.find(({ id }) => id === referenceId)
+  if (!reference || !isSketchExternalModelReference(reference)) return []
+  return candidates.filter((candidate) => {
+    if (candidate.featureId !== reference.reference.featureId) return false
+    if (reference.kind === "model-point") return candidate.kind === "model-point"
+    if (reference.kind === "model-line") return candidate.kind === "model-line"
+    if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return false
+    return (
+      candidate.sourceType === reference.sourceType &&
+      candidate.projectedType === reference.projectedType
+    )
+  })
+}
+
 export function externalModelGeometryCandidates(
   records: readonly ExternalModelGeometryRecord[],
   features: readonly FeatureRecord[],
@@ -585,6 +607,17 @@ export function applyExternalModelCandidate(
     projectedPointId,
     selectedEntityIds,
   )
+}
+
+export function applyExternalModelCandidateSelection(
+  draft: SketchRecord,
+  candidate: ExternalModelGeometryCandidate,
+  selectedEntityIds: readonly SketchEntityId[],
+  repairReferenceId: SketchExternalReferenceId | null,
+) {
+  return repairReferenceId
+    ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
+    : applyExternalModelCandidate(draft, candidate, selectedEntityIds)
 }
 
 export function applyExternalModelIntersection(

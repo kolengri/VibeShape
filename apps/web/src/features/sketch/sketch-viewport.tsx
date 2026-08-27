@@ -48,6 +48,7 @@ import {
   type SketchDirectionInference,
   type SketchEntity,
   type SketchEntityId,
+  type SketchExternalReferenceId,
   type SketchInferenceArc,
   type SketchInferenceCandidateQuery,
   type SketchInferenceLine,
@@ -132,7 +133,7 @@ import {
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import {
-  applyExternalModelCandidate,
+  applyExternalModelCandidateSelection,
   type ExternalModelGeometryCandidate,
 } from "./external-model-geometry"
 import {
@@ -2524,71 +2525,60 @@ function SketchExternalReferencePresentation({
 }
 
 function SketchExternalReferenceLayer({
-  bounds,
-  candidates,
-  contextGeometry = [],
-  draft,
-  editorTool,
-  externalCurves,
-  externalLines,
-  externalPoints,
-  highlightedCandidate,
+  configuration,
   markerScale,
-  modelCandidates,
-  pointsById,
-  selectedEntityIds,
-  solvedCircles,
-  onDraftChange,
   onSelect,
+  state,
 }: Readonly<{
-  bounds: SketchBounds
-  candidates: readonly ExternalSketchGeometryCandidate[]
-  contextGeometry: readonly ExternalSketchContextGeometry[]
-  draft: SketchRecord | null
-  editorTool: SketchEditorTool
-  externalCurves: readonly DisplayExternalCurve[]
-  externalLines: readonly DisplayExternalLine[]
-  externalPoints: readonly DisplayPoint[]
-  highlightedCandidate: ExternalSketchWakeupCandidate | null
+  configuration: SketchDrawingConfiguration
   markerScale: number
-  modelCandidates: readonly ExternalModelGeometryCandidate[]
-  selectedEntityIds: readonly SketchEntityId[]
-  pointsById: SketchPointLookup
-  solvedCircles: ReadonlyMap<string, number>
-  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
+  state: SketchDrawingViewProps["state"]
 }>) {
-  const externalReferences = useExternalReferenceInteraction({
-    candidates,
+  const {
     draft,
     editorTool,
-    modelCandidates,
+    externalContextGeometry,
+    externalModelCandidates,
+    externalPointCandidates,
     onDraftChange,
+    onEditorToolChange,
+    repairReferenceId,
+    selectedEntityIds,
+  } = configuration
+  const externalReferences = useExternalReferenceInteraction({
+    candidates: externalPointCandidates,
+    draft,
+    editorTool,
+    modelCandidates: externalModelCandidates,
+    onDraftChange,
+    onEditorToolChange,
+    repairReferenceId,
     selectedEntityIds,
   })
   const passiveContextGeometry = useMemo(() => {
     const referencedKeys = new Set(
       (draft?.externalReferences ?? []).map(externalReferenceSourceKey),
     )
-    return contextGeometry.filter((geometry) => {
+    return externalContextGeometry.filter((geometry) => {
       const key = contextGeometryKey(geometry)
       return !referencedKeys.has(key)
     })
-  }, [contextGeometry, draft])
+  }, [draft, externalContextGeometry])
   return (
     <SketchExternalReferencePresentation
       availableCandidates={externalReferences.availableCandidates}
-      bounds={bounds}
+      bounds={state.bounds}
       contextGeometry={passiveContextGeometry}
       editorTool={editorTool}
-      highlightedCandidate={highlightedCandidate}
-      externalCurves={externalCurves}
-      externalLines={externalLines}
-      externalPoints={externalPoints}
+      highlightedCandidate={state.externalInferenceCandidate}
+      externalCurves={state.geometry.externalCurves}
+      externalLines={state.geometry.externalLines}
+      externalPoints={state.geometry.externalPoints}
       markerScale={markerScale}
       selectedEntityIds={selectedEntityIds}
-      pointsById={pointsById}
-      solvedCircles={solvedCircles}
+      pointsById={state.geometry.pointsById}
+      solvedCircles={state.geometry.solvedCircles}
       onAttach={externalReferences.attach}
       onSelect={onSelect}
       onUse={externalReferences.use}
@@ -6341,22 +6331,10 @@ function SketchDrawingView({
           onSelect={configuration.onProfileSelect}
         />
         <SketchExternalReferenceLayer
-          bounds={state.bounds}
-          candidates={configuration.externalPointCandidates}
-          contextGeometry={configuration.externalContextGeometry}
-          draft={configuration.draft}
-          editorTool={configuration.editorTool}
-          externalCurves={state.geometry.externalCurves}
-          externalLines={state.geometry.externalLines}
-          externalPoints={state.geometry.externalPoints}
-          highlightedCandidate={state.externalInferenceCandidate}
+          configuration={configuration}
           markerScale={markerScale}
-          modelCandidates={configuration.externalModelCandidates}
-          pointsById={state.geometry.pointsById}
-          selectedEntityIds={configuration.selectedEntityIds}
-          solvedCircles={state.geometry.solvedCircles}
-          onDraftChange={configuration.onDraftChange}
           onSelect={handlers.onSelection}
+          state={state}
         />
         <StableSketchGeometry
           draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
@@ -7115,10 +7093,17 @@ function useExternalReferenceInteraction({
   editorTool,
   modelCandidates,
   onDraftChange,
+  onEditorToolChange,
+  repairReferenceId,
   selectedEntityIds,
 }: Pick<
   SketchDrawingConfiguration,
-  "draft" | "editorTool" | "onDraftChange" | "selectedEntityIds"
+  | "draft"
+  | "editorTool"
+  | "onDraftChange"
+  | "onEditorToolChange"
+  | "repairReferenceId"
+  | "selectedEntityIds"
 > & {
   candidates: readonly ExternalSketchGeometryCandidate[]
   modelCandidates: readonly ExternalModelGeometryCandidate[]
@@ -7142,11 +7127,19 @@ function useExternalReferenceInteraction({
         candidate.kind === "model-point" ||
         candidate.kind === "model-line" ||
         candidate.kind === "model-curve"
-          ? applyExternalModelCandidate(draft, candidate, selectedEntityIds)
+          ? applyExternalModelCandidateSelection(
+              draft,
+              candidate,
+              selectedEntityIds,
+              repairReferenceId,
+            )
           : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
-      if (next !== draft) onDraftChange(next)
+      if (next !== draft) {
+        onDraftChange(next)
+        if (repairReferenceId) onEditorToolChange("select")
+      }
     },
-    [draft, onDraftChange, selectedEntityIds],
+    [draft, onDraftChange, onEditorToolChange, repairReferenceId, selectedEntityIds],
   )
   const attach = useCallback(
     (projectedPointId: SketchEntityId) => {
@@ -8203,6 +8196,7 @@ type SketchDrawingConfiguration = Readonly<{
   onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
   onUndo: () => void
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  repairReferenceId: SketchExternalReferenceId | null
   releasedDragTarget: SketchDragTarget | null
   selectConstraintLabel: (label: string) => string
   selectedConstraintId: SketchConstraintId | null
@@ -8452,6 +8446,7 @@ type SketchViewportState = Readonly<{
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  repairReferenceId: SketchExternalReferenceId | null
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -8568,6 +8563,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
     onSelectionChange,
     onUndo,
     originPlaneVisibility,
+    repairReferenceId,
     releasedDragTarget,
     selectedConstraintId,
     selectedEntityIds,
@@ -8598,6 +8594,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
       onSelectionChange,
       onUndo,
       originPlaneVisibility,
+      repairReferenceId,
       releasedDragTarget,
       selectedConstraintId,
       selectedEntityIds,
@@ -8693,6 +8690,7 @@ export function SketchViewport({
     externalModelCandidates,
     externalPointCandidates,
     originPlaneVisibility,
+    repairReferenceId,
     selectedConstraintId,
     selectedEntityIds,
     selectedProfile,
@@ -8750,6 +8748,7 @@ export function SketchViewport({
     onSelectionChange,
     onUndo,
     originPlaneVisibility,
+    repairReferenceId,
     releasedDragTarget,
   })
 

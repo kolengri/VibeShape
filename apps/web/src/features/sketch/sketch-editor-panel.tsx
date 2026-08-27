@@ -7,6 +7,7 @@ import {
   type SketchDimensionValue,
   type SketchEntity,
   type SketchEntityId,
+  type SketchExternalReferenceId,
   type SketchProfileSelector,
   type SketchRecord,
   setSketchDimensionValue,
@@ -14,7 +15,7 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
+import { Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -58,6 +59,8 @@ type SketchEditorPanelCopy = Readonly<{
   distance: string
   externalReferenceDescription: string
   externalReferences: string
+  cancelReferenceRepair: string
+  repairReference: string
   unavailableExternalReference: string
   attachSelectedPoint: string
   noExternalReferences: string
@@ -652,12 +655,16 @@ function ExternalReferencesSection({
   draft,
   labels,
   onDraftChange,
+  onReferenceRepairChange,
+  repairReferenceId,
 }: {
   candidates: readonly ExternalSketchGeometryCandidate[]
   copy: SketchEditorPanelCopy
   draft: SketchRecord
   labels: ReadonlyMap<string, string>
   onDraftChange: (draft: SketchRecord) => void
+  onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
+  repairReferenceId: SketchExternalReferenceId | null
 }) {
   const references = draft.externalReferences ?? []
 
@@ -669,6 +676,14 @@ function ExternalReferencesSection({
     )
     if (candidate) return candidate.label
     return copy.unavailableExternalReference
+  }
+
+  function repairable(reference: (typeof references)[number]) {
+    return (
+      reference.kind === "model-point" ||
+      reference.kind === "model-line" ||
+      reference.kind === "model-curve"
+    )
   }
 
   return (
@@ -688,15 +703,52 @@ function ExternalReferencesSection({
                 className="flex items-center gap-2 rounded-sm border px-2 py-1"
               >
                 <span className="min-w-0 flex-1 truncate text-xs">{referenceLabel(reference)}</span>
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={copy.remove}
-                  onClick={() => onDraftChange(removeSketchExternalReference(draft, reference.id))}
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
+                {repairable(reference) ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label={
+                          repairReferenceId === reference.id
+                            ? copy.cancelReferenceRepair
+                            : copy.repairReference
+                        }
+                        aria-pressed={repairReferenceId === reference.id}
+                        onClick={() =>
+                          onReferenceRepairChange(
+                            repairReferenceId === reference.id ? null : reference.id,
+                          )
+                        }
+                      >
+                        <Link2 aria-hidden="true" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {repairReferenceId === reference.id
+                        ? copy.cancelReferenceRepair
+                        : copy.repairReference}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label={copy.remove}
+                      onClick={() => {
+                        if (repairReferenceId === reference.id) onReferenceRepairChange(null)
+                        onDraftChange(removeSketchExternalReference(draft, reference.id))
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{copy.remove}</TooltipContent>
+                </Tooltip>
               </li>
             )
           })}
@@ -715,6 +767,7 @@ type SketchEditorPanelState = Readonly<{
   failedConstraintIds: readonly string[]
   message: string | null
   profiles: readonly SketchProfileSelector[]
+  repairReferenceId: SketchExternalReferenceId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedConstraintId: SketchConstraintId | null
   selectedProfile: SketchProfileSelector | null
@@ -726,6 +779,7 @@ type SketchEditorPanelActions = Readonly<{
   onDraftChange: (draft: SketchRecord) => void
   onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
+  onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
 }>
@@ -748,6 +802,7 @@ export function SketchEditorPanel({
     failedConstraintIds,
     message,
     profiles,
+    repairReferenceId,
     selectedEntityIds,
     selectedConstraintId,
     selectedProfile,
@@ -758,6 +813,7 @@ export function SketchEditorPanel({
     onDraftChange,
     onExtrude,
     onFinish,
+    onReferenceRepairChange,
     onSelectedConstraintChange,
     onSelectedProfileChange,
   } = actions
@@ -781,6 +837,8 @@ export function SketchEditorPanel({
           draft={draft}
           labels={externalReferenceLabels}
           onDraftChange={onDraftChange}
+          onReferenceRepairChange={onReferenceRepairChange}
+          repairReferenceId={repairReferenceId}
         />
         <SketchConstraintSection
           copy={copy}
