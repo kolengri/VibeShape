@@ -248,6 +248,10 @@ Orbit-view external-reference coverage requires the viewer hit stack to retain d
 the cycled candidate, support forward and reverse grave-accent navigation, commit with Enter or pointer
 activation, and clear with Escape. Browser coverage proves point-versus-line Select Other disambiguation in
 the persistent 3D viewer in Chromium, Firefox, and WebKit.
+The same browser flow requires a selected model edge to retain its localized feature-and-edge label in the
+external-reference list after save and reopen. Focused topology-label tests cover resolved face, edge, curve, and
+vertex ordinals plus explicit missing and ambiguous states, preserve semantic ordinals when evaluation-local
+candidate arrays and IDs are permuted, and reject semantic-role or candidate-ID leakage.
 
 - Unit tests verify zero-copy typed-array binding, projection fallback, SVG-compatible aspect normalization and planar-center mapping, friendly face ordinals, and exact extraction of every triangle belonging to a rendered face.
 - React component tests verify lazy adapter ownership, terminal-mesh filtering, exact historical and unsaved-preview feature highlighting from tree preselection and active edit, face, origin-plane, and graphical sketch-reference callback wiring, hover-only external-reference preselection over persistent muted context, conditional empty-rollback final-context guidance, empty-model datum initialization, initial and explicit fit behavior, camera preservation across mesh replacement, live sketch pan/zoom projection publication, latest-value animation-frame coalescing without candidate-geometry rebuilds, imperative Three.js synchronization across normal/orbit transitions without a viewer remount, sketch continuation and drag-target forwarding, cross-support point and line projection, read-only external-line selection, last-valid solved-display retention, disposal, and localized renderer failure containment.

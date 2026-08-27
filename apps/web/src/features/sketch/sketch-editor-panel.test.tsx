@@ -7,10 +7,13 @@ import {
   appendSketchLine,
   createEmptySketch,
   createLengthQuantity,
+  featureIdSchema,
   type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -45,6 +48,7 @@ const copy = {
   distance: "Distance",
   externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
+  unavailableExternalReference: "Unavailable reference",
   attachSelectedPoint: "Attach",
   editConstraint: "Edit dimension",
   equal: "Equal",
@@ -126,6 +130,9 @@ function renderPanel(
     onExtrude: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onExtrude"]
     profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
   }>,
+  externalReferenceLabels: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["state"]["externalReferenceLabels"] = new Map(),
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -137,6 +144,7 @@ function renderPanel(
               disabled: false,
               draft: sketch,
               externalPointCandidates: [],
+              externalReferenceLabels,
               extrusionAvailable: extrusion !== undefined,
               failedConstraintIds,
               message: null,
@@ -166,6 +174,56 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
+  it("keeps a resolved model reference human-readable after selection", () => {
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f4102",
+    )
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4103")
+    const sketch = sketchRecordSchema.parse({
+      ...lineSketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: referenceId,
+          kind: "model-line" as const,
+          reference: {
+            schemaVersion: 0 as const,
+            featureId,
+            kind: "edge" as const,
+            semanticRole: "primitive.box.edge.y.x-min.z-max",
+            signature: {
+              kind: "edge" as const,
+              geometryClass: "LINE",
+              measure: 20,
+              centroid: [10, 0, 0] as const,
+              bounds: { min: [0, 0, 0] as const, max: [20, 0, 0] as const },
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedLineId: createEntityId(),
+          projectedStartPointId: createEntityId(),
+          projectedEndPointId: createEntityId(),
+        },
+      ],
+    })
+
+    renderPanel(
+      sketch,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map([[referenceId, "Box 1 · Edge 1"]]),
+    )
+
+    expect(screen.getByText("Box 1 · Edge 1")).toBeTruthy()
+    expect(screen.queryByText(/primitive\.box/)).toBeNull()
+  })
+
   it("offers a single-flight Extrude action for a selected closed profile", async () => {
     const user = userEvent.setup()
     const sketch = lineSketch()

@@ -58,6 +58,7 @@ type SketchEditorPanelCopy = Readonly<{
   distance: string
   externalReferenceDescription: string
   externalReferences: string
+  unavailableExternalReference: string
   attachSelectedPoint: string
   noExternalReferences: string
   editConstraint: string
@@ -649,31 +650,25 @@ function ExternalReferencesSection({
   candidates,
   copy,
   draft,
+  labels,
   onDraftChange,
 }: {
   candidates: readonly ExternalSketchGeometryCandidate[]
   copy: SketchEditorPanelCopy
   draft: SketchRecord
+  labels: ReadonlyMap<string, string>
   onDraftChange: (draft: SketchRecord) => void
 }) {
   const references = draft.externalReferences ?? []
 
   function referenceLabel(reference: (typeof references)[number]) {
+    const resolvedLabel = labels.get(reference.id)
+    if (resolvedLabel) return resolvedLabel
     const candidate = candidates.find((value) =>
       externalReferenceMatchesCandidate(reference, value),
     )
     if (candidate) return candidate.label
-    if (
-      reference.kind === "model-point" ||
-      reference.kind === "model-line" ||
-      reference.kind === "model-curve" ||
-      reference.kind === "model-intersection"
-    ) {
-      return reference.reference.semanticRole ?? reference.reference.featureId
-    }
-    if (reference.kind === "line") return reference.sourceLineId
-    if (reference.kind === "curve") return reference.sourceEntityId
-    return reference.sourcePointId
+    return copy.unavailableExternalReference
   }
 
   return (
@@ -715,6 +710,7 @@ type SketchEditorPanelState = Readonly<{
   disabled: boolean
   draft: SketchRecord
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
+  externalReferenceLabels: ReadonlyMap<string, string>
   extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
@@ -747,6 +743,7 @@ export function SketchEditorPanel({
     disabled,
     draft,
     externalPointCandidates,
+    externalReferenceLabels,
     extrusionAvailable,
     failedConstraintIds,
     message,
@@ -782,6 +779,7 @@ export function SketchEditorPanel({
           candidates={externalPointCandidates}
           copy={copy}
           draft={draft}
+          labels={externalReferenceLabels}
           onDraftChange={onDraftChange}
         />
         <SketchConstraintSection

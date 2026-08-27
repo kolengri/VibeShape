@@ -334,7 +334,7 @@ function scoreSignature(
 
 function rankCandidates(
   reference: TopoRef,
-  candidates: TopologyCandidate[],
+  candidates: readonly TopologyCandidate[],
   policy: TopologyResolutionPolicy,
   method: "history" | "signature",
 ): TopologyResolution {
@@ -376,31 +376,89 @@ function rankCandidates(
   }
 }
 
-export function resolveTopologyReference(
-  referenceInput: TopoRef,
-  candidateInputs: TopologyCandidate[],
-  policyInput: TopologyResolutionPolicy = TOPOLOGY_RESOLUTION_POLICY,
-): TopologyResolution {
-  const reference = topoRefSchema.parse(referenceInput)
+type TopologyKind = TopoRef["kind"]
+
+type TopologyCandidateIndex = Readonly<{
+  byKind: Readonly<Record<TopologyKind, readonly TopologyCandidate[]>>
+  byLineage: Readonly<Record<TopologyKind, ReadonlyMap<string, readonly TopologyCandidate[]>>>
+  bySemanticRole: Readonly<Record<TopologyKind, ReadonlyMap<string, readonly TopologyCandidate[]>>>
+}>
+
+function emptyCandidateGroups(): Record<TopologyKind, TopologyCandidate[]> {
+  return { edge: [], face: [], vertex: [] }
+}
+
+function emptyCandidateMaps(): Record<TopologyKind, Map<string, TopologyCandidate[]>> {
+  return { edge: new Map(), face: new Map(), vertex: new Map() }
+}
+
+function appendCandidate(
+  target: Map<string, TopologyCandidate[]>,
+  key: string,
+  candidate: TopologyCandidate,
+) {
+  const existing = target.get(key)
+  if (existing) existing.push(candidate)
+  else target.set(key, [candidate])
+}
+
+function createTopologyCandidateIndex(candidateInputs: readonly TopologyCandidate[]) {
   const candidates = candidateInputs.map((candidate) => topologyCandidateSchema.parse(candidate))
-  const policy = topologyResolutionPolicySchema.parse(policyInput)
   const candidateIds = new Set(candidates.map((candidate) => candidate.candidateId))
   if (candidateIds.size !== candidates.length) {
     throw new Error("Topology candidates must have unique evaluation-local identifiers.")
   }
+  const byKind = emptyCandidateGroups()
+  const byLineage = emptyCandidateMaps()
+  const bySemanticRole = emptyCandidateMaps()
+  for (const candidate of candidates) {
+    byKind[candidate.kind].push(candidate)
+    if (candidate.semanticRole) {
+      appendCandidate(bySemanticRole[candidate.kind], candidate.semanticRole, candidate)
+    }
+    for (const token of new Set(candidate.lineageTokens)) {
+      appendCandidate(byLineage[candidate.kind], token, candidate)
+    }
+  }
+  return { byKind, byLineage, bySemanticRole } satisfies TopologyCandidateIndex
+}
 
-  const kindCandidates = candidates.filter((candidate) => candidate.kind === reference.kind)
+function resolveIndexedTopologyReference(
+  reference: TopoRef,
+  index: TopologyCandidateIndex,
+  policy: TopologyResolutionPolicy,
+): TopologyResolution {
+  const kindCandidates = index.byKind[reference.kind]
+
   if (kindCandidates.length === 0) {
     return { status: "missing", reason: "no-candidate-of-kind", bestScore: null }
   }
 
-  const semanticResult = resolveSemanticReference(reference, kindCandidates)
+  const semanticResult = resolveSemanticReference(reference, index.bySemanticRole[reference.kind])
   if (semanticResult) return semanticResult
 
-  const historyResult = resolveHistoryReference(reference, kindCandidates, policy)
+  const historyResult = resolveHistoryReference(reference, index.byLineage[reference.kind], policy)
   if (historyResult) return historyResult
 
   return rankCandidates(reference, kindCandidates, policy, "signature")
+}
+
+export function createTopologyReferenceResolver(
+  candidateInputs: readonly TopologyCandidate[],
+  policyInput: TopologyResolutionPolicy = TOPOLOGY_RESOLUTION_POLICY,
+) {
+  const index = createTopologyCandidateIndex(candidateInputs)
+  const policy = topologyResolutionPolicySchema.parse(policyInput)
+  return (referenceInput: TopoRef): TopologyResolution =>
+    resolveIndexedTopologyReference(topoRefSchema.parse(referenceInput), index, policy)
+}
+
+export function resolveTopologyReference(
+  referenceInput: TopoRef,
+  candidateInputs: readonly TopologyCandidate[],
+  policyInput: TopologyResolutionPolicy = TOPOLOGY_RESOLUTION_POLICY,
+): TopologyResolution {
+  return createTopologyReferenceResolver(candidateInputs, policyInput)(referenceInput)
 }
 
 function resolvedByExactCandidate(
@@ -418,12 +476,10 @@ function resolvedByExactCandidate(
 
 function resolveSemanticReference(
   reference: TopoRef,
-  candidates: TopologyCandidate[],
+  candidates: ReadonlyMap<string, readonly TopologyCandidate[]>,
 ): TopologyResolution | null {
   if (!reference.semanticRole) return null
-  const matches = candidates.filter(
-    (candidate) => candidate.semanticRole === reference.semanticRole,
-  )
+  const matches = candidates.get(reference.semanticRole) ?? []
   if (matches.length === 0) {
     return { status: "missing", reason: "semantic-role-missing", bestScore: null }
   }
@@ -440,13 +496,11 @@ function resolveSemanticReference(
 
 function resolveHistoryReference(
   reference: TopoRef,
-  candidates: TopologyCandidate[],
+  candidates: ReadonlyMap<string, readonly TopologyCandidate[]>,
   policy: TopologyResolutionPolicy,
 ): TopologyResolution | null {
   if (!reference.lineageToken) return null
-  const matches = candidates.filter((candidate) =>
-    candidate.lineageTokens.includes(reference.lineageToken as string),
-  )
+  const matches = candidates.get(reference.lineageToken) ?? []
   if (matches.length === 0) {
     return { status: "missing", reason: "lineage-missing", bestScore: null }
   }
