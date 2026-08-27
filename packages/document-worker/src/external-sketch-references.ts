@@ -24,7 +24,7 @@ import type {
   SketchRecord,
   TopologyCandidate,
 } from "@vibeshape/domain"
-import { resolveTopologyReference } from "@vibeshape/domain"
+import { isSketchExternalModelReference, resolveTopologyReference } from "@vibeshape/domain"
 import type {
   PlanarFaceSectionInput,
   PlanarFaceSectionResult,
@@ -557,6 +557,12 @@ function sourceSolve(
 }
 
 type ExternalReference = NonNullable<SketchRecord["externalReferences"]>[number]
+type ExternalModelReference =
+  | SketchExternalModelPointReference
+  | SketchExternalModelLineReference
+  | SketchExternalModelCurveReference
+  | SketchExternalModelIntersectionReference
+export type ExternalModelMaterializationCache = Map<string, Promise<ResolvedReference>>
 type ResolvedReference =
   | Readonly<{
       kind: "curve"
@@ -580,6 +586,7 @@ function sourceExternalGeometry(
   results: SketchSolveCache,
   geometryLookup?: FeatureGeometryLookup,
   sectionPlanarFace?: PlanarFaceSectionPort,
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ) {
   const cached = cache.get(source.id)
   if (cached) return cached
@@ -592,6 +599,7 @@ function sourceExternalGeometry(
     geometryLookup,
     sectionPlanarFace,
     cache,
+    modelMaterializationCache,
   )
   cache.set(source.id, pending)
   return pending
@@ -599,6 +607,7 @@ function sourceExternalGeometry(
 
 async function resolveExternalReference(
   reference: ExternalReference,
+  ownerSketchId: string,
   document: DocumentSnapshot,
   targetFrame: SupportFrame,
   solveSketch: SketchSolvePort,
@@ -607,34 +616,18 @@ async function resolveExternalReference(
   geometryLookup?: FeatureGeometryLookup,
   sectionPlanarFace?: PlanarFaceSectionPort,
   externalGeometryCache: ExternalSketchGeometryCache = new Map(),
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): Promise<ResolvedReference> {
-  if (reference.kind === "model-point") {
-    return {
-      kind: "point",
-      value: resolveExternalModelPoint(reference, targetFrame, geometryLookup),
-    }
-  }
-  if (reference.kind === "model-line") {
-    return { kind: "line", value: resolveExternalModelLine(reference, targetFrame, geometryLookup) }
-  }
-  if (reference.kind === "model-curve") {
-    return {
-      kind: "curve",
-      value: resolveExternalModelCurve(reference, targetFrame, geometryLookup),
-    }
-  }
-  if (reference.kind === "model-intersection") {
-    return {
-      kind: "line",
-      value: await resolveExternalModelIntersection(
-        document.id,
-        reference,
-        targetFrame,
-        geometryLookup,
-        sectionPlanarFace,
-      ),
-    }
-  }
+  if (isSketchExternalModelReference(reference))
+    return materializeExternalModelReference(
+      document.id,
+      reference,
+      ownerSketchId,
+      targetFrame,
+      geometryLookup,
+      sectionPlanarFace,
+      modelMaterializationCache,
+    )
   const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
   if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
   const sourceFrame = sketchFrame(source, document, features)
@@ -649,6 +642,7 @@ async function resolveExternalReference(
     results,
     geometryLookup,
     sectionPlanarFace,
+    modelMaterializationCache,
   )
   const result = await sourceSolve(
     results,
@@ -699,6 +693,132 @@ async function resolveExternalReference(
   }
 }
 
+async function resolveExternalModelReference(
+  documentId: string,
+  reference: ExternalModelReference,
+  targetFrame: SupportFrame,
+  geometryLookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
+): Promise<ResolvedReference> {
+  if (reference.kind === "model-point") {
+    return {
+      kind: "point",
+      value: resolveExternalModelPoint(reference, targetFrame, geometryLookup),
+    }
+  }
+  if (reference.kind === "model-line") {
+    return { kind: "line", value: resolveExternalModelLine(reference, targetFrame, geometryLookup) }
+  }
+  if (reference.kind === "model-curve") {
+    return {
+      kind: "curve",
+      value: resolveExternalModelCurve(reference, targetFrame, geometryLookup),
+    }
+  }
+  return {
+    kind: "line",
+    value: await resolveExternalModelIntersection(
+      documentId,
+      reference,
+      targetFrame,
+      geometryLookup,
+      sectionPlanarFace,
+    ),
+  }
+}
+
+function materializeExternalModelReference(
+  documentId: string,
+  reference: ExternalModelReference,
+  ownerSketchId: string,
+  targetFrame: SupportFrame,
+  geometryLookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
+  cache: ExternalModelMaterializationCache,
+) {
+  const key = `${ownerSketchId}:${reference.id}`
+  const cached = cache.get(key)
+  if (cached) return cached
+  const pending = resolveExternalModelReference(
+    documentId,
+    reference,
+    targetFrame,
+    geometryLookup,
+    sectionPlanarFace,
+  )
+  cache.set(key, pending)
+  return pending
+}
+
+type ModelReferenceEvidence = Readonly<{
+  sketchId: string
+  referenceId: string
+  status: "resolved" | "broken"
+}>
+
+async function inspectExternalModelReference(
+  document: DocumentSnapshot,
+  sketch: SketchRecord,
+  reference: ExternalModelReference,
+  targetFrame: SupportFrame | null,
+  geometryLookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace: PlanarFaceSectionPort | undefined,
+  modelMaterializationCache: ExternalModelMaterializationCache,
+  isCurrent: (() => boolean) | undefined,
+): Promise<ModelReferenceEvidence | null> {
+  if (isCurrent && !isCurrent()) return null
+  let status: ModelReferenceEvidence["status"] = "broken"
+  if (targetFrame) {
+    try {
+      await materializeExternalModelReference(
+        document.id,
+        reference,
+        sketch.id,
+        targetFrame,
+        geometryLookup,
+        sectionPlanarFace,
+        modelMaterializationCache,
+      )
+      status = "resolved"
+    } catch {
+      // Protocol evidence intentionally exposes only the bounded status.
+    }
+  }
+  if (isCurrent && !isCurrent()) return null
+  return { sketchId: sketch.id, referenceId: reference.id, status }
+}
+
+/** Inspects every model-backed reference independently using the solve materialization path. */
+export async function inspectExternalModelReferenceHealth(
+  document: DocumentSnapshot,
+  features: readonly FeatureRecord[],
+  geometryLookup: FeatureGeometryLookup | undefined,
+  sectionPlanarFace?: PlanarFaceSectionPort,
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
+  isCurrent?: () => boolean,
+) {
+  const evidence: ModelReferenceEvidence[] = []
+  for (const sketch of document.sketches) {
+    const targetFrame = sketchFrame(sketch, document, features)
+    for (const reference of sketch.externalReferences ?? []) {
+      if (!isSketchExternalModelReference(reference)) continue
+      const record = await inspectExternalModelReference(
+        document,
+        sketch,
+        reference,
+        targetFrame,
+        geometryLookup,
+        sectionPlanarFace,
+        modelMaterializationCache,
+        isCurrent,
+      )
+      if (!record) return evidence
+      evidence.push(record)
+    }
+  }
+  return evidence
+}
+
 /** Resolves persisted references without serializing disposable solver output. */
 export async function resolveExternalSketchGeometry(
   document: DocumentSnapshot,
@@ -709,6 +829,7 @@ export async function resolveExternalSketchGeometry(
   geometryLookup?: FeatureGeometryLookup,
   sectionPlanarFace?: PlanarFaceSectionPort,
   externalGeometryCache: ExternalSketchGeometryCache = new Map(),
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): Promise<ResolvedExternalSketchGeometry> {
   const targetFrame = sketchFrame(sketch, document, features)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
@@ -718,6 +839,7 @@ export async function resolveExternalSketchGeometry(
   for (const reference of sketch.externalReferences ?? []) {
     const resolved = await resolveExternalReference(
       reference,
+      sketch.id,
       document,
       targetFrame,
       solveSketch,
@@ -726,6 +848,7 @@ export async function resolveExternalSketchGeometry(
       geometryLookup,
       sectionPlanarFace,
       externalGeometryCache,
+      modelMaterializationCache,
     )
     if (resolved.kind === "point") points.push(resolved.value)
     if (resolved.kind === "line") lines.push(resolved.value)

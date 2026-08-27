@@ -95,6 +95,61 @@ function brokenReferenceChain() {
   return { source, middle, target }
 }
 
+function modelReferenceChain() {
+  const source = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2710",
+    label: "Model source",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2711",
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId: feature.id,
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2712",
+      },
+    ],
+  })
+  const sourceReference = source.externalReferences?.[0]
+  if (!sourceReference || !("projectedPointId" in sourceReference)) {
+    throw new Error("The projected model point is required.")
+  }
+  const dependent = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2713",
+    label: "Model dependent",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2714",
+        sourceSketchId: source.id,
+        sourcePointId: sourceReference.projectedPointId,
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2715",
+      },
+    ],
+  })
+  return { dependent, source, sourceReference }
+}
+
 describe("selectModelTreeHistory", () => {
   it("interleaves graph history and derives terminal bodies without mutating the snapshot", () => {
     const snapshot = { sketches: [sketch], features: [feature] }
@@ -144,6 +199,42 @@ describe("selectModelTreeHistory", () => {
       directBrokenReferenceIds: [],
       transitiveBrokenReferenceIds: [target.externalReferences?.[0]?.id],
     })
+  })
+
+  it("merges exact worker model evidence and propagates failure through History", () => {
+    const { dependent, source, sourceReference } = modelReferenceChain()
+    const snapshot = { sketches: [source, dependent], features: [feature] }
+
+    const unavailable = selectModelTreeHistory(snapshot)
+    expect(unavailable.rows.find(({ ref }) => ref.id === source.id)?.referenceHealth?.status).toBe(
+      "unknown",
+    )
+    expect(
+      unavailable.rows.find(({ ref }) => ref.id === dependent.id)?.referenceHealth?.status,
+    ).toBe("unknown")
+
+    const broken = selectModelTreeHistory(snapshot, [
+      { sketchId: source.id, referenceId: sourceReference.id, status: "broken" },
+    ])
+    expect(broken.rows.find(({ ref }) => ref.id === source.id)?.referenceHealth).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [sourceReference.id],
+    })
+    expect(broken.rows.find(({ ref }) => ref.id === dependent.id)?.referenceHealth).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [],
+      transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+    })
+
+    const resolved = selectModelTreeHistory(snapshot, [
+      { sketchId: source.id, referenceId: sourceReference.id, status: "resolved" },
+    ])
+    expect(resolved.rows.find(({ ref }) => ref.id === source.id)?.referenceHealth?.status).toBe(
+      "healthy",
+    )
+    expect(resolved.rows.find(({ ref }) => ref.id === dependent.id)?.referenceHealth?.status).toBe(
+      "healthy",
+    )
   })
 
   it("builds one bounded label lookup for a large independent history", () => {

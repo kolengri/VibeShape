@@ -4,9 +4,11 @@ import {
   type FeatureRecord,
   inspectSketchReferenceHealth,
   readDatumPlaneFeatureParameters,
+  type SketchModelReferenceHealthResolver,
   type SketchRecord,
   type SketchReferenceHealth,
 } from "@vibeshape/domain"
+import type { DocumentModelReferenceEvidence } from "@vibeshape/protocol"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
 
 export type HistoryViewRow = Readonly<{
@@ -37,8 +39,26 @@ function labelsByRef(rows: readonly HistoryViewRow[]) {
   return new Map(rows.map((row) => [historyRefKey(row.ref), row.record.label ?? ""]))
 }
 
-export function selectModelTreeHistory(snapshot: Snapshot): ModelTreeHistoryView {
-  const referenceHealth = inspectSketchReferenceHealth(snapshot.sketches)
+function modelReferenceHealthResolver(
+  evidence: readonly DocumentModelReferenceEvidence[] | undefined,
+): SketchModelReferenceHealthResolver | undefined {
+  if (!evidence) return undefined
+  const byReference = new Map(
+    evidence.map((record) => [`${record.sketchId}:${record.referenceId}`, record.status] as const),
+  )
+  return (ownerSketchId, reference) =>
+    byReference.get(`${ownerSketchId}:${reference.id}`) ?? "unknown"
+}
+
+export function selectModelTreeHistory(
+  snapshot: Snapshot,
+  modelReferenceEvidence?: readonly DocumentModelReferenceEvidence[],
+): ModelTreeHistoryView {
+  const referenceHealth = inspectSketchReferenceHealth(
+    snapshot.sketches,
+    undefined,
+    modelReferenceHealthResolver(modelReferenceEvidence),
+  )
   const graphResult = createDocumentDependencyGraphFromSnapshot(snapshot)
   if (!graphResult.ok) {
     // Keep visibility bounded and deterministic, but never invent an interleaving on failure.

@@ -97,6 +97,61 @@ function controllerWithBrokenSketchReference() {
   }
 }
 
+function controllerWithBrokenModelReference() {
+  const target = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2810",
+    label: "Model dependent",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2811",
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2812",
+      },
+    ],
+  })
+  return {
+    target,
+    controller: {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [feature], revision: 8, sketches: [target] },
+        rebuild: {
+          ok: true,
+          response: {
+            modelReferenceEvidence: [
+              {
+                sketchId: target.id,
+                referenceId: target.externalReferences?.[0]?.id,
+                status: "broken",
+              },
+            ],
+          },
+        },
+      },
+    } as unknown as DocumentControllerState,
+  }
+}
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}
@@ -365,6 +420,19 @@ describe("ModelTree selection", () => {
     expect(repair.querySelector("svg")).toBeTruthy()
     await user.click(repair)
     expect(onSketchActivate).toHaveBeenCalledWith(broken.target.id)
+  })
+
+  it("uses current worker evidence to surface a broken model reference", () => {
+    const broken = controllerWithBrokenModelReference()
+
+    renderTree({ controller: broken.controller })
+
+    expect(
+      screen.getByRole("button", {
+        name: "Open Model dependent to repair 1 broken reference",
+      }),
+    ).toBeTruthy()
+    expect(screen.getByText("Needs repair: 1 direct failure; no chained failures.")).toBeTruthy()
   })
 })
 

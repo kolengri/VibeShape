@@ -12,11 +12,16 @@ type SketchBackedExternalReference = Exclude<SketchExternalReference, SketchExte
 
 type ReferenceResolution = "direct-broken" | "healthy" | "transitive-broken" | "unknown"
 
+export type SketchModelReferenceHealthResolver = (
+  ownerSketchId: SketchId,
+  reference: SketchExternalModelReference,
+) => "broken" | "resolved" | "unknown"
+
 export type SketchReferenceHealth = Readonly<{
   status: "broken" | "healthy" | "unknown"
   directBrokenReferenceIds: readonly SketchExternalReferenceId[]
   transitiveBrokenReferenceIds: readonly SketchExternalReferenceId[]
-  uncheckedModelReferenceIds: readonly SketchExternalReferenceId[]
+  unknownReferenceIds: readonly SketchExternalReferenceId[]
 }>
 
 type SourceGeometryIndex = Readonly<{
@@ -70,13 +75,26 @@ function referencedSourceEntity(
   return { entity, geometry } as const
 }
 
+function modelReferenceResolution(
+  ownerSketchId: SketchId,
+  reference: SketchExternalModelReference,
+  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
+): ReferenceResolution {
+  const resolution = resolveModelReference?.(ownerSketchId, reference) ?? "unknown"
+  if (resolution === "resolved") return "healthy"
+  return resolution === "broken" ? "direct-broken" : "unknown"
+}
+
 function resolveReference(
   ownerSketchId: SketchId,
   reference: SketchExternalReference,
   sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>,
+  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
   visiting: ReadonlySet<string>,
 ): ReferenceResolution {
-  if (isSketchExternalModelReference(reference)) return "unknown"
+  if (isSketchExternalModelReference(reference)) {
+    return modelReferenceResolution(ownerSketchId, reference, resolveModelReference)
+  }
   const visitKey = `${ownerSketchId}:${reference.id}`
   if (visiting.has(visitKey)) return "transitive-broken"
 
@@ -92,6 +110,7 @@ function resolveReference(
       reference.sourceSketchId,
       owner,
       sourceGeometry,
+      resolveModelReference,
       new Set([...visiting, visitKey]),
     ),
   )
@@ -100,39 +119,51 @@ function resolveReference(
 function inspectSketch(
   sketch: SketchRecord,
   sourceGeometry: ReadonlyMap<SketchId, SourceGeometryIndex>,
+  resolveModelReference: SketchModelReferenceHealthResolver | undefined,
 ): SketchReferenceHealth {
   const directBrokenReferenceIds: SketchExternalReferenceId[] = []
   const transitiveBrokenReferenceIds: SketchExternalReferenceId[] = []
-  const uncheckedModelReferenceIds: SketchExternalReferenceId[] = []
+  const unknownReferenceIds: SketchExternalReferenceId[] = []
 
   for (const reference of sketch.externalReferences ?? []) {
-    const resolution = resolveReference(sketch.id, reference, sourceGeometry, new Set())
+    const resolution = resolveReference(
+      sketch.id,
+      reference,
+      sourceGeometry,
+      resolveModelReference,
+      new Set(),
+    )
     if (resolution === "direct-broken") directBrokenReferenceIds.push(reference.id)
     if (resolution === "transitive-broken") transitiveBrokenReferenceIds.push(reference.id)
-    if (resolution === "unknown") uncheckedModelReferenceIds.push(reference.id)
+    if (resolution === "unknown") unknownReferenceIds.push(reference.id)
   }
 
   const broken = directBrokenReferenceIds.length + transitiveBrokenReferenceIds.length > 0
   return {
-    status: broken ? "broken" : uncheckedModelReferenceIds.length > 0 ? "unknown" : "healthy",
+    status: broken ? "broken" : unknownReferenceIds.length > 0 ? "unknown" : "healthy",
     directBrokenReferenceIds,
     transitiveBrokenReferenceIds,
-    uncheckedModelReferenceIds,
+    unknownReferenceIds,
   }
 }
 
 /**
- * Inspects persisted sketch-backed reference identity without claiming model-topology health.
- * Targets may contain an active draft while sources remain the committed document sketches.
+ * Inspects stable sketch-reference identity. Model references remain unknown unless the caller
+ * supplies current worker evidence. Targets may contain an active draft while sources remain the
+ * committed document sketches.
  */
 export function inspectSketchReferenceHealth(
   sources: readonly SketchRecord[],
   targets: readonly SketchRecord[] = sources,
+  resolveModelReference?: SketchModelReferenceHealthResolver,
 ): ReadonlyMap<SketchId, SketchReferenceHealth> {
   const sourceGeometry = new Map(
     sources.map((source) => [source.id, sourceGeometryIndex(source)] as const),
   )
   return new Map(
-    targets.map((target) => [target.id, inspectSketch(target, sourceGeometry)] as const),
+    targets.map(
+      (target) =>
+        [target.id, inspectSketch(target, sourceGeometry, resolveModelReference)] as const,
+    ),
   )
 }

@@ -14,11 +14,12 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 12 as const
+export const DOCUMENT_PROTOCOL_VERSION = 13 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
 const MAX_SKETCH_DISPLAY_FLOATS = 2_000_000
+const MAX_MODEL_REFERENCE_EVIDENCE = 1_000_000
 const MAX_VARIABLES = 4_096
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const reverseDnsPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$/
@@ -336,18 +337,50 @@ function validateSketchDisplayIds(sketches: readonly SketchDisplay[], context: V
   }
 }
 
+function validateModelReferenceEvidenceKeys(
+  evidence: readonly DocumentModelReferenceEvidence[],
+  context: ValidationContext,
+) {
+  const keys = new Set<string>()
+  for (const [index, record] of evidence.entries()) {
+    const key = `${record.sketchId}:${record.referenceId}`
+    if (keys.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["modelReferenceEvidence", index],
+        message: "Model reference evidence keys must be unique.",
+      })
+    }
+    keys.add(key)
+  }
+}
+
+export const documentModelReferenceEvidenceSchema = z
+  .object({
+    sketchId: sketchWireIdSchema,
+    referenceId: sketchWireIdSchema,
+    status: z.enum(["resolved", "broken"]),
+  })
+  .strict()
+
+export type DocumentModelReferenceEvidence = z.infer<typeof documentModelReferenceEvidenceSchema>
+
 const documentRebuiltResponseSchema = responseEnvelopeSchema
   .extend({
     type: z.literal("documentRebuilt"),
     evaluation: documentFeatureEvaluationSchema,
     geometry: z.array(documentFeatureGeometrySchema).max(MAX_FEATURES),
     sketches: z.array(documentSketchDisplaySchema).max(MAX_SKETCHES),
+    modelReferenceEvidence: z
+      .array(documentModelReferenceEvidenceSchema)
+      .max(MAX_MODEL_REFERENCE_EVIDENCE),
   })
   .superRefine((response, context) => {
     const successfulHashes = successfulEvaluationHashes(response.evaluation.records, context)
     const geometryIds = geometryFeatureIds(response.geometry, successfulHashes, context)
     validateSuccessfulGeometry(successfulHashes, geometryIds, context)
     validateSketchDisplayIds(response.sketches, context)
+    validateModelReferenceEvidenceKeys(response.modelReferenceEvidence, context)
   })
 
 const documentDisposedResponseSchema = responseEnvelopeSchema.extend({

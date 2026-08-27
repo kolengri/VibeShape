@@ -189,6 +189,9 @@ function geometry() {
 }
 
 class FakeEngine implements GeometryKernelEngine {
+  sectionPlanarFace: NonNullable<GeometryKernelEngine["sectionPlanarFace"]> = async () => {
+    throw new Error("Section is not configured for this fixture.")
+  }
   readonly evaluatedFeatureIds: FeatureId[] = []
   readonly evaluatedInputs: FeatureEvaluationInput[] = []
   initialized = false
@@ -353,6 +356,118 @@ function rebuilt(messages: readonly DocumentWorkerResponse[], requestId: string)
 }
 
 describe("DocumentWorkerRuntime", () => {
+  it("stops stale evidence scanning before probing later model references", async () => {
+    const { engine, messages, runtime } = createHarness()
+    const featureId = featureIds.box
+    const signature = {
+      kind: "face" as const,
+      geometryClass: "PLANE" as const,
+      measure: 1,
+      centroid: [0, 0, 0] as [number, number, number],
+      bounds: {
+        min: [0, 0, 0] as [number, number, number],
+        max: [1, 1, 0] as [number, number, number],
+      },
+      direction: [0, 0, 1] as [number, number, number],
+      directionMode: "oriented" as const,
+      boundaryCount: 4,
+      adjacentGeometryClasses: [],
+    }
+    const modelReference = (index: number) => ({
+      schemaVersion: 0 as const,
+      id: `0195b5ac-b220-7a2c-8c33-67a36a7f33${String(index).padStart(2, "0")}`,
+      kind: "model-intersection" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "face" as const,
+        semanticRole: "test.face",
+        signature,
+      },
+      projectedLineId: `0195b5ac-b220-7a2c-8c33-67a36a7f34${String(index).padStart(2, "0")}`,
+      projectedStartPointId: `0195b5ac-b220-7a2c-8c33-67a36a7f35${String(index).padStart(2, "0")}`,
+      projectedEndPointId: `0195b5ac-b220-7a2c-8c33-67a36a7f36${String(index).padStart(2, "0")}`,
+    })
+    const modelSketch = {
+      ...sketch(),
+      externalReferences: [modelReference(1), modelReference(2)],
+    }
+    const snapshot = documentRebuildSnapshotSchema.parse({
+      ...document(documentIds.primary),
+      sketches: [modelSketch],
+    })
+    const modelGeometry = {
+      ...geometry(),
+      topologyCandidates: [
+        {
+          candidateId: "face:test",
+          kind: "face" as const,
+          meshFaceId: 1,
+          semanticRole: "test.face",
+          lineageTokens: [],
+          signature,
+        },
+      ],
+    }
+    vi.spyOn(engine, "evaluateFeature").mockImplementation(async (_input, reportProgress) => {
+      reportProgress("complete", 1)
+      return { ok: true as const, result: modelGeometry }
+    })
+    let releaseFirst!: () => void
+    let firstStarted!: () => void
+    const firstProbe = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve
+    })
+    let probeCount = 0
+    engine.sectionPlanarFace = vi.fn(async () => {
+      probeCount += 1
+      if (probeCount === 1) {
+        firstStarted()
+        await firstProbe
+      }
+      return {
+        ok: true as const,
+        endpoints: [
+          [0, 0, 0],
+          [1, 0, 0],
+        ] as const,
+      }
+    })
+    const first = runtime.handle({
+      ...request("stale-evidence", { generation: 1 }),
+      document: snapshot,
+    })
+    await started
+    const second = runtime.handle({
+      ...request("fresh-evidence", { generation: 2 }),
+      document: snapshot,
+    })
+    expect(probeCount).toBe(1)
+    releaseFirst()
+    await Promise.all([first, second])
+
+    expect(probeCount).toBe(3)
+    expect(
+      messages.some(
+        (message) => message.requestId === "stale-evidence" && message.type === "documentRebuilt",
+      ),
+    ).toBe(false)
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        requestId: "stale-evidence",
+        type: "failure",
+        diagnostic: expect.objectContaining({ code: "stale-generation" }),
+      }),
+    )
+    expect(rebuilt(messages, "fresh-evidence").modelReferenceEvidence).toEqual([
+      expect.objectContaining({ referenceId: modelReference(1).id, status: "resolved" }),
+      expect.objectContaining({ referenceId: modelReference(2).id, status: "resolved" }),
+    ])
+  })
+
   it("owns incremental rebuild state and transfers cloned mesh buffers", async () => {
     const { engine, messages, runtime, transfers } = createHarness()
 

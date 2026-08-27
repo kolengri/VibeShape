@@ -863,14 +863,20 @@ function updateTreeTabStop(event: FocusEvent<HTMLElement>) {
 
 export function ModelTree(props: ModelTreeProps) {
   const t = useTranslations("app.shell.modelTree")
-  const snapshot = props.controller.report?.snapshot
+  const report = props.controller.report
+  const snapshot = report?.snapshot
+  const rebuild = report?.rebuild
+  const modelReferenceEvidence = rebuild?.ok ? rebuild.response.modelReferenceEvidence : undefined
   const historyView = useMemo(
     () =>
-      selectModelTreeHistory({
-        sketches: snapshot?.sketches ?? [],
-        features: snapshot?.features ?? [],
-      }),
-    [snapshot],
+      selectModelTreeHistory(
+        {
+          sketches: snapshot?.sketches ?? [],
+          features: snapshot?.features ?? [],
+        },
+        modelReferenceEvidence,
+      ),
+    [modelReferenceEvidence, snapshot],
   )
 
   return (
