@@ -96,6 +96,8 @@ The visual annotation is the primary object. A list or inspector is a secondary 
 
 This distinction matters for VibeShape: temporary wake-up references, persistent projected geometry, and cross-plane intersection are different semantic operations and need different visual states.
 
+Starting **Intersect planar face** from the normal sketch view immediately opens the existing orbitable 3D face picker. The picker owns the pointer, presents an explicit one-face instruction, accepts only a compatible earlier planar face, and forces History rollback even when the final result was visible. Returning to **Normal to sketch** cancels the picker back to Select, so the UI never leaves Intersection armed over an inert analytical canvas.
+
 ### Direct modification stays direct
 
 - Trim removes the segment under the pointer; dragging through multiple segments applies Trim repeatedly.

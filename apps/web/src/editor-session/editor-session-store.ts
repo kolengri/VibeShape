@@ -358,6 +358,9 @@ export function createEditorSessionStore() {
               return
             }
             state.sketch.cameraMode = mode
+            if (mode === "normal" && state.sketch.editorTool === "intersection") {
+              state.sketch.editorTool = "select"
+            }
           }),
         setSketchFinalContext: (visible) =>
           set((state) => {
@@ -379,6 +382,13 @@ export function createEditorSessionStore() {
           set((state) => {
             state.sketch.editorTool = tool
             state.sketch.repairReferenceId = null
+            if (
+              tool === "intersection" &&
+              isActiveSketchEditorTool(state.sketch.activeSketchTool)
+            ) {
+              state.sketch.cameraMode = "orbit"
+              state.sketch.showFinalContext = false
+            }
           }),
         setSketchFailedConstraintIds: (constraintIds) =>
           set((state) => {

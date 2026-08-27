@@ -344,6 +344,30 @@ describe("editor session store", () => {
     })
   })
 
+  it("opens the graphical 3D face picker when planar-face intersection starts", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchFinalContext(true)
+    store.getState().actions.setSketchEditorTool("intersection")
+
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchTool: { kind: "edit-sketch", sketchId },
+      cameraMode: "orbit",
+      draft: sketch,
+      editorTool: "intersection",
+      showFinalContext: false,
+    })
+
+    store.getState().actions.setSketchCameraMode("normal")
+    expect(store.getState().sketch).toMatchObject({
+      cameraMode: "normal",
+      editorTool: "select",
+      showFinalContext: false,
+    })
+  })
+
   it("shows final context only while editing a committed sketch and resets it between sessions", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch("Initial")

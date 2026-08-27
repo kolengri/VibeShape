@@ -32,10 +32,18 @@ test.describe("full sketch editor", () => {
 
     const noReferences = page.getByText("No external geometry is in use.", { exact: true })
     await expect(noReferences).toBeVisible()
-    await page.getByRole("button", { name: "Intersect planar face", exact: true }).click()
-    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const intersection = page.getByRole("button", { name: "Intersect planar face", exact: true })
+    await intersection.click()
 
     const viewport = page.locator("section[data-sketch-context-mode='orbit']")
+    await expect(viewport).toBeVisible()
+    await expect(
+      viewport.getByText("Intersection · Select one planar model face", { exact: true }),
+    ).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(intersection).toHaveAttribute("aria-pressed", "false")
+    await intersection.click()
+    await expect(viewport).toBeVisible()
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The 3D intersection-selection canvas is not visible.")
 
@@ -68,6 +76,11 @@ test.describe("full sketch editor", () => {
       "data-rendered-sketch-count",
       "1",
     )
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(drawing.locator("[data-sketch-external-line-id]")).toHaveCount(1)
+    await expect(
+      page.getByRole("complementary", { name: "Task panel" }).getByText(/^Box 1 · Face \d+$/),
+    ).toBeVisible()
   })
 
   test("keeps a selected model edge human-readable after save and reopen", async ({ page }) => {
