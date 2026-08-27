@@ -70,6 +70,48 @@ test.describe("full sketch editor", () => {
     )
   })
 
+  test("keeps a selected model edge human-readable after save and reopen", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const referenceSelect = page.getByRole("combobox", {
+      name: "Select a reference with the keyboard",
+    })
+    await referenceSelect.focus()
+    const edgeOption = referenceSelect
+      .locator("option")
+      .filter({ hasText: /Box 1 · Edge \d+/ })
+      .first()
+    const edgeLabel = await edgeOption.textContent()
+    const edgeValue = await edgeOption.getAttribute("value")
+    if (!edgeLabel || !edgeValue) throw new Error("The Box edge option must be available.")
+    await referenceSelect.selectOption(edgeValue)
+
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(taskPanel.getByText(edgeLabel, { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText(/primitive\.box\.edge/)).toHaveCount(0)
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+
+    await expect(taskPanel.getByText(edgeLabel, { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText(/primitive\.box\.edge/)).toHaveCount(0)
+  })
+
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({
     page,
   }) => {

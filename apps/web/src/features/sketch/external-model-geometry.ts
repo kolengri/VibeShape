@@ -15,9 +15,10 @@ import type {
   VertexTopoRef,
 } from "@vibeshape/domain"
 import {
+  createTopologyReferenceResolver,
   featureIdSchema,
+  isSketchExternalModelReference,
   projectedExternalCurvePointCount,
-  resolveTopologyReference,
 } from "@vibeshape/domain"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
@@ -75,6 +76,17 @@ export type ExternalModelGeometryLabels = Readonly<{
   point: (featureLabel: string, ordinal: number) => string
 }>
 
+export type ExternalModelReferenceLabels = ExternalModelGeometryLabels &
+  Readonly<{
+    face: (featureLabel: string, ordinal: number) => string
+    problem: (
+      featureLabel: string,
+      kind: "edge" | "face" | "vertex",
+      status: "ambiguous" | "missing",
+    ) => string
+    unknownFeature: string
+  }>
+
 type ExternalModelGeometryRecord = Readonly<{
   featureId: string
   geometry: FeatureGeometryRecord["geometry"]
@@ -92,11 +104,88 @@ function candidateKey(
   return `${featureId}:${candidate.kind}:${candidate.candidateId}`
 }
 
+type CandidateDisplayKind = "curve" | "face" | "line" | "point"
+
+function edgeDisplayKind(candidate: ProtocolTopologyCandidate): CandidateDisplayKind | null {
+  if (candidate.signature.geometryClass === "LINE") {
+    return candidate.referenceGeometry?.kind === "line-edge" ? "line" : null
+  }
+  if (candidate.signature.geometryClass !== "CIRCLE") return null
+  return candidate.referenceGeometry?.kind === "circle-edge" ||
+    candidate.referenceGeometry?.kind === "arc-edge"
+    ? "curve"
+    : null
+}
+
+function candidateDisplayKind(candidate: ProtocolTopologyCandidate): CandidateDisplayKind | null {
+  if (candidate.kind === "face") return "face"
+  if (candidate.kind === "edge") return edgeDisplayKind(candidate)
+  return candidate.signature.geometryClass === "POINT" &&
+    candidate.referenceGeometry?.kind === "vertex"
+    ? "point"
+    : null
+}
+
+function topologyCandidateKey(candidate: Pick<ProtocolTopologyCandidate, "candidateId" | "kind">) {
+  return `${candidate.kind}:${candidate.candidateId}`
+}
+
+function candidateDisplayOrdinals(candidates: readonly ProtocolTopologyCandidate[]) {
+  const counts: Record<CandidateDisplayKind, number> = { curve: 0, face: 0, line: 0, point: 0 }
+  const ordinals = new Map<string, number>()
+  const displayCandidates = candidates
+    .flatMap((candidate) => {
+      const kind = candidateDisplayKind(candidate)
+      return kind ? [{ candidate, kind, presentationKey: topologyPresentationKey(candidate) }] : []
+    })
+    .sort(
+      (left, right) =>
+        left.kind.localeCompare(right.kind) ||
+        left.presentationKey.localeCompare(right.presentationKey),
+    )
+  for (const { candidate, kind } of displayCandidates) {
+    counts[kind] += 1
+    ordinals.set(topologyCandidateKey(candidate), counts[kind])
+  }
+  return ordinals
+}
+
+function topologyPresentationKey(candidate: ProtocolTopologyCandidate) {
+  const identity = candidate.semanticRole
+    ? ["semantic", candidate.semanticRole]
+    : candidate.lineageTokens.length > 0
+      ? ["lineage", ...[...candidate.lineageTokens].sort()]
+      : ["signature"]
+  const signature = candidate.signature
+  return JSON.stringify([
+    ...identity,
+    signature.geometryClass,
+    signature.centroid,
+    signature.bounds.min,
+    signature.bounds.max,
+    signature.measure,
+    signature.direction ?? null,
+    signature.directionMode ?? null,
+    signature.boundaryCount,
+    [...signature.adjacentGeometryClasses].sort(),
+    candidate.candidateId,
+  ])
+}
+
 function referencedCandidateKeys(
   records: readonly ExternalModelGeometryRecord[],
   draft: SketchRecord,
 ) {
-  const recordsByFeatureId = new Map(records.map((record) => [record.featureId, record]))
+  const recordsByFeatureId = new Map(
+    records.map((record) => [
+      record.featureId,
+      {
+        resolve: createTopologyReferenceResolver(
+          record.geometry.topologyCandidates.map(domainTopologyCandidate),
+        ),
+      },
+    ]),
+  )
   const keys = new Set<string>()
   for (const external of draft.externalReferences ?? []) {
     if (
@@ -106,10 +195,9 @@ function referencedCandidateKeys(
     ) {
       continue
     }
-    const record = recordsByFeatureId.get(external.reference.featureId)
-    if (!record) continue
-    const candidates = record.geometry.topologyCandidates.map(domainTopologyCandidate)
-    const resolution = resolveTopologyReference(external.reference, candidates)
+    const context = recordsByFeatureId.get(external.reference.featureId)
+    if (!context) continue
+    const resolution = context.resolve(external.reference)
     if (resolution.status !== "resolved") continue
     keys.add(
       candidateKey(external.reference.featureId, {
@@ -258,21 +346,20 @@ function candidatesForRecord(
   labels: ExternalModelGeometryLabels,
 ) {
   const result: ExternalModelGeometryCandidate[] = []
-  let pointOrdinal = 0
-  let lineOrdinal = 0
-  let curveOrdinal = 0
+  const ordinals = candidateDisplayOrdinals(record.geometry.topologyCandidates)
   for (const candidate of record.geometry.topologyCandidates) {
     if (used.has(candidateKey(featureId, candidate))) continue
+    const ordinal = ordinals.get(topologyCandidateKey(candidate))
+    if (!ordinal) continue
     const point = createExternalModelPointCandidate(
       featureId,
       featureLabel,
       candidate,
       targetFrame,
-      pointOrdinal + 1,
+      ordinal,
       labels,
     )
     if (point) {
-      pointOrdinal += 1
       result.push(point)
       continue
     }
@@ -281,11 +368,10 @@ function candidatesForRecord(
       featureLabel,
       candidate,
       targetFrame,
-      lineOrdinal + 1,
+      ordinal,
       labels,
     )
     if (line) {
-      lineOrdinal += 1
       result.push(line)
       continue
     }
@@ -294,12 +380,89 @@ function candidatesForRecord(
       featureLabel,
       candidate,
       targetFrame,
-      curveOrdinal + 1,
+      ordinal,
       labels,
     )
     if (!curve) continue
-    curveOrdinal += 1
     result.push(curve)
+  }
+  return result
+}
+
+function resolvedModelReferenceLabel(
+  candidate: ProtocolTopologyCandidate,
+  featureLabel: string,
+  ordinal: number,
+  labels: ExternalModelReferenceLabels,
+) {
+  const displayKind = candidateDisplayKind(candidate)
+  if (displayKind === "point") return labels.point(featureLabel, ordinal)
+  if (displayKind === "line") return labels.line(featureLabel, ordinal)
+  if (displayKind === "face") return labels.face(featureLabel, ordinal)
+  if (displayKind !== "curve") return null
+  return labels.curve(
+    featureLabel,
+    candidate.referenceGeometry?.kind === "arc-edge" ? "arc" : "circle",
+    ordinal,
+  )
+}
+
+export function externalModelReferenceLabels(
+  records: readonly ExternalModelGeometryRecord[],
+  features: readonly FeatureRecord[],
+  externalReferences: SketchRecord["externalReferences"],
+  labels: ExternalModelReferenceLabels,
+): ReadonlyMap<string, string> {
+  const recordsByFeatureId = new Map(
+    records.map((record) => [
+      record.featureId,
+      {
+        candidatesByKey: new Map(
+          record.geometry.topologyCandidates.map((candidate) => [
+            topologyCandidateKey(candidate),
+            candidate,
+          ]),
+        ),
+        ordinals: candidateDisplayOrdinals(record.geometry.topologyCandidates),
+        resolve: createTopologyReferenceResolver(
+          record.geometry.topologyCandidates.map(domainTopologyCandidate),
+        ),
+      },
+    ]),
+  )
+  const featureLabels = new Map(features.map((feature) => [feature.id, feature.label]))
+  const result = new Map<string, string>()
+  for (const external of externalReferences ?? []) {
+    if (!isSketchExternalModelReference(external)) continue
+    const featureLabel = featureLabels.get(external.reference.featureId) ?? labels.unknownFeature
+    const context = recordsByFeatureId.get(external.reference.featureId)
+    if (!context) {
+      result.set(external.id, labels.problem(featureLabel, external.reference.kind, "missing"))
+      continue
+    }
+    const resolution = context.resolve(external.reference)
+    if (resolution.status !== "resolved") {
+      result.set(
+        external.id,
+        labels.problem(featureLabel, external.reference.kind, resolution.status),
+      )
+      continue
+    }
+    const candidate = context.candidatesByKey.get(
+      topologyCandidateKey({
+        candidateId: resolution.candidateId,
+        kind: external.reference.kind,
+      }),
+    )
+    const ordinal = candidate ? context.ordinals.get(topologyCandidateKey(candidate)) : undefined
+    const label =
+      candidate && ordinal
+        ? resolvedModelReferenceLabel(candidate, featureLabel, ordinal, labels)
+        : null
+    result.set(
+      external.id,
+      label ?? labels.problem(featureLabel, external.reference.kind, "missing"),
+    )
   }
   return result
 }

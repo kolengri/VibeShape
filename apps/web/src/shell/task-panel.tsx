@@ -9,7 +9,7 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useMemo, useState } from "react"
 import {
   addFeature,
   addSketch,
@@ -47,6 +47,7 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
+import { externalModelReferenceLabels } from "../features/sketch/external-model-geometry"
 import { externalSketchGeometryCandidates } from "../features/sketch/external-sketch-points"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
@@ -124,6 +125,7 @@ function useSketchEditorCopy() {
     distance: t("distance"),
     externalReferenceDescription: t("externalReferenceDescription"),
     externalReferences: t("externalReferences"),
+    unavailableExternalReference: t("unavailableExternalReference"),
     attachSelectedPoint: t("attachSelectedPoint"),
     noExternalReferences: t("noExternalReferences"),
     editConstraint: t("editConstraint"),
@@ -1167,6 +1169,26 @@ function ActiveSketchTaskPanel({
     },
     resolveDocumentFeatureParameters(report.snapshot),
   )
+  const modelReferenceLabels = useMemo(
+    () =>
+      externalModelReferenceLabels(
+        report.rebuild.ok ? report.rebuild.response.geometry : [],
+        report.snapshot.features,
+        draft.externalReferences,
+        {
+          curve: (feature, kind, ordinal) =>
+            viewportT("externalModelCurveCandidate", { feature, kind, ordinal }),
+          face: (feature, ordinal) => viewportT("externalModelFaceReference", { feature, ordinal }),
+          line: (feature, ordinal) => viewportT("externalModelLineCandidate", { feature, ordinal }),
+          point: (feature, ordinal) =>
+            viewportT("externalModelPointCandidate", { feature, ordinal }),
+          problem: (feature, kind, status) =>
+            viewportT("externalModelReferenceProblem", { feature, kind, status }),
+          unknownFeature: viewportT("unknownFeature"),
+        },
+      ),
+    [draft.externalReferences, report.rebuild, report.snapshot.features, viewportT],
+  )
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
@@ -1210,6 +1232,7 @@ function ActiveSketchTaskPanel({
             disabled: report.mode === "read-only",
             draft,
             externalPointCandidates: referenceCandidates,
+            externalReferenceLabels: modelReferenceLabels,
             extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,

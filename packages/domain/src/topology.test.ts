@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { featureIdSchema } from "./identifiers"
 import {
+  createTopologyReferenceResolver,
   resolveTopologyReference,
   type TopologyCandidate,
   type TopoRef,
@@ -48,6 +49,22 @@ function candidate(
 }
 
 describe("resolveTopologyReference", () => {
+  it("reuses one validated candidate index across multiple references", () => {
+    const resolve = createTopologyReferenceResolver([
+      candidate("first", { semanticRole: "extrude.cap.start" }),
+      candidate("second", { semanticRole: "extrude.cap.end" }),
+    ])
+
+    expect(resolve(reference({ semanticRole: "extrude.cap.start" }))).toMatchObject({
+      status: "resolved",
+      candidateId: "first",
+    })
+    expect(resolve(reference({ semanticRole: "extrude.cap.end" }))).toMatchObject({
+      status: "resolved",
+      candidateId: "second",
+    })
+  })
+
   it("prefers one exact semantic role across large parameter changes", () => {
     const result = resolveTopologyReference(reference({ semanticRole: "extrude.cap.end" }), [
       candidate("side", { semanticRole: "extrude.side.profile-edge-1" }),
@@ -94,6 +111,18 @@ describe("resolveTopologyReference", () => {
     ])
 
     expect(result).toMatchObject({
+      status: "resolved",
+      candidateId: "modified",
+      method: "history",
+    })
+  })
+
+  it("indexes a repeated lineage token from one candidate only once", () => {
+    const resolve = createTopologyReferenceResolver([
+      candidate("modified", { lineageTokens: ["face:source:4", "face:source:4"] }),
+    ])
+
+    expect(resolve(reference({ lineageToken: "face:source:4" }))).toMatchObject({
       status: "resolved",
       candidateId: "modified",
       method: "history",

@@ -14,6 +14,7 @@ import {
   applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   externalModelGeometryCandidates,
+  externalModelReferenceLabels,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
 } from "./external-model-geometry"
@@ -25,8 +26,11 @@ const selectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-0000
 const labels = {
   curve: (feature: string, kind: "arc" | "circle", ordinal: number) =>
     `${feature} · ${kind} ${ordinal}`,
+  face: (feature: string, ordinal: number) => `${feature} · Face ${ordinal}`,
   line: (feature: string, ordinal: number) => `${feature} · Edge ${ordinal}`,
   point: (feature: string, ordinal: number) => `${feature} · Vertex ${ordinal}`,
+  problem: (feature: string, kind: string, status: string) => `${feature} · ${status} ${kind}`,
+  unknownFeature: "Unknown feature",
 }
 const targetFrame: SupportFrame = {
   origin: [0, 0, 0],
@@ -99,6 +103,21 @@ function circleCandidate(candidateId: string): TopologyCandidate {
       yAxis: [0, 1, 0],
       normal: [0, 0, 1],
       radius: 5,
+    },
+  }
+}
+
+function faceCandidate(candidateId: string, semanticRole: string): TopologyCandidate {
+  return {
+    candidateId,
+    kind: "face",
+    meshFaceId: 1,
+    semanticRole,
+    lineageTokens: [],
+    signature: {
+      ...signature("face", "PLANE", [0, 0, 5]),
+      direction: [0, 0, 1],
+      directionMode: "oriented",
     },
   }
 }
@@ -318,6 +337,201 @@ describe("external model geometry candidates", () => {
     )
 
     expect(candidates.map(({ candidateId }) => candidateId)).toEqual(["first", "second"])
+  })
+})
+
+describe("external model reference labels", () => {
+  it("resolves persisted topology intent back to friendly feature geometry labels", () => {
+    const edge = lineCandidate("rebuilt-edge", [0, 0, 5], [10, 0, 5])
+    edge.semanticRole = "primitive.box.edge.y.x-min.z-max"
+    const face = faceCandidate("rebuilt-face", "primitive.box.face.z-max")
+    const vertex = pointCandidate(
+      "rebuilt-vertex",
+      [0, 0, 5],
+      "primitive.box.vertex.x-min.y-min.z-max",
+    )
+    const curve = circleCandidate("rebuilt-curve")
+    curve.semanticRole = "primitive.cylinder.edge.start"
+    const sketch = draft([
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005020",
+        kind: "model-line",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: edge.semanticRole,
+          signature: signature("edge", "LINE", [100, 100, 100]),
+        },
+        projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005021",
+        projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005022",
+        projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005023",
+      },
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005024",
+        kind: "model-intersection",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "face",
+          semanticRole: face.semanticRole,
+          signature: face.signature,
+        },
+        projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005025",
+        projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005026",
+        projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005027",
+      },
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005034",
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "vertex",
+          semanticRole: vertex.semanticRole,
+          signature: vertex.signature,
+        },
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-000000005035",
+      },
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005036",
+        kind: "model-curve",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: curve.semanticRole,
+          signature: curve.signature,
+        },
+        sourceType: "circle",
+        projectedEntityId: "0195b5ac-b220-7a2c-8c33-000000005037",
+        projectedType: "circle",
+        projectedPointIds: ["0195b5ac-b220-7a2c-8c33-000000005038"],
+      },
+    ])
+
+    expect([
+      ...externalModelReferenceLabels(
+        [geometryRecord(featureId, [edge, face, vertex, curve])],
+        features as never,
+        sketch.externalReferences,
+        labels,
+      ).values(),
+    ]).toEqual(["Mount · Edge 1", "Mount · Face 1", "Mount · Vertex 1", "Mount · circle 1"])
+
+    const renamedFeatures = features.map((feature) =>
+      feature.id === featureId ? { ...feature, label: "Renamed mount" } : feature,
+    )
+    expect([
+      ...externalModelReferenceLabels(
+        [geometryRecord(featureId, [edge, face, vertex, curve])],
+        renamedFeatures as never,
+        sketch.externalReferences,
+        labels,
+      ).values(),
+    ]).toEqual([
+      "Renamed mount · Edge 1",
+      "Renamed mount · Face 1",
+      "Renamed mount · Vertex 1",
+      "Renamed mount · circle 1",
+    ])
+  })
+
+  it("keeps a semantic edge ordinal stable across evaluation-order changes", () => {
+    const roleA = "primitive.box.edge.a"
+    const roleB = "primitive.box.edge.b"
+    const firstA = lineCandidate("edge:0", [0, 0, 0], [10, 0, 0])
+    const firstB = lineCandidate("edge:1", [0, 10, 0], [10, 10, 0])
+    firstA.semanticRole = roleA
+    firstB.semanticRole = roleB
+    const rebuiltB = lineCandidate("edge:0", [0, 10, 0], [10, 10, 0])
+    const rebuiltA = lineCandidate("edge:1", [0, 0, 0], [10, 0, 0])
+    rebuiltA.semanticRole = roleA
+    rebuiltB.semanticRole = roleB
+    const sketch = draft([
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005039",
+        kind: "model-line",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: roleB,
+          signature: firstB.signature,
+        },
+        projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005040",
+        projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005041",
+        projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005042",
+      },
+    ])
+
+    const labelFor = (candidates: readonly TopologyCandidate[]) => [
+      ...externalModelReferenceLabels(
+        [geometryRecord(featureId, candidates)],
+        features as never,
+        sketch.externalReferences,
+        labels,
+      ).values(),
+    ]
+
+    expect(labelFor([firstA, firstB])).toEqual(["Mount · Edge 2"])
+    expect(labelFor([rebuiltB, rebuiltA])).toEqual(["Mount · Edge 2"])
+  })
+
+  it("names missing and ambiguous topology without exposing stable internal roles", () => {
+    const sharedRole = "primitive.box.vertex.x-min.y-min.z-min"
+    const sketch = draft([
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005028",
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "vertex",
+          semanticRole: sharedRole,
+          signature: signature("vertex", "POINT", [0, 0, 0]),
+        },
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-000000005029",
+      },
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-000000005030",
+        kind: "model-line",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: "primitive.box.edge.removed",
+          signature: signature("edge", "LINE", [0, 0, 0]),
+        },
+        projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005031",
+        projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005032",
+        projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005033",
+      },
+    ])
+    const presentations = externalModelReferenceLabels(
+      [
+        geometryRecord(featureId, [
+          pointCandidate("first", [0, 0, 0], sharedRole),
+          pointCandidate("second", [0, 0, 0], sharedRole),
+        ]),
+      ],
+      features as never,
+      sketch.externalReferences,
+      labels,
+    )
+
+    expect([...presentations.values()]).toEqual([
+      "Mount · ambiguous vertex",
+      "Mount · missing edge",
+    ])
+    expect(JSON.stringify([...presentations.values()])).not.toContain("primitive.box")
   })
 })
 
