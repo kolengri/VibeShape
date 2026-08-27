@@ -28,6 +28,7 @@
     "./sketch-offset-edit": "./src/sketch-offset-edit.ts",
     "./sketch-pattern-edit": "./src/sketch-pattern-edit.ts",
     "./sketch-profile-selector": "./src/sketch-profile-selector.ts",
+    "./sketch-reference-health": "./src/sketch-reference-health.ts",
     "./sketch-transform-edit": "./src/sketch-transform-edit.ts",
     "./topology": "./src/topology.ts",
     "./units": "./src/units.ts",

@@ -14,6 +14,7 @@ import type {
 import {
   appendSketchConstraint,
   createDocumentDependencyGraphFromSnapshot,
+  inspectSketchReferenceHealth,
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
   projectedExternalSketchEntities,
@@ -120,18 +121,12 @@ function sketchReferenceExpectedType(
 function sourceEntityLabels(source: SketchRecord, labels: ExternalSketchGeometryLabels) {
   const result = new Map<SketchEntityId, string>()
   const curveOrdinals = new Map<ExternalSketchCurveKind, number>()
-  const projectedOwners = new Map<SketchEntityId, SketchExternalReference>()
   let lineOrdinal = 0
   let pointOrdinal = 0
   const entities = [
     ...source.entities,
     ...projectedExternalSketchEntities(source.externalReferences ?? []),
   ]
-  for (const reference of source.externalReferences ?? []) {
-    for (const entity of projectedExternalSketchEntities([reference])) {
-      projectedOwners.set(entity.id, reference)
-    }
-  }
   for (const entity of entities) {
     if (entity.type === "point") {
       pointOrdinal += 1
@@ -148,38 +143,18 @@ function sourceEntityLabels(source: SketchRecord, labels: ExternalSketchGeometry
     result.set(entity.id, labels.curve(source.label, entity.type, ordinal))
   }
   return {
-    authoredEntityIds: new Set(source.entities.map(({ id }) => id)),
     entities: new Map(entities.map((entity) => [entity.id, entity])),
     labels: result,
-    projectedOwners,
   }
 }
 
 type SourceEntityIndex = ReturnType<typeof sourceEntityLabels>
 
-function sketchReferenceResolves(
-  reference: SketchExternalReference,
-  sourceGeometry: ReadonlyMap<SketchRecord["id"], SourceEntityIndex>,
-  visiting: ReadonlySet<string>,
-): boolean {
-  if (isSketchExternalModelReference(reference)) return true
-  if (visiting.has(reference.id)) return false
-  const geometry = sourceGeometry.get(reference.sourceSketchId)
-  const sourceEntityId = sketchReferenceSourceEntityId(reference)
-  const expectedType = sketchReferenceExpectedType(reference)
-  const entity = sourceEntityId ? geometry?.entities.get(sourceEntityId) : undefined
-  if (!entity || entity.type !== expectedType || !geometry) return false
-  if (geometry.authoredEntityIds.has(entity.id)) return true
-  const owner = geometry.projectedOwners.get(entity.id)
-  return owner
-    ? sketchReferenceResolves(owner, sourceGeometry, new Set([...visiting, reference.id]))
-    : false
-}
-
 function resolveExternalSketchReference(
   reference: SketchExternalReference,
   sourceGeometry: ReadonlyMap<SketchRecord["id"], SourceEntityIndex>,
   sourceSketches: ReadonlyMap<SketchRecord["id"], SketchRecord>,
+  missingReferenceIds: ReadonlySet<SketchExternalReferenceId>,
   labels: ExternalSketchReferenceLabels,
 ) {
   if (isSketchExternalModelReference(reference)) return null
@@ -189,7 +164,7 @@ function resolveExternalSketchReference(
   const geometry = sourceGeometry.get(reference.sourceSketchId)
   const entity = sourceEntityId ? geometry?.entities.get(sourceEntityId) : undefined
   const label = entity?.type === expectedType ? geometry?.labels.get(entity.id) : undefined
-  if (label && sketchReferenceResolves(reference, sourceGeometry, new Set())) {
+  if (label && !missingReferenceIds.has(reference.id)) {
     return { id: reference.id, label, missing: false } as const
   }
   return {
@@ -210,12 +185,18 @@ export function externalSketchReferenceResolution(
     document.sketches.map((source) => [source.id, sourceEntityLabels(source, labels)]),
   )
   const sourceSketches = new Map(document.sketches.map((source) => [source.id, source]))
+  const health = inspectSketchReferenceHealth(document.sketches, [draft]).get(draft.id)
+  const brokenReferenceIds = new Set([
+    ...(health?.directBrokenReferenceIds ?? []),
+    ...(health?.transitiveBrokenReferenceIds ?? []),
+  ])
 
   for (const reference of draft.externalReferences ?? []) {
     const resolution = resolveExternalSketchReference(
       reference,
       sourceGeometry,
       sourceSketches,
+      brokenReferenceIds,
       labels,
     )
     if (!resolution) continue

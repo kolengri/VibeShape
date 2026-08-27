@@ -706,7 +706,10 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
-    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(
+      page.getByText("Needs repair: 1 direct failure; no chained failures.", { exact: true }),
+    ).toBeVisible()
+    await page.getByRole("button", { name: "Open Sketch 2 to repair 1 broken reference" }).click()
     const brokenReference = taskPanel.getByText("Sketch 1 · Missing line", { exact: true })
     await expect(brokenReference).toBeVisible()
     const brokenReferenceRow = brokenReference.locator("..")

@@ -5,7 +5,9 @@ import {
   datumPlaneFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  sketchEntityIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import { selectModelTreeHistory } from "./model-tree-history"
@@ -45,6 +47,54 @@ const datum = featureRecordSchema.parse({
   label: "Offset plane",
 })
 
+function brokenReferenceChain() {
+  const source = createEmptySketch({
+    id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2701"),
+    label: "Source",
+    plane: "xy",
+  })
+  const missingPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2702")
+  const middle = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2703",
+    label: "Middle",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2704",
+        sourceSketchId: source.id,
+        sourcePointId: missingPointId,
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2705",
+      },
+    ],
+  })
+  const middleReference = middle.externalReferences?.[0]
+  if (!middleReference || !("projectedPointId" in middleReference)) {
+    throw new Error("The intermediate point reference is required.")
+  }
+  const target = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2706",
+    label: "Target",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2707",
+        sourceSketchId: middle.id,
+        sourcePointId: middleReference.projectedPointId,
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2708",
+      },
+    ],
+  })
+  return { source, middle, target }
+}
+
 describe("selectModelTreeHistory", () => {
   it("interleaves graph history and derives terminal bodies without mutating the snapshot", () => {
     const snapshot = { sketches: [sketch], features: [feature] }
@@ -75,6 +125,25 @@ describe("selectModelTreeHistory", () => {
 
     expect(view.rows.find((row) => row.ref.id === datum.id)?.datum).toBe(true)
     expect(view.bodyFeatures.map(({ id }) => id)).toEqual([feature.id])
+  })
+
+  it("projects direct and chained sketch-reference failures onto their History rows", () => {
+    const { source, middle, target } = brokenReferenceChain()
+    const view = selectModelTreeHistory({ sketches: [source, middle, target], features: [] })
+
+    expect(view.rows.find(({ ref }) => ref.id === source.id)?.referenceHealth?.status).toBe(
+      "healthy",
+    )
+    expect(view.rows.find(({ ref }) => ref.id === middle.id)?.referenceHealth).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [middle.externalReferences?.[0]?.id],
+      transitiveBrokenReferenceIds: [],
+    })
+    expect(view.rows.find(({ ref }) => ref.id === target.id)?.referenceHealth).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [],
+      transitiveBrokenReferenceIds: [target.externalReferences?.[0]?.id],
+    })
   })
 
   it("builds one bounded label lookup for a large independent history", () => {

@@ -9,7 +9,9 @@ import {
   datumPlaneFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  sketchEntityIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
@@ -59,6 +61,41 @@ const controller = {
     snapshot: { features: [feature], revision: 7, sketches: [sketch] },
   },
 } as unknown as DocumentControllerState
+
+function controllerWithBrokenSketchReference() {
+  const source = createEmptySketch({
+    id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2801"),
+    label: "Source",
+    plane: "xy",
+  })
+  const target = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2802",
+    label: "Dependent",
+    plane: "xy",
+    entities: [],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: "0195b5ac-b220-7a2c-8c33-67a36a7f2803",
+        sourceSketchId: source.id,
+        sourcePointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2804"),
+        projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f2805",
+      },
+    ],
+  })
+  return {
+    target,
+    controller: {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [feature], revision: 8, sketches: [source, target] },
+      },
+    } as unknown as DocumentControllerState,
+  }
+}
 
 class ResizeObserverMock {
   observe() {}
@@ -312,6 +349,22 @@ describe("ModelTree selection", () => {
     await user.click(screen.getByRole("treeitem", { name: "Profile" }))
 
     expect(onSketchActivate).toHaveBeenCalledWith(sketchId)
+  })
+
+  it("surfaces broken sketch references and opens the affected sketch for repair", async () => {
+    const user = userEvent.setup()
+    const onSketchActivate = vi.fn()
+    const broken = controllerWithBrokenSketchReference()
+
+    renderTree({ controller: broken.controller, onSketchActivate })
+
+    expect(screen.getByText("Needs repair: 1 direct failure; no chained failures.")).toBeTruthy()
+    const repair = screen.getByRole("button", {
+      name: "Open Dependent to repair 1 broken reference",
+    })
+    expect(repair.querySelector("svg")).toBeTruthy()
+    await user.click(repair)
+    expect(onSketchActivate).toHaveBeenCalledWith(broken.target.id)
   })
 })
 

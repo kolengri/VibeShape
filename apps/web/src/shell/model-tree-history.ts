@@ -2,8 +2,10 @@ import {
   createDocumentDependencyGraphFromSnapshot,
   type DocumentNodeRef,
   type FeatureRecord,
+  inspectSketchReferenceHealth,
   readDatumPlaneFeatureParameters,
   type SketchRecord,
+  type SketchReferenceHealth,
 } from "@vibeshape/domain"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
 
@@ -14,6 +16,7 @@ export type HistoryViewRow = Readonly<{
   datum: boolean
   dependencies: readonly DocumentNodeRef[]
   dependents: readonly DocumentNodeRef[]
+  referenceHealth: SketchReferenceHealth | null
 }>
 
 export type ModelTreeHistoryView = Readonly<{
@@ -35,6 +38,7 @@ function labelsByRef(rows: readonly HistoryViewRow[]) {
 }
 
 export function selectModelTreeHistory(snapshot: Snapshot): ModelTreeHistoryView {
+  const referenceHealth = inspectSketchReferenceHealth(snapshot.sketches)
   const graphResult = createDocumentDependencyGraphFromSnapshot(snapshot)
   if (!graphResult.ok) {
     // Keep visibility bounded and deterministic, but never invent an interleaving on failure.
@@ -46,6 +50,7 @@ export function selectModelTreeHistory(snapshot: Snapshot): ModelTreeHistoryView
         datum: false,
         dependencies: [],
         dependents: [],
+        referenceHealth: referenceHealth.get(record.id) ?? null,
       })),
       ...snapshot.features.map((record) => ({
         ref: { kind: "feature" as const, id: record.id },
@@ -54,6 +59,7 @@ export function selectModelTreeHistory(snapshot: Snapshot): ModelTreeHistoryView
         datum: readDatumPlaneFeatureParameters(record) !== null,
         dependencies: [],
         dependents: [],
+        referenceHealth: null,
       })),
     ]
     return {
@@ -78,6 +84,10 @@ export function selectModelTreeHistory(snapshot: Snapshot): ModelTreeHistoryView
           readDatumPlaneFeatureParameters(node.record as FeatureRecord) !== null,
         dependencies: graph.dependenciesOf(ref),
         dependents: graph.dependentsOf(ref),
+        referenceHealth:
+          ref.kind === "sketch"
+            ? (referenceHealth.get(node.record.id as SketchRecord["id"]) ?? null)
+            : null,
       },
     ]
   })
