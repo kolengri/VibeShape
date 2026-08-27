@@ -37,7 +37,12 @@ import {
 } from "@vibeshape/protocol"
 import type { SketchCompilationInput, SolveSketchRecordResult } from "@vibeshape/sketch-solver"
 import { isAnyObject, isError, isInteger, isString } from "is-what"
-import { resolveExternalSketchGeometry, type SketchSolveCache } from "./external-sketch-references"
+import {
+  type ExternalModelMaterializationCache,
+  inspectExternalModelReferenceHealth,
+  resolveExternalSketchGeometry,
+  type SketchSolveCache,
+} from "./external-sketch-references"
 import {
   createDocumentFeatureContentPreparer,
   shouldPrepareDocumentFeatureContent,
@@ -493,6 +498,7 @@ export class DocumentWorkerRuntime {
       return
     }
     const solvedBySketchId: SketchSolveCache = new Map()
+    const modelMaterializationCache: ExternalModelMaterializationCache = new Map()
     const sectionPlanarFace = this.engine.sectionPlanarFace?.bind(this.engine)
     const result = await rebuildDocumentFeatures({
       document: request.document,
@@ -505,6 +511,7 @@ export class DocumentWorkerRuntime {
         this.solveSketch,
         solvedBySketchId,
         sectionPlanarFace,
+        modelMaterializationCache,
       ),
       shouldPrepareFeatureContent: shouldPrepareDocumentFeatureContent,
       evaluateGeometry: async (evaluation) => {
@@ -535,6 +542,24 @@ export class DocumentWorkerRuntime {
       return
     }
 
+    const modelReferenceEvidence = await inspectExternalModelReferenceHealth(
+      documentSnapshotSchema.parse(request.document),
+      result.features,
+      result.geometry,
+      sectionPlanarFace,
+      modelMaterializationCache,
+      () => !this.#isStale(request),
+    )
+    if (this.#isStale(request)) {
+      this.#postFailure(
+        request,
+        "stale-generation",
+        "The model reference evidence generation became stale.",
+        false,
+      )
+      return
+    }
+
     const sketches = await createSketchDisplayRecords(
       documentSnapshotSchema.parse(request.document),
       this.solveSketch,
@@ -542,6 +567,7 @@ export class DocumentWorkerRuntime {
       result.features,
       result.geometry,
       sectionPlanarFace,
+      modelMaterializationCache,
     )
     if (this.#isStale(request)) {
       this.#postFailure(
@@ -561,6 +587,7 @@ export class DocumentWorkerRuntime {
       evaluation: result.evaluation,
       geometry: result.geometry.map(cloneGeometry),
       sketches,
+      modelReferenceEvidence,
     })
   }
 

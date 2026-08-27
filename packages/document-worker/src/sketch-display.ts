@@ -4,7 +4,11 @@ import {
   type SketchDisplayRecord,
 } from "@vibeshape/application/sketch-display"
 import type { DocumentSnapshot, FeatureRecord } from "@vibeshape/domain"
-import type { PlanarFaceSectionPort, SketchSolveCache } from "./external-sketch-references"
+import type {
+  ExternalModelMaterializationCache,
+  PlanarFaceSectionPort,
+  SketchSolveCache,
+} from "./external-sketch-references"
 import { solveSketchOnce } from "./extrusion-content"
 import type { SketchSolvePort } from "./runtime"
 
@@ -15,6 +19,7 @@ export async function createSketchDisplayRecords(
   features: readonly FeatureRecord[] = document.features,
   geometry: readonly FeatureGeometryRecord[] = [],
   sectionPlanarFace?: PlanarFaceSectionPort,
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): Promise<readonly SketchDisplayRecord[]> {
   const records: SketchDisplayRecord[] = []
   for (const sketch of document.sketches) {
@@ -29,6 +34,7 @@ export async function createSketchDisplayRecords(
           features,
           geometry,
           sectionPlanarFace,
+          modelMaterializationCache,
         )
       } catch {
         // The authored fallback keeps a broken sketch inspectable without failing the solid rebuild.

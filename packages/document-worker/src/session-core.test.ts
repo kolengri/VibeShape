@@ -82,6 +82,7 @@ function successfulResponse(request: DocumentWorkerRequest): DocumentWorkerTermi
       },
       geometry: [],
       sketches: [],
+      modelReferenceEvidence: [],
     }
   }
   if (request.type === "healthCheck") {

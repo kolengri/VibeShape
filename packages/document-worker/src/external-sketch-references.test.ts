@@ -13,7 +13,11 @@ import {
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
 import { describe, expect, it, vi } from "vitest"
-import { resolveExternalSketchGeometry, type SketchSolvePort } from "./external-sketch-references"
+import {
+  inspectExternalModelReferenceHealth,
+  resolveExternalSketchGeometry,
+  type SketchSolvePort,
+} from "./external-sketch-references"
 
 const id = (suffix: string) => `0195b5ac-b220-7a2c-8c33-67a36a7f${suffix}`
 
@@ -167,6 +171,7 @@ describe("external sketch reference resolution", () => {
         [0, 8, 0],
       ] as const,
     }))
+    const modelMaterializationCache = new Map()
 
     const result = await resolveExternalSketchGeometry(
       document,
@@ -176,7 +181,47 @@ describe("external sketch reference resolution", () => {
       new Map(),
       geometry,
       sectionPlanarFace,
+      new Map(),
+      modelMaterializationCache,
     )
+
+    await expect(
+      inspectExternalModelReferenceHealth(
+        document,
+        [],
+        geometry,
+        sectionPlanarFace,
+        modelMaterializationCache,
+      ),
+    ).resolves.toEqual([{ sketchId: target.id, referenceId: id("4641"), status: "resolved" }])
+    expect(sectionPlanarFace).toHaveBeenCalledTimes(1)
+
+    const secondReference = {
+      ...target.externalReferences?.[0],
+      id: id("4646"),
+      projectedLineId: id("4647"),
+      projectedStartPointId: id("4648"),
+      projectedEndPointId: id("4649"),
+    }
+    const multiReferenceTarget = sketchRecordSchema.parse({
+      ...target,
+      externalReferences: [target.externalReferences?.[0], secondReference],
+    })
+    const multiReferenceDocument = documentSnapshotSchema.parse({
+      ...document,
+      sketches: [multiReferenceTarget],
+    })
+    let currentChecks = 0
+    const staleEvidence = await inspectExternalModelReferenceHealth(
+      multiReferenceDocument,
+      [],
+      geometry,
+      sectionPlanarFace,
+      new Map(),
+      () => currentChecks++ === 0,
+    )
+    expect(staleEvidence).toEqual([])
+    expect(sectionPlanarFace).toHaveBeenCalledTimes(2)
 
     expect(sectionPlanarFace).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -336,6 +381,40 @@ describe("external sketch reference resolution", () => {
         endPoint: expect.objectContaining({ x: 4, y: 0 }),
       }),
     )
+
+    await expect(inspectExternalModelReferenceHealth(document, [], geometry)).resolves.toEqual([
+      { sketchId: target.id, referenceId: id("4601"), status: "resolved" },
+      { sketchId: target.id, referenceId: id("4603"), status: "resolved" },
+    ])
+    await expect(inspectExternalModelReferenceHealth(document, [], [])).resolves.toEqual([
+      { sketchId: target.id, referenceId: id("4601"), status: "broken" },
+      { sketchId: target.id, referenceId: id("4603"), status: "broken" },
+    ])
+    const degenerateGeometry = [
+      {
+        ...geometry[0],
+        geometry: {
+          topologyCandidates: geometry[0]?.geometry.topologyCandidates.map((topology) =>
+            topology.kind === "edge"
+              ? {
+                  ...topology,
+                  referenceGeometry: {
+                    kind: "line-edge" as const,
+                    start: [0, 0, 0] as const,
+                    end: [0, 0, 5] as const,
+                  },
+                }
+              : topology,
+          ),
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+    await expect(
+      inspectExternalModelReferenceHealth(document, [], degenerateGeometry),
+    ).resolves.toEqual([
+      { sketchId: target.id, referenceId: id("4601"), status: "resolved" },
+      { sketchId: target.id, referenceId: id("4603"), status: "broken" },
+    ])
   })
 
   it("resolves one intermediate external-geometry source once per request", async () => {

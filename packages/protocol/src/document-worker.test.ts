@@ -635,6 +635,7 @@ describe("document worker protocol", () => {
           constructionPointPositions: new Float32Array(),
         },
       ],
+      modelReferenceEvidence: [],
     } as const
 
     expect(documentWorkerResponseSchema.parse(response)).toMatchObject({
@@ -654,6 +655,46 @@ describe("document worker protocol", () => {
       documentWorkerResponseSchema.safeParse({
         ...response,
         sketches: [...response.sketches, response.sketches[0]],
+      }).success,
+    ).toBe(false)
+  })
+
+  it("accepts bounded model-reference health evidence without diagnostic messages", () => {
+    const response = {
+      ...envelope(),
+      type: "documentRebuilt",
+      evaluation: {
+        records: [],
+        dirtyFeatureIds: [],
+        evaluatedFeatureIds: [],
+        reusedFeatureIds: [],
+      },
+      geometry: [],
+      sketches: [],
+      modelReferenceEvidence: [
+        { sketchId, referenceId: externalReferenceId, status: "resolved" },
+        { sketchId, referenceId: projectedCurvePointId, status: "broken" },
+      ],
+    } as const
+    expect(documentWorkerResponseSchema.parse(response)).toMatchObject({
+      modelReferenceEvidence: [
+        { sketchId, referenceId: externalReferenceId, status: "resolved" },
+        { sketchId, referenceId: projectedCurvePointId, status: "broken" },
+      ],
+    })
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        modelReferenceEvidence: [{ ...response.modelReferenceEvidence[0], status: "missing" }],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        modelReferenceEvidence: [
+          response.modelReferenceEvidence[0],
+          { ...response.modelReferenceEvidence[0], status: "broken" },
+        ],
       }).success,
     ).toBe(false)
   })

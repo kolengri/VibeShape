@@ -139,6 +139,7 @@ class MemoryRebuildPort implements DocumentRebuildPort {
       },
       geometry: [],
       sketches: [],
+      modelReferenceEvidence: [],
     }
   }
 

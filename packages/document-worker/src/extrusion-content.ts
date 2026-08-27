@@ -26,6 +26,7 @@ import {
   type SolveSketchRecordResult,
 } from "@vibeshape/sketch-solver"
 import {
+  type ExternalModelMaterializationCache,
   type PlanarFaceSectionPort,
   resolveExternalSketchGeometry,
   type SketchSolveCache,
@@ -262,6 +263,7 @@ export function solveSketchOnce(
   features: readonly FeatureRecord[] = document.features,
   geometry: readonly FeatureGeometryRecord[] = [],
   sectionPlanarFace?: PlanarFaceSectionPort,
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ) {
   const cached = solvedBySketchId.get(sketch.id)
   if (cached) return cached
@@ -273,6 +275,8 @@ export function solveSketchOnce(
     solvedBySketchId,
     geometry,
     sectionPlanarFace,
+    new Map(),
+    modelMaterializationCache,
   ).then((externalGeometry) =>
     solveSketch({
       sketch,
@@ -313,6 +317,7 @@ async function prepareFeatureContent(
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>,
   geometry: readonly FeatureGeometryRecord[],
   sectionPlanarFace: PlanarFaceSectionPort | undefined,
+  modelMaterializationCache: ExternalModelMaterializationCache,
 ) {
   const datumPlane = readDatumPlaneFeatureParameters(feature)
   if (datumPlane) {
@@ -351,6 +356,7 @@ async function prepareFeatureContent(
       features,
       geometry,
       sectionPlanarFace,
+      modelMaterializationCache,
     ),
     document,
     sketch,
@@ -368,6 +374,7 @@ export function createDocumentFeatureContentPreparer(
   solveSketch: SketchSolvePort | null,
   solvedBySketchId: SketchSolveCache = new Map(),
   sectionPlanarFace?: PlanarFaceSectionPort,
+  modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): DocumentFeatureContentPreparationPort {
   return ({ document, feature, features = document.features, geometry = [] }) =>
     prepareFeatureContent(
@@ -378,5 +385,6 @@ export function createDocumentFeatureContentPreparer(
       solvedBySketchId,
       geometry,
       sectionPlanarFace,
+      modelMaterializationCache,
     )
 }

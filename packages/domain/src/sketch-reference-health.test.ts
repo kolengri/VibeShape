@@ -4,7 +4,7 @@ import {
   sketchEntityIdSchema,
   sketchExternalReferenceIdSchema,
 } from "./identifiers"
-import { sketchRecordSchema, type SketchRecord } from "./sketch"
+import { type SketchRecord, sketchRecordSchema } from "./sketch"
 import { inspectSketchReferenceHealth } from "./sketch-reference-health"
 
 const id = (value: number) => `0195b5ac-b220-7a2c-8c33-${value.toString().padStart(12, "0")}`
@@ -67,13 +67,13 @@ describe("inspectSketchReferenceHealth", () => {
       status: "healthy",
       directBrokenReferenceIds: [],
       transitiveBrokenReferenceIds: [],
-      uncheckedModelReferenceIds: [],
+      unknownReferenceIds: [],
     })
     expect(health.get(broken.id)).toEqual({
       status: "broken",
       directBrokenReferenceIds: [broken.externalReferences?.[0]?.id],
       transitiveBrokenReferenceIds: [],
-      uncheckedModelReferenceIds: [],
+      unknownReferenceIds: [],
     })
   })
 
@@ -186,7 +186,7 @@ describe("inspectSketchReferenceHealth", () => {
     })
   })
 
-  it("keeps model-topology references unknown until rebuilt geometry can resolve them", () => {
+  it("merges worker model evidence and propagates a broken projection through sketch chains", () => {
     const sketch = sketchRecordSchema.parse({
       schemaVersion: 0,
       id: id(50),
@@ -222,7 +222,33 @@ describe("inspectSketchReferenceHealth", () => {
       status: "unknown",
       directBrokenReferenceIds: [],
       transitiveBrokenReferenceIds: [],
-      uncheckedModelReferenceIds: [sketch.externalReferences?.[0]?.id],
+      unknownReferenceIds: [sketch.externalReferences?.[0]?.id],
+    })
+
+    expect(
+      inspectSketchReferenceHealth([sketch], [sketch], () => "resolved").get(sketch.id),
+    ).toEqual({
+      status: "healthy",
+      directBrokenReferenceIds: [],
+      transitiveBrokenReferenceIds: [],
+      unknownReferenceIds: [],
+    })
+
+    const modelReference = sketch.externalReferences?.[0]
+    if (!modelReference || !("projectedPointId" in modelReference)) {
+      throw new Error("The projected model point fixture is required.")
+    }
+    const dependent = projectedPointSketch(51, "Dependent", sketch, modelReference.projectedPointId)
+    const broken = inspectSketchReferenceHealth([sketch, dependent], undefined, () => "broken")
+
+    expect(broken.get(sketch.id)).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [modelReference.id],
+    })
+    expect(broken.get(dependent.id)).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [],
+      transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
     })
   })
 })
