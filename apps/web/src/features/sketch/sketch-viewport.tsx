@@ -2007,7 +2007,15 @@ function SketchAvailableExternalGeometry({
   onUse: (candidate: ExternalUseCandidate) => void
 }>) {
   const t = useTranslations("app.sketch.viewport")
+  const viewportT = useTranslations("app.shell.viewport")
   const [chooser, setChooser] = useState<ExternalUseOverlapChooser | null>(null)
+  const [focusedPreselection, setFocusedPreselection] = useState<ExternalUsePreselection | null>(
+    null,
+  )
+  const [hoveredPreselection, setHoveredPreselection] = useState<ExternalUsePreselection | null>(
+    null,
+  )
+  const preselection = hoveredPreselection ?? focusedPreselection
   const chooserRef = useRef<HTMLDivElement>(null)
   const firstChoiceRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -2033,6 +2041,11 @@ function SketchAvailableExternalGeometry({
       document.removeEventListener("keydown", closeOnEscape, true)
     }
   }, [chooser])
+  const useCandidate = (candidate: ExternalUseCandidate) => {
+    setFocusedPreselection(null)
+    setHoveredPreselection(null)
+    onUse(candidate)
+  }
   if (candidates.length === 0) return null
   return (
     <>
@@ -2048,12 +2061,25 @@ function SketchAvailableExternalGeometry({
             aria-label={candidate.label}
             className="group cursor-crosshair outline-none"
             data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
+            onBlur={() => setFocusedPreselection(null)}
+            onFocus={(event) => {
+              const rectangle = event.currentTarget.getBoundingClientRect()
+              setFocusedPreselection({
+                candidate,
+                clientX: rectangle.left + rectangle.width / 2,
+                clientY: rectangle.top + rectangle.height / 2,
+              })
+            }}
+            onPointerEnter={(event) =>
+              setHoveredPreselection({ candidate, clientX: event.clientX, clientY: event.clientY })
+            }
+            onPointerLeave={() => setHoveredPreselection(null)}
             onPointerDown={(event) => {
               if (event.button !== 0) return
               event.preventDefault()
               event.stopPropagation()
               const rectangle = event.currentTarget.ownerSVGElement?.getBoundingClientRect()
-              if (!rectangle) return onUse(candidate)
+              if (!rectangle) return useCandidate(candidate)
               const point = pointerToSketchPoint(event, rectangle, bounds)
               const choices = overlappingExternalUseCandidates(
                 candidates,
@@ -2061,7 +2087,7 @@ function SketchAvailableExternalGeometry({
                 point,
                 externalUseHitTolerance(bounds, rectangle),
               )
-              if (choices.length === 1) return onUse(candidate)
+              if (choices.length === 1) return useCandidate(candidate)
               setChooser({
                 choices,
                 clientX: event.clientX,
@@ -2073,7 +2099,7 @@ function SketchAvailableExternalGeometry({
               if (event.key !== "Enter" && event.key !== " ") return
               event.preventDefault()
               event.stopPropagation()
-              onUse(candidate)
+              useCandidate(candidate)
             }}
             role="button"
             tabIndex={0}
@@ -2105,12 +2131,25 @@ function SketchAvailableExternalGeometry({
                   variant="ghost"
                   onClick={() => {
                     setChooser(null)
-                    onUse(choice)
+                    useCandidate(choice)
                   }}
                 >
                   {choice.label}
                 </Button>
               ))}
+            </div>,
+            document.body,
+          )
+        : null}
+      {preselection
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-40 max-w-72 rounded-md border border-amber-500/50 bg-background/95 px-2 py-1 text-xs font-medium shadow-sm"
+              data-sketch-use-target-label={preselection.candidate.label}
+              role="status"
+              style={externalUsePreselectionPosition(preselection)}
+            >
+              {viewportT("sketchReferenceCandidate", { label: preselection.candidate.label })}
             </div>,
             document.body,
           )
@@ -2127,6 +2166,19 @@ type ExternalUseOverlapChooser = Readonly<{
   clientY: number
   focusTarget: SVGGElement
 }>
+
+type ExternalUsePreselection = Readonly<{
+  candidate: ExternalUseCandidate
+  clientX: number
+  clientY: number
+}>
+
+function externalUsePreselectionPosition(preselection: ExternalUsePreselection): CSSProperties {
+  return {
+    left: Math.min(Math.max(8, preselection.clientX + 12), Math.max(8, window.innerWidth - 296)),
+    top: Math.min(Math.max(8, preselection.clientY + 12), Math.max(8, window.innerHeight - 48)),
+  }
+}
 
 function externalOverlapChooserPosition(chooser: ExternalUseOverlapChooser): CSSProperties {
   return {
@@ -6389,6 +6441,7 @@ function SketchDrawingView({
         state={state}
       />
       <SketchExternalInferenceInstruction candidate={state.externalInferenceCandidate} />
+      <SketchUseInstruction editorTool={configuration.editorTool} />
       <SketchMirrorInstruction
         editorTool={configuration.editorTool}
         pending={state.pending}
@@ -6531,6 +6584,20 @@ function SketchExternalInferenceInstruction({
       role="status"
     >
       {t("externalInferenceSource", { label: candidate.label })}
+    </div>
+  )
+}
+
+function SketchUseInstruction({ editorTool }: Readonly<{ editorTool: SketchEditorTool }>) {
+  const t = useTranslations("app.shell.viewport")
+  if (editorTool !== "use") return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-use-instruction
+      role="status"
+    >
+      {t("sketchReferenceSelection")}
     </div>
   )
 }
