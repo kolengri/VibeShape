@@ -207,6 +207,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     () =>
       ({
         closeTool: sessionActions.closeActiveTool,
+        beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
         createDatumPlane,

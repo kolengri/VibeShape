@@ -519,9 +519,11 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     execute: ({ actions }) => actions.createSketch(),
     getEligibility: canCreateFeature,
     id: editorCommandIds.createSketch,
-    isActive: ({ state }) => state.activeSketchTool?.kind === "select-sketch-plane",
+    isActive: ({ state }) =>
+      state.activeSketchTool?.kind === "select-sketch-plane" && !state.activeSketchTool.returnTo,
     isToolbarVisible: ({ state }) =>
-      state.activeSketchTool === null || state.activeSketchTool.kind === "select-sketch-plane",
+      state.activeSketchTool === null ||
+      (state.activeSketchTool.kind === "select-sketch-plane" && !state.activeSketchTool.returnTo),
     ownerModuleId: sketchOwner,
   },
   {

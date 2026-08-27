@@ -75,6 +75,7 @@ type TaskPanelProps = Readonly<{
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
+  onSketchSupportReplace: () => void
   onSketchSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSketchSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (
@@ -130,6 +131,7 @@ function useSketchEditorCopy() {
     externalReferences: t("externalReferences"),
     cancelReferenceRepair: t("cancelReferenceRepair"),
     repairReference: t("repairReference"),
+    replaceSupport: t("replaceSupport"),
     unavailableExternalReference: t("unavailableExternalReference"),
     attachSelectedPoint: t("attachSelectedPoint"),
     noExternalReferences: t("noExternalReferences"),
@@ -1111,6 +1113,7 @@ type ActiveSketchTaskPanelActions = Readonly<{
   onCreateExtrusion: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
+  onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (
@@ -1155,6 +1158,7 @@ function ActiveSketchTaskPanel({
     onCreateExtrusion,
     onDraftChange,
     onReferenceRepairChange,
+    onSupportReplace,
     onSelectedConstraintChange,
     onSelectedProfileChange,
     onSketchSaved,
@@ -1258,6 +1262,7 @@ function ActiveSketchTaskPanel({
             onExtrude: extrude,
             onFinish: finish,
             onReferenceRepairChange,
+            onSupportReplace,
             onSelectedConstraintChange,
             onSelectedProfileChange,
           }}
@@ -1268,19 +1273,22 @@ function ActiveSketchTaskPanel({
 }
 
 function SketchPlaneSelectionTaskPanel({
+  mode,
   onCancel,
   onPlaneSelect,
 }: {
+  mode: "create" | "replace"
   onCancel: () => void
   onPlaneSelect: (plane: SketchRecord["plane"]) => void
 }) {
   const t = useTranslations("app.shell.taskPanel.sketch")
+  const title = mode === "replace" ? t("supportReplacementTitle") : t("planeSelectionTitle")
+  const description =
+    mode === "replace" ? t("supportReplacementDescription") : t("planeSelectionDescription")
   return (
     <aside aria-label={t("taskAriaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
-      <h2 className="text-sm font-medium">{t("planeSelectionTitle")}</h2>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">
-        {t("planeSelectionDescription")}
-      </p>
+      <h2 className="text-sm font-medium">{title}</h2>
+      <p className="mt-2 text-xs leading-4 text-muted-foreground">{description}</p>
       <fieldset className="mt-4 grid grid-cols-3 gap-2">
         <legend className="sr-only">{t("plane")}</legend>
         <Button type="button" size="sm" variant="outline" onClick={() => onPlaneSelect("xy")}>
@@ -1467,6 +1475,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
           onCreateExtrusion: props.onCreateExtrusion,
           onDraftChange: props.onSketchDraftChange,
           onReferenceRepairChange: props.onSketchReferenceRepairChange,
+          onSupportReplace: props.onSketchSupportReplace,
           onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
           onSelectedProfileChange: props.onSketchSelectedProfileChange,
           onSketchSaved: props.onSketchSaved,
@@ -1504,6 +1513,7 @@ export function TaskPanel(props: TaskPanelProps) {
   if (props.activeSketchTool?.kind === "select-sketch-plane" && props.sketchDraft) {
     return (
       <SketchPlaneSelectionTaskPanel
+        mode={props.activeSketchTool.returnTo ? "replace" : "create"}
         onCancel={props.onCloseTool}
         onPlaneSelect={props.onSketchPlaneSelect}
       />

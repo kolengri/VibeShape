@@ -30,6 +30,35 @@ function createProfile(): SketchProfileSelector {
   }
 }
 
+function selectedFeatureFaceSupport() {
+  return {
+    plane: "xy" as const,
+    support: {
+      kind: "feature-face" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "face" as const,
+        semanticRole: "extrusion.cap.end",
+        signature: {
+          kind: "face" as const,
+          geometryClass: "PLANE" as const,
+          measure: 400,
+          centroid: [0, 0, 10] as [number, number, number],
+          bounds: {
+            min: [-10, -10, 10] as [number, number, number],
+            max: [10, 10, 10] as [number, number, number],
+          },
+          direction: [0, 0, 1] as [number, number, number],
+          directionMode: "oriented" as const,
+          boundaryCount: 4,
+          adjacentGeometryClasses: ["PLANE"],
+        },
+      },
+    },
+  }
+}
+
 describe("editor session store", () => {
   it("owns one external-reference repair mode and clears it with ordinary tool changes", () => {
     const store = createEditorSessionStore()
@@ -175,32 +204,7 @@ describe("editor session store", () => {
   it("starts a sketch directly on a selected planar feature face", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch()
-    const support = {
-      plane: "xy" as const,
-      support: {
-        kind: "feature-face" as const,
-        reference: {
-          schemaVersion: 0 as const,
-          featureId,
-          kind: "face" as const,
-          semanticRole: "extrusion.cap.end",
-          signature: {
-            kind: "face" as const,
-            geometryClass: "PLANE" as const,
-            measure: 400,
-            centroid: [0, 0, 10] as [number, number, number],
-            bounds: {
-              min: [-10, -10, 10] as [number, number, number],
-              max: [10, 10, 10] as [number, number, number],
-            },
-            direction: [0, 0, 1] as [number, number, number],
-            directionMode: "oriented" as const,
-            boundaryCount: 4,
-            adjacentGeometryClasses: ["PLANE"],
-          },
-        },
-      },
-    }
+    const support = selectedFeatureFaceSupport()
 
     store.getState().actions.beginSketchCreate(sketch)
     store.getState().actions.selectSketchSupport(support)
@@ -212,6 +216,94 @@ describe("editor session store", () => {
         activeSketchTool: { kind: "create-sketch" },
         draft: { support: support.support },
         editorTool: "line",
+      },
+    })
+  })
+
+  it("replaces or cancels sketch support while preserving edit context and local history", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+    const support = selectedFeatureFaceSupport()
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchEditorTool("circle")
+    store.getState().actions.beginSketchSupportReplacement()
+    expect(store.getState()).toMatchObject({
+      selection: null,
+      workspace: "model",
+      sketch: {
+        activeSketchTool: {
+          kind: "select-sketch-plane",
+          returnTo: {
+            cameraMode: "normal",
+            showFinalContext: false,
+            tool: { kind: "edit-sketch", sketchId },
+          },
+        },
+        draft: sketch,
+        editorTool: "circle",
+      },
+    })
+
+    store.getState().actions.closeActiveTool()
+    expect(store.getState()).toMatchObject({
+      workspace: "sketch",
+      sketch: {
+        activeSketchTool: { kind: "edit-sketch", sketchId },
+        draft: sketch,
+        editorTool: "circle",
+      },
+    })
+
+    store.getState().actions.beginSketchSupportReplacement()
+    store.getState().actions.selectSketchSupport(support)
+    expect(store.getState()).toMatchObject({
+      workspace: "sketch",
+      sketch: {
+        activeSketchTool: { kind: "edit-sketch", sketchId },
+        draft: { id: sketchId, support: support.support },
+        editorTool: "select",
+        undoStack: [sketch],
+      },
+    })
+
+    store.getState().actions.undoSketchDraft()
+    store.getState().actions.beginSketchSupportReplacement()
+    store.getState().actions.selectSketchPlane("xz")
+    expect(store.getState().sketch.draft).toMatchObject({ id: sketchId, plane: "xz" })
+    expect(store.getState().sketch.draft?.support).toBeUndefined()
+  })
+
+  it("forces rollback context while replacing support and restores presentation on cancel", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchCameraMode("orbit")
+    store.getState().actions.setSketchFinalContext(true)
+    store.getState().actions.beginSketchSupportReplacement()
+
+    expect(store.getState().sketch).toMatchObject({
+      cameraMode: "normal",
+      showFinalContext: false,
+      activeSketchTool: {
+        kind: "select-sketch-plane",
+        returnTo: {
+          cameraMode: "orbit",
+          showFinalContext: true,
+          tool: { kind: "edit-sketch", sketchId },
+        },
+      },
+    })
+
+    store.getState().actions.closeActiveTool()
+
+    expect(store.getState()).toMatchObject({
+      workspace: "sketch",
+      sketch: {
+        activeSketchTool: { kind: "edit-sketch", sketchId },
+        cameraMode: "orbit",
+        showFinalContext: true,
       },
     })
   })

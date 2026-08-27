@@ -35,6 +35,7 @@ import {
   removeSketchEntities,
   removeSketchExternalReference,
   replaceSketchExternalReference,
+  replaceSketchSupport,
   setSketchDimensionValue,
   setSketchEntityConstruction,
   sketchEllipticalArcGeometry,
@@ -106,6 +107,78 @@ function topologyReferenceWithRole<Reference extends TopoRef>(
 }
 
 describe("sketch editing", () => {
+  it("replaces an origin-plane sketch support with a validated feature face", () => {
+    const sketch = createEmptySketch({ id: sketchId, label: "Profile", plane: "xy" })
+    const reference = topologyReference("face", "0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+
+    const result = replaceSketchSupport(sketch, {
+      kind: "feature-face",
+      plane: "xy",
+      support: { kind: "feature-face", reference },
+    })
+
+    expect(result).toMatchObject({ plane: "xy", support: { kind: "feature-face", reference } })
+  })
+
+  it("replaces a feature-face support with an origin plane and removes stale support", () => {
+    const reference = topologyReference("face", "0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const sketch = createEmptySketch({
+      id: sketchId,
+      label: "Profile",
+      plane: "xy",
+      support: { kind: "feature-face", reference },
+    })
+
+    const result = replaceSketchSupport(sketch, { kind: "origin-plane", plane: "xz" })
+
+    expect(result.plane).toBe("xz")
+    expect("support" in result).toBe(false)
+  })
+
+  it("preserves sketch and authored entity, constraint, and external-reference identities", () => {
+    const reference = topologyReference("face", "0195b5ac-b220-7a2c-8c33-67a36a7f3301")
+    const initial = appendSketchPoint(empty(), {
+      createEntityId: entityId,
+      point: { x: 3, y: 4 },
+    }).sketch
+    const point = initial.entities[0]
+    if (point?.type !== "point") throw new Error("The identity fixture requires a point.")
+    const withReference = sketchRecordSchema.parse({
+      ...initial,
+      constraints: [{ schemaVersion: 0, id: constraintId(), type: "fixed", pointId: point.id }],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-b000-000000000001" as SketchExternalReferenceId,
+          kind: "model-point",
+          reference: topologyReference("vertex", "0195b5ac-b220-7a2c-8c33-67a36a7f3302"),
+          projectedPointId: "018f0000-0000-7000-9000-000000000002" as SketchEntityId,
+        },
+      ],
+      support: { kind: "feature-face", reference },
+    })
+
+    const result = replaceSketchSupport(withReference, { kind: "origin-plane", plane: "yz" })
+
+    expect(result.id).toBe(withReference.id)
+    expect(result.entities).toEqual(withReference.entities)
+    expect(result.constraints).toEqual(withReference.constraints)
+    expect(result.externalReferences).toEqual(withReference.externalReferences)
+  })
+
+  it("fails closed when the replacement support is invalid", () => {
+    expect(() =>
+      replaceSketchSupport(empty(), {
+        kind: "feature-face",
+        plane: "xy",
+        support: {
+          kind: "feature-face",
+          reference: topologyReference("edge", "0195b5ac-b220-7a2c-8c33-67a36a7f3301"),
+        },
+      } as never),
+    ).toThrow()
+  })
+
   it("appends a standalone analytical point", () => {
     const result = appendSketchPoint(empty(), {
       construction: true,

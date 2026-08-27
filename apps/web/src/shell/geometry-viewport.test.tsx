@@ -76,7 +76,8 @@ function renderViewport(
   controller: DocumentControllerState,
   selection: ViewerSelection | null = null,
   originPlaneSelection?: Readonly<{
-    selectedPlane: "xy" | "xz" | "yz"
+    mode: "create" | "replace"
+    selectedPlane: "xy" | "xz" | "yz" | null
     onSelect: (plane: "xy" | "xz" | "yz") => void
   }>,
   featurePreview?: FeaturePreviewState,
@@ -711,6 +712,7 @@ describe("GeometryViewport", () => {
   it("initializes an empty 3D viewport for origin-plane preselection and selection", async () => {
     const onSelect = vi.fn()
     const { createViewport, port } = renderViewport(readyController([], []), null, {
+      mode: "create",
       selectedPlane: "xz",
       onSelect,
     })
@@ -730,6 +732,22 @@ describe("GeometryViewport", () => {
     )
     options?.onOriginPlaneSelectionChange?.("xy")
     expect(onSelect).toHaveBeenCalledWith("xy")
+  })
+
+  it("explains graphical support replacement without highlighting a false origin plane", async () => {
+    const { port } = renderViewport(readyController([], []), null, {
+      mode: "replace",
+      selectedPlane: null,
+      onSelect: vi.fn(),
+    })
+
+    await waitFor(() => expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null))
+    expect(
+      screen.getByText(
+        "Select an earlier origin plane, datum plane, or supported planar model face to replace the sketch support.",
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText("Current support: model face")).toBeTruthy()
   })
 
   it("forwards individual origin-plane visibility and exposes accessible toggles", async () => {

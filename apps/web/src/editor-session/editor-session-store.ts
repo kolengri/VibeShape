@@ -7,7 +7,7 @@ import type {
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
-import { isSketchExternalModelReference } from "@vibeshape/domain"
+import { isSketchExternalModelReference, replaceSketchSupport } from "@vibeshape/domain"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -19,10 +19,11 @@ import { immer } from "zustand/middleware/immer"
 import { createStore } from "zustand/vanilla"
 import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
 import type { SelectedSketchSupport } from "../features/sketch/sketch-support"
-import type {
-  ActiveSketchTool,
-  SketchDraftChangeMode,
-  SketchEditorTool,
+import {
+  type ActiveSketchTool,
+  isActiveSketchEditorTool,
+  type SketchDraftChangeMode,
+  type SketchEditorTool,
 } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
 
@@ -63,6 +64,7 @@ export type EditorSessionState = Readonly<{
 export type EditorSessionActions = Readonly<{
   beginSketchCreate: (sketch: SketchRecord) => void
   beginSketchEdit: (sketch: SketchRecord) => void
+  beginSketchSupportReplacement: () => void
   closeActiveTool: () => void
   redoSketchDraft: () => void
   saveSketch: (
@@ -203,9 +205,35 @@ export function createEditorSessionStore() {
             resetSketchDraft(state.sketch, sketch)
             resetSketchPresentation(state.sketch, "select")
           }),
+        beginSketchSupportReplacement: () =>
+          set((state) => {
+            const tool = state.sketch.activeSketchTool
+            if (!tool || !isActiveSketchEditorTool(tool) || !state.sketch.draft) return
+            state.workspace = "model"
+            state.selection = null
+            state.sketch.activeSketchTool = {
+              kind: "select-sketch-plane",
+              returnTo: {
+                cameraMode: state.sketch.cameraMode,
+                showFinalContext: state.sketch.showFinalContext,
+                tool,
+              },
+            }
+            state.sketch.cameraMode = "normal"
+            state.sketch.showFinalContext = false
+          }),
         closeActiveTool: () =>
           set((state) => {
             state.activePartDesignTool = null
+            const activeSketchTool = state.sketch.activeSketchTool
+            if (activeSketchTool?.kind === "select-sketch-plane" && activeSketchTool.returnTo) {
+              state.workspace = "sketch"
+              state.selection = null
+              state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
+              state.sketch.cameraMode = activeSketchTool.returnTo.cameraMode
+              state.sketch.showFinalContext = activeSketchTool.returnTo.showFinalContext
+              return
+            }
             closeSketch(state.sketch)
           }),
         redoSketchDraft: () => {
@@ -242,12 +270,20 @@ export function createEditorSessionStore() {
         selectSketchPlane: (plane) => {
           const { activeSketchTool, draft } = get().sketch
           if (activeSketchTool?.kind !== "select-sketch-plane" || !draft) return
+          const nextDraft = replaceSketchSupport(draft, { kind: "origin-plane", plane })
           set((state) => {
             if (!state.sketch.draft) return
-            state.sketch.draft.plane = plane
-            delete state.sketch.draft.support
-            state.sketch.activeSketchTool = { kind: "create-sketch" }
-            resetSketchPresentation(state.sketch, "line")
+            if (activeSketchTool.returnTo) {
+              pushBoundedHistory(state.sketch.undoStack, state.sketch.draft)
+              state.sketch.redoStack = []
+              state.sketch.draft = nextDraft
+              state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
+              resetSketchPresentation(state.sketch, "select")
+            } else {
+              state.sketch.draft = nextDraft
+              state.sketch.activeSketchTool = { kind: "create-sketch" }
+              resetSketchPresentation(state.sketch, "line")
+            }
             state.workspace = "sketch"
             state.selection = null
           })
@@ -255,12 +291,24 @@ export function createEditorSessionStore() {
         selectSketchSupport: ({ plane, support }) => {
           const { activeSketchTool, draft } = get().sketch
           if (activeSketchTool?.kind !== "select-sketch-plane" || !draft) return
+          const nextDraft = replaceSketchSupport(draft, {
+            kind: "feature-face",
+            plane,
+            support,
+          })
           set((state) => {
             if (!state.sketch.draft) return
-            state.sketch.draft.plane = plane
-            state.sketch.draft.support = support
-            state.sketch.activeSketchTool = { kind: "create-sketch" }
-            resetSketchPresentation(state.sketch, "line")
+            if (activeSketchTool.returnTo) {
+              pushBoundedHistory(state.sketch.undoStack, state.sketch.draft)
+              state.sketch.redoStack = []
+              state.sketch.draft = nextDraft
+              state.sketch.activeSketchTool = activeSketchTool.returnTo.tool
+              resetSketchPresentation(state.sketch, "select")
+            } else {
+              state.sketch.draft = nextDraft
+              state.sketch.activeSketchTool = { kind: "create-sketch" }
+              resetSketchPresentation(state.sketch, "line")
+            }
             state.workspace = "sketch"
             state.selection = null
           })

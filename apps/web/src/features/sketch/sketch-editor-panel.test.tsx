@@ -82,6 +82,7 @@ const copy = {
   rectangle: "Rectangle",
   redo: "Redo",
   remove: "Remove",
+  replaceSupport: "Replace support",
   saveDimension: "Save dimension",
   selectionHint: "Select geometry to see compatible constraints.",
   secondaryAxisDiameter: "Secondary axis diameter",
@@ -141,6 +142,9 @@ function renderPanel(
   onReferenceRepairChange: React.ComponentProps<
     typeof SketchEditorPanel
   >["actions"]["onReferenceRepairChange"] = vi.fn(),
+  onSupportReplace: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["actions"]["onSupportReplace"] = vi.fn(),
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -169,6 +173,7 @@ function renderPanel(
               onExtrude: extrusion?.onExtrude ?? vi.fn(async () => true),
               onFinish: vi.fn(async () => undefined),
               onReferenceRepairChange,
+              onSupportReplace,
               onSelectedConstraintChange: vi.fn(),
               onSelectedProfileChange: vi.fn(),
             }}
@@ -184,6 +189,32 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
+  it("starts graphical support replacement without mutating the draft", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const onDraftChange = vi.fn()
+    const onSupportReplace = vi.fn()
+
+    renderPanel(
+      sketch,
+      [],
+      onDraftChange,
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map(),
+      null,
+      vi.fn(),
+      onSupportReplace,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Replace support" }))
+    expect(onSupportReplace).toHaveBeenCalledOnce()
+    expect(onDraftChange).not.toHaveBeenCalled()
+  })
+
   it("keeps a resolved model reference human-readable after selection", () => {
     const referenceId = sketchExternalReferenceIdSchema.parse(
       "0195b5ac-b220-7a2c-8c33-67a36a7f4102",

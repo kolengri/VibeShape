@@ -552,7 +552,9 @@ function OriginPlaneSelectionOverlay({
   selection,
 }: {
   preselectedPlane: ViewerOriginPlane | null
-  selection: Readonly<{ selectedPlane: ViewerOriginPlane }> | undefined
+  selection:
+    | Readonly<{ mode: "create" | "replace"; selectedPlane: ViewerOriginPlane | null }>
+    | undefined
 }) {
   const t = useTranslations("app.shell.viewport")
   if (!selection) return null
@@ -562,12 +564,18 @@ function OriginPlaneSelectionOverlay({
     yz: t("planeYz"),
   }
   const status = preselectedPlane
-    ? t("preselectedSketchPlane", { plane: planeLabels[preselectedPlane] })
-    : t("selectedSketchPlane", { plane: planeLabels[selection.selectedPlane] })
+    ? t(selection.mode === "replace" ? "preselectedReplacementPlane" : "preselectedSketchPlane", {
+        plane: planeLabels[preselectedPlane],
+      })
+    : selection.selectedPlane
+      ? t("selectedSketchPlane", { plane: planeLabels[selection.selectedPlane] })
+      : t("currentModelFaceSupport")
+  const instruction =
+    selection.mode === "replace" ? t("replaceSketchSupport") : t("selectSketchPlane")
 
   return (
     <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm">
-      <p className="text-xs font-medium">{t("selectSketchPlane")}</p>
+      <p className="text-xs font-medium">{instruction}</p>
       <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">
         {status}
       </p>
@@ -631,7 +639,8 @@ type GeometryViewportProps = Readonly<{
   hiddenFeatureIds?: readonly string[]
   hiddenSketchIds?: readonly string[]
   originPlaneSelection?: Readonly<{
-    selectedPlane: ViewerOriginPlane
+    mode: "create" | "replace"
+    selectedPlane: ViewerOriginPlane | null
     onSelect: (plane: ViewerOriginPlane) => void
   }>
   originPlaneVisibility?: Readonly<{
