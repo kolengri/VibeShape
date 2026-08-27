@@ -98,6 +98,8 @@ This distinction matters for VibeShape: temporary wake-up references, persistent
 
 Starting **Intersect planar face** from the normal sketch view immediately opens the existing orbitable 3D face picker. The picker owns the pointer, presents an explicit one-face instruction, accepts only a compatible earlier planar face, and forces History rollback even when the final result was visible. Returning to **Normal to sketch** cancels the picker back to Select, so the UI never leaves Intersection armed over an inert analytical canvas.
 
+Starting **Use external geometry** in the normal sketch view keeps the analytical canvas active and shows a persistent target instruction. Hovering or keyboard-focusing an eligible earlier-sketch or model candidate immediately shows its resolved user-facing label beside the target while retaining the same amber preview and overlap chooser. Renderer, semantic-role, and topology identities never appear in that label.
+
 ### Direct modification stays direct
 
 - Trim removes the segment under the pointer; dragging through multiple segments applies Trim repeatedly.

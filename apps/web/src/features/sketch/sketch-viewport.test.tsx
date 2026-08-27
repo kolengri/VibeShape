@@ -770,6 +770,14 @@ describe("SketchViewport", () => {
     const pointer = clientPointForSketch(drawing, firstCandidate)
 
     const primaryChoiceTrigger = screen.getByRole("button", { name: firstCandidate.label })
+    const thirdChoiceTrigger = screen.getByRole("button", { name: thirdCandidate.label })
+    fireEvent.focus(primaryChoiceTrigger)
+    expect(screen.getByText(`Use reference: ${firstCandidate.label}`)).toBeTruthy()
+    fireEvent.pointerEnter(thirdChoiceTrigger, { clientX: 120, clientY: 160 })
+    expect(screen.getByText(`Use reference: ${thirdCandidate.label}`)).toBeTruthy()
+    expect(screen.queryByText(`Use reference: ${firstCandidate.label}`)).toBeNull()
+    fireEvent.pointerLeave(thirdChoiceTrigger)
+    expect(screen.getByText(`Use reference: ${firstCandidate.label}`)).toBeTruthy()
     fireEvent.pointerDown(primaryChoiceTrigger, pointer)
 
     expect(onDraftChange).not.toHaveBeenCalled()
@@ -1177,6 +1185,13 @@ describe("SketchViewport", () => {
     )
     if (!sourceVertex) throw new Error("The model vertex must be selectable on the drawing.")
 
+    expect(
+      screen.getByText("Use · Select sketch geometry, a model vertex, or a model edge"),
+    ).toBeTruthy()
+    fireEvent.pointerEnter(sourceVertex, { clientX: 120, clientY: 160 })
+    expect(screen.getByText("Use reference: Box 1 · Vertex 1")).toBeTruthy()
+    fireEvent.pointerLeave(sourceVertex)
+    expect(screen.queryByText("Use reference: Box 1 · Vertex 1")).toBeNull()
     fireEvent.pointerDown(sourceVertex)
 
     expect(onDraftChange).toHaveBeenCalledWith(
@@ -1235,6 +1250,11 @@ describe("SketchViewport", () => {
     })
     const sourceEdge = screen.getByRole("button", { name: "Box 1 · Edge 1" })
 
+    fireEvent.focus(sourceEdge)
+    expect(screen.getByText("Use reference: Box 1 · Edge 1")).toBeTruthy()
+    fireEvent.blur(sourceEdge)
+    expect(screen.queryByText("Use reference: Box 1 · Edge 1")).toBeNull()
+    fireEvent.focus(sourceEdge)
     fireEvent.keyDown(sourceEdge, { key: "Enter" })
 
     expect(onDraftChange).toHaveBeenCalledWith(

@@ -100,6 +100,16 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page, "xy")
 
     await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await expect(
+      page.getByText("Use · Select sketch geometry, a model vertex, or a model edge", {
+        exact: true,
+      }),
+    ).toBeVisible()
+    const normalEdgeCandidate = page.getByRole("button", { name: /Box 1 · Edge \d+/ }).first()
+    const normalEdgeLabel = await normalEdgeCandidate.getAttribute("aria-label")
+    if (!normalEdgeLabel) throw new Error("A labeled normal-view Box edge must be available.")
+    await normalEdgeCandidate.focus()
+    await expect(page.getByText(`Use reference: ${normalEdgeLabel}`, { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const referenceSelect = page.getByRole("combobox", {
       name: "Select a reference with the keyboard",
