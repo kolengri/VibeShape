@@ -6,6 +6,7 @@ import type {
   FeatureRecord,
   SketchConstraintId,
   SketchEntityId,
+  SketchExternalReferenceId,
   SketchId,
   SketchProfileSelector,
   SketchRecord,
@@ -38,12 +39,13 @@ import {
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
-  applyExternalModelCandidate,
+  applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   type ExternalModelGeometryCandidate,
-  projectExternalModelGeometryCandidates,
   planarFaceCanIntersectSketch,
+  projectExternalModelGeometryCandidates,
+  repairExternalModelGeometryCandidates,
 } from "../features/sketch/external-model-geometry"
 import {
   applyExternalSketchCandidate,
@@ -61,12 +63,12 @@ import {
   SketchProjectionProvider,
   useSketchProjectionStoreApi,
 } from "../features/sketch/sketch-projection-store"
+import { selectedPlanarFaceReferenceFromController } from "../features/sketch/sketch-support"
 import type {
   ActiveSketchTool,
   SketchDraftChangeMode,
   SketchEditorTool,
 } from "../features/sketch/sketch-tool"
-import { selectedPlanarFaceReferenceFromController } from "../features/sketch/sketch-support"
 import { SketchViewport } from "../features/sketch/sketch-viewport"
 import { VariablesPanel } from "../features/variables/variables-panel"
 import {
@@ -135,6 +137,7 @@ type WorkspaceContentProps = Readonly<{
     construction: boolean
     draft: SketchRecord | null
     editorTool: SketchEditorTool
+    repairReferenceId: SketchExternalReferenceId | null
     selectedConstraintId: SketchConstraintId | null
     selectedEntityIds: readonly SketchEntityId[]
     selectedProfile: SketchProfileSelector | null
@@ -174,6 +177,7 @@ function SketchWorkspaceContent({
         externalModelCandidates,
         externalPointCandidates,
         originPlaneVisibility: model.originPlaneVisibility,
+        repairReferenceId: sketch.repairReferenceId,
         selectedConstraintId: sketch.selectedConstraintId,
         selectedEntityIds: sketch.selectedEntityIds,
         selectedProfile: sketch.selectedProfile,
@@ -538,6 +542,8 @@ function useSelectExternalGeometry(
   draft: SketchRecord | null,
   selectedEntityIds: readonly SketchEntityId[],
   onDraftChange: (draft: SketchRecord) => void,
+  onEditorToolChange: (tool: SketchEditorTool) => void,
+  repairReferenceId: SketchExternalReferenceId | null,
 ) {
   return useCallback(
     (hit: ViewerSketchReferenceCandidate) => {
@@ -551,13 +557,29 @@ function useSelectExternalGeometry(
       )
       const sketchCandidate = matchingExternalCandidate(sketchCandidates, hit)
       const next = modelCandidate
-        ? applyExternalModelCandidate(draft, modelCandidate, selectedEntityIds)
+        ? applyExternalModelCandidateSelection(
+            draft,
+            modelCandidate,
+            selectedEntityIds,
+            repairReferenceId,
+          )
         : sketchCandidate
           ? applyExternalSketchCandidate(draft, sketchCandidate, selectedEntityIds)
           : draft
-      if (next !== draft) onDraftChange(next)
+      if (next !== draft) {
+        onDraftChange(next)
+        if (repairReferenceId) onEditorToolChange("select")
+      }
     },
-    [draft, modelCandidates, onDraftChange, selectedEntityIds, sketchCandidates],
+    [
+      draft,
+      modelCandidates,
+      onDraftChange,
+      onEditorToolChange,
+      repairReferenceId,
+      selectedEntityIds,
+      sketchCandidates,
+    ],
   )
 }
 
@@ -707,16 +729,21 @@ function useAvailableWorkspaceModelCandidates(
   controller: DocumentControllerState,
   draft: SketchRecord | null,
   projectedCandidates: readonly ExternalModelGeometryCandidate[],
+  repairReferenceId: SketchExternalReferenceId | null,
 ) {
   return useMemo(() => {
     const rebuild = controller.report?.rebuild
     if (!draft || !rebuild?.ok) return []
-    return availableExternalModelGeometryCandidates(
-      projectedCandidates,
-      rebuild.response.geometry,
+    return repairExternalModelGeometryCandidates(
+      availableExternalModelGeometryCandidates(
+        projectedCandidates,
+        rebuild.response.geometry,
+        draft,
+      ),
       draft,
+      repairReferenceId,
     )
-  }, [controller.report?.rebuild, draft, projectedCandidates])
+  }, [controller.report?.rebuild, draft, projectedCandidates, repairReferenceId])
 }
 
 function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
@@ -807,6 +834,7 @@ function useWorkspaceModelGeometry({
       props.controller,
       props.sketch.draft,
       projectedCandidates,
+      props.sketch.repairReferenceId,
     ),
     offerFinalContext: shouldOfferSketchFinalContext({
       finalModelAvailable,
@@ -844,6 +872,8 @@ function useWorkspaceReferenceSelection({
     props.sketch.draft,
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
+    props.actions.onSketchEditorToolChange,
+    props.sketch.repairReferenceId,
   )
   const selectModelIntersection = useSelectModelIntersection(
     props.controller,
@@ -873,9 +903,12 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     rollbackVisibility: sketchGeometry.rollbackVisibility,
     snapshot: sketchGeometry.snapshot,
   })
+  const externalPointCandidates = props.sketch.repairReferenceId
+    ? EMPTY_GEOMETRY
+    : sketchGeometry.externalPointCandidates
   const sketchContext = useWorkspaceReferenceSelection({
     externalModelCandidates: modelGeometry.externalModelCandidates,
-    externalPointCandidates: sketchGeometry.externalPointCandidates,
+    externalPointCandidates,
     frame: sketchGeometry.frame,
     props,
     sketchActive: sketchGeometry.sketchActive,
@@ -886,7 +919,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
       editVisibility={sketchGeometry.displayVisibility}
       externalContextGeometry={sketchGeometry.externalContextGeometry}
       externalModelCandidates={modelGeometry.externalModelCandidates}
-      externalPointCandidates={sketchGeometry.externalPointCandidates}
+      externalPointCandidates={externalPointCandidates}
       props={props}
       sketchActive={sketchGeometry.sketchActive}
       sketchContext={sketchContext}
@@ -921,6 +954,7 @@ export type EditorWorkspaceActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchReferenceRepair: (referenceId: SketchExternalReferenceId | null) => void
   setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
   setSketchSelectedProfile: (profile: SketchProfileSelector | null) => void
@@ -954,6 +988,7 @@ type EditorWorkspaceProps = Readonly<{
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchRepairReferenceId: SketchExternalReferenceId | null
   sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
@@ -1044,6 +1079,7 @@ function EditorContent({
         construction: props.sketchConstruction,
         draft: props.sketchDraft,
         editorTool: props.sketchEditorTool,
+        repairReferenceId: props.sketchRepairReferenceId,
         selectedConstraintId: props.sketchSelectedConstraintId,
         selectedEntityIds: props.sketchSelectedEntityIds,
         selectedProfile: props.sketchSelectedProfile,
@@ -1080,6 +1116,7 @@ function EditorTaskPanel({
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
+      sketchRepairReferenceId={props.sketchRepairReferenceId}
       sketchSelectedConstraintId={props.sketchSelectedConstraintId}
       sketchSelectedEntityIds={props.sketchSelectedEntityIds}
       sketchSelectedProfile={props.sketchSelectedProfile}
@@ -1088,6 +1125,7 @@ function EditorTaskPanel({
       onSketchSelectedProfileChange={actions.setSketchSelectedProfile}
       onSketchSaved={actions.sketchSaved}
       onSketchPlaneSelect={actions.selectSketchPlane}
+      onSketchReferenceRepairChange={actions.setSketchReferenceRepair}
     />
   )
 }

@@ -11,12 +11,14 @@ import type { TopologyCandidate } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
   applyExternalModelCandidate,
+  applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   externalModelGeometryCandidates,
   externalModelReferenceLabels,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
+  repairExternalModelGeometryCandidates,
 } from "./external-model-geometry"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005001")
@@ -536,6 +538,69 @@ describe("external model reference labels", () => {
 })
 
 describe("apply external model candidate", () => {
+  it("limits repair to compatible geometry from the same feature and preserves projected IDs", () => {
+    const original = lineCandidate("original", [0, 0, 0], [10, 0, 0])
+    const replacement = lineCandidate("replacement", [0, 5, 0], [10, 5, 0])
+    replacement.semanticRole = "primitive.box.edge.replacement"
+    const otherFeature = lineCandidate("other-feature", [0, 10, 0], [10, 10, 0])
+    const referenceId = "0195b5ac-b220-7a2c-8c33-000000005043"
+    const sketch = draft([
+      {
+        schemaVersion: 0,
+        id: referenceId,
+        kind: "model-line",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: original.semanticRole,
+          signature: original.signature,
+        },
+        projectedLineId: "0195b5ac-b220-7a2c-8c33-000000005044",
+        projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000005045",
+        projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000005046",
+      },
+    ])
+    const candidates = [
+      ...externalModelGeometryCandidates(
+        [geometryRecord(featureId, [replacement])],
+        features as never,
+        [featureId],
+        draft(),
+        targetFrame,
+        labels,
+      ),
+      ...externalModelGeometryCandidates(
+        [geometryRecord(hiddenFeatureId, [otherFeature])],
+        features as never,
+        [hiddenFeatureId],
+        draft(),
+        targetFrame,
+        labels,
+      ),
+    ]
+    const repairCandidates = repairExternalModelGeometryCandidates(
+      candidates,
+      sketch,
+      referenceId as never,
+    )
+
+    expect(repairCandidates).toHaveLength(1)
+    const repairCandidate = repairCandidates[0]
+    if (!repairCandidate) throw new Error("A compatible replacement candidate is required.")
+    expect(repairCandidate).toMatchObject({ featureId, kind: "model-line" })
+    const repaired = applyExternalModelCandidateSelection(
+      sketch,
+      repairCandidate,
+      [],
+      referenceId as never,
+    )
+    expect(repaired.externalReferences?.[0]).toEqual({
+      ...sketch.externalReferences?.[0],
+      reference: repairCandidate.reference,
+    })
+  })
+
   it("rejects planar faces parallel to the sketch before persisting an intersection", () => {
     const reference: PlanarFaceTopoRef = {
       schemaVersion: 0,

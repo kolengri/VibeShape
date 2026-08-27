@@ -4,7 +4,9 @@ import {
   type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
   sketchIdSchema,
+  sketchRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import { createEditorSessionStore } from "./editor-session-store"
@@ -13,6 +15,7 @@ const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 const boundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3201")
 const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-67a36a7f3201")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202")
+const referenceId = sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3203")
 
 function createSketch(label = "Sketch 1") {
   return createEmptySketch({ id: sketchId, label, plane: "xy" })
@@ -28,6 +31,53 @@ function createProfile(): SketchProfileSelector {
 }
 
 describe("editor session store", () => {
+  it("owns one external-reference repair mode and clears it with ordinary tool changes", () => {
+    const store = createEditorSessionStore()
+    const sketch = sketchRecordSchema.parse({
+      ...createSketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "vertex",
+            semanticRole: "primitive.box.vertex.x-min.y-min.z-min",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: boundaryEntityId,
+        },
+      ],
+    })
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchReferenceRepair(referenceId)
+    expect(store.getState().sketch).toMatchObject({
+      editorTool: "use",
+      repairReferenceId: referenceId,
+    })
+
+    store.getState().actions.setSketchEditorTool("line")
+    expect(store.getState().sketch.repairReferenceId).toBeNull()
+
+    store.getState().actions.setSketchReferenceRepair(referenceId)
+    store.getState().actions.setSketchReferenceRepair(null)
+    expect(store.getState().sketch).toMatchObject({
+      editorTool: "select",
+      repairReferenceId: null,
+    })
+  })
+
   it("creates isolated editor sessions and preserves unrelated selector references", () => {
     const first = createEditorSessionStore()
     const second = createEditorSessionStore()

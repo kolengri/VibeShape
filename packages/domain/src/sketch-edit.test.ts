@@ -34,15 +34,18 @@ import {
   removeSketchConstraints,
   removeSketchEntities,
   removeSketchExternalReference,
+  replaceSketchExternalReference,
   setSketchDimensionValue,
   setSketchEntityConstruction,
-  sketchLineIntersection,
   sketchEllipticalArcGeometry,
   sketchEllipticalArcStartGeometry,
+  sketchLineIntersection,
   splitSketchLine,
   tangentArcGeometry,
   trimSketchLine,
 } from "./sketch-edit"
+import type { EdgeTopoRef, PlanarFaceTopoRef, TopoRef, VertexTopoRef } from "./topology"
+import { topoRefSchema } from "./topology"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000001" as SketchId
@@ -63,6 +66,43 @@ function empty() {
   nextEntityId = 1
   nextConstraintId = 1
   return createEmptySketch({ id: sketchId, label: "Profile", plane: "xy" })
+}
+
+type TopologyReferenceFor<Kind extends TopoRef["kind"]> = Kind extends "vertex"
+  ? VertexTopoRef
+  : Kind extends "edge"
+    ? EdgeTopoRef
+    : PlanarFaceTopoRef
+
+function topologyReference<Kind extends TopoRef["kind"]>(
+  kind: Kind,
+  featureId: string,
+  geometryClass = kind === "vertex" ? "POINT" : kind === "edge" ? "LINE" : "PLANE",
+): TopologyReferenceFor<Kind> {
+  return topoRefSchema.parse({
+    schemaVersion: 0,
+    featureId,
+    kind,
+    semanticRole: "repair-target",
+    lineageToken: "lineage-1",
+    signature: {
+      kind,
+      geometryClass,
+      measure: 0,
+      centroid: [0, 0, 0],
+      bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    },
+    intent: { nearPoint: [0, 0, 0] },
+  }) as TopologyReferenceFor<Kind>
+}
+
+function topologyReferenceWithRole<Reference extends TopoRef>(
+  reference: Reference,
+  semanticRole: string,
+): Reference {
+  return topoRefSchema.parse({ ...reference, semanticRole }) as Reference
 }
 
 describe("sketch editing", () => {
@@ -929,6 +969,199 @@ describe("sketch editing", () => {
 
     expect(removed.externalReferences).toEqual([])
     expect(removed.constraints).toEqual([])
+  })
+
+  it("replaces a model reference topology while preserving its identity and metadata", () => {
+    const local = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const line = local.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The repair fixture requires a line.")
+
+    const references = [
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000601" as SketchExternalReferenceId,
+        kind: "model-point" as const,
+        reference: topologyReference("vertex", "018f0000-0000-7000-8000-000000000611"),
+        projectedPointId: "018f0000-0000-7000-8000-000000000621" as SketchEntityId,
+      },
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000602" as SketchExternalReferenceId,
+        kind: "model-line" as const,
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000612"),
+        projectedLineId: "018f0000-0000-7000-8000-000000000622" as SketchEntityId,
+        projectedStartPointId: "018f0000-0000-7000-8000-000000000623" as SketchEntityId,
+        projectedEndPointId: "018f0000-0000-7000-8000-000000000624" as SketchEntityId,
+      },
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000603" as SketchExternalReferenceId,
+        kind: "model-curve" as const,
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000613"),
+        sourceType: "circle" as const,
+        projectedEntityId: "018f0000-0000-7000-8000-000000000625" as SketchEntityId,
+        projectedType: "circle" as const,
+        projectedPointIds: ["018f0000-0000-7000-8000-000000000626"] as SketchEntityId[],
+      },
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000604" as SketchExternalReferenceId,
+        kind: "model-intersection" as const,
+        reference: topologyReference("face", "018f0000-0000-7000-8000-000000000614"),
+        projectedLineId: "018f0000-0000-7000-8000-000000000627" as SketchEntityId,
+        projectedStartPointId: "018f0000-0000-7000-8000-000000000628" as SketchEntityId,
+        projectedEndPointId: "018f0000-0000-7000-8000-000000000629" as SketchEntityId,
+      },
+    ]
+    const withReferences = sketchRecordSchema.parse({
+      ...local,
+      externalReferences: references,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000630",
+          type: "fixed",
+          pointId: line.startPointId,
+        },
+      ],
+    })
+
+    for (const [index, reference] of references.entries()) {
+      const replacement =
+        reference.kind === "model-point"
+          ? {
+              kind: reference.kind,
+              reference: topologyReferenceWithRole(
+                topologyReference("vertex", reference.reference.featureId),
+                `replacement-target-${index}`,
+              ),
+            }
+          : reference.kind === "model-line"
+            ? {
+                kind: reference.kind,
+                reference: topologyReferenceWithRole(
+                  topologyReference("edge", reference.reference.featureId),
+                  `replacement-target-${index}`,
+                ),
+              }
+            : reference.kind === "model-curve"
+              ? {
+                  kind: reference.kind,
+                  projectedType: reference.projectedType,
+                  reference: topologyReferenceWithRole(
+                    topologyReference("edge", reference.reference.featureId, "CIRCLE"),
+                    `replacement-target-${index}`,
+                  ),
+                  sourceType: reference.sourceType,
+                }
+              : {
+                  kind: reference.kind,
+                  reference: topologyReferenceWithRole(
+                    topologyReference("face", reference.reference.featureId),
+                    `replacement-target-${index}`,
+                  ),
+                }
+      const repaired = replaceSketchExternalReference(withReferences, reference.id, replacement)
+      const repairedReference = repaired.externalReferences?.find(({ id }) => id === reference.id)
+      expect(repairedReference).toEqual({ ...reference, reference: replacement.reference })
+      expect(repaired.constraints).toEqual(withReferences.constraints)
+    }
+  })
+
+  it("rejects missing, sketch-to-sketch, cross-feature, and incompatible repairs", () => {
+    const sketch = sketchRecordSchema.parse({
+      ...empty(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000651",
+          kind: "point",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000652",
+          sourcePointId: "018f0000-0000-7000-8000-000000000653",
+          projectedPointId: "018f0000-0000-7000-8000-000000000654",
+        },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000655",
+          kind: "model-point",
+          reference: topologyReference("vertex", "018f0000-0000-7000-8000-000000000656"),
+          projectedPointId: "018f0000-0000-7000-8000-000000000657",
+        },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000661",
+          kind: "model-line",
+          reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000662"),
+          projectedLineId: "018f0000-0000-7000-8000-000000000663",
+          projectedStartPointId: "018f0000-0000-7000-8000-000000000664",
+          projectedEndPointId: "018f0000-0000-7000-8000-000000000665",
+        },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000666",
+          kind: "model-curve",
+          reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000667", "CIRCLE"),
+          sourceType: "circle",
+          projectedEntityId: "018f0000-0000-7000-8000-000000000668",
+          projectedType: "circle",
+          projectedPointIds: ["018f0000-0000-7000-8000-000000000669"],
+        },
+      ],
+    })
+    const modelPointId = "018f0000-0000-7000-8000-000000000655" as SketchExternalReferenceId
+    const modelLineId = "018f0000-0000-7000-8000-000000000661" as SketchExternalReferenceId
+    const modelCurveId = "018f0000-0000-7000-8000-000000000666" as SketchExternalReferenceId
+
+    expect(() =>
+      replaceSketchExternalReference(
+        sketch,
+        "018f0000-0000-7000-8000-000000000650" as SketchExternalReferenceId,
+        {
+          kind: "model-point",
+          reference: topologyReference("vertex", "018f0000-0000-7000-8000-000000000658"),
+        },
+      ),
+    ).toThrow("existing reference")
+    expect(() =>
+      replaceSketchExternalReference(
+        sketch,
+        "018f0000-0000-7000-8000-000000000651" as SketchExternalReferenceId,
+        {
+          kind: "model-point",
+          reference: topologyReference("vertex", "018f0000-0000-7000-8000-000000000659"),
+        },
+      ),
+    ).toThrow("model-backed")
+    expect(() =>
+      replaceSketchExternalReference(sketch, modelPointId, {
+        kind: "model-line",
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000660"),
+      }),
+    ).toThrow("cannot be replaced")
+    expect(() =>
+      replaceSketchExternalReference(sketch, modelPointId, {
+        kind: "model-point",
+        reference: topologyReference("vertex", "018f0000-0000-7000-8000-000000000660"),
+      }),
+    ).toThrow("producing feature")
+    expect(() =>
+      replaceSketchExternalReference(sketch, modelLineId, {
+        kind: "model-line",
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000662", "CIRCLE"),
+      }),
+    ).toThrow("requires LINE")
+    expect(() =>
+      replaceSketchExternalReference(sketch, modelCurveId, {
+        kind: "model-curve",
+        projectedType: "arc",
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000667", "CIRCLE"),
+        sourceType: "arc",
+      }),
+    ).toThrow("preserve its source and projected curve types")
   })
 
   it("updates a driving dimension while preserving its identity and references", () => {

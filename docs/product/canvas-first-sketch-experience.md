@@ -188,6 +188,8 @@ Idle -> Collecting references -> Placing annotation -> Editing value -> Committe
 - Activating Use makes eligible earlier edges and sketch entities preselectable in the persistent 3D context and normal sketch view.
 - Hover renders the projected analytical preview on the active support plane.
 - Click creates one persistent external reference and projected entity.
+- A model-backed reference row exposes an icon-only Replace action. Replace re-enters graphical Use selection, restricts candidates to a compatible subshape from the same producing feature, preserves the reference and projected-entity identities, and returns to Select after one pick.
+- Canceling Replace keeps the existing association unchanged. Repair never silently chooses a candidate or exposes renderer and topology internals as user-facing labels.
 - Ordinary inference may wake compatible coplanar source geometry without creating a projected entity.
 - Source provenance, update failure, and repair belong in the task panel and model tree.
 
