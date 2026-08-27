@@ -8,7 +8,15 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
-import { ChevronDown, Cuboid, Eye, EyeOff, Layers3, PenLine } from "@vibeshape/ui/components/icons"
+import {
+  ChevronDown,
+  CircleAlert,
+  Cuboid,
+  Eye,
+  EyeOff,
+  Layers3,
+  PenLine,
+} from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { type FocusEvent, type KeyboardEvent, useMemo, useState } from "react"
@@ -200,6 +208,75 @@ function SketchTreeActions({
   )
 }
 
+function SketchVisibilityAction({
+  label,
+  onChange,
+  t,
+  visible,
+}: {
+  label: string
+  onChange: () => void
+  t: ReturnType<typeof useTranslations>
+  visible: boolean
+}) {
+  const visibilityLabel = t(visible ? "hideSketch" : "showSketch", { sketch: label })
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={visibilityLabel}
+          aria-pressed={visible}
+          onClick={onChange}
+        >
+          {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{visibilityLabel}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SketchTreeLabelButton({
+  active,
+  label,
+  onActivate,
+  onRenameOpen,
+  renameDisabled,
+}: {
+  active: boolean
+  label: string
+  onActivate: () => void
+  onRenameOpen: () => void
+  renameDisabled: boolean
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      className={cn(
+        "min-w-0 flex-1 justify-start pl-6 font-normal",
+        active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+      )}
+      role="treeitem"
+      tabIndex={-1}
+      aria-selected={active}
+      onClick={onActivate}
+      onKeyDown={(event) => {
+        if (event.key !== "F2" || renameDisabled) return
+        event.preventDefault()
+        onRenameOpen()
+      }}
+    >
+      <PenLine aria-hidden="true" className="mr-1 size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </Button>
+  )
+}
+
 function SketchTreeItem({
   active,
   controller,
@@ -210,6 +287,7 @@ function SketchTreeItem({
   onSketchRename,
   onVisibilityChange,
   renameBlocked,
+  referenceHealth,
   sketch,
   unnamedSketch,
   visible,
@@ -223,6 +301,7 @@ function SketchTreeItem({
   onSketchRename: SketchRenameHandler
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
+  referenceHealth: HistoryViewRow["referenceHealth"]
   sketch: SketchRecord
   unnamedSketch: string
   visible: boolean
@@ -232,46 +311,28 @@ function SketchTreeItem({
   const label = sketch.label || unnamedSketch
   const renameDisabled =
     renameBlocked || controller.status !== "ready" || controller.report?.mode !== "read-write"
-  const visibilityLabel = t(visible ? "hideSketch" : "showSketch", { sketch: label })
 
   return (
     <div className="flex min-w-0 items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={visibilityLabel}
-            aria-pressed={visible}
-            onClick={() => onVisibilityChange(sketch.id, !visible)}
-          >
-            {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{visibilityLabel}</TooltipContent>
-      </Tooltip>
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        className={cn(
-          "min-w-0 flex-1 justify-start pl-6 font-normal",
-          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-        )}
-        role="treeitem"
-        tabIndex={-1}
-        aria-selected={active}
-        onClick={() => onActivate(sketch.id)}
-        onKeyDown={(event) => {
-          if (event.key !== "F2" || renameDisabled) return
-          event.preventDefault()
-          setRenameOpen(true)
-        }}
-      >
-        <PenLine aria-hidden="true" className="mr-1 size-4 shrink-0" />
-        <span className="truncate">{label}</span>
-      </Button>
+      <SketchVisibilityAction
+        label={label}
+        onChange={() => onVisibilityChange(sketch.id, !visible)}
+        t={t}
+        visible={visible}
+      />
+      <SketchTreeLabelButton
+        active={active}
+        label={label}
+        onActivate={() => onActivate(sketch.id)}
+        onRenameOpen={() => setRenameOpen(true)}
+        renameDisabled={renameDisabled}
+      />
+      <BrokenSketchReferenceAction
+        health={referenceHealth}
+        label={label}
+        onActivate={() => onActivate(sketch.id)}
+        t={t}
+      />
       <SketchTreeActions
         controller={controller}
         onRenameOpenChange={setRenameOpen}
@@ -285,6 +346,64 @@ function SketchTreeItem({
         unnamedSketch={unnamedSketch}
       />
     </div>
+  )
+}
+
+function brokenReferenceCount(health: HistoryViewRow["referenceHealth"]) {
+  return (
+    (health?.directBrokenReferenceIds.length ?? 0) +
+    (health?.transitiveBrokenReferenceIds.length ?? 0)
+  )
+}
+
+function BrokenSketchReferenceAction({
+  health,
+  label,
+  onActivate,
+  t,
+}: {
+  health: HistoryViewRow["referenceHealth"]
+  label: string
+  onActivate: () => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const count = brokenReferenceCount(health)
+  if (count === 0) return null
+  const repairLabel = t("repairBrokenSketchReferences", { sketch: label, count })
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="text-destructive hover:text-destructive"
+          aria-label={repairLabel}
+          onClick={onActivate}
+        >
+          <CircleAlert aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{repairLabel}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SketchReferenceHealthSummary({
+  health,
+  t,
+}: {
+  health: HistoryViewRow["referenceHealth"]
+  t: ReturnType<typeof useTranslations>
+}) {
+  if (health?.status !== "broken") return null
+  return (
+    <p className="ml-8 truncate px-2 text-[10px] text-destructive" role="status">
+      {t("brokenReferenceSummary", {
+        direct: health.directBrokenReferenceIds.length,
+        chained: health.transitiveBrokenReferenceIds.length,
+      })}
+    </p>
   )
 }
 
@@ -512,11 +631,13 @@ function SketchHistoryRow({
         onSketchRename={props.onSketchRename}
         onVisibilityChange={props.onSketchVisibilityChange}
         renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+        referenceHealth={row.referenceHealth}
         sketch={row.record as SketchRecord}
         unnamedSketch={t("unnamedSketch")}
         visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
       />
       <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
+      <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
       {marker && (
         <div role="status" className="px-2 text-[11px] text-muted-foreground">
           {t("rollbackMarker")}
