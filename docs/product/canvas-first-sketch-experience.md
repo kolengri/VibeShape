@@ -193,6 +193,14 @@ Idle -> Collecting references -> Placing annotation -> Editing value -> Committe
 - Ordinary inference may wake compatible coplanar source geometry without creating a projected entity.
 - Source provenance, update failure, and repair belong in the task panel and model tree.
 
+### Support replacement
+
+- Replace Support leaves sketch edit without closing or recreating the draft and reuses the 3D origin-plane, datum-plane, and supported planar-face picker.
+- Cancel returns to the same edit session without changing the authored draft or its presentation state.
+- One accepted support preserves every sketch, entity, constraint, projected-entity, and external-reference identity and creates one sketch-local undo checkpoint.
+- Support selection rolls History back at the edited sketch, so the active sketch and every later feature are hidden and cannot create a forward dependency or cycle.
+- Local sketch coordinates remain unchanged. The new support frame changes world placement; incompatible external projections stay explicit and fail closed instead of being rewritten.
+
 ## Role of the task panel
 
 The sketch task panel remains useful, but its responsibility narrows to:

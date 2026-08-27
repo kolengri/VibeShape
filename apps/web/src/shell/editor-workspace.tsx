@@ -260,7 +260,8 @@ function ModelingWorkspaceContent({
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
         ? {
             originPlaneSelection: {
-              selectedPlane: sketch.draft.plane,
+              mode: sketch.activeTool.returnTo ? "replace" : "create",
+              selectedPlane: sketch.draft.support ? null : sketch.draft.plane,
               onSelect: actions.onSketchPlaneSelect,
             },
           }
@@ -407,6 +408,16 @@ function usableExternalGeometryCandidates(
   return geometry.filter(
     (item): item is ExternalSketchGeometryCandidate =>
       item.kind !== "curve" || item.projectedType !== null,
+  )
+}
+
+function sketchEditContextActive(
+  workspace: EditorWorkspaceName,
+  activeTool: ActiveSketchTool | null,
+) {
+  if (workspace === "sketch") return true
+  return (
+    activeTool?.kind === "select-sketch-plane" && activeTool.returnTo?.tool.kind === "edit-sketch"
   )
 }
 
@@ -765,10 +776,11 @@ function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
     ],
   )
   const sketchActive = props.workspace === "sketch"
+  const editContextActive = sketchEditContextActive(props.workspace, props.sketch.activeTool)
   const activeSketchId = props.sketch.draft?.id
   const rollbackVisibility = useMemo(
-    () => workspaceEditVisibility(snapshot, activeSketchId, sketchActive),
-    [activeSketchId, sketchActive, snapshot],
+    () => workspaceEditVisibility(snapshot, activeSketchId, editContextActive),
+    [activeSketchId, editContextActive, snapshot],
   )
   const displayVisibility = useMemo(
     () =>
@@ -933,6 +945,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
 }
 
 export type EditorWorkspaceActions = Readonly<{
+  beginSketchSupportReplacement: () => void
   closeTool: () => void
   createBox: () => void
   createCylinder: () => void
@@ -1008,6 +1021,17 @@ function useEditorFeaturePreview(
   return { featurePreview, setPreviewFeature }
 }
 
+function editedSketchId(activeTool: ActiveSketchTool | null) {
+  if (activeTool?.kind === "edit-sketch") return activeTool.sketchId
+  if (
+    activeTool?.kind === "select-sketch-plane" &&
+    activeTool.returnTo?.tool.kind === "edit-sketch"
+  ) {
+    return activeTool.returnTo.tool.sketchId
+  }
+  return null
+}
+
 function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
   return (
@@ -1028,9 +1052,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onSketchRename={updateSketch}
       onSketchVisibilityChange={actions.setSketchVisibility}
       onWorkspaceChange={actions.switchWorkspace}
-      sketchRenameBlockedId={
-        activeSketchTool?.kind === "edit-sketch" ? activeSketchTool.sketchId : null
-      }
+      sketchRenameBlockedId={editedSketchId(activeSketchTool)}
     />
   )
 }
@@ -1126,6 +1148,7 @@ function EditorTaskPanel({
       onSketchSaved={actions.sketchSaved}
       onSketchPlaneSelect={actions.selectSketchPlane}
       onSketchReferenceRepairChange={actions.setSketchReferenceRepair}
+      onSketchSupportReplace={actions.beginSketchSupportReplacement}
     />
   )
 }

@@ -15,7 +15,7 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
+import { Layers3, Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -88,6 +88,7 @@ type SketchEditorPanelCopy = Readonly<{
   primaryAxisDiameter: string
   radius: string
   remove: string
+  replaceSupport: string
   saveDimension: string
   selectionHint: string
   secondaryAxisDiameter: string
@@ -245,30 +246,52 @@ function SketchDimensionForm({
 
 function SketchSetupSection({
   copy,
+  disabled,
   draft,
   onDraftChange,
+  onSupportReplace,
 }: {
   copy: SketchEditorPanelCopy
+  disabled: boolean
   draft: SketchRecord
   onDraftChange: (draft: SketchRecord) => void
+  onSupportReplace: () => void
 }) {
   return (
     <section className="grid gap-2">
       <Field>
         <FieldLabel htmlFor="sketch-plane">{copy.plane}</FieldLabel>
-        <NativeSelect
-          id="sketch-plane"
-          value={draft.support ? "feature-face" : draft.plane}
-          disabled={draft.support !== undefined || draft.entities.length > 0}
-          onChange={(event) =>
-            onDraftChange({ ...draft, plane: event.currentTarget.value as SketchRecord["plane"] })
-          }
-        >
-          {draft.support ? <option value="feature-face">{copy.planeFeatureFace}</option> : null}
-          <option value="xy">{copy.planeXy}</option>
-          <option value="xz">{copy.planeXz}</option>
-          <option value="yz">{copy.planeYz}</option>
-        </NativeSelect>
+        <div className="flex items-center gap-2">
+          <NativeSelect
+            id="sketch-plane"
+            className="min-w-0 flex-1"
+            value={draft.support ? "feature-face" : draft.plane}
+            disabled={disabled || draft.support !== undefined || draft.entities.length > 0}
+            onChange={(event) =>
+              onDraftChange({ ...draft, plane: event.currentTarget.value as SketchRecord["plane"] })
+            }
+          >
+            {draft.support ? <option value="feature-face">{copy.planeFeatureFace}</option> : null}
+            <option value="xy">{copy.planeXy}</option>
+            <option value="xz">{copy.planeXz}</option>
+            <option value="yz">{copy.planeYz}</option>
+          </NativeSelect>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                disabled={disabled}
+                aria-label={copy.replaceSupport}
+                onClick={onSupportReplace}
+              >
+                <Layers3 aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{copy.replaceSupport}</TooltipContent>
+          </Tooltip>
+        </div>
       </Field>
     </section>
   )
@@ -780,6 +803,7 @@ type SketchEditorPanelActions = Readonly<{
   onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
+  onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
   onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
 }>
@@ -814,6 +838,7 @@ export function SketchEditorPanel({
     onExtrude,
     onFinish,
     onReferenceRepairChange,
+    onSupportReplace,
     onSelectedConstraintChange,
     onSelectedProfileChange,
   } = actions
@@ -830,7 +855,13 @@ export function SketchEditorPanel({
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="grid gap-4">
-        <SketchSetupSection copy={copy} draft={draft} onDraftChange={onDraftChange} />
+        <SketchSetupSection
+          copy={copy}
+          disabled={disabled}
+          draft={draft}
+          onDraftChange={onDraftChange}
+          onSupportReplace={onSupportReplace}
+        />
         <ExternalReferencesSection
           candidates={externalPointCandidates}
           copy={copy}

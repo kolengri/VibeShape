@@ -1,11 +1,18 @@
 import type { SketchId } from "@vibeshape/domain"
 
-export type ActiveSketchTool =
-  | Readonly<{ kind: "select-sketch-plane" }>
+export type ActiveSketchEditorTool =
   | Readonly<{ kind: "create-sketch" }>
   | Readonly<{ kind: "edit-sketch"; sketchId: SketchId }>
 
-export type ActiveSketchEditorTool = Exclude<ActiveSketchTool, { kind: "select-sketch-plane" }>
+export type SketchSupportReplacementReturn = Readonly<{
+  cameraMode: "normal" | "orbit"
+  showFinalContext: boolean
+  tool: ActiveSketchEditorTool
+}>
+
+export type ActiveSketchTool =
+  | Readonly<{ kind: "select-sketch-plane"; returnTo?: SketchSupportReplacementReturn }>
+  | ActiveSketchEditorTool
 
 export function isActiveSketchEditorTool(
   tool: ActiveSketchTool | null,

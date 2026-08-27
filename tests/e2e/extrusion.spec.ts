@@ -81,6 +81,14 @@ test.describe("selector-backed extrusion", () => {
     await expect(
       page.getByRole("button", { name: "Use external geometry", exact: true }),
     ).toHaveCount(0)
+    await page.getByRole("button", { name: "Replace support" }).click()
+    await expect(page.getByRole("heading", { name: "Replace sketch support" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")
+    await page.getByRole("button", { name: "Cancel" }).click()
+    await expect(page.getByTestId("sketch-final-context-status")).toContainText(
+      "Final result · display only",
+    )
+    await expect(normalSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitSketchViewport = page.locator("section[data-sketch-context-mode='orbit']")
     await expect(orbitSketchViewport).toHaveAttribute("data-rendered-feature-count", "1")
@@ -251,5 +259,74 @@ test.describe("selector-backed extrusion", () => {
     await expect(support).toHaveValue("feature-face")
     await expect(support).toBeDisabled()
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+  })
+
+  test("replaces an existing sketch support graphically without recreating its geometry", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create cylinder" })
+      .getByRole("button", { name: "Create cylinder" })
+      .click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2")
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+
+    const support = page.getByRole("combobox", { name: "Support plane" })
+    await expect(support).toHaveValue("xy")
+    await page.getByRole("button", { name: "Replace support" }).click()
+    await expect(page.getByRole("heading", { name: "Replace sketch support" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1")
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Cancel" }).click()
+    await expect(support).toHaveValue("xy")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+
+    await page.getByRole("button", { name: "Replace support" }).click()
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const samples = [
+      { x: bounds.width * 0.5, y: bounds.height * 0.5 },
+      { x: bounds.width * 0.45, y: bounds.height * 0.55 },
+      { x: bounds.width * 0.55, y: bounds.height * 0.55 },
+    ]
+    let sampleIndex = 0
+    await expect
+      .poll(async () => {
+        const sample = samples[sampleIndex % samples.length]
+        if (!sample) throw new Error("A support-selection sample must be available.")
+        await canvas.click({ position: sample })
+        sampleIndex += 1
+        return support.count()
+      })
+      .toBe(1)
+
+    await expect(support).toHaveValue("feature-face")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(support).toHaveValue("feature-face")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
   })
 })

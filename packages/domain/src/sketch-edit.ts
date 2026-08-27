@@ -14,6 +14,7 @@ import {
   type SketchExternalModelIntersectionReference,
   type SketchExternalModelLineReference,
   type SketchExternalModelPointReference,
+  type SketchFeatureFaceSupport,
   type SketchRecord,
   sketchConstraintSchema,
   sketchRecordSchema,
@@ -21,6 +22,14 @@ import {
 import type { AngleQuantity, LengthQuantity } from "./units"
 
 export type SketchPoint2 = Readonly<{ x: number; y: number }>
+
+export type SketchSupportReplacement =
+  | Readonly<{ kind: "origin-plane"; plane: SketchRecord["plane"] }>
+  | Readonly<{
+      kind: "feature-face"
+      plane: SketchRecord["plane"]
+      support: SketchFeatureFaceSupport
+    }>
 
 export type SketchExternalReferenceReplacement =
   | Readonly<Pick<SketchExternalModelPointReference, "kind" | "reference">>
@@ -193,6 +202,17 @@ export function createEmptySketch(input: {
     entities: [],
     constraints: [],
   })
+}
+
+export function replaceSketchSupport(
+  sketch: SketchRecord,
+  support: SketchSupportReplacement,
+): SketchRecord {
+  if (support.kind === "origin-plane") {
+    const { support: _staleSupport, ...withoutSupport } = sketch
+    return sketchRecordSchema.parse({ ...withoutSupport, plane: support.plane })
+  }
+  return sketchRecordSchema.parse({ ...sketch, plane: support.plane, support: support.support })
 }
 
 export function appendSketchPoint(
