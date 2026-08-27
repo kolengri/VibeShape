@@ -107,6 +107,87 @@ describe("editor session store", () => {
     })
   })
 
+  it("allows repair mode for sketch point, line, and curve references but rejects model intersections", () => {
+    const store = createEditorSessionStore()
+    const referenceIds = {
+      point: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3301"),
+      line: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3302"),
+      curve: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3303"),
+      intersection: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3304"),
+    }
+    const draft = sketchRecordSchema.parse({
+      ...createSketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceIds.point,
+          kind: "point",
+          sourceSketchId: sketchId,
+          sourcePointId: boundaryEntityId,
+          projectedPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3305"),
+        },
+        {
+          schemaVersion: 0,
+          id: referenceIds.line,
+          kind: "line",
+          sourceSketchId: sketchId,
+          sourceLineId: boundaryEntityId,
+          projectedLineId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3306"),
+          projectedStartPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3307"),
+          projectedEndPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3308"),
+        },
+        {
+          schemaVersion: 0,
+          id: referenceIds.curve,
+          kind: "curve",
+          sourceSketchId: sketchId,
+          sourceEntityId: boundaryEntityId,
+          sourceType: "circle",
+          projectedEntityId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3309"),
+          projectedType: "circle",
+          projectedPointIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3310")],
+        },
+        {
+          schemaVersion: 0,
+          id: referenceIds.intersection,
+          kind: "model-intersection",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "face",
+            semanticRole: "extrusion.cap.end",
+            signature: {
+              kind: "face",
+              geometryClass: "PLANE",
+              measure: 400,
+              centroid: [0, 0, 10],
+              bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+              direction: [0, 0, 1],
+              directionMode: "oriented",
+              boundaryCount: 4,
+              adjacentGeometryClasses: ["PLANE"],
+            },
+          },
+          projectedLineId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3311"),
+          projectedStartPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3312"),
+          projectedEndPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3313"),
+        },
+      ],
+    })
+    store.getState().actions.beginSketchEdit(draft)
+
+    for (const referenceId of [referenceIds.point, referenceIds.line, referenceIds.curve]) {
+      store.getState().actions.setSketchReferenceRepair(referenceId)
+      expect(store.getState().sketch).toMatchObject({
+        editorTool: "use",
+        repairReferenceId: referenceId,
+      })
+    }
+
+    store.getState().actions.setSketchReferenceRepair(referenceIds.intersection)
+    expect(store.getState().sketch.repairReferenceId).toBe(referenceIds.curve)
+  })
+
   it("creates isolated editor sessions and preserves unrelated selector references", () => {
     const first = createEditorSessionStore()
     const second = createEditorSessionStore()

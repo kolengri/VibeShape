@@ -669,6 +669,7 @@
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "externalReferences": "External references",
+          "brokenExternalReference": "Broken external reference. Choose Replace reference and select compatible geometry in the viewport.",
           "cancelReferenceRepair": "Cancel reference replacement",
           "externalReferenceDescription": "Use projects selectable sketch or model geometry. Intersection creates an exact bounded line from a planar model face. External geometry remains read-only and associative.",
           "unavailableExternalReference": "Unavailable reference",
@@ -748,6 +749,7 @@
         "externalModelLineCandidate": "{feature} · Edge {ordinal}",
         "externalModelPointCandidate": "{feature} · Vertex {ordinal}",
         "externalModelReferenceProblem": "{feature} · {status, select, ambiguous {Ambiguous} missing {Missing} other {Unavailable}} {kind, select, vertex {vertex} edge {edge} face {face} other {reference}}",
+        "externalSketchReferenceProblem": "{sketch} · Missing {kind, select, point {point} line {line} circle {circle} arc {arc} ellipse {ellipse} ellipticalArc {elliptical arc} other {reference}}",
         "externalPointCandidate": "{sketch} · Point {ordinal}",
         "externalCurveContext": "{sketch} · {kind, select, circle {Circle} arc {Arc} ellipse {Ellipse} ellipticalArc {Elliptical arc} other {Curve}} {ordinal}",
         "finalContextLabel": "Final result",
@@ -797,6 +799,7 @@
         "title": "3D viewport",
         "worldAxes": "World axes",
         "unknownFeature": "Unknown feature",
+        "unknownSketch": "Unknown sketch",
         "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
       }
     },

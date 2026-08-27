@@ -82,7 +82,7 @@ Those pieces do not yet form a complete associative workflow.
 | Datum construction | Signed offset only. | Offset, Plane point, Line angle, Point normal, Three point, Mid plane, Curve point, and Tangent modes. | P1 |
 | History tools | No rollback cursor, interleaved reorder, or parent/child view. | Rollback, insert-at-cursor, dependency inspection, validated reorder, and suppression. | P0/P1 |
 | Extrude references | One stable profile, distance, symmetric state, and New/Add/Remove/Intersect are supported. | Graphical profiles, direction/start references, richer end conditions, second direction, and explicit merge scope. | P1 |
-| Repair | Topology resolution fails closed, but the product repair path is incomplete. | Source-owned missing/ambiguous diagnostics with graphical repair candidates. | P0 |
+| Repair | Missing sketch-backed point, line, and analytical-curve sources remain as persisted broken intent. The dependent row names the missing kind and graphically replaces it from compatible earlier-sketch geometry without changing projected identities or local constraints. Compatible model-backed references also support graphical same-feature repair. | Add source-owned ambiguous diagnostics, cross-highlighting, multi-link failure navigation, and model-feature failure propagation. | P0 |
 
 The most important architectural mismatch is the lack of an interleaved document dependency model.
 The current `features` array can express feature-to-feature B-Rep dependencies, while sketches live in a

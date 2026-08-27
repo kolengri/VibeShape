@@ -1,16 +1,34 @@
-import { documentSnapshotSchema, sketchRecordSchema } from "@vibeshape/domain"
+import {
+  documentSnapshotSchema,
+  sketchEntityIdSchema,
+  sketchExternalReferenceIdSchema,
+  sketchIdSchema,
+  sketchRecordSchema,
+} from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import type { ExternalSketchGeometryCandidate } from "./external-sketch-points"
 import {
+  applyExternalSketchCandidateSelection,
+  availableExternalSketchGeometryCandidates,
   earlierSketchesForDraft,
   externalSketchContextGeometry,
   externalSketchGeometryCandidates,
+  externalSketchReferenceResolution,
+  repairExternalSketchGeometryCandidates,
 } from "./external-sketch-points"
 
-const sourcePointId = "0195b5ac-b220-7a2c-8c33-000000004001"
-const sourceSketchId = "0195b5ac-b220-7a2c-8c33-000000004002"
-const targetSketchId = "0195b5ac-b220-7a2c-8c33-000000004003"
-const laterSketchId = "0195b5ac-b220-7a2c-8c33-000000004004"
+const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004001")
+const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004002")
+const targetSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004003")
+const laterSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004004")
+const sourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004006")
+const sourceEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004005")
+const sourceCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004008")
+const intermediateSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004023")
+const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004022")
+const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004020")
+const projectedEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004021")
 const labels = {
   curve: (sourceLabel: string, kind: string, ordinal: number) =>
     `${sourceLabel} · ${kind} ${ordinal}`,
@@ -454,4 +472,391 @@ describe("external sketch point candidates", () => {
       end: { world: [14, 3, 0], x: 14, y: 3 },
     })
   })
+
+  it("resolves stable labels for sketch references, including projected intermediate entities", () => {
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sourceSketchId,
+      label: "Master",
+      plane: "xy",
+      entities: [
+        { schemaVersion: 0, id: sourcePointId, type: "point", x: 2, y: 3 },
+        { schemaVersion: 0, id: sourceEndPointId, type: "point", x: 8, y: 3 },
+        {
+          schemaVersion: 0,
+          id: sourceLineId,
+          type: "line",
+          startPointId: sourcePointId,
+          endPointId: sourceEndPointId,
+        },
+        {
+          schemaVersion: 0,
+          id: sourceCircleId,
+          type: "circle",
+          centerPointId: sourcePointId,
+          radius: 2,
+        },
+      ],
+      constraints: [],
+    })
+    const intermediate = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: intermediateSketchId,
+      label: "Layout",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004024",
+          kind: "line",
+          sourceSketchId: source.id,
+          sourceLineId,
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    })
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label: "Detail",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004026",
+          kind: "point",
+          sourceSketchId: source.id,
+          sourcePointId,
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-000000004027",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004028",
+          kind: "line",
+          sourceSketchId: source.id,
+          sourceLineId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004029",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004030",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004031",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004032",
+          kind: "curve",
+          sourceSketchId: source.id,
+          sourceEntityId: sourceCircleId,
+          sourceType: "circle",
+          projectedEntityId: "0195b5ac-b220-7a2c-8c33-000000004033",
+          projectedType: "circle",
+          projectedPointIds: ["0195b5ac-b220-7a2c-8c33-000000004034"],
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004035",
+          kind: "line",
+          sourceSketchId: intermediate.id,
+          sourceLineId: projectedLineId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004036",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004037",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004038",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004039",
+          kind: "point",
+          sourceSketchId: source.id,
+          sourcePointId: "0195b5ac-b220-7a2c-8c33-000000004099",
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-000000004040",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004041",
+          kind: "line",
+          sourceSketchId: source.id,
+          sourceLineId: sourcePointId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004042",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004043",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004044",
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004045",
+      revision: 1,
+      name: "Reference labels",
+      sketches: [source, intermediate, target],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+
+    const resolution = externalSketchReferenceResolution(document, target, {
+      ...labels,
+      missing: (sourceLabel, kind) => `Missing ${kind} in ${sourceLabel}`,
+      unknownSketch: "Missing sketch",
+    })
+    expect([...resolution.labels.entries()]).toEqual([
+      ["0195b5ac-b220-7a2c-8c33-000000004026", "Master · Point 1"],
+      ["0195b5ac-b220-7a2c-8c33-000000004028", "Master · Line 1"],
+      ["0195b5ac-b220-7a2c-8c33-000000004032", "Master · circle 1"],
+      ["0195b5ac-b220-7a2c-8c33-000000004035", "Layout · Line 1"],
+      ["0195b5ac-b220-7a2c-8c33-000000004039", "Missing point in Master"],
+      ["0195b5ac-b220-7a2c-8c33-000000004041", "Missing line in Master"],
+    ])
+    expect(resolution.missingReferenceIds).toEqual(
+      new Set(["0195b5ac-b220-7a2c-8c33-000000004039", "0195b5ac-b220-7a2c-8c33-000000004041"]),
+    )
+  })
+
+  it("propagates a deleted source entity through intermediate projected references", () => {
+    const intermediateReferenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004063",
+    )
+    const targetReferenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004064",
+    )
+    const intermediate = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: intermediateSketchId,
+      label: "Layout",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: intermediateReferenceId,
+          kind: "line",
+          sourceSketchId,
+          sourceLineId,
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    })
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label: "Detail",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: targetReferenceId,
+          kind: "line",
+          sourceSketchId: intermediate.id,
+          sourceLineId: projectedLineId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004065",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004066",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004067",
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004068",
+      revision: 1,
+      name: "Broken chained reference",
+      // The original source line was deleted; only its endpoint remains.
+      sketches: [
+        sketchRecordSchema.parse({
+          schemaVersion: 0,
+          id: sourceSketchId,
+          label: "Master",
+          plane: "xy",
+          entities: [{ schemaVersion: 0, id: sourcePointId, type: "point", x: 0, y: 0 }],
+          constraints: [],
+        }),
+        intermediate,
+        target,
+      ],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+
+    const resolution = externalSketchReferenceResolution(document, target, {
+      ...labels,
+      missing: (sourceLabel, kind) => `Missing ${kind} in ${sourceLabel}`,
+      unknownSketch: "Missing sketch",
+    })
+    expect(resolution.missingReferenceIds).toEqual(new Set([targetReferenceId]))
+    expect(resolution.labels.get(targetReferenceId)).toBe("Missing line in Layout")
+  })
+
+  it("filters repair candidates by point, line, and exact curve source/projected types", () => {
+    const point: ExternalSketchGeometryCandidate = {
+      kind: "point",
+      label: "Point",
+      sourcePointId,
+      sourceSketchId,
+      world: [0, 0, 0],
+      x: 0,
+      y: 0,
+    }
+    const line: ExternalSketchGeometryCandidate = {
+      kind: "line",
+      label: "Line",
+      sourceLineId,
+      sourceSketchId,
+      sourceStartPointId: sourcePointId,
+      sourceEndPointId,
+      start: { world: [0, 0, 0], x: 0, y: 0 },
+      end: { world: [1, 0, 0], x: 1, y: 0 },
+    }
+    const curve: ExternalSketchGeometryCandidate = {
+      kind: "curve",
+      label: "Circle",
+      sourceEntityId: sourceCircleId,
+      sourceSketchId,
+      sourceType: "circle",
+      projectedType: "circle",
+      closed: true,
+      points: [],
+    }
+    const otherCurve = { ...curve, projectedType: "arc" as const }
+    const candidates = [point, line, curve, otherCurve]
+    const draft = sketchRecordSchema.parse({
+      ...createSketchForExternalTest(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004055",
+          kind: "point",
+          sourceSketchId,
+          sourcePointId: "0195b5ac-b220-7a2c-8c33-000000004056",
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-000000004057",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004058",
+          kind: "line",
+          sourceSketchId,
+          sourceLineId: "0195b5ac-b220-7a2c-8c33-000000004059",
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004060",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004061",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004062",
+        },
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004046",
+          kind: "curve",
+          sourceSketchId,
+          sourceEntityId: "0195b5ac-b220-7a2c-8c33-000000004047",
+          sourceType: "circle",
+          projectedEntityId: "0195b5ac-b220-7a2c-8c33-000000004048",
+          projectedType: "circle",
+          projectedPointIds: ["0195b5ac-b220-7a2c-8c33-000000004049"],
+        },
+      ],
+    })
+    const pointReferenceId = draft.externalReferences?.[0]?.id
+    const lineReferenceId = draft.externalReferences?.[1]?.id
+    const curveReferenceId = draft.externalReferences?.[2]?.id
+    if (!pointReferenceId || !lineReferenceId || !curveReferenceId) {
+      throw new Error("The repair reference fixtures are required.")
+    }
+    expect(repairExternalSketchGeometryCandidates(candidates, draft, pointReferenceId)).toEqual([
+      point,
+    ])
+    expect(repairExternalSketchGeometryCandidates(candidates, draft, lineReferenceId)).toEqual([
+      line,
+    ])
+    expect(repairExternalSketchGeometryCandidates(candidates, draft, curveReferenceId)).toEqual([
+      curve,
+    ])
+
+    const occupiedDraft = sketchRecordSchema.parse({
+      ...draft,
+      externalReferences: [
+        ...(draft.externalReferences ?? []),
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004071",
+          kind: "line",
+          sourceSketchId,
+          sourceLineId,
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-000000004072",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-000000004073",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-000000004074",
+        },
+      ],
+    })
+    expect(
+      availableExternalSketchGeometryCandidates(candidates, occupiedDraft, lineReferenceId),
+    ).toEqual([])
+  })
+
+  it("repairs a sketch reference while preserving projected identities and constraints", () => {
+    const oldSourceId = "0195b5ac-b220-7a2c-8c33-000000004050"
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004051",
+    )
+    const projectedId = "0195b5ac-b220-7a2c-8c33-000000004052"
+    const draft = sketchRecordSchema.parse({
+      ...createSketchForExternalTest(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "point",
+          sourceSketchId,
+          sourcePointId: oldSourceId,
+          projectedPointId: projectedId,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004053",
+          type: "coincident",
+          firstPointId: boundaryPointId,
+          secondPointId: projectedId,
+        },
+      ],
+    })
+    const candidate: ExternalSketchGeometryCandidate = {
+      kind: "point",
+      label: "Replacement",
+      sourcePointId,
+      sourceSketchId,
+      world: [0, 0, 0],
+      x: 0,
+      y: 0,
+    }
+    const repaired = applyExternalSketchCandidateSelection(draft, candidate, [], referenceId)
+    expect(repaired.externalReferences).toEqual([
+      expect.objectContaining({
+        id: referenceId,
+        sourceSketchId,
+        sourcePointId,
+        projectedPointId: projectedId,
+      }),
+    ])
+    expect(repaired.constraints).toEqual(draft.constraints)
+  })
 })
+
+const boundaryPointId = "0195b5ac-b220-7a2c-8c33-000000004054"
+function createSketchForExternalTest(label = "Target") {
+  return {
+    ...sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label,
+      plane: "xy",
+      entities: [{ schemaVersion: 0, id: boundaryPointId, type: "point", x: 0, y: 0 }],
+      constraints: [],
+    }),
+  }
+}

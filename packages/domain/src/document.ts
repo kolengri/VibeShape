@@ -10,7 +10,6 @@ import {
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
 import {
   isSketchExternalModelReference,
-  projectedExternalSketchEntities,
   type SketchExternalReference,
   type SketchRecord,
   sketchRecordsSchema,
@@ -73,38 +72,6 @@ function validateExternalReferenceOrder(input: ExternalReferenceValidationInput)
   )
 }
 
-function externalReferenceSourceSelector(reference: SketchExternalReference) {
-  if (isSketchExternalModelReference(reference)) return null
-  if (reference.kind === "line") {
-    return { entityId: reference.sourceLineId, entityType: "line", path: "sourceLineId" } as const
-  }
-  if (reference.kind === "curve") {
-    return {
-      entityId: reference.sourceEntityId,
-      entityType: reference.sourceType,
-      path: "sourceEntityId",
-    } as const
-  }
-  return { entityId: reference.sourcePointId, entityType: "point", path: "sourcePointId" } as const
-}
-
-function validateExternalReferenceSource(input: ExternalReferenceValidationInput) {
-  const path = externalReferencePath(input)
-  const selector = externalReferenceSourceSelector(input.reference)
-  if (!selector) return
-  // Projected entities are owned by the intermediate sketch and are valid stable targets.
-  const sourceEntity = [
-    ...input.source.entities,
-    ...projectedExternalSketchEntities(input.source.externalReferences ?? []),
-  ].find(({ id }) => id === selector.entityId)
-  if (sourceEntity?.type === selector.entityType) return
-  addDocumentIssue(
-    input.context,
-    [...path, selector.path],
-    `An external sketch reference must target a source ${selector.entityType}.`,
-  )
-}
-
 function validateExternalSketchReference(input: {
   context: z.RefinementCtx
   reference: SketchExternalReference
@@ -125,7 +92,6 @@ function validateExternalSketchReference(input: {
   }
   const resolved = { ...input, source: input.source }
   validateExternalReferenceOrder(resolved)
-  validateExternalReferenceSource(resolved)
 }
 
 function validateDocumentSketchReferences(

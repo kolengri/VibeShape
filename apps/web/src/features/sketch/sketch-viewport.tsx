@@ -137,7 +137,8 @@ import {
   type ExternalModelGeometryCandidate,
 } from "./external-model-geometry"
 import {
-  applyExternalSketchCandidate,
+  applyExternalSketchCandidateSelection,
+  availableExternalSketchGeometryCandidates,
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
   externalReferenceMatchesCandidate,
@@ -7176,13 +7177,8 @@ function useExternalReferenceInteraction({
   modelCandidates: readonly ExternalModelGeometryCandidate[]
 }) {
   const contextCandidates = useMemo(() => {
-    if (!draft) return []
-    const references = draft.externalReferences ?? []
-    return candidates.filter(
-      (candidate) =>
-        !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
-    )
-  }, [candidates, draft])
+    return availableExternalSketchGeometryCandidates(candidates, draft, repairReferenceId)
+  }, [candidates, draft, repairReferenceId])
   const availableCandidates = useMemo(
     () => (editorTool === "use" ? [...contextCandidates, ...modelCandidates] : []),
     [contextCandidates, editorTool, modelCandidates],
@@ -7200,7 +7196,12 @@ function useExternalReferenceInteraction({
               selectedEntityIds,
               repairReferenceId,
             )
-          : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+          : applyExternalSketchCandidateSelection(
+              draft,
+              candidate,
+              selectedEntityIds,
+              repairReferenceId,
+            )
       if (next !== draft) {
         onDraftChange(next)
         if (repairReferenceId) onEditorToolChange("select")

@@ -48,7 +48,8 @@ import {
   repairExternalModelGeometryCandidates,
 } from "../features/sketch/external-model-geometry"
 import {
-  applyExternalSketchCandidate,
+  applyExternalSketchCandidateSelection,
+  availableExternalSketchGeometryCandidates,
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
   earlierSketchesForDraft,
@@ -575,7 +576,12 @@ function useSelectExternalGeometry(
             repairReferenceId,
           )
         : sketchCandidate
-          ? applyExternalSketchCandidate(draft, sketchCandidate, selectedEntityIds)
+          ? applyExternalSketchCandidateSelection(
+              draft,
+              sketchCandidate,
+              selectedEntityIds,
+              repairReferenceId,
+            )
           : draft
       if (next !== draft) {
         onDraftChange(next)
@@ -915,9 +921,11 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     rollbackVisibility: sketchGeometry.rollbackVisibility,
     snapshot: sketchGeometry.snapshot,
   })
-  const externalPointCandidates = props.sketch.repairReferenceId
-    ? EMPTY_GEOMETRY
-    : sketchGeometry.externalPointCandidates
+  const externalPointCandidates = availableExternalSketchGeometryCandidates(
+    sketchGeometry.externalPointCandidates,
+    props.sketch.draft,
+    props.sketch.repairReferenceId,
+  )
   const sketchContext = useWorkspaceReferenceSelection({
     externalModelCandidates: modelGeometry.externalModelCandidates,
     externalPointCandidates,

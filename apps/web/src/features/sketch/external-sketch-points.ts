@@ -5,6 +5,9 @@ import type {
   FeatureRecord,
   SketchEntity,
   SketchEntityId,
+  SketchExternalModelReference,
+  SketchExternalReference,
+  SketchExternalReferenceId,
   SketchPoint2,
   SketchRecord,
 } from "@vibeshape/domain"
@@ -14,6 +17,7 @@ import {
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
   projectedExternalSketchEntities,
+  replaceSketchExternalReference,
   sketchEllipseGeometry,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
@@ -83,6 +87,185 @@ export type ExternalSketchGeometryLabels = Readonly<{
   point: (sourceLabel: string, ordinal: number) => string
 }>
 
+export type ExternalSketchReferenceLabels = ExternalSketchGeometryLabels &
+  Readonly<{
+    missing: (
+      sourceLabel: string,
+      kind: "arc" | "circle" | "ellipse" | "elliptical-arc" | "line" | "point",
+    ) => string
+    unknownSketch: string
+  }>
+
+export type ExternalSketchReferenceResolution = Readonly<{
+  labels: ReadonlyMap<SketchExternalReferenceId, string>
+  missingReferenceIds: ReadonlySet<SketchExternalReferenceId>
+}>
+
+type SketchBackedExternalReference = Exclude<SketchExternalReference, SketchExternalModelReference>
+
+function sketchReferenceSourceEntityId(reference: SketchBackedExternalReference) {
+  if (reference.kind === "line") return reference.sourceLineId
+  if (reference.kind === "curve") return reference.sourceEntityId
+  return reference.sourcePointId
+}
+
+function sketchReferenceExpectedType(
+  reference: SketchBackedExternalReference,
+): SketchEntity["type"] {
+  if (reference.kind === "line") return "line"
+  if (reference.kind === "curve") return reference.sourceType
+  return "point"
+}
+
+function sourceEntityLabels(source: SketchRecord, labels: ExternalSketchGeometryLabels) {
+  const result = new Map<SketchEntityId, string>()
+  const curveOrdinals = new Map<ExternalSketchCurveKind, number>()
+  const projectedOwners = new Map<SketchEntityId, SketchExternalReference>()
+  let lineOrdinal = 0
+  let pointOrdinal = 0
+  const entities = [
+    ...source.entities,
+    ...projectedExternalSketchEntities(source.externalReferences ?? []),
+  ]
+  for (const reference of source.externalReferences ?? []) {
+    for (const entity of projectedExternalSketchEntities([reference])) {
+      projectedOwners.set(entity.id, reference)
+    }
+  }
+  for (const entity of entities) {
+    if (entity.type === "point") {
+      pointOrdinal += 1
+      result.set(entity.id, labels.point(source.label, pointOrdinal))
+      continue
+    }
+    if (entity.type === "line") {
+      lineOrdinal += 1
+      result.set(entity.id, labels.line(source.label, lineOrdinal))
+      continue
+    }
+    const ordinal = (curveOrdinals.get(entity.type) ?? 0) + 1
+    curveOrdinals.set(entity.type, ordinal)
+    result.set(entity.id, labels.curve(source.label, entity.type, ordinal))
+  }
+  return {
+    authoredEntityIds: new Set(source.entities.map(({ id }) => id)),
+    entities: new Map(entities.map((entity) => [entity.id, entity])),
+    labels: result,
+    projectedOwners,
+  }
+}
+
+type SourceEntityIndex = ReturnType<typeof sourceEntityLabels>
+
+function sketchReferenceResolves(
+  reference: SketchExternalReference,
+  sourceGeometry: ReadonlyMap<SketchRecord["id"], SourceEntityIndex>,
+  visiting: ReadonlySet<string>,
+): boolean {
+  if (isSketchExternalModelReference(reference)) return true
+  if (visiting.has(reference.id)) return false
+  const geometry = sourceGeometry.get(reference.sourceSketchId)
+  const sourceEntityId = sketchReferenceSourceEntityId(reference)
+  const expectedType = sketchReferenceExpectedType(reference)
+  const entity = sourceEntityId ? geometry?.entities.get(sourceEntityId) : undefined
+  if (!entity || entity.type !== expectedType || !geometry) return false
+  if (geometry.authoredEntityIds.has(entity.id)) return true
+  const owner = geometry.projectedOwners.get(entity.id)
+  return owner
+    ? sketchReferenceResolves(owner, sourceGeometry, new Set([...visiting, reference.id]))
+    : false
+}
+
+function resolveExternalSketchReference(
+  reference: SketchExternalReference,
+  sourceGeometry: ReadonlyMap<SketchRecord["id"], SourceEntityIndex>,
+  sourceSketches: ReadonlyMap<SketchRecord["id"], SketchRecord>,
+  labels: ExternalSketchReferenceLabels,
+) {
+  if (isSketchExternalModelReference(reference)) return null
+  const source = sourceSketches.get(reference.sourceSketchId)
+  const sourceEntityId = sketchReferenceSourceEntityId(reference)
+  const expectedType = sketchReferenceExpectedType(reference)
+  const geometry = sourceGeometry.get(reference.sourceSketchId)
+  const entity = sourceEntityId ? geometry?.entities.get(sourceEntityId) : undefined
+  const label = entity?.type === expectedType ? geometry?.labels.get(entity.id) : undefined
+  if (label && sketchReferenceResolves(reference, sourceGeometry, new Set())) {
+    return { id: reference.id, label, missing: false } as const
+  }
+  return {
+    id: reference.id,
+    label: labels.missing(source?.label ?? labels.unknownSketch, expectedType),
+    missing: true,
+  } as const
+}
+
+export function externalSketchReferenceResolution(
+  document: Pick<DocumentSnapshot, "sketches">,
+  draft: SketchRecord,
+  labels: ExternalSketchReferenceLabels,
+): ExternalSketchReferenceResolution {
+  const resolvedLabels = new Map<SketchExternalReferenceId, string>()
+  const missingReferenceIds = new Set<SketchExternalReferenceId>()
+  const sourceGeometry = new Map(
+    document.sketches.map((source) => [source.id, sourceEntityLabels(source, labels)]),
+  )
+  const sourceSketches = new Map(document.sketches.map((source) => [source.id, source]))
+
+  for (const reference of draft.externalReferences ?? []) {
+    const resolution = resolveExternalSketchReference(
+      reference,
+      sourceGeometry,
+      sourceSketches,
+      labels,
+    )
+    if (!resolution) continue
+    resolvedLabels.set(resolution.id, resolution.label)
+    if (resolution.missing) missingReferenceIds.add(resolution.id)
+  }
+
+  return { labels: resolvedLabels, missingReferenceIds }
+}
+
+export function repairExternalSketchGeometryCandidates(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  draft: SketchRecord | null,
+  repairReferenceId: SketchExternalReferenceId | null,
+) {
+  if (!repairReferenceId) return candidates
+  const reference = draft?.externalReferences?.find(({ id }) => id === repairReferenceId)
+  if (!reference || isSketchExternalModelReference(reference)) return []
+  if (reference.kind === "line") {
+    return candidates.filter(
+      (candidate): candidate is ExternalSketchLineCandidate => candidate.kind === "line",
+    )
+  }
+  if (reference.kind === "curve") {
+    return candidates.filter(
+      (candidate): candidate is Extract<ExternalSketchGeometryCandidate, { kind: "curve" }> =>
+        candidate.kind === "curve" &&
+        candidate.sourceType === reference.sourceType &&
+        candidate.projectedType === reference.projectedType,
+    )
+  }
+  return candidates.filter(
+    (candidate): candidate is ExternalSketchPointCandidate => candidate.kind === "point",
+  )
+}
+
+export function availableExternalSketchGeometryCandidates(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  draft: SketchRecord | null,
+  repairReferenceId: SketchExternalReferenceId | null,
+) {
+  if (!draft) return []
+  const compatible = repairExternalSketchGeometryCandidates(candidates, draft, repairReferenceId)
+  const references = draft.externalReferences ?? []
+  return compatible.filter(
+    (candidate) =>
+      !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
+  )
+}
+
 export function externalReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
   candidate: ExternalSketchGeometryCandidate | ExternalModelGeometryCandidate,
@@ -129,7 +312,7 @@ export function attachExternalProjectedPoint(
       )
 }
 
-export function applyExternalSketchCandidate(
+function applyExternalSketchCandidate(
   draft: SketchRecord,
   candidate: ExternalSketchGeometryCandidate,
   selectedEntityIds: readonly SketchEntityId[],
@@ -142,6 +325,17 @@ export function applyExternalSketchCandidate(
         selectedEntityIds,
       )
     : materialized.sketch
+}
+
+export function applyExternalSketchCandidateSelection(
+  draft: SketchRecord,
+  candidate: ExternalSketchGeometryCandidate,
+  selectedEntityIds: readonly SketchEntityId[],
+  repairReferenceId: SketchExternalReferenceId | null,
+): SketchRecord {
+  return repairReferenceId
+    ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
+    : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
 }
 
 export type MaterializedExternalSketchCandidate =
