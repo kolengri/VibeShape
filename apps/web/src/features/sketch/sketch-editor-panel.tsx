@@ -248,12 +248,14 @@ function SketchSetupSection({
   copy,
   disabled,
   draft,
+  supportLabel,
   onDraftChange,
   onSupportReplace,
 }: {
   copy: SketchEditorPanelCopy
   disabled: boolean
   draft: SketchRecord
+  supportLabel: string | null
   onDraftChange: (draft: SketchRecord) => void
   onSupportReplace: () => void
 }) {
@@ -271,7 +273,9 @@ function SketchSetupSection({
               onDraftChange({ ...draft, plane: event.currentTarget.value as SketchRecord["plane"] })
             }
           >
-            {draft.support ? <option value="feature-face">{copy.planeFeatureFace}</option> : null}
+            {draft.support ? (
+              <option value="feature-face">{supportLabel ?? copy.planeFeatureFace}</option>
+            ) : null}
             <option value="xy">{copy.planeXy}</option>
             <option value="xz">{copy.planeXz}</option>
             <option value="yz">{copy.planeYz}</option>
@@ -794,6 +798,7 @@ type SketchEditorPanelState = Readonly<{
   selectedEntityIds: readonly SketchEntityId[]
   selectedConstraintId: SketchConstraintId | null
   selectedProfile: SketchProfileSelector | null
+  supportLabel: string | null
   variables: readonly VariableDefinition[]
 }>
 
@@ -830,6 +835,7 @@ export function SketchEditorPanel({
     selectedEntityIds,
     selectedConstraintId,
     selectedProfile,
+    supportLabel,
     variables,
   } = state
   const {
@@ -859,6 +865,7 @@ export function SketchEditorPanel({
           copy={copy}
           disabled={disabled}
           draft={draft}
+          supportLabel={supportLabel}
           onDraftChange={onDraftChange}
           onSupportReplace={onSupportReplace}
         />

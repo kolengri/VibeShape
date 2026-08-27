@@ -48,7 +48,10 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
-import { externalModelReferenceLabels } from "../features/sketch/external-model-geometry"
+import {
+  externalModelReferenceLabels,
+  resolvePlanarFaceSupportLabel,
+} from "../features/sketch/external-model-geometry"
 import { externalSketchGeometryCandidates } from "../features/sketch/external-sketch-points"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
@@ -1202,6 +1205,21 @@ function ActiveSketchTaskPanel({
       ),
     [draft.externalReferences, report.rebuild, report.snapshot.features, viewportT],
   )
+  const supportLabel = useMemo(
+    () =>
+      draft.support
+        ? resolvePlanarFaceSupportLabel(
+            report.rebuild.ok ? report.rebuild.response.geometry : [],
+            report.snapshot.features,
+            draft.support.reference,
+            {
+              face: (feature, ordinal) =>
+                viewportT("externalModelFaceReference", { feature, ordinal }),
+            },
+          )
+        : null,
+    [draft.support, report.rebuild, report.snapshot.features, viewportT],
+  )
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
@@ -1254,6 +1272,7 @@ function ActiveSketchTaskPanel({
             selectedConstraintId,
             selectedEntityIds,
             selectedProfile,
+            supportLabel,
             variables: report.snapshot.variables,
           }}
           actions={{

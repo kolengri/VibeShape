@@ -48,9 +48,42 @@ const sketchDisplay = {
   constructionPointPositions: new Float32Array(),
 }
 
+function planarFaceCandidate(
+  candidateId: string,
+  meshFaceId: number,
+  semanticRole: string,
+  centroid: readonly [number, number, number],
+) {
+  return {
+    candidateId,
+    kind: "face" as const,
+    lineageTokens: [],
+    meshFaceId,
+    referenceGeometry: { kind: "plane-face" as const, normal: [0, 0, 1] as const },
+    semanticRole,
+    signature: {
+      adjacentGeometryClasses: [],
+      boundaryCount: 4,
+      bounds: { min: centroid, max: centroid },
+      centroid,
+      direction: [0, 0, 1] as const,
+      directionMode: "oriented" as const,
+      geometryClass: "PLANE" as const,
+      kind: "face" as const,
+      measure: 100,
+    },
+  }
+}
+
 function readyController(
-  features: readonly { id: string; dependencies: readonly string[] }[],
-  geometry: readonly { featureId: string; geometry: { mesh: typeof mesh } }[],
+  features: readonly { id: string; dependencies: readonly string[]; label?: string }[],
+  geometry: readonly {
+    featureId: string
+    geometry: {
+      mesh: typeof mesh
+      topologyCandidates?: readonly ReturnType<typeof planarFaceCandidate>[]
+    }
+  }[],
   sketches: readonly (typeof sketchDisplay)[] = [],
 ) {
   return {
@@ -101,6 +134,8 @@ function renderViewport(
     setMeshes: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
     setSketchReferencePreselection: vi.fn(),
+    setSelectionCandidateStackPreserved: vi.fn(),
+    setSelectionPreselection: vi.fn(),
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
@@ -533,7 +568,7 @@ describe("GeometryViewport", () => {
     expect(onSelectionChange).toHaveBeenCalledWith(selection)
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
     expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith({ xy: true, xz: true, yz: true })
-    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null)
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, false)
     expect(
       screen
         .getByRole("region", { name: "3D viewport" })
@@ -719,7 +754,7 @@ describe("GeometryViewport", () => {
 
     await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
     expect(port.setMeshes).toHaveBeenCalledWith([])
-    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz")
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz", true)
     expect(screen.queryByText("Create a feature to display its rebuilt geometry.")).toBeNull()
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-origin-plane-selection")).toBe("xz")
@@ -741,13 +776,105 @@ describe("GeometryViewport", () => {
       onSelect: vi.fn(),
     })
 
-    await waitFor(() => expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null))
+    await waitFor(() => expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, true))
     expect(
       screen.getByText(
         "Select an earlier origin plane, datum plane, or supported planar model face to replace the sketch support.",
       ),
     ).toBeTruthy()
     expect(screen.getByText("Current support: model face")).toBeTruthy()
+  })
+
+  it("labels and disambiguates overlapping model faces for sketch support", async () => {
+    const boxSelection = { featureId: boxId, faceId: 3, faceOrdinal: 99 }
+    const extrusionSelection = { featureId: booleanId, faceId: 7, faceOrdinal: 88 }
+    const unsupportedSelection = { featureId: booleanId, faceId: 9, faceOrdinal: 77 }
+    const { createViewport, onSelectionChange, port } = renderViewport(
+      readyController(
+        [
+          { id: boxId, dependencies: [], label: "Box 1" },
+          { id: booleanId, dependencies: [], label: "Extrusion 1" },
+        ],
+        [
+          {
+            featureId: boxId,
+            geometry: {
+              mesh,
+              topologyCandidates: [
+                planarFaceCandidate("box-face", 3, "primitive.box.face.top", [0, 0, 0]),
+              ],
+            },
+          },
+          {
+            featureId: booleanId,
+            geometry: {
+              mesh,
+              topologyCandidates: [
+                planarFaceCandidate("extrusion-cap", 7, "extrusion.cap.end", [0, 0, 10]),
+                planarFaceCandidate("extrusion-wall", 9, "extrusion.side.1", [10, 0, 5]),
+              ],
+            },
+          },
+        ],
+      ),
+      null,
+      { mode: "create", selectedPlane: "xy", onSelect: vi.fn() },
+    )
+
+    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    const options = createViewport.mock.calls[0]?.[1]
+    expect(options?.isSelectionCandidateEligible?.(boxSelection)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.(extrusionSelection)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.(unsupportedSelection)).toBe(false)
+    act(() =>
+      options?.onSelectionCandidateStackChange?.([
+        unsupportedSelection,
+        boxSelection,
+        extrusionSelection,
+      ]),
+    )
+    expect(screen.getByText("Click to sketch on Box 1 · Face 1")).toBeTruthy()
+
+    act(() => options?.onSelectionCandidateStackCommit?.([boxSelection, extrusionSelection]))
+    const listbox = await screen.findByRole("listbox", { name: "Select sketch support" })
+    expect(port.setSelectionCandidateStackPreserved).toHaveBeenLastCalledWith(true)
+    expect(screen.getByRole("option", { name: "1/2 Box 1 · Face 1" })).toBeTruthy()
+    const extrusionOption = screen.getByRole("option", { name: "2/2 Extrusion 1 · Face 1" })
+    fireEvent.pointerEnter(extrusionOption)
+    expect(port.setSelectionPreselection).toHaveBeenLastCalledWith(extrusionSelection)
+    expect(screen.getByText("Click to sketch on Extrusion 1 · Face 1")).toBeTruthy()
+
+    fireEvent.click(extrusionOption)
+    expect(port.setSelectionCandidateStackPreserved).toHaveBeenLastCalledWith(false)
+    expect(onSelectionChange).toHaveBeenLastCalledWith(extrusionSelection)
+    expect(screen.queryByRole("listbox", { name: "Select sketch support" })).toBeNull()
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(document.activeElement).toBe(viewport)
+
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    const keyboardListbox = screen.getByRole("listbox", { name: "Select sketch support" })
+    fireEvent.keyDown(keyboardListbox, { code: "Backquote", key: "`" })
+    expect(port.setSelectionPreselection).toHaveBeenLastCalledWith(extrusionSelection)
+    fireEvent.keyDown(keyboardListbox, { code: "Backquote", key: "`", shiftKey: true })
+    expect(port.setSelectionPreselection).toHaveBeenLastCalledWith(boxSelection)
+    fireEvent.keyDown(keyboardListbox, { key: "Escape" })
+    expect(screen.queryByRole("listbox", { name: "Select sketch support" })).toBeNull()
+    expect(document.activeElement).toBe(viewport)
+
+    act(() => options?.onSelectionCandidateStackCommit?.([boxSelection, extrusionSelection]))
+    await screen.findByRole("listbox", { name: "Select sketch support" })
+    act(() => options?.onSelectionCandidateStackChange?.([boxSelection]))
+    expect(screen.queryByRole("listbox", { name: "Select sketch support" })).toBeNull()
+    expect(port.setSelectionCandidateStackPreserved).toHaveBeenLastCalledWith(false)
+    expect(document.activeElement).toBe(viewport)
+
+    act(() => options?.onSelectionCandidateStackChange?.([boxSelection, extrusionSelection]))
+    fireEvent.keyDown(viewport, { code: "Backquote", key: "`" })
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Select sketch support" }), {
+      key: "Enter",
+    })
+    expect(onSelectionChange).toHaveBeenLastCalledWith(boxSelection)
+    expect(listbox).not.toBe(document.activeElement)
   })
 
   it("forwards individual origin-plane visibility and exposes accessible toggles", async () => {

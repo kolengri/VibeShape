@@ -145,6 +145,7 @@ function renderPanel(
   onSupportReplace: React.ComponentProps<
     typeof SketchEditorPanel
   >["actions"]["onSupportReplace"] = vi.fn(),
+  supportLabel: React.ComponentProps<typeof SketchEditorPanel>["state"]["supportLabel"] = null,
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -165,6 +166,7 @@ function renderPanel(
               selectedConstraintId,
               selectedEntityIds,
               selectedProfile: extrusion?.profile ?? null,
+              supportLabel,
               variables,
             }}
             actions={{
@@ -189,6 +191,49 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
+  it("displays the resolved support face label", () => {
+    const sketch = sketchRecordSchema.parse({
+      ...lineSketch(),
+      support: {
+        kind: "feature-face" as const,
+        reference: {
+          schemaVersion: 0 as const,
+          featureId: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4103"),
+          kind: "face" as const,
+          signature: {
+            kind: "face" as const,
+            geometryClass: "PLANE" as const,
+            measure: 10,
+            centroid: [0, 0, 5] as const,
+            bounds: { min: [0, 0, 5] as const, max: [0, 0, 5] as const },
+            boundaryCount: 4,
+            adjacentGeometryClasses: [] as const,
+            direction: [0, 0, 1] as const,
+            directionMode: "oriented" as const,
+          },
+        },
+      },
+    })
+
+    renderPanel(
+      sketch,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map(),
+      null,
+      vi.fn(),
+      vi.fn(),
+      "Mount · Face 1",
+    )
+
+    expect(screen.getByRole("option", { name: "Mount · Face 1" })).toBeTruthy()
+  })
+
   it("starts graphical support replacement without mutating the draft", async () => {
     const user = userEvent.setup()
     const sketch = lineSketch()

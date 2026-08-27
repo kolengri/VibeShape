@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
+import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import {
   createFaceHighlightGeometry,
   createViewerGeometry,
   createViewerSketchGeometry,
   isValidViewerFrame,
+  orderedEligibleViewerSelections,
+  orderedUniqueViewerSelections,
   orthographicFrustum,
   type ViewerMesh,
   viewerCameraPoseForFrame,
@@ -11,7 +14,6 @@ import {
   viewerSketchProjectionTarget,
   viewerSketchProjectionViewHeight,
 } from "./three-viewport"
-import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import { viewerBodyColor } from "./viewer-appearance"
 
 const mesh: ViewerMesh = {
@@ -23,6 +25,49 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  it("orders, deduplicates, and caps support face candidates deterministically", () => {
+    const selections = orderedUniqueViewerSelections([
+      { distance: 3, selection: { featureId: "feature-b", faceId: 4, faceOrdinal: 1 } },
+      { distance: 1, selection: { featureId: "feature-z", faceId: 8, faceOrdinal: 2 } },
+      { distance: 1, selection: { featureId: "feature-a", faceId: 9, faceOrdinal: 2 } },
+      { distance: 1, selection: { featureId: "feature-a", faceId: 7, faceOrdinal: 1 } },
+      { distance: 0.5, selection: { featureId: "feature-a", faceId: 7, faceOrdinal: 1 } },
+      ...Array.from({ length: 10 }, (_, index) => ({
+        distance: 4,
+        selection: { featureId: `feature-${index + 10}`, faceId: index, faceOrdinal: 1 },
+      })),
+    ])
+
+    expect(selections).toHaveLength(8)
+    expect(selections.slice(0, 4)).toEqual([
+      { featureId: "feature-a", faceId: 7, faceOrdinal: 1 },
+      { featureId: "feature-a", faceId: 9, faceOrdinal: 2 },
+      { featureId: "feature-z", faceId: 8, faceOrdinal: 2 },
+      { featureId: "feature-b", faceId: 4, faceOrdinal: 1 },
+    ])
+    expect(new Set(selections.map(({ featureId, faceId }) => `${featureId}:${faceId}`)).size).toBe(
+      8,
+    )
+  })
+
+  it("filters unsupported faces before applying the support candidate cap", () => {
+    const unsupported = Array.from({ length: 9 }, (_, index) => ({
+      distance: index + 1,
+      selection: { featureId: `unsupported-${index}`, faceId: index, faceOrdinal: index + 1 },
+    }))
+    const eligible = {
+      distance: 10,
+      selection: { featureId: "eligible", faceId: 42, faceOrdinal: 1 },
+    }
+
+    expect(
+      orderedEligibleViewerSelections(
+        [...unsupported, eligible],
+        ({ featureId }) => featureId === "eligible",
+      ),
+    ).toEqual([eligible.selection])
+  })
+
   it("accepts orthonormal right-handed frames, including origin-plane orientations", () => {
     expect(
       isValidViewerFrame({
