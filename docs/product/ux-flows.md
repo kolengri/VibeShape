@@ -95,6 +95,8 @@ cancels. Shared seed points and compatible internal constraints are cloned per o
 orientation intent retained only for exact quarter turns. Copies remain independent, and dragging
 the center directly on the canvas remains open until associative pattern metadata is introduced.
 
+Ordered Use chains remain graphical: a later sketch can select projected geometry owned by an intermediate sketch, not only that sketch's authored entities. The direct intermediate owner remains visible in labels and stable identity, while compatible edits to the original source recursively update the downstream projection after solve, save, and reopen.
+
 ## Flow 1: create a printable part
 
 An open sketch with a selected closed profile exposes `Extrude selected profile` in both the registered toolbar command and task footer. The action first performs the same single-flight, revision-checked sketch add or update as `Finish sketch`, then opens Extrude only after persistence succeeds; a stale revision or storage failure preserves the complete draft.

@@ -551,6 +551,104 @@ test.describe("full sketch editor", () => {
     await expect(chooser).toHaveCount(0)
   })
 
+  test("uses a projected line from an intermediate sketch and follows source edits", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+    const externalLineSpan = async () => {
+      const line = drawing.locator("[data-sketch-external-line-id] line").last()
+      await expect(line).toHaveCount(1)
+      return line.evaluate((element) => {
+        const x1 = Number(element.getAttribute("x1"))
+        const y1 = Number(element.getAttribute("y1"))
+        const x2 = Number(element.getAttribute("x2"))
+        const y2 = Number(element.getAttribute("y2"))
+        return Math.hypot(x2 - x1, y2 - y1)
+      })
+    }
+    const clickCandidateLine = async (line: ReturnType<typeof drawing.locator>) => {
+      const point = await line.locator("line.stroke-transparent").evaluate((element) => {
+        const candidate = element as unknown as {
+          getAttribute(name: string): string | null
+          getScreenCTM(): {
+            a: number
+            b: number
+            c: number
+            d: number
+            e: number
+            f: number
+          } | null
+        }
+        const matrix = candidate.getScreenCTM()
+        if (!matrix) throw new Error("The projected line requires a screen transform.")
+        const x = (Number(candidate.getAttribute("x1")) + Number(candidate.getAttribute("x2"))) / 2
+        const y = (Number(candidate.getAttribute("y1")) + Number(candidate.getAttribute("y2"))) / 2
+        return {
+          x: matrix.a * x + matrix.c * y + matrix.e,
+          y: matrix.b * x + matrix.d * y + matrix.f,
+        }
+      })
+      await page.mouse.click(point.x, point.y)
+    }
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const secondSketchLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(secondSketchLines).toHaveCount(1)
+    await clickCandidateLine(secondSketchLines.first())
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const thirdSketchLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(thirdSketchLines).toHaveCount(2)
+    await clickCandidateLine(thirdSketchLines.last())
+    const chooser = page.getByRole("dialog", { name: "Choose overlapping geometry" })
+    await expect(chooser).toBeVisible()
+    await chooser.getByRole("button", { name: /Sketch 2 · Line 1/ }).click()
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    const initialSpan = await externalLineSpan()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const sourceEndpoint = drawing.locator('[data-sketch-entity-type="point"]').last()
+    const endpointBounds = await sourceEndpoint.boundingBox()
+    if (!endpointBounds) throw new Error("The source endpoint is not visible.")
+    const sourceX = endpointBounds.x + endpointBounds.width / 2
+    const sourceY = endpointBounds.y + endpointBounds.height / 2
+    await page.mouse.move(sourceX, sourceY)
+    await page.mouse.down()
+    await page.mouse.move(sourceX + 100, sourceY, { steps: 8 })
+    await page.mouse.up()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 3" }).click()
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await expect.poll(externalLineSpan).not.toBeCloseTo(initialSpan, 3)
+  })
+
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
