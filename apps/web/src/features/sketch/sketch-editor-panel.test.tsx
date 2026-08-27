@@ -48,6 +48,7 @@ const copy = {
   distance: "Distance",
   externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
+  brokenExternalReference: "Broken external reference.",
   cancelReferenceRepair: "Cancel reference replacement",
   repairReference: "Replace reference",
   unavailableExternalReference: "Unavailable reference",
@@ -146,6 +147,9 @@ function renderPanel(
     typeof SketchEditorPanel
   >["actions"]["onSupportReplace"] = vi.fn(),
   supportLabel: React.ComponentProps<typeof SketchEditorPanel>["state"]["supportLabel"] = null,
+  missingExternalReferenceIds: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["state"]["missingExternalReferenceIds"] = new Set(),
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -158,6 +162,7 @@ function renderPanel(
               draft: sketch,
               externalPointCandidates: [],
               externalReferenceLabels,
+              missingExternalReferenceIds,
               extrusionAvailable: extrusion !== undefined,
               failedConstraintIds,
               message: null,
@@ -402,6 +407,52 @@ describe("SketchEditorPanel", () => {
     expect(onRemoveDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({ externalReferences: [] }),
     )
+  })
+
+  it("marks a broken sketch reference and starts graphical replacement", async () => {
+    const user = userEvent.setup()
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f4191",
+    )
+    const sketch = sketchRecordSchema.parse({
+      ...lineSketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "line",
+          sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4192"),
+          sourceLineId: createEntityId(),
+          projectedLineId: createEntityId(),
+          projectedStartPointId: createEntityId(),
+          projectedEndPointId: createEntityId(),
+        },
+      ],
+    })
+    const onReferenceRepairChange = vi.fn()
+
+    renderPanel(
+      sketch,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map([[referenceId, "Sketch 1 · Missing line"]]),
+      null,
+      onReferenceRepairChange,
+      vi.fn(),
+      null,
+      new Set([referenceId]),
+    )
+
+    const label = screen.getByText("Sketch 1 · Missing line")
+    expect(label.closest("li")?.dataset.externalReferenceStatus).toBe("missing")
+    expect(screen.getByLabelText("Broken external reference.")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Replace reference" }))
+    expect(onReferenceRepairChange).toHaveBeenCalledWith(referenceId)
   })
 
   it("offers a single-flight Extrude action for a selected closed profile", async () => {

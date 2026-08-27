@@ -76,7 +76,7 @@ describe("document sketch references", () => {
     ).toBe(true)
   })
 
-  it("validates an external curve against its stable source entity and type", () => {
+  it("accepts a broken external curve while retaining strict source-sketch ordering", () => {
     const center = pointSketch(4)
     const sourceCircleId = id("3501")
     const source = {
@@ -131,6 +131,29 @@ describe("document sketch references", () => {
           {
             ...target,
             externalReferences: [{ ...target.externalReferences[0], sourceType: "arc" }],
+          },
+        ],
+      }).success,
+    ).toBe(true)
+    expect(
+      documentSnapshotSchema.safeParse({
+        ...snapshot,
+        sketches: [
+          {
+            ...target,
+            externalReferences: [{ ...target.externalReferences[0], sourceSketchId: id("3999") }],
+          },
+          source,
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentSnapshotSchema.safeParse({
+        ...snapshot,
+        sketches: [
+          {
+            ...target,
+            externalReferences: [{ ...target.externalReferences[0], sourceSketchId: id("3998") }],
           },
         ],
       }).success,

@@ -1145,6 +1145,128 @@ describe("sketch editing", () => {
     }
   })
 
+  it("repairs point, line, and curve sketch references without changing projected identity", () => {
+    const local = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: 0, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const localLine = local.entities.find((entity) => entity.type === "line")
+    if (!localLine) throw new Error("The repair fixture requires a line.")
+    const references = [
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000671" as SketchExternalReferenceId,
+        kind: "point" as const,
+        sourceSketchId: "018f0000-0000-7000-8000-000000000672" as SketchId,
+        sourcePointId: "018f0000-0000-7000-8000-000000000673" as SketchEntityId,
+        projectedPointId: "018f0000-0000-7000-8000-000000000674" as SketchEntityId,
+      },
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000675" as SketchExternalReferenceId,
+        kind: "line" as const,
+        sourceSketchId: "018f0000-0000-7000-8000-000000000676" as SketchId,
+        sourceLineId: "018f0000-0000-7000-8000-000000000677" as SketchEntityId,
+        projectedLineId: "018f0000-0000-7000-8000-000000000678" as SketchEntityId,
+        projectedStartPointId: "018f0000-0000-7000-8000-000000000679" as SketchEntityId,
+        projectedEndPointId: "018f0000-0000-7000-8000-000000000680" as SketchEntityId,
+      },
+      {
+        schemaVersion: 0 as const,
+        id: "018f0000-0000-7000-8000-000000000681" as SketchExternalReferenceId,
+        kind: "curve" as const,
+        sourceSketchId: "018f0000-0000-7000-8000-000000000682" as SketchId,
+        sourceEntityId: "018f0000-0000-7000-8000-000000000683" as SketchEntityId,
+        sourceType: "circle" as const,
+        projectedEntityId: "018f0000-0000-7000-8000-000000000684" as SketchEntityId,
+        projectedType: "circle" as const,
+        projectedPointIds: ["018f0000-0000-7000-8000-000000000685" as SketchEntityId],
+      },
+    ] as const
+    const [pointReference, lineReference, curveReference] = references
+    const withReferences = sketchRecordSchema.parse({
+      ...local,
+      externalReferences: references,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000686",
+          type: "parallel",
+          firstEntityId: lineReference.projectedLineId,
+          secondEntityId: localLine.id,
+        },
+      ],
+    })
+    const pointReplacement = {
+      kind: "point" as const,
+      sourceSketchId: "018f0000-0000-7000-8000-000000000691" as SketchId,
+      sourcePointId: "018f0000-0000-7000-8000-000000000692" as SketchEntityId,
+    }
+    const repairedPoint = replaceSketchExternalReference(
+      withReferences,
+      pointReference.id,
+      pointReplacement,
+    )
+    expect(repairedPoint.externalReferences?.find(({ id }) => id === pointReference.id)).toEqual({
+      ...pointReference,
+      ...pointReplacement,
+    })
+    expect(repairedPoint.constraints).toEqual(withReferences.constraints)
+
+    const lineReplacement = {
+      kind: "line" as const,
+      sourceSketchId: "018f0000-0000-7000-8000-000000000693" as SketchId,
+      sourceLineId: "018f0000-0000-7000-8000-000000000694" as SketchEntityId,
+    }
+    const repairedLine = replaceSketchExternalReference(
+      withReferences,
+      lineReference.id,
+      lineReplacement,
+    )
+    expect(repairedLine.externalReferences?.find(({ id }) => id === lineReference.id)).toEqual({
+      ...lineReference,
+      ...lineReplacement,
+    })
+    expect(repairedLine.constraints).toEqual(withReferences.constraints)
+
+    const curveReplacement = {
+      kind: "curve" as const,
+      sourceSketchId: "018f0000-0000-7000-8000-000000000695" as SketchId,
+      sourceEntityId: "018f0000-0000-7000-8000-000000000696" as SketchEntityId,
+      sourceType: "circle" as const,
+      projectedType: "circle" as const,
+    }
+    const repairedCurve = replaceSketchExternalReference(
+      withReferences,
+      curveReference.id,
+      curveReplacement,
+    )
+    expect(repairedCurve.externalReferences?.find(({ id }) => id === curveReference.id)).toEqual({
+      ...curveReference,
+      ...curveReplacement,
+    })
+    expect(repairedCurve.constraints).toEqual(withReferences.constraints)
+    expect(() =>
+      replaceSketchExternalReference(withReferences, curveReference.id, {
+        kind: "curve",
+        sourceSketchId: "018f0000-0000-7000-8000-000000000697" as SketchId,
+        sourceEntityId: "018f0000-0000-7000-8000-000000000698" as SketchEntityId,
+        sourceType: "arc",
+        projectedType: "arc",
+      }),
+    ).toThrow("preserve its source and projected curve types")
+    expect(() =>
+      replaceSketchExternalReference(withReferences, curveReference.id, {
+        kind: "curve",
+        sourceSketchId: "018f0000-0000-7000-8000-000000000699" as SketchId,
+        sourceEntityId: "018f0000-0000-7000-8000-000000000700" as SketchEntityId,
+        sourceType: "circle",
+        projectedType: "arc",
+      }),
+    ).toThrow("preserve its source and projected curve types")
+  })
+
   it("rejects missing, sketch-to-sketch, cross-feature, and incompatible repairs", () => {
     const sketch = sketchRecordSchema.parse({
       ...empty(),

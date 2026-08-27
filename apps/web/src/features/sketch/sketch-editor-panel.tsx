@@ -15,7 +15,7 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { Layers3, Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
+import { CircleAlert, Layers3, Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -59,6 +59,7 @@ type SketchEditorPanelCopy = Readonly<{
   distance: string
   externalReferenceDescription: string
   externalReferences: string
+  brokenExternalReference: string
   cancelReferenceRepair: string
   repairReference: string
   unavailableExternalReference: string
@@ -681,6 +682,7 @@ function ExternalReferencesSection({
   copy,
   draft,
   labels,
+  missingReferenceIds,
   onDraftChange,
   onReferenceRepairChange,
   repairReferenceId,
@@ -689,6 +691,7 @@ function ExternalReferencesSection({
   copy: SketchEditorPanelCopy
   draft: SketchRecord
   labels: ReadonlyMap<string, string>
+  missingReferenceIds: ReadonlySet<SketchExternalReferenceId>
   onDraftChange: (draft: SketchRecord) => void
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   repairReferenceId: SketchExternalReferenceId | null
@@ -706,11 +709,7 @@ function ExternalReferencesSection({
   }
 
   function repairable(reference: (typeof references)[number]) {
-    return (
-      reference.kind === "model-point" ||
-      reference.kind === "model-line" ||
-      reference.kind === "model-curve"
-    )
+    return reference.kind !== "model-intersection"
   }
 
   return (
@@ -724,11 +723,28 @@ function ExternalReferencesSection({
       ) : (
         <ul className="grid gap-1">
           {references.map((reference) => {
+            const missing = missingReferenceIds.has(reference.id)
             return (
               <li
                 key={reference.id}
-                className="flex items-center gap-2 rounded-sm border px-2 py-1"
+                className={
+                  missing
+                    ? "flex items-center gap-2 rounded-sm border border-destructive/50 bg-destructive/5 px-2 py-1 text-destructive"
+                    : "flex items-center gap-2 rounded-sm border px-2 py-1"
+                }
+                data-external-reference-status={missing ? "missing" : "resolved"}
               >
+                {missing ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <CircleAlert
+                        aria-label={copy.brokenExternalReference}
+                        className="size-3.5 shrink-0"
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>{copy.brokenExternalReference}</TooltipContent>
+                  </Tooltip>
+                ) : null}
                 <span className="min-w-0 flex-1 truncate text-xs">{referenceLabel(reference)}</span>
                 {repairable(reference) ? (
                   <Tooltip>
@@ -790,6 +806,7 @@ type SketchEditorPanelState = Readonly<{
   draft: SketchRecord
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   externalReferenceLabels: ReadonlyMap<string, string>
+  missingExternalReferenceIds: ReadonlySet<SketchExternalReferenceId>
   extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
@@ -827,6 +844,7 @@ export function SketchEditorPanel({
     draft,
     externalPointCandidates,
     externalReferenceLabels,
+    missingExternalReferenceIds,
     extrusionAvailable,
     failedConstraintIds,
     message,
@@ -874,6 +892,7 @@ export function SketchEditorPanel({
           copy={copy}
           draft={draft}
           labels={externalReferenceLabels}
+          missingReferenceIds={missingExternalReferenceIds}
           onDraftChange={onDraftChange}
           onReferenceRepairChange={onReferenceRepairChange}
           repairReferenceId={repairReferenceId}

@@ -10,10 +10,15 @@ import {
   projectedExternalSketchEntities,
   type SketchConstraint,
   type SketchEntity,
+  type SketchExternalCurveReference,
+  type SketchExternalLineReference,
+  type SketchExternalModelReference,
   type SketchExternalModelCurveReference,
   type SketchExternalModelIntersectionReference,
   type SketchExternalModelLineReference,
   type SketchExternalModelPointReference,
+  type SketchExternalPointReference,
+  type SketchExternalReference,
   type SketchFeatureFaceSupport,
   type SketchRecord,
   sketchConstraintSchema,
@@ -32,6 +37,14 @@ export type SketchSupportReplacement =
     }>
 
 export type SketchExternalReferenceReplacement =
+  | Readonly<Pick<SketchExternalPointReference, "kind" | "sourceSketchId" | "sourcePointId">>
+  | Readonly<Pick<SketchExternalLineReference, "kind" | "sourceSketchId" | "sourceLineId">>
+  | Readonly<
+      Pick<
+        SketchExternalCurveReference,
+        "kind" | "projectedType" | "sourceSketchId" | "sourceEntityId" | "sourceType"
+      >
+    >
   | Readonly<Pick<SketchExternalModelPointReference, "kind" | "reference">>
   | Readonly<Pick<SketchExternalModelLineReference, "kind" | "reference">>
   | Readonly<
@@ -2558,7 +2571,191 @@ export function removeSketchExternalReference(
   })
 }
 
-/** Replace the topology identity of an existing model-backed sketch reference. */
+type SketchBackedExternalReference = Exclude<SketchExternalReference, SketchExternalModelReference>
+type SketchBackedExternalReferenceReplacement = Extract<
+  SketchExternalReferenceReplacement,
+  { sourceSketchId: SketchId }
+>
+
+function isSketchBackedExternalReferenceReplacement(
+  replacement: SketchExternalReferenceReplacement,
+): replacement is SketchBackedExternalReferenceReplacement {
+  return "sourceSketchId" in replacement
+}
+
+function replaceExternalReferenceRecord(
+  sketch: SketchRecord,
+  referenceId: SketchExternalReferenceId,
+  replacement: SketchExternalReference,
+) {
+  return sketchRecordSchema.parse({
+    ...sketch,
+    externalReferences: sketch.externalReferences?.map((candidate) =>
+      candidate.id === referenceId ? replacement : candidate,
+    ),
+  })
+}
+
+function replaceSketchPointReference(
+  sketch: SketchRecord,
+  reference: SketchExternalPointReference,
+  replacement: SketchBackedExternalReferenceReplacement,
+) {
+  if (replacement.kind !== undefined && replacement.kind !== "point") {
+    throw new TypeError(`A point reference cannot be replaced with ${replacement.kind} geometry.`)
+  }
+  return replaceExternalReferenceRecord(sketch, reference.id, {
+    ...reference,
+    sourceSketchId: replacement.sourceSketchId,
+    sourcePointId: replacement.sourcePointId,
+  })
+}
+
+function replaceSketchLineReference(
+  sketch: SketchRecord,
+  reference: SketchExternalLineReference,
+  replacement: SketchBackedExternalReferenceReplacement,
+) {
+  if (replacement.kind !== "line") throw new TypeError("A sketch reference kind mismatch.")
+  return replaceExternalReferenceRecord(sketch, reference.id, {
+    ...reference,
+    sourceSketchId: replacement.sourceSketchId,
+    sourceLineId: replacement.sourceLineId,
+  })
+}
+
+function replaceSketchCurveReference(
+  sketch: SketchRecord,
+  reference: SketchExternalCurveReference,
+  replacement: SketchBackedExternalReferenceReplacement,
+) {
+  if (replacement.kind !== "curve") throw new TypeError("A sketch reference kind mismatch.")
+  if (
+    replacement.sourceType !== reference.sourceType ||
+    replacement.projectedType !== reference.projectedType
+  ) {
+    throw new TypeError("A sketch-curve repair must preserve its source and projected curve types.")
+  }
+  return replaceExternalReferenceRecord(sketch, reference.id, {
+    ...reference,
+    sourceSketchId: replacement.sourceSketchId,
+    sourceEntityId: replacement.sourceEntityId,
+  })
+}
+
+function replaceSketchBackedExternalReference(
+  sketch: SketchRecord,
+  reference: SketchBackedExternalReference,
+  replacement: SketchExternalReferenceReplacement,
+) {
+  if (!isSketchBackedExternalReferenceReplacement(replacement)) {
+    throw new TypeError("A sketch-backed reference cannot use model-backed replacement geometry.")
+  }
+  if (reference.kind === "point" || reference.kind === undefined) {
+    return replaceSketchPointReference(sketch, reference, replacement)
+  }
+  if (reference.kind === "line") {
+    return replaceSketchLineReference(sketch, reference, replacement)
+  }
+  if (reference.kind !== "curve") throw new TypeError("A sketch reference kind mismatch.")
+  return replaceSketchCurveReference(sketch, reference, replacement)
+}
+
+function modelReferenceGeometryClass(reference: SketchExternalModelReference) {
+  if (reference.kind === "model-point") return "POINT"
+  if (reference.kind === "model-line") return "LINE"
+  if (reference.kind === "model-curve") return "CIRCLE"
+  return "PLANE"
+}
+
+function modelReferenceKindMismatch(
+  reference: SketchExternalModelReference,
+  replacement: SketchExternalReferenceReplacement,
+): never {
+  throw new TypeError(
+    `A ${reference.kind} reference cannot be replaced with ${replacement.kind} geometry.`,
+  )
+}
+
+function modelPointReferenceWithReplacement(
+  reference: SketchExternalModelPointReference,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelPointReference {
+  if (replacement.kind !== "model-point") return modelReferenceKindMismatch(reference, replacement)
+  return { ...reference, reference: replacement.reference }
+}
+
+function modelLineReferenceWithReplacement(
+  reference: SketchExternalModelLineReference,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelLineReference {
+  if (replacement.kind !== "model-line") return modelReferenceKindMismatch(reference, replacement)
+  return { ...reference, reference: replacement.reference }
+}
+
+function modelIntersectionReferenceWithReplacement(
+  reference: SketchExternalModelIntersectionReference,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelIntersectionReference {
+  if (replacement.kind !== "model-intersection")
+    return modelReferenceKindMismatch(reference, replacement)
+  return { ...reference, reference: replacement.reference }
+}
+
+function modelCurveReferenceWithReplacement(
+  reference: SketchExternalModelCurveReference,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelCurveReference {
+  if (replacement.kind !== "model-curve") {
+    throw new TypeError(
+      `A ${reference.kind} reference cannot be replaced with ${replacement.kind} geometry.`,
+    )
+  }
+  if (
+    replacement.sourceType !== reference.sourceType ||
+    replacement.projectedType !== reference.projectedType
+  ) {
+    throw new TypeError("A model-curve repair must preserve its source and projected curve types.")
+  }
+  return { ...reference, reference: replacement.reference }
+}
+
+function modelReferenceWithReplacement(
+  reference: SketchExternalModelReference,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelReference {
+  if (reference.kind === "model-point")
+    return modelPointReferenceWithReplacement(reference, replacement)
+  if (reference.kind === "model-line")
+    return modelLineReferenceWithReplacement(reference, replacement)
+  if (reference.kind === "model-intersection")
+    return modelIntersectionReferenceWithReplacement(reference, replacement)
+  return modelCurveReferenceWithReplacement(reference, replacement)
+}
+
+function replaceModelBackedExternalReference(
+  sketch: SketchRecord,
+  reference: SketchExternalModelReference,
+  replacement: SketchExternalReferenceReplacement,
+) {
+  if (isSketchBackedExternalReferenceReplacement(replacement))
+    throw new TypeError(
+      `A ${reference.kind} reference cannot be replaced with ${replacement.kind} geometry.`,
+    )
+  const updated = modelReferenceWithReplacement(reference, replacement)
+  if (updated.reference.featureId !== reference.reference.featureId) {
+    throw new TypeError(
+      "A sketch external reference repair must stay within the producing feature.",
+    )
+  }
+  const expectedGeometryClass = modelReferenceGeometryClass(reference)
+  if (updated.reference.signature.geometryClass !== expectedGeometryClass) {
+    throw new TypeError(`A ${reference.kind} repair requires ${expectedGeometryClass} geometry.`)
+  }
+  return replaceExternalReferenceRecord(sketch, reference.id, updated)
+}
+
+/** Replace a broken external source while preserving projected identities and local constraints. */
 export function replaceSketchExternalReference(
   sketch: SketchRecord,
   referenceId: SketchExternalReferenceId,
@@ -2568,48 +2765,9 @@ export function replaceSketchExternalReference(
   if (!reference) {
     throw new TypeError("A sketch external reference repair must target an existing reference.")
   }
-  if (!isSketchExternalModelReference(reference)) {
-    throw new TypeError("Only model-backed sketch references can have their topology repaired.")
-  }
-
-  if (replacement.kind !== reference.kind) {
-    throw new TypeError(
-      `A ${reference.kind} reference cannot be replaced with ${replacement.kind} geometry.`,
-    )
-  }
-  if (replacement.reference.featureId !== reference.reference.featureId) {
-    throw new TypeError(
-      "A sketch external reference repair must stay within the producing feature.",
-    )
-  }
-  const expectedGeometryClass =
-    reference.kind === "model-point"
-      ? "POINT"
-      : reference.kind === "model-line"
-        ? "LINE"
-        : reference.kind === "model-curve"
-          ? "CIRCLE"
-          : "PLANE"
-  if (replacement.reference.signature.geometryClass !== expectedGeometryClass) {
-    throw new TypeError(`A ${reference.kind} repair requires ${expectedGeometryClass} geometry.`)
-  }
-  if (
-    reference.kind === "model-curve" &&
-    replacement.kind === "model-curve" &&
-    (replacement.sourceType !== reference.sourceType ||
-      replacement.projectedType !== reference.projectedType)
-  ) {
-    throw new TypeError("A model-curve repair must preserve its source and projected curve types.")
-  }
-
-  return sketchRecordSchema.parse({
-    ...sketch,
-    externalReferences: sketch.externalReferences?.map((candidate) =>
-      candidate.id === referenceId && isSketchExternalModelReference(candidate)
-        ? { ...candidate, reference: replacement.reference }
-        : candidate,
-    ),
-  })
+  return isSketchExternalModelReference(reference)
+    ? replaceModelBackedExternalReference(sketch, reference, replacement)
+    : replaceSketchBackedExternalReference(sketch, reference, replacement)
 }
 
 export function setSketchDimensionValue(

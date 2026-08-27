@@ -649,6 +649,97 @@ test.describe("full sketch editor", () => {
     await expect.poll(externalLineSpan).not.toBeCloseTo(initialSpan, 3)
   })
 
+  test("repairs a broken sketch line reference graphically after a source edit", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
+    await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.44)
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.62)
+    await page.mouse.click(bounds.x + bounds.width * 0.66, bounds.y + bounds.height * 0.62)
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.46, bounds.y + bounds.height * 0.76)
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.76)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const sourceLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(sourceLines).toHaveCount(3)
+    await sourceLines.first().dispatchEvent("pointerdown")
+    await expect(taskPanel.getByText("Sketch 1 · Line 1", { exact: true })).toBeVisible()
+    const useExternalGeometry = page.getByRole("button", {
+      name: "Use external geometry",
+      exact: true,
+    })
+    await expect(useExternalGeometry).toHaveAttribute("aria-pressed", "true")
+    const remainingSourceLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(remainingSourceLines).toHaveCount(2)
+    await remainingSourceLines.first().dispatchEvent("pointerdown")
+    await expect(taskPanel.getByText("Sketch 1 · Line 2", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await selectSketchEntities(page, drawing, "line", [0])
+    await page.keyboard.press("Delete")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    const brokenReference = taskPanel.getByText("Sketch 1 · Missing line", { exact: true })
+    await expect(brokenReference).toBeVisible()
+    const brokenReferenceRow = brokenReference.locator("..")
+    await expect(brokenReferenceRow).toHaveAttribute("data-external-reference-status", "missing")
+    await brokenReferenceRow.getByRole("button", { name: "Replace reference" }).click()
+    const replacementLines = drawing.locator(
+      "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
+    )
+    await expect(replacementLines).toHaveCount(1)
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "1")
+    const replacementSelect = page.getByRole("combobox", {
+      name: "Select a reference with the keyboard",
+    })
+    const replacementOption = replacementSelect.locator("option").filter({
+      hasText: "Sketch 1 · Line 2",
+    })
+    await expect(replacementOption).toHaveCount(1)
+    const replacementValue = await replacementOption.getAttribute("value")
+    if (!replacementValue) throw new Error("The orbit repair candidate must have a value.")
+    await replacementSelect.selectOption(replacementValue)
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(taskPanel.getByText("Sketch 1 · Line 2", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-line-count='2']")).toHaveCount(1)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(taskPanel.getByText("Sketch 1 · Line 2", { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText("Sketch 1 · Missing line", { exact: true })).toHaveCount(0)
+    await expect(drawing.locator("[data-sketch-external-line-count='2']")).toHaveCount(1)
+  })
+
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

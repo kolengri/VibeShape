@@ -52,7 +52,10 @@ import {
   externalModelReferenceLabels,
   resolvePlanarFaceSupportLabel,
 } from "../features/sketch/external-model-geometry"
-import { externalSketchGeometryCandidates } from "../features/sketch/external-sketch-points"
+import {
+  externalSketchGeometryCandidates,
+  externalSketchReferenceResolution,
+} from "../features/sketch/external-sketch-points"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
 import {
   type ActiveSketchEditorTool,
@@ -132,6 +135,7 @@ function useSketchEditorCopy() {
     distance: t("distance"),
     externalReferenceDescription: t("externalReferenceDescription"),
     externalReferences: t("externalReferences"),
+    brokenExternalReference: t("brokenExternalReference"),
     cancelReferenceRepair: t("cancelReferenceRepair"),
     repairReference: t("repairReference"),
     replaceSupport: t("replaceSupport"),
@@ -1170,20 +1174,43 @@ function ActiveSketchTaskPanel({
   const viewportT = useTranslations("app.shell.viewport")
   const [message, setMessage] = useState<string | null>(null)
   const copy = useSketchEditorCopy()
-  const referenceCandidates = externalSketchGeometryCandidates(
-    report.snapshot,
-    draft,
-    {
-      curve: (sketch, kind, ordinal) =>
+  const sketchReferenceLabels = useMemo(
+    () => ({
+      curve: (
+        sketch: string,
+        kind: "arc" | "circle" | "ellipse" | "elliptical-arc",
+        ordinal: number,
+      ) =>
         viewportT("externalCurveContext", {
           kind: kind === "elliptical-arc" ? "ellipticalArc" : kind,
           ordinal,
           sketch,
         }),
-      line: (sketch, ordinal) => viewportT("externalLineCandidate", { sketch, ordinal }),
-      point: (sketch, ordinal) => viewportT("externalPointCandidate", { sketch, ordinal }),
-    },
+      line: (sketch: string, ordinal: number) =>
+        viewportT("externalLineCandidate", { sketch, ordinal }),
+      missing: (
+        sketch: string,
+        kind: "arc" | "circle" | "ellipse" | "elliptical-arc" | "line" | "point",
+      ) =>
+        viewportT("externalSketchReferenceProblem", {
+          kind: kind === "elliptical-arc" ? "ellipticalArc" : kind,
+          sketch,
+        }),
+      point: (sketch: string, ordinal: number) =>
+        viewportT("externalPointCandidate", { sketch, ordinal }),
+      unknownSketch: viewportT("unknownSketch"),
+    }),
+    [viewportT],
+  )
+  const referenceCandidates = externalSketchGeometryCandidates(
+    report.snapshot,
+    draft,
+    sketchReferenceLabels,
     resolveDocumentFeatureParameters(report.snapshot),
+  )
+  const sketchReferenceResolution = useMemo(
+    () => externalSketchReferenceResolution(report.snapshot, draft, sketchReferenceLabels),
+    [draft, report.snapshot, sketchReferenceLabels],
   )
   const modelReferenceLabels = useMemo(
     () =>
@@ -1204,6 +1231,11 @@ function ActiveSketchTaskPanel({
         },
       ),
     [draft.externalReferences, report.rebuild, report.snapshot.features, viewportT],
+  )
+  const externalReferenceLabels = useMemo(
+    () =>
+      new Map([...sketchReferenceResolution.labels.entries(), ...modelReferenceLabels.entries()]),
+    [modelReferenceLabels, sketchReferenceResolution.labels],
   )
   const supportLabel = useMemo(
     () =>
@@ -1263,7 +1295,8 @@ function ActiveSketchTaskPanel({
             disabled: report.mode === "read-only",
             draft,
             externalPointCandidates: referenceCandidates,
-            externalReferenceLabels: modelReferenceLabels,
+            externalReferenceLabels,
+            missingExternalReferenceIds: sketchReferenceResolution.missingReferenceIds,
             extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,

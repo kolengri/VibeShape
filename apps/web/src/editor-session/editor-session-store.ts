@@ -7,7 +7,7 @@ import type {
   SketchProfileSelector,
   SketchRecord,
 } from "@vibeshape/domain"
-import { isSketchExternalModelReference, replaceSketchSupport } from "@vibeshape/domain"
+import { replaceSketchSupport } from "@vibeshape/domain"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -414,7 +414,7 @@ export function createEditorSessionStore() {
             const reference = state.sketch.draft?.externalReferences?.find(
               ({ id }) => id === referenceId,
             )
-            if (!reference || !isSketchExternalModelReference(reference)) return
+            if (!reference || reference.kind === "model-intersection") return
             state.sketch.editorTool = "use"
             state.sketch.repairReferenceId = referenceId
           }),

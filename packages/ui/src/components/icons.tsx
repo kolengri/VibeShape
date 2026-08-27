@@ -4,6 +4,7 @@ export {
   Check,
   ChevronDown,
   Circle,
+  CircleAlert,
   CircleDashed,
   Command as CommandIcon,
   Construction,
