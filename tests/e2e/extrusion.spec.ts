@@ -258,7 +258,73 @@ test.describe("selector-backed extrusion", () => {
     const support = page.getByRole("combobox", { name: "Support plane" })
     await expect(support).toHaveValue("feature-face")
     await expect(support).toBeDisabled()
+    await expect(support).toContainText(/Extrusion 1 · Face \d+/)
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    const supportLabel = await support.locator("option:checked").textContent()
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(
+      page.getByRole("combobox", { name: "Support plane" }).locator("option:checked"),
+    ).toHaveText(supportLabel ?? "")
+  })
+
+  test("chooses an exact sketch support when model faces overlap", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("form", { name: "Extrude profile" })
+      .getByRole("button", { name: "Create extrusion" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
+      timeout: 120_000,
+    })
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const chooser = page.getByRole("listbox", { name: "Select sketch support" })
+    let foundOverlap = false
+    for (let row = 3; row < 15 && !foundOverlap; row += 1) {
+      for (let column = 4; column < 20 && !foundOverlap; column += 1) {
+        await page.mouse.move(
+          bounds.x + (bounds.width * column) / 24,
+          bounds.y + (bounds.height * row) / 18,
+        )
+        await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+        await page.keyboard.press("Backquote")
+        foundOverlap = await chooser.isVisible()
+      }
+    }
+    expect(foundOverlap).toBe(true)
+
+    const extrusionFace = chooser.getByRole("option", { name: /Extrusion 1 · Face \d+/ }).first()
+    await expect(extrusionFace).toBeVisible()
+    await extrusionFace.hover()
+    await expect(page.getByText(/Click to sketch on Extrusion 1 · Face \d+/)).toBeVisible()
+    await extrusionFace.click()
+
+    const support = page.getByRole("combobox", { name: "Support plane" })
+    await expect(support.locator("option:checked")).toHaveText(/Extrusion 1 · Face \d+/)
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(support.locator("option:checked")).toHaveText(/Extrusion 1 · Face \d+/)
   })
 
   test("replaces an existing sketch support graphically without recreating its geometry", async ({

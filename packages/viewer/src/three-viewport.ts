@@ -35,8 +35,8 @@ import {
   type ViewerOriginPlaneVisibility,
   viewerOriginPlanes,
 } from "./origin-planes"
-import { viewerBodyColor } from "./viewer-appearance"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
+import { viewerBodyColor } from "./viewer-appearance"
 
 export {
   defaultViewerOriginPlaneVisibility,
@@ -174,7 +174,9 @@ export type GeometryViewport = Readonly<{
   setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
-  setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null) => void
+  setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null, active?: boolean) => void
+  setSelectionCandidateStackPreserved: (preserved: boolean) => void
+  setSelectionPreselection: (selection: ViewerSelection | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   fit: () => void
   clearSelection: () => void
@@ -187,16 +189,87 @@ export type ViewerSelection = Readonly<{
   faceOrdinal: number
 }>
 
+export type ViewerSelectionHit = Readonly<{
+  selection: ViewerSelection
+  distance: number
+}>
+
+const MAX_SELECTION_CANDIDATES = 8
+
+/** Deduplicates and deterministically orders face hits for support selection. */
+export function orderedUniqueViewerSelections(
+  hits: readonly ViewerSelectionHit[],
+  limit = MAX_SELECTION_CANDIDATES,
+): readonly ViewerSelection[] {
+  const safeLimit = Math.max(0, Math.floor(limit))
+  const sorted = [...hits].sort((left, right) => {
+    const leftDistance = Number.isFinite(left.distance) ? left.distance : Number.POSITIVE_INFINITY
+    const rightDistance = Number.isFinite(right.distance)
+      ? right.distance
+      : Number.POSITIVE_INFINITY
+    if (leftDistance !== rightDistance) return leftDistance - rightDistance
+    const featureOrder =
+      left.selection.featureId < right.selection.featureId
+        ? -1
+        : left.selection.featureId > right.selection.featureId
+          ? 1
+          : 0
+    if (featureOrder !== 0) return featureOrder
+    if (left.selection.faceOrdinal !== right.selection.faceOrdinal) {
+      return left.selection.faceOrdinal - right.selection.faceOrdinal
+    }
+    return left.selection.faceId - right.selection.faceId
+  })
+  const seen = new Set<string>()
+  const selections: ViewerSelection[] = []
+  for (const hit of sorted) {
+    const { selection } = hit
+    const key = `${selection.featureId}\u0000${selection.faceId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    selections.push(selection)
+    if (selections.length >= safeLimit) break
+  }
+  return selections
+}
+
+/** Filters support eligibility before applying the bounded face-hit ordering. */
+export function orderedEligibleViewerSelections(
+  hits: readonly ViewerSelectionHit[],
+  isEligible: (selection: ViewerSelection) => boolean,
+  limit = MAX_SELECTION_CANDIDATES,
+) {
+  return orderedUniqueViewerSelections(
+    hits.filter(({ selection }) => isEligible(selection)),
+    limit,
+  )
+}
+
 export type GeometryViewportOptions = Readonly<{
+  isSelectionCandidateEligible?: (selection: ViewerSelection) => boolean
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane) => void
   onSelectionChange?: (selection: ViewerSelection | null) => void
+  onSelectionCandidateStackChange?: (candidates: readonly ViewerSelection[]) => void
+  onSelectionCandidateStackCommit?: (candidates: readonly ViewerSelection[]) => void
   onSketchReferenceCandidateStackChange?: (
     candidates: readonly ViewerSketchReferenceCandidate[],
   ) => void
   onSketchReferencePreselectionChange?: (candidate: ViewerSketchReferenceCandidate | null) => void
   onSketchReferenceSelectionChange?: (candidate: ViewerSketchReferenceCandidate) => void
 }>
+
+function viewerSelectionStackCallback(
+  callback: ((candidates: readonly ViewerSelection[]) => void) | undefined,
+) {
+  return callback ?? (() => undefined)
+}
+
+function viewerSelectionEligibilityCallback(
+  callback: ((selection: ViewerSelection) => boolean) | undefined,
+) {
+  return callback ?? (() => true)
+}
 
 export function orthographicFrustum(viewHeight: number, aspect: number): OrthographicFrustum {
   const safeHeight =
@@ -422,6 +495,13 @@ function disposeMaterials(materials: readonly (MeshStandardMaterial | LineBasicM
 
 function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
   return left?.featureId === right?.featureId && left?.faceId === right?.faceId
+}
+
+function sameSelectionStack(left: readonly ViewerSelection[], right: readonly ViewerSelection[]) {
+  return (
+    left.length === right.length &&
+    left.every((selection, index) => sameSelection(selection, right[index] ?? null))
+  )
 }
 
 function isViewerSketchPointCandidate(
@@ -690,6 +770,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
+  readonly #onSelectionCandidateStackChange: (candidates: readonly ViewerSelection[]) => void
+  readonly #onSelectionCandidateStackCommit: (candidates: readonly ViewerSelection[]) => void
   readonly #onSketchReferenceCandidateStackChange: (
     candidates: readonly ViewerSketchReferenceCandidate[],
   ) => void
@@ -697,15 +779,19 @@ class ThreeGeometryViewport implements GeometryViewport {
     candidate: ViewerSketchReferenceCandidate | null,
   ) => void
   readonly #onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void
+  readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
   #pointerDown: Readonly<{ x: number; y: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
+  #originPlaneSelectionActive = false
   #originPlanePreselection: ViewerOriginPlane | null = null
   #originPlaneVisibility: ViewerOriginPlaneVisibility = defaultViewerOriginPlaneVisibility
   #featurePreselection: ViewerMesh | null = null
   #featureSelection: ViewerMesh | null = null
   #preselection: ViewerSelection | null = null
+  #selectionCandidateStack: readonly ViewerSelection[] = []
+  #selectionCandidateStackPreserved = false
   #selection: ViewerSelection | null = null
   #sketchPointCandidates: readonly (ViewerSketchPointCandidate | ViewerModelPointCandidate)[] = []
   #sketchReferenceCandidateStack: readonly ViewerSketchReferenceCandidate[] = []
@@ -723,10 +809,19 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    this.#isSelectionCandidateEligible = viewerSelectionEligibilityCallback(
+      options.isSelectionCandidateEligible,
+    )
     this.#onOriginPlanePreselectionChange =
       options.onOriginPlanePreselectionChange ?? (() => undefined)
     this.#onOriginPlaneSelectionChange = options.onOriginPlaneSelectionChange ?? (() => undefined)
     this.#onSelectionChange = options.onSelectionChange ?? (() => undefined)
+    this.#onSelectionCandidateStackChange = viewerSelectionStackCallback(
+      options.onSelectionCandidateStackChange,
+    )
+    this.#onSelectionCandidateStackCommit = viewerSelectionStackCallback(
+      options.onSelectionCandidateStackCommit,
+    )
     this.#onSketchReferenceCandidateStackChange =
       options.onSketchReferenceCandidateStackChange ?? (() => undefined)
     this.#onSketchReferencePreselectionChange =
@@ -796,6 +891,8 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setMeshes(meshes: readonly ViewerMesh[]) {
     if (this.#disposed) return
+    this.#selectionCandidateStackPreserved = false
+    this.#clearSelectionCandidateStack()
     this.clearSelection()
     this.#setPreselection(null)
     disposeModelGroup(this.#modelGroup)
@@ -935,11 +1032,22 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchPointPreselection(candidate)
   }
 
-  setOriginPlaneSelection(selectedPlane: ViewerOriginPlane | null) {
-    if (this.#disposed || selectedPlane === this.#originPlaneSelection) return
+  setOriginPlaneSelection(
+    selectedPlane: ViewerOriginPlane | null,
+    active = selectedPlane !== null,
+  ) {
+    if (
+      this.#disposed ||
+      (selectedPlane === this.#originPlaneSelection && active === this.#originPlaneSelectionActive)
+    ) {
+      return
+    }
     this.#originPlaneSelection = selectedPlane
+    this.#originPlaneSelectionActive = active
+    if (!active) this.#selectionCandidateStackPreserved = false
+    this.#clearSelectionCandidateStack()
     this.#setOriginPlanePreselection(null)
-    if (selectedPlane !== null) {
+    if (active) {
       this.clearSelection()
       this.#setPreselection(null)
     }
@@ -1001,6 +1109,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   setInteractionMode(mode: ViewerInteractionMode) {
     if (this.#disposed || mode === this.#interactionMode) return
     this.#interactionMode = mode
+    this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
     if (mode === "camera-only" || mode === "sketch-reference-select") {
       this.#pointerDown = null
@@ -1049,6 +1158,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#selectionGroup)
     this.#onSelectionChange(null)
     this.#render()
+  }
+
+  setSelectionPreselection(selection: ViewerSelection | null) {
+    if (this.#disposed) return
+    this.#setPreselection(selection)
+  }
+
+  setSelectionCandidateStackPreserved(preserved: boolean) {
+    if (this.#disposed) return
+    this.#selectionCandidateStackPreserved = preserved
   }
 
   dispose() {
@@ -1162,8 +1281,28 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #pick(event: PointerEvent): ViewerSelection | null {
-    if (!this.#prepareRaycaster(event)) return null
-    const intersection = this.#raycaster.intersectObjects(this.#surfaceMeshes, false)[0]
+    return this.#pickSelectionStack(event)[0] ?? null
+  }
+
+  #pickSelectionStack(event: PointerEvent, eligibleOnly = false): readonly ViewerSelection[] {
+    if (!this.#prepareRaycaster(event)) return []
+    const hits: ViewerSelectionHit[] = []
+    for (const intersection of this.#raycaster.intersectObjects(this.#surfaceMeshes, false)) {
+      const selection = this.#selectionFromIntersection({
+        object: intersection.object,
+        faceIndex: intersection.faceIndex,
+      })
+      if (selection) hits.push({ selection, distance: intersection.distance })
+    }
+    return eligibleOnly
+      ? orderedEligibleViewerSelections(hits, this.#isSelectionCandidateEligible)
+      : orderedUniqueViewerSelections(hits)
+  }
+
+  #selectionFromIntersection(intersection: {
+    object: { name: string }
+    faceIndex: number | null | undefined
+  }): ViewerSelection | null {
     if (!intersection || intersection.faceIndex === undefined || intersection.faceIndex === null) {
       return null
     }
@@ -1273,6 +1412,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onControlsChange = () => {
+    this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
     this.#render()
   }
@@ -1361,7 +1501,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #updateOriginPlanes() {
     for (const [plane, material] of this.#originPlaneMaterials) {
-      const visible = this.#originPlaneSelection !== null || this.#originPlaneVisibility[plane]
+      const visible = this.#originPlaneSelectionActive || this.#originPlaneVisibility[plane]
       const mesh = this.#originPlaneMeshesByPlane.get(plane)
       if (mesh) mesh.visible = visible
       const edges = this.#originPlaneEdgesByPlane.get(plane)
@@ -1381,6 +1521,18 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (sameSelection(visibleSelection, this.#preselection)) return
     this.#preselection = visibleSelection
     this.#replaceHighlight(this.#preselectionGroup, this.#preselectionMaterial, visibleSelection)
+  }
+
+  #setSelectionCandidateStack(stack: readonly ViewerSelection[]) {
+    if (sameSelectionStack(stack, this.#selectionCandidateStack)) return
+    this.#selectionCandidateStack = stack
+    this.#onSelectionCandidateStackChange(stack)
+  }
+
+  #clearSelectionCandidateStack() {
+    if (this.#selectionCandidateStack.length === 0) return
+    this.#selectionCandidateStack = []
+    this.#onSelectionCandidateStackChange([])
   }
 
   #setSelection(selection: ViewerSelection | null) {
@@ -1436,13 +1588,17 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#updateSketchReferencePicking(event)
       return
     }
-    if (this.#originPlaneSelection) {
-      const modelSelection = this.#pick(event)
+    if (this.#originPlaneSelectionActive) {
+      const stack = this.#pickSelectionStack(event, true)
+      this.#setSelectionCandidateStack(stack)
+      const retained = stack.find((selection) => sameSelection(selection, this.#preselection))
+      const modelSelection = retained ?? stack[0] ?? null
       const plane = modelSelection ? null : this.#pickOriginPlane(event)
       this.#setOriginPlanePreselection(plane)
       this.#setPreselection(modelSelection)
       return
     }
+    this.#clearSelectionCandidateStack()
     this.#setPreselection(this.#pick(event))
   }
 
@@ -1457,7 +1613,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#commitSketchPointSelection(event)
       return
     }
-    if (this.#originPlaneSelection) {
+    if (this.#originPlaneSelectionActive) {
       this.#commitOriginPlaneSelection(event)
       return
     }
@@ -1472,9 +1628,14 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #commitOriginPlaneSelection(event: PointerEvent) {
-    const modelSelection = this.#pick(event)
-    if (modelSelection) {
-      this.#setSelection(modelSelection)
+    const stack = this.#pickSelectionStack(event, true)
+    this.#setSelectionCandidateStack(stack)
+    if (stack.length > 1) {
+      this.#onSelectionCandidateStackCommit(stack)
+      return
+    }
+    if (stack.length === 1) {
+      this.#setSelection(stack[0] ?? null)
       return
     }
     const plane = this.#pickOriginPlane(event)
@@ -1486,7 +1647,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") return
     this.#clearSketchReferencePicking()
-    if (this.#originPlaneSelection) this.#setOriginPlanePreselection(null)
+    if (!this.#selectionCandidateStackPreserved) this.#clearSelectionCandidateStack()
+    if (this.#originPlaneSelectionActive) this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
   }
 

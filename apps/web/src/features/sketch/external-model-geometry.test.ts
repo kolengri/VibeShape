@@ -19,6 +19,7 @@ import {
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
   repairExternalModelGeometryCandidates,
+  resolvePlanarFaceSupportLabel,
 } from "./external-model-geometry"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005001")
@@ -160,6 +161,40 @@ const features = [
 ] as const
 
 describe("external model geometry candidates", () => {
+  it("resolves stable support-face labels across renamed features and rebuild order", () => {
+    const firstFace = faceCandidate("face-a", "primitive.box.face.a")
+    const secondFace = faceCandidate("face-b", "primitive.box.face.b")
+    const reference: PlanarFaceTopoRef = {
+      schemaVersion: 0,
+      featureId,
+      kind: "face",
+      semanticRole: secondFace.semanticRole,
+      signature: {
+        ...secondFace.signature,
+        kind: "face",
+        geometryClass: "PLANE",
+      },
+    }
+    const label = (candidateOrder: readonly TopologyCandidate[], featureName = "Mount") =>
+      resolvePlanarFaceSupportLabel(
+        [geometryRecord(featureId, candidateOrder)],
+        [{ id: featureId, label: featureName }] as never,
+        reference,
+        labels,
+      )
+
+    expect(label([firstFace, secondFace])).toBe("Mount · Face 2")
+    expect(label([secondFace, firstFace], "Renamed mount")).toBe("Renamed mount · Face 2")
+    expect(
+      resolvePlanarFaceSupportLabel(
+        [geometryRecord(featureId, [firstFace])],
+        features as never,
+        reference,
+        labels,
+      ),
+    ).toBeNull()
+  })
+
   it("offers exact vertices and linear edges from visible model features", () => {
     const candidates = externalModelGeometryCandidates(
       [

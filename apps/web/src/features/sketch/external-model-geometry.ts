@@ -94,6 +94,12 @@ type ExternalModelGeometryRecord = Readonly<{
   geometry: FeatureGeometryRecord["geometry"]
 }>
 
+type ExternalModelReferenceContext = Readonly<{
+  candidatesByKey: ReadonlyMap<string, ProtocolTopologyCandidate>
+  ordinals: ReadonlyMap<string, number>
+  resolve: ReturnType<typeof createTopologyReferenceResolver>
+}>
+
 function domainTopologyCandidate(candidate: ProtocolTopologyCandidate): DomainTopologyCandidate {
   const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
   return domainCandidate
@@ -172,6 +178,26 @@ function topologyPresentationKey(candidate: ProtocolTopologyCandidate) {
     [...signature.adjacentGeometryClasses].sort(),
     candidate.candidateId,
   ])
+}
+
+function referenceContexts(records: readonly ExternalModelGeometryRecord[]) {
+  return new Map<string, ExternalModelReferenceContext>(
+    records.map((record) => [
+      record.featureId,
+      {
+        candidatesByKey: new Map(
+          record.geometry.topologyCandidates.map((candidate) => [
+            topologyCandidateKey(candidate),
+            candidate,
+          ]),
+        ),
+        ordinals: candidateDisplayOrdinals(record.geometry.topologyCandidates),
+        resolve: createTopologyReferenceResolver(
+          record.geometry.topologyCandidates.map(domainTopologyCandidate),
+        ),
+      },
+    ]),
+  )
 }
 
 function referencedCandidateKeys(
@@ -415,23 +441,7 @@ export function externalModelReferenceLabels(
   externalReferences: SketchRecord["externalReferences"],
   labels: ExternalModelReferenceLabels,
 ): ReadonlyMap<string, string> {
-  const recordsByFeatureId = new Map(
-    records.map((record) => [
-      record.featureId,
-      {
-        candidatesByKey: new Map(
-          record.geometry.topologyCandidates.map((candidate) => [
-            topologyCandidateKey(candidate),
-            candidate,
-          ]),
-        ),
-        ordinals: candidateDisplayOrdinals(record.geometry.topologyCandidates),
-        resolve: createTopologyReferenceResolver(
-          record.geometry.topologyCandidates.map(domainTopologyCandidate),
-        ),
-      },
-    ]),
-  )
+  const recordsByFeatureId = referenceContexts(records)
   const featureLabels = new Map(features.map((feature) => [feature.id, feature.label]))
   const result = new Map<string, string>()
   for (const external of externalReferences ?? []) {
@@ -467,6 +477,25 @@ export function externalModelReferenceLabels(
     )
   }
   return result
+}
+
+export function resolvePlanarFaceSupportLabel(
+  records: readonly ExternalModelGeometryRecord[],
+  features: readonly FeatureRecord[],
+  reference: PlanarFaceTopoRef,
+  labels: Pick<ExternalModelReferenceLabels, "face">,
+): string | null {
+  const context = referenceContexts(records).get(reference.featureId)
+  if (!context) return null
+  const resolution = context.resolve(reference)
+  if (resolution.status !== "resolved") return null
+  const candidate = context.candidatesByKey.get(
+    topologyCandidateKey({ candidateId: resolution.candidateId, kind: reference.kind }),
+  )
+  const ordinal = candidate ? context.ordinals.get(topologyCandidateKey(candidate)) : undefined
+  if (!candidate || candidateDisplayKind(candidate) !== "face" || !ordinal) return null
+  const feature = features.find(({ id }) => id === reference.featureId)
+  return feature?.label ? labels.face(feature.label, ordinal) : null
 }
 
 export function projectExternalModelGeometryCandidates(
