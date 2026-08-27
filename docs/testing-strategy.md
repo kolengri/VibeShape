@@ -318,6 +318,8 @@ bun run test:e2e -- --project=chromium tests/e2e/geometry-worker.spec.ts
 
 The current controlled allocator plateau, executable ceilings, and hard-restart baseline are documented in [SPK-001 evidence](spikes/spk-001-occt-worker.md).
 
+Ordered external-sketch reference coverage includes a three-sketch chain where the final sketch graphically selects a projected line owned by the intermediate sketch. Domain validation accepts that projected identity, the document worker resolves the chain recursively, and the Playwright workflow edits the original line before requiring the final projection to update after reopen.
+
 ## Design and UX acceptance
 
 Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).

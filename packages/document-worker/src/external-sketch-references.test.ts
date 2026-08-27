@@ -338,6 +338,124 @@ describe("external sketch reference resolution", () => {
     )
   })
 
+  it("resolves one intermediate external-geometry source once per request", async () => {
+    const featureId = id("4720")
+    const sourceProjectedPointId = sketchEntityIdSchema.parse(id("4721"))
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4722"),
+      label: "Intermediate model point",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4723"),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "vertex",
+            semanticRole: "vertex.cached-source",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [7, 9, 0],
+              bounds: { min: [7, 9, 0], max: [7, 9, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: sourceProjectedPointId,
+        },
+      ],
+    })
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4724"),
+      label: "Two downstream points",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [id("4725"), id("4726")].map((referenceId, index) => ({
+        schemaVersion: 0 as const,
+        id: referenceId,
+        kind: "point" as const,
+        sourceSketchId: source.id,
+        sourcePointId: sourceProjectedPointId,
+        projectedPointId: sketchEntityIdSchema.parse(id(index === 0 ? "4727" : "4728")),
+      })),
+    })
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4729"),
+      revision: 1,
+      name: "Cached intermediate geometry",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [source, target],
+      features: [feature],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+    const geometryRecord = {
+      featureId,
+      geometry: {
+        topologyCandidates: [
+          {
+            candidateId: id("4730"),
+            kind: "vertex",
+            semanticRole: "vertex.cached-source",
+            lineageTokens: [],
+            referenceGeometry: { kind: "vertex", position: [7, 9, 0] },
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [7, 9, 0],
+              bounds: { min: [7, 9, 0], max: [7, 9, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+        ],
+      },
+    } as unknown as FeatureGeometryRecord
+    const get = vi.fn(() => geometryRecord)
+    const geometryLookup = { get } as unknown as ReadonlyMap<string, FeatureGeometryRecord>
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometryLookup,
+    )
+
+    expect(result.externalPoints).toEqual([
+      expect.objectContaining({ x: 7, y: 9 }),
+      expect.objectContaining({ x: 7, y: 9 }),
+    ])
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
   it("fails closed when model reference geometry payload is missing", async () => {
     const sourceFeatureId = id("4610")
     const feature = {
@@ -513,9 +631,18 @@ describe("external sketch reference resolution", () => {
       ...pointSketch(2, 0),
       externalReferences: [externalPoint(first, 1)],
     })
+    const secondReference = second.externalReferences?.[0]
+    if (secondReference?.kind !== "point") {
+      throw new Error("Expected the intermediate projected point reference.")
+    }
     const third = sketchRecordSchema.parse({
       ...pointSketch(3, 0),
-      externalReferences: [externalPoint(second, 2)],
+      externalReferences: [
+        {
+          ...externalPoint(second, 2),
+          sourcePointId: secondReference.projectedPointId,
+        },
+      ],
     })
     const document = documentSnapshotSchema.parse({
       schemaVersion: 0,
@@ -542,6 +669,127 @@ describe("external sketch reference resolution", () => {
     expect(
       solveSketch.mock.calls.find(([input]) => input.sketch.id === second.id)?.[0].externalPoints,
     ).toEqual([expect.objectContaining({ x: 12, y: 0 })])
+  })
+
+  it("propagates a projected line when the intermediate authored solve fails", async () => {
+    const first = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4701"),
+      label: "First line",
+      plane: "xy",
+      entities: [
+        { schemaVersion: 0, id: id("4702"), type: "point", construction: false, x: 2, y: 3 },
+        { schemaVersion: 0, id: id("4703"), type: "point", construction: false, x: 8, y: 3 },
+        {
+          schemaVersion: 0,
+          id: id("4704"),
+          type: "line",
+          construction: false,
+          startPointId: id("4702"),
+          endPointId: id("4703"),
+        },
+      ],
+      constraints: [],
+    })
+    const secondReference = {
+      schemaVersion: 0 as const,
+      id: sketchExternalReferenceIdSchema.parse(id("4705")),
+      kind: "line" as const,
+      sourceSketchId: first.id,
+      sourceLineId: id("4704"),
+      projectedLineId: sketchEntityIdSchema.parse(id("4706")),
+      projectedStartPointId: sketchEntityIdSchema.parse(id("4707")),
+      projectedEndPointId: sketchEntityIdSchema.parse(id("4708")),
+    }
+    const second = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4709"),
+      label: "Second line",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [secondReference],
+    })
+    const thirdReference = {
+      ...secondReference,
+      id: sketchExternalReferenceIdSchema.parse(id("4710")),
+      sourceSketchId: second.id,
+      sourceLineId: secondReference.projectedLineId,
+      projectedLineId: sketchEntityIdSchema.parse(id("4711")),
+      projectedStartPointId: sketchEntityIdSchema.parse(id("4712")),
+      projectedEndPointId: sketchEntityIdSchema.parse(id("4713")),
+    }
+    const third = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4714"),
+      label: "Third line",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [thirdReference],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4715"),
+      revision: 1,
+      name: "Projected line chain",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [first, second, third],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+    const solveSketch = vi.fn<SketchSolvePort>((input) => {
+      const sketch = sketchRecordSchema.parse(input.sketch)
+      if (sketch.id === second.id) {
+        return {
+          ok: false,
+          diagnostic: {
+            code: "invalid-dimension",
+            message: "An unrelated intermediate constraint is invalid.",
+            path: "constraints.0",
+          },
+        }
+      }
+      const points = [
+        ...sketch.entities.flatMap((entity) =>
+          entity.type === "point" ? [{ entityId: entity.id, x: entity.x, y: entity.y }] : [],
+        ),
+        ...(input.externalLines?.flatMap(({ startPoint, endPoint }) => [
+          { entityId: sketchEntityIdSchema.parse(startPoint.id), x: startPoint.x, y: startPoint.y },
+          { entityId: sketchEntityIdSchema.parse(endPoint.id), x: endPoint.x, y: endPoint.y },
+        ]) ?? []),
+      ]
+      return {
+        ok: true,
+        solution: {
+          schemaVersion: 0,
+          sketchId: sketch.id,
+          sourceRevision: input.revision,
+          status: "under-constrained",
+          degreesOfFreedom: points.length * 2,
+          maximumResidual: 0,
+          points,
+          circles: [],
+          failedConstraintIds: [],
+          profileResult: detectSketchProfiles(sketch, { points, circles: [] }),
+          heapCapacityBytes: 1024,
+          solverBuild: SKETCH_SOLVER_BUILD,
+        },
+      }
+    })
+
+    const result = await resolveExternalSketchGeometry(document, third, solveSketch)
+
+    expect(result.externalLines).toEqual([
+      expect.objectContaining({
+        startPoint: expect.objectContaining({ x: 2, y: 3 }),
+        endPoint: expect.objectContaining({ x: 8, y: 3 }),
+        line: expect.objectContaining({ id: thirdReference.projectedLineId }),
+      }),
+    ])
+    expect(solveSketch).toHaveBeenCalledTimes(2)
   })
 
   it("materializes a solved source circle as stable read-only external geometry", async () => {

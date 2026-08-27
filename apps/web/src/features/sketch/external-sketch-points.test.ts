@@ -360,4 +360,98 @@ describe("external sketch point candidates", () => {
       }),
     )
   })
+
+  it("offers a solved projected line owned by an intermediate sketch", () => {
+    const sourceEndPointId = "0195b5ac-b220-7a2c-8c33-000000004018"
+    const sourceLineId = "0195b5ac-b220-7a2c-8c33-000000004019"
+    const projectedStartPointId = "0195b5ac-b220-7a2c-8c33-000000004020"
+    const projectedEndPointId = "0195b5ac-b220-7a2c-8c33-000000004021"
+    const projectedLineId = "0195b5ac-b220-7a2c-8c33-000000004022"
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sourceSketchId,
+      label: "Master",
+      plane: "xy",
+      entities: [
+        { schemaVersion: 0, id: sourcePointId, type: "point", x: 4, y: 3 },
+        { schemaVersion: 0, id: sourceEndPointId, type: "point", x: 14, y: 3 },
+        {
+          schemaVersion: 0,
+          id: sourceLineId,
+          type: "line",
+          startPointId: sourcePointId,
+          endPointId: sourceEndPointId,
+        },
+      ],
+      constraints: [],
+    })
+    const intermediate = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004023",
+      label: "Layout",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-000000004024",
+          kind: "line",
+          sourceSketchId: source.id,
+          sourceLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+          projectedLineId,
+        },
+      ],
+    })
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label: "Detail",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004025",
+      revision: 1,
+      name: "Projected chain candidates",
+      sketches: [source, intermediate, target],
+      features: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+    })
+    const solvedIntermediate = {
+      points: [
+        { entityId: projectedStartPointId, x: 4, y: 3 },
+        { entityId: projectedEndPointId, x: 14, y: 3 },
+      ],
+      circles: [],
+    } as unknown as SolvedSketchWire
+
+    expect(externalSketchGeometryCandidates(document, target, labels)).not.toContainEqual(
+      expect.objectContaining({ sourceSketchId: intermediate.id, sourceLineId: projectedLineId }),
+    )
+    expect(
+      externalSketchGeometryCandidates(
+        document,
+        target,
+        labels,
+        document.features,
+        new Map([[intermediate.id, solvedIntermediate]]),
+      ),
+    ).toContainEqual({
+      construction: true,
+      kind: "line",
+      label: "Layout · Line 1",
+      sourceEndPointId: projectedEndPointId,
+      sourceLineId: projectedLineId,
+      sourceSketchId: intermediate.id,
+      sourceStartPointId: projectedStartPointId,
+      start: { world: [4, 3, 0], x: 4, y: 3 },
+      end: { world: [14, 3, 0], x: 14, y: 3 },
+    })
+  })
 })

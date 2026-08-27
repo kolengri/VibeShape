@@ -10,6 +10,7 @@ import {
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
 import {
   isSketchExternalModelReference,
+  projectedExternalSketchEntities,
   type SketchExternalReference,
   type SketchRecord,
   sketchRecordsSchema,
@@ -91,7 +92,11 @@ function validateExternalReferenceSource(input: ExternalReferenceValidationInput
   const path = externalReferencePath(input)
   const selector = externalReferenceSourceSelector(input.reference)
   if (!selector) return
-  const sourceEntity = input.source.entities.find(({ id }) => id === selector.entityId)
+  // Projected entities are owned by the intermediate sketch and are valid stable targets.
+  const sourceEntity = [
+    ...input.source.entities,
+    ...projectedExternalSketchEntities(input.source.externalReferences ?? []),
+  ].find(({ id }) => id === selector.entityId)
   if (sourceEntity?.type === selector.entityType) return
   addDocumentIssue(
     input.context,

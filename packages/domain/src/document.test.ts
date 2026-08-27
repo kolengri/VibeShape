@@ -45,6 +45,8 @@ describe("document sketch references", () => {
         },
       ],
     }
+    const secondReference = second.externalReferences[0]
+    if (!secondReference) throw new Error("Expected an intermediate projected point.")
     const third = {
       ...pointSketch(3),
       externalReferences: [
@@ -52,7 +54,7 @@ describe("document sketch references", () => {
           schemaVersion: 0 as const,
           id: id("3302"),
           sourceSketchId: second.id,
-          sourcePointId: sketchPointId(second),
+          sourcePointId: secondReference.projectedPointId,
           projectedPointId: id("3402"),
         },
       ],

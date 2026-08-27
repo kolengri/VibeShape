@@ -13,6 +13,7 @@ import {
   createDocumentDependencyGraphFromSnapshot,
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
+  projectedExternalSketchEntities,
   sketchEllipseGeometry,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
@@ -608,10 +609,12 @@ function projectSourceEntity(
   context: ExternalGeometryProjectionContext,
 ): ExternalSketchContextGeometry | null {
   if (entity.type === "point") {
+    const position = context.points.get(entity.id)
+    if (!position) return null
     context.pointOrdinal.value += 1
     return projectedPointContext(
       entity,
-      context.points.get(entity.id) ?? entity,
+      position,
       context.source,
       context.sourceFrame,
       context.targetFrame,
@@ -655,15 +658,23 @@ function externalGeometryFromSketch(
   if (!sourceFrame) return []
   const solvedPoints = new Map(solution?.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
   const solvedRadii = new Map(solution?.circles.map(({ entityId, radius }) => [entityId, radius]))
+  const authoredPointIds = new Set(
+    source.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
+  )
+  const entities = [
+    ...source.entities,
+    ...projectedExternalSketchEntities(source.externalReferences ?? []),
+  ]
   const points = new Map(
-    source.entities.flatMap((entity) =>
-      entity.type === "point"
-        ? ([[entity.id, solvedPoints.get(entity.id) ?? entity]] as const)
-        : [],
-    ),
+    entities.flatMap((entity) => {
+      if (entity.type !== "point") return []
+      const point = solvedPoints.get(entity.id)
+      if (point) return [[entity.id, point]] as const
+      return authoredPointIds.has(entity.id) ? ([[entity.id, entity]] as const) : []
+    }),
   )
   const centerPointIds = new Set(
-    source.entities.flatMap((entity) =>
+    entities.flatMap((entity) =>
       entity.type !== "point" && entity.type !== "line" && "centerPointId" in entity
         ? [entity.centerPointId]
         : [],
@@ -681,7 +692,7 @@ function externalGeometryFromSketch(
     sourceFrame,
     targetFrame,
   }
-  return source.entities.flatMap((entity) => {
+  return entities.flatMap((entity) => {
     const projected = projectSourceEntity(entity, context)
     return projected ? [projected] : []
   })

@@ -12,6 +12,7 @@ import {
 import type {
   DocumentSnapshot,
   FeatureRecord,
+  SketchEntity,
   SketchExternalCurveReference,
   SketchExternalLineReference,
   SketchExternalModelCurveReference,
@@ -45,22 +46,43 @@ export type PlanarFaceSectionPort = (
   input: PlanarFaceSectionInput,
 ) => PlanarFaceSectionResult | Promise<PlanarFaceSectionResult>
 
+export type ResolvedExternalSketchGeometry = Readonly<
+  Pick<SketchCompilationInput, "externalCurves" | "externalLines" | "externalPoints">
+>
+
+type ExternalSketchGeometryCache = Map<string, Promise<ResolvedExternalSketchGeometry>>
+
+function externalGeometryPoints(geometry: ResolvedExternalSketchGeometry | undefined) {
+  return [
+    ...(geometry?.externalPoints ?? []),
+    ...(geometry?.externalLines?.flatMap(({ startPoint, endPoint }) => [startPoint, endPoint]) ??
+      []),
+    ...(geometry?.externalCurves?.flatMap(({ points }) => points) ?? []),
+  ]
+}
+
+function externalPointResult(
+  geometry: ResolvedExternalSketchGeometry | undefined,
+  pointId: string,
+) {
+  const point = externalGeometryPoints(geometry).find(({ id }) => id === pointId)
+  return point ? { x: point.x, y: point.y } : null
+}
+
 function sourcePointResult(
   source: SketchRecord,
   result: SolveSketchRecordResult,
   sourcePointId: string,
+  externalGeometry?: ResolvedExternalSketchGeometry,
 ) {
   const solved = result.ok
     ? result.solution.points.find((point) => point.entityId === sourcePointId)
     : null
   if (solved) return { x: solved.x, y: solved.y }
   const authored = source.entities.find((entity) => entity.id === sourcePointId)
-  return authored?.type === "point" ? { x: authored.x, y: authored.y } : null
+  if (authored?.type === "point") return { x: authored.x, y: authored.y }
+  return externalPointResult(externalGeometry, sourcePointId)
 }
-
-export type ResolvedExternalSketchGeometry = Readonly<
-  Pick<SketchCompilationInput, "externalCurves" | "externalLines" | "externalPoints">
->
 
 function resolveExternalPoint(
   reference: SketchExternalPointReference,
@@ -68,8 +90,9 @@ function resolveExternalPoint(
   result: SolveSketchRecordResult,
   sourceFrame: SupportFrame,
   targetFrame: SupportFrame,
+  externalGeometry?: ResolvedExternalSketchGeometry,
 ): NonNullable<SketchCompilationInput["externalPoints"]>[number] {
-  const point = sourcePointResult(source, result, reference.sourcePointId)
+  const point = sourcePointResult(source, result, reference.sourcePointId, externalGeometry)
   if (!point) throw new Error(`External source point ${reference.sourcePointId} is unavailable.`)
   const projected = projectSketchPointBetweenFrames(sourceFrame, targetFrame, point).local
   return {
@@ -87,13 +110,16 @@ function resolveExternalLine(
   result: SolveSketchRecordResult,
   sourceFrame: SupportFrame,
   targetFrame: SupportFrame,
+  externalGeometry?: ResolvedExternalSketchGeometry,
 ): NonNullable<SketchCompilationInput["externalLines"]>[number] {
-  const sourceLine = source.entities.find(({ id }) => id === reference.sourceLineId)
+  const sourceLine =
+    source.entities.find(({ id }) => id === reference.sourceLineId) ??
+    externalGeometry?.externalLines?.find(({ line }) => line.id === reference.sourceLineId)?.line
   if (sourceLine?.type !== "line") {
     throw new Error(`External source line ${reference.sourceLineId} is unavailable.`)
   }
-  const sourceStart = sourcePointResult(source, result, sourceLine.startPointId)
-  const sourceEnd = sourcePointResult(source, result, sourceLine.endPointId)
+  const sourceStart = sourcePointResult(source, result, sourceLine.startPointId, externalGeometry)
+  const sourceEnd = sourcePointResult(source, result, sourceLine.endPointId, externalGeometry)
   if (!sourceStart || !sourceEnd) {
     throw new Error(`External source line ${reference.sourceLineId} has unavailable endpoints.`)
   }
@@ -128,14 +154,31 @@ function resolveExternalLine(
   }
 }
 
-function sourcePointMap(source: SketchRecord, result: SolveSketchRecordResult) {
-  return new Map(
-    source.entities.flatMap((entity) => {
+function sourcePointMap(
+  source: SketchRecord,
+  result: SolveSketchRecordResult,
+  externalGeometry?: ResolvedExternalSketchGeometry,
+) {
+  return new Map([
+    ...(result.ok
+      ? result.solution.points.map((point) => [point.entityId, { x: point.x, y: point.y }] as const)
+      : []),
+    ...source.entities.flatMap((entity) => {
       if (entity.type !== "point") return []
-      const point = sourcePointResult(source, result, entity.id)
+      const point = sourcePointResult(source, result, entity.id, externalGeometry)
       return point ? ([[entity.id, point]] as const) : []
     }),
-  )
+    ...(externalGeometry?.externalPoints?.map(
+      (point) => [point.id, { x: point.x, y: point.y }] as const,
+    ) ?? []),
+    ...(externalGeometry?.externalLines?.flatMap(({ startPoint, endPoint }) => [
+      [startPoint.id, { x: startPoint.x, y: startPoint.y }] as const,
+      [endPoint.id, { x: endPoint.x, y: endPoint.y }] as const,
+    ]) ?? []),
+    ...(externalGeometry?.externalCurves?.flatMap(({ points }) =>
+      points.map((point) => [point.id, { x: point.x, y: point.y }] as const),
+    ) ?? []),
+  ])
 }
 
 function projectedPointEntity(id: string, point: SketchPoint2) {
@@ -423,32 +466,49 @@ function resolveExternalModelCurve(
   return materializeProjectedCurve(reference, projection)
 }
 
+type SourceSketchCurve = Exclude<SketchEntity, { type: "line" | "point" }>
+
+function sourceSketchCurve(
+  reference: SketchExternalCurveReference,
+  source: SketchRecord,
+  externalGeometry?: ResolvedExternalSketchGeometry,
+): SourceSketchCurve {
+  const candidate =
+    source.entities.find(({ id }) => id === reference.sourceEntityId) ??
+    externalGeometry?.externalCurves?.find(({ curve }) => curve.id === reference.sourceEntityId)
+      ?.curve
+  if (
+    !candidate ||
+    candidate.type === "point" ||
+    candidate.type === "line" ||
+    candidate.type !== reference.sourceType
+  ) {
+    throw new Error(`External source curve ${reference.sourceEntityId} is unavailable.`)
+  }
+  return candidate as SourceSketchCurve
+}
+
+function sourceCircleRadius(curve: SourceSketchCurve, result: SolveSketchRecordResult) {
+  if (curve.type !== "circle") return undefined
+  if (!result.ok) return curve.radius
+  return result.solution.circles.find(({ entityId }) => entityId === curve.id)?.radius
+}
+
 function resolveExternalCurve(
   reference: SketchExternalCurveReference,
   source: SketchRecord,
   result: SolveSketchRecordResult,
   sourceFrame: SupportFrame,
   targetFrame: SupportFrame,
+  externalGeometry?: ResolvedExternalSketchGeometry,
 ): NonNullable<SketchCompilationInput["externalCurves"]>[number] {
-  const sourceCurve = source.entities.find(({ id }) => id === reference.sourceEntityId)
-  if (
-    !sourceCurve ||
-    sourceCurve.type === "point" ||
-    sourceCurve.type === "line" ||
-    sourceCurve.type !== reference.sourceType
-  ) {
-    throw new Error(`External source curve ${reference.sourceEntityId} is unavailable.`)
-  }
-  const solvedRadius =
-    sourceCurve.type === "circle" && result.ok
-      ? result.solution.circles.find(({ entityId }) => entityId === sourceCurve.id)?.radius
-      : undefined
+  const sourceCurve = sourceSketchCurve(reference, source, externalGeometry)
   const projection = projectSketchCurveBetweenFrames(
     sourceFrame,
     targetFrame,
     sourceCurve,
-    sourcePointMap(source, result),
-    solvedRadius,
+    sourcePointMap(source, result, externalGeometry),
+    sourceCircleRadius(sourceCurve, result),
   )
   if (!projection) {
     throw new Error(
@@ -466,25 +526,30 @@ function sourceSolve(
   features: readonly FeatureRecord[],
   geometryLookup: FeatureGeometryLookup | undefined,
   sectionPlanarFace: PlanarFaceSectionPort | undefined,
+  externalGeometry?: ResolvedExternalSketchGeometry,
 ) {
   const cached = results.get(source.id)
   if (cached) return cached
-  const pending = resolveExternalSketchGeometry(
-    document,
-    source,
-    solveSketch,
-    features,
-    results,
-    geometryLookup,
-    sectionPlanarFace,
-  ).then((externalGeometry) =>
+  const pending = (
+    externalGeometry
+      ? Promise.resolve(externalGeometry)
+      : resolveExternalSketchGeometry(
+          document,
+          source,
+          solveSketch,
+          features,
+          results,
+          geometryLookup,
+          sectionPlanarFace,
+        )
+  ).then((resolvedGeometry) =>
     solveSketch({
       revision: document.revision,
       sketch: source,
       variables: [...document.variables],
       continuation: null,
       draggedPoints: [],
-      ...externalGeometry,
+      ...resolvedGeometry,
     }),
   )
   results.set(source.id, pending)
@@ -506,6 +571,32 @@ type ResolvedReference =
       value: NonNullable<SketchCompilationInput["externalPoints"]>[number]
     }>
 
+function sourceExternalGeometry(
+  cache: ExternalSketchGeometryCache,
+  document: DocumentSnapshot,
+  source: SketchRecord,
+  solveSketch: SketchSolvePort,
+  features: readonly FeatureRecord[],
+  results: SketchSolveCache,
+  geometryLookup?: FeatureGeometryLookup,
+  sectionPlanarFace?: PlanarFaceSectionPort,
+) {
+  const cached = cache.get(source.id)
+  if (cached) return cached
+  const pending = resolveExternalSketchGeometry(
+    document,
+    source,
+    solveSketch,
+    features,
+    results,
+    geometryLookup,
+    sectionPlanarFace,
+    cache,
+  )
+  cache.set(source.id, pending)
+  return pending
+}
+
 async function resolveExternalReference(
   reference: ExternalReference,
   document: DocumentSnapshot,
@@ -515,6 +606,7 @@ async function resolveExternalReference(
   results: SketchSolveCache,
   geometryLookup?: FeatureGeometryLookup,
   sectionPlanarFace?: PlanarFaceSectionPort,
+  externalGeometryCache: ExternalSketchGeometryCache = new Map(),
 ): Promise<ResolvedReference> {
   if (reference.kind === "model-point") {
     return {
@@ -547,6 +639,17 @@ async function resolveExternalReference(
   if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
   const sourceFrame = sketchFrame(source, document, features)
   if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
+  // Resolve the source's own projections so a later sketch can target their stable IDs.
+  const resolvedSourceGeometry = await sourceExternalGeometry(
+    externalGeometryCache,
+    document,
+    source,
+    solveSketch,
+    features,
+    results,
+    geometryLookup,
+    sectionPlanarFace,
+  )
   const result = await sourceSolve(
     results,
     document,
@@ -555,22 +658,44 @@ async function resolveExternalReference(
     features,
     geometryLookup,
     sectionPlanarFace,
+    resolvedSourceGeometry,
   )
   if (reference.kind === "line") {
     return {
       kind: "line",
-      value: resolveExternalLine(reference, source, result, sourceFrame, targetFrame),
+      value: resolveExternalLine(
+        reference,
+        source,
+        result,
+        sourceFrame,
+        targetFrame,
+        resolvedSourceGeometry,
+      ),
     }
   }
   if (reference.kind === "curve") {
     return {
       kind: "curve",
-      value: resolveExternalCurve(reference, source, result, sourceFrame, targetFrame),
+      value: resolveExternalCurve(
+        reference,
+        source,
+        result,
+        sourceFrame,
+        targetFrame,
+        resolvedSourceGeometry,
+      ),
     }
   }
   return {
     kind: "point",
-    value: resolveExternalPoint(reference, source, result, sourceFrame, targetFrame),
+    value: resolveExternalPoint(
+      reference,
+      source,
+      result,
+      sourceFrame,
+      targetFrame,
+      resolvedSourceGeometry,
+    ),
   }
 }
 
@@ -583,6 +708,7 @@ export async function resolveExternalSketchGeometry(
   results: SketchSolveCache = new Map(),
   geometryLookup?: FeatureGeometryLookup,
   sectionPlanarFace?: PlanarFaceSectionPort,
+  externalGeometryCache: ExternalSketchGeometryCache = new Map(),
 ): Promise<ResolvedExternalSketchGeometry> {
   const targetFrame = sketchFrame(sketch, document, features)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
@@ -599,6 +725,7 @@ export async function resolveExternalSketchGeometry(
       results,
       geometryLookup,
       sectionPlanarFace,
+      externalGeometryCache,
     )
     if (resolved.kind === "point") points.push(resolved.value)
     if (resolved.kind === "line") lines.push(resolved.value)

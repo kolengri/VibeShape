@@ -1,7 +1,7 @@
 # External Sketch References Plan
 
 - Status: **In progress**
-- Reviewed: **2026-08-25**
+- Reviewed: **2026-08-28**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
 This is the detailed external-reference slice of the broader
@@ -9,10 +9,11 @@ This is the detailed external-reference slice of the broader
 
 ## Problem
 
-A sketch currently owns only its authored entities, constraints, dimensions, and support frame. It can be
-placed on an origin plane, a datum plane, or a supported planar feature face, but it cannot retain an
-associative relationship to geometry from an earlier sketch or feature. Users therefore cannot drive one
-sketch from a layout sketch, a prior profile, or a model edge without manually re-entering dimensions.
+Before this slice, a sketch owned only its authored entities, constraints, dimensions, and support frame.
+It could be placed on an origin plane, a datum plane, or a supported planar feature face, but it could not
+retain an associative relationship to geometry from an earlier sketch or feature. Users therefore could not
+drive one sketch from a layout sketch, a prior profile, or a model edge without manually re-entering
+dimensions.
 
 This is a P0 parametric-modeling gap. External geometry must be a durable relation, not copied drawing
 geometry or an untracked viewport snap.
@@ -52,8 +53,12 @@ preselection, a source label, and direct selection without recreating the camera
 and removes references; removal also removes constraints that target the projected geometry. Deleting a
 referenced source sketch is rejected.
 
-Sketch-to-sketch Use supports analytical circles, arcs, and ellipses plus ordered reference chains. The
-worker boundary publishes exact vertex positions, linear endpoints, and analytical circle or bounded-arc
+Sketch-to-sketch Use supports analytical circles, arcs, and ellipses plus ordered reference chains. A later
+sketch can graphically select projected geometry owned by an intermediate sketch, not only that sketch's
+authored entities. The projected point, line, or curve keeps the intermediate sketch as its direct owner;
+the worker recursively resolves the chain from stable projected IDs. Editing the original source updates
+compatible downstream projections without rewriting their reference identities. The worker boundary
+publishes exact vertex positions, linear endpoints, and analytical circle or bounded-arc
 frames for generic topology candidates. Analytical Box boundaries, Cylinder rim roles, and prepared source
 point/entity IDs give supported candidates stable roles across parameter edits; distinct coincident source
 points remain unlabeled so resolution fails closed instead of choosing one by traversal order. Authoritative
@@ -65,7 +70,7 @@ face in the persistent 3D viewport and asks OCCT for exactly one bounded linear 
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
 closed. Point and Line placement now wake visible earlier-sketch points and lines, highlight and label the source, and atomically create the stable reference plus inferred constraint only after acceptance. General surfaces, multi-curve results, Pierce, curve and model-topology wake-up, non-circular curved
-model edges, 3D overlap disambiguation, grave-accent cycling, and repair UI are not implemented. Normal-view Use provides a bounded labeled chooser when candidates overlap. Persisted coordinates remain disposable: both UI preview and
+model edges, and sketch-source repair UI are not implemented. Normal-view Use provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
