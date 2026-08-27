@@ -10,6 +10,7 @@ import {
   viewerOriginPlanes,
 } from "@vibeshape/viewer/origin-planes"
 import { renderProjectThumbnail } from "@vibeshape/viewer/project-thumbnail"
+import { viewerSketchReferenceCandidateKey } from "@vibeshape/viewer/sketch-reference-identity"
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
@@ -21,6 +22,8 @@ import type {
 } from "@vibeshape/viewer/three-viewport"
 import {
   type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   type SetStateAction,
   useEffect,
@@ -172,6 +175,9 @@ async function initializeViewport(
   onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
   onSketchReferencePreselectionChange: (candidate: ViewerSketchReferenceCandidate | null) => void,
+  onSketchReferenceCandidateStackChange: (
+    candidates: readonly ViewerSketchReferenceCandidate[],
+  ) => void,
   onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void,
   mount: ViewportMount,
   viewportRef: RefObject<GeometryViewportPort | null>,
@@ -189,6 +195,7 @@ async function initializeViewport(
       onOriginPlanePreselectionChange,
       onOriginPlaneSelectionChange,
       onSelectionChange,
+      onSketchReferenceCandidateStackChange,
       onSketchReferencePreselectionChange,
       onSketchReferenceSelectionChange,
     })
@@ -335,6 +342,9 @@ function useViewportRenderer(
   const [rendererFailed, setRendererFailed] = useState(false)
   const [sketchPointPreselection, setSketchPointPreselection] =
     useState<ViewerSketchReferenceCandidate | null>(null)
+  const [sketchReferenceCandidateStack, setSketchReferenceCandidateStack] = useState<
+    readonly ViewerSketchReferenceCandidate[]
+  >([])
   const shouldInitialize = true
 
   useEffect(() => {
@@ -355,6 +365,7 @@ function useViewportRenderer(
         onSelectionChange(selection)
       },
       setSketchPointPreselection,
+      setSketchReferenceCandidateStack,
       (candidate) => latest.sketchContextRef.current?.referenceSelection?.onSelect(candidate),
       mount,
       viewportRef,
@@ -407,7 +418,13 @@ function useViewportRenderer(
     if (viewport) synchronizeViewportSketchContext(viewport, sketchContext)
   }, [sketchContext])
 
-  return { canvasRef, rendererFailed, sketchPointPreselection, viewportRef }
+  return {
+    canvasRef,
+    rendererFailed,
+    sketchPointPreselection,
+    sketchReferenceCandidateStack,
+    viewportRef,
+  }
 }
 
 function useProjectThumbnail(controller: DocumentControllerState, meshes: readonly ViewerMesh[]) {
@@ -822,7 +839,13 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
   )
-  const { canvasRef, rendererFailed, sketchPointPreselection, viewportRef } = useViewportRenderer(
+  const {
+    canvasRef,
+    rendererFailed,
+    sketchPointPreselection,
+    sketchReferenceCandidateStack,
+    viewportRef,
+  } = useViewportRenderer(
     createViewport,
     meshes,
     sketches,
@@ -855,6 +878,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     message,
     originPlanePreselection,
     sketchPointPreselection,
+    sketchReferenceCandidateStack,
     originPlaneVisibility: visibleOriginPlanes(originPlaneVisibility),
     onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(originPlaneVisibility),
     viewportRef,
@@ -915,6 +939,197 @@ function WorldAxesLegend() {
   )
 }
 
+function consumeSelectOtherKey(event: ReactKeyboardEvent<HTMLElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function selectOtherCycleIndex(
+  activeIndex: number | null,
+  candidateStack: readonly ViewerSketchReferenceCandidate[],
+  preselection: ViewerSketchReferenceCandidate | null,
+  reverse: boolean,
+) {
+  if (activeIndex !== null) {
+    return (activeIndex + (reverse ? -1 : 1) + candidateStack.length) % candidateStack.length
+  }
+  if (!preselection) return 0
+  const preselectedIdentity = viewerSketchReferenceCandidateKey(preselection)
+  return Math.max(
+    0,
+    candidateStack.findIndex(
+      (candidate) => viewerSketchReferenceCandidateKey(candidate) === preselectedIdentity,
+    ),
+  )
+}
+
+function useSketchReferenceSelectOther({
+  candidateStack,
+  context,
+  focusRef,
+  preselection,
+  viewportRef,
+}: Readonly<{
+  candidateStack: readonly ViewerSketchReferenceCandidate[]
+  context: GeometryViewportSketchContext | null | undefined
+  focusRef: RefObject<HTMLElement | null>
+  preselection: ViewerSketchReferenceCandidate | null
+  viewportRef: RefObject<GeometryViewportPort | null>
+}>) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  useEffect(() => {
+    setActiveIndex((current) => {
+      if (current !== null) focusRef.current?.focus({ preventScroll: true })
+      return null
+    })
+  }, [candidateStack, context?.mode, focusRef])
+  const referenceSelection = context?.mode === "orbit" ? context.referenceSelection : undefined
+
+  const preview = (index: number) => {
+    const candidate = candidateStack[index]
+    if (!candidate) return
+    setActiveIndex(index)
+    viewportRef.current?.setSketchReferencePreselection(candidate)
+  }
+  const close = () => {
+    setActiveIndex(null)
+    viewportRef.current?.setSketchReferencePreselection(candidateStack[0] ?? null)
+    focusRef.current?.focus({ preventScroll: true })
+  }
+  const dismiss = () => {
+    setActiveIndex(null)
+    viewportRef.current?.setSketchReferencePreselection(null)
+  }
+  const choose = (candidate: ViewerSketchReferenceCandidate) => {
+    setActiveIndex(null)
+    focusRef.current?.focus({ preventScroll: true })
+    referenceSelection?.onSelect(candidate)
+  }
+  const cycle = (event: ReactKeyboardEvent<HTMLElement>) => {
+    consumeSelectOtherKey(event)
+    preview(selectOtherCycleIndex(activeIndex, candidateStack, preselection, event.shiftKey))
+  }
+  const accept = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (activeIndex === null || event.target !== event.currentTarget) return
+    const candidate = candidateStack[activeIndex]
+    if (!candidate) return
+    consumeSelectOtherKey(event)
+    choose(candidate)
+  }
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (!referenceSelection) return
+    if (event.code === "Backquote") {
+      if (candidateStack.length >= 2) cycle(event)
+      return
+    }
+    if (event.key === "Escape" && activeIndex !== null) {
+      consumeSelectOtherKey(event)
+      close()
+      return
+    }
+    if (event.key === "Enter") accept(event)
+  }
+
+  return {
+    activeIndex,
+    candidates: activeIndex === null ? [] : candidateStack,
+    choose,
+    dismiss,
+    onKeyDown,
+    preview,
+  }
+}
+
+type SketchReferenceSelectOtherState = ReturnType<typeof useSketchReferenceSelectOther>
+
+function sketchReferenceInteraction(
+  active: boolean,
+  selection: SketchReferenceSelectOtherState,
+): Readonly<{
+  className?: string
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void
+  onPointerDown?: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerEnter?: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerLeave?: () => void
+  tabIndex?: number
+}> {
+  if (!active) return {}
+  const focus = (event: ReactPointerEvent<HTMLElement>) =>
+    event.currentTarget.focus({ preventScroll: true })
+  return {
+    className: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    onKeyDown: selection.onKeyDown,
+    onPointerDown: focus,
+    onPointerEnter: focus,
+    onPointerLeave: selection.dismiss,
+    tabIndex: 0,
+  }
+}
+
+function SketchReferenceSelectOtherOverlay({
+  selection,
+}: Readonly<{
+  selection: SketchReferenceSelectOtherState
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  const listboxRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (selection.activeIndex !== null) listboxRef.current?.focus({ preventScroll: true })
+  }, [selection.activeIndex])
+  if (selection.activeIndex === null || selection.candidates.length < 2) return null
+  const activeOptionId = `sketch-reference-select-other-${selection.activeIndex}`
+  return (
+    <div
+      aria-activedescendant={activeOptionId}
+      aria-label={t("selectOtherReference")}
+      className="pointer-events-auto absolute bottom-12 left-1/2 z-10 w-80 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+      data-sketch-reference-select-other
+      onKeyDown={selection.onKeyDown}
+      ref={listboxRef}
+      role="listbox"
+      tabIndex={-1}
+    >
+      <div className="px-2 pb-1 text-xs font-semibold">{t("selectOtherReference")}</div>
+      <div className="grid gap-0.5">
+        {selection.candidates.map((candidate, index) => (
+          <Button
+            aria-label={t("selectOtherReferenceOption", {
+              count: selection.candidates.length,
+              label: candidate.label,
+              position: index + 1,
+            })}
+            aria-selected={selection.activeIndex === index}
+            className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left text-xs"
+            data-sketch-reference-select-other-active={
+              selection.activeIndex === index ? "true" : undefined
+            }
+            id={`sketch-reference-select-other-${index}`}
+            key={viewerSketchReferenceCandidateKey(candidate)}
+            onClick={() => selection.choose(candidate)}
+            onPointerEnter={() => selection.preview(index)}
+            role="option"
+            size="sm"
+            tabIndex={-1}
+            type="button"
+            variant={selection.activeIndex === index ? "secondary" : "ghost"}
+          >
+            <span className="w-10 shrink-0 font-mono text-muted-foreground">
+              {t("selectOtherReferencePosition", {
+                count: selection.candidates.length,
+                position: index + 1,
+              })}
+            </span>
+            <span className="truncate">{candidate.label}</span>
+          </Button>
+        ))}
+      </div>
+      <div className="px-2 pt-1 text-[11px] text-muted-foreground">
+        {t("selectOtherReferenceHint")}
+      </div>
+    </div>
+  )
+}
+
 function ModelViewportChrome({
   displayUnit,
   featurePreview,
@@ -969,9 +1184,11 @@ function ModelViewportChrome({
 function SketchContextChrome({
   context,
   preselection,
+  selectOther,
 }: Readonly<{
   context: GeometryViewportSketchContext
   preselection: ViewerSketchReferenceCandidate | null
+  selectOther: SketchReferenceSelectOtherState
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null
@@ -979,6 +1196,7 @@ function SketchContextChrome({
   return (
     <>
       <WorldAxesLegend />
+      <SketchReferenceSelectOtherOverlay selection={selectOther} />
       {context.referenceSelection ? (
         <div
           className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
@@ -1029,30 +1247,82 @@ function SketchContextChrome({
   )
 }
 
-export function GeometryViewport(props: GeometryViewportProps) {
+function GeometryViewportContextChrome({
+  displayUnit,
+  model,
+  props,
+  selectOther,
+}: Readonly<{
+  displayUnit: string
+  model: ReturnType<typeof useGeometryViewportModel>
+  props: GeometryViewportProps
+  selectOther: SketchReferenceSelectOtherState
+}>) {
   const { featurePreview, originPlaneSelection, selection, sketchContext } = props
+  if (sketchContext) {
+    return (
+      <SketchContextChrome
+        context={sketchContext}
+        preselection={model.sketchPointPreselection}
+        selectOther={selectOther}
+      />
+    )
+  }
+  return (
+    <ModelViewportChrome
+      displayUnit={displayUnit}
+      featurePreview={featurePreview}
+      message={model.message}
+      meshes={model.meshes}
+      onOriginPlaneVisibilityChange={model.onOriginPlaneVisibilityChange}
+      originPlanePreselection={model.originPlanePreselection}
+      originPlaneSelection={originPlaneSelection}
+      originPlaneVisibility={model.originPlaneVisibility}
+      selection={selection}
+      sketches={model.sketches}
+      viewportRef={model.viewportRef}
+    />
+  )
+}
+
+export function GeometryViewport(props: GeometryViewportProps) {
+  const { featurePreview, originPlaneSelection, sketchContext } = props
   const passive = sketchContext?.mode === "normal"
   const displayUnits = useDocumentDisplayUnits()
+  const sketchReferenceRegionRef = useRef<HTMLElement>(null)
   const t = useTranslations("app.shell.viewport")
+  const model = useGeometryViewportModel(props)
   const {
     canvasRef,
     meshes,
     sketches,
-    message,
-    onOriginPlaneVisibilityChange,
     originPlanePreselection,
     originPlaneVisibility,
     preselectedFeatureId,
+    sketchReferenceCandidateStack,
     sketchPointPreselection,
     selectedFeatureId,
     viewportRef,
-  } = useGeometryViewportModel(props)
+  } = model
+  const selectOther = useSketchReferenceSelectOther({
+    candidateStack: sketchReferenceCandidateStack,
+    context: sketchContext,
+    focusRef: sketchReferenceRegionRef,
+    preselection: sketchPointPreselection,
+    viewportRef,
+  })
+  const referenceInteraction = sketchReferenceInteraction(
+    sketchContext?.mode === "orbit" && sketchContext.referenceSelection !== undefined,
+    selectOther,
+  )
   return (
     <section
+      ref={sketchReferenceRegionRef}
       aria-label={t("ariaLabel")}
       aria-hidden={passive ? true : undefined}
       className={cn(
         "relative min-h-0 overflow-hidden bg-viewport-background",
+        referenceInteraction.className,
         passive && "pointer-events-none",
       )}
       data-passive={passive ? "true" : undefined}
@@ -1073,28 +1343,22 @@ export function GeometryViewport(props: GeometryViewportProps) {
       data-origin-plane-visibility={viewerOriginPlanes
         .filter((plane) => originPlaneVisibility[plane])
         .join(",")}
+      onKeyDown={referenceInteraction.onKeyDown}
+      onPointerDown={referenceInteraction.onPointerDown}
+      onPointerEnter={referenceInteraction.onPointerEnter}
+      onPointerLeave={referenceInteraction.onPointerLeave}
+      tabIndex={referenceInteraction.tabIndex}
     >
       <canvas
         ref={canvasRef}
         className={cn("absolute inset-0 size-full touch-none", passive && "pointer-events-none")}
       />
-      {sketchContext ? (
-        <SketchContextChrome context={sketchContext} preselection={sketchPointPreselection} />
-      ) : (
-        <ModelViewportChrome
-          displayUnit={displayUnits.length}
-          featurePreview={featurePreview}
-          message={message}
-          meshes={meshes}
-          onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
-          originPlanePreselection={originPlanePreselection}
-          originPlaneSelection={originPlaneSelection}
-          originPlaneVisibility={originPlaneVisibility}
-          selection={selection}
-          sketches={sketches}
-          viewportRef={viewportRef}
-        />
-      )}
+      <GeometryViewportContextChrome
+        displayUnit={displayUnits.length}
+        model={model}
+        props={props}
+        selectOther={selectOther}
+      />
     </section>
   )
 }

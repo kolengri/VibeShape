@@ -97,6 +97,7 @@ import type {
   ViewerOriginPlane,
   ViewerOriginPlaneVisibility,
 } from "@vibeshape/viewer/origin-planes"
+import { viewerSketchReferenceCandidateKey } from "@vibeshape/viewer/sketch-reference-identity"
 import type { ViewerFrame } from "@vibeshape/viewer/three-viewport"
 import {
   type CSSProperties,
@@ -1766,22 +1767,7 @@ function SketchGeometry({
 
 type ExternalUseCandidate = ExternalSketchGeometryCandidate | ExternalModelGeometryCandidate
 
-function candidateKey(candidate: ExternalUseCandidate) {
-  if (
-    candidate.kind === "model-point" ||
-    candidate.kind === "model-line" ||
-    candidate.kind === "model-curve"
-  ) {
-    return `${candidate.kind}:${candidate.featureId}:${candidate.candidateId}`
-  }
-  const entityId =
-    candidate.kind === "line"
-      ? candidate.sourceLineId
-      : candidate.kind === "curve"
-        ? candidate.sourceEntityId
-        : candidate.sourcePointId
-  return `${candidate.sourceSketchId}:${entityId}`
-}
+const candidateKey = viewerSketchReferenceCandidateKey
 
 function contextGeometryKey(geometry: ExternalSketchContextGeometry) {
   const entityId =

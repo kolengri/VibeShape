@@ -395,6 +395,7 @@ function StatefulSketchViewport(
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -3578,6 +3579,7 @@ describe("SketchViewport", () => {
       onDraftChange,
     })
     await screen.findByText("Fully constrained")
+    vi.useFakeTimers()
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
     mockDrawingRectangle(drawing)
     const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
@@ -3590,18 +3592,18 @@ describe("SketchViewport", () => {
     const frame = frames.shift()
     if (!frame) throw new Error("The dense point drag must schedule an animation frame.")
     act(() => frame(0))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+    await act(async () => vi.advanceTimersByTimeAsync(80))
 
     fireEvent.pointerMove(drawing, { clientX: 620, clientY: 160, pointerId: 1 })
     const continuedFrame = frames.shift()
     if (!continuedFrame) throw new Error("Continued dense dragging must schedule another frame.")
     act(() => continuedFrame(80))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 80)))
+    await act(async () => vi.advanceTimersByTimeAsync(80))
 
     expect(solveSketch).toHaveBeenCalledOnce()
     expect(onDraftChange).not.toHaveBeenCalled()
 
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 60)))
+    await act(async () => vi.advanceTimersByTimeAsync(40))
 
     expect(solveSketch).toHaveBeenCalledTimes(2)
     expect(onDraftChange).not.toHaveBeenCalled()
@@ -3609,6 +3611,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerUp(drawing, { pointerId: 1 })
 
     expect(onDraftChange).toHaveBeenCalledOnce()
+    vi.useRealTimers()
     await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
   })
 

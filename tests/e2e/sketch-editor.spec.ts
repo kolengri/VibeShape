@@ -260,7 +260,8 @@ test.describe("full sketch editor", () => {
     await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "3")
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The 3D reference-selection canvas is not visible.")
-    const referenceStatus = page.getByRole("status").filter({ hasText: "· Line" })
+    const referenceStatus = page.getByRole("status").filter({ hasText: "Use reference:" })
+    const selectOther = page.getByRole("listbox", { name: "Select other reference" })
     let selected = false
     const centerX = canvasBounds.x + canvasBounds.width / 2
     const centerY = canvasBounds.y + canvasBounds.height / 2
@@ -271,9 +272,12 @@ test.describe("full sketch editor", () => {
         await page.mouse.move(x, y)
         await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
         if (await referenceStatus.isVisible()) {
-          await page.mouse.click(x, y)
-          selected = true
-          break
+          await page.keyboard.press("Backquote")
+          if (await selectOther.isVisible()) {
+            await selectOther.getByRole("option", { name: /Line/ }).click()
+            selected = true
+            break
+          }
         }
       }
     }
