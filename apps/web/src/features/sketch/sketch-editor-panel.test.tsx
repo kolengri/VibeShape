@@ -56,6 +56,7 @@ const copy = {
   editConstraint: "Edit dimension",
   equal: "Equal",
   extrude: "Extrude selected profile",
+  revolve: "Revolve selected profile",
   finish: "Finish sketch",
   fixed: "Fix point",
   geometry: "Geometry tools",
@@ -132,6 +133,7 @@ function renderPanel(
   >["state"]["selectedConstraintId"] = null,
   extrusion?: Readonly<{
     onExtrude: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onExtrude"]
+    onRevolve?: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onRevolve"]
     profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
   }>,
   externalReferenceLabels: React.ComponentProps<
@@ -179,6 +181,7 @@ function renderPanel(
               onDraftChange,
               onExtrude: extrusion?.onExtrude ?? vi.fn(async () => true),
               onFinish: vi.fn(async () => undefined),
+              onRevolve: extrusion?.onRevolve ?? vi.fn(async () => true),
               onReferenceRepairChange,
               onSupportReplace,
               onSelectedConstraintChange: vi.fn(),
@@ -473,6 +476,31 @@ describe("SketchEditorPanel", () => {
     const button = screen.getByRole("button", { name: "Extrude selected profile" })
     await user.dblClick(button)
     expect(onExtrude).toHaveBeenCalledOnce()
+    expect(button.getAttribute("aria-busy")).toBe("true")
+  })
+
+  it("offers a single-flight Revolve action for a selected closed profile", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const boundary = sketch.entities.find((entity) => entity.type === "line")
+    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
+    const onRevolve = vi.fn(() => new Promise<boolean>(() => undefined))
+    const profile = {
+      holeBoundaryEntityIds: [],
+      outerBoundaryEntityIds: [boundary.id],
+      schemaVersion: 0,
+      sketchId: sketch.id,
+    } satisfies SketchProfileSelector
+
+    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, {
+      onExtrude: vi.fn(async () => true),
+      onRevolve,
+      profile,
+    })
+
+    const button = screen.getByRole("button", { name: "Revolve selected profile" })
+    await user.dblClick(button)
+    expect(onRevolve).toHaveBeenCalledOnce()
     expect(button.getAttribute("aria-busy")).toBe("true")
   })
 

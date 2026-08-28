@@ -68,6 +68,7 @@ type SketchEditorPanelCopy = Readonly<{
   editConstraint: string
   equal: string
   extrude: string
+  revolve: string
   finish: string
   fixed: string
   horizontal: string
@@ -631,21 +632,23 @@ function SketchProfilesSection({
 }
 
 function SketchEditorFooter({
-  canExtrude,
+  canCreateFeature,
   copy,
   disabled,
   message,
   onCancel,
   onExtrude,
   onFinish,
+  onRevolve,
 }: {
-  canExtrude: boolean
+  canCreateFeature: boolean
   copy: SketchEditorPanelCopy
   disabled: boolean
   message: string | null
   onCancel: () => void
   onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
+  onRevolve: () => Promise<boolean>
 }) {
   return (
     <div className="mt-auto grid gap-2 border-t pt-3">
@@ -656,16 +659,21 @@ function SketchEditorFooter({
         <Button
           type="button"
           size="sm"
-          variant={canExtrude ? "outline" : "default"}
+          variant={canCreateFeature ? "outline" : "default"}
           disabled={disabled}
           onClick={onFinish}
         >
           {copy.finish}
         </Button>
-        {canExtrude ? (
-          <Button type="button" size="sm" disabled={disabled} onClick={onExtrude}>
-            {copy.extrude}
-          </Button>
+        {canCreateFeature ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" size="sm" disabled={disabled} onClick={onExtrude}>
+              {copy.extrude}
+            </Button>
+            <Button type="button" size="sm" disabled={disabled} onClick={onRevolve}>
+              {copy.revolve}
+            </Button>
+          </div>
         ) : null}
       </div>
       {message ? (
@@ -824,6 +832,7 @@ type SketchEditorPanelActions = Readonly<{
   onDraftChange: (draft: SketchRecord) => void
   onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
+  onRevolve: () => Promise<boolean>
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
@@ -861,6 +870,7 @@ export function SketchEditorPanel({
     onDraftChange,
     onExtrude,
     onFinish,
+    onRevolve,
     onReferenceRepairChange,
     onSupportReplace,
     onSelectedConstraintChange,
@@ -922,13 +932,14 @@ export function SketchEditorPanel({
         />
       </div>
       <SketchEditorFooter
-        canExtrude={extrusionAvailable}
+        canCreateFeature={extrusionAvailable}
         copy={copy}
         disabled={disabled}
         message={message}
         onCancel={onCancel}
         onExtrude={onExtrude}
         onFinish={onFinish}
+        onRevolve={onRevolve}
       />
     </div>
   )

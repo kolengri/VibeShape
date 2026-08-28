@@ -8,6 +8,7 @@ import {
   geometryWorkerRequestSchema,
   geometryWorkerResponseSchema,
   kernelSpikeParametersSchema,
+  revolveFeatureContentParametersSchema,
   topologyCandidateSchema,
   topologySignatureSchema,
   topologySpikeParametersSchema,
@@ -414,6 +415,60 @@ describe("geometry worker protocol", () => {
     expect(
       extrusionFeatureContentParametersSchema.safeParse({ ...parameters, distance: Number.NaN })
         .success,
+    ).toBe(false)
+  })
+
+  it("accepts bounded revolve content with a world axis", () => {
+    const profile = {
+      sourceEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
+      segments: [
+        {
+          entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+          type: "line" as const,
+          startPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3221",
+          endPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3222",
+          start: [0, 0] as [number, number],
+          end: [20, 0] as [number, number],
+        },
+      ],
+    }
+    const content = {
+      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
+      frame: {
+        origin: [0, 0, 0] as [number, number, number],
+        xAxis: [1, 0, 0] as [number, number, number],
+        yAxis: [0, 1, 0] as [number, number, number],
+        normal: [0, 0, 1] as [number, number, number],
+      },
+      outer: profile,
+      holes: [],
+      axis: "x" as const,
+      axisOrigin: [0, 0, 0] as [number, number, number],
+      axisDirection: [1, 0, 0] as [number, number, number],
+      angleRadians: Math.PI,
+      operation: "new" as const,
+    }
+    expect(revolveFeatureContentParametersSchema.safeParse(content).success).toBe(true)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({ ...content, angleRadians: 0 }).success,
+    ).toBe(false)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...content,
+        axisDirection: [2, 0, 0],
+      }).success,
+    ).toBe(false)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...content,
+        axisOrigin: [1, 0, 0],
+      }).success,
+    ).toBe(false)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...content,
+        axisDirection: [0, 1, 0],
+      }).success,
     ).toBe(false)
   })
 

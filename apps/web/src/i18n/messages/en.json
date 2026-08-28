@@ -258,6 +258,7 @@
           "keywords": "create datum plane|reference plane|offset plane|construction plane"
         },
         "createExtrusion": { "label": "Extrude", "keywords": "create extrusion|profile|solid|pad" },
+        "createRevolve": { "label": "Revolve", "keywords": "create revolve|profile|axis|turn" },
         "createSketch": { "label": "Create sketch", "keywords": "new sketch|2d|profile|draw" },
         "createSubtract": {
           "label": "Subtract",
@@ -652,6 +653,30 @@
           "createFailed": "The extrusion could not be created. Your parameter value is preserved.",
           "updateFailed": "The extrusion could not be updated. Your parameter value is preserved."
         },
+        "revolve": {
+          "title": "Revolve profile",
+          "description": "Create a new solid by revolving the selected stable sketch profile around an axis.",
+          "editTitle": "Edit revolve",
+          "parameters": "Revolve parameters",
+          "profile": "Selected profile",
+          "axis": "Revolve axis",
+          "axisX": "Horizontal sketch axis (X)",
+          "axisY": "Vertical sketch axis (Y)",
+          "angle": "Angle",
+          "expressionDescription": "Enter an angle from 0 to 360 degrees using project units or a variable such as #angle.",
+          "create": "Create revolve",
+          "update": "Update revolve",
+          "cancel": "Cancel",
+          "featureLabel": "Revolve {number}",
+          "invalidExpression": "Enter a valid angle expression using supported units and existing variables.",
+          "invalidDimension": "This expression must resolve to an angle.",
+          "invalidRange": "Enter an angle greater than zero and no more than 360 degrees.",
+          "validationSummary": "Fix the highlighted angle before creating the revolve.",
+          "staleRevision": "The document changed while this revolve was being edited. Review the current model and try again.",
+          "createFailed": "The revolve could not be created. Your parameter value is preserved.",
+          "updateFailed": "The revolve could not be updated. Your parameter value is preserved.",
+          "missingProfile": "Missing sketch profile"
+        },
         "sketch": {
           "taskAriaLabel": "Sketch task panel",
           "workspaceTitle": "Sketch workspace",
@@ -739,6 +764,7 @@
           "update": "Update sketch",
           "edit": "Edit sketch",
           "extrude": "Extrude selected profile",
+          "revolve": "Revolve selected profile",
           "cancel": "Cancel",
           "createModeDescription": "Choose geometry tools above, then constrain the profile here.",
           "sketchLabel": "Sketch {number}",

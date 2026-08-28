@@ -7,6 +7,7 @@ import {
   type FeatureId,
   type FeatureRecord,
   legacyExtrusionFeatureType,
+  revolveFeatureType,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
 } from "@vibeshape/domain"
@@ -18,6 +19,8 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-cylinder"; featureId: FeatureId }>
   | Readonly<{ kind: "create-extrusion"; profile: SketchProfileSelector }>
   | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
+  | Readonly<{ kind: "create-revolve"; profile: SketchProfileSelector }>
+  | Readonly<{ kind: "edit-revolve"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>
   | Readonly<{ kind: "create-datum-plane"; support?: SketchFeatureFaceSupport }>
@@ -51,6 +54,10 @@ export function isExtrusionFeature(feature: FeatureRecord) {
   )
 }
 
+export function isRevolveFeature(feature: FeatureRecord) {
+  return hasFeatureType(feature, revolveFeatureType.type)
+}
+
 export function isDatumPlaneFeature(feature: FeatureRecord) {
   return hasFeatureType(feature, datumPlaneFeatureType.type)
 }
@@ -60,6 +67,7 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isBoxFeature(feature) ||
     isCylinderFeature(feature) ||
     isExtrusionFeature(feature) ||
+    isRevolveFeature(feature) ||
     isBooleanFeature(feature)
   )
 }
@@ -127,6 +135,7 @@ export function editPartDesignTool(
   if (isBoxFeature(feature)) return { kind: "edit-box", featureId: feature.id }
   if (isCylinderFeature(feature)) return { kind: "edit-cylinder", featureId: feature.id }
   if (isExtrusionFeature(feature)) return { kind: "edit-extrusion", featureId: feature.id }
+  if (isRevolveFeature(feature)) return { kind: "edit-revolve", featureId: feature.id }
   if (isBooleanFeature(feature)) return { kind: "edit-subtract", featureId: feature.id }
   if (isDatumPlaneFeature(feature)) return { kind: "edit-datum-plane", featureId: feature.id }
   return null
@@ -144,6 +153,9 @@ export function activePartDesignCommand(activeTool: ActivePartDesignTool | null)
     case "create-extrusion":
     case "edit-extrusion":
       return "extrusion"
+    case "create-revolve":
+    case "edit-revolve":
+      return "revolve"
     case "create-subtract":
     case "edit-subtract":
       return "subtract"

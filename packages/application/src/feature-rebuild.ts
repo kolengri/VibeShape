@@ -20,7 +20,10 @@ import {
 } from "@vibeshape/domain/feature-graph"
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
 import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
-import { readExtrusionFeatureParameters } from "@vibeshape/domain/part-design"
+import {
+  readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
+} from "@vibeshape/domain/part-design"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
@@ -803,12 +806,14 @@ function documentSchedulingFeatures(
 ) {
   return features.map((feature) => {
     const extrusion = readExtrusionFeatureParameters(feature)
+    const revolve = readRevolveFeatureParameters(feature)
     return {
       ...feature,
       dependencies: [
         ...new Set([
           ...feature.dependencies,
           ...(extrusion ? sketchModelFeatureIds(document, extrusion.profile.sketchId) : []),
+          ...(revolve ? sketchModelFeatureIds(document, revolve.profile.sketchId) : []),
         ]),
       ],
     }

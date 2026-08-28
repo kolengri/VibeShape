@@ -8,6 +8,8 @@ import {
   extrusionFeatureType,
   legacyExtrusionFeatureType,
   readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
+  revolveFeatureType,
 } from "./part-design"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
@@ -28,23 +30,34 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureType.type),
   featureTypeKey(legacyExtrusionFeatureType.type),
 ])
+const revolveTypeKey = featureTypeKey(revolveFeatureType.type)
 
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
   const typeKey = featureTypeKey(feature.type)
   if (emptySemanticInputTypeKeys.has(typeKey)) return { recognized: true, ok: true, inputs: [] }
-  if (!extrusionTypeKeys.has(typeKey)) return { recognized: false }
-  const parameters = readExtrusionFeatureParameters(feature as FeatureRecord)
+  if (extrusionTypeKeys.has(typeKey)) {
+    const parameters = readExtrusionFeatureParameters(feature as FeatureRecord)
+    return parameters
+      ? {
+          recognized: true,
+          ok: true,
+          inputs: [{ kind: "sketch", id: parameters.profile.sketchId }],
+        }
+      : {
+          recognized: true,
+          ok: false,
+          message: "A first-party extrusion must contain a valid profile selector.",
+        }
+  }
+  if (typeKey !== revolveTypeKey) return { recognized: false }
+  const parameters = readRevolveFeatureParameters(feature as FeatureRecord)
   return parameters
-    ? {
-        recognized: true,
-        ok: true,
-        inputs: [{ kind: "sketch", id: parameters.profile.sketchId }],
-      }
+    ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.profile.sketchId }] }
     : {
         recognized: true,
         ok: false,
-        message: "A first-party extrusion must contain a valid profile selector.",
+        message: "A first-party revolve must contain a valid profile selector.",
       }
 }

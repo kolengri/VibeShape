@@ -655,7 +655,7 @@ type PreviewMessageKey =
   | "previewReady"
 
 const PREVIEW_MESSAGE_KEYS: Readonly<
-  Record<"datum-plane" | "extrusion", Record<ActivePreviewStatus, PreviewMessageKey>>
+  Record<"datum-plane" | "extrusion" | "revolve", Record<ActivePreviewStatus, PreviewMessageKey>>
 > = {
   "datum-plane": {
     error: "datumPreviewFailed",
@@ -663,6 +663,11 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     ready: "datumPreviewReady",
   },
   extrusion: {
+    error: "previewFailed",
+    loading: "previewLoading",
+    ready: "previewReady",
+  },
+  revolve: {
     error: "previewFailed",
     loading: "previewLoading",
     ready: "previewReady",

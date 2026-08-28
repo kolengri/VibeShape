@@ -29,6 +29,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createCylinder: () => void
     createDatumPlane: () => void
     createExtrusion: () => unknown
+    createRevolve?: () => unknown
     createSketch: () => void
     createSubtract: () => void
     redoSketch: () => void
@@ -44,6 +45,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     activeSketchTool: ActiveSketchTool | null
     controller: DocumentControllerState
     extrusionAvailable: boolean
+    revolveAvailable?: boolean
     sketchConstruction: boolean
     sketchCameraMode: SketchCameraMode
     sketchFinalContext: boolean
@@ -98,6 +100,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     icon: "extrude",
     id: editorCommandIds.createExtrusion,
     labelKey: "createExtrusion",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "revolve",
+    id: editorCommandIds.createRevolve,
+    labelKey: "createRevolve",
     ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primary",
   },
@@ -556,6 +566,20 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     },
     id: editorCommandIds.createExtrusion,
     isActive: ({ state }) => state.activePartDesignCommand === "extrusion",
+    isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createRevolve?.(),
+    getEligibility: (context) => {
+      const eligibility = canCreateFeature(context)
+      if (!eligibility.enabled) return eligibility
+      return context.state.revolveAvailable
+        ? editorCommandEnabled()
+        : editorCommandDisabled("selectProfile")
+    },
+    id: editorCommandIds.createRevolve,
+    isActive: ({ state }) => state.activePartDesignCommand === "revolve",
     isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
     ownerModuleId: partDesignOwner,
   },

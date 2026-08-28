@@ -58,6 +58,13 @@ function normalizedVector(vector: readonly [number, number, number]) {
   return Math.abs(Math.hypot(...vector) - 1) <= 1e-6
 }
 
+function vectorsMatch(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+) {
+  return Math.hypot(left[0] - right[0], left[1] - right[1], left[2] - right[2]) <= 1e-6
+}
+
 export const extrusionFrameSchema = z
   .object({
     origin: vector3Schema,
@@ -249,7 +256,7 @@ export const extrusionProfileSegmentSchema = z.discriminatedUnion("type", [
   extrusionEllipticalArcSegmentSchema,
 ])
 
-const extrusionProfileLoopSchema = z
+export const extrusionProfileLoopSchema = z
   .object({
     sourceEntityIds: z.array(sketchEntityIdSchema).min(1).max(2_000),
     segments: z.array(extrusionProfileSegmentSchema).min(1).max(2_000),
@@ -300,6 +307,48 @@ export const extrusionFeatureContentParametersSchema = z
       outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
       2_000,
     "Extrusion profiles are limited to 2,000 total segments.",
+  )
+
+export const revolveFeatureContentParametersSchema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    outer: extrusionProfileLoopSchema,
+    holes: z.array(extrusionProfileLoopSchema).max(2_000),
+    axis: z.enum(["x", "y"]),
+    axisOrigin: vector3Schema,
+    axisDirection: topologyVector3Schema,
+    angleRadians: finiteNumberSchema.min(Number.EPSILON).max(Math.PI * 2),
+    operation: z.literal("new"),
+  })
+  .strict()
+  .refine(({ axisDirection }) => isNormalized(axisDirection), {
+    message: "Revolve axis direction must be normalized.",
+    path: ["axisDirection"],
+  })
+  .superRefine(({ axis, axisDirection, axisOrigin, frame }, context) => {
+    if (!vectorsMatch(axisOrigin, frame.origin)) {
+      context.addIssue({
+        code: "custom",
+        message: "Revolve axis origin must match the sketch frame origin.",
+        path: ["axisOrigin"],
+      })
+    }
+    const expectedDirection = axis === "x" ? frame.xAxis : frame.yAxis
+    if (!vectorsMatch(axisDirection, expectedDirection)) {
+      context.addIssue({
+        code: "custom",
+        message: "Revolve axis direction must match its sketch-local axis intent.",
+        path: ["axisDirection"],
+      })
+    }
+  })
+  .refine(
+    ({ outer, holes }) =>
+      outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
+      2_000,
+    "Revolve profiles are limited to 2,000 total segments.",
   )
 
 export const datumPlaneFeatureContentParametersSchema = z

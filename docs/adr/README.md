@@ -29,6 +29,7 @@
 | [0025](0025-first-class-offset-datum-planes.md) | Accepted | First-class signed offset datum planes that remain outside body ownership and export |
 | [0026](0026-document-dependency-graph-and-interleaved-history.md) | Accepted | A document-wide sketch/feature dependency graph with replay-safe interleaved History |
 | [0027](0027-typed-orphan-model-reference-intent.md) | Accepted | Typed orphan intent for model-backed sketch references after feature deletion |
+| [0028](0028-selector-backed-origin-axis-revolve.md) | Accepted | Selector-backed new-body Revolve around a sketch-local origin axis |
 
 Statuses:
 
