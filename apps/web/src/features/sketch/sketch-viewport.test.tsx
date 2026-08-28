@@ -588,7 +588,7 @@ describe("SketchViewport", () => {
     await waitFor(() => expect(onDisplayChange).toHaveBeenLastCalledWith(null))
   })
 
-  it("keeps earlier sketch geometry visible before Use turns it into selection candidates", () => {
+  it("keeps earlier sketch geometry visible and directly selectable before Use", () => {
     const sourcePoint = pointEntities[0]
     if (!sourcePoint) throw new Error("The source sketch fixture must contain a point.")
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3208") }
@@ -612,7 +612,12 @@ describe("SketchViewport", () => {
     })
 
     expect(document.querySelector("[data-sketch-context-geometry-count='1']")).toBeTruthy()
-    expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
+    expect(
+      document.querySelector("[data-sketch-available-external-geometry-count='1']"),
+    ).toBeTruthy()
+    const directCandidate = screen.getByRole("button", { name: "Source sketch · Point" })
+    fireEvent.pointerEnter(directCandidate, { clientX: 120, clientY: 160 })
+    expect(screen.getByText("Use reference: Source sketch · Point")).toBeTruthy()
 
     view.rerender(
       viewportElement({
@@ -667,9 +672,9 @@ describe("SketchViewport", () => {
     const construction = document.querySelector(
       `[data-sketch-context-entity-id="${constructionLineId}"]`,
     )
-    expect(regular?.getAttribute("stroke-dasharray")).toBe("2 3")
+    expect(regular?.getAttribute("stroke-dasharray")).toBe("5 4")
     expect(regular?.classList.contains("stroke-sketch-reference-context")).toBe(true)
-    expect(construction?.getAttribute("stroke-dasharray")).toBe("6 4")
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("8 5")
     expect(construction?.classList.contains("stroke-sketch-reference-context/75")).toBe(true)
     expect(screen.getByRole("group", { name: "Reference context" }).textContent).toContain(
       "Sketch 1 · 2 entities",
@@ -719,7 +724,7 @@ describe("SketchViewport", () => {
       `[data-sketch-context-entity-id="${sourceLine.id}"]`,
     )
     expect(construction?.getAttribute("data-sketch-context-construction")).toBe("true")
-    expect(construction?.getAttribute("stroke-dasharray")).toBe("6 4")
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("8 5")
   })
 
   it("keeps unsupported prior curves visible as passive context while Use is active", () => {
@@ -751,7 +756,7 @@ describe("SketchViewport", () => {
     })
 
     const contextCircle = document.querySelector('[data-sketch-context-curve-type="circle"]')
-    expect(contextCircle?.getAttribute("stroke-dasharray")).toBe("2 3")
+    expect(contextCircle?.getAttribute("stroke-dasharray")).toBe("5 4")
     expect(contextCircle?.classList.contains("stroke-sketch-reference-context")).toBe(true)
     expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
   })
@@ -955,14 +960,14 @@ describe("SketchViewport", () => {
     ])
   })
 
-  it("uses an earlier sketch line directly from the drawing", () => {
+  it("uses an earlier sketch line directly from Select without activating Use", () => {
     const sourceLine = sketch.entities.find((entity) => entity.type === "line")
     if (!sourceLine) throw new Error("The source sketch fixture must contain a line.")
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3212") }
     const onDraftChange = vi.fn()
     renderViewport({
       draft: target,
-      editorTool: "use",
+      editorTool: "select",
       externalPointCandidates: [
         {
           kind: "line",
@@ -2320,13 +2325,13 @@ describe("SketchViewport", () => {
     expect(JSON.stringify(onDraftChange.mock.lastCall?.[0])).not.toContain("candidateId")
   })
 
-  it("uses a model line from the normal drawing with the keyboard", () => {
+  it("uses a model line from Select in the normal drawing with the keyboard", () => {
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3215") }
     const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3216")
     const onDraftChange = vi.fn()
     renderViewport({
       draft: target,
-      editorTool: "use",
+      editorTool: "select",
       externalModelCandidates: [
         {
           candidateId: "box-edge-1",

@@ -2068,7 +2068,7 @@ function SketchAvailableExternalGeometry({
   return (
     <>
       <g
-        aria-label="Available external sketch geometry"
+        aria-label={t("availableExternalGeometry")}
         data-sketch-available-external-geometry-count={candidates.length}
         transform="scale(1 -1)"
       >
@@ -2081,11 +2081,10 @@ function SketchAvailableExternalGeometry({
             data-sketch-available-external-geometry-id={availableExternalGeometryId(candidate)}
             onBlur={() => setFocusedPreselection(null)}
             onFocus={(event) => {
-              const rectangle = event.currentTarget.getBoundingClientRect()
+              const position = externalUseCandidateFocusPosition(candidate, event.currentTarget)
               setFocusedPreselection({
                 candidate,
-                clientX: rectangle.left + rectangle.width / 2,
-                clientY: rectangle.top + rectangle.height / 2,
+                ...position,
               })
             }}
             onPointerEnter={(event) =>
@@ -2198,6 +2197,36 @@ function externalUsePreselectionPosition(preselection: ExternalUsePreselection):
   }
 }
 
+function externalUseCandidateAnchor(candidate: ExternalUseCandidate): SketchPoint2 {
+  if (candidate.kind === "point" || candidate.kind === "model-point") return candidate
+  if (candidate.kind === "line" || candidate.kind === "model-line") {
+    return {
+      x: (candidate.start.x + candidate.end.x) / 2,
+      y: (candidate.start.y + candidate.end.y) / 2,
+    }
+  }
+  return candidate.points[Math.floor(candidate.points.length / 2)] ?? { x: 0, y: 0 }
+}
+
+function externalUseCandidateFocusPosition(
+  candidate: ExternalUseCandidate,
+  target: SVGGElement,
+): Readonly<{ clientX: number; clientY: number }> {
+  const anchor = externalUseCandidateAnchor(candidate)
+  const matrix = typeof target.getScreenCTM === "function" ? target.getScreenCTM() : null
+  if (matrix) {
+    return {
+      clientX: matrix.a * anchor.x + matrix.c * anchor.y + matrix.e,
+      clientY: matrix.b * anchor.x + matrix.d * anchor.y + matrix.f,
+    }
+  }
+  const rectangle = target.getBoundingClientRect()
+  return {
+    clientX: rectangle.left + rectangle.width / 2,
+    clientY: rectangle.top + rectangle.height / 2,
+  }
+}
+
 function externalOverlapChooserPosition(chooser: ExternalUseOverlapChooser): CSSProperties {
   return {
     left: Math.min(Math.max(8, chooser.clientX + 8), Math.max(8, window.innerWidth - 296)),
@@ -2281,6 +2310,7 @@ function SketchAvailableExternalCandidate({
       <>
         <polyline
           fill="none"
+          pointerEvents="stroke"
           points={points}
           className="stroke-transparent"
           strokeWidth={12}
@@ -2307,6 +2337,7 @@ function SketchAvailableExternalCandidate({
           x2={candidate.end.x}
           y2={candidate.end.y}
           className="stroke-transparent"
+          pointerEvents="stroke"
           strokeWidth={12}
           vectorEffect="non-scaling-stroke"
         />
@@ -2326,7 +2357,14 @@ function SketchAvailableExternalCandidate({
   }
   return (
     <>
-      <circle cx={candidate.x} cy={candidate.y} r={10} fill="transparent" stroke="none" />
+      <circle
+        cx={candidate.x}
+        cy={candidate.y}
+        r={10}
+        fill="transparent"
+        pointerEvents="all"
+        stroke="none"
+      />
       <circle
         cx={candidate.x}
         cy={candidate.y}
@@ -2507,8 +2545,8 @@ function externalContextPresentation(
         ? "stroke-sketch-reference-context/75"
         : "stroke-sketch-reference-context",
     sourceLabel: highlighted ? candidate.label : undefined,
-    strokeDasharray: highlighted ? undefined : candidate.construction ? "6 4" : "2 3",
-    strokeWidth: highlighted ? 2.5 : 1,
+    strokeDasharray: highlighted ? undefined : candidate.construction ? "8 5" : "5 4",
+    strokeWidth: highlighted ? 2.5 : 1.5,
   }
 }
 
@@ -2646,13 +2684,68 @@ function SketchExternalReferencePresentation({
         highlightedCandidate={highlightedCandidate}
       />
       <SketchExternalModelInferenceHighlight candidate={highlightedCandidate} />
-      {editorTool === "use" ? (
-        <SketchAvailableExternalGeometry
-          bounds={bounds}
-          candidates={availableCandidates}
-          onUse={onUse}
-        />
-      ) : null}
+      <SketchDirectExternalSelection
+        bounds={bounds}
+        candidates={availableCandidates}
+        editorTool={editorTool}
+        onUse={onUse}
+      />
+      <SketchMaterializedExternalGeometry
+        editorTool={editorTool}
+        externalCurves={externalCurves}
+        externalLines={externalLines}
+        externalPoints={externalPoints}
+        markerScale={markerScale}
+        onAttach={onAttach}
+        onSelect={onSelect}
+        pointsById={pointsById}
+        selectedEntityIds={selectedEntityIds}
+        solvedCircles={solvedCircles}
+      />
+    </>
+  )
+}
+
+function SketchDirectExternalSelection({
+  bounds,
+  candidates,
+  editorTool,
+  onUse,
+}: Readonly<{
+  bounds: SketchBounds
+  candidates: readonly ExternalUseCandidate[]
+  editorTool: SketchEditorTool
+  onUse: (candidate: ExternalUseCandidate) => void
+}>) {
+  if (editorTool !== "select" && editorTool !== "use") return null
+  return <SketchAvailableExternalGeometry bounds={bounds} candidates={candidates} onUse={onUse} />
+}
+
+function SketchMaterializedExternalGeometry({
+  editorTool,
+  externalCurves,
+  externalLines,
+  externalPoints,
+  markerScale,
+  onAttach,
+  onSelect,
+  pointsById,
+  selectedEntityIds,
+  solvedCircles,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  externalCurves: readonly DisplayExternalCurve[]
+  externalLines: readonly DisplayExternalLine[]
+  externalPoints: readonly DisplayPoint[]
+  markerScale: number
+  onAttach: (projectedPointId: SketchEntityId) => void
+  onSelect: (entityId: SketchEntityId, additive: boolean) => void
+  pointsById: SketchPointLookup
+  selectedEntityIds: readonly SketchEntityId[]
+  solvedCircles: ReadonlyMap<string, number>
+}>) {
+  return (
+    <>
       <SketchExternalLines
         editorTool={editorTool}
         lines={externalLines}
@@ -7816,7 +7909,10 @@ function useExternalReferenceInteraction({
     return availableExternalSketchGeometryCandidates(candidates, draft, repairReferenceId)
   }, [candidates, draft, repairReferenceId])
   const availableCandidates = useMemo(
-    () => (editorTool === "use" ? [...contextCandidates, ...modelCandidates] : []),
+    () =>
+      editorTool === "select" || editorTool === "use"
+        ? [...contextCandidates, ...modelCandidates]
+        : [],
     [contextCandidates, editorTool, modelCandidates],
   )
   const use = useCallback(

@@ -83,8 +83,8 @@ center of an eligible model circle or arc is also a passive point candidate; acc
 curve reference and relates the local point to the curve's stable projected center identity. General
 surfaces, multi-curve results, Pierce, elliptical-arc wake-up, generic point-on-ellipse inference,
 non-coplanar model-curve wake-up, non-circular curved model edges, and sketch-source repair UI are not
-implemented. Normal-view Use
-provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded
+implemented. Normal-view Select and Use
+provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
@@ -99,8 +99,9 @@ The first release supports only source geometry that can be selected and resolve
 
 The product exposes three explicit tools in the active sketch:
 
-- **Use external geometry**: select one source sketch entity or feature edge and project it to the active
-  sketch frame.
+- **Direct Select / Use external geometry**: select one eligible visible source sketch entity or projected
+  feature edge directly in Select, or keep Use active for repeated projection and repair, and project it to
+  the active sketch frame through the same stable candidate broker.
 - **Intersect geometry**: select one supported feature face or surface and create its intersection with
   the active sketch plane.
 - **External inference**: while placing or dragging authored geometry, show an external candidate and
