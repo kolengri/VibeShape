@@ -1,4 +1,7 @@
-import { projectSketchCurveBetweenFrames } from "@vibeshape/application/sketch-curve-projection"
+import {
+  type ProjectedSketchCurve,
+  projectSketchCurveBetweenFrames,
+} from "@vibeshape/application/sketch-curve-projection"
 import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
@@ -72,6 +75,7 @@ export type ExternalSketchCurveContext = Readonly<{
   kind: "curve"
   label: string
   points: readonly ProjectedSketchPoint[]
+  projectedGeometry?: ProjectedSketchCurve | null
   sourceEntityId: SketchEntityId
   sourceSketchId: SketchRecord["id"]
   sourceType: ExternalSketchCurveKind
@@ -758,6 +762,7 @@ function projectedCurveContext(
         kind: "curve",
         label,
         points: projected,
+        projectedGeometry: projection,
         sourceEntityId: entity.id,
         sourceSketchId: source.id,
         sourceType: entity.type,

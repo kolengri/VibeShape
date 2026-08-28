@@ -51,6 +51,7 @@ import {
   type SketchExternalReferenceId,
   type SketchInferenceArc,
   type SketchInferenceCandidateQuery,
+  type SketchInferenceCurve,
   type SketchInferenceLine,
   type SketchInferencePoint,
   type SketchPoint2,
@@ -143,6 +144,7 @@ import {
   applyExternalSketchCandidateSelection,
   availableExternalSketchGeometryCandidates,
   type ExternalSketchContextGeometry,
+  type ExternalSketchCurveContext,
   type ExternalSketchGeometryCandidate,
   externalReferenceMatchesCandidate,
   materializeExternalSketchCandidate,
@@ -2500,6 +2502,7 @@ function SketchExternalContextCurve({
       data-sketch-context-curve-type={candidate.sourceType}
       data-sketch-context-entity-id={candidate.sourceEntityId}
       data-sketch-context-source-sketch-id={candidate.sourceSketchId}
+      data-sketch-external-inference-source={presentation.sourceLabel}
       fill="none"
       points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
       strokeDasharray={presentation.strokeDasharray}
@@ -4241,6 +4244,21 @@ function appendInferredPointRelations(
     if (relation.type === "coincident") {
       return appendInferredCoincidence(current, pointId, relation.pointId)
     }
+    if (relation.type === "point-on-curve") {
+      const exists = current.constraints.some(
+        (constraint) =>
+          constraint.type === "point-on-curve" &&
+          constraint.pointId === pointId &&
+          constraint.curveId === relation.curveId,
+      )
+      return exists
+        ? current
+        : appendSketchConstraint(
+            current,
+            { type: "point-on-curve", pointId, curveId: relation.curveId },
+            createBrowserSketchConstraintId,
+          )
+    }
     const exists = current.constraints.some(
       (constraint) =>
         constraint.type === relation.type &&
@@ -4440,6 +4458,7 @@ function pointInferenceGlyph(kind: SketchPointInference["kind"]) {
       return "×"
     case "midpoint":
       return "M"
+    case "point-on-curve":
     case "point-on-line":
       return "⊙"
     default:
@@ -5266,7 +5285,9 @@ function inferredExternalEntityIds(
   const ids = new Set<SketchEntityId>()
   const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
     for (const relation of relations) {
-      ids.add(relation.type === "coincident" ? relation.pointId : relation.lineId)
+      if (relation.type === "coincident") ids.add(relation.pointId)
+      else if (relation.type === "point-on-curve") ids.add(relation.curveId)
+      else ids.add(relation.lineId)
     }
   }
   if (pending?.kind === "line") appendRelations(pending.startRelations)
@@ -5285,6 +5306,9 @@ function remapPointRelation(
 ): SketchPointRelationInference {
   if (relation.type === "coincident") {
     return { ...relation, pointId: projectedIds.get(relation.pointId) ?? relation.pointId }
+  }
+  if (relation.type === "point-on-curve") {
+    return { ...relation, curveId: projectedIds.get(relation.curveId) ?? relation.curveId }
   }
   return { ...relation, lineId: projectedIds.get(relation.lineId) ?? relation.lineId }
 }
@@ -5346,24 +5370,41 @@ function materializeWakeupCandidate(
   draft: SketchRecord,
   candidate: ExternalWakeupCandidate,
 ): Readonly<{ projectedEntityId: SketchEntityId; sketch: SketchRecord }> {
-  if (candidate.kind === "model-point") {
-    const materialized = materializeExternalModelCandidate(draft, candidate)
-    if (materialized.kind !== "model-point") throw new Error("Expected a model point reference.")
+  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+    return materializeModelWakeupCandidate(draft, candidate)
+  }
+  return materializeSketchWakeupCandidate(draft, candidate)
+}
+
+function materializeModelWakeupCandidate(
+  draft: SketchRecord,
+  candidate: Extract<ExternalWakeupCandidate, { kind: "model-line" | "model-point" }>,
+) {
+  const materialized = materializeExternalModelCandidate(draft, candidate)
+  if (materialized.kind === "model-point") {
     return { projectedEntityId: materialized.projectedPointId, sketch: materialized.sketch }
   }
-  if (candidate.kind === "model-line") {
-    const materialized = materializeExternalModelCandidate(draft, candidate)
-    if (materialized.kind !== "model-line") throw new Error("Expected a model line reference.")
+  if (materialized.kind === "model-line") {
     return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
   }
+  throw new Error("External model wake-up materialization changed geometry kind.")
+}
+
+function materializeSketchWakeupCandidate(
+  draft: SketchRecord,
+  candidate: Extract<ExternalWakeupCandidate, { kind: "curve" | "line" | "point" }>,
+) {
   const materialized = materializeExternalSketchCandidate(draft, candidate)
-  if (candidate.kind === "point" && materialized.kind === "point") {
+  if (materialized.kind === "point") {
     return { projectedEntityId: materialized.projectedPointId, sketch: materialized.sketch }
   }
-  if (candidate.kind === "line" && materialized.kind === "line") {
+  if (materialized.kind === "line") {
     return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
   }
-  throw new Error("External wake-up materialization changed geometry kind.")
+  if (materialized.kind === "curve") {
+    return { projectedEntityId: materialized.projectedEntityId, sketch: materialized.sketch }
+  }
+  throw new Error("External sketch wake-up materialization changed geometry kind.")
 }
 
 function externalWakeupCandidateForInference(
@@ -5525,34 +5566,39 @@ function lineInferenceAnchor(
 
 type SketchInferenceReferences = Readonly<{
   arcs: readonly SketchInferenceArc[]
+  curves: readonly SketchInferenceCurve[]
   lines: readonly SketchInferenceLine[]
   points: readonly DisplayPoint[]
 }>
 
 type SketchPlacementInferenceReferences = Readonly<{
   arcs: readonly SketchInferenceArc[]
+  curves: readonly SketchInferenceCurve[]
   lines: readonly SketchInferenceLine[]
   points: readonly SketchInferencePoint[]
 }>
 
 type ExternalWakeupCandidate =
-  | Extract<ExternalSketchGeometryCandidate, { kind: "line" | "point" }>
+  | Extract<ExternalSketchGeometryCandidate, { kind: "curve" | "line" | "point" }>
   | Extract<ExternalModelGeometryCandidate, { kind: "model-line" | "model-point" }>
 
 type ExternalWakeupReferences = Readonly<{
   candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
+  curves: readonly SketchInferenceCurve[]
   lines: readonly SketchInferenceLine[]
   points: readonly SketchInferencePoint[]
 }>
 
 const EMPTY_INFERENCE_REFERENCES: SketchInferenceReferences = {
   arcs: [],
+  curves: [],
   lines: [],
   points: [],
 }
 
 const EMPTY_EXTERNAL_WAKEUP_REFERENCES: ExternalWakeupReferences = {
   candidatesByInferenceId: new Map(),
+  curves: [],
   lines: [],
   points: [],
 }
@@ -5566,6 +5612,115 @@ function sketchReferencesWakeupCandidate(draft: SketchRecord, candidate: Externa
   )
 }
 
+function isExternalWakeupCandidate(
+  candidate: ExternalUseCandidate,
+): candidate is ExternalWakeupCandidate {
+  if (candidate.kind === "curve") {
+    return candidate.projectedType === "circle" || candidate.projectedType === "arc"
+  }
+  return (
+    candidate.kind === "point" ||
+    candidate.kind === "line" ||
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line"
+  )
+}
+
+function canWakeExternalCandidate(candidate: ExternalWakeupCandidate, draft: SketchRecord) {
+  const isCoplanar =
+    candidate.kind !== "model-point" && candidate.kind !== "model-line"
+      ? true
+      : candidate.coplanar !== false
+  return isCoplanar && !sketchReferencesWakeupCandidate(draft, candidate)
+}
+
+type MutableExternalWakeupReferences = {
+  candidatesByInferenceId: Map<SketchEntityId, ExternalWakeupCandidate>
+  curves: SketchInferenceCurve[]
+  inferenceIdByCandidateKey: Map<string, SketchEntityId>
+  lines: SketchInferenceLine[]
+  points: SketchInferencePoint[]
+}
+
+function appendExternalWakeupPoint(
+  candidate: ExternalWakeupCandidate,
+  references: MutableExternalWakeupReferences,
+) {
+  if (candidate.kind !== "point" && candidate.kind !== "model-point") return
+  const inferenceId = createBrowserSketchEntityId()
+  references.inferenceIdByCandidateKey.set(candidateKey(candidate), inferenceId)
+  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.points.push({ id: inferenceId, reusable: false, x: candidate.x, y: candidate.y })
+}
+
+function externalWakeupLineEndpointId(
+  candidate: Extract<ExternalWakeupCandidate, { kind: "line" | "model-line" }>,
+  references: MutableExternalWakeupReferences,
+  sourcePointId?: SketchEntityId,
+) {
+  if (candidate.kind !== "line" || !sourcePointId) return createBrowserSketchEntityId()
+  return (
+    references.inferenceIdByCandidateKey.get(`${candidate.sourceSketchId}:${sourcePointId}`) ??
+    createBrowserSketchEntityId()
+  )
+}
+
+function appendExternalWakeupLine(
+  candidate: ExternalWakeupCandidate,
+  references: MutableExternalWakeupReferences,
+) {
+  if (candidate.kind !== "line" && candidate.kind !== "model-line") return
+  const inferenceId = createBrowserSketchEntityId()
+  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.lines.push({
+    id: inferenceId,
+    startPointId: externalWakeupLineEndpointId(
+      candidate,
+      references,
+      candidate.kind === "line" ? candidate.sourceStartPointId : undefined,
+    ),
+    endPointId: externalWakeupLineEndpointId(
+      candidate,
+      references,
+      candidate.kind === "line" ? candidate.sourceEndPointId : undefined,
+    ),
+    start: candidate.start,
+    end: candidate.end,
+  })
+}
+
+type ExternalProjectedCurve = NonNullable<ExternalSketchCurveContext["projectedGeometry"]>
+
+function externalWakeupCircle(projection: ExternalProjectedCurve) {
+  const center = projection.points[0]
+  return center && projection.radius !== undefined
+    ? ({ type: "circle", center, radius: projection.radius } as const)
+    : null
+}
+
+function externalWakeupArc(projection: ExternalProjectedCurve) {
+  const [center, start, end] = projection.points
+  return center && start && end ? ({ type: "arc", center, start, end } as const) : null
+}
+
+function externalWakeupCurve(candidate: Extract<ExternalWakeupCandidate, { kind: "curve" }>) {
+  const projection = candidate.projectedGeometry
+  if (projection?.type === "circle") return externalWakeupCircle(projection)
+  return projection?.type === "arc" ? externalWakeupArc(projection) : null
+}
+
+function appendExternalWakeupCurve(
+  candidate: ExternalWakeupCandidate,
+  references: MutableExternalWakeupReferences,
+) {
+  if (candidate.kind !== "curve") return
+  const curve = externalWakeupCurve(candidate)
+  if (!curve) return
+  const inferenceId = createBrowserSketchEntityId()
+  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.curves.push({ id: inferenceId, ...curve })
+}
+
 function externalWakeupReferences(
   candidates: readonly ExternalSketchGeometryCandidate[],
   modelCandidates: readonly ExternalModelGeometryCandidate[],
@@ -5573,50 +5728,25 @@ function externalWakeupReferences(
 ): ExternalWakeupReferences {
   const available = [...candidates, ...modelCandidates].filter(
     (candidate): candidate is ExternalWakeupCandidate =>
-      (candidate.kind === "point" ||
-        candidate.kind === "line" ||
-        candidate.kind === "model-point" ||
-        candidate.kind === "model-line") &&
-      (candidate.kind === "point" || candidate.kind === "line" || candidate.coplanar !== false) &&
-      !sketchReferencesWakeupCandidate(draft, candidate),
+      isExternalWakeupCandidate(candidate) && canWakeExternalCandidate(candidate, draft),
   )
-  const candidatesByInferenceId = new Map<SketchEntityId, ExternalWakeupCandidate>()
-  const inferenceIdByCandidateKey = new Map<string, SketchEntityId>()
-  const lines: SketchInferenceLine[] = []
-  const points: SketchInferencePoint[] = []
-  for (const candidate of available) {
-    if (candidate.kind !== "point" && candidate.kind !== "model-point") continue
-    const inferenceId = createBrowserSketchEntityId()
-    inferenceIdByCandidateKey.set(candidateKey(candidate), inferenceId)
-    candidatesByInferenceId.set(inferenceId, candidate)
-    points.push({ id: inferenceId, reusable: false, x: candidate.x, y: candidate.y })
+  const references: MutableExternalWakeupReferences = {
+    candidatesByInferenceId: new Map(),
+    curves: [],
+    inferenceIdByCandidateKey: new Map(),
+    lines: [],
+    points: [],
   }
   for (const candidate of available) {
-    if (candidate.kind !== "line" && candidate.kind !== "model-line") continue
-    const inferenceId = createBrowserSketchEntityId()
-    const endpointInferenceId = (sourcePointId?: SketchEntityId) => {
-      if (candidate.kind !== "line" || !sourcePointId) return createBrowserSketchEntityId()
-      return (
-        inferenceIdByCandidateKey.get(`${candidate.sourceSketchId}:${sourcePointId}`) ??
-        createBrowserSketchEntityId()
-      )
-    }
-    candidatesByInferenceId.set(inferenceId, candidate)
-    lines.push({
-      id: inferenceId,
-      startPointId:
-        candidate.kind === "line"
-          ? endpointInferenceId(candidate.sourceStartPointId)
-          : endpointInferenceId(),
-      endPointId:
-        candidate.kind === "line"
-          ? endpointInferenceId(candidate.sourceEndPointId)
-          : endpointInferenceId(),
-      start: candidate.start,
-      end: candidate.end,
-    })
+    appendExternalWakeupPoint(candidate, references)
   }
-  return { candidatesByInferenceId, lines, points }
+  for (const candidate of available) {
+    appendExternalWakeupLine(candidate, references)
+  }
+  for (const candidate of available) {
+    appendExternalWakeupCurve(candidate, references)
+  }
+  return references
 }
 
 function mergeSketchInferenceReferences(
@@ -5625,8 +5755,76 @@ function mergeSketchInferenceReferences(
 ): SketchPlacementInferenceReferences {
   return {
     arcs: base.arcs,
+    curves: [...base.curves, ...wakeup.curves],
     lines: [...base.lines, ...wakeup.lines],
     points: [...base.points, ...wakeup.points],
+  }
+}
+
+function appendLineInferenceReference(
+  entity: Extract<SketchEntity, { type: "line" }>,
+  presentation: SketchGeometryPresentation,
+  lines: SketchInferenceLine[],
+) {
+  const start = presentation.pointsById.get(entity.startPointId)
+  const end = presentation.pointsById.get(entity.endPointId)
+  if (!start || !end) return
+  lines.push({
+    id: entity.id,
+    startPointId: entity.startPointId,
+    endPointId: entity.endPointId,
+    start,
+    end,
+  })
+}
+
+function appendArcInferenceReferences(
+  entity: Extract<SketchEntity, { type: "arc" }>,
+  presentation: SketchGeometryPresentation,
+  arcs: SketchInferenceArc[],
+  curves: SketchInferenceCurve[],
+) {
+  const center = presentation.pointsById.get(entity.centerPointId)
+  const start = presentation.pointsById.get(entity.startPointId)
+  const end = presentation.pointsById.get(entity.endPointId)
+  if (!center || !start || !end) return
+  arcs.push({
+    id: entity.id,
+    center,
+    startPointId: entity.startPointId,
+    endPointId: entity.endPointId,
+  })
+  curves.push({ id: entity.id, type: "arc", center, start, end })
+}
+
+function appendCircleInferenceReference(
+  entity: Extract<SketchEntity, { type: "circle" }>,
+  presentation: SketchGeometryPresentation,
+  curves: SketchInferenceCurve[],
+) {
+  const center = presentation.pointsById.get(entity.centerPointId)
+  if (!center) return
+  const radius = presentation.solvedCircles.get(entity.id) ?? entity.radius
+  curves.push({ id: entity.id, type: "circle", center, radius })
+}
+
+function appendCurveInferenceReferences(
+  entity: SketchEntity,
+  presentation: SketchGeometryPresentation,
+  references: Pick<MutableExternalWakeupReferences, "curves" | "lines"> & {
+    arcs: SketchInferenceArc[]
+  },
+) {
+  if (entity.type === "line") {
+    appendLineInferenceReference(entity, presentation, references.lines)
+    return
+  }
+  if (entity.type === "arc") {
+    appendArcInferenceReferences(entity, presentation, references.arcs, references.curves)
+    return
+  }
+  if (entity.type === "circle") {
+    appendCircleInferenceReference(entity, presentation, references.curves)
   }
 }
 
@@ -5640,37 +5838,17 @@ function sketchInferenceReferences(
     start: line.start,
     end: line.end,
   }))
-  const arcs: SketchInferenceArc[] = []
-  for (const entity of presentation.curves) {
-    if (entity.type === "line") {
-      const start = presentation.pointsById.get(entity.startPointId)
-      const end = presentation.pointsById.get(entity.endPointId)
-      if (start && end) {
-        lines.push({
-          id: entity.id,
-          startPointId: entity.startPointId,
-          endPointId: entity.endPointId,
-          start,
-          end,
-        })
-      }
-    }
-    if (entity.type === "arc") {
-      const center = presentation.pointsById.get(entity.centerPointId)
-      if (center) {
-        arcs.push({
-          id: entity.id,
-          center,
-          startPointId: entity.startPointId,
-          endPointId: entity.endPointId,
-        })
-      }
-    }
+  const references = {
+    arcs: [] as SketchInferenceArc[],
+    curves: [] as SketchInferenceCurve[],
+    lines,
+  }
+  for (const entity of [...presentation.curves, ...presentation.externalCurves]) {
+    appendCurveInferenceReferences(entity, presentation, references)
   }
   const externalLinePoints = presentation.externalLines.flatMap(({ start, end }) => [start, end])
   return {
-    arcs,
-    lines,
+    ...references,
     points: [...presentation.points, ...presentation.externalPoints, ...externalLinePoints],
   }
 }
@@ -5690,6 +5868,29 @@ function sketchInferenceTolerance(
   return worldPerPixel * 10
 }
 
+function placementInferenceReferences(
+  input: Parameters<typeof placementInference>[0],
+  supportsRelations: boolean,
+  candidates: ReturnType<SketchInferenceCandidateQuery<SketchInferencePoint>>,
+) {
+  return {
+    arcs: input.editorTool === "line" ? input.references.arcs : [],
+    curves: supportsRelations ? input.references.curves : [],
+    directionLines: supportsRelations ? input.directionLines : [],
+    lines: supportsRelations ? candidates.lines : [],
+  }
+}
+
+function placementInferenceAnchorOptions(
+  anchor: ReturnType<typeof lineInferenceAnchor>,
+): Readonly<{ anchor?: SketchPoint2; anchorPointId?: SketchEntityId }> {
+  if (!anchor) return {}
+  return {
+    anchor: anchor.point,
+    ...(anchor.pointId ? { anchorPointId: anchor.pointId } : {}),
+  }
+}
+
 function placementInference(input: {
   bounds: SketchBounds
   draft: SketchRecord | null
@@ -5699,7 +5900,7 @@ function placementInference(input: {
   point: SketchPoint2
   rectangle: Readonly<{ width: number; height: number }>
   candidateQuery: SketchInferenceCandidateQuery<SketchInferencePoint>
-  references: Pick<SketchPlacementInferenceReferences, "arcs">
+  references: Pick<SketchPlacementInferenceReferences, "arcs" | "curves">
   suppressed?: boolean
 }): SketchPointInference {
   if (
@@ -5713,16 +5914,10 @@ function placementInference(input: {
   const supportsRelations = supportsPersistentPointRelations(input.editorTool)
   const tolerance = sketchInferenceTolerance(input.bounds, input.rectangle)
   const candidates = input.candidateQuery(input.point, tolerance)
+  const references = placementInferenceReferences(input, supportsRelations, candidates)
   return inferSketchPoint({
-    ...(anchor
-      ? {
-          anchor: anchor.point,
-          ...(anchor.pointId ? { anchorPointId: anchor.pointId } : {}),
-        }
-      : {}),
-    arcs: input.editorTool === "line" ? input.references.arcs : [],
-    directionLines: supportsRelations ? input.directionLines : [],
-    lines: supportsRelations ? candidates.lines : [],
+    ...placementInferenceAnchorOptions(anchor),
+    ...references,
     point: input.point,
     points: candidates.points,
     tolerance,
@@ -5748,7 +5943,7 @@ function draggedPointInference(input: {
 function draggedPointCandidates(
   candidates: ReturnType<SketchInferenceCandidateQuery<DisplayPoint>>,
   pointId: SketchEntityId,
-): Omit<SketchInferenceReferences, "arcs"> {
+): Omit<SketchInferenceReferences, "arcs" | "curves"> {
   return {
     lines: candidates.lines.filter(
       (line) => line.startPointId !== pointId && line.endPointId !== pointId,
@@ -6090,7 +6285,7 @@ function useSketchPointDrag({
         bounds,
         point,
         rectangle,
-        references: { arcs: [], ...candidates },
+        references: { arcs: [], curves: [], ...candidates },
         suppressed: input.suppressed,
       })
       const next = { inference, point: inference.point }
