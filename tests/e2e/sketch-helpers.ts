@@ -53,6 +53,54 @@ export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz"
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable in the 3D viewport.`)
 }
 
+export async function selectModelEdgeInViewport(page: Page, featureLabel: string) {
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  const canvasBounds = await viewport.locator("canvas").boundingBox()
+  if (!canvasBounds) throw new Error("The 3D reference-selection canvas is not visible.")
+
+  const escapedFeatureLabel = featureLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const edgeLabel = new RegExp(`^${escapedFeatureLabel} · Edge \\d+$`)
+  const hoverStatus = page
+    .getByRole("status")
+    .filter({ hasText: `Use reference: ${featureLabel} · Edge` })
+  const selectOther = page.getByRole("listbox", { name: "Select other reference" })
+  const selectedReference = page
+    .getByRole("complementary", { name: "Sketch task panel" })
+    .getByText(edgeLabel)
+  const centerX = canvasBounds.x + canvasBounds.width / 2
+  const centerY = canvasBounds.y + canvasBounds.height / 2
+  const probeOffsets = Array.from({ length: 38 }, (_, index) => (index + 3) * 4).flatMap(
+    (radius) =>
+      [
+        [radius, 0],
+        [-radius, 0],
+        [0, radius],
+        [0, -radius],
+        [radius, radius],
+        [-radius, radius],
+        [radius, -radius],
+        [-radius, -radius],
+      ] as const,
+  )
+
+  for (const [offsetX, offsetY] of probeOffsets) {
+    const x = centerX + offsetX
+    const y = centerY + offsetY
+    await page.mouse.move(x, y)
+    await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+    if (!(await hoverStatus.isVisible())) continue
+    await page.mouse.click(x, y)
+    if (await selectOther.isVisible()) {
+      await selectOther.getByRole("option", { name: edgeLabel }).first().click()
+    }
+    if (!(await selectedReference.isVisible())) continue
+    const label = await selectedReference.textContent()
+    if (label) return label
+  }
+
+  throw new Error(`No selectable ${featureLabel} edge was found in the 3D viewport.`)
+}
+
 export async function selectSketchEntities(
   page: Page,
   drawing: Locator,
