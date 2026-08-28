@@ -251,4 +251,53 @@ describe("inspectSketchReferenceHealth", () => {
       transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
     })
   })
+
+  it("marks typed orphan intent as directly broken and propagates it downstream", () => {
+    const deletedFeatureId = featureIdSchema.parse(id(460))
+    const orphan = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id(60),
+      label: "Orphaned model reference",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 1,
+          id: sketchExternalReferenceIdSchema.parse(id(260)),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId: deletedFeatureId,
+            kind: "vertex",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: id(360),
+          orphanedSource: { kind: "deleted-feature", featureId: deletedFeatureId },
+        },
+      ],
+    })
+    const reference = orphan.externalReferences?.[0]
+    if (!reference || !("projectedPointId" in reference))
+      throw new Error("The orphaned model-point fixture is required.")
+    const dependent = projectedPointSketch(61, "Dependent", orphan, reference.projectedPointId)
+    const health = inspectSketchReferenceHealth([orphan, dependent])
+
+    expect(health.get(orphan.id)).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [reference.id],
+    })
+    expect(health.get(dependent.id)).toMatchObject({
+      status: "broken",
+      transitiveBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+    })
+  })
 })

@@ -6,17 +6,18 @@ import type {
   SketchId,
 } from "./identifiers"
 import {
+  isOrphanedModelReference,
   isSketchExternalModelReference,
   projectedExternalSketchEntities,
   type SketchConstraint,
   type SketchEntity,
   type SketchExternalCurveReference,
   type SketchExternalLineReference,
-  type SketchExternalModelReference,
   type SketchExternalModelCurveReference,
   type SketchExternalModelIntersectionReference,
   type SketchExternalModelLineReference,
   type SketchExternalModelPointReference,
+  type SketchExternalModelReference,
   type SketchExternalPointReference,
   type SketchExternalReference,
   type SketchFeatureFaceSupport,
@@ -2678,32 +2679,54 @@ function modelReferenceKindMismatch(
 }
 
 function modelPointReferenceWithReplacement(
-  reference: SketchExternalModelPointReference,
+  reference: Extract<SketchExternalModelReference, { kind: "model-point" }>,
   replacement: SketchExternalReferenceReplacement,
 ): SketchExternalModelPointReference {
   if (replacement.kind !== "model-point") return modelReferenceKindMismatch(reference, replacement)
-  return { ...reference, reference: replacement.reference }
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    projectedPointId: reference.projectedPointId,
+  }
 }
 
 function modelLineReferenceWithReplacement(
-  reference: SketchExternalModelLineReference,
+  reference: Extract<SketchExternalModelReference, { kind: "model-line" }>,
   replacement: SketchExternalReferenceReplacement,
 ): SketchExternalModelLineReference {
   if (replacement.kind !== "model-line") return modelReferenceKindMismatch(reference, replacement)
-  return { ...reference, reference: replacement.reference }
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    projectedLineId: reference.projectedLineId,
+    projectedStartPointId: reference.projectedStartPointId,
+    projectedEndPointId: reference.projectedEndPointId,
+  }
 }
 
 function modelIntersectionReferenceWithReplacement(
-  reference: SketchExternalModelIntersectionReference,
+  reference: Extract<SketchExternalModelReference, { kind: "model-intersection" }>,
   replacement: SketchExternalReferenceReplacement,
 ): SketchExternalModelIntersectionReference {
   if (replacement.kind !== "model-intersection")
     return modelReferenceKindMismatch(reference, replacement)
-  return { ...reference, reference: replacement.reference }
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    projectedLineId: reference.projectedLineId,
+    projectedStartPointId: reference.projectedStartPointId,
+    projectedEndPointId: reference.projectedEndPointId,
+  }
 }
 
 function modelCurveReferenceWithReplacement(
-  reference: SketchExternalModelCurveReference,
+  reference: Extract<SketchExternalModelReference, { kind: "model-curve" }>,
   replacement: SketchExternalReferenceReplacement,
 ): SketchExternalModelCurveReference {
   if (replacement.kind !== "model-curve") {
@@ -2717,7 +2740,16 @@ function modelCurveReferenceWithReplacement(
   ) {
     throw new TypeError("A model-curve repair must preserve its source and projected curve types.")
   }
-  return { ...reference, reference: replacement.reference }
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    sourceType: reference.sourceType,
+    projectedEntityId: reference.projectedEntityId,
+    projectedType: reference.projectedType,
+    projectedPointIds: reference.projectedPointIds,
+  }
 }
 
 function modelReferenceWithReplacement(
@@ -2743,7 +2775,10 @@ function replaceModelBackedExternalReference(
       `A ${reference.kind} reference cannot be replaced with ${replacement.kind} geometry.`,
     )
   const updated = modelReferenceWithReplacement(reference, replacement)
-  if (updated.reference.featureId !== reference.reference.featureId) {
+  if (
+    !isOrphanedModelReference(reference) &&
+    updated.reference.featureId !== reference.reference.featureId
+  ) {
     throw new TypeError(
       "A sketch external reference repair must stay within the producing feature.",
     )

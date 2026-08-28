@@ -246,6 +246,52 @@ describe("document worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts only a well-formed orphaned model reference", () => {
+    const reference = {
+      schemaVersion: 1,
+      id: externalReferenceId,
+      kind: "model-point",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "vertex",
+        semanticRole: "primitive.box.vertex.0",
+        signature: {
+          kind: "vertex",
+          geometryClass: "POINT",
+          measure: 0,
+          centroid: [0, 0, 0],
+          bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      projectedPointId: projectedCurvePointId,
+      orphanedSource: { kind: "deleted-feature", featureId },
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [reference] }),
+    ).toMatchObject({ externalReferences: [reference] })
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [
+          {
+            ...reference,
+            orphanedSource: { ...reference.orphanedSource, featureId: sketchId },
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [{ ...reference, schemaVersion: 0 }],
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts a bounded document rebuild request", () => {
     expect(
       documentWorkerRequestSchema.parse({
@@ -255,6 +301,15 @@ describe("document worker protocol", () => {
         mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
       }),
     ).toMatchObject({ type: "rebuildDocument", documentId, revision: 1 })
+    expect(
+      documentWorkerRequestSchema.safeParse({
+        ...envelope(),
+        protocolVersion: 13,
+        type: "rebuildDocument",
+        document: document(),
+        mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      }).success,
+    ).toBe(false)
   })
 
   it("rejects document identity drift at the worker boundary", () => {

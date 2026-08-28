@@ -159,6 +159,89 @@ describe("document sketch references", () => {
       }).success,
     ).toBe(false)
   })
+
+  it("allows only an explicitly orphaned model reference to retain a deleted producer", () => {
+    const featureId = id("3801")
+    const liveReference = {
+      schemaVersion: 0 as const,
+      id: id("3802"),
+      kind: "model-point" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "vertex" as const,
+        signature: {
+          kind: "vertex" as const,
+          geometryClass: "POINT",
+          measure: 0,
+          centroid: [0, 0, 0] as const,
+          bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      projectedPointId: id("3803"),
+    }
+    const orphanedReference = {
+      ...liveReference,
+      schemaVersion: 1 as const,
+      orphanedSource: { kind: "deleted-feature" as const, featureId },
+    }
+    const sketch = { ...pointSketch(8), externalReferences: [orphanedReference] }
+    const snapshot = {
+      schemaVersion: 0 as const,
+      id: id("3804"),
+      revision: 2,
+      name: "Repair intent",
+      displayUnits: { length: "mm" as const, angle: "deg" as const },
+      variables: [],
+      sketches: [sketch],
+      features: [],
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z",
+    }
+    const producer = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.example.test",
+        moduleVersion: "1.0.0",
+        typeId: "org.example.test.feature",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+
+    expect(documentSnapshotSchema.safeParse(snapshot).success).toBe(true)
+    expect(
+      documentSnapshotSchema.safeParse({
+        ...snapshot,
+        sketches: [{ ...sketch, externalReferences: [liveReference] }],
+      }).success,
+    ).toBe(false)
+    expect(documentSnapshotSchema.safeParse({ ...snapshot, features: [producer] }).success).toBe(
+      false,
+    )
+    expect(
+      documentSnapshotSchema.safeParse({
+        ...snapshot,
+        sketches: [
+          {
+            ...sketch,
+            externalReferences: [
+              {
+                ...orphanedReference,
+                orphanedSource: { ...orphanedReference.orphanedSource, featureId: id("3899") },
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe("document snapshot v1", () => {

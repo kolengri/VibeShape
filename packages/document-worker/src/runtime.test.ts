@@ -4,6 +4,7 @@ import {
   createLengthQuantity,
   cylinderFeatureType,
   datumPlaneFeatureType,
+  extrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
   featureIdSchema,
@@ -41,6 +42,7 @@ const featureIds = {
   cylinder: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3102"),
   boolean: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3103"),
   datum: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3104"),
+  extrusion: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3105"),
 } as const
 const sketchIds = {
   sketch: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
@@ -466,6 +468,103 @@ describe("DocumentWorkerRuntime", () => {
       expect.objectContaining({ referenceId: modelReference(1).id, status: "resolved" }),
       expect.objectContaining({ referenceId: modelReference(2).id, status: "resolved" }),
     ])
+  })
+
+  it("contains an orphaned sketch consumer while rebuilding independent features", async () => {
+    const solveSketch = vi.fn<SketchSolvePort>()
+    const { engine, messages, runtime } = createHarness(solveSketch)
+    const deletedFeatureId = featureIds.datum
+    const orphanReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3371"
+    const circleId = "0195b5ac-b220-7a2c-8c33-67a36a7f3372"
+    const sectionPlanarFace = vi.spyOn(engine, "sectionPlanarFace")
+    const modelSketch = {
+      ...sketch(),
+      entities: [
+        ...sketch().entities,
+        {
+          schemaVersion: 0 as const,
+          id: circleId,
+          type: "circle" as const,
+          centerPointId: sketchIds.point,
+          radius: 5,
+          construction: false,
+        },
+      ],
+      externalReferences: [
+        {
+          schemaVersion: 1 as const,
+          id: orphanReferenceId,
+          kind: "model-intersection" as const,
+          reference: {
+            schemaVersion: 0 as const,
+            featureId: deletedFeatureId,
+            kind: "face" as const,
+            signature: {
+              kind: "face" as const,
+              geometryClass: "PLANE" as const,
+              measure: 1,
+              centroid: [0, 0, 0] as const,
+              bounds: { min: [0, 0, 0] as const, max: [1, 1, 0] as const },
+              direction: [0, 0, 1] as const,
+              directionMode: "oriented" as const,
+              boundaryCount: 4,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedLineId: "0195b5ac-b220-7a2c-8c33-67a36a7f3471",
+          projectedStartPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3571",
+          projectedEndPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3671",
+          orphanedSource: { kind: "deleted-feature" as const, featureId: deletedFeatureId },
+        },
+      ],
+    }
+    const extrusion: FeatureRecord = {
+      schemaVersion: 0,
+      id: featureIds.extrusion,
+      type: extrusionFeatureType.type,
+      parameters: {
+        profile: {
+          schemaVersion: 0,
+          sketchId: modelSketch.id,
+          outerBoundaryEntityIds: [circleId],
+          holeBoundaryEntityIds: [],
+        },
+        distance: createLengthQuantity(10),
+        symmetric: false,
+        operation: "new",
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const baseDocument = document(documentIds.primary)
+    await runtime.handle({
+      ...request("orphaned-reference-rebuild"),
+      document: documentRebuildSnapshotSchema.parse({
+        ...baseDocument,
+        sketches: [modelSketch],
+        features: [extrusion, ...baseDocument.features],
+      }),
+    })
+
+    const response = rebuilt(messages, "orphaned-reference-rebuild")
+    expect(response.evaluation.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ featureId: featureIds.extrusion, status: "failed" }),
+        expect.objectContaining({ featureId: featureIds.box, status: "succeeded" }),
+      ]),
+    )
+    expect(engine.evaluatedFeatureIds).not.toContain(featureIds.extrusion)
+    expect(engine.evaluatedFeatureIds).toContain(featureIds.box)
+    expect(response.modelReferenceEvidence).toEqual([
+      {
+        sketchId: modelSketch.id,
+        referenceId: orphanReferenceId,
+        status: "broken",
+      },
+    ])
+    expect(solveSketch).not.toHaveBeenCalled()
+    expect(sectionPlanarFace).not.toHaveBeenCalled()
   })
 
   it("owns incremental rebuild state and transfers cloned mesh buffers", async () => {

@@ -91,6 +91,14 @@ describe("module registry", () => {
         confirmation: "destructive",
         automation: { exposure: "draft", destructive: true, openWorld: false },
       })
+      expect(
+        result.registry.getCommand(
+          "org.vibeshape.feature.remove-preserving-model-reference-intent",
+        ),
+      ).toMatchObject({
+        confirmation: "destructive",
+        automation: { exposure: "draft", destructive: true, openWorld: false },
+      })
       expect(result.registry.getCommand("org.vibeshape.feature.set-suppressed")).toMatchObject({
         automation: { exposure: "draft", openWorld: false },
       })

@@ -150,6 +150,91 @@ describe("document snapshot migration", () => {
     expect(result.snapshot.features[0]?.semanticInputs).toEqual([])
   })
 
+  it("derives History from a journal that preserves model-reference repair intent", () => {
+    const documentId = uuid(30)
+    const source = box(31)
+    const sketch = {
+      ...createEmptySketch({
+        id: sketchIdSchema.parse(uuid(32)),
+        label: "Referenced sketch",
+        plane: "xy",
+      }),
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: uuid(33),
+          kind: "model-point" as const,
+          reference: {
+            schemaVersion: 0 as const,
+            featureId: source.id,
+            kind: "vertex" as const,
+            signature: {
+              kind: "vertex" as const,
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0] as const,
+              bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: uuid(34),
+        },
+      ],
+    }
+    const events: DocumentEvent[] = []
+    let snapshot = apply(null, events, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId: uuid(130),
+      documentId,
+      baseRevision: 0,
+      issuedAt: "2026-08-28T00:00:01.000Z",
+      actor,
+      payload: { name: "Repair-intent migration" },
+    })
+    snapshot = apply(snapshot, events, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: uuid(131),
+      documentId,
+      baseRevision: snapshot.revision,
+      issuedAt: "2026-08-28T00:00:02.000Z",
+      actor,
+      payload: { feature: source },
+    })
+    snapshot = apply(snapshot, events, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: uuid(132),
+      documentId,
+      baseRevision: snapshot.revision,
+      issuedAt: "2026-08-28T00:00:03.000Z",
+      actor,
+      payload: { sketch },
+    })
+    snapshot = apply(snapshot, events, {
+      kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+      schemaVersion: 1,
+      commandId: uuid(133),
+      documentId,
+      baseRevision: snapshot.revision,
+      issuedAt: "2026-08-28T00:00:04.000Z",
+      actor,
+      payload: { featureId: source.id },
+    })
+
+    const result = migrateDocumentSnapshot(snapshot, events)
+
+    expect(result).toMatchObject({ ok: true, provenance: "journal-derived" })
+    if (!result.ok) return
+    expect(result.snapshot.history).toEqual([{ kind: "sketch", id: sketch.id }])
+    expect(result.snapshot.sketches[0]?.externalReferences?.[0]).toMatchObject({
+      schemaVersion: 1,
+      orphanedSource: { kind: "deleted-feature", featureId: source.id },
+    })
+  })
+
   it("tracks remove and re-add event order before dependency-safe stabilization", () => {
     const journal = interleavedJournal()
     let snapshot = journal.snapshot

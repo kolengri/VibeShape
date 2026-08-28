@@ -176,6 +176,11 @@ const removeFeatureCommandSchema = commandEnvelopeSchema.extend({
   schemaVersion: z.literal(1),
   payload: z.object({ featureId: featureIdSchema }).strict(),
 })
+const removeFeaturePreservingIntentCommandSchema = commandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.feature.remove-preserving-model-reference-intent"),
+  schemaVersion: z.literal(1),
+  payload: z.object({ featureId: featureIdSchema }).strict(),
+})
 
 const setFeatureSuppressedCommandSchema = commandEnvelopeSchema.extend({
   kind: z.literal("org.vibeshape.feature.set-suppressed"),
@@ -198,6 +203,7 @@ export const documentCommandSchema = z.discriminatedUnion("kind", [
   addFeatureCommandSchema,
   updateFeatureCommandSchema,
   removeFeatureCommandSchema,
+  removeFeaturePreservingIntentCommandSchema,
   setFeatureSuppressedCommandSchema,
 ])
 
@@ -292,6 +298,10 @@ const featureRemovedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.removed"),
   feature: featureRecordSchema,
 })
+const featureRemovedPreservingIntentEventSchema = eventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.feature.removed-preserving-model-reference-intent"),
+  feature: featureRecordSchema,
+})
 
 const featureSuppressionChangedEventSchema = eventEnvelopeSchema.extend({
   type: z.literal("org.vibeshape.feature.suppression-changed"),
@@ -315,6 +325,7 @@ export const documentEventSchema = z.discriminatedUnion("type", [
   featureAddedEventSchema,
   featureUpdatedEventSchema,
   featureRemovedEventSchema,
+  featureRemovedPreservingIntentEventSchema,
   featureSuppressionChangedEventSchema,
 ])
 
@@ -370,6 +381,7 @@ type FeatureCommand = Extract<
       | "org.vibeshape.feature.add"
       | "org.vibeshape.feature.update"
       | "org.vibeshape.feature.remove"
+      | "org.vibeshape.feature.remove-preserving-model-reference-intent"
       | "org.vibeshape.feature.set-suppressed"
   }
 >
@@ -380,6 +392,7 @@ type FeatureEvent = Extract<
       | "org.vibeshape.feature.added"
       | "org.vibeshape.feature.updated"
       | "org.vibeshape.feature.removed"
+      | "org.vibeshape.feature.removed-preserving-model-reference-intent"
       | "org.vibeshape.feature.suppression-changed"
   }
 >
@@ -412,12 +425,14 @@ const featureCommandKinds = new Set<DocumentCommand["kind"]>([
   "org.vibeshape.feature.add",
   "org.vibeshape.feature.update",
   "org.vibeshape.feature.remove",
+  "org.vibeshape.feature.remove-preserving-model-reference-intent",
   "org.vibeshape.feature.set-suppressed",
 ])
 const featureEventTypes = new Set<DocumentEvent["type"]>([
   "org.vibeshape.feature.added",
   "org.vibeshape.feature.updated",
   "org.vibeshape.feature.removed",
+  "org.vibeshape.feature.removed-preserving-model-reference-intent",
   "org.vibeshape.feature.suppression-changed",
 ])
 
@@ -648,7 +663,8 @@ function validateDestructiveEventDependencyModel(
   if (
     !snapshot ||
     (event.type !== "org.vibeshape.sketch.removed" &&
-      event.type !== "org.vibeshape.feature.removed")
+      event.type !== "org.vibeshape.feature.removed" &&
+      event.type !== "org.vibeshape.feature.removed-preserving-model-reference-intent")
   ) {
     return
   }

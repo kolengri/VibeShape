@@ -9,6 +9,7 @@ import {
 } from "./feature-graph"
 import { documentIdSchema, revisionSchema, timestampSchema } from "./identifiers"
 import {
+  isOrphanedModelReference,
   isSketchExternalModelReference,
   type SketchExternalReference,
   type SketchRecord,
@@ -94,6 +95,39 @@ function validateExternalSketchReference(input: {
   validateExternalReferenceOrder(resolved)
 }
 
+function validateExternalModelReference(input: {
+  context: z.RefinementCtx
+  featureIds: ReadonlySet<string>
+  reference: Extract<SketchExternalReference, { kind: `model-${string}` }>
+  referenceIndex: number
+  sketchIndex: number
+}) {
+  const { context, featureIds, reference, referenceIndex, sketchIndex } = input
+  const featureExists = featureIds.has(reference.reference.featureId)
+  if (isOrphanedModelReference(reference)) {
+    if (!featureExists) return
+    addDocumentIssue(
+      context,
+      [
+        "sketches",
+        sketchIndex,
+        "externalReferences",
+        referenceIndex,
+        "orphanedSource",
+        "featureId",
+      ],
+      "An orphaned model reference cannot target an existing feature.",
+    )
+    return
+  }
+  if (featureExists) return
+  addDocumentIssue(
+    context,
+    ["sketches", sketchIndex, "externalReferences", referenceIndex, "reference", "featureId"],
+    "An external model reference must reference an existing feature.",
+  )
+}
+
 function validateDocumentSketchReferences(
   document: DocumentReferenceValidationInput,
   context: z.RefinementCtx,
@@ -111,20 +145,13 @@ function validateDocumentSketchReferences(
     }
     for (const [referenceIndex, reference] of (sketch.externalReferences ?? []).entries()) {
       if (isSketchExternalModelReference(reference)) {
-        if (!featureIds.has(reference.reference.featureId)) {
-          addDocumentIssue(
-            context,
-            [
-              "sketches",
-              sketchIndex,
-              "externalReferences",
-              referenceIndex,
-              "reference",
-              "featureId",
-            ],
-            "An external model reference must reference an existing feature.",
-          )
-        }
+        validateExternalModelReference({
+          context,
+          featureIds,
+          reference,
+          referenceIndex,
+          sketchIndex,
+        })
         continue
       }
       validateExternalSketchReference({

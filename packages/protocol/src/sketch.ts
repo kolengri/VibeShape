@@ -502,6 +502,102 @@ const externalModelIntersectionReferenceWireSchema = z
   .strict()
   .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
 
+const deletedFeatureSourceWireSchema = z
+  .object({
+    kind: z.literal("deleted-feature"),
+    featureId: featureIdSchema,
+  })
+  .strict()
+
+function validateOrphanedModelReference(
+  reference: {
+    orphanedSource: { featureId: string }
+    reference: { featureId: string }
+  },
+  context: z.RefinementCtx,
+) {
+  if (reference.orphanedSource.featureId === reference.reference.featureId) return
+  context.addIssue({
+    code: "custom",
+    path: ["orphanedSource", "featureId"],
+    message: "An orphaned source must identify the deleted topology producer.",
+  })
+}
+
+const orphanedExternalModelPointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-point"),
+    reference: vertexTopoRefWireSchema,
+    projectedPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine(validateOrphanedModelReference)
+
+const orphanedExternalModelLineReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-line"),
+    reference: edgeTopoRefWireSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    validateOrphanedModelReference(reference, context)
+    if (reference.projectedStartPointId === reference.projectedEndPointId)
+      context.addIssue({
+        code: "custom",
+        path: ["projectedEndPointId"],
+        message: "A projected model line requires distinct endpoint IDs.",
+      })
+  })
+
+const orphanedExternalModelCurveReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-curve"),
+    reference: edgeTopoRefWireSchema,
+    sourceType: z.enum(["circle", "arc"]),
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: externalCurveTypeWireSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    validateProjectedCurveWireIdentities(reference, context)
+    validateOrphanedModelReference(reference, context)
+  })
+
+const orphanedExternalModelIntersectionReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-intersection"),
+    reference: planarFaceTopoRefWireSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine((reference, context) => {
+    validateOrphanedModelReference(reference, context)
+    if (reference.projectedStartPointId === reference.projectedEndPointId)
+      context.addIssue({
+        code: "custom",
+        path: ["projectedEndPointId"],
+        message: "A projected model intersection requires distinct endpoint IDs.",
+      })
+  })
+
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
@@ -510,6 +606,10 @@ const externalReferenceWireSchema = z.union([
   externalModelLineReferenceWireSchema,
   externalModelCurveReferenceWireSchema,
   externalModelIntersectionReferenceWireSchema,
+  orphanedExternalModelPointReferenceWireSchema,
+  orphanedExternalModelLineReferenceWireSchema,
+  orphanedExternalModelCurveReferenceWireSchema,
+  orphanedExternalModelIntersectionReferenceWireSchema,
 ])
 
 type WireEntity = z.infer<typeof sketchEntitySchema>

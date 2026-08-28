@@ -241,6 +241,101 @@ describe("external sketch reference resolution", () => {
     ])
   })
 
+  it("reports orphaned model references without probing geometry or planar sections", async () => {
+    const deletedFeatureId = id("4650")
+    const faceSignature = {
+      kind: "face" as const,
+      geometryClass: "PLANE",
+      measure: 100,
+      centroid: [0, 0, 0] as const,
+      bounds: { min: [-5, -5, 0] as const, max: [5, 5, 0] as const },
+      direction: [0, 0, 1] as const,
+      directionMode: "oriented" as const,
+      boundaryCount: 4,
+      adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(5, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 1,
+          id: id("4651"),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId: deletedFeatureId,
+            kind: "vertex",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: id("4652"),
+          orphanedSource: { kind: "deleted-feature", featureId: deletedFeatureId },
+        },
+        {
+          schemaVersion: 1,
+          id: id("4653"),
+          kind: "model-intersection",
+          reference: {
+            schemaVersion: 0,
+            featureId: deletedFeatureId,
+            kind: "face",
+            signature: faceSignature,
+          },
+          projectedLineId: id("4654"),
+          projectedStartPointId: id("4655"),
+          projectedEndPointId: id("4656"),
+          orphanedSource: { kind: "deleted-feature", featureId: deletedFeatureId },
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4657"),
+      revision: 2,
+      name: "Orphaned model references",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [],
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z",
+    })
+    const sectionPlanarFace = vi.fn()
+    const orphanedIntersection = target.externalReferences?.[1]
+    if (!orphanedIntersection) throw new Error("The orphaned intersection fixture is incomplete.")
+    const intersectionTarget = sketchRecordSchema.parse({
+      ...target,
+      externalReferences: [orphanedIntersection],
+    })
+
+    await expect(
+      inspectExternalModelReferenceHealth(document, [], [], sectionPlanarFace),
+    ).resolves.toEqual([
+      { sketchId: target.id, referenceId: id("4651"), status: "broken" },
+      { sketchId: target.id, referenceId: id("4653"), status: "broken" },
+    ])
+    await expect(
+      resolveExternalSketchGeometry(
+        document,
+        intersectionTarget,
+        vi.fn(solved),
+        [],
+        new Map(),
+        [],
+        sectionPlanarFace,
+      ),
+    ).rejects.toThrow("requires repair")
+    expect(sectionPlanarFace).not.toHaveBeenCalled()
+  })
+
   it("projects resolved model vertices and edges from feature geometry", async () => {
     const featureId = id("4600")
     const feature = {

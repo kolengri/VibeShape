@@ -21,7 +21,7 @@ import {
 import type { FeatureTypeRegistry } from "@vibeshape/domain/feature-type-registry"
 import { type FeatureId, featureIdSchema, revisionSchema } from "@vibeshape/domain/identifiers"
 import { readExtrusionFeatureParameters } from "@vibeshape/domain/part-design"
-import { isSketchExternalModelReference } from "@vibeshape/domain/sketch"
+import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
   type FeatureContentIdentity,
@@ -781,10 +781,11 @@ function sketchModelFeatureIds(
   if (!sketch) return []
   const featureIds = new Set<FeatureId>()
   for (const reference of sketch.externalReferences ?? []) {
-    if (isSketchExternalModelReference(reference)) {
+    if (isSketchExternalModelReference(reference) && !isOrphanedModelReference(reference)) {
       featureIds.add(reference.reference.featureId)
       continue
     }
+    if (isSketchExternalModelReference(reference)) continue
     for (const featureId of sketchModelFeatureIds(
       document,
       reference.sourceSketchId,

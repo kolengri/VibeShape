@@ -1,6 +1,7 @@
 import { applyDocumentCommand, type DocumentEvent } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import { migrateDocumentSnapshot } from "@vibeshape/domain/document-migration"
+import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
 import { describe, expect, it } from "vitest"
@@ -22,6 +23,10 @@ const sketchPointAId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c0"
 const sketchPointBId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c1"
 const sketchLineId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c2"
 const sketchConstraintId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c3"
+const repairFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c4"
+const repairSketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c5"
+const repairReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c6"
+const repairProjectedPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c7"
 const timestamp = "2026-08-09T10:00:00Z"
 
 function commandId(index: number) {
@@ -183,6 +188,100 @@ function configurableProject() {
   return { snapshot: displayUnits.snapshot, events }
 }
 
+function repairIntentProject() {
+  const created = apply(null, {
+    kind: "org.vibeshape.document.create",
+    schemaVersion: 1,
+    commandId: commandId(21),
+    documentId,
+    baseRevision: 0,
+    issuedAt: timestamp,
+    actor: { type: "user", userId: null },
+    payload: { name: "Repairable reference" },
+  })
+  const feature = apply(created.snapshot, {
+    kind: "org.vibeshape.feature.add",
+    schemaVersion: 1,
+    commandId: commandId(22),
+    documentId,
+    baseRevision: 1,
+    issuedAt: "2026-08-09T10:01:00Z",
+    actor: { type: "user", userId: null },
+    payload: {
+      feature: {
+        schemaVersion: 0,
+        id: repairFeatureId,
+        type: boxFeatureType.type,
+        parameters: {
+          width: createLengthQuantity(20),
+          depth: createLengthQuantity(10),
+          height: createLengthQuantity(4),
+          centered: false,
+        },
+        dependencies: [],
+        references: [],
+        suppressed: false,
+        label: "Disposable body",
+      },
+    },
+  })
+  const sketch = apply(feature.snapshot, {
+    kind: "org.vibeshape.sketch.add",
+    schemaVersion: 1,
+    commandId: commandId(23),
+    documentId,
+    baseRevision: 2,
+    issuedAt: "2026-08-09T10:02:00Z",
+    actor: { type: "user", userId: null },
+    payload: {
+      sketch: {
+        schemaVersion: 0,
+        id: repairSketchId,
+        label: "Repairable reference",
+        plane: "xy",
+        entities: [],
+        constraints: [],
+        externalReferences: [
+          {
+            schemaVersion: 0,
+            id: repairReferenceId,
+            kind: "model-point",
+            reference: {
+              schemaVersion: 0,
+              featureId: repairFeatureId,
+              kind: "vertex",
+              signature: {
+                kind: "vertex",
+                geometryClass: "POINT",
+                measure: 0,
+                centroid: [0, 0, 0],
+                bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+                boundaryCount: 0,
+                adjacentGeometryClasses: [],
+              },
+            },
+            projectedPointId: repairProjectedPointId,
+          },
+        ],
+      },
+    },
+  })
+  const removed = apply(sketch.snapshot, {
+    kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+    schemaVersion: 1,
+    commandId: commandId(24),
+    documentId,
+    baseRevision: 3,
+    issuedAt: "2026-08-09T10:03:00Z",
+    actor: { type: "user", userId: null },
+    payload: { featureId: repairFeatureId },
+  })
+  return {
+    snapshot: removed.snapshot,
+    events: [created.event, feature.event, sketch.event, removed.event],
+  }
+}
+
 const metadata = {
   exportedAt: "2026-08-09T10:03:00Z",
   createdBy: { application: "VibeShape", version: "0.0.0", build: "test" },
@@ -232,6 +331,32 @@ describe(".vshape v0", () => {
         },
       },
     })
+  })
+
+  it("round-trips a preserve-intent removal journal and orphan marker", async () => {
+    const written = await writeVShape({ ...repairIntentProject(), ...metadata })
+    if (!written.ok) throw new Error(written.diagnostic.message)
+    const read = await readVShape(written.value)
+    if (!read.ok) throw new Error(read.diagnostic.message)
+
+    expect(read.value.manifest.documentRevision).toBe(4)
+    expect(read.value.events.at(-1)?.type).toBe(
+      "org.vibeshape.feature.removed-preserving-model-reference-intent",
+    )
+    expect(read.value.snapshot.sketches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: repairSketchId,
+          externalReferences: [
+            expect.objectContaining({
+              schemaVersion: 1,
+              id: repairReferenceId,
+              orphanedSource: { kind: "deleted-feature", featureId: repairFeatureId },
+            }),
+          ],
+        }),
+      ]),
+    )
   })
 
   it("rejects a semantic entry whose bytes no longer match the manifest", async () => {
@@ -330,6 +455,37 @@ describe(".vshape v1", () => {
         },
       },
     })
+  })
+
+  it("migrates and round-trips preserve-intent removal history", async () => {
+    const legacy = repairIntentProject()
+    const migrated = migrateDocumentSnapshot(legacy.snapshot, legacy.events)
+    if (!migrated.ok) throw new Error(migrated.diagnostic.message)
+    const written = await writeVShapeV1({ ...legacy, snapshot: migrated.snapshot, ...metadata })
+    if (!written.ok) throw new Error(written.diagnostic.message)
+    const read = await readVShapeV1(written.value)
+    if (!read.ok) throw new Error(read.diagnostic.message)
+
+    expect(read.value.events.at(-1)?.type).toBe(
+      "org.vibeshape.feature.removed-preserving-model-reference-intent",
+    )
+    expect(read.value.snapshot.history).not.toContainEqual({
+      kind: "feature",
+      id: repairFeatureId,
+    })
+    expect(read.value.snapshot.sketches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: repairSketchId,
+          externalReferences: [
+            expect.objectContaining({
+              schemaVersion: 1,
+              orphanedSource: { kind: "deleted-feature", featureId: repairFeatureId },
+            }),
+          ],
+        }),
+      ]),
+    )
   })
 
   it("rejects wrong or tampered History even when entry checksums are recomputed", async () => {
