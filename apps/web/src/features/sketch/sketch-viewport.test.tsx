@@ -3620,6 +3620,10 @@ describe("SketchViewport", () => {
     if (!pointElement) throw new Error("The first sketch point must be rendered.")
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    await waitFor(() =>
+      expect(drawing.getAttribute("data-sketch-dragging-point-id")).toBe(firstPoint.id),
+    )
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
     expect(readViewportRectangle).toHaveBeenCalledOnce()
     fireEvent.pointerMove(drawing, { clientX: 500, clientY: 240, pointerId: 1 })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
@@ -3637,15 +3641,15 @@ describe("SketchViewport", () => {
     expect(
       document.querySelector(`[data-sketch-entity-id="${firstPoint.id}"]`)?.getAttribute("cy"),
     ).toBe("36")
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)))
+    await act(async () => vi.advanceTimersByTimeAsync(20))
     expect(solveSketch).toHaveBeenCalledTimes(1)
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 30)))
+    await act(async () => vi.advanceTimersByTimeAsync(12))
     expect(solveSketch).toHaveBeenCalledTimes(2)
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
     const continuingFrame = frames.shift()
     if (!continuingFrame) throw new Error("Continued movement must schedule another drag frame.")
     act(() => continuingFrame(50))
-    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 50)))
+    await act(async () => vi.advanceTimersByTimeAsync(50))
     expect(solveSketch).toHaveBeenCalledTimes(2)
     expect(solveSketch).toHaveBeenLastCalledWith(
       7,
@@ -3691,7 +3695,6 @@ describe("SketchViewport", () => {
       onDraftChange,
     })
     await screen.findByText("Fully constrained")
-    vi.useFakeTimers()
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
     mockDrawingRectangle(drawing)
     const draggedPoint = denseSketch.entities.find((entity) => entity.type === "point")
@@ -3700,6 +3703,10 @@ describe("SketchViewport", () => {
     if (!pointElement) throw new Error("The dense sketch point must be rendered.")
 
     fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    await waitFor(() =>
+      expect(drawing.getAttribute("data-sketch-dragging-point-id")).toBe(draggedPoint.id),
+    )
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
     fireEvent.pointerMove(drawing, { clientX: 600, clientY: 180, pointerId: 1 })
     const frame = frames.shift()
     if (!frame) throw new Error("The dense point drag must schedule an animation frame.")
