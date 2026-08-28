@@ -1527,6 +1527,168 @@ describe("SketchViewport", () => {
     expect(JSON.stringify(updated)).not.toContain("candidateId")
   })
 
+  it("wakes an exact coplanar model circle and persists one point-on-curve relation", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3291"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3292")
+    const candidate = {
+      candidateId: "coplanar-circular-edge",
+      coplanar: true,
+      featureId,
+      kind: "model-curve" as const,
+      label: "Cylinder 1 · Circular edge 1",
+      passiveEligible: true,
+      points: [
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+        { world: [0, 5, 0] as const, x: 0, y: 5 },
+        { world: [-5, 0, 0] as const, x: -5, y: 0 },
+        { world: [0, -5, 0] as const, x: 0, y: -5 },
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+      ],
+      projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
+      projectedType: "circle" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "edge" as const,
+        semanticRole: "primitive.cylinder.edge.start",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "CIRCLE" as const,
+          measure: Math.PI * 10,
+          centroid: [0, 0, 0] as [number, number, number],
+          bounds: {
+            min: [-5, -5, 0] as [number, number, number],
+            max: [5, 5, 0] as [number, number, number],
+          },
+          boundaryCount: 0,
+          adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
+        },
+      },
+      sourceType: "circle" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 5.3, y: 0.2 })
+
+    fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeNull()
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(
+      document.querySelector("[data-sketch-model-inference-highlight]")?.getAttribute("aria-label"),
+    ).toBe(candidate.label)
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference).toMatchObject({ kind: "model-curve", reference: candidate.reference })
+    if (reference?.kind !== "model-curve" || !localPoint) {
+      throw new Error("Model-curve wake-up must create one curve reference and one local point.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-curve",
+        pointId: localPoint.id,
+        curveId: reference.projectedEntityId,
+      }),
+    )
+    expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("excludes non-coplanar and elliptical model curves from passive inference", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3293"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3294")
+    const base = {
+      candidateId: "non-coplanar-circular-edge",
+      coplanar: false,
+      featureId,
+      kind: "model-curve" as const,
+      label: "Cylinder 1 · Circular edge 1",
+      passiveEligible: true,
+      points: [
+        { world: [5, 0, 2] as const, x: 5, y: 0 },
+        { world: [0, 5, 2] as const, x: 0, y: 5 },
+      ],
+      projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
+      projectedType: "circle" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "edge" as const,
+        semanticRole: "primitive.cylinder.edge.end",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "CIRCLE" as const,
+          measure: Math.PI * 10,
+          centroid: [0, 0, 2] as [number, number, number],
+          bounds: {
+            min: [-5, -5, 2] as [number, number, number],
+            max: [5, 5, 2] as [number, number, number],
+          },
+          boundaryCount: 0,
+          adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
+        },
+      },
+      sourceType: "circle" as const,
+    }
+    const ellipse = {
+      ...base,
+      candidateId: "elliptical-projection",
+      coplanar: true,
+      projectedGeometry: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+          { x: 0, y: 3 },
+        ],
+        type: "ellipse" as const,
+      },
+      projectedType: "ellipse" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [base, ellipse],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 5, y: 0 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeNull()
+    fireEvent.pointerDown(drawing, pointer)
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(updated.externalReferences).toHaveLength(0)
+  })
+
   it("defers a model-vertex reference until the line segment commits", () => {
     const target: SketchRecord = {
       ...sketch,

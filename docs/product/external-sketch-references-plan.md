@@ -74,8 +74,11 @@ bounded arcs, highlight and label the source, and atomically create the stable r
 Coincident, Point on line, or Point on curve constraint only after acceptance. Curve wake-up projects the
 pointer onto exact analytical geometry; it never infers against sampled display polylines. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
-creating a second reference. General surfaces, multi-curve results, Pierce, ellipse wake-up, model-curve
-wake-up, non-circular curved model edges, and sketch-source repair UI are not implemented. Normal-view Use
+creating a second reference. Exact coplanar circular and bounded-arc model edges use the same passive
+interaction only when their `TopoRef` resolves uniquely; parallel-offset, tilted, elliptically projected,
+and ambiguous candidates remain available only to explicit compatible workflows or fail closed. General
+surfaces, multi-curve results, Pierce, ellipse wake-up, non-coplanar model-curve wake-up, non-circular curved
+model edges, and sketch-source repair UI are not implemented. Normal-view Use
 provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
@@ -167,7 +170,7 @@ cannot alter evaluation order.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
    exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
    visibility toggle, and accessible removal are implemented. Extend automatic inference to ellipses and
-   stable curved model topology.
+   stable non-circular or non-coplanar curved model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and

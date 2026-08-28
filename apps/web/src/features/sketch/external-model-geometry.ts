@@ -1,7 +1,9 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
+  type ProjectedSketchCurve,
   projectWorldCircularEdgeToSupport,
   sampleWorldCircularEdge,
+  type WorldCircularEdgeGeometry,
 } from "@vibeshape/application/sketch-curve-projection"
 import { projectWorldPointToSupport, type SupportFrame } from "@vibeshape/application/support-frame"
 import type {
@@ -61,10 +63,13 @@ export type ExternalModelLineCandidate = Readonly<{
 
 export type ExternalModelCurveCandidate = Readonly<{
   candidateId: string
+  coplanar?: boolean
   featureId: FeatureId
   kind: "model-curve"
   label: string
+  passiveEligible?: boolean
   points: readonly ProjectedModelPoint[]
+  projectedGeometry?: ProjectedSketchCurve
   projectedType: "circle" | "arc" | "ellipse" | "elliptical-arc"
   reference: EdgeTopoRef
   sourceType: "circle" | "arc"
@@ -350,6 +355,22 @@ function pointIsOnSupport(frame: SupportFrame, point: readonly [number, number, 
   )
 }
 
+function circularEdgeIsCoplanar(frame: SupportFrame, geometry: WorldCircularEdgeGeometry) {
+  const normalAlignment = Math.abs(
+    geometry.normal[0] * frame.normal[0] +
+      geometry.normal[1] * frame.normal[1] +
+      geometry.normal[2] * frame.normal[2],
+  )
+  if (Math.abs(normalAlignment - 1) > 1e-6 || !pointIsOnSupport(frame, geometry.center)) {
+    return false
+  }
+  return geometry.kind === "circle-edge"
+    ? true
+    : [geometry.start, geometry.middle, geometry.end].every((point) =>
+        pointIsOnSupport(frame, point),
+      )
+}
+
 function createExternalModelCurveCandidate(
   featureId: FeatureId,
   featureLabel: string,
@@ -375,10 +396,12 @@ function createExternalModelCurveCandidate(
   }))
   return {
     candidateId: candidate.candidateId,
+    coplanar: circularEdgeIsCoplanar(targetFrame, geometry),
     featureId,
     kind: "model-curve",
     label: labels.curve(featureLabel, sourceType, ordinal),
     points,
+    projectedGeometry: projection,
     projectedType: projection.type,
     reference: stableEdgeReference(featureId, candidate),
     sourceType,
@@ -395,6 +418,9 @@ function candidatesForRecord(
 ) {
   const result: ExternalModelGeometryCandidate[] = []
   const ordinals = candidateDisplayOrdinals(record.geometry.topologyCandidates)
+  const resolve = createTopologyReferenceResolver(
+    record.geometry.topologyCandidates.map(domainTopologyCandidate),
+  )
   for (const candidate of record.geometry.topologyCandidates) {
     if (used.has(candidateKey(featureId, candidate))) continue
     const ordinal = ordinals.get(topologyCandidateKey(candidate))
@@ -432,7 +458,12 @@ function candidatesForRecord(
       labels,
     )
     if (!curve) continue
-    result.push(curve)
+    const resolution = resolve(curve.reference)
+    result.push({
+      ...curve,
+      passiveEligible:
+        resolution.status === "resolved" && resolution.candidateId === candidate.candidateId,
+    })
   }
   return result
 }

@@ -50,8 +50,8 @@ The exact value is therefore part of placement, not a later cleanup form.
 - The accepted relationship becomes a persistent constraint.
 - Holding `Shift` suppresses automatic inference for the current placement.
 - Coplanar points, lines, analytical circles, and bounded arcs from earlier sketches can participate
-  without first being selected from a list; supported model points and linear edges follow the same
-  interaction.
+  without first being selected from a list; supported model points, linear edges, and uniquely resolved
+  circular or bounded-arc edges follow the same interaction.
 - Circle and arc inference uses exact analytical projection. Passive display samples never become
   persistent geometry or constraints.
 
