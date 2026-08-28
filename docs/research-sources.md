@@ -220,6 +220,9 @@ Context7 resolved shadcn/ui to the high-reputation `/shadcn-ui/ui` source and wa
 | Source | Evidence |
 |---|---|
 | [Onshape user interface basics](https://cad.onshape.com/help/Content/Home/user_interface_basics.htm) | Stable Part Studio graphics area, feature list, workflow-specific toolbars, grouped overflow, explicit dialogs, selection, undo/redo, and error indicators |
+| [Onshape feature dependencies](https://www.onshape.com/en/resource-center/tech-tips/utilizing-feature-dependencies-in-onshape) | Interactive parent/child inspection from History, including hover highlighting and recursive navigation |
+| [Onshape Repairing](https://cad.onshape.com/help/Content/Document/repairing.htm) | Graphical repair of downstream failures after an earlier history change, with healthy-moment context and explicit replacement of missing references |
+| [Onshape history-based error repair](https://www.onshape.com/en/blog/tackling-history-based-errors-parametric-cad-repair-manager) | Product rationale for retaining downstream failures after a referenced source changes or is removed instead of silently retargeting design intent |
 | [Onshape sketch tools](https://cad.onshape.com/help/Content/Sketch/sketch_tools.htm) | Sketch toolbar activation, grouped and last-used tools, shortcut toolbar, `Escape`, constraint visibility, and the transition from a valid open sketch into Extrude or Revolve |
 | [Onshape Line](https://cad.onshape.com/help/Content/Sketch/line.htm) | Continuous line-chain creation, click-drag placement, immediate numerical dimension entry, and temporary Line/Tangent Arc switching |
 | [Onshape Dimension](https://cad.onshape.com/help/Content/Sketch/dimension.htm) | Selection, pointer-driven annotation placement, inline numeric entry, direct/projected/angular/centerline disambiguation, variable expressions, dragging, double-click editing, and driven dimensions |

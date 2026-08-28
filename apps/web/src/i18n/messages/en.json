@@ -489,7 +489,17 @@
           "confirm": "Delete feature",
           "cancel": "Keep feature",
           "failed": "The feature could not be deleted. The model history was not changed.",
-          "inUse": "Remove dependent features first: {features}.",
+          "unavailable": "Deletion is unavailable because dependency information could not be validated.",
+          "blockedBy": "Deletion is blocked by: {blockers}.",
+          "blockedByMore": "Deletion is blocked by: {blockers}, and {count, plural, one {# more dependent item} other {# more dependent items}}.",
+          "relations": {
+            "feature-dependency": "feature dependency",
+            "feature-topology-reference": "model geometry reference",
+            "extrusion-profile": "extrusion profile",
+            "sketch-support": "sketch support",
+            "external-sketch": "external sketch reference",
+            "semantic-input": "semantic input"
+          },
           "readOnly": "Open the document with write access to delete features."
         },
         "box": {

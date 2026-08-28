@@ -173,6 +173,15 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(taskPanel.getByText(replacementLabel, { exact: true })).toBeVisible()
+
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Box 1" }).click()
+    await expect(page.getByRole("button", { name: "Delete feature" })).toBeDisabled()
+    await expect(
+      page.getByText("Deletion is blocked by: Sketch 1 (model geometry reference).", {
+        exact: true,
+      }),
+    ).toBeVisible()
   })
 
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({

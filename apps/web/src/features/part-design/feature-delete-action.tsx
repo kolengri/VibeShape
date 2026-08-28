@@ -20,14 +20,13 @@ type FeatureDeleteCopy = Readonly<{
   confirm: string
   cancel: string
   failed: string
-  inUse: string
   readOnly: string
 }>
 
 type FeatureDeleteActionProps = Readonly<{
   baseRevision: number
   copy: FeatureDeleteCopy
-  dependentFeatures: readonly FeatureRecord[]
+  blockedReason: string | null
   disabled: boolean
   feature: FeatureRecord
   onDeleted: () => void
@@ -37,7 +36,7 @@ type FeatureDeleteActionProps = Readonly<{
 export function FeatureDeleteAction({
   baseRevision,
   copy,
-  dependentFeatures,
+  blockedReason,
   disabled,
   feature,
   onDeleted,
@@ -46,7 +45,7 @@ export function FeatureDeleteAction({
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [failed, setFailed] = useState(false)
-  const blocked = dependentFeatures.length > 0
+  const blocked = blockedReason !== null
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (pending) return
@@ -105,7 +104,7 @@ export function FeatureDeleteAction({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {blocked ? <p className="text-xs text-muted-foreground">{copy.inUse}</p> : null}
+      {blocked ? <p className="text-xs text-muted-foreground">{blockedReason}</p> : null}
       {disabled ? <p className="text-xs text-muted-foreground">{copy.readOnly}</p> : null}
     </section>
   )

@@ -34,6 +34,7 @@ import {
   type ExtrusionTargetOption,
 } from "../features/extrusion/extrusion-form"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
+import { featureDeleteEligibility } from "../features/part-design/feature-delete-eligibility"
 import {
   type ActivePartDesignTool,
   booleanInputFeatures,
@@ -387,16 +388,36 @@ function EditFeatureDeleteAction({
 }) {
   const t = useTranslations("app.shell.taskPanel.featureDelete")
   const modelTreeT = useTranslations("app.shell.modelTree")
+  const relationT = useTranslations("app.shell.taskPanel.featureDelete.relations")
   if (mode.kind !== "edit") return null
 
   const feature = mode.feature
-  const dependentFeatures = report.snapshot.features.filter(({ dependencies }) =>
-    dependencies.includes(feature.id),
-  )
   const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
-  const dependentLabels = dependentFeatures
-    .map(({ label }) => label ?? modelTreeT("unnamedFeature"))
-    .join(", ")
+  const eligibility = featureDeleteEligibility(report.snapshot, feature.id)
+  const dependentLabels = new Map<string, string>([
+    ...report.snapshot.features.map(
+      ({ id, label }) => [`feature:${id}`, label ?? modelTreeT("unnamedFeature")] as const,
+    ),
+    ...report.snapshot.sketches.map(
+      ({ id, label }) => [`sketch:${id}`, label ?? modelTreeT("unnamedSketch")] as const,
+    ),
+  ])
+  const blockerLabels = eligibility.blockers.map((blocker) => {
+    const label = dependentLabels.get(`${blocker.dependent.kind}:${blocker.dependent.id}`)
+    const fallback =
+      blocker.dependent.kind === "feature"
+        ? modelTreeT("unnamedFeature")
+        : modelTreeT("unnamedSketch")
+    return `${label ?? fallback} (${relationT(blocker.relation)})`
+  })
+  const remainingBlockers = eligibility.blockerCount - eligibility.blockers.length
+  const blockedReason = eligibility.unavailable
+    ? t("unavailable")
+    : blockerLabels.length > 0
+      ? remainingBlockers > 0
+        ? t("blockedByMore", { blockers: blockerLabels.join(", "), count: remainingBlockers })
+        : t("blockedBy", { blockers: blockerLabels.join(", ") })
+      : null
 
   return (
     <FeatureDeleteAction
@@ -408,10 +429,9 @@ function EditFeatureDeleteAction({
         confirm: t("confirm"),
         cancel: t("cancel"),
         failed: t("failed"),
-        inUse: t("inUse", { features: dependentLabels }),
         readOnly: t("readOnly"),
       }}
-      dependentFeatures={dependentFeatures}
+      blockedReason={blockedReason}
       disabled={report.mode === "read-only"}
       feature={feature}
       onDeleted={onDeleted}
