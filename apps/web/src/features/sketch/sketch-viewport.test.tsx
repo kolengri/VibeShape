@@ -667,9 +667,9 @@ describe("SketchViewport", () => {
     const construction = document.querySelector(
       `[data-sketch-context-entity-id="${constructionLineId}"]`,
     )
-    expect(regular?.getAttribute("stroke-dasharray")).toBeNull()
+    expect(regular?.getAttribute("stroke-dasharray")).toBe("2 3")
     expect(regular?.classList.contains("stroke-sketch-reference-context")).toBe(true)
-    expect(construction?.getAttribute("stroke-dasharray")).toBe("5 3")
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("6 4")
     expect(construction?.classList.contains("stroke-sketch-reference-context/75")).toBe(true)
     expect(screen.getByRole("group", { name: "Reference context" }).textContent).toContain(
       "Sketch 1 · 2 entities",
@@ -719,7 +719,7 @@ describe("SketchViewport", () => {
       `[data-sketch-context-entity-id="${sourceLine.id}"]`,
     )
     expect(construction?.getAttribute("data-sketch-context-construction")).toBe("true")
-    expect(construction?.getAttribute("stroke-dasharray")).toBe("5 3")
+    expect(construction?.getAttribute("stroke-dasharray")).toBe("6 4")
   })
 
   it("keeps unsupported prior curves visible as passive context while Use is active", () => {
@@ -750,7 +750,9 @@ describe("SketchViewport", () => {
       solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
     })
 
-    expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeTruthy()
+    const contextCircle = document.querySelector('[data-sketch-context-curve-type="circle"]')
+    expect(contextCircle?.getAttribute("stroke-dasharray")).toBe("2 3")
+    expect(contextCircle?.classList.contains("stroke-sketch-reference-context")).toBe(true)
     expect(document.querySelector("[data-sketch-available-external-geometry-count]")).toBeNull()
   })
 
@@ -771,6 +773,53 @@ describe("SketchViewport", () => {
     expect(centerMarker?.tagName.toLowerCase()).toBe("g")
     expect(centerMarker?.querySelectorAll("line")).toHaveLength(2)
     expect(document.querySelectorAll('[data-sketch-entity-type="circle"]')).toHaveLength(1)
+  })
+
+  it("places a point on an authored circle quadrant with curve and center intent", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const fixture = appendSketchCircle(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b257"),
+      perimeterPoint: { x: 5, y: 0 },
+    }).sketch
+    const circle = requiredSketchEntity(fixture, "circle")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "point",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 5.2, y: 0.3 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const localPoint = sketchEntitiesOfType(updated, "point").find(
+      ({ id }) => id !== circle.centerPointId,
+    )
+    if (!localPoint) throw new Error("Quadrant inference must create one perimeter point.")
+    expect(localPoint).toMatchObject({ x: 5, y: 0 })
+    expect(updated.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "point-on-curve",
+          pointId: localPoint.id,
+          curveId: circle.id,
+        }),
+        expect.objectContaining({
+          type: "horizontal-points",
+          firstPointId: localPoint.id,
+          secondPointId: circle.centerPointId,
+        }),
+      ]),
+    )
   })
 
   it("uses an earlier coplanar sketch point directly from the drawing", () => {
@@ -1194,7 +1243,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, pointer)
 
     expect(onDraftChange).not.toHaveBeenCalled()
-    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     expect(
       document.querySelector('[data-sketch-external-inference-source="Layout · Circle 1"]'),
     ).toBeTruthy()
@@ -1218,6 +1267,13 @@ describe("SketchViewport", () => {
         type: "point-on-curve",
         pointId: localPoint.id,
         curveId: reference.projectedEntityId,
+      }),
+    )
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: localPoint.id,
+        secondPointId: reference.projectedPointIds[0],
       }),
     )
   })
@@ -1271,7 +1327,7 @@ describe("SketchViewport", () => {
 
     const pointer = clientPointForSketch(drawing, { x: 10.4, y: 0.2 })
     fireEvent.pointerMove(drawing, pointer)
-    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     expect(
       document.querySelector('[data-sketch-external-inference-source="Layout · Arc 1"]'),
     ).toBeTruthy()
@@ -1294,6 +1350,13 @@ describe("SketchViewport", () => {
         type: "point-on-curve",
         pointId: localPoint.id,
         curveId: reference.projectedEntityId,
+      }),
+    )
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: localPoint.id,
+        secondPointId: reference.projectedPointIds[0],
       }),
     )
   })
@@ -1353,6 +1416,7 @@ describe("SketchViewport", () => {
     const start = clientPointForSketch(drawing, { x: 5, y: 0 })
 
     fireEvent.pointerMove(drawing, start)
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, start)
 
     expect(onDraftChange).not.toHaveBeenCalled()
@@ -1360,6 +1424,7 @@ describe("SketchViewport", () => {
 
     const end = clientPointForSketch(drawing, { x: 24, y: 8 })
     fireEvent.pointerMove(drawing, end)
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     expect(
       document.querySelector('[data-sketch-external-inference-source="Layout · Circle 2"]'),
     ).toBeTruthy()
@@ -1390,6 +1455,16 @@ describe("SketchViewport", () => {
           type: "point-on-curve",
           pointId: line.endPointId,
           curveId: endReference?.projectedEntityId,
+        }),
+        expect.objectContaining({
+          type: "horizontal-points",
+          firstPointId: line.startPointId,
+          secondPointId: startReference?.projectedPointIds[0],
+        }),
+        expect.objectContaining({
+          type: "horizontal-points",
+          firstPointId: line.endPointId,
+          secondPointId: endReference?.projectedPointIds[0],
         }),
       ]),
     )
@@ -1687,7 +1762,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
     expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeNull()
     fireEvent.pointerMove(drawing, pointer)
-    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     expect(
       document.querySelector("[data-sketch-model-inference-highlight]")?.getAttribute("aria-label"),
     ).toBe(candidate.label)
@@ -1706,6 +1781,13 @@ describe("SketchViewport", () => {
         type: "point-on-curve",
         pointId: localPoint.id,
         curveId: reference.projectedEntityId,
+      }),
+    )
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: localPoint.id,
+        secondPointId: reference.projectedPointIds[0],
       }),
     )
     expect(JSON.stringify(updated)).not.toContain("candidateId")
@@ -2656,7 +2738,7 @@ describe("SketchViewport", () => {
     mockDrawingRectangle(drawing)
     const pointer = clientPointForSketch(drawing, { x: 13.4, y: 6.1 })
     fireEvent.pointerMove(drawing, pointer)
-    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
     expect(onDraftChange).toHaveBeenCalledOnce()
@@ -2672,6 +2754,13 @@ describe("SketchViewport", () => {
         type: "point-on-curve",
         pointId: localPoint?.id,
         curveId: projectedCurveId,
+      }),
+    )
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: localPoint?.id,
+        secondPointId: projectedCenterId,
       }),
     )
   })

@@ -58,11 +58,11 @@ test.describe("full sketch editor", () => {
 
     await page.keyboard.down("Shift")
     await page.mouse.move(sourcePoint.x, sourcePoint.y)
-    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toHaveCount(0)
+    await expect(drawing.locator("[data-sketch-inference]")).toHaveCount(0)
     await page.keyboard.up("Shift")
     await page.mouse.move(sourcePoint.x + 2, sourcePoint.y)
 
-    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
+    await expect(drawing.locator('[data-sketch-inference="quadrant"]')).toBeVisible()
     const inferenceStatus = page.locator("[data-sketch-external-inference-label]")
     await expect(inferenceStatus).toContainText(/Cylinder 1 · Circular edge \d+/)
     const sourceLabel = (await inferenceStatus.textContent())?.replace("External inference · ", "")
@@ -74,10 +74,12 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
   })
 
   test("wakes an offset model-circle center without activating Use", async ({ page }) => {
@@ -1056,6 +1058,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Point", exact: true }).click()
     const contextCircle = drawing.locator('[data-sketch-context-curve-type="circle"]')
     await expect(contextCircle).toHaveCount(1)
+    await expect(contextCircle).toHaveAttribute("stroke-dasharray", "2 3")
     const wakeupPoint = await contextCircle.evaluate((element) => {
       const curve = element as unknown as {
         getAttribute(name: string): string | null
@@ -1080,7 +1083,7 @@ test.describe("full sketch editor", () => {
 
     await page.mouse.move(wakeupPoint.x, wakeupPoint.y)
 
-    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
+    await expect(drawing.locator('[data-sketch-inference="quadrant"]')).toBeVisible()
     await expect(page.locator("[data-sketch-external-inference-label]")).toContainText(
       "Sketch 1 · Circle 1",
     )
@@ -1097,11 +1100,13 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
   })
 

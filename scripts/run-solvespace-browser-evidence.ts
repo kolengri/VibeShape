@@ -59,6 +59,7 @@ interface BrowserSolveResult {
   maximumResidual: number
   name: string
   expectedFailedConstraint?: number
+  parameterValues: number[]
   solverStatus: number
 }
 
@@ -101,6 +102,7 @@ self.onmessage = async (event) => {
         degreesOfFreedom: result.degreesOfFreedom,
         maximumResidual: result.maximumResidual,
         failedConstraints: [...result.failedConstraints],
+        parameterValues: [...result.parameterValues],
       };
     });
     self.postMessage({
@@ -211,32 +213,31 @@ function findResult(results: BrowserSolveResult[], name: string) {
   return result
 }
 
-function validateWorkerReport(report: WorkerReport) {
+function validateBrowserResult(result: BrowserSolveResult) {
+  requireCondition(result.abiStatus === 0, `Browser worker rejected ${result.name}.`)
   requireCondition(
-    typeof report.error !== "string",
-    report.error ?? "Unknown browser worker error.",
+    Number.isFinite(result.maximumResidual),
+    `${result.name} residual is not finite.`,
   )
-  for (const result of report.results) {
-    requireCondition(result.abiStatus === 0, `Browser worker rejected ${result.name}.`)
-    requireCondition(
-      Number.isFinite(result.maximumResidual),
-      `${result.name} residual is not finite.`,
-    )
-  }
+}
 
-  const fully = findResult(report.results, "fully-constrained")
+function validateBrowserStatusClassification(results: BrowserSolveResult[]) {
+  const fully = findResult(results, "fully-constrained")
   requireCondition(fully.solverStatus === 0, "Fully constrained browser status was invalid.")
   requireCondition(fully.degreesOfFreedom === 0, "Fully constrained browser DOF was invalid.")
-  const under = findResult(report.results, "under-constrained")
+  const under = findResult(results, "under-constrained")
   requireCondition(under.solverStatus === 0, "Under-constrained browser status was invalid.")
   requireCondition(under.degreesOfFreedom > 0, "Under-constrained browser DOF was invalid.")
-  const over = findResult(report.results, "over-constrained")
+  const over = findResult(results, "over-constrained")
   requireCondition(
     new Set([1, 4]).has(over.solverStatus),
     "Over-constrained browser status was invalid.",
   )
   requireCondition(over.failedConstraints.length > 0, "Browser conflict set was empty.")
-  const pointAlignmentConflict = findResult(report.results, "point-alignment-conflict")
+}
+
+function validateBrowserPointAlignmentConflict(results: BrowserSolveResult[]) {
+  const pointAlignmentConflict = findResult(results, "point-alignment-conflict")
   requireCondition(
     new Set([1, 4]).has(pointAlignmentConflict.solverStatus),
     "Point alignment browser conflict status was invalid.",
@@ -248,6 +249,42 @@ function validateWorkerReport(report: WorkerReport) {
       ),
     "Point alignment browser conflict handle was missing.",
   )
+}
+
+function parameterDifferenceIsSmall(
+  result: BrowserSolveResult,
+  firstIndex: number,
+  secondIndex: number,
+) {
+  return (
+    Math.abs(
+      Number(result.parameterValues[firstIndex]) - Number(result.parameterValues[secondIndex]),
+    ) <= 1e-7
+  )
+}
+
+function validateBrowserPointAlignments(results: BrowserSolveResult[]) {
+  const horizontalAlignment = findResult(results, "horizontal point alignment")
+  requireCondition(
+    parameterDifferenceIsSmall(horizontalAlignment, 8, 10),
+    "Horizontal browser point alignment did not solve equal Y coordinates.",
+  )
+  const verticalAlignment = findResult(results, "vertical point alignment")
+  requireCondition(
+    parameterDifferenceIsSmall(verticalAlignment, 7, 9),
+    "Vertical browser point alignment did not solve equal X coordinates.",
+  )
+}
+
+function validateWorkerReport(report: WorkerReport) {
+  requireCondition(
+    typeof report.error !== "string",
+    report.error ?? "Unknown browser worker error.",
+  )
+  for (const result of report.results) validateBrowserResult(result)
+  validateBrowserStatusClassification(report.results)
+  validateBrowserPointAlignmentConflict(report.results)
+  validateBrowserPointAlignments(report.results)
   const angle = findResult(report.results, "angle")
   requireCondition(angle.maximumResidual > 0, "Browser residual capture returned only zero.")
 }

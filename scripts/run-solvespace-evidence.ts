@@ -2,6 +2,13 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import {
+  sketchConstraintIdSchema,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "../packages/domain/src/identifiers"
+import { sketchRecordSchema } from "../packages/domain/src/sketch"
+import {
+  compileSketchSystem,
   type FlatSketchSystemInput,
   type NativeSketchSolverModule,
   type SketchSolveResult,
@@ -146,11 +153,117 @@ function runPointAlignmentConflictEvidence(session: SketchSolverSession) {
   return result
 }
 
+const productionPointAlignmentFixtures = [
+  {
+    constraintId: "018f0000-0000-7000-8000-000000000107",
+    coordinate: "yIndex",
+    firstPointId: "018f0000-0000-7000-8000-000000000101",
+    label: "Horizontal alignment evidence",
+    secondPointId: "018f0000-0000-7000-8000-000000000103",
+    sketchId: "018f0000-0000-7000-8000-000000000105",
+    type: "horizontal-points",
+  },
+  {
+    constraintId: "018f0000-0000-7000-8000-000000000108",
+    coordinate: "xIndex",
+    firstPointId: "018f0000-0000-7000-8000-000000000102",
+    label: "Vertical alignment evidence",
+    secondPointId: "018f0000-0000-7000-8000-000000000104",
+    sketchId: "018f0000-0000-7000-8000-000000000106",
+    type: "vertical-points",
+  },
+] as const
+
+function productionPointAlignmentSketch(
+  fixture: (typeof productionPointAlignmentFixtures)[number],
+) {
+  const firstPointId = sketchEntityIdSchema.parse(fixture.firstPointId)
+  const secondPointId = sketchEntityIdSchema.parse(fixture.secondPointId)
+  const sketch = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchIdSchema.parse(fixture.sketchId),
+    label: fixture.label,
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: firstPointId,
+        type: "point",
+        x: 1,
+        y: 2,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondPointId,
+        type: "point",
+        x: 9,
+        y: 13,
+        construction: false,
+      },
+    ],
+    constraints: [
+      {
+        schemaVersion: 0,
+        id: sketchConstraintIdSchema.parse(fixture.constraintId),
+        type: fixture.type,
+        firstPointId,
+        secondPointId,
+      },
+    ],
+  })
+  return { firstPointId, secondPointId, sketch }
+}
+
+function solveProductionPointAlignment(
+  session: SketchSolverSession,
+  fixture: (typeof productionPointAlignmentFixtures)[number],
+) {
+  const { firstPointId, secondPointId, sketch } = productionPointAlignmentSketch(fixture)
+  const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
+  requireCondition(compilation.ok, `${fixture.type} production compilation failed.`)
+  const result = session.solve(compilation.compiled.system)
+  requireSuccessfulSolve(result, `${fixture.type} production solve`)
+  const first = compilation.compiled.bindings.pointParameters.get(firstPointId)
+  const second = compilation.compiled.bindings.pointParameters.get(secondPointId)
+  requireCondition(first && second, `${fixture.type} production point bindings were missing.`)
+  requireCondition(
+    Math.abs(
+      Number(result.parameterValues[first[fixture.coordinate]]) -
+        Number(result.parameterValues[second[fixture.coordinate]]),
+    ) <= 1e-7,
+    `${fixture.type} production solve used the wrong projected axis.`,
+  )
+  return { type: fixture.type, status: result.status }
+}
+
+function runProductionPointAlignmentEvidence(session: SketchSolverSession) {
+  return productionPointAlignmentFixtures.map((fixture) =>
+    solveProductionPointAlignment(session, fixture),
+  )
+}
+
+function requirePointAlignmentCoordinates(name: string, parameterValues: ArrayLike<number>) {
+  if (name === "horizontal point alignment") {
+    requireCondition(
+      Math.abs(Number(parameterValues[8]) - Number(parameterValues[10])) <= 1e-7,
+      "Horizontal point alignment did not solve equal Y coordinates.",
+    )
+  }
+  if (name === "vertical point alignment") {
+    requireCondition(
+      Math.abs(Number(parameterValues[7]) - Number(parameterValues[9])) <= 1e-7,
+      "Vertical point alignment did not solve equal X coordinates.",
+    )
+  }
+}
+
 function runCoverageEvidence(session: SketchSolverSession) {
   const fixtures = createConstraintCoverageFixtures()
   const results = fixtures.map((fixture) => {
     const result = session.solve(fixture.system)
     requireSuccessfulSolve(result, fixture.name)
+    requirePointAlignmentCoordinates(fixture.name, result.parameterValues)
     return {
       name: fixture.name,
       constraintTypes: fixture.constraintTypes,
@@ -223,6 +336,7 @@ async function main() {
 
   const { fully, over, under } = runStatusEvidence(session)
   const pointAlignmentConflict = runPointAlignmentConflictEvidence(session)
+  const productionPointAlignment = runProductionPointAlignmentEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -255,6 +369,7 @@ async function main() {
       pointAlignmentConflictSet: [...pointAlignmentConflict.failedConstraintHandles],
     },
     constraintCoverage,
+    productionPointAlignment,
     degenerateGeometry: {
       status: degenerate.status,
       maximumResidual: degenerate.maximumResidual,

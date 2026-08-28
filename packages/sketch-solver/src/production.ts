@@ -780,7 +780,7 @@ function addPointAlignmentConstraint(
     pointA: builder.entity(constraint.firstPointId),
     pointB: builder.entity(constraint.secondPointId),
     entityA: builder.projectedAxis(
-      constraint.type === "horizontal-points" ? "horizontal" : "vertical",
+      constraint.type === "horizontal-points" ? "vertical" : "horizontal",
     ),
     value: 0,
   })
