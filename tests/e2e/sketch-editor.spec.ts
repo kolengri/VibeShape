@@ -540,7 +540,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
     const earlierLine = drawing.locator("line[data-sketch-context-source-sketch-id]")
     await expect(earlierLine).toHaveCount(1)
-    await expect(earlierLine).not.toHaveAttribute("stroke-dasharray")
+    await expect(earlierLine).toHaveAttribute("stroke-dasharray", "5 4")
 
     await page.keyboard.press("Shift+H")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
@@ -732,7 +732,7 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
-  test("chooses one overlapping earlier-sketch line graphically", async ({ page }) => {
+  test("chooses one overlapping earlier-sketch line directly in Select", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
@@ -768,7 +768,10 @@ test.describe("full sketch editor", () => {
 
     await createSketch.click()
     await confirmSketchPlane(page, "xy")
-    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    await expect(
+      page.getByRole("button", { name: "Use external geometry", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false")
     const availableLines = drawing.locator(
       "[data-sketch-available-external-geometry-id]:has(line.stroke-transparent)",
     )
@@ -804,6 +807,11 @@ test.describe("full sketch editor", () => {
     await expect(chooser.getByRole("button")).toHaveCount(2)
     await chooser.getByRole("button", { name: /Sketch 1 · Line 1/ }).click()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await expect(
+      page
+        .getByRole("complementary", { name: "Sketch task panel" })
+        .getByText("Sketch 1 · Line 1", { exact: true }),
+    ).toBeVisible()
     await expect(chooser).toHaveCount(0)
   })
 
