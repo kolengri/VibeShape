@@ -373,6 +373,145 @@ function runProductionArcMidpointEvidence(session: SketchSolverSession) {
   )
 }
 
+function runProductionEllipseQuadrantEvidence(session: SketchSolverSession) {
+  const centerPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8300-000000000001")
+  const primaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8300-000000000002")
+  const secondaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8300-000000000003")
+  const quadrantPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8300-000000000004")
+  const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8300-000000000005")
+  const constraintId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8300-000000000006")
+  const fixtures = [
+    {
+      axis: "primary",
+      label: "Axis-inverted positive-primary ellipse quadrant evidence",
+      point: { x: 9, y: 1 },
+      primary: { x: -6, y: -8 },
+      secondary: { x: 4, y: -3 },
+      side: "positive",
+    },
+    {
+      axis: "primary",
+      label: "Rotated negative-primary ellipse quadrant evidence",
+      point: { x: -9, y: 1 },
+      primary: { x: 6, y: 8 },
+      secondary: { x: -4, y: 3 },
+      side: "negative",
+    },
+    {
+      axis: "secondary",
+      label: "Rotated positive-secondary ellipse quadrant evidence",
+      point: { x: 2, y: 5 },
+      primary: { x: 6, y: 8 },
+      secondary: { x: -4, y: 3 },
+      side: "positive",
+    },
+    {
+      axis: "secondary",
+      label: "Rotated negative-secondary ellipse quadrant evidence",
+      point: { x: -2, y: -5 },
+      primary: { x: 6, y: 8 },
+      secondary: { x: -4, y: 3 },
+      side: "negative",
+    },
+  ] as const
+  return fixtures.map((fixture) => {
+    const sketch = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchIdSchema.parse("018f0000-0000-7000-8300-000000000007"),
+      label: fixture.label,
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: centerPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: primaryAxisPointId,
+          type: "point",
+          ...fixture.primary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: secondaryAxisPointId,
+          type: "point",
+          ...fixture.secondary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: quadrantPointId,
+          type: "point",
+          ...fixture.point,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: ellipseId,
+          type: "ellipse",
+          centerPointId,
+          primaryAxisPointId,
+          secondaryAxisPointId,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId,
+          type: "ellipse-quadrant",
+          pointId: quadrantPointId,
+          ellipseId,
+          axis: fixture.axis,
+          side: fixture.side,
+        },
+      ],
+    })
+    const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
+    requireCondition(compilation.ok, `${fixture.label} production compilation failed.`)
+    const result = session.solve(compilation.compiled.system)
+    requireSuccessfulSolve(result, fixture.label)
+    const solvedPoint = (id: typeof centerPointId) => {
+      const binding = compilation.compiled.bindings.pointParameters.get(id)
+      requireCondition(binding, `${fixture.label} point binding was missing.`)
+      return {
+        x: Number(result.parameterValues[binding.xIndex]),
+        y: Number(result.parameterValues[binding.yIndex]),
+      }
+    }
+    const center = solvedPoint(centerPointId)
+    const axisPoint = solvedPoint(
+      fixture.axis === "primary" ? primaryAxisPointId : secondaryAxisPointId,
+    )
+    const quadrant = solvedPoint(quadrantPointId)
+    const axis = { x: axisPoint.x - center.x, y: axisPoint.y - center.y }
+    const offset = { x: quadrant.x - center.x, y: quadrant.y - center.y }
+    const cross = axis.x * offset.y - axis.y * offset.x
+    const dot = axis.x * offset.x + axis.y * offset.y
+    requireCondition(Math.abs(cross) <= 1e-7, `${fixture.label} left its selected axis.`)
+    requireCondition(
+      fixture.side === "positive" ? dot > 0 : dot < 0,
+      `${fixture.label} switched to the opposite side.`,
+    )
+    requireCondition(
+      Math.abs(Math.hypot(offset.x, offset.y) - Math.hypot(axis.x, axis.y)) <= 1e-7,
+      `${fixture.label} left the exact selected-axis radius.`,
+    )
+    return {
+      axis: fixture.axis,
+      label: fixture.label,
+      quadrant,
+      side: fixture.side,
+      status: result.status,
+    }
+  })
+}
+
 function requirePointAlignmentCoordinates(name: string, parameterValues: ArrayLike<number>) {
   if (name === "horizontal point alignment") {
     requireCondition(
@@ -468,6 +607,7 @@ async function main() {
   const pointAlignmentConflict = runPointAlignmentConflictEvidence(session)
   const productionPointAlignment = runProductionPointAlignmentEvidence(session)
   const productionArcMidpoint = runProductionArcMidpointEvidence(session)
+  const productionEllipseQuadrant = runProductionEllipseQuadrantEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -501,6 +641,7 @@ async function main() {
     },
     constraintCoverage,
     productionArcMidpoint,
+    productionEllipseQuadrant,
     productionPointAlignment,
     degenerateGeometry: {
       status: degenerate.status,

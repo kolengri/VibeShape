@@ -121,6 +121,7 @@ The completed polygon is one schema-valid domain operation and one local undo en
 | Fix point | Exactly one point | `F` | Implemented |
 | Point on line | Exactly one point and one line | `⊙` | Implemented |
 | Point on curve | Exactly one point and one circle/arc | `⊙` | Implemented |
+| Ellipse quadrant | Automatic only at one of a full ellipse's four axis extrema | `◇` | Implemented |
 
 Each selection exposes only definitions that consume the complete selection. The editor MUST NOT
 silently apply a constraint to a subset of selected entities.
@@ -182,10 +183,12 @@ adding solver constraints.
    schema-parse the complete sketch.
 9. Large constraint lists scroll inside the fixed-height task panel. They never increase the CAD
    workspace row height or move sketch geometry outside the visible viewport.
-10. Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, horizontal,
-    vertical, parallel, perpendicular, and endpoint-tangent candidates use deterministic priority
-    and visible glyphs. Accepting a candidate persists its semantic constraint; holding `Shift`
-    suppresses inference without changing the active tool.
+10. Existing-point, segment-midpoint, bounded segment-intersection, point-on-line, circle/arc
+    quadrant, full-ellipse axis-quadrant, horizontal, vertical, parallel, perpendicular, and
+    endpoint-tangent candidates use deterministic priority and visible glyphs. Accepting a candidate
+    persists its semantic constraint; holding `Shift` suppresses inference without changing the active
+    tool. Ellipse Quadrant is automatic-only, matching its spatial role; generic point-on-ellipse and
+    elliptical-arc inference remain separate follow-up contracts.
 11. Center-origin polygon previews show the construction circle, radius guide, outline, and side
     count before commit. Circumscribed Polygon places vertices on the construction circle;
     Inscribed Polygon places the construction circle tangent to the outline. Closed-loop-dependent

@@ -39,6 +39,14 @@ export type SketchInferenceCurve =
       start: SketchPoint2
       type: "arc"
     }>
+  | Readonly<{
+      center: SketchPoint2
+      centerPointId: SketchEntityId
+      id: SketchEntityId
+      primaryAxisPoint: SketchPoint2
+      secondaryAxisPoint: SketchPoint2
+      type: "ellipse"
+    }>
 
 export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
@@ -46,6 +54,12 @@ export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "vertical-points" }>
   | Readonly<{ lineId: SketchEntityId; type: "midpoint" }>
   | Readonly<{ arcId: SketchEntityId; type: "arc-midpoint" }>
+  | Readonly<{
+      axis: "primary" | "secondary"
+      ellipseId: SketchEntityId
+      side: "negative" | "positive"
+      type: "ellipse-quadrant"
+    }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
   | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
 
@@ -583,6 +597,7 @@ function positiveAngle(angle: number) {
 }
 
 function curveProjection(point: SketchPoint2, curve: SketchInferenceCurve) {
+  if (curve.type === "ellipse") return null
   const offsetX = point.x - curve.center.x
   const offsetY = point.y - curve.center.y
   const offsetLength = Math.hypot(offsetX, offsetY)
@@ -648,12 +663,14 @@ const cardinalDirections = [
 ] as const
 
 function curveRadius(curve: SketchInferenceCurve) {
+  if (curve.type === "ellipse") return 0
   return curve.type === "circle"
     ? curve.radius
     : Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
 }
 
 function curveContainsAngle(curve: SketchInferenceCurve, angle: number) {
+  if (curve.type === "ellipse") return false
   if (curve.type === "circle") return true
   const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
   const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
@@ -763,6 +780,149 @@ function nearestCurveCardinalCandidate(
     : undefined
 }
 
+type EllipseQuadrantPoint = Readonly<{
+  axis: "primary" | "secondary"
+  point: SketchPoint2
+  sign: "negative" | "positive"
+}>
+
+function ellipseQuadrantPoints(
+  curve: Extract<SketchInferenceCurve, { type: "ellipse" }>,
+): readonly EllipseQuadrantPoint[] {
+  const reflectedPrimary = {
+    x: curve.center.x * 2 - curve.primaryAxisPoint.x,
+    y: curve.center.y * 2 - curve.primaryAxisPoint.y,
+  }
+  const reflectedSecondary = {
+    x: curve.center.x * 2 - curve.secondaryAxisPoint.x,
+    y: curve.center.y * 2 - curve.secondaryAxisPoint.y,
+  }
+  return [
+    { axis: "primary" as const, point: curve.primaryAxisPoint, sign: "positive" as const },
+    { axis: "primary" as const, point: reflectedPrimary, sign: "negative" as const },
+    {
+      axis: "secondary" as const,
+      point: curve.secondaryAxisPoint,
+      sign: "positive" as const,
+    },
+    { axis: "secondary" as const, point: reflectedSecondary, sign: "negative" as const },
+  ]
+}
+
+type NearestEllipseQuadrant = {
+  curve: Extract<SketchInferenceCurve, { type: "ellipse" }> | null
+  distance: number
+  quadrant: EllipseQuadrantPoint | null
+  stableKey: string
+}
+
+function shouldReplaceEllipseQuadrant(
+  distance: number,
+  maximumDistance: number,
+  stableKey: string,
+  nearest: NearestEllipseQuadrant,
+) {
+  if (distance > maximumDistance || distance > nearest.distance) return false
+  return distance < nearest.distance || stableKey.localeCompare(nearest.stableKey) < 0
+}
+
+function considerEllipseQuadrant(
+  point: SketchPoint2,
+  curve: Extract<SketchInferenceCurve, { type: "ellipse" }>,
+  quadrant: EllipseQuadrantPoint,
+  maximumDistance: number,
+  nearest: NearestEllipseQuadrant,
+) {
+  const distance = squaredDistance(point, quadrant.point)
+  const stableKey = `${curve.id}:${quadrant.axis}:${quadrant.sign}`
+  if (!shouldReplaceEllipseQuadrant(distance, maximumDistance, stableKey, nearest)) return
+  nearest.curve = curve
+  nearest.distance = distance
+  nearest.quadrant = quadrant
+  nearest.stableKey = stableKey
+}
+
+function materializeEllipseQuadrantCandidate(nearest: NearestEllipseQuadrant) {
+  if (!nearest.curve || !nearest.quadrant) return undefined
+  return {
+    alignmentGuide: nearest.curve.center,
+    kind: "quadrant",
+    point: nearest.quadrant.point,
+    relations: [
+      {
+        type: "ellipse-quadrant",
+        ellipseId: nearest.curve.id,
+        axis: nearest.quadrant.axis,
+        side: nearest.quadrant.sign,
+      },
+    ],
+    stableKey: nearest.stableKey,
+  } as const satisfies PointCandidate
+}
+
+function ellipseAxesAreValid(curve: Extract<SketchInferenceCurve, { type: "ellipse" }>) {
+  const primaryLength = Math.hypot(
+    curve.primaryAxisPoint.x - curve.center.x,
+    curve.primaryAxisPoint.y - curve.center.y,
+  )
+  const secondaryLength = Math.hypot(
+    curve.secondaryAxisPoint.x - curve.center.x,
+    curve.secondaryAxisPoint.y - curve.center.y,
+  )
+  return (
+    Number.isFinite(primaryLength) &&
+    primaryLength > 0 &&
+    Number.isFinite(secondaryLength) &&
+    secondaryLength > 0
+  )
+}
+
+function nearestEllipseQuadrantCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  const nearest: NearestEllipseQuadrant = {
+    curve: null,
+    distance: Number.POSITIVE_INFINITY,
+    quadrant: null,
+    stableKey: "",
+  }
+  for (const curve of curves) {
+    if (curve.type !== "ellipse" || !ellipseAxesAreValid(curve)) continue
+    for (const quadrant of ellipseQuadrantPoints(curve)) {
+      considerEllipseQuadrant(point, curve, quadrant, maximumDistance, nearest)
+    }
+  }
+  return materializeEllipseQuadrantCandidate(nearest)
+}
+
+function preferredPointCandidate(
+  point: SketchPoint2,
+  first: PointCandidate | undefined,
+  second: PointCandidate | undefined,
+) {
+  if (!first) return second
+  if (!second) return first
+  const firstDistance = squaredDistance(point, first.point)
+  const secondDistance = squaredDistance(point, second.point)
+  if (firstDistance !== secondDistance) return firstDistance < secondDistance ? first : second
+  return first.stableKey.localeCompare(second.stableKey) <= 0 ? first : second
+}
+
+function nearestCurveQuadrantCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  return preferredPointCandidate(
+    point,
+    nearestCurveCardinalCandidate(point, curves, tolerance),
+    nearestEllipseQuadrantCandidate(point, curves, tolerance),
+  )
+}
+
 type PointAlignmentCandidate = Readonly<{
   error: number
   kind: "horizontal-alignment" | "vertical-alignment"
@@ -864,7 +1024,7 @@ function pointCandidate(
     nearestLineMidpointCandidate(point, lines, tolerance) ??
     nearestPointOnLineCandidate(nearby) ??
     nearestArcMidpointCandidate(point, curves, tolerance) ??
-    nearestCurveCardinalCandidate(point, curves, tolerance) ??
+    nearestCurveQuadrantCandidate(point, curves, tolerance) ??
     nearestPointOnCurveCandidate(point, curves, tolerance) ??
     nearestPointAlignmentCandidate(point, points, tolerance, anchor)
   )

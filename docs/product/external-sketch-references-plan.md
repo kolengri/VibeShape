@@ -69,18 +69,21 @@ re-evaluate stable-reference availability. The first Intersection slice selects 
 face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
-closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles, and
-bounded arcs, highlight and label the source, and atomically create the stable reference plus inferred
-Coincident, Point on line, or Point on curve constraint only after acceptance. Curve wake-up projects the
-pointer onto exact analytical geometry; it never infers against sampled display polylines. Shift suppresses
+closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles,
+bounded arcs, and full ellipses, highlight and label the source, and atomically create the stable reference
+plus inferred Coincident, Point on line, Point on curve, or full-ellipse Quadrant constraint only after
+acceptance. Curve wake-up projects the pointer onto exact analytical geometry; it never infers against
+sampled display polylines. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
 creating a second reference. Exact coplanar circular and bounded-arc model edges use the same passive
-interaction only when their `TopoRef` resolves uniquely; parallel-offset, tilted, elliptically projected,
+interaction only when their `TopoRef` resolves uniquely. A uniquely resolved coplanar model circle whose
+analytical projection is an ellipse participates at its four exact axis quadrants; parallel-offset, tilted,
 and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
 curve reference and relates the local point to the curve's stable projected center identity. General
-surfaces, multi-curve results, Pierce, ellipse wake-up, non-coplanar model-curve wake-up, non-circular curved
-model edges, and sketch-source repair UI are not implemented. Normal-view Use
+surfaces, multi-curve results, Pierce, elliptical-arc wake-up, generic point-on-ellipse inference,
+non-coplanar model-curve wake-up, non-circular curved model edges, and sketch-source repair UI are not
+implemented. Normal-view Use
 provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
@@ -171,8 +174,9 @@ cannot alter evaluation order.
    solver semantics permit them.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
    exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
-   visibility toggle, and accessible removal are implemented. Extend automatic inference to ellipses and
-   stable non-circular or non-coplanar curved model topology.
+   visibility toggle, accessible removal, and exact full-ellipse axis-quadrant inference are implemented.
+   Extend automatic inference to elliptical arcs, generic point-on-ellipse intent, and stable non-circular
+   or non-coplanar curved model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and

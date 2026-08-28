@@ -1547,6 +1547,41 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
   })
 
+  test("persists an exact full-ellipse quadrant from the canvas", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+
+    const negativePrimary = {
+      x: bounds.x + bounds.width * 0.28,
+      y: bounds.y + bounds.height * 0.55,
+    }
+    await page.mouse.move(negativePrimary.x, negativePrimary.y)
+    await expect(drawing.locator('[data-sketch-inference="quadrant"]')).toBeVisible()
+    await page.mouse.click(negativePrimary.x, negativePrimary.y)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
+  })
+
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

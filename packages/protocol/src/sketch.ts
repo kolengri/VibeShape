@@ -241,6 +241,16 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...constraintEnvelope,
+      type: z.literal("ellipse-quadrant"),
+      pointId: sketchEntityIdSchema,
+      ellipseId: sketchEntityIdSchema,
+      axis: z.enum(["primary", "secondary"]),
+      side: z.enum(["negative", "positive"]),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
       type: z.literal("midpoint"),
       pointId: sketchEntityIdSchema,
       lineId: sketchEntityIdSchema,
@@ -679,6 +689,7 @@ const wireConstraintEntityReferenceRules = {
   },
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
+  "ellipse-quadrant": { pointId: ["point"], ellipseId: ["ellipse"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
   "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
   symmetric: {
@@ -870,7 +881,9 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
         ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
         : constraint.type === "arc-midpoint"
           ? 2
-          : 1),
+          : constraint.type === "ellipse-quadrant"
+            ? 6
+            : 1),
     0,
   )
   const internal = sketch.entities.reduce((count, entity) => {
@@ -916,6 +929,9 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
     )
   const auxiliaryArcMidpointLineCount =
     sketch.constraints.filter(({ type }) => type === "arc-midpoint").length * 2
+  const auxiliaryEllipseQuadrantCount = sketch.constraints.filter(
+    ({ type }) => type === "ellipse-quadrant",
+  ).length
   return {
     entities:
       authored.entities +
@@ -924,14 +940,16 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
         0,
       ) +
       projectionCount * 3 +
-      auxiliaryArcMidpointLineCount,
+      auxiliaryArcMidpointLineCount +
+      auxiliaryEllipseQuadrantCount * 4,
     parameters:
       authored.parameters +
       wireProjectedExternalGeometry(sketch).reduce(
         (count, entity) => count + nativeWireEntityCapacity[entity.type].parameters,
         0,
       ) +
-      projectionCount * 4,
+      projectionCount * 4 +
+      auxiliaryEllipseQuadrantCount * 4,
   }
 }
 

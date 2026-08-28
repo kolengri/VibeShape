@@ -160,6 +160,7 @@ function useSketchEditorCopy() {
     horizontal: t("horizontal"),
     horizontalDistance: t("horizontalDistance"),
     midpoint: t("midpoint"),
+    quadrant: t("quadrant"),
     noConstraints: t("noConstraints"),
     offset: t("offset"),
     parallel: t("parallel"),

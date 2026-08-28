@@ -291,6 +291,29 @@ type ConstraintFields = Partial<{
   workplane: number
 }>
 
+function ellipseLocusParameters(input: {
+  offset: { x: number; y: number }
+  primaryDirection: { x: number; y: number }
+  primaryRadius: number
+  secondaryDirection: { x: number; y: number }
+  secondaryRadius: number
+  selectedAxis: "primary" | "secondary" | undefined
+  selectedSide: "negative" | "positive" | undefined
+}) {
+  const rawCosine =
+    (input.offset.x * input.primaryDirection.x + input.offset.y * input.primaryDirection.y) /
+    input.primaryRadius
+  const rawSine =
+    (input.offset.x * input.secondaryDirection.x + input.offset.y * input.secondaryDirection.y) /
+    input.secondaryRadius
+  if (input.selectedAxis) {
+    const side = input.selectedSide === "negative" ? -1 : 1
+    return input.selectedAxis === "primary" ? { cosine: side, sine: 0 } : { cosine: 0, sine: side }
+  }
+  const parameterScale = Math.hypot(rawCosine, rawSine) || 1
+  return { cosine: rawCosine / parameterScale, sine: rawSine / parameterScale }
+}
+
 class ProductionSketchBuilder {
   readonly #parameterMetadata: number[] = []
   readonly #parameterValues: number[] = []
@@ -303,6 +326,7 @@ class ProductionSketchBuilder {
   readonly #circleRadiusParameters = new Map<SketchEntityId, number>()
   readonly #constraintIdsByHandle = new Map<number, SketchConstraintId>()
   readonly #ellipseAxes = new Map<string, Readonly<{ primary: number; secondary: number }>>()
+  readonly #ellipseEntities = new Map<string, Extract<SketchEntity, { type: "ellipse" }>>()
   readonly #ellipseEndpointLoci = new Set<string>()
   #nextParameter = 11
   #nextEntity = 301
@@ -384,6 +408,7 @@ class ProductionSketchBuilder {
 
   addEllipse(entity: Extract<SketchEntity, { type: "ellipse" }>) {
     this.#ellipseAxisHandles(entity)
+    this.#ellipseEntities.set(entity.id, entity)
   }
 
   addEllipticalArc(
@@ -417,51 +442,127 @@ class ProductionSketchBuilder {
         endpointId,
       ].join(":")
       if (this.#ellipseEndpointLoci.has(endpointLocusKey)) continue
-      const endpoint = pointValues.get(endpointId)
-      if (!endpoint) {
-        throw new Error(`Sketch elliptical arc ${entity.id} is missing an endpoint value.`)
-      }
-      const offset = { x: endpoint.x - center.x, y: endpoint.y - center.y }
-      const rawCosine =
-        (offset.x * primaryDirection.x + offset.y * primaryDirection.y) / primaryRadius
-      const rawSine =
-        (offset.x * secondaryDirection.x + offset.y * secondaryDirection.y) / secondaryRadius
-      const parameterScale = Math.hypot(rawCosine, rawSine) || 1
-      const cosine = rawCosine / parameterScale
-      const sine = rawSine / parameterScale
-      const trammelRadius = primaryRadius + secondaryRadius
-      const primarySlider = this.#addAuxiliaryPoint({
-        x: center.x + primaryDirection.x * trammelRadius * cosine,
-        y: center.y + primaryDirection.y * trammelRadius * cosine,
-      })
-      const secondarySlider = this.#addAuxiliaryPoint({
-        x: center.x + secondaryDirection.x * trammelRadius * sine,
-        y: center.y + secondaryDirection.y * trammelRadius * sine,
-      })
-      const endpointHandle = this.entity(endpointId)
-      const secondaryRadiusLine = this.addAuxiliaryLine(primarySlider, endpointHandle)
-      const primaryRadiusLine = this.addAuxiliaryLine(endpointHandle, secondarySlider)
-      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
-        pointA: primarySlider,
-        entityA: primaryAxis,
-      })
-      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
-        pointA: secondarySlider,
-        entityA: secondaryAxis,
-      })
-      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
-        entityA: secondaryRadiusLine,
-        entityB: secondaryAxis,
-      })
-      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
-        entityA: primaryRadiusLine,
-        entityB: primaryAxis,
-      })
-      this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
-        entityA: secondaryRadiusLine,
-        entityB: primaryRadiusLine,
-      })
+      this.#addEllipsePointLocus(
+        null,
+        entity,
+        endpointId,
+        pointValues,
+        primaryAxis,
+        secondaryAxis,
+        primaryRadius,
+        secondaryRadius,
+        primaryDirection,
+        secondaryDirection,
+      )
       this.#ellipseEndpointLoci.add(endpointLocusKey)
+    }
+  }
+
+  addEllipseQuadrant(
+    constraint: Extract<SketchConstraint, { type: "ellipse-quadrant" }>,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  ) {
+    const ellipse = this.#ellipseEntities.get(constraint.ellipseId)
+    if (!ellipse) return false
+    const center = pointValues.get(ellipse.centerPointId)
+    const primary = pointValues.get(ellipse.primaryAxisPointId)
+    const secondary = pointValues.get(ellipse.secondaryAxisPointId)
+    if (!center || !primary || !secondary) return false
+    const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(ellipse)
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
+    const secondaryRadius = Math.max(Math.hypot(secondaryVector.x, secondaryVector.y), 1e-6)
+    const primaryDirection = {
+      x: primaryVector.x / primaryRadius,
+      y: primaryVector.y / primaryRadius,
+    }
+    const secondaryDirection = {
+      x: secondaryVector.x / secondaryRadius,
+      y: secondaryVector.y / secondaryRadius,
+    }
+    this.#addEllipsePointLocus(
+      constraint.id,
+      ellipse,
+      constraint.pointId,
+      pointValues,
+      primaryAxis,
+      secondaryAxis,
+      primaryRadius,
+      secondaryRadius,
+      primaryDirection,
+      secondaryDirection,
+      constraint.axis,
+      constraint.side,
+    )
+    return true
+  }
+
+  #addEllipsePointLocus(
+    id: SketchConstraintId | null,
+    ellipse: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>,
+    pointId: SketchEntityId,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+    primaryAxis: number,
+    secondaryAxis: number,
+    primaryRadius: number,
+    secondaryRadius: number,
+    primaryDirection: { x: number; y: number },
+    secondaryDirection: { x: number; y: number },
+    selectedAxis?: "primary" | "secondary",
+    selectedSide?: "negative" | "positive",
+  ) {
+    const center = pointValues.get(ellipse.centerPointId)
+    const point = pointValues.get(pointId)
+    if (!center || !point)
+      throw new Error(`Sketch ellipse point ${pointId} is missing initial values.`)
+    const offset = { x: point.x - center.x, y: point.y - center.y }
+    const { cosine, sine } = ellipseLocusParameters({
+      offset,
+      primaryDirection,
+      primaryRadius,
+      secondaryDirection,
+      secondaryRadius,
+      selectedAxis,
+      selectedSide,
+    })
+    const trammelRadius = primaryRadius + secondaryRadius
+    const primarySlider = this.#addAuxiliaryPoint({
+      x: center.x + primaryDirection.x * trammelRadius * cosine,
+      y: center.y + primaryDirection.y * trammelRadius * cosine,
+    })
+    const secondarySlider = this.#addAuxiliaryPoint({
+      x: center.x + secondaryDirection.x * trammelRadius * sine,
+      y: center.y + secondaryDirection.y * trammelRadius * sine,
+    })
+    const pointHandle = this.entity(pointId)
+    const secondaryRadiusLine = this.addAuxiliaryLine(primarySlider, pointHandle)
+    const primaryRadiusLine = this.addAuxiliaryLine(pointHandle, secondarySlider)
+    this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+      pointA: primarySlider,
+      entityA: primaryAxis,
+    })
+    this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+      pointA: secondarySlider,
+      entityA: secondaryAxis,
+    })
+    this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+      entityA: secondaryRadiusLine,
+      entityB: secondaryAxis,
+    })
+    this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+      entityA: primaryRadiusLine,
+      entityB: primaryAxis,
+    })
+    this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.parallel, {
+      entityA: secondaryRadiusLine,
+      entityB: primaryRadiusLine,
+    })
+    if (selectedAxis) {
+      this.addConstraint(id, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
+        pointA: pointHandle,
+        entityA: selectedAxis === "primary" ? primaryAxis : secondaryAxis,
+      })
     }
   }
 
@@ -737,6 +838,37 @@ function selectPositiveSweepArcMidpointSeeds(
     if (!arc) continue
     const midpoint = positiveSweepArcMidpoint(arc, pointValues)
     if (midpoint) pointValues.set(constraint.pointId, midpoint)
+  }
+}
+
+function selectEllipseQuadrantSeeds(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+  pointValues: Map<SketchEntityId, { x: number; y: number }>,
+) {
+  const authoredPointIds = new Set(
+    sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
+  )
+  const ellipses = new Map(
+    [...sketch.entities, ...externalCurves.map(({ curve }) => curve)].flatMap((entity) =>
+      entity.type === "ellipse" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+  for (const constraint of sketch.constraints) {
+    if (constraint.type !== "ellipse-quadrant" || !authoredPointIds.has(constraint.pointId))
+      continue
+    const ellipse = ellipses.get(constraint.ellipseId)
+    if (!ellipse) continue
+    const center = pointValues.get(ellipse.centerPointId)
+    const axisPoint = pointValues.get(
+      constraint.axis === "primary" ? ellipse.primaryAxisPointId : ellipse.secondaryAxisPointId,
+    )
+    if (!center || !axisPoint) continue
+    const side = constraint.side === "negative" ? -1 : 1
+    pointValues.set(constraint.pointId, {
+      x: center.x + (axisPoint.x - center.x) * side,
+      y: center.y + (axisPoint.y - center.y) * side,
+    })
   }
 }
 
@@ -1114,6 +1246,7 @@ function addDimensionConstraint(
   constraint: DimensionConstraint,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
 ) {
+  if (constraint.type === "ellipse-quadrant") return false
   if (
     constraint.type === "horizontal-distance" ||
     constraint.type === "vertical-distance" ||
@@ -1139,7 +1272,11 @@ function addConstraint(
   sketch: SketchRecord,
   constraint: SketchConstraint,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
 ) {
+  if (constraint.type === "ellipse-quadrant") {
+    return builder.addEllipseQuadrant(constraint, pointValues)
+  }
   if (isPointConstraint(constraint)) {
     addPointConstraint(builder, constraint)
     return true
@@ -1242,9 +1379,10 @@ function addSketchConstraints(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
 ) {
   for (const [index, constraint] of sketch.constraints.entries()) {
-    if (!addConstraint(builder, sketch, constraint, variables)) return index
+    if (!addConstraint(builder, sketch, constraint, variables, pointValues)) return index
   }
   return null
 }
@@ -1285,6 +1423,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     )
   }
   selectPositiveSweepArcMidpointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
+  selectEllipseQuadrantSeeds(input.data.sketch, input.data.externalCurves, pointValues)
 
   const builder = new ProductionSketchBuilder()
   addSketchEntities(
@@ -1296,7 +1435,12 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
     pointValues,
     circleRadii,
   )
-  const invalidConstraintIndex = addSketchConstraints(builder, input.data.sketch, variables)
+  const invalidConstraintIndex = addSketchConstraints(
+    builder,
+    input.data.sketch,
+    variables,
+    pointValues,
+  )
   if (invalidConstraintIndex !== null) {
     return compilationFailure(
       "invalid-dimension",

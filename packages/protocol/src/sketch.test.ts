@@ -8,6 +8,7 @@ const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const pointC = "0195b5ac-b220-7a2c-8c33-67a36a7f3205"
 const pointD = "0195b5ac-b220-7a2c-8c33-67a36a7f3206"
 const arcId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
+const ellipseId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
 
 function constraintId(index: number) {
   return `0195b5ac-b220-7a2c-8c33-${String(index).padStart(12, "0")}`
@@ -50,6 +51,27 @@ function arcRecord(constraints: readonly unknown[]) {
         centerPointId: pointA,
         startPointId: pointB,
         endPointId: pointC,
+        construction: false,
+      },
+    ],
+  }
+}
+
+function ellipseRecord(constraints: readonly unknown[]) {
+  return {
+    ...record(constraints),
+    entities: [
+      { schemaVersion: 0, id: pointA, type: "point", x: 0, y: 0, construction: false },
+      { schemaVersion: 0, id: pointB, type: "point", x: 10, y: 0, construction: false },
+      { schemaVersion: 0, id: pointC, type: "point", x: 0, y: 5, construction: false },
+      { schemaVersion: 0, id: pointD, type: "point", x: -10, y: 0, construction: false },
+      {
+        schemaVersion: 0,
+        id: ellipseId,
+        type: "ellipse",
+        centerPointId: pointA,
+        primaryAxisPointId: pointB,
+        secondaryAxisPointId: pointC,
         construction: false,
       },
     ],
@@ -133,6 +155,50 @@ describe("sketch alignment wire constraints", () => {
       expect.objectContaining({
         path: ["entities"],
         message: "Sketch entities exceed the native solver safety limit.",
+      }),
+    )
+  })
+
+  test("round-trips ellipse quadrant intent and reserves its native capacity", () => {
+    const quadrant = {
+      schemaVersion: 0,
+      id: constraintId(6_000),
+      type: "ellipse-quadrant",
+      pointId: pointD,
+      ellipseId,
+      axis: "primary",
+      side: "negative",
+    }
+    const parsed = sketchWireRecordSchema.safeParse(ellipseRecord([quadrant]))
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.constraints).toEqual([quadrant])
+
+    const constraints = Array.from({ length: 1_667 }, (_, index) => ({
+      ...quadrant,
+      id: constraintId(7_000 + index),
+    }))
+    const atEntityLimit = sketchWireRecordSchema.safeParse(
+      ellipseRecord(constraints.slice(0, 1_247)),
+    )
+    const entityOverflow = sketchWireRecordSchema.safeParse(
+      ellipseRecord(constraints.slice(0, 1_248)),
+    )
+    const constraintOverflow = sketchWireRecordSchema.safeParse(ellipseRecord(constraints))
+
+    expect(atEntityLimit.success).toBe(true)
+    expect(entityOverflow.success).toBe(false)
+    expect(constraintOverflow.success).toBe(false)
+    if (entityOverflow.success || constraintOverflow.success) return
+    expect(entityOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["entities"],
+        message: "Sketch entities exceed the native solver safety limit.",
+      }),
+    )
+    expect(constraintOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["constraints"],
+        message: "Sketch constraints exceed the native solver safety limit.",
       }),
     )
   })

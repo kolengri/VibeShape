@@ -2896,6 +2896,7 @@ function SketchTransformGeometry({
 }
 
 type ConstraintGlyph = Readonly<{
+  constraintType: SketchRecord["constraints"][number]["type"]
   external: boolean
   id: SketchConstraintId
   label: string
@@ -2995,6 +2996,7 @@ const geometricConstraintLabels: Partial<
   "horizontal-points": "H",
   midpoint: "M",
   "arc-midpoint": "M",
+  "ellipse-quadrant": "◇",
   parallel: "∥",
   perpendicular: "⊥",
   "point-on-curve": "⊙",
@@ -3073,6 +3075,7 @@ function constraintGlyph(
   const label = dimensionalLabel(constraint) ?? geometricConstraintLabels[constraint.type]
   return point && label
     ? {
+        constraintType: constraint.type,
         external: sketchConstraintEntityIds(constraint).some((id) => projectedEntityIds.has(id)),
         id: constraint.id,
         label,
@@ -3178,8 +3181,14 @@ function ConstraintAnnotations({
   onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onSelect: (constraintId: SketchConstraintId) => void
   selectedConstraintId: SketchConstraintId | null
-  selectConstraintLabel: (label: string) => string
-  selectExternalConstraintLabel: (label: string) => string
+  selectConstraintLabel: (
+    label: string,
+    constraintType: SketchRecord["constraints"][number]["type"],
+  ) => string
+  selectExternalConstraintLabel: (
+    label: string,
+    constraintType: SketchRecord["constraints"][number]["type"],
+  ) => string
   sketch: SketchRecord
   viewport: SketchViewportSize
 }) {
@@ -3221,8 +3230,8 @@ function ConstraintAnnotations({
             glyph.dimensional
               ? editDimensionLabel(glyph.label)
               : glyph.external
-                ? selectExternalConstraintLabel(glyph.label)
-                : selectConstraintLabel(glyph.label)
+                ? selectExternalConstraintLabel(glyph.label, glyph.constraintType)
+                : selectConstraintLabel(glyph.label, glyph.constraintType)
           }
           aria-pressed={selectedConstraintId === glyph.id}
           className={cn(
@@ -4288,6 +4297,9 @@ function appendInferredPointRelation(
   if (relation.type === "point-on-curve") {
     return appendInferredPointOnCurve(sketch, pointId, relation.curveId)
   }
+  if (relation.type === "ellipse-quadrant") {
+    return appendInferredEllipseQuadrant(sketch, pointId, relation)
+  }
   if (relation.type === "arc-midpoint") {
     return appendInferredArcMidpoint(sketch, pointId, relation.arcId)
   }
@@ -4353,6 +4365,34 @@ function appendInferredArcMidpoint(
     : appendSketchConstraint(
         sketch,
         { type: "arc-midpoint", pointId, arcId },
+        createBrowserSketchConstraintId,
+      )
+}
+
+function appendInferredEllipseQuadrant(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  relation: Extract<SketchPointRelationInference, { type: "ellipse-quadrant" }>,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "ellipse-quadrant" &&
+      constraint.pointId === pointId &&
+      constraint.ellipseId === relation.ellipseId &&
+      constraint.axis === relation.axis &&
+      constraint.side === relation.side,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        {
+          type: "ellipse-quadrant",
+          pointId,
+          ellipseId: relation.ellipseId,
+          axis: relation.axis,
+          side: relation.side,
+        },
         createBrowserSketchConstraintId,
       )
 }
@@ -5399,6 +5439,28 @@ function placementInputWithInference(input: {
   }
 }
 
+const pointRelationReferenceKeys = {
+  "arc-midpoint": "arcId",
+  coincident: "pointId",
+  "ellipse-quadrant": "ellipseId",
+  "horizontal-points": "pointId",
+  midpoint: "lineId",
+  "point-on-curve": "curveId",
+  "point-on-line": "lineId",
+  "vertical-points": "pointId",
+} as const satisfies Record<
+  SketchPointRelationInference["type"],
+  "arcId" | "curveId" | "ellipseId" | "lineId" | "pointId"
+>
+
+function pointRelationEntityId(relation: SketchPointRelationInference) {
+  const key = pointRelationReferenceKeys[relation.type]
+  return {
+    id: (relation as unknown as Record<typeof key, SketchEntityId>)[key],
+    key,
+  }
+}
+
 function inferredExternalEntityIds(
   inference: SketchPointInference | undefined,
   pending: PendingGeometry | null,
@@ -5406,10 +5468,7 @@ function inferredExternalEntityIds(
   const ids = new Set<SketchEntityId>()
   const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
     for (const relation of relations) {
-      if ("pointId" in relation) ids.add(relation.pointId)
-      else if ("curveId" in relation) ids.add(relation.curveId)
-      else if ("arcId" in relation) ids.add(relation.arcId)
-      else ids.add(relation.lineId)
+      ids.add(pointRelationEntityId(relation).id)
     }
   }
   if (pending?.kind === "line") appendRelations(pending.startRelations)
@@ -5426,16 +5485,8 @@ function remapPointRelation(
   relation: SketchPointRelationInference,
   projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
 ): SketchPointRelationInference {
-  if ("pointId" in relation) {
-    return { ...relation, pointId: projectedIds.get(relation.pointId) ?? relation.pointId }
-  }
-  if ("curveId" in relation) {
-    return { ...relation, curveId: projectedIds.get(relation.curveId) ?? relation.curveId }
-  }
-  if ("arcId" in relation) {
-    return { ...relation, arcId: projectedIds.get(relation.arcId) ?? relation.arcId }
-  }
-  return { ...relation, lineId: projectedIds.get(relation.lineId) ?? relation.lineId }
+  const { id, key } = pointRelationEntityId(relation)
+  return { ...relation, [key]: projectedIds.get(id) ?? id } as SketchPointRelationInference
 }
 
 function remapInferenceDirection(
@@ -5769,8 +5820,12 @@ function sketchReferencesWakeupCandidate(draft: SketchRecord, candidate: Externa
   )
 }
 
-function isRoundProjectedCurve(candidate: Readonly<{ projectedType: string | null }>) {
-  return candidate.projectedType === "circle" || candidate.projectedType === "arc"
+function isPassiveInferenceCurve(candidate: Readonly<{ projectedType: string | null }>) {
+  return (
+    candidate.projectedType === "circle" ||
+    candidate.projectedType === "arc" ||
+    candidate.projectedType === "ellipse"
+  )
 }
 
 function isPointOrLineWakeupCandidate(candidate: ExternalUseCandidate) {
@@ -5785,12 +5840,12 @@ function isPointOrLineWakeupCandidate(candidate: ExternalUseCandidate) {
 function isExternalWakeupCandidate(
   candidate: ExternalUseCandidate,
 ): candidate is ExternalWakeupCandidate {
-  if (candidate.kind === "curve") return isRoundProjectedCurve(candidate)
+  if (candidate.kind === "curve") return isPassiveInferenceCurve(candidate)
   if (candidate.kind !== "model-curve") return isPointOrLineWakeupCandidate(candidate)
   return (
     candidate.passiveEligible === true &&
     candidate.projectedGeometry !== undefined &&
-    isRoundProjectedCurve(candidate)
+    isPassiveInferenceCurve(candidate)
   )
 }
 
@@ -5888,12 +5943,20 @@ function externalWakeupArc(projection: ExternalProjectedCurve) {
   return center && start && end ? ({ type: "arc", center, start, end } as const) : null
 }
 
+function externalWakeupEllipse(projection: ExternalProjectedCurve) {
+  const [center, primaryAxisPoint, secondaryAxisPoint] = projection.points
+  return center && primaryAxisPoint && secondaryAxisPoint
+    ? ({ type: "ellipse", center, primaryAxisPoint, secondaryAxisPoint } as const)
+    : null
+}
+
 function externalWakeupCurve(
   candidate: Extract<ExternalWakeupCandidate, { kind: "curve" | "model-curve" }>,
 ) {
   const projection = candidate.projectedGeometry
   if (projection?.type === "circle") return externalWakeupCircle(projection)
-  return projection?.type === "arc" ? externalWakeupArc(projection) : null
+  if (projection?.type === "arc") return externalWakeupArc(projection)
+  return projection?.type === "ellipse" ? externalWakeupEllipse(projection) : null
 }
 
 function appendExternalWakeupCurve(
@@ -6014,6 +6077,25 @@ function appendCircleInferenceReference(
   })
 }
 
+function appendEllipseInferenceReference(
+  entity: Extract<SketchEntity, { type: "ellipse" }>,
+  presentation: SketchGeometryPresentation,
+  curves: SketchInferenceCurve[],
+) {
+  const center = presentation.pointsById.get(entity.centerPointId)
+  const primaryAxisPoint = presentation.pointsById.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = presentation.pointsById.get(entity.secondaryAxisPointId)
+  if (!center || !primaryAxisPoint || !secondaryAxisPoint) return
+  curves.push({
+    id: entity.id,
+    centerPointId: entity.centerPointId,
+    type: "ellipse",
+    center,
+    primaryAxisPoint,
+    secondaryAxisPoint,
+  })
+}
+
 function appendCurveInferenceReferences(
   entity: SketchEntity,
   presentation: SketchGeometryPresentation,
@@ -6031,6 +6113,10 @@ function appendCurveInferenceReferences(
   }
   if (entity.type === "circle") {
     appendCircleInferenceReference(entity, presentation, references.curves)
+    return
+  }
+  if (entity.type === "ellipse") {
+    appendEllipseInferenceReference(entity, presentation, references.curves)
   }
 }
 
@@ -8817,8 +8903,14 @@ type SketchDrawingConfiguration = Readonly<{
   originPlaneVisibility: ViewerOriginPlaneVisibility
   repairReferenceId: SketchExternalReferenceId | null
   releasedDragTarget: SketchDragTarget | null
-  selectConstraintLabel: (label: string) => string
-  selectExternalConstraintLabel: (label: string) => string
+  selectConstraintLabel: (
+    label: string,
+    constraintType: SketchRecord["constraints"][number]["type"],
+  ) => string
+  selectExternalConstraintLabel: (
+    label: string,
+    constraintType: SketchRecord["constraints"][number]["type"],
+  ) => string
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -9129,13 +9221,20 @@ function useSketchViewportPresentation(
   const formatter = useFormatter()
   const displayUnits = useDocumentDisplayUnits()
   const editDimensionLabel = useCallback((label: string) => t("editDimension", { label }), [t])
-  const selectConstraintLabel = useCallback(
-    (label: string) => t("selectConstraint", { label }),
+  const accessibleConstraintLabel = useCallback(
+    (label: string, constraintType: SketchRecord["constraints"][number]["type"]) =>
+      constraintType === "ellipse-quadrant" ? t("quadrant") : label,
     [t],
   )
+  const selectConstraintLabel = useCallback(
+    (label: string, constraintType: SketchRecord["constraints"][number]["type"]) =>
+      t("selectConstraint", { label: accessibleConstraintLabel(label, constraintType) }),
+    [accessibleConstraintLabel, t],
+  )
   const selectExternalConstraintLabel = useCallback(
-    (label: string) => t("selectExternalConstraint", { label }),
-    [t],
+    (label: string, constraintType: SketchRecord["constraints"][number]["type"]) =>
+      t("selectExternalConstraint", { label: accessibleConstraintLabel(label, constraintType) }),
+    [accessibleConstraintLabel, t],
   )
   const solve = sketchSolvePresentation({
     copy: {
