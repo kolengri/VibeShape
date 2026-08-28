@@ -429,7 +429,7 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
     const builder = new FlatSketchBuilder()
     const first = builder.addPoint(1, 2)
     const second = builder.addPoint(9, 13)
-    const axis = builder.addReferenceAxis(direction)
+    const axis = builder.addReferenceAxis(direction === "horizontal" ? "vertical" : "horizontal")
     builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
       pointA: first.entity,
       pointB: second.entity,
@@ -530,7 +530,7 @@ export function createPointAlignmentConflictFixture(): PointAlignmentConflictFix
   const second = builder.addPoint(10, 5)
   builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: first.entity })
   builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: second.entity })
-  const axis = builder.addReferenceAxis("horizontal")
+  const axis = builder.addReferenceAxis("vertical")
   const alignmentConstraintHandle = builder.addConstraint(
     SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance,
     {

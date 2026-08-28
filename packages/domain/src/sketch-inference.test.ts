@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { SketchEntityId } from "./identifiers"
 import { createSketchInferenceCandidateQuery, inferSketchPoint } from "./sketch-inference"
 
@@ -152,8 +152,16 @@ describe("sketch inference", () => {
     ).toBe("coincident")
     expect(
       inferSketchPoint({
-        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
-        point: { x: 10.25, y: 0.25 },
+        curves: [
+          {
+            id: arcId,
+            centerPointId: firstPointId,
+            type: "circle",
+            center: { x: 0, y: 0 },
+            radius: 10,
+          },
+        ],
+        point: { x: 7.4, y: 7.4 },
         points: [{ id: firstPointId, x: 0, y: 0 }],
         tolerance: 1,
       }).kind,
@@ -205,19 +213,31 @@ describe("sketch inference", () => {
   it("infers exact point-on-curve relations for circles and bounded arcs", () => {
     expect(
       inferSketchPoint({
-        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
+        curves: [
+          {
+            id: arcId,
+            centerPointId: firstPointId,
+            type: "circle",
+            center: { x: 0, y: 0 },
+            radius: 10,
+          },
+        ],
         point: { x: 10.4, y: 0 },
         points: [],
         tolerance: 1,
       }),
     ).toMatchObject({
-      kind: "point-on-curve",
+      kind: "quadrant",
       point: { x: 10, y: 0 },
-      relations: [{ type: "point-on-curve", curveId: arcId }],
+      relations: [
+        { type: "point-on-curve", curveId: arcId },
+        { type: "horizontal-points", pointId: firstPointId },
+      ],
     })
 
     const arc = {
       id: arcId,
+      centerPointId: firstPointId,
       type: "arc" as const,
       center: { x: 0, y: 0 },
       start: { x: 10, y: 0 },
@@ -242,10 +262,96 @@ describe("sketch inference", () => {
     ).toBe("none")
   })
 
+  it("infers all four exact circle quadrants with center alignment intent", () => {
+    const curve = {
+      id: arcId,
+      centerPointId: firstPointId,
+      type: "circle" as const,
+      center: { x: 2, y: 3 },
+      radius: 10,
+    }
+    const cases = [
+      { point: { x: 12.2, y: 3.1 }, relation: "horizontal-points" },
+      { point: { x: 2.1, y: 13.2 }, relation: "vertical-points" },
+      { point: { x: -8.2, y: 2.9 }, relation: "horizontal-points" },
+      { point: { x: 1.9, y: -7.2 }, relation: "vertical-points" },
+    ] as const
+
+    for (const expected of cases) {
+      expect(
+        inferSketchPoint({ curves: [curve], point: expected.point, points: [], tolerance: 1 }),
+      ).toMatchObject({
+        alignmentGuide: curve.center,
+        kind: "quadrant",
+        relations: [
+          { type: "point-on-curve", curveId: arcId },
+          { type: expected.relation, pointId: firstPointId },
+        ],
+      })
+    }
+  })
+
+  it("limits arc quadrant inference to its positive bounded sweep", () => {
+    const quarterArc = {
+      id: arcId,
+      centerPointId: firstPointId,
+      type: "arc" as const,
+      center: { x: 0, y: 0 },
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+    }
+    expect(
+      inferSketchPoint({
+        curves: [quarterArc],
+        point: { x: 0.2, y: 10.2 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("quadrant")
+    expect(
+      inferSketchPoint({
+        curves: [quarterArc],
+        point: { x: -10.2, y: 0 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("none")
+
+    const wraparoundArc = {
+      ...quarterArc,
+      start: { x: 0, y: -10 },
+      end: { x: 0, y: 10 },
+    }
+    expect(
+      inferSketchPoint({
+        curves: [wraparoundArc],
+        point: { x: 10.2, y: 0 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("quadrant")
+    expect(
+      inferSketchPoint({
+        curves: [wraparoundArc],
+        point: { x: -10.2, y: 0 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("none")
+  })
+
   it("preserves existing line priority when a line and curve overlap", () => {
     expect(
       inferSketchPoint({
-        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
+        curves: [
+          {
+            id: arcId,
+            centerPointId: firstPointId,
+            type: "circle",
+            center: { x: 0, y: 0 },
+            radius: 10,
+          },
+        ],
         lines: [{ ...horizontalLine, start: { x: 8, y: 0 }, end: { x: 12, y: 0 } }],
         point: { x: 10.2, y: 0.2 },
         points: [],
@@ -258,14 +364,26 @@ describe("sketch inference", () => {
     expect(
       inferSketchPoint({
         curves: [
-          { id: secondLineId, type: "circle", center: { x: 0, y: 0 }, radius: 10 },
-          { id: firstLineId, type: "circle", center: { x: 0, y: 0 }, radius: 10 },
+          {
+            id: secondLineId,
+            centerPointId: thirdPointId,
+            type: "circle",
+            center: { x: 0, y: 0 },
+            radius: 10,
+          },
+          {
+            id: firstLineId,
+            centerPointId: fourthPointId,
+            type: "circle",
+            center: { x: 0, y: 0 },
+            radius: 10,
+          },
         ],
         point: { x: 10.5, y: 0 },
         points: [],
         tolerance: 1,
-      }).relations,
-    ).toEqual([{ type: "point-on-curve", curveId: firstLineId }])
+      }).relations[0],
+    ).toEqual({ type: "point-on-curve", curveId: firstLineId })
   })
 
   it("infers a segment intersection with both stable line relations", () => {
@@ -371,6 +489,40 @@ describe("sketch inference", () => {
     expect(
       inferSketchPoint({ ...candidates, point: { x: 400, y: 0.25 }, tolerance: 1 }),
     ).toMatchObject({ kind: "point-on-line", point: { x: 400, y: 0 } })
+  })
+
+  it("selects a stable quadrant from dense coincident curves without sorting candidates", () => {
+    const curves = Array.from({ length: 2_500 }, (_, index) => {
+      const suffix = (index + 100).toString(16).padStart(12, "0")
+      return {
+        id: `018f0000-0000-7000-9000-${suffix}` as SketchEntityId,
+        centerPointId: `018f0000-0000-7001-9000-${suffix}` as SketchEntityId,
+        type: "circle" as const,
+        center: { x: 0, y: 0 },
+        radius: 10,
+      }
+    })
+    const sort = vi.spyOn(Array.prototype, "sort")
+    try {
+      const inference = inferSketchPoint({
+        curves,
+        point: { x: 10.1, y: 0.1 },
+        points: [],
+        tolerance: 1,
+      })
+
+      expect(inference).toMatchObject({
+        kind: "quadrant",
+        point: { x: 10, y: 0 },
+      })
+      expect(inference.relations[0]).toEqual({
+        type: "point-on-curve",
+        curveId: curves[0]?.id,
+      })
+      expect(sort).not.toHaveBeenCalled()
+    } finally {
+      sort.mockRestore()
+    }
   })
 
   it("infers parallel and perpendicular direction from a connected non-axis line", () => {

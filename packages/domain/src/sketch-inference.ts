@@ -26,12 +26,14 @@ export type SketchInferenceArc = Readonly<{
 export type SketchInferenceCurve =
   | Readonly<{
       center: SketchPoint2
+      centerPointId: SketchEntityId
       id: SketchEntityId
       radius: number
       type: "circle"
     }>
   | Readonly<{
       center: SketchPoint2
+      centerPointId: SketchEntityId
       end: SketchPoint2
       id: SketchEntityId
       start: SketchPoint2
@@ -59,6 +61,7 @@ export type SketchPointInferenceKind =
   | "none"
   | "point-on-curve"
   | "point-on-line"
+  | "quadrant"
   | "vertical-alignment"
 
 export type SketchPointInference = Readonly<{
@@ -581,6 +584,129 @@ function nearestPointOnCurveCandidate(
     : undefined
 }
 
+const cardinalDirections = [
+  { alignmentType: "horizontal-points", angle: 0, xScale: 1, yScale: 0 },
+  { alignmentType: "vertical-points", angle: Math.PI / 2, xScale: 0, yScale: 1 },
+  { alignmentType: "horizontal-points", angle: Math.PI, xScale: -1, yScale: 0 },
+  { alignmentType: "vertical-points", angle: (Math.PI * 3) / 2, xScale: 0, yScale: -1 },
+] as const
+
+function curveRadius(curve: SketchInferenceCurve) {
+  return curve.type === "circle"
+    ? curve.radius
+    : Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
+}
+
+function curveContainsAngle(curve: SketchInferenceCurve, angle: number) {
+  if (curve.type === "circle") return true
+  const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
+  const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
+  return positiveAngle(angle - startAngle) <= positiveAngle(endAngle - startAngle) + 1e-12
+}
+
+function materializeCurveCardinalCandidate(
+  curve: SketchInferenceCurve,
+  direction: (typeof cardinalDirections)[number],
+  index: number,
+  point: SketchPoint2,
+): PointCandidate {
+  return {
+    alignmentGuide: curve.center,
+    kind: "quadrant",
+    point,
+    relations: [
+      { type: "point-on-curve", curveId: curve.id },
+      { type: direction.alignmentType, pointId: curve.centerPointId },
+    ],
+    stableKey: `${curve.id}:${index}`,
+  }
+}
+
+function cardinalIdentityIsEarlier(
+  curve: SketchInferenceCurve,
+  index: number,
+  nearestCurve: SketchInferenceCurve,
+  nearestIndex: number,
+) {
+  const curveOrder = curve.id.localeCompare(nearestCurve.id)
+  return curveOrder < 0 || (curveOrder === 0 && index < nearestIndex)
+}
+
+type NearestCurveCardinal = {
+  curve: SketchInferenceCurve | null
+  direction: (typeof cardinalDirections)[number] | null
+  distance: number
+  index: number
+  x: number
+  y: number
+}
+
+function shouldReplaceCurveCardinal(
+  curve: SketchInferenceCurve,
+  index: number,
+  distance: number,
+  maximumDistance: number,
+  nearest: NearestCurveCardinal,
+) {
+  if (distance > maximumDistance || distance > nearest.distance) return false
+  if (distance < nearest.distance) return true
+  return !nearest.curve || cardinalIdentityIsEarlier(curve, index, nearest.curve, nearest.index)
+}
+
+function considerCurveCardinal(
+  point: SketchPoint2,
+  curve: SketchInferenceCurve,
+  radius: number,
+  direction: (typeof cardinalDirections)[number],
+  index: number,
+  maximumDistance: number,
+  nearest: NearestCurveCardinal,
+) {
+  if (!curveContainsAngle(curve, direction.angle)) return
+  const x = curve.center.x + direction.xScale * radius
+  const y = curve.center.y + direction.yScale * radius
+  const distance = (point.x - x) ** 2 + (point.y - y) ** 2
+  if (!shouldReplaceCurveCardinal(curve, index, distance, maximumDistance, nearest)) return
+  nearest.curve = curve
+  nearest.direction = direction
+  nearest.distance = distance
+  nearest.index = index
+  nearest.x = x
+  nearest.y = y
+}
+
+function nearestCurveCardinalCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  const nearest: NearestCurveCardinal = {
+    curve: null,
+    direction: null,
+    distance: Number.POSITIVE_INFINITY,
+    index: -1,
+    x: 0,
+    y: 0,
+  }
+  for (const curve of curves) {
+    const radius = curveRadius(curve)
+    if (!Number.isFinite(radius) || radius <= 0) continue
+    for (let index = 0; index < cardinalDirections.length; index += 1) {
+      const direction = cardinalDirections[index]
+      if (direction) {
+        considerCurveCardinal(point, curve, radius, direction, index, maximumDistance, nearest)
+      }
+    }
+  }
+  return nearest.curve && nearest.direction
+    ? materializeCurveCardinalCandidate(nearest.curve, nearest.direction, nearest.index, {
+        x: nearest.x,
+        y: nearest.y,
+      })
+    : undefined
+}
+
 type PointAlignmentCandidate = Readonly<{
   error: number
   kind: "horizontal-alignment" | "vertical-alignment"
@@ -681,6 +807,7 @@ function pointCandidate(
     nearestIntersectionCandidate(point, nearby, tolerance) ??
     nearestMidpointCandidate(point, lines, tolerance) ??
     nearestPointOnLineCandidate(nearby) ??
+    nearestCurveCardinalCandidate(point, curves, tolerance) ??
     nearestPointOnCurveCandidate(point, curves, tolerance) ??
     nearestPointAlignmentCandidate(point, points, tolerance, anchor)
   )
