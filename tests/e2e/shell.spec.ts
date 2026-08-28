@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane } from "./sketch-helpers"
+import { confirmSketchPlane, selectIdleOriginPlaneInViewport } from "./sketch-helpers"
 
 test.describe("foundation CAD shell", () => {
   test("renders the localized landmark structure", async ({ page }) => {
@@ -48,6 +48,36 @@ test.describe("foundation CAD shell", () => {
     await expect(viewport).not.toHaveAttribute("data-origin-plane-preselection")
     const after = await canvas.screenshot()
     expect(after.equals(before), "Primary drag must change the rendered camera view.").toBe(false)
+  })
+
+  test("starts and reopens a sketch directly from an origin plane selected in 3D", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const xzPick = await selectIdleOriginPlaneInViewport(page, "xz")
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(page.locator("footer[role='status']")).toContainText("Selection: XZ plane")
+    await viewport.getByRole("button", { name: "Hide XZ plane" }).click()
+    await expect(viewport).not.toHaveAttribute("data-origin-plane-selection")
+    await page.mouse.click(xzPick.x, xzPick.y)
+    await expect(viewport).not.toHaveAttribute("data-origin-plane-selection", "xz")
+    await viewport.getByRole("button", { name: "Show XZ plane" }).click()
+    await selectIdleOriginPlaneInViewport(page, "xz")
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+
+    await expect(page.getByRole("heading", { name: "Select a sketch plane" })).toHaveCount(0)
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
+
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("xz")
   })
 
   test("zooms the 3D viewport toward the pointer", async ({ page }) => {

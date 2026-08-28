@@ -53,6 +53,28 @@ export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz"
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable in the 3D viewport.`)
 }
 
+export async function selectIdleOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  const canvas = viewport.locator("canvas")
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+
+  for (let row = 1; row < 12; row += 1) {
+    for (let column = 1; column < 12; column += 1) {
+      const x = bounds.x + (bounds.width * column) / 12
+      const y = bounds.y + (bounds.height * row) / 12
+      await page.mouse.move(x, y)
+      await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+      if ((await viewport.getAttribute("data-origin-plane-preselection")) === plane) {
+        await page.mouse.click(x, y)
+        await expect(viewport).toHaveAttribute("data-origin-plane-selection", plane)
+        return { x, y }
+      }
+    }
+  }
+  throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable while idle.`)
+}
+
 export async function selectModelEdgeInViewport(page: Page, featureLabel: string) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvasBounds = await viewport.locator("canvas").boundingBox()

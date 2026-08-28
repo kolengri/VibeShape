@@ -468,6 +468,7 @@
         "selectionAny": "Any",
         "selectionFace": "{feature} · Face {face}",
         "selectionNone": "None",
+        "selectionOriginPlane": "{plane, select, xy {XY plane} xz {XZ plane} yz {YZ plane} other {Origin plane}}",
         "unnamedFeature": "Unnamed feature",
         "units": "Units: {length} · {angle}"
       },

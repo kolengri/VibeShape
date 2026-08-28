@@ -116,6 +116,7 @@ type WorkspaceContentProps = Readonly<{
     onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
     onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
     onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
+    onOriginPlaneSelect: (plane: ViewerOriginPlane | null) => void
     onSketchProfileSelect: (profile: SketchProfileSelector) => void
     onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
     onSketchRedo: () => void
@@ -129,8 +130,10 @@ type WorkspaceContentProps = Readonly<{
     featurePreview: ReturnType<typeof useFeaturePreview>
     hiddenFeatureIds: readonly FeatureId[]
     hiddenSketchIds: readonly SketchId[]
+    idleOriginPlaneSelectionAvailable: boolean
     originPlaneVisibility: ViewerOriginPlaneVisibility
     preselectedFeatureId: FeatureId | null
+    selectedOriginPlane: ViewerOriginPlane | null
     selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
   }>
@@ -207,6 +210,18 @@ function SketchWorkspaceContent({
   )
 }
 
+function idleOriginPlaneSelection(
+  model: WorkspaceContentProps["model"],
+  sketch: WorkspaceContentProps["sketch"],
+  actions: WorkspaceContentProps["actions"],
+) {
+  if (sketch.activeTool || !model.idleOriginPlaneSelectionAvailable) return undefined
+  return {
+    selectedPlane: model.selectedOriginPlane,
+    onSelect: actions.onOriginPlaneSelect,
+  }
+}
+
 function ModelingWorkspaceContent({
   actions,
   controller,
@@ -255,6 +270,7 @@ function ModelingWorkspaceContent({
         onChange: actions.onOriginPlaneVisibilityChange,
       }}
       preselectedFeatureId={model.preselectedFeatureId}
+      idleOriginPlaneSelection={idleOriginPlaneSelection(model, sketch, actions)}
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
@@ -968,6 +984,7 @@ export type EditorWorkspaceActions = Readonly<{
   editSketch: (sketchId: SketchId) => void
   preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
+  selectOriginPlane: (plane: ViewerOriginPlane | null) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   redoSketchDraft: () => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
@@ -1005,6 +1022,7 @@ type EditorWorkspaceProps = Readonly<{
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onSketchFinalContextChange: (visible: boolean) => void
   preselectedFeatureId: FeatureId | null
+  selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
   sketchCameraMode: SketchCameraMode
@@ -1089,6 +1107,7 @@ function EditorContent({
         onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
         onSketchPlaneSelect: actions.selectSketchPlane,
         onOriginPlaneVisibilityChange: actions.setOriginPlaneVisibility,
+        onOriginPlaneSelect: actions.selectOriginPlane,
         onSketchProfileSelect: actions.setSketchSelectedProfile,
         onSketchProfilesChange: actions.setSketchProfiles,
         onSketchRedo: actions.redoSketchDraft,
@@ -1102,8 +1121,10 @@ function EditorContent({
         featurePreview,
         hiddenFeatureIds: props.hiddenFeatureIds,
         hiddenSketchIds: props.hiddenSketchIds,
+        idleOriginPlaneSelectionAvailable: props.activeTool === null,
         originPlaneVisibility: props.originPlaneVisibility,
         preselectedFeatureId: props.preselectedFeatureId,
+        selectedOriginPlane: props.selectedOriginPlane,
         selectedFeatureId: activeFeatureId(props.activeTool),
         selection,
       }}

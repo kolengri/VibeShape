@@ -1,4 +1,5 @@
 import { useTranslations } from "@vibeshape/i18n"
+import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import type { DocumentControllerState } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
@@ -21,9 +22,21 @@ function selectionFaceOrdinal(controller: DocumentControllerState, selection: Vi
   )
 }
 
-function useSelectionLabel(controller: DocumentControllerState, selection: ViewerSelection | null) {
+function selectedOriginPlaneLabel(
+  t: ReturnType<typeof useTranslations<"app.shell.statusBar">>,
+  selectedOriginPlane: ViewerOriginPlane | null,
+) {
+  if (!selectedOriginPlane) return t("selectionNone")
+  return t("selectionOriginPlane", { plane: selectedOriginPlane })
+}
+
+function useSelectionLabel(
+  controller: DocumentControllerState,
+  selection: ViewerSelection | null,
+  selectedOriginPlane: ViewerOriginPlane | null,
+) {
   const t = useTranslations("app.shell.statusBar")
-  if (!selection) return t("selectionNone")
+  if (!selection) return selectedOriginPlaneLabel(t, selectedOriginPlane)
   const feature = controller.report?.snapshot.features.find(({ id }) => id === selection.featureId)
   return t("selectionFace", {
     face: selectionFaceOrdinal(controller, selection),
@@ -33,14 +46,16 @@ function useSelectionLabel(controller: DocumentControllerState, selection: Viewe
 
 export function StatusBar({
   controller,
+  selectedOriginPlane,
   selection,
 }: {
   controller: DocumentControllerState
+  selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
 }) {
   const t = useTranslations("app.shell.statusBar")
   const displayUnits = useDocumentDisplayUnits()
-  const selectedEntity = useSelectionLabel(controller, selection)
+  const selectedEntity = useSelectionLabel(controller, selection, selectedOriginPlane)
 
   return (
     <footer
