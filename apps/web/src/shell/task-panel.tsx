@@ -17,6 +17,7 @@ import {
   createBrowserFeatureId,
   type DocumentControllerState,
   removeFeature,
+  removeFeaturePreservingModelReferenceIntent,
   resolveDocumentFeatureParameters,
   updateFeature,
   updateSketch,
@@ -34,7 +35,10 @@ import {
   type ExtrusionTargetOption,
 } from "../features/extrusion/extrusion-form"
 import { FeatureDeleteAction } from "../features/part-design/feature-delete-action"
-import { featureDeleteEligibility } from "../features/part-design/feature-delete-eligibility"
+import {
+  type FeatureDeleteEligibility,
+  featureDeleteEligibility,
+} from "../features/part-design/feature-delete-eligibility"
 import {
   type ActivePartDesignTool,
   booleanInputFeatures,
@@ -377,24 +381,17 @@ function featureTaskContext(
     : { key: `create:${revision}`, onSave: addFeature }
 }
 
-function EditFeatureDeleteAction({
-  mode,
-  onDeleted,
-  report,
-}: {
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode
-  onDeleted: () => void
-  report: NonNullable<DocumentControllerState["report"]>
-}) {
+type FeatureDeleteReport = NonNullable<DocumentControllerState["report"]>
+
+function useFeatureDeleteBlockedReason(
+  report: FeatureDeleteReport,
+  eligibility: FeatureDeleteEligibility,
+) {
   const t = useTranslations("app.shell.taskPanel.featureDelete")
   const modelTreeT = useTranslations("app.shell.modelTree")
   const relationT = useTranslations("app.shell.taskPanel.featureDelete.relations")
-  if (mode.kind !== "edit") return null
-
-  const feature = mode.feature
-  const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
-  const eligibility = featureDeleteEligibility(report.snapshot, feature.id)
-  const dependentLabels = new Map<string, string>([
+  if (eligibility.unavailable) return t("unavailable")
+  const labels = new Map<string, string>([
     ...report.snapshot.features.map(
       ({ id, label }) => [`feature:${id}`, label ?? modelTreeT("unnamedFeature")] as const,
     ),
@@ -402,23 +399,98 @@ function EditFeatureDeleteAction({
       ({ id, label }) => [`sketch:${id}`, label ?? modelTreeT("unnamedSketch")] as const,
     ),
   ])
-  const blockerLabels = eligibility.blockers.map((blocker) => {
-    const label = dependentLabels.get(`${blocker.dependent.kind}:${blocker.dependent.id}`)
+  const blockers = eligibility.blockers.map((blocker) => {
     const fallback =
       blocker.dependent.kind === "feature"
         ? modelTreeT("unnamedFeature")
         : modelTreeT("unnamedSketch")
-    return `${label ?? fallback} (${relationT(blocker.relation)})`
+    return `${labels.get(`${blocker.dependent.kind}:${blocker.dependent.id}`) ?? fallback} (${relationT(blocker.relation)})`
   })
-  const remainingBlockers = eligibility.blockerCount - eligibility.blockers.length
-  const blockedReason = eligibility.unavailable
-    ? t("unavailable")
-    : blockerLabels.length > 0
-      ? remainingBlockers > 0
-        ? t("blockedByMore", { blockers: blockerLabels.join(", "), count: remainingBlockers })
-        : t("blockedBy", { blockers: blockerLabels.join(", ") })
-      : null
+  if (blockers.length === 0) return null
+  const remaining = eligibility.blockerCount - eligibility.blockers.length
+  return remaining > 0
+    ? t("blockedByMore", { blockers: blockers.join(", "), count: remaining })
+    : t("blockedBy", { blockers: blockers.join(", ") })
+}
 
+function useAffectedFeatureReferences(
+  report: FeatureDeleteReport,
+  eligibility: FeatureDeleteEligibility,
+) {
+  const t = useTranslations("app.shell.taskPanel.featureDelete")
+  const modelTreeT = useTranslations("app.shell.modelTree")
+  const viewportT = useTranslations("app.shell.viewport")
+  const referenceLabelCopy = {
+    curve: (feature, kind, ordinal) =>
+      viewportT("externalModelCurveCandidate", { feature, kind, ordinal }),
+    face: (feature, ordinal) => viewportT("externalModelFaceReference", { feature, ordinal }),
+    line: (feature, ordinal) => viewportT("externalModelLineCandidate", { feature, ordinal }),
+    point: (feature, ordinal) => viewportT("externalModelPointCandidate", { feature, ordinal }),
+    problem: (feature, kind, status) =>
+      viewportT("externalModelReferenceProblem", { feature, kind, status }),
+    unknownFeature: viewportT("unknownFeature"),
+  } satisfies Parameters<typeof externalModelReferenceLabels>[3]
+  const sketchesById = new Map(report.snapshot.sketches.map((sketch) => [sketch.id, sketch]))
+  const labelsBySketchId = new Map(
+    [...new Set(eligibility.preservableReferences.map(({ sketchId }) => sketchId))].map(
+      (sketchId) => {
+        const sketch = sketchesById.get(sketchId)
+        return [
+          sketchId,
+          externalModelReferenceLabels(
+            report.rebuild.ok ? report.rebuild.response.geometry : [],
+            report.snapshot.features,
+            sketch?.externalReferences,
+            referenceLabelCopy,
+          ),
+        ] as const
+      },
+    ),
+  )
+  return eligibility.preservableReferences.map(({ referenceId, sketchId }) => {
+    const sketch = sketchesById.get(sketchId)
+    return {
+      id: referenceId,
+      label: t("affectedReference", {
+        reference: labelsBySketchId.get(sketchId)?.get(referenceId) ?? t("unknownReference"),
+        sketch: sketch?.label ?? modelTreeT("unnamedSketch"),
+      }),
+    }
+  })
+}
+
+function ActiveFeatureDeleteAction({
+  feature,
+  onDeleted,
+  report,
+}: {
+  feature: FeatureRecord
+  onDeleted: () => void
+  report: FeatureDeleteReport
+}) {
+  const t = useTranslations("app.shell.taskPanel.featureDelete")
+  const modelTreeT = useTranslations("app.shell.modelTree")
+  const featureLabel = feature.label ?? modelTreeT("unnamedFeature")
+  const eligibility = featureDeleteEligibility(report.snapshot, feature.id)
+  const blockedReason = useFeatureDeleteBlockedReason(report, eligibility)
+  const affectedItems = useAffectedFeatureReferences(report, eligibility)
+  const remainingAffectedItems =
+    eligibility.preservableReferenceCount - eligibility.preservableReferences.length
+  const preserveIntent = eligibility.preserveIntentAllowed
+    ? {
+        action: t("preserveAction"),
+        title: t("preserveTitle", { feature: featureLabel }),
+        description: t("preserveDescription"),
+        confirm: t("preserveConfirm"),
+        affectedReferences: t("affectedReferences"),
+        affectedItems,
+        remainingAffectedItems:
+          remainingAffectedItems > 0
+            ? t("moreAffectedReferences", { count: remainingAffectedItems })
+            : null,
+        failed: t("preserveFailed"),
+      }
+    : null
   return (
     <FeatureDeleteAction
       baseRevision={report.snapshot.revision}
@@ -436,8 +508,24 @@ function EditFeatureDeleteAction({
       feature={feature}
       onDeleted={onDeleted}
       onRemove={removeFeature}
+      {...(preserveIntent
+        ? { onRemovePreservingIntent: removeFeaturePreservingModelReferenceIntent, preserveIntent }
+        : {})}
     />
   )
+}
+
+function EditFeatureDeleteAction({
+  mode,
+  onDeleted,
+  report,
+}: {
+  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode
+  onDeleted: () => void
+  report: FeatureDeleteReport
+}) {
+  if (mode.kind !== "edit") return null
+  return <ActiveFeatureDeleteAction feature={mode.feature} onDeleted={onDeleted} report={report} />
 }
 
 function ExtrusionTaskPanel({

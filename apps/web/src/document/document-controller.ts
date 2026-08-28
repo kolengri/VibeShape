@@ -461,6 +461,22 @@ export function removeFeature(baseRevision: number, featureId: FeatureRecord["id
   }))
 }
 
+export function removeFeaturePreservingModelReferenceIntent(
+  baseRevision: number,
+  featureId: FeatureRecord["id"],
+) {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { featureId },
+  }))
+}
+
 function commitSketchMutation(
   kind: "org.vibeshape.sketch.add" | "org.vibeshape.sketch.update",
   baseRevision: number,

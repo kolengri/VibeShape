@@ -182,6 +182,31 @@ test.describe("full sketch editor", () => {
         exact: true,
       }),
     ).toBeVisible()
+    const preserveDelete = page.getByRole("button", { name: "Delete and keep references" })
+    await expect(preserveDelete).toBeEnabled()
+    await preserveDelete.click()
+    const preserveDialog = page.getByRole("alertdialog")
+    await expect(
+      preserveDialog.getByRole("heading", {
+        name: "Delete Box 1 and keep sketch references?",
+      }),
+    ).toBeVisible()
+    await expect(
+      preserveDialog.getByText(`Sketch 1 — ${replacementLabel}`, { exact: true }),
+    ).toBeVisible()
+    await preserveDialog
+      .getByRole("button", { name: "Delete and keep references", exact: true })
+      .dblclick()
+
+    await expect(page.getByRole("treeitem", { name: "Box 1" })).toHaveCount(0)
+    await expect(
+      page.getByRole("button", { name: "Open Sketch 1 to repair 1 broken reference" }),
+    ).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.reload()
+    await expect(
+      page.getByRole("button", { name: "Open Sketch 1 to repair 1 broken reference" }),
+    ).toBeVisible()
   })
 
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({

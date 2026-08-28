@@ -42,6 +42,17 @@ const copy = {
   readOnly: "Open the document with write access to delete features.",
 } as const
 
+const preserveIntent = {
+  action: "Delete and preserve repair intent",
+  title: "Delete Box 1 and preserve repair intent?",
+  description: "The listed references will remain available for repair.",
+  confirm: "Delete and preserve repair intent",
+  affectedReferences: "References that will need repair",
+  affectedItems: [{ id: "reference-1", label: "Sketch 1 · Box 1 · Edge 1" }],
+  remainingAffectedItems: null,
+  failed: "The feature could not be deleted while preserving repair intent.",
+} as const
+
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined
   const promise = new Promise<T>((promiseResolve) => {
@@ -98,6 +109,33 @@ describe("FeatureDeleteAction", () => {
     expect(confirm.getAttribute("aria-busy")).toBe("true")
     expect(screen.getByRole("alertdialog")).not.toBeNull()
 
+    operation.resolve({ ok: true })
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce())
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+  })
+
+  it("offers a separate guarded preserve-intent action with affected references", async () => {
+    const user = userEvent.setup()
+    const operation = deferred<{ ok: true }>()
+    const onRemovePreservingIntent = vi.fn(() => operation.promise)
+    const { onDeleted } = renderAction({
+      blockedReason: "Deletion is blocked by: Sketch 1 (model geometry reference).",
+      onRemovePreservingIntent,
+      preserveIntent,
+    })
+
+    expect((screen.getByRole("button", { name: copy.action }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    await user.click(screen.getByRole("button", { name: preserveIntent.action }))
+    expect(screen.getByText(preserveIntent.affectedReferences)).toBeTruthy()
+    expect(screen.getByText(preserveIntent.affectedItems[0].label)).toBeTruthy()
+    const confirm = screen.getByRole("button", { name: preserveIntent.confirm })
+    await user.dblClick(confirm)
+
+    expect(onRemovePreservingIntent).toHaveBeenCalledOnce()
+    expect(onRemovePreservingIntent).toHaveBeenCalledWith(5, featureIds.box)
+    expect(confirm.getAttribute("aria-busy")).toBe("true")
     operation.resolve({ ok: true })
     await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce())
     expect(screen.queryByRole("alertdialog")).toBeNull()
