@@ -3619,13 +3619,75 @@ describe("SketchViewport", () => {
       onConstraintSelectionChange,
     })
 
-    expect(document.querySelector('[data-sketch-constraint-kind="geometric"]')).toBeTruthy()
+    expect(
+      document.querySelector(
+        '[data-sketch-constraint-kind="geometric"][data-sketch-constraint-source="internal"]',
+      ),
+    ).toBeTruthy()
     const dimension = document.querySelector('[data-sketch-constraint-kind="dimension"]')
     expect(dimension).toBeTruthy()
     fireEvent.click(dimension as Element)
     expect(onConstraintSelectionChange).toHaveBeenCalledWith(
       sketch.constraints.find((constraint) => "value" in constraint)?.id,
     )
+  })
+
+  it("renders a line relation to projected geometry as an external selectable constraint", async () => {
+    const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3276")
+    const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3277")
+    const projectedEndPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3278")
+    const externalConstraintId = sketchConstraintIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3279",
+    )
+    const localLine = requiredSketchEntity(sketch, "line")
+    const target: SketchRecord = {
+      ...sketch,
+      constraints: [
+        ...sketch.constraints,
+        {
+          schemaVersion: 0,
+          id: externalConstraintId,
+          type: "parallel",
+          firstEntityId: localLine.id,
+          secondEntityId: projectedLineId,
+        },
+      ],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3280"),
+          kind: "line",
+          sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3281"),
+          sourceLineId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3282"),
+          projectedLineId,
+          projectedStartPointId,
+          projectedEndPointId,
+        },
+      ],
+    }
+    const onConstraintSelectionChange = vi.fn()
+    renderViewport({
+      draft: target,
+      sketch: target,
+      solveSketch: vi.fn(async () =>
+        solveResult(
+          new Map([
+            [projectedStartPointId, { x: 0, y: 20 }],
+            [projectedEndPointId, { x: 30, y: 20 }],
+          ]),
+        ),
+      ),
+      onConstraintSelectionChange,
+    })
+
+    const glyph = await screen.findByRole("button", { name: "Select external relation ∥" })
+    expect(glyph.getAttribute("data-sketch-constraint-id")).toBe(externalConstraintId)
+    expect(glyph.getAttribute("data-sketch-constraint-source")).toBe("external")
+    expect(glyph.className).toContain("text-sketch-reference-context")
+    expect(glyph.querySelector("svg")).toBeTruthy()
+
+    fireEvent.click(glyph)
+    expect(onConstraintSelectionChange).toHaveBeenCalledWith(externalConstraintId)
   })
 
   it("edits an existing dimension in place without replacing its identity", async () => {

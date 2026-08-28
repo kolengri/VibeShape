@@ -51,9 +51,12 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    const externalRelation = page.getByRole("button", { name: "Select external relation ×" })
+    await expect(externalRelation).toHaveAttribute("data-sketch-constraint-source", "external")
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await expect(externalRelation).toHaveAttribute("data-sketch-constraint-source", "external")
   })
 
   test("intersects a planar model face through the real OCCT worker and rebuilds the saved sketch", async ({

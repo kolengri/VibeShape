@@ -911,6 +911,7 @@
         "transformRotate": "Rotate selection",
         "transformScale": "Scale selection uniformly",
         "selectConstraint": "Select constraint {label}",
+        "selectExternalConstraint": "Select external relation {label}",
         "orientation": "{plane} · {unit}"
       },
       "transform": {

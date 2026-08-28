@@ -60,6 +60,7 @@ import {
   type SketchProfileSelector,
   type SketchRecord,
   setSketchDimensionValue,
+  sketchConstraintEntityIds,
   sketchConstraintIdSchema,
   sketchCurvePointIds,
   sketchEllipseGeometry,
@@ -820,7 +821,11 @@ function createSketchGeometryPresentation(
     sketch,
     solution,
   )
-  const pointsById = new Map([...points, ...externalPoints].map((point) => [point.id, point]))
+  const pointsById = new Map(
+    [...points, ...externalPoints, ...externalLines.flatMap(({ start, end }) => [start, end])].map(
+      (point) => [point.id, point],
+    ),
+  )
   const curves = sketch.entities.filter(
     (entity): entity is SketchCurveEntity => entity.type !== "point",
   )
@@ -2863,6 +2868,7 @@ function SketchTransformGeometry({
 }
 
 type ConstraintGlyph = Readonly<{
+  external: boolean
   id: SketchConstraintId
   label: string
   point: SketchPoint2
@@ -3030,33 +3036,50 @@ function constraintGlyph(
   pointAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   geometryAnchor: (id: SketchEntityId) => SketchPoint2 | null,
   ellipseAxisAnchor: (id: SketchEntityId, axis: "primary" | "secondary") => SketchPoint2 | null,
+  projectedEntityIds: ReadonlySet<string>,
 ): ConstraintGlyph | null {
   const point = constraintAnchor(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor)
   const label = dimensionalLabel(constraint) ?? geometricConstraintLabels[constraint.type]
   return point && label
-    ? { id: constraint.id, label, point, dimensional: "value" in constraint }
+    ? {
+        external: sketchConstraintEntityIds(constraint).some((id) => projectedEntityIds.has(id)),
+        id: constraint.id,
+        label,
+        point,
+        dimensional: "value" in constraint,
+      }
     : null
 }
 
-function constraintGlyphs(sketch: SketchRecord, solution: SolvedSketchWire | null) {
-  const points = new Map(displayPoints(sketch, solution).map((point) => [point.id, point]))
-  const entities = new Map(sketch.entities.map((entity) => [entity.id, entity]))
-  const solvedCircles = new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius]))
-  const pointAnchor = (id: SketchEntityId): SketchPoint2 | null => points.get(id) ?? null
+function constraintGlyphs(sketch: SketchRecord, geometry: SketchGeometryPresentation) {
+  const projectedEntities = projectedExternalSketchEntities(sketch.externalReferences ?? [])
+  const projectedEntityIds = new Set(projectedEntities.map(({ id }) => id))
+  const entities = new Map(
+    [...sketch.entities, ...projectedEntities].map((entity) => [entity.id, entity]),
+  )
+  const pointAnchor = (id: SketchEntityId): SketchPoint2 | null =>
+    geometry.pointsById.get(id) ?? null
   const geometryAnchor = (id: SketchEntityId) =>
-    entityAnchor(entities.get(id), points, solvedCircles)
+    entityAnchor(entities.get(id), geometry.pointsById, geometry.solvedCircles)
   const ellipseAxisAnchor = (id: SketchEntityId, axis: "primary" | "secondary") => {
     const entity = entities.get(id)
     if (entity?.type !== "ellipse" && entity?.type !== "elliptical-arc") return null
     return (
-      points.get(axis === "primary" ? entity.primaryAxisPointId : entity.secondaryAxisPointId) ??
-      null
+      geometry.pointsById.get(
+        axis === "primary" ? entity.primaryAxisPointId : entity.secondaryAxisPointId,
+      ) ?? null
     )
   }
 
   return sketch.constraints
     .map((constraint) =>
-      constraintGlyph(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor),
+      constraintGlyph(
+        constraint,
+        pointAnchor,
+        geometryAnchor,
+        ellipseAxisAnchor,
+        projectedEntityIds,
+      ),
     )
     .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
 }
@@ -3104,27 +3127,29 @@ function ConstraintAnnotations({
   bounds,
   dimensionLabelPositions,
   editDimensionLabel,
+  geometry,
   interactive,
   onEditDimension,
   onDimensionPositionChange,
   onSelect,
   selectedConstraintId,
   selectConstraintLabel,
+  selectExternalConstraintLabel,
   sketch,
-  solution,
   viewport,
 }: {
   bounds: SketchBounds
   dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
   editDimensionLabel: (label: string) => string
+  geometry: SketchGeometryPresentation
   interactive: boolean
   onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onSelect: (constraintId: SketchConstraintId) => void
   selectedConstraintId: SketchConstraintId | null
   selectConstraintLabel: (label: string) => string
+  selectExternalConstraintLabel: (label: string) => string
   sketch: SketchRecord
-  solution: SolvedSketchWire | null
   viewport: SketchViewportSize
 }) {
   const pointerEventsClass = interactive ? "pointer-events-auto" : "pointer-events-none"
@@ -3148,7 +3173,7 @@ function ConstraintAnnotations({
     },
     [],
   )
-  const glyphs = constraintGlyphs(sketch, solution).map((glyph) => {
+  const glyphs = constraintGlyphs(sketch, geometry).map((glyph) => {
     const position = glyph.dimensional ? dimensionLabelPositions.get(glyph.id) : null
     return position ? { ...glyph, point: position } : glyph
   })
@@ -3160,8 +3185,13 @@ function ConstraintAnnotations({
           type="button"
           data-sketch-constraint-id={glyph.id}
           data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
+          data-sketch-constraint-source={glyph.external ? "external" : "internal"}
           aria-label={
-            glyph.dimensional ? editDimensionLabel(glyph.label) : selectConstraintLabel(glyph.label)
+            glyph.dimensional
+              ? editDimensionLabel(glyph.label)
+              : glyph.external
+                ? selectExternalConstraintLabel(glyph.label)
+                : selectConstraintLabel(glyph.label)
           }
           aria-pressed={selectedConstraintId === glyph.id}
           className={cn(
@@ -3171,7 +3201,11 @@ function ConstraintAnnotations({
             }),
             glyph.dimensional
               ? `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] text-foreground shadow-xs`
-              : `${pointerEventsClass} absolute h-5 min-w-5 -translate-y-1/2 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold text-primary shadow-xs`,
+              : cn(
+                  pointerEventsClass,
+                  "absolute h-5 min-w-5 -translate-y-1/2 gap-0.5 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold shadow-xs",
+                  glyph.external ? "text-sketch-reference-context" : "text-primary",
+                ),
           )}
           style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
           onClick={(event) => {
@@ -3262,6 +3296,7 @@ function ConstraintAnnotations({
             window.addEventListener("pointercancel", finish)
           }}
         >
+          {glyph.external ? <Link2 aria-hidden="true" className="size-2.5" /> : null}
           {glyph.label}
         </button>
       ))}
@@ -3289,13 +3324,14 @@ function SketchDrawingAnnotations({
       bounds={state.bounds}
       dimensionLabelPositions={dimensionLabelPositions}
       editDimensionLabel={configuration.editDimensionLabel}
+      geometry={state.geometry}
       interactive={state.editable && isSketchSelectionTool(configuration.editorTool)}
       onEditDimension={onEditDimension}
       onDimensionPositionChange={onDimensionPositionChange}
       selectedConstraintId={configuration.selectedConstraintId}
       selectConstraintLabel={configuration.selectConstraintLabel}
+      selectExternalConstraintLabel={configuration.selectExternalConstraintLabel}
       sketch={sketch}
-      solution={configuration.annotationSolution}
       viewport={state.viewportSize}
       onSelect={configuration.onConstraintSelectionChange}
     />
@@ -8381,6 +8417,7 @@ type SketchDrawingConfiguration = Readonly<{
   repairReferenceId: SketchExternalReferenceId | null
   releasedDragTarget: SketchDragTarget | null
   selectConstraintLabel: (label: string) => string
+  selectExternalConstraintLabel: (label: string) => string
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedProfile: SketchProfileSelector | null
@@ -8695,6 +8732,10 @@ function useSketchViewportPresentation(
     (label: string) => t("selectConstraint", { label }),
     [t],
   )
+  const selectExternalConstraintLabel = useCallback(
+    (label: string) => t("selectExternalConstraint", { label }),
+    [t],
+  )
   const solve = sketchSolvePresentation({
     copy: {
       degreesOfFreedom: (count) => t("degreesOfFreedom", { count }),
@@ -8722,6 +8763,7 @@ function useSketchViewportPresentation(
     editDimensionLabel,
     emptyMessage: t("empty"),
     selectConstraintLabel,
+    selectExternalConstraintLabel,
     solve,
   }
 }
@@ -8777,6 +8819,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
     selectedEntityIds,
     selectedProfile,
     selectConstraintLabel,
+    selectExternalConstraintLabel,
     solution,
     variables,
   } = configuration
@@ -8808,6 +8851,7 @@ function useStableSketchDrawingConfiguration(configuration: SketchDrawingConfigu
       selectedEntityIds,
       selectedProfile,
       selectConstraintLabel,
+      selectExternalConstraintLabel,
       solution,
       variables,
     ],
@@ -8948,6 +8992,7 @@ export function SketchViewport({
     selectedConstraintId,
     selectedEntityIds,
     selectConstraintLabel: presentation.selectConstraintLabel,
+    selectExternalConstraintLabel: presentation.selectExternalConstraintLabel,
     solution: displaySolution,
     variables: controller.report?.snapshot.variables ?? [],
     onDraftChange,
