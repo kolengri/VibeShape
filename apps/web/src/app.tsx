@@ -19,7 +19,10 @@ import {
 } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
 import { EditorSessionProvider, useEditorSession } from "./editor-session/editor-session-provider"
-import type { EditorSessionActions } from "./editor-session/editor-session-store"
+import type {
+  EditorSessionActions,
+  EditorSessionState,
+} from "./editor-session/editor-session-store"
 import {
   activePartDesignCommand,
   editPartDesignTool,
@@ -215,6 +218,13 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     },
     [controller.report?.snapshot.features, sessionActions],
   )
+  const toggleAllSketchVisibility = useCallback(
+    () =>
+      sessionActions.toggleAllSketchVisibility(
+        controller.report?.snapshot.sketches.map(({ id }) => id) ?? [],
+      ),
+    [controller.report?.snapshot.sketches, sessionActions],
+  )
 
   return useMemo(
     () =>
@@ -248,6 +258,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchSelectedProfile: sessionActions.setSketchSelectedProfile,
         sketchSaved: sessionActions.saveSketch,
         switchWorkspace: sessionActions.switchWorkspace,
+        toggleAllSketchVisibility,
         undoSketchDraft: sessionActions.undoSketchDraft,
       }) satisfies EditorWorkspaceActions,
     [
@@ -259,14 +270,26 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       editSketch,
       select,
       sessionActions,
+      toggleAllSketchVisibility,
     ],
   )
 }
 
-function EditorApplication({
-  controller,
-}: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
-  const session = useEditorSession(
+type EditorApplicationSession = Pick<
+  EditorSessionState,
+  | "activePartDesignTool"
+  | "commandPaletteOpen"
+  | "hiddenFeatureIds"
+  | "hiddenSketchIds"
+  | "originPlaneVisibility"
+  | "preselectedFeatureId"
+  | "selection"
+  | "sketch"
+  | "workspace"
+>
+
+function useEditorApplicationSession() {
+  return useEditorSession(
     useShallow((state) => ({
       activePartDesignTool: state.activePartDesignTool,
       commandPaletteOpen: state.commandPaletteOpen,
@@ -279,29 +302,29 @@ function EditorApplication({
       workspace: state.workspace,
     })),
   )
-  const sessionActions = useEditorSession((state) => state.actions)
-  const workspaceActions = useEditorWorkspaceActions(controller)
-  const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
-  const setCommandPaletteOpenWithFocus = useCallback(
-    (open: boolean, returnFocusTarget?: HTMLElement) => {
-      if (open) {
-        commandPaletteReturnFocusRef.current =
-          returnFocusTarget ??
-          (document.activeElement instanceof HTMLElement ? document.activeElement : null)
-      }
-      sessionActions.setCommandPaletteOpen(open)
-    },
-    [sessionActions],
-  )
-  const extrusionAvailable =
+}
+
+function sketchProfileCommandAvailable(session: EditorApplicationSession) {
+  return (
     session.sketch.selectedProfile !== null &&
     session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
     session.activePartDesignTool === null
-  const revolveAvailable = extrusionAvailable
-  const slotFromSelectionAvailable =
-    session.sketch.draft !== null &&
-    selectedSketchLineId(session.sketch.draft, session.sketch.selectedEntityIds) !== null
-  const commands = resolveBuiltInEditorCommands({
+  )
+}
+
+function sketchLineCommandAvailable(session: EditorApplicationSession) {
+  if (!session.sketch.draft) return false
+  return selectedSketchLineId(session.sketch.draft, session.sketch.selectedEntityIds) !== null
+}
+
+function resolveEditorApplicationCommands(
+  controller: ReturnType<typeof useDocumentController>,
+  session: EditorApplicationSession,
+  sessionActions: EditorSessionActions,
+  workspaceActions: EditorWorkspaceActions,
+) {
+  const profileCommandAvailable = sketchProfileCommandAvailable(session)
+  return resolveBuiltInEditorCommands({
     actions: {
       cancelActive: workspaceActions.closeTool,
       createBox: workspaceActions.createBox,
@@ -317,24 +340,92 @@ function EditorApplication({
       setSketchFinalContext: sessionActions.setSketchFinalContext,
       setSketchTool: workspaceActions.setSketchEditorTool,
       switchWorkspace: workspaceActions.switchWorkspace,
+      toggleAllSketchVisibility: workspaceActions.toggleAllSketchVisibility,
       undoSketch: workspaceActions.undoSketchDraft,
     },
     state: {
       activePartDesignCommand: activePartDesignCommand(session.activePartDesignTool),
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
-      extrusionAvailable,
-      revolveAvailable,
+      extrusionAvailable: profileCommandAvailable,
+      hasSavedSketches: (controller.report?.snapshot.sketches.length ?? 0) > 0,
+      revolveAvailable: profileCommandAvailable,
       sketchConstruction: session.sketch.construction,
       sketchCameraMode: session.sketch.cameraMode,
       sketchFinalContext: session.sketch.showFinalContext,
       sketchRedoAvailable: session.sketch.redoStack.length > 0,
-      slotFromSelectionAvailable,
+      slotFromSelectionAvailable: sketchLineCommandAvailable(session),
       sketchTool: session.sketch.editorTool,
       sketchUndoAvailable: session.sketch.undoStack.length > 0,
       workspace: session.workspace,
     },
   })
+}
+
+function EditorWorkspaceComposition({
+  controller,
+  session,
+  sessionActions,
+  workspaceActions,
+}: Readonly<{
+  controller: ReturnType<typeof useDocumentController>
+  session: EditorApplicationSession
+  sessionActions: EditorSessionActions
+  workspaceActions: EditorWorkspaceActions
+}>) {
+  return (
+    <EditorWorkspace
+      actions={workspaceActions}
+      activeSketchId={session.sketch.activeSketchId}
+      activeSketchTool={session.sketch.activeSketchTool}
+      activeTool={session.activePartDesignTool}
+      controller={controller}
+      hiddenFeatureIds={session.hiddenFeatureIds}
+      hiddenSketchIds={session.hiddenSketchIds}
+      originPlaneVisibility={session.originPlaneVisibility}
+      onSketchFinalContextChange={sessionActions.setSketchFinalContext}
+      preselectedFeatureId={session.preselectedFeatureId}
+      workspace={session.workspace}
+      selection={session.selection}
+      sketchConstruction={session.sketch.construction}
+      sketchCameraMode={session.sketch.cameraMode}
+      sketchFinalContext={session.sketch.showFinalContext}
+      sketchDraft={session.sketch.draft}
+      sketchEditorTool={session.sketch.editorTool}
+      sketchRepairReferenceId={session.sketch.repairReferenceId}
+      sketchFailedConstraintIds={session.sketch.failedConstraintIds}
+      sketchProfiles={session.sketch.profiles}
+      sketchSelectedConstraintId={session.sketch.selectedConstraintId}
+      sketchSelectedEntityIds={session.sketch.selectedEntityIds}
+      sketchSelectedProfile={session.sketch.selectedProfile}
+    />
+  )
+}
+
+function EditorApplication({
+  controller,
+}: Readonly<{ controller: ReturnType<typeof useDocumentController> }>) {
+  const session = useEditorApplicationSession()
+  const sessionActions = useEditorSession((state) => state.actions)
+  const workspaceActions = useEditorWorkspaceActions(controller)
+  const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
+  const setCommandPaletteOpenWithFocus = useCallback(
+    (open: boolean, returnFocusTarget?: HTMLElement) => {
+      if (open) {
+        commandPaletteReturnFocusRef.current =
+          returnFocusTarget ??
+          (document.activeElement instanceof HTMLElement ? document.activeElement : null)
+      }
+      sessionActions.setCommandPaletteOpen(open)
+    },
+    [sessionActions],
+  )
+  const commands = resolveEditorApplicationCommands(
+    controller,
+    session,
+    sessionActions,
+    workspaceActions,
+  )
   useEditorCommandShortcuts({
     commands,
     paletteOpen: session.commandPaletteOpen,
@@ -356,30 +447,11 @@ function EditorApplication({
         onOpenChange={setCommandPaletteOpenWithFocus}
       />
       <CommandToolbar commands={commands} />
-      <EditorWorkspace
-        actions={workspaceActions}
-        activeSketchId={session.sketch.activeSketchId}
-        activeSketchTool={session.sketch.activeSketchTool}
-        activeTool={session.activePartDesignTool}
+      <EditorWorkspaceComposition
         controller={controller}
-        hiddenFeatureIds={session.hiddenFeatureIds}
-        hiddenSketchIds={session.hiddenSketchIds}
-        originPlaneVisibility={session.originPlaneVisibility}
-        onSketchFinalContextChange={sessionActions.setSketchFinalContext}
-        preselectedFeatureId={session.preselectedFeatureId}
-        workspace={session.workspace}
-        selection={session.selection}
-        sketchConstruction={session.sketch.construction}
-        sketchCameraMode={session.sketch.cameraMode}
-        sketchFinalContext={session.sketch.showFinalContext}
-        sketchDraft={session.sketch.draft}
-        sketchEditorTool={session.sketch.editorTool}
-        sketchRepairReferenceId={session.sketch.repairReferenceId}
-        sketchFailedConstraintIds={session.sketch.failedConstraintIds}
-        sketchProfiles={session.sketch.profiles}
-        sketchSelectedConstraintId={session.sketch.selectedConstraintId}
-        sketchSelectedEntityIds={session.sketch.selectedEntityIds}
-        sketchSelectedProfile={session.sketch.selectedProfile}
+        session={session}
+        sessionActions={sessionActions}
+        workspaceActions={workspaceActions}
       />
       <StatusBar controller={controller} selection={session.selection} />
     </main>

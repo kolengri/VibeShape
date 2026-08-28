@@ -13,6 +13,7 @@ export const editorCommandIds = {
   sketchMidpointLine: "org.vibeshape.editor.sketch.tool.midpoint-line",
   sketchThreePointArc: "org.vibeshape.editor.sketch.tool.three-point-arc",
   sketchThreePointCircle: "org.vibeshape.editor.sketch.tool.three-point-circle",
+  toggleAllSketchVisibility: "org.vibeshape.editor.sketch.view.toggle-all-visibility",
   sketchCenterRectangle: "org.vibeshape.editor.sketch.tool.center-rectangle",
   sketchCenteredAlignedRectangle: "org.vibeshape.editor.sketch.tool.centered-aligned-rectangle",
   sketchCenteredSlot: "org.vibeshape.editor.sketch.tool.centered-slot",
@@ -104,6 +105,7 @@ export type EditorCommandIcon =
   | "undo"
   | "three-point-arc"
   | "three-point-circle"
+  | "sketch-visibility"
 
 export type EditorCommandLabelKey =
   | "cancelActive"
@@ -149,6 +151,7 @@ export type EditorCommandLabelKey =
   | "sketchTangentArc"
   | "sketchTrim"
   | "sketchUndo"
+  | "toggleAllSketchVisibility"
   | "workspaceModel"
   | "workspaceSketch"
 
@@ -158,6 +161,7 @@ export type EditorCommandDisabledReason =
   | "documentUnavailable"
   | "noActiveCommand"
   | "noSketchRedo"
+  | "noSavedSketches"
   | "noSketchUndo"
   | "readOnly"
   | "requiresExistingSketch"

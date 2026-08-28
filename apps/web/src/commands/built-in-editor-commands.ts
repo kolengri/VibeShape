@@ -38,6 +38,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     setSketchFinalContext: (visible: boolean) => void
     setSketchTool: (tool: SketchEditorTool) => void
     switchWorkspace: (workspace: EditorWorkspaceName) => void
+    toggleAllSketchVisibility: () => void
     undoSketch: () => void
   }>
   state: Readonly<{
@@ -45,6 +46,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     activeSketchTool: ActiveSketchTool | null
     controller: DocumentControllerState
     extrusionAvailable: boolean
+    hasSavedSketches: boolean
     revolveAvailable?: boolean
     sketchConstruction: boolean
     sketchCameraMode: SketchCameraMode
@@ -86,6 +88,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "createSketch",
     ownerModuleId: sketchOwner,
     toolbarGroup: "model-primary",
+  },
+  {
+    group: "workspace",
+    icon: "sketch-visibility",
+    id: editorCommandIds.toggleAllSketchVisibility,
+    labelKey: "toggleAllSketchVisibility",
+    ownerModuleId: sketchOwner,
+    shortcut: { key: "h", modifiers: ["shift"] },
   },
   {
     group: "modeling",
@@ -505,6 +515,13 @@ function sketchToolHandler(
 }
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.toggleAllSketchVisibility(),
+    getEligibility: ({ state }) =>
+      state.hasSavedSketches ? editorCommandEnabled() : editorCommandDisabled("noSavedSketches"),
+    id: editorCommandIds.toggleAllSketchVisibility,
+    ownerModuleId: sketchOwner,
+  },
   {
     execute: ({ actions }) => actions.switchWorkspace("model"),
     getEligibility: ({ state }) =>

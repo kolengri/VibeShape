@@ -409,14 +409,28 @@ test.describe("full sketch editor", () => {
     await expect(earlierLine).toHaveCount(1)
     await expect(earlierLine).not.toHaveAttribute("stroke-dasharray")
 
+    await page.keyboard.press("Shift+H")
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Show all sketches" })).toBeVisible()
+
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     const orbitContext = page.locator("section[data-sketch-context-mode='orbit']")
     await expect(orbitContext).toHaveAttribute("data-rendered-feature-count", "1")
-    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "2")
+    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "1")
 
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
+    await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
+
+    await page.keyboard.press("Shift+H")
+    await expect(page.getByRole("button", { name: "Hide all sketches" })).toBeVisible()
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    await expect(orbitContext).toHaveAttribute("data-rendered-sketch-count", "2")
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+
     await page.getByRole("button", { name: "Hide Sketch 1" }).click()
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
     await page.getByRole("button", { name: "Show Sketch 1" }).click()
