@@ -100,15 +100,24 @@ function quarterTurns(rotation: number) {
 }
 
 function transformOrientationConstraint(
-  constraint: Extract<SketchConstraint, { type: "horizontal" | "vertical" }>,
+  constraint: Extract<
+    SketchConstraint,
+    { type: "horizontal" | "horizontal-points" | "vertical" | "vertical-points" }
+  >,
   rotation: number,
 ): SketchConstraint | null {
   const turns = quarterTurns(rotation)
   if (turns === null) return null
   if (Math.abs(turns) % 2 === 0) return constraint
-  return {
-    ...constraint,
-    type: constraint.type === "horizontal" ? "vertical" : "horizontal",
+  switch (constraint.type) {
+    case "horizontal":
+      return { ...constraint, type: "vertical" }
+    case "vertical":
+      return { ...constraint, type: "horizontal" }
+    case "horizontal-points":
+      return { ...constraint, type: "vertical-points" }
+    case "vertical-points":
+      return { ...constraint, type: "horizontal-points" }
   }
 }
 
@@ -135,7 +144,12 @@ function constraintSelectionRelation(
 
 function rotatedConstraint(constraint: SketchConstraint, rotation: number) {
   if (Math.abs(rotation) <= TRANSFORM_EPSILON) return constraint
-  if (constraint.type === "horizontal" || constraint.type === "vertical") {
+  if (
+    constraint.type === "horizontal" ||
+    constraint.type === "horizontal-points" ||
+    constraint.type === "vertical" ||
+    constraint.type === "vertical-points"
+  ) {
     return transformOrientationConstraint(constraint, rotation)
   }
   if (constraint.type === "horizontal-distance" || constraint.type === "vertical-distance") {

@@ -317,8 +317,17 @@ describe("analytical sketch transforms", () => {
       { type: "horizontal", lineId: line.id },
       constraintId,
     )
-    const fixed = appendSketchConstraint(
+    const aligned = appendSketchConstraint(
       horizontal,
+      {
+        type: "horizontal-points",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+      },
+      constraintId,
+    )
+    const fixed = appendSketchConstraint(
+      aligned,
       { type: "fixed", pointId: line.startPointId },
       constraintId,
     )
@@ -343,6 +352,7 @@ describe("analytical sketch transforms", () => {
     expect(transformedEnd.y).toBeCloseTo(4)
     expect(transformed.constraints).toEqual([
       expect.objectContaining({ id: horizontal.constraints[0]?.id, type: "vertical" }),
+      expect.objectContaining({ id: aligned.constraints[1]?.id, type: "vertical-points" }),
     ])
   })
 

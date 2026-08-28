@@ -515,4 +515,56 @@ describe("sketchRecordSchema", () => {
 
     expect(parsed.success).toBe(true)
   })
+
+  test("accepts point alignment constraints and rejects self or non-point references", () => {
+    const fixture = validSketch()
+    const valid = sketchRecordSchema.safeParse({
+      ...fixture,
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(300),
+          type: "horizontal-points",
+          firstPointId: pointA,
+          secondPointId: pointB,
+        },
+        {
+          schemaVersion: 0,
+          id: constraintId(301),
+          type: "vertical-points",
+          firstPointId: pointA,
+          secondPointId: pointC,
+        },
+      ],
+    })
+    expect(valid.success).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(302),
+            type: "horizontal-points",
+            firstPointId: pointA,
+            secondPointId: pointA,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(303),
+            type: "vertical-points",
+            firstPointId: pointA,
+            secondPointId: lineA,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
 })

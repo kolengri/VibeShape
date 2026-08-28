@@ -40,6 +40,8 @@ export type SketchInferenceCurve =
 
 export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
+  | Readonly<{ pointId: SketchEntityId; type: "horizontal-points" }>
+  | Readonly<{ pointId: SketchEntityId; type: "vertical-points" }>
   | Readonly<{ lineId: SketchEntityId; type: "midpoint" }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
   | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
@@ -51,13 +53,16 @@ export type SketchDirectionInference =
 
 export type SketchPointInferenceKind =
   | "coincident"
+  | "horizontal-alignment"
   | "intersection"
   | "midpoint"
   | "none"
   | "point-on-curve"
   | "point-on-line"
+  | "vertical-alignment"
 
 export type SketchPointInference = Readonly<{
+  alignmentGuide?: SketchPoint2
   direction: SketchDirectionInference | null
   kind: SketchPointInferenceKind
   point: SketchPoint2
@@ -79,6 +84,7 @@ const MAX_INDEXED_LINE_CELLS = 256
 const MAX_SPATIAL_INDEX_LEVELS = 32
 
 type PointCandidate = Readonly<{
+  alignmentGuide?: SketchPoint2
   kind: Exclude<SketchPointInferenceKind, "coincident" | "none">
   point: SketchPoint2
   relations: readonly SketchPointRelationInference[]
@@ -215,6 +221,49 @@ function queriedSpatialCandidates<Candidate extends Readonly<{ id: SketchEntityI
   return [...candidates.values()]
 }
 
+function sortedAxisCandidates<Point extends SketchInferencePoint>(
+  points: readonly Point[],
+  axis: "x" | "y",
+) {
+  return [...points].sort(
+    (left, right) => left[axis] - right[axis] || left.id.localeCompare(right.id),
+  )
+}
+
+function lowerBoundByAxis<Point extends SketchInferencePoint>(
+  points: readonly Point[],
+  axis: "x" | "y",
+  value: number,
+) {
+  let lower = 0
+  let upper = points.length
+  while (lower < upper) {
+    const middle = Math.floor((lower + upper) / 2)
+    if ((points[middle]?.[axis] ?? Number.POSITIVE_INFINITY) < value) lower = middle + 1
+    else upper = middle
+  }
+  return lower
+}
+
+function queriedAxisCandidates<Point extends SketchInferencePoint>(
+  points: readonly Point[],
+  axis: "x" | "y",
+  value: number,
+  tolerance: number,
+) {
+  const candidates: Point[] = []
+  for (
+    let index = lowerBoundByAxis(points, axis, value - tolerance);
+    index < points.length &&
+    (points[index]?.[axis] ?? Number.POSITIVE_INFINITY) <= value + tolerance;
+    index += 1
+  ) {
+    const candidate = points[index]
+    if (candidate) candidates.push(candidate)
+  }
+  return candidates
+}
+
 function indexedLineCells(line: SketchInferenceLine, baseCellSize: number) {
   let cellSize = baseCellSize
   for (let level = 0; level < MAX_SPATIAL_INDEX_LEVELS; level += 1) {
@@ -238,15 +287,9 @@ export function createSketchInferenceCandidateQuery<Point extends SketchInferenc
     }
   }
   const lineBucketsByCellSize = new Map<number, Map<string, SketchInferenceLine[]>>()
-  const pointBuckets = new Map<string, Point[]>()
+  const pointsByX = sortedAxisCandidates(input.points, "x")
+  const pointsByY = sortedAxisCandidates(input.points, "y")
   const overflowLines: SketchInferenceLine[] = []
-  for (const point of input.points) {
-    addSpatialCandidate(
-      pointBuckets,
-      spatialCellKey(spatialCell(point.x, input.cellSize), spatialCell(point.y, input.cellSize)),
-      point,
-    )
-  }
   for (const line of input.lines) {
     const indexed = indexedLineCells(line, input.cellSize)
     if (!indexed) {
@@ -271,10 +314,16 @@ export function createSketchInferenceCandidateQuery<Point extends SketchInferenc
       }
     }
     for (const line of overflowLines) linesById.set(line.id, line)
-    const pointRadius = Math.max(0, Math.ceil(tolerance / input.cellSize))
+    const pointsById = new Map<SketchEntityId, Point>()
+    for (const candidate of queriedAxisCandidates(pointsByX, "x", point.x, tolerance)) {
+      pointsById.set(candidate.id, candidate)
+    }
+    for (const candidate of queriedAxisCandidates(pointsByY, "y", point.y, tolerance)) {
+      pointsById.set(candidate.id, candidate)
+    }
     return {
       lines: [...linesById.values()],
-      points: queriedSpatialCandidates(pointBuckets, point, pointRadius, input.cellSize),
+      points: [...pointsById.values()],
     }
   }
 }
@@ -532,18 +581,108 @@ function nearestPointOnCurveCandidate(
     : undefined
 }
 
+type PointAlignmentCandidate = Readonly<{
+  error: number
+  kind: "horizontal-alignment" | "vertical-alignment"
+  point: SketchPoint2
+  relation: "horizontal-points" | "vertical-points"
+  span: number
+  target: SketchInferencePoint
+}>
+
+function pointAlignmentCandidates(
+  point: SketchPoint2,
+  target: SketchInferencePoint,
+): readonly PointAlignmentCandidate[] {
+  return [
+    {
+      error: Math.abs(point.y - target.y),
+      kind: "horizontal-alignment",
+      point: { x: point.x, y: target.y },
+      relation: "horizontal-points",
+      span: Math.abs(point.x - target.x),
+      target,
+    },
+    {
+      error: Math.abs(point.x - target.x),
+      kind: "vertical-alignment",
+      point: { x: target.x, y: point.y },
+      relation: "vertical-points",
+      span: Math.abs(point.y - target.y),
+      target,
+    },
+  ]
+}
+
+function comparePointAlignmentCandidates(
+  left: PointAlignmentCandidate,
+  right: PointAlignmentCandidate,
+) {
+  return (
+    left.error - right.error ||
+    left.span - right.span ||
+    `${left.kind}:${left.target.id}`.localeCompare(`${right.kind}:${right.target.id}`)
+  )
+}
+
+function preferredPointAlignmentCandidate(
+  current: PointAlignmentCandidate | undefined,
+  candidate: PointAlignmentCandidate | undefined,
+) {
+  if (!candidate) return current
+  return !current || comparePointAlignmentCandidates(candidate, current) < 0 ? candidate : current
+}
+
+function pointAlignmentCandidateForTarget(
+  point: SketchPoint2,
+  target: SketchInferencePoint,
+  tolerance: number,
+) {
+  return pointAlignmentCandidates(point, target)
+    .filter((candidate) => candidate.error <= tolerance)
+    .reduce<PointAlignmentCandidate | undefined>(preferredPointAlignmentCandidate, undefined)
+}
+
+function nearestPointAlignmentCandidate(
+  point: SketchPoint2,
+  points: readonly SketchInferencePoint[],
+  tolerance: number,
+  anchor?: SketchPoint2,
+) {
+  let nearest: PointAlignmentCandidate | undefined
+  for (const target of points) {
+    if (anchor && squaredDistance(anchor, target) <= 1e-24) continue
+    nearest = preferredPointAlignmentCandidate(
+      nearest,
+      pointAlignmentCandidateForTarget(point, target, tolerance),
+    )
+  }
+  return nearest
+    ? {
+        alignmentGuide: { x: nearest.target.x, y: nearest.target.y },
+        kind: nearest.kind,
+        point: nearest.point,
+        relations: [{ type: nearest.relation, pointId: nearest.target.id }],
+        stableKey: nearest.target.id,
+      }
+    : undefined
+}
+
 function pointCandidate(
   point: SketchPoint2,
+  points: readonly SketchInferencePoint[],
   lines: readonly SketchInferenceLine[],
   curves: readonly SketchInferenceCurve[],
   tolerance: number,
+  anchor?: SketchPoint2,
 ) {
   const nearby = nearbyLines(point, lines, tolerance)
   return (
     nearestIntersectionCandidate(point, nearby, tolerance) ??
     nearestMidpointCandidate(point, lines, tolerance) ??
     nearestPointOnLineCandidate(nearby) ??
-    nearestPointOnCurveCandidate(point, curves, tolerance)
+    nearestPointOnCurveCandidate(point, curves, tolerance) ??
+    nearestPointAlignmentCandidate(point, points, tolerance, anchor)
   )
 }
 
@@ -717,6 +856,7 @@ function candidateDirection(input: Parameters<typeof inferSketchPoint>[0], point
 
 function candidatePointInference(candidate: PointCandidate): SketchPointInference {
   return {
+    ...(candidate.alignmentGuide ? { alignmentGuide: candidate.alignmentGuide } : {}),
     direction: null,
     kind: candidate.kind,
     point: candidate.point,
@@ -748,9 +888,11 @@ function plainPointInference(point: SketchPoint2): SketchPointInference {
 function newPointInference(input: Parameters<typeof inferSketchPoint>[0]): SketchPointInference {
   const candidate = pointCandidate(
     input.point,
+    input.points,
     input.lines ?? [],
     input.curves ?? [],
     input.tolerance,
+    input.anchor,
   )
   if (candidate) return candidatePointInference(candidate)
   const direction = candidateDirection(input, input.point)

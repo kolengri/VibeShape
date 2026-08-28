@@ -1030,6 +1030,52 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("previews and persists point-to-point horizontal alignment", () => {
+    const sourcePoint = sketchEntitiesOfType(sketch, "point")[0]
+    if (!sourcePoint) throw new Error("The alignment fixture requires a point.")
+    const target: SketchRecord = {
+      ...sketch,
+      entities: [sourcePoint],
+      constraints: [],
+      externalReferences: [],
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: sourcePoint.x + 20, y: sourcePoint.y + 0.2 })
+
+    fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
+    expect(document.querySelector('[data-sketch-inference="horizontal-alignment"]')).toBeNull()
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="horizontal-alignment"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-inference-guide="horizontal-alignment"]'),
+    ).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const createdPoint = sketchEntitiesOfType(updated, "point").find(
+      (entity) => entity.id !== sourcePoint.id,
+    )
+    if (!createdPoint) throw new Error("Point alignment must create a new point.")
+    expect(createdPoint.y).toBe(sourcePoint.y)
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: createdPoint.id,
+        secondPointId: sourcePoint.id,
+      }),
+    )
+  })
+
   it("wakes an earlier sketch line and commits one associative point-on-line relation", () => {
     const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3235")
     const collidingSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3230")
@@ -1684,6 +1730,36 @@ describe("SketchViewport", () => {
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     const localPoint = requiredSketchEntity(updated, "point")
     expectModelCurveCenterRelation(updated, candidate, localPoint.id)
+  })
+
+  it("persists point alignment to a passively woken model-circle center", () => {
+    const { candidate, drawing, onDraftChange } = renderModelCurveCenterWakeup(
+      "point",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f329a",
+    )
+    const pointer = clientPointForSketch(drawing, { x: 20, y: 0.2 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="horizontal-alignment"]')).toBeTruthy()
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.find(({ kind }) => kind === "model-curve")
+    const localPoint = requiredSketchEntity(updated, "point")
+    expect(reference).toMatchObject({ kind: "model-curve", reference: candidate.reference })
+    if (reference?.kind !== "model-curve") {
+      throw new Error("Point alignment must persist the model curve center reference.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "horizontal-points",
+        firstPointId: localPoint.id,
+        secondPointId: reference.projectedPointIds[0],
+      }),
+    )
   })
 
   it("keeps a model-circle center provisional until Line commits", () => {

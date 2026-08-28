@@ -509,6 +509,12 @@ const symmetricConstraintSchema = pointPairSchema
 const fixedConstraintSchema = sketchConstraintEnvelopeSchema
   .extend({ type: z.literal("fixed"), pointId: sketchEntityIdSchema })
   .strict()
+const horizontalPointsConstraintSchema = pointPairSchema
+  .extend({ type: z.literal("horizontal-points") })
+  .strict()
+const verticalPointsConstraintSchema = pointPairSchema
+  .extend({ type: z.literal("vertical-points") })
+  .strict()
 const horizontalDistanceConstraintSchema = pointPairSchema
   .extend({ type: z.literal("horizontal-distance"), value: lengthQuantitySchema })
   .strict()
@@ -616,6 +622,8 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   midpointConstraintSchema,
   symmetricConstraintSchema,
   fixedConstraintSchema,
+  horizontalPointsConstraintSchema,
+  verticalPointsConstraintSchema,
   horizontalDistanceConstraintSchema,
   verticalDistanceConstraintSchema,
   distanceConstraintSchema,
@@ -791,6 +799,8 @@ const constraintEntityReferenceRules = {
   fixed: { pointId: ["point"] },
   "horizontal-distance": { firstPointId: ["point"], secondPointId: ["point"] },
   "vertical-distance": { firstPointId: ["point"], secondPointId: ["point"] },
+  "horizontal-points": { firstPointId: ["point"], secondPointId: ["point"] },
+  "vertical-points": { firstPointId: ["point"], secondPointId: ["point"] },
   distance: { firstPointId: ["point"], secondPointId: ["point"] },
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
@@ -923,8 +933,16 @@ function nativeSketchCapacity(structure: SketchStructure) {
     { entities: 3, parameters: 7 },
   )
   const projectionCount =
-    Number(structure.constraints.some(({ type }) => type === "horizontal-distance")) +
-    Number(structure.constraints.some(({ type }) => type === "vertical-distance"))
+    Number(
+      structure.constraints.some(
+        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+      ),
+    ) +
+    Number(
+      structure.constraints.some(
+        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+      ),
+    )
   return {
     entities:
       authored.entities +

@@ -192,8 +192,17 @@ describe("analytical sketch patterns", () => {
       { type: "horizontal", lineId: line.id },
       constraintId,
     )
-    const fixed = appendSketchConstraint(
+    const aligned = appendSketchConstraint(
       horizontal,
+      {
+        type: "horizontal-points",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+      },
+      constraintId,
+    )
+    const fixed = appendSketchConstraint(
+      aligned,
       { type: "fixed", pointId: line.startPointId },
       constraintId,
     )
@@ -206,8 +215,10 @@ describe("analytical sketch patterns", () => {
     })
     expect(quarterTurn.sketch.constraints.map(({ type }) => type)).toEqual([
       "horizontal",
+      "horizontal-points",
       "fixed",
       "vertical",
+      "vertical-points",
     ])
 
     const arbitrary = patternSketchEntities(fixed, {
@@ -216,7 +227,7 @@ describe("analytical sketch patterns", () => {
       entityIds: [line.id],
       transforms: [{ rotationRadians: Math.PI / 3, translation: { x: 0, y: 0 } }],
     })
-    expect(arbitrary.sketch.constraints).toHaveLength(2)
+    expect(arbitrary.sketch.constraints).toHaveLength(3)
   })
 
   it("materializes circular occurrences and rotates compatible orientation constraints", () => {

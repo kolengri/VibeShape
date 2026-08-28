@@ -2984,6 +2984,7 @@ const geometricConstraintLabels: Partial<
   equal: "=",
   fixed: "F",
   horizontal: "H",
+  "horizontal-points": "H",
   midpoint: "M",
   parallel: "∥",
   perpendicular: "⊥",
@@ -2992,6 +2993,7 @@ const geometricConstraintLabels: Partial<
   tangent: "T",
   symmetric: "S",
   vertical: "V",
+  "vertical-points": "V",
 }
 
 const ellipseAxisDimensionAxes: Partial<
@@ -4261,6 +4263,25 @@ function appendInferredPointRelations(
     if (relation.type === "coincident") {
       return appendInferredCoincidence(current, pointId, relation.pointId)
     }
+    if (relation.type === "horizontal-points" || relation.type === "vertical-points") {
+      const exists = current.constraints.some(
+        (constraint) =>
+          constraint.type === relation.type &&
+          ((constraint.firstPointId === pointId && constraint.secondPointId === relation.pointId) ||
+            (constraint.firstPointId === relation.pointId && constraint.secondPointId === pointId)),
+      )
+      return exists
+        ? current
+        : appendSketchConstraint(
+            current,
+            {
+              type: relation.type,
+              firstPointId: pointId,
+              secondPointId: relation.pointId,
+            },
+            createBrowserSketchConstraintId,
+          )
+    }
     if (relation.type === "point-on-curve") {
       const exists = current.constraints.some(
         (constraint) =>
@@ -4424,6 +4445,19 @@ function InferenceGlyph({
       data-sketch-inference={inference.kind !== "none" ? inference.kind : inference.direction?.type}
       transform={`translate(${inference.point.x} ${-inference.point.y})`}
     >
+      {inference.alignmentGuide ? (
+        <line
+          x1={inference.alignmentGuide.x - inference.point.x}
+          y1={-(inference.alignmentGuide.y - inference.point.y)}
+          x2={0}
+          y2={0}
+          className="stroke-ring/70"
+          data-sketch-inference-guide={inference.kind}
+          strokeDasharray={`${size * 0.45} ${size * 0.35}`}
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
       <PointInferenceMark kind={inference.kind} size={size} />
       <DirectionInferenceMark glyph={directionGlyph} size={size} />
     </g>
@@ -4471,6 +4505,8 @@ function DirectionInferenceMark({ glyph, size }: { glyph: string | null; size: n
 
 function pointInferenceGlyph(kind: SketchPointInference["kind"]) {
   switch (kind) {
+    case "horizontal-alignment":
+      return "H"
     case "intersection":
       return "×"
     case "midpoint":
@@ -4478,6 +4514,8 @@ function pointInferenceGlyph(kind: SketchPointInference["kind"]) {
     case "point-on-curve":
     case "point-on-line":
       return "⊙"
+    case "vertical-alignment":
+      return "V"
     default:
       return ""
   }
@@ -5302,7 +5340,12 @@ function inferredExternalEntityIds(
   const ids = new Set<SketchEntityId>()
   const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
     for (const relation of relations) {
-      if (relation.type === "coincident") ids.add(relation.pointId)
+      if (
+        relation.type === "coincident" ||
+        relation.type === "horizontal-points" ||
+        relation.type === "vertical-points"
+      )
+        ids.add(relation.pointId)
       else if (relation.type === "point-on-curve") ids.add(relation.curveId)
       else ids.add(relation.lineId)
     }
@@ -5321,7 +5364,11 @@ function remapPointRelation(
   relation: SketchPointRelationInference,
   projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
 ): SketchPointRelationInference {
-  if (relation.type === "coincident") {
+  if (
+    relation.type === "coincident" ||
+    relation.type === "horizontal-points" ||
+    relation.type === "vertical-points"
+  ) {
     return { ...relation, pointId: projectedIds.get(relation.pointId) ?? relation.pointId }
   }
   if (relation.type === "point-on-curve") {

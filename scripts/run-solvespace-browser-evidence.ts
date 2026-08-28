@@ -8,6 +8,7 @@ import {
   createConstraintCoverageFixtures,
   createDegenerateLineFixture,
   createLineFixture,
+  createPointAlignmentConflictFixture,
 } from "./solvespace-fixtures"
 
 const repositoryRoot = resolve(import.meta.dir, "..")
@@ -30,9 +31,14 @@ async function findAvailablePort() {
   })
 }
 
-function serializeSystem(name: string, system: FlatSketchSystemInput) {
+function serializeSystem(
+  name: string,
+  system: FlatSketchSystemInput,
+  expectedFailedConstraint?: number,
+) {
   return {
     name,
+    expectedFailedConstraint,
     parameterMetadata: [...system.parameterMetadata],
     parameterValues: [...system.parameterValues],
     entityRecords: [...system.entityRecords],
@@ -52,6 +58,7 @@ interface BrowserSolveResult {
   failedConstraints: number[]
   maximumResidual: number
   name: string
+  expectedFailedConstraint?: number
   solverStatus: number
 }
 
@@ -88,6 +95,7 @@ self.onmessage = async (event) => {
       );
       return {
         name: fixture.name,
+        expectedFailedConstraint: fixture.expectedFailedConstraint,
         abiStatus: result.abiStatus,
         solverStatus: result.solverStatus,
         degreesOfFreedom: result.degreesOfFreedom,
@@ -149,10 +157,16 @@ function startEvidenceServer(port: number) {
 }
 
 function createSerializedFixtures() {
+  const pointAlignmentConflict = createPointAlignmentConflictFixture()
   return [
     serializeSystem("under-constrained", createLineFixture("under").system),
     serializeSystem("fully-constrained", createLineFixture("fully").system),
     serializeSystem("over-constrained", createLineFixture("over").system),
+    serializeSystem(
+      "point-alignment-conflict",
+      pointAlignmentConflict.system,
+      pointAlignmentConflict.alignmentConstraintHandle,
+    ),
     ...createConstraintCoverageFixtures().map((fixture) =>
       serializeSystem(fixture.name, fixture.system),
     ),
@@ -222,6 +236,18 @@ function validateWorkerReport(report: WorkerReport) {
     "Over-constrained browser status was invalid.",
   )
   requireCondition(over.failedConstraints.length > 0, "Browser conflict set was empty.")
+  const pointAlignmentConflict = findResult(report.results, "point-alignment-conflict")
+  requireCondition(
+    new Set([1, 4]).has(pointAlignmentConflict.solverStatus),
+    "Point alignment browser conflict status was invalid.",
+  )
+  requireCondition(
+    pointAlignmentConflict.expectedFailedConstraint !== undefined &&
+      pointAlignmentConflict.failedConstraints.includes(
+        pointAlignmentConflict.expectedFailedConstraint,
+      ),
+    "Point alignment browser conflict handle was missing.",
+  )
   const angle = findResult(report.results, "angle")
   requireCondition(angle.maximumResidual > 0, "Browser residual capture returned only zero.")
 }

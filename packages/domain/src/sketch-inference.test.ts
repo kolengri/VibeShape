@@ -101,6 +101,80 @@ describe("sketch inference", () => {
     ).toThrow("finite non-negative")
   })
 
+  it("infers persistent horizontal and vertical alignment to authored points", () => {
+    expect(
+      inferSketchPoint({
+        point: { x: 20, y: 10.4 },
+        points: [{ id: firstPointId, x: 5, y: 10 }],
+        tolerance: 1,
+      }),
+    ).toEqual({
+      alignmentGuide: { x: 5, y: 10 },
+      direction: null,
+      kind: "horizontal-alignment",
+      point: { x: 20, y: 10 },
+      relations: [{ type: "horizontal-points", pointId: firstPointId }],
+      target: { kind: "new", point: { x: 20, y: 10 } },
+    })
+    expect(
+      inferSketchPoint({
+        point: { x: 5.25, y: 30 },
+        points: [{ id: firstPointId, x: 5, y: 10 }],
+        tolerance: 1,
+      }),
+    ).toMatchObject({
+      kind: "vertical-alignment",
+      point: { x: 5, y: 30 },
+      relations: [{ type: "vertical-points", pointId: firstPointId }],
+    })
+  })
+
+  it("prefers the closest alignment source along a shared guide", () => {
+    expect(
+      inferSketchPoint({
+        point: { x: 20, y: 10.2 },
+        points: [
+          { id: firstPointId, x: -100, y: 10 },
+          { id: secondPointId, x: 15, y: 10 },
+        ],
+        tolerance: 1,
+      }).relations,
+    ).toEqual([{ type: "horizontal-points", pointId: secondPointId }])
+  })
+
+  it("keeps direct point and curve relations ahead of point alignment", () => {
+    expect(
+      inferSketchPoint({
+        point: { x: 10.25, y: 0.25 },
+        points: [{ id: firstPointId, x: 10, y: 0 }],
+        tolerance: 1,
+      }).kind,
+    ).toBe("coincident")
+    expect(
+      inferSketchPoint({
+        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
+        point: { x: 10.25, y: 0.25 },
+        points: [{ id: firstPointId, x: 0, y: 0 }],
+        tolerance: 1,
+      }).kind,
+    ).toBe("point-on-curve")
+  })
+
+  it("does not turn the active line anchor into a point-pair alignment relation", () => {
+    expect(
+      inferSketchPoint({
+        anchor: { x: 10, y: 20 },
+        point: { x: 40, y: 20.5 },
+        points: [{ id: firstPointId, x: 10, y: 20 }],
+        tolerance: 1,
+      }),
+    ).toMatchObject({
+      direction: { type: "horizontal" },
+      kind: "none",
+      relations: [],
+    })
+  })
+
   it("infers persistent midpoint and point-on-line relations", () => {
     expect(
       inferSketchPoint({
@@ -254,6 +328,24 @@ describe("sketch inference", () => {
     expect(inferSketchPoint({ ...candidates, point, tolerance: 1 })).toEqual(
       inferSketchPoint({ lines, point, points: farPoints, tolerance: 1 }),
     )
+  })
+
+  it("keeps axis-aligned point candidates queryable across the sketch", () => {
+    const query = createSketchInferenceCandidateQuery({
+      cellSize: 1,
+      lines: [],
+      points: [
+        { id: firstPointId, x: -100, y: 5 },
+        { id: secondPointId, x: 7, y: 100 },
+        { id: thirdPointId, x: 100, y: 100 },
+      ],
+    })
+
+    expect(
+      query({ x: 7.2, y: 5.25 }, 0.5)
+        .points.map(({ id }) => id)
+        .sort(),
+    ).toEqual([firstPointId, secondPointId])
   })
 
   it("keeps exceptionally long lines locally queryable through coarser index levels", () => {

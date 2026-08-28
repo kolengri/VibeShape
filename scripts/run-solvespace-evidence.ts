@@ -12,6 +12,7 @@ import {
   createConstraintCoverageFixtures,
   createDegenerateLineFixture,
   createLineFixture,
+  createPointAlignmentConflictFixture,
 } from "./solvespace-fixtures"
 
 interface SolveSpaceFactoryModule {
@@ -134,6 +135,17 @@ function runStatusEvidence(session: SketchSolverSession) {
   return { fully, over, under }
 }
 
+function runPointAlignmentConflictEvidence(session: SketchSolverSession) {
+  const fixture = createPointAlignmentConflictFixture()
+  const result = session.solve(fixture.system)
+  requireCondition(result.status === "over-constrained", "Point alignment conflict was not found.")
+  requireCondition(
+    result.failedConstraintHandles.includes(fixture.alignmentConstraintHandle),
+    "Point alignment handle was missing from the conflict set.",
+  )
+  return result
+}
+
 function runCoverageEvidence(session: SketchSolverSession) {
   const fixtures = createConstraintCoverageFixtures()
   const results = fixtures.map((fixture) => {
@@ -210,6 +222,7 @@ async function main() {
   const abiRejections = runAbiRejectionEvidence(nativeModule)
 
   const { fully, over, under } = runStatusEvidence(session)
+  const pointAlignmentConflict = runPointAlignmentConflictEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -239,6 +252,7 @@ async function main() {
       underConstrained: under.status,
       overConstrained: over.status,
       conflictSet: [...over.failedConstraintHandles],
+      pointAlignmentConflictSet: [...pointAlignmentConflict.failedConstraintHandles],
     },
     constraintCoverage,
     degenerateGeometry: {

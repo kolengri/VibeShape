@@ -42,6 +42,11 @@ export interface ConstraintCoverageFixture {
   system: FlatSketchSystemInput
 }
 
+export interface PointAlignmentConflictFixture {
+  alignmentConstraintHandle: number
+  system: FlatSketchSystemInput
+}
+
 class FlatSketchBuilder {
   readonly #parameterMetadata: number[] = []
   readonly #parameterValues: number[] = []
@@ -420,6 +425,25 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
     }
   })
 
+  const pointAlignments = (["horizontal", "vertical"] as const).map((direction) => {
+    const builder = new FlatSketchBuilder()
+    const first = builder.addPoint(1, 2)
+    const second = builder.addPoint(9, 13)
+    const axis = builder.addReferenceAxis(direction)
+    builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+      pointA: first.entity,
+      pointB: second.entity,
+      entityA: axis,
+      value: 0,
+      workplane: 0,
+    })
+    return {
+      name: `${direction} point alignment`,
+      constraintTypes: [SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance],
+      system: builder.build(),
+    }
+  })
+
   const diameter = (() => {
     const builder = new FlatSketchBuilder()
     const center = builder.addPoint(0, 0)
@@ -489,6 +513,7 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
     fixed,
     distance,
     ...projectedDistances,
+    ...pointAlignments,
     twoLineConstraintFixture(
       "angle",
       SOLVESPACE_CONSTRAINT_TYPE.angle,
@@ -497,6 +522,26 @@ export function createConstraintCoverageFixtures(): ConstraintCoverageFixture[] 
     ),
     diameter,
   ]
+}
+
+export function createPointAlignmentConflictFixture(): PointAlignmentConflictFixture {
+  const builder = new FlatSketchBuilder()
+  const first = builder.addPoint(0, 0)
+  const second = builder.addPoint(10, 5)
+  builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: first.entity })
+  builder.addConstraint(SOLVESPACE_CONSTRAINT_TYPE.whereDragged, { pointA: second.entity })
+  const axis = builder.addReferenceAxis("horizontal")
+  const alignmentConstraintHandle = builder.addConstraint(
+    SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance,
+    {
+      pointA: first.entity,
+      pointB: second.entity,
+      entityA: axis,
+      value: 0,
+      workplane: 0,
+    },
+  )
+  return { alignmentConstraintHandle, system: builder.build() }
 }
 
 export function createDegenerateLineFixture(): FlatSketchSystemInput {
