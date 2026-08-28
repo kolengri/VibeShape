@@ -2405,8 +2405,8 @@ function externalContextPresentation(
     className: highlighted
       ? "stroke-amber-500"
       : candidate.construction
-        ? "stroke-muted-foreground/50"
-        : "stroke-muted-foreground/75",
+        ? "stroke-sketch-reference-context/75"
+        : "stroke-sketch-reference-context",
     sourceLabel: highlighted ? candidate.label : undefined,
     strokeDasharray: candidate.construction ? "5 3" : undefined,
     strokeWidth: highlighted ? 2.5 : 1.25,
@@ -8306,16 +8306,29 @@ const StableSketchViewportContent = memo(SketchViewportContent)
 
 function SketchSolveOverlay({
   active,
+  contextGeometry,
+  contextSketchLabels,
   degreesOfFreedom,
   profileText,
   status,
 }: {
   active: boolean
+  contextGeometry: readonly ExternalSketchContextGeometry[]
+  contextSketchLabels: ReadonlyMap<string, string>
   degreesOfFreedom: string | null
   profileText: string | null
   status: string | null
 }) {
+  const t = useTranslations("app.sketch.viewport")
   if (!active) return null
+  const contextSources = new Map<string, { count: number; label: string }>()
+  for (const geometry of contextGeometry) {
+    const current = contextSources.get(geometry.sourceSketchId)
+    contextSources.set(geometry.sourceSketchId, {
+      count: (current?.count ?? 0) + 1,
+      label: contextSketchLabels.get(geometry.sourceSketchId) ?? geometry.label,
+    })
+  }
   return (
     <div className="pointer-events-none absolute left-3 top-3 grid gap-1 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm">
       <span className="font-medium" role="status">
@@ -8323,6 +8336,19 @@ function SketchSolveOverlay({
       </span>
       {degreesOfFreedom ? <span className="text-muted-foreground">{degreesOfFreedom}</span> : null}
       {profileText ? <span className="text-muted-foreground">{profileText}</span> : null}
+      {contextSources.size > 0 ? (
+        <fieldset className="mt-1 grid gap-1 border-x-0 border-b-0 border-t border-border/70 pt-1.5 text-sketch-reference-context">
+          <legend className="flex items-center gap-1.5 pr-1 font-medium">
+            <Link2 aria-hidden="true" className="size-3.5" />
+            {t("referenceContext")}
+          </legend>
+          {[...contextSources.entries()].map(([sourceSketchId, source]) => (
+            <span key={sourceSketchId} className="pl-5 text-muted-foreground">
+              {t("referenceContextSource", source)}
+            </span>
+          ))}
+        </fieldset>
+      ) : null}
     </div>
   )
 }
@@ -8819,6 +8845,10 @@ export function SketchViewport({
     repairReferenceId,
     releasedDragTarget,
   })
+  const contextSketchLabels = useMemo(
+    () => new Map(controller.report?.snapshot.sketches.map(({ id, label }) => [id, label]) ?? []),
+    [controller.report?.snapshot.sketches],
+  )
 
   return (
     <section
@@ -8841,6 +8871,8 @@ export function SketchViewport({
       />
       <SketchSolveOverlay
         active={activeSketch !== null}
+        contextGeometry={externalContextGeometry}
+        contextSketchLabels={contextSketchLabels}
         degreesOfFreedom={presentation.solve.degreesOfFreedom}
         profileText={presentation.solve.profileText}
         status={presentation.solve.statusText}

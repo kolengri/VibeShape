@@ -450,7 +450,7 @@
         "profileFromSketch": "Profile from {sketch}",
         "supportedByFeature": "Supported by {feature}",
         "supportedByPlane": "Supported by {plane} plane",
-        "rollbackMarker": "Rollback context: later history remains visible as final-result context."
+        "rollbackMarker": "Edit point in History: later items are rolled back. Use Show final result for display-only context."
       },
       "statusBar": {
         "filter": "Filter: {filter}",
@@ -831,6 +831,8 @@
         "emptyDraft": "Empty sketch",
         "emptyDraftHint": "Choose a geometry tool from the toolbar to begin.",
         "earlierSketchContext": "Earlier sketch context",
+        "referenceContext": "Reference context",
+        "referenceContextSource": "{label} · {count, plural, one {# entity} other {# entities}}",
         "externalInferenceSource": "External inference · {label}",
         "overlapChooser": "Choose overlapping geometry",
         "preview": "Unsaved preview",
