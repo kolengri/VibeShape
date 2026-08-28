@@ -57,6 +57,7 @@ function commandContext(
       setSketchFinalContext: vi.fn(),
       setSketchTool: vi.fn(),
       switchWorkspace: vi.fn(),
+      toggleAllSketchVisibility: vi.fn(),
       undoSketch: vi.fn(),
     },
     state: {
@@ -64,6 +65,7 @@ function commandContext(
       activeSketchTool: null,
       controller: readyController(),
       extrusionAvailable: false,
+      hasSavedSketches: false,
       sketchConstruction: false,
       sketchCameraMode: "normal",
       sketchFinalContext: false,
@@ -135,6 +137,22 @@ describe("editor command registry", () => {
 
     expect(line?.toolbarVisible).toBe(false)
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
+  })
+
+  it("toggles every saved sketch through the shared Shift+H command", () => {
+    const unavailableContext = commandContext()
+    const unavailable = resolveBuiltInEditorCommands(unavailableContext).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.toggleAllSketchVisibility,
+    )
+    expect(unavailable?.descriptor.shortcut).toEqual({ key: "h", modifiers: ["shift"] })
+    expect(unavailable?.eligibility).toEqual({ enabled: false, reason: "noSavedSketches" })
+
+    const availableContext = commandContext({ hasSavedSketches: true })
+    const available = resolveBuiltInEditorCommands(availableContext).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.toggleAllSketchVisibility,
+    )
+    available?.invoke()
+    expect(availableContext.actions.toggleAllSketchVisibility).toHaveBeenCalledOnce()
   })
 
   it("offers Extrude inside an active sketch when a closed profile is selected", () => {

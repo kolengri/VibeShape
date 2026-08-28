@@ -81,6 +81,7 @@ export type EditorSessionActions = Readonly<{
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
+  toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
   setSelection: (selection: ViewerSelection | null) => void
   setSketchConstruction: (construction: boolean) => void
   setSketchCameraMode: (mode: SketchCameraMode) => void
@@ -340,6 +341,17 @@ export function createEditorSessionStore() {
             state.hiddenSketchIds = visible
               ? state.hiddenSketchIds.filter((id) => id !== sketchId)
               : [...new Set([...state.hiddenSketchIds, sketchId])]
+          }),
+        toggleAllSketchVisibility: (sketchIds) =>
+          set((state) => {
+            const currentSketchIds = [...new Set(sketchIds)]
+            if (currentSketchIds.length === 0) return
+            const currentSketchIdSet = new Set(currentSketchIds)
+            const hiddenSketchIds = new Set(state.hiddenSketchIds)
+            const allHidden = currentSketchIds.every((id) => hiddenSketchIds.has(id))
+            state.hiddenSketchIds = allHidden
+              ? state.hiddenSketchIds.filter((id) => !currentSketchIdSet.has(id))
+              : [...new Set([...state.hiddenSketchIds, ...currentSketchIds])]
           }),
         setSelection: (selection) =>
           set((state) => {

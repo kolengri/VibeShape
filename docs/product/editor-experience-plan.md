@@ -148,6 +148,8 @@ Status: initial registry and palette slice implemented.
 
 The initial slice composes serializable, owner-attributed descriptors with trusted handlers and fails closed on duplicate, missing, orphaned, or owner-mismatched registrations. The same resolved catalog now drives the contextual toolbar, the localized command palette, and safe sketch-tool, sketch-history, cancellation, and palette shortcuts. Disabled commands remain searchable with their current eligibility reason, recent successful choices rank locally, `Ctrl/Cmd+K` remains available from text fields, single-letter tools do not capture text or IME input, and `Escape` participates in the placement-first cancellation hierarchy. Component and cross-browser tests cover registry composition, keyword search, disabled reasons, focus restoration, palette invocation, and shortcut dispatch.
 
+The shared command registry now also owns global saved-sketch visibility through `Shift+H`; the model-tree header exposes the same transient action with an icon, accessible name, and shortcut tooltip.
+
 Context-menu projection, extension-provided presentation descriptors, `Enter`, delete, fit, view shortcuts, committed document undo/redo, and complete selection restoration remain open. The UI presentation registry is not itself an automation or MCP contract; future external exposure must map to the versioned domain command descriptors and host policy described in the automation architecture.
 
 Exit criterion: toolbar, palette, shortcut, and context menu invoke the same command and eligibility logic.

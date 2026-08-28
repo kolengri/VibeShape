@@ -478,6 +478,7 @@ type ModelTreeProps = {
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
+  onAllSketchVisibilityToggle: () => void
   onSketchRename: SketchRenameHandler
   onSketchVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   onWorkspaceChange: (workspace: EditorWorkspaceName) => void
@@ -889,10 +890,43 @@ export function ModelTree(props: ModelTreeProps) {
       ),
     [modelReferenceEvidence, snapshot],
   )
+  const sketchIds = historyView.rows
+    .filter((row) => row.kind === "sketch")
+    .map((row) => row.ref.id as SketchId)
+  const allSketchesHidden =
+    sketchIds.length > 0 && sketchIds.every((id) => props.hiddenSketchIds.includes(id))
+  const visibleSketchCount = sketchIds.filter((id) => !props.hiddenSketchIds.includes(id)).length
+  const sketchVisibilityPressed =
+    visibleSketchCount === 0
+      ? false
+      : visibleSketchCount === sketchIds.length
+        ? true
+        : ("mixed" as const)
+  const sketchVisibilityLabel = t(allSketchesHidden ? "showAllSketches" : "hideAllSketches")
 
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-r bg-panel p-2">
-      <h2 className="px-2 py-1 text-sm font-medium">{t("title")}</h2>
+      <div className="flex items-center justify-between gap-2 px-2 py-1">
+        <h2 className="text-sm font-medium">{t("title")}</h2>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={sketchVisibilityLabel}
+              aria-pressed={sketchVisibilityPressed}
+              disabled={sketchIds.length === 0}
+              onClick={props.onAllSketchVisibilityToggle}
+            >
+              {allSketchesHidden ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("sketchVisibilityShortcut", { action: sketchVisibilityLabel })}
+          </TooltipContent>
+        </Tooltip>
+      </div>
       <div
         className="mt-1 grid gap-0.5"
         role="tree"

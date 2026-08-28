@@ -973,6 +973,7 @@ export type EditorWorkspaceActions = Readonly<{
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
+  toggleAllSketchVisibility: () => void
   setSketchConstruction: (construction: boolean) => void
   setSketchDraft: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   setSketchEditorTool: (tool: SketchEditorTool) => void
@@ -1062,6 +1063,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onSketchRemove={removeSketch}
       onSketchRename={updateSketch}
       onSketchVisibilityChange={actions.setSketchVisibility}
+      onAllSketchVisibilityToggle={actions.toggleAllSketchVisibility}
       onWorkspaceChange={actions.switchWorkspace}
       sketchRenameBlockedId={editedSketchId(activeSketchTool)}
     />

@@ -174,6 +174,7 @@ type RenderTreeOptions = Partial<
     | "onFeaturePreselectionChange"
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
+    | "onAllSketchVisibilityToggle"
     | "onSketchDeleted"
     | "onSketchRemove"
     | "onSketchRename"
@@ -194,6 +195,7 @@ function renderTree({
   onFeaturePreselectionChange = vi.fn(),
   onFeatureVisibilityChange = vi.fn(),
   onSketchActivate = vi.fn(),
+  onAllSketchVisibilityToggle = vi.fn(),
   onSketchDeleted = vi.fn(),
   onSketchRemove = vi.fn().mockResolvedValue({ ok: true }),
   onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
@@ -218,6 +220,7 @@ function renderTree({
           onFeaturePreselectionChange={onFeaturePreselectionChange}
           onFeatureVisibilityChange={onFeatureVisibilityChange}
           onSketchActivate={onSketchActivate}
+          onAllSketchVisibilityToggle={onAllSketchVisibilityToggle}
           onSketchDeleted={onSketchDeleted}
           onSketchRemove={onSketchRemove}
           onSketchRename={onSketchRename}
@@ -476,6 +479,22 @@ describe("ModelTree visibility and deletion", () => {
     renderTree({ hiddenSketchIds: [sketchId], onSketchVisibilityChange })
     await user.click(screen.getByRole("button", { name: "Show Profile" }))
     expect(onSketchVisibilityChange).toHaveBeenLastCalledWith(sketchId, true)
+  })
+
+  it("toggles every saved sketch from the model-tree header", async () => {
+    const user = userEvent.setup()
+    const onAllSketchVisibilityToggle = vi.fn()
+    const { unmount } = renderTree({ onAllSketchVisibilityToggle })
+
+    const hideAllSketches = screen.getByRole("button", { name: "Hide all sketches" })
+    await user.hover(hideAllSketches)
+    expect(await screen.findByText("Hide all sketches · Shift+H")).toBeTruthy()
+    await user.click(hideAllSketches)
+    expect(onAllSketchVisibilityToggle).toHaveBeenCalledOnce()
+
+    unmount()
+    renderTree({ hiddenSketchIds: [sketchId], onAllSketchVisibilityToggle })
+    expect(screen.getByRole("button", { name: "Show all sketches" })).toBeTruthy()
   })
 
   it("confirms and removes an unused saved sketch by stable identity", async () => {

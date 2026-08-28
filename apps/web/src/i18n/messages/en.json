@@ -235,6 +235,7 @@
         "documentUnavailable": "Open a writable document first.",
         "noActiveCommand": "No command is active.",
         "noSketchRedo": "There is no sketch change to redo.",
+        "noSavedSketches": "Create and save a sketch first.",
         "noSketchUndo": "There is no sketch change to undo.",
         "readOnly": "Open the document with write access.",
         "requiresExistingSketch": "Edit an existing sketch first.",
@@ -263,6 +264,10 @@
         "createSubtract": {
           "label": "Subtract",
           "keywords": "boolean cut|remove solid|difference"
+        },
+        "toggleAllSketchVisibility": {
+          "label": "Toggle all sketches",
+          "keywords": "show all sketches|hide all sketches|sketch visibility|shift h"
         },
         "sketchAlignedRectangle": {
           "label": "Aligned rectangle",
@@ -429,8 +434,11 @@
         "projectFeatures": "Project features",
         "hideFeature": "Hide {feature}",
         "hideSketch": "Hide {sketch}",
+        "hideAllSketches": "Hide all sketches",
         "showFeature": "Show {feature}",
         "showSketch": "Show {sketch}",
+        "showAllSketches": "Show all sketches",
+        "sketchVisibilityShortcut": "{action} · Shift+H",
         "deleteSketch": "Delete {sketch}",
         "deleteSketchTitle": "Delete {sketch}?",
         "deleteSketchDescription": "This removes the sketch from model history. This action cannot be undone yet.",

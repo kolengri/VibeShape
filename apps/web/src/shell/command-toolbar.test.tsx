@@ -35,6 +35,7 @@ const actions = {
   setSketchFinalContext: vi.fn(),
   setSketchTool: vi.fn(),
   switchWorkspace: vi.fn(),
+  toggleAllSketchVisibility: vi.fn(),
   undoSketch: vi.fn(),
 }
 
@@ -52,6 +53,7 @@ function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {})
       activeSketchTool: null,
       controller,
       extrusionAvailable: false,
+      hasSavedSketches: false,
       sketchConstruction: false,
       sketchCameraMode: "normal",
       sketchFinalContext: false,

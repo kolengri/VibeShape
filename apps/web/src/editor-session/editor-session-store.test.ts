@@ -250,6 +250,21 @@ describe("editor session store", () => {
     expect(first.getState().hiddenSketchIds).toEqual([])
   })
 
+  it("toggles all current sketches while preserving individual visibility overrides", () => {
+    const store = createEditorSessionStore()
+    const secondSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3290")
+
+    store.getState().actions.setSketchVisibility(sketchId, false)
+    store.getState().actions.toggleAllSketchVisibility([sketchId, secondSketchId])
+    expect(store.getState().hiddenSketchIds).toEqual([sketchId, secondSketchId])
+
+    store.getState().actions.toggleAllSketchVisibility([sketchId, secondSketchId])
+    expect(store.getState().hiddenSketchIds).toEqual([])
+
+    store.getState().actions.setSketchVisibility(secondSketchId, false)
+    expect(store.getState().hiddenSketchIds).toEqual([secondSketchId])
+  })
+
   it("owns the create-sketch support-selection lifecycle without committing a document", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch()
