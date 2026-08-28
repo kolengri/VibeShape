@@ -45,6 +45,7 @@ export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "horizontal-points" }>
   | Readonly<{ pointId: SketchEntityId; type: "vertical-points" }>
   | Readonly<{ lineId: SketchEntityId; type: "midpoint" }>
+  | Readonly<{ arcId: SketchEntityId; type: "arc-midpoint" }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
   | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
 
@@ -478,7 +479,7 @@ function nearestIntersectionCandidate(
   return nearest
 }
 
-function nearestMidpointCandidate(
+function nearestLineMidpointCandidate(
   point: SketchPoint2,
   lines: readonly SketchInferenceLine[],
   tolerance: number,
@@ -505,6 +506,61 @@ function nearestMidpointCandidate(
     nearestDistance = distance
   }
   return nearest
+}
+
+function nearestArcMidpointCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  const midpoint = { x: 0, y: 0 }
+  let nearestCurve: SketchInferenceCurve | null = null
+  let nearestDistance = Number.POSITIVE_INFINITY
+  let nearestX = 0
+  let nearestY = 0
+  for (const curve of curves) {
+    if (!writeArcMidpoint(curve, midpoint)) continue
+    const distance = squaredDistance(point, midpoint)
+    if (!preferArcMidpoint(curve, distance, maximumDistance, nearestCurve, nearestDistance))
+      continue
+    nearestCurve = curve
+    nearestDistance = distance
+    nearestX = midpoint.x
+    nearestY = midpoint.y
+  }
+  return nearestCurve
+    ? {
+        kind: "midpoint" as const,
+        point: { x: nearestX, y: nearestY },
+        relations: [{ type: "arc-midpoint" as const, arcId: nearestCurve.id }],
+        stableKey: nearestCurve.id,
+      }
+    : undefined
+}
+
+function writeArcMidpoint(curve: SketchInferenceCurve, midpoint: { x: number; y: number }) {
+  if (curve.type !== "arc") return false
+  const radius = Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
+  if (!Number.isFinite(radius) || radius <= 0) return false
+  const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
+  const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
+  const midpointAngle = startAngle + positiveAngle(endAngle - startAngle) / 2
+  midpoint.x = curve.center.x + Math.cos(midpointAngle) * radius
+  midpoint.y = curve.center.y + Math.sin(midpointAngle) * radius
+  return true
+}
+
+function preferArcMidpoint(
+  curve: SketchInferenceCurve,
+  distance: number,
+  maximumDistance: number,
+  nearestCurve: SketchInferenceCurve | null,
+  nearestDistance: number,
+) {
+  if (distance > maximumDistance || distance > nearestDistance) return false
+  if (distance < nearestDistance || !nearestCurve) return true
+  return curve.id.localeCompare(nearestCurve.id) < 0
 }
 
 function nearestPointOnLineCandidate(lines: ReturnType<typeof nearbyLines>) {
@@ -805,8 +861,9 @@ function pointCandidate(
   const nearby = nearbyLines(point, lines, tolerance)
   return (
     nearestIntersectionCandidate(point, nearby, tolerance) ??
-    nearestMidpointCandidate(point, lines, tolerance) ??
+    nearestLineMidpointCandidate(point, lines, tolerance) ??
     nearestPointOnLineCandidate(nearby) ??
+    nearestArcMidpointCandidate(point, curves, tolerance) ??
     nearestCurveCardinalCandidate(point, curves, tolerance) ??
     nearestPointOnCurveCandidate(point, curves, tolerance) ??
     nearestPointAlignmentCandidate(point, points, tolerance, anchor)

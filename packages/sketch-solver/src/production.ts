@@ -297,6 +297,7 @@ class ProductionSketchBuilder {
   readonly #entityRecords: number[] = []
   readonly #constraintRecords: number[] = []
   readonly #constraintValues: number[] = []
+  readonly #arcEntities = new Map<SketchEntityId, Extract<SketchEntity, { type: "arc" }>>()
   readonly #entityHandles = new Map<SketchEntityId, number>()
   readonly #pointParameters = new Map<SketchEntityId, PointBinding>()
   readonly #circleRadiusParameters = new Map<SketchEntityId, number>()
@@ -378,6 +379,7 @@ class ProductionSketchBuilder {
       workplane: 200,
     })
     this.#entityHandles.set(entity.id, handle)
+    this.#arcEntities.set(entity.id, entity)
   }
 
   addEllipse(entity: Extract<SketchEntity, { type: "ellipse" }>) {
@@ -437,8 +439,8 @@ class ProductionSketchBuilder {
         y: center.y + secondaryDirection.y * trammelRadius * sine,
       })
       const endpointHandle = this.entity(endpointId)
-      const secondaryRadiusLine = this.#addAuxiliaryLine(primarySlider, endpointHandle)
-      const primaryRadiusLine = this.#addAuxiliaryLine(endpointHandle, secondarySlider)
+      const secondaryRadiusLine = this.addAuxiliaryLine(primarySlider, endpointHandle)
+      const primaryRadiusLine = this.addAuxiliaryLine(endpointHandle, secondarySlider)
       this.addConstraint(null, SOLVESPACE_CONSTRAINT_TYPE.pointOnLine, {
         pointA: primarySlider,
         entityA: primaryAxis,
@@ -493,6 +495,21 @@ class ProductionSketchBuilder {
     )
     this.#constraintValues.push(value)
     if (id) this.#constraintIdsByHandle.set(handle, id)
+  }
+
+  addAuxiliaryLine(start: number, end: number) {
+    const handle = this.#nextEntity++
+    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
+      points: [start, end],
+      workplane: 200,
+    })
+    return handle
+  }
+
+  arc(id: SketchEntityId) {
+    const arc = this.#arcEntities.get(id)
+    if (!arc) throw new Error(`Sketch arc ${id} has not been compiled.`)
+    return arc
   }
 
   entity(id: SketchEntityId) {
@@ -581,15 +598,6 @@ class ProductionSketchBuilder {
     return handle
   }
 
-  #addAuxiliaryLine(start: number, end: number) {
-    const handle = this.#nextEntity++
-    this.#addEntity(handle, 2, SOLVESPACE_ENTITY_TYPE.lineSegment, {
-      points: [start, end],
-      workplane: 200,
-    })
-    return handle
-  }
-
   #ellipseAxisHandles(entity: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>) {
     const key = [entity.centerPointId, entity.primaryAxisPointId, entity.secondaryAxisPointId].join(
       ":",
@@ -597,11 +605,11 @@ class ProductionSketchBuilder {
     const existing = this.#ellipseAxes.get(key)
     if (existing) return existing
     const axes = {
-      primary: this.#addAuxiliaryLine(
+      primary: this.addAuxiliaryLine(
         this.entity(entity.centerPointId),
         this.entity(entity.primaryAxisPointId),
       ),
-      secondary: this.#addAuxiliaryLine(
+      secondary: this.addAuxiliaryLine(
         this.entity(entity.centerPointId),
         this.entity(entity.secondaryAxisPointId),
       ),
@@ -685,6 +693,53 @@ function initialCircleRadii(
   return radii
 }
 
+function positiveAngle(angle: number) {
+  const fullTurn = Math.PI * 2
+  const normalized = angle % fullTurn
+  return normalized >= 0 ? normalized : normalized + fullTurn
+}
+
+function positiveSweepArcMidpoint(
+  arc: Extract<SketchEntity, { type: "arc" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const center = pointValues.get(arc.centerPointId)
+  const start = pointValues.get(arc.startPointId)
+  const end = pointValues.get(arc.endPointId)
+  if (!center || !start || !end) return null
+  const radius = Math.hypot(start.x - center.x, start.y - center.y)
+  if (!Number.isFinite(radius) || radius <= 0) return null
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x)
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x)
+  const midpointAngle = startAngle + positiveAngle(endAngle - startAngle) / 2
+  return {
+    x: center.x + Math.cos(midpointAngle) * radius,
+    y: center.y + Math.sin(midpointAngle) * radius,
+  }
+}
+
+function selectPositiveSweepArcMidpointSeeds(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+  pointValues: Map<SketchEntityId, { x: number; y: number }>,
+) {
+  const authoredPointIds = new Set(
+    sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
+  )
+  const arcs = new Map(
+    [...sketch.entities, ...externalCurves.map(({ curve }) => curve)].flatMap((entity) =>
+      entity.type === "arc" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+  for (const constraint of sketch.constraints) {
+    if (constraint.type !== "arc-midpoint" || !authoredPointIds.has(constraint.pointId)) continue
+    const arc = arcs.get(constraint.arcId)
+    if (!arc) continue
+    const midpoint = positiveSweepArcMidpoint(arc, pointValues)
+    if (midpoint) pointValues.set(constraint.pointId, midpoint)
+  }
+}
+
 function curveCenterPoint(sketch: SketchRecord, entityId: SketchEntityId) {
   const entity = sketch.entities.find((candidate) => candidate.id === entityId)
   if (entity?.type !== "circle" && entity?.type !== "arc") {
@@ -712,6 +767,7 @@ type PointConstraint = Extract<
       | "point-on-line"
       | "point-on-curve"
       | "midpoint"
+      | "arc-midpoint"
       | "symmetric"
       | "fixed"
   }
@@ -738,6 +794,7 @@ const pointConstraintTypes = new Set<SketchConstraint["type"]>([
   "point-on-line",
   "point-on-curve",
   "midpoint",
+  "arc-midpoint",
   "symmetric",
   "fixed",
 ])
@@ -786,6 +843,29 @@ function addPointAlignmentConstraint(
   })
 }
 
+function addArcMidpointConstraint(
+  builder: ProductionSketchBuilder,
+  constraint: Extract<SketchConstraint, { type: "arc-midpoint" }>,
+) {
+  const arc = builder.arc(constraint.arcId)
+  const startRadius = builder.addAuxiliaryLine(
+    builder.entity(constraint.pointId),
+    builder.entity(arc.startPointId),
+  )
+  const endRadius = builder.addAuxiliaryLine(
+    builder.entity(constraint.pointId),
+    builder.entity(arc.endPointId),
+  )
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle, {
+    pointA: builder.entity(constraint.pointId),
+    entityA: builder.entity(arc.id),
+  })
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines, {
+    entityA: startRadius,
+    entityB: endRadius,
+  })
+}
+
 function addPointConstraint(builder: ProductionSketchBuilder, constraint: PointConstraint) {
   if (isPointAlignmentConstraint(constraint)) {
     addPointAlignmentConstraint(builder, constraint)
@@ -815,6 +895,9 @@ function addPointConstraint(builder: ProductionSketchBuilder, constraint: PointC
         pointA: builder.entity(constraint.pointId),
         entityA: builder.entity(constraint.lineId),
       })
+      return
+    case "arc-midpoint":
+      addArcMidpointConstraint(builder, constraint)
       return
     case "symmetric":
       builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.symmetricLine, {
@@ -1201,6 +1284,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
       "continuation",
     )
   }
+  selectPositiveSweepArcMidpointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
 
   const builder = new ProductionSketchBuilder()
   addSketchEntities(

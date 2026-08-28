@@ -249,6 +249,14 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...constraintEnvelope,
+      type: z.literal("arc-midpoint"),
+      pointId: sketchEntityIdSchema,
+      arcId: sketchEntityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
       type: z.literal("symmetric"),
       ...pointPair,
       lineId: sketchEntityIdSchema,
@@ -672,6 +680,7 @@ const wireConstraintEntityReferenceRules = {
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
+  "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
   symmetric: {
     firstPointId: ["point"],
     secondPointId: ["point"],
@@ -859,7 +868,9 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
       count +
       (constraint.type === "offset"
         ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
-        : 1),
+        : constraint.type === "arc-midpoint"
+          ? 2
+          : 1),
     0,
   )
   const internal = sketch.entities.reduce((count, entity) => {
@@ -903,6 +914,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
         ({ type }) => type === "vertical-distance" || type === "vertical-points",
       ),
     )
+  const auxiliaryArcMidpointLineCount =
+    sketch.constraints.filter(({ type }) => type === "arc-midpoint").length * 2
   return {
     entities:
       authored.entities +
@@ -910,7 +923,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
         (count, entity) => count + nativeWireEntityCapacity[entity.type].entities,
         0,
       ) +
-      projectionCount * 3,
+      projectionCount * 3 +
+      auxiliaryArcMidpointLineCount,
     parameters:
       authored.parameters +
       wireProjectedExternalGeometry(sketch).reduce(

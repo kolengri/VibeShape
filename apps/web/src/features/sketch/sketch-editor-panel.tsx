@@ -111,6 +111,7 @@ function constraintName(
     horizontal: copy.horizontal,
     "horizontal-points": copy.horizontal,
     midpoint: copy.midpoint,
+    "arc-midpoint": copy.midpoint,
     vertical: copy.vertical,
     "vertical-points": copy.vertical,
     parallel: copy.parallel,

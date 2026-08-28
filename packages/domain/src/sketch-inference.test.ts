@@ -245,13 +245,12 @@ describe("sketch inference", () => {
     }
     const onArc = inferSketchPoint({
       curves: [arc],
-      point: { x: 7.4, y: 7.4 },
+      point: { x: 9, y: 5.4 },
       points: [],
       tolerance: 1,
     })
     expect(onArc.kind).toBe("point-on-curve")
-    expect(onArc.point.x).toBeCloseTo(Math.SQRT1_2 * 10)
-    expect(onArc.point.y).toBeCloseTo(Math.SQRT1_2 * 10)
+    expect(Math.hypot(onArc.point.x, onArc.point.y)).toBeCloseTo(10)
     expect(
       inferSketchPoint({
         curves: [arc],
@@ -260,6 +259,95 @@ describe("sketch inference", () => {
         tolerance: 1,
       }).kind,
     ).toBe("none")
+  })
+
+  it("infers the arc-length midpoint across minor, major, and wrapped positive sweeps", () => {
+    const inferMidpoint = (start: { x: number; y: number }, end: { x: number; y: number }) =>
+      inferSketchPoint({
+        curves: [
+          {
+            id: arcId,
+            centerPointId: firstPointId,
+            type: "arc",
+            center: { x: 0, y: 0 },
+            start,
+            end,
+          },
+        ],
+        point: { x: 0, y: 10 },
+        points: [],
+        tolerance: 25,
+      })
+
+    const minor = inferMidpoint({ x: 10, y: 0 }, { x: 0, y: 10 })
+    expect(minor).toMatchObject({
+      kind: "midpoint",
+      relations: [{ type: "arc-midpoint", arcId }],
+    })
+    expect(minor.point.x).toBeCloseTo(Math.SQRT1_2 * 10)
+    expect(minor.point.y).toBeCloseTo(Math.SQRT1_2 * 10)
+
+    const major = inferMidpoint({ x: 0, y: 10 }, { x: 10, y: 0 })
+    expect(major.point.x).toBeCloseTo(-Math.SQRT1_2 * 10)
+    expect(major.point.y).toBeCloseTo(-Math.SQRT1_2 * 10)
+
+    const wrapped = inferMidpoint({ x: 0, y: -10 }, { x: 0, y: 10 })
+    expect(wrapped.point).toEqual({ x: 10, y: 0 })
+  })
+
+  it("prefers an arc midpoint over a coincident quadrant and generic curve projection", () => {
+    const inference = inferSketchPoint({
+      curves: [
+        {
+          id: arcId,
+          centerPointId: firstPointId,
+          type: "arc",
+          center: { x: 0, y: 0 },
+          start: { x: 0, y: -10 },
+          end: { x: 0, y: 10 },
+        },
+      ],
+      point: { x: 10.2, y: 0.1 },
+      points: [],
+      tolerance: 1,
+    })
+
+    expect(inference).toMatchObject({
+      kind: "midpoint",
+      point: { x: 10, y: 0 },
+      relations: [{ type: "arc-midpoint", arcId }],
+    })
+  })
+
+  it("preserves line inference priority over a nearby arc midpoint", () => {
+    const inference = inferSketchPoint({
+      curves: [
+        {
+          id: arcId,
+          centerPointId: firstPointId,
+          type: "arc",
+          center: { x: 0, y: 0 },
+          start: { x: 10, y: 0 },
+          end: { x: 0, y: 10 },
+        },
+      ],
+      lines: [
+        {
+          ...horizontalLine,
+          start: { x: 0, y: 7 },
+          end: { x: 20, y: 7 },
+        },
+      ],
+      point: { x: 7.1, y: 7 },
+      points: [],
+      tolerance: 0.2,
+    })
+
+    expect(inference).toMatchObject({
+      kind: "point-on-line",
+      point: { x: 7.1, y: 7 },
+      relations: [{ type: "point-on-line", lineId: firstLineId }],
+    })
   })
 
   it("infers all four exact circle quadrants with center alignment intent", () => {
@@ -329,7 +417,7 @@ describe("sketch inference", () => {
         points: [],
         tolerance: 1,
       }).kind,
-    ).toBe("quadrant")
+    ).toBe("midpoint")
     expect(
       inferSketchPoint({
         curves: [wraparoundArc],
@@ -519,6 +607,35 @@ describe("sketch inference", () => {
         type: "point-on-curve",
         curveId: curves[0]?.id,
       })
+      expect(sort).not.toHaveBeenCalled()
+    } finally {
+      sort.mockRestore()
+    }
+  })
+
+  it("selects a stable arc midpoint from dense coincident arcs without sorting candidates", () => {
+    const curves = Array.from({ length: 2_500 }, (_, index) => {
+      const suffix = (index + 100).toString(16).padStart(12, "0")
+      return {
+        id: `018f0000-0000-7000-9000-${suffix}` as SketchEntityId,
+        centerPointId: `018f0000-0000-7001-9000-${suffix}` as SketchEntityId,
+        type: "arc" as const,
+        center: { x: 0, y: 0 },
+        start: { x: 10, y: 0 },
+        end: { x: 0, y: 10 },
+      }
+    })
+    const sort = vi.spyOn(Array.prototype, "sort")
+    try {
+      const inference = inferSketchPoint({
+        curves,
+        point: { x: 7.1, y: 7.1 },
+        points: [],
+        tolerance: 1,
+      })
+
+      expect(inference).toMatchObject({ kind: "midpoint" })
+      expect(inference.relations).toEqual([{ type: "arc-midpoint", arcId: curves[0]?.id }])
       expect(sort).not.toHaveBeenCalled()
     } finally {
       sort.mockRestore()
