@@ -258,6 +258,14 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
     .object({ ...constraintEnvelope, type: z.literal("fixed"), pointId: sketchEntityIdSchema })
     .strict(),
   z
+    .object({ ...constraintEnvelope, type: z.literal("horizontal-points"), ...pointPair })
+    .strict()
+    .refine((constraint) => constraint.firstPointId !== constraint.secondPointId),
+  z
+    .object({ ...constraintEnvelope, type: z.literal("vertical-points"), ...pointPair })
+    .strict()
+    .refine((constraint) => constraint.firstPointId !== constraint.secondPointId),
+  z
     .object({
       ...constraintEnvelope,
       type: z.literal("horizontal-distance"),
@@ -672,6 +680,8 @@ const wireConstraintEntityReferenceRules = {
   fixed: { pointId: ["point"] },
   "horizontal-distance": { firstPointId: ["point"], secondPointId: ["point"] },
   "vertical-distance": { firstPointId: ["point"], secondPointId: ["point"] },
+  "horizontal-points": { firstPointId: ["point"], secondPointId: ["point"] },
+  "vertical-points": { firstPointId: ["point"], secondPointId: ["point"] },
   distance: { firstPointId: ["point"], secondPointId: ["point"] },
   angle: { firstEntityId: ["line"], secondEntityId: ["line"] },
   radius: { curveId: ["circle", "arc"] },
@@ -883,8 +893,16 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
     { entities: 3, parameters: 7 },
   )
   const projectionCount =
-    Number(sketch.constraints.some(({ type }) => type === "horizontal-distance")) +
-    Number(sketch.constraints.some(({ type }) => type === "vertical-distance"))
+    Number(
+      sketch.constraints.some(
+        ({ type }) => type === "horizontal-distance" || type === "horizontal-points",
+      ),
+    ) +
+    Number(
+      sketch.constraints.some(
+        ({ type }) => type === "vertical-distance" || type === "vertical-points",
+      ),
+    )
   return {
     entities:
       authored.entities +

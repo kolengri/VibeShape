@@ -100,8 +100,16 @@ function axisConstraint(
   entities: readonly SketchEntity[],
 ): SketchConstraintDefinition | null {
   const lines = entitiesOfType(entities, "line")
-  return entities.length === 1 && lines.length === 1 && lines[0]
-    ? { type, lineId: lines[0].id }
+  if (entities.length === 1 && lines.length === 1 && lines[0]) {
+    return { type, lineId: lines[0].id }
+  }
+  const points = pair(entitiesOfType(entities, "point"))
+  return entities.length === 2 && points
+    ? {
+        type: type === "horizontal" ? "horizontal-points" : "vertical-points",
+        firstPointId: points[0].id,
+        secondPointId: points[1].id,
+      }
     : null
 }
 

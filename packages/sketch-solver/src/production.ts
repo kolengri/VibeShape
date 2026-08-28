@@ -7,13 +7,13 @@ import {
 } from "@vibeshape/domain/identifiers"
 import {
   MAX_SKETCH_COORDINATE_MM,
-  sketchArcEntitySchema,
-  sketchCircleEntitySchema,
   type SketchConstraint,
-  sketchEllipseEntitySchema,
-  sketchEllipticalArcEntitySchema,
   type SketchEntity,
   type SketchRecord,
+  sketchArcEntitySchema,
+  sketchCircleEntitySchema,
+  sketchEllipseEntitySchema,
+  sketchEllipticalArcEntitySchema,
   sketchLineEntitySchema,
   sketchPointEntitySchema,
   sketchRecordSchema,
@@ -705,7 +705,15 @@ function resolveDimension(
 type PointConstraint = Extract<
   SketchConstraint,
   {
-    type: "coincident" | "point-on-line" | "point-on-curve" | "midpoint" | "symmetric" | "fixed"
+    type:
+      | "coincident"
+      | "horizontal-points"
+      | "vertical-points"
+      | "point-on-line"
+      | "point-on-curve"
+      | "midpoint"
+      | "symmetric"
+      | "fixed"
   }
 >
 type RelationshipConstraint = Extract<
@@ -725,6 +733,8 @@ type DimensionConstraint = Exclude<SketchConstraint, PointConstraint | Relations
 
 const pointConstraintTypes = new Set<SketchConstraint["type"]>([
   "coincident",
+  "horizontal-points",
+  "vertical-points",
   "point-on-line",
   "point-on-curve",
   "midpoint",
@@ -751,7 +761,36 @@ function isRelationshipConstraint(
   return relationshipConstraintTypes.has(constraint.type)
 }
 
+type PointAlignmentConstraint = Extract<
+  SketchConstraint,
+  { type: "horizontal-points" | "vertical-points" }
+>
+
+function isPointAlignmentConstraint(
+  constraint: PointConstraint,
+): constraint is PointAlignmentConstraint {
+  return constraint.type === "horizontal-points" || constraint.type === "vertical-points"
+}
+
+function addPointAlignmentConstraint(
+  builder: ProductionSketchBuilder,
+  constraint: PointAlignmentConstraint,
+) {
+  builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance, {
+    pointA: builder.entity(constraint.firstPointId),
+    pointB: builder.entity(constraint.secondPointId),
+    entityA: builder.projectedAxis(
+      constraint.type === "horizontal-points" ? "horizontal" : "vertical",
+    ),
+    value: 0,
+  })
+}
+
 function addPointConstraint(builder: ProductionSketchBuilder, constraint: PointConstraint) {
+  if (isPointAlignmentConstraint(constraint)) {
+    addPointAlignmentConstraint(builder, constraint)
+    return
+  }
   switch (constraint.type) {
     case "coincident":
       builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointsCoincident, {

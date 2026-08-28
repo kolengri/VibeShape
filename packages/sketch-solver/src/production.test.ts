@@ -46,6 +46,8 @@ const secondaryAxisDiameterId = sketchConstraintIdSchema.parse(
   "018f0000-0000-7000-8000-000000000026",
 )
 const secondEllipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000027")
+const horizontalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000028")
+const verticalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000029")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -462,6 +464,62 @@ describe("production sketch compilation", () => {
     expect(entityTypes).toContain(80_000)
     expect(entityTypes).toContain(80_001)
     expect(result.compiled.system.solveGroup).toBe(2)
+  })
+
+  test("compiles point alignment as zero projected distances with stable conflict IDs", () => {
+    const alignedSketch = sketchRecordSchema.parse({
+      ...sketch(),
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: horizontalPointsId,
+          type: "horizontal-points",
+          firstPointId: pointA,
+          secondPointId: pointC,
+        },
+        {
+          schemaVersion: 0,
+          id: verticalPointsId,
+          type: "vertical-points",
+          firstPointId: pointA,
+          secondPointId: pointB,
+        },
+      ],
+    })
+    const result = compileSketchSystem({ revision: 4, sketch: alignedSketch, variables })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const { constraintRecords, constraintValues } = result.compiled.system
+    const stride = SKETCH_SOLVER_ABI.constraintRecordStride
+    const types = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * stride + 2],
+    )
+    expect(types.slice(-2)).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance,
+      SOLVESPACE_CONSTRAINT_TYPE.projectedPointDistance,
+    ])
+    expect(Array.from(constraintValues.slice(-2))).toEqual([0, 0])
+    const handles = Array.from({ length: constraintValues.length }, (_, index) => index + 1)
+    expect(result.compiled.bindings.constraintIdsByHandle.get(handles.at(-2) ?? 0)).toBe(
+      horizontalPointsId,
+    )
+    expect(result.compiled.bindings.constraintIdsByHandle.get(handles.at(-1) ?? 0)).toBe(
+      verticalPointsId,
+    )
+    const horizontalHandle = handles.at(-2)
+    if (!horizontalHandle) throw new Error("The alignment fixture requires a constraint handle.")
+    const solved = solveSketchRecord(
+      createModule(() => ({
+        solverStatus: 1,
+        failedConstraints: new Uint32Array([horizontalHandle]),
+      })),
+      { revision: 4, sketch: alignedSketch, variables },
+    )
+    expect(solved.ok).toBe(true)
+    if (!solved.ok) return
+    expect(solved.solution.failedConstraintIds).toEqual([horizontalPointsId])
   })
 
   test("uses stable continuation values, applies drag targets last, and decodes stable IDs", () => {

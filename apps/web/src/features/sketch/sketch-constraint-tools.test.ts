@@ -97,6 +97,32 @@ describe("sketch constraint tools", () => {
       "equal",
       "concentric",
     ])
+    expect(compatibleSketchConstraintTools([firstPoint, secondPoint])).toEqual([
+      {
+        kind: "coincident",
+        definition: {
+          type: "coincident",
+          firstPointId: firstPoint.id,
+          secondPointId: secondPoint.id,
+        },
+      },
+      {
+        kind: "horizontal",
+        definition: {
+          type: "horizontal-points",
+          firstPointId: firstPoint.id,
+          secondPointId: secondPoint.id,
+        },
+      },
+      {
+        kind: "vertical",
+        definition: {
+          type: "vertical-points",
+          firstPointId: firstPoint.id,
+          secondPointId: secondPoint.id,
+        },
+      },
+    ])
   })
 
   it("offers drawing dimensions and builds their semantic definitions", () => {

@@ -14,7 +14,7 @@ and selection are presentation state; they never replace stable entity and const
 | Tool | Minimum behavior | Status |
 |---|---|---|
 | Select | Single and additive entity selection, point dragging, and Delete/Backspace | Implemented |
-| Point | Place a stable analytical point with persistent point, midpoint, intersection, and point-on-line inference | Implemented |
+| Point | Place a stable analytical point with persistent point, midpoint, intersection, point-on-line, and horizontal/vertical point-alignment inference | Implemented |
 | Line | Place a stable segment with endpoint reuse plus persistent point, direction, and tangent inference | Implemented |
 | Midpoint Line | Place a segment symmetrically from its midpoint with persistent midpoint intent | Implemented |
 | Corner Rectangle | Author four lines as one local history edit | Implemented |
@@ -229,8 +229,8 @@ active support plane and display unit.
 
 ## Follow-up sequence
 
-1. Extend remembered wake-up references with point-to-point horizontal/vertical alignment, arc midpoint
-   and quadrant candidates, and remaining projected/external geometry inference.
+1. Extend remembered wake-up references with arc midpoint and quadrant candidates plus remaining
+   projected/external geometry inference. Point-to-point horizontal/vertical alignment is implemented.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
    splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
