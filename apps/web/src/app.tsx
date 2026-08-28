@@ -7,6 +7,7 @@ import {
   type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
+import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
 import { useCallback, useMemo, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
@@ -114,9 +115,14 @@ function supportFromSelection(
 function createSketchDraft(
   label: string,
   selectedSupport: ReturnType<typeof selectedSketchSupportFromController>,
+  selectedOriginPlane: ViewerOriginPlane | null,
 ) {
   if (!selectedSupport) {
-    return createEmptySketch({ id: createBrowserSketchId(), label, plane: "xy" })
+    return createEmptySketch({
+      id: createBrowserSketchId(),
+      label,
+      plane: selectedOriginPlane ?? "xy",
+    })
   }
   return createEmptySketch({
     id: createBrowserSketchId(),
@@ -138,11 +144,19 @@ function selectedSupportForPlaneTool(
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
-  const { activeSketchId, activeSketchTool, draft, selectedProfile, selection } = useEditorSession(
+  const {
+    activeSketchId,
+    activeSketchTool,
+    draft,
+    selectedOriginPlane,
+    selectedProfile,
+    selection,
+  } = useEditorSession(
     useShallow((state) => ({
       activeSketchId: state.sketch.activeSketchId,
       activeSketchTool: state.sketch.activeSketchTool,
       draft: state.sketch.draft,
+      selectedOriginPlane: state.selectedOriginPlane,
       selectedProfile: state.sketch.selectedProfile,
       selection: state.selection,
     })),
@@ -155,10 +169,15 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     const sketch = createSketchDraft(
       t("sketchLabel", { number: report.snapshot.sketches.length + 1 }),
       selectedSupport,
+      selectedOriginPlane,
     )
     sessionActions.beginSketchCreate(sketch)
-    if (selectedSupport) sessionActions.selectSketchSupport(selectedSupport)
-  }, [controller, selection, sessionActions, t])
+    if (selectedSupport) {
+      sessionActions.selectSketchSupport(selectedSupport)
+    } else if (selectedOriginPlane) {
+      sessionActions.selectSketchPlane(selectedOriginPlane)
+    }
+  }, [controller, selectedOriginPlane, selection, sessionActions, t])
 
   const createDatumPlane = useCallback(() => {
     const selectedSupport = supportFromSelection(controller, selection)
@@ -242,6 +261,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
         select,
+        selectOriginPlane: sessionActions.setSelectedOriginPlane,
         selectSketchPlane: sessionActions.selectSketchPlane,
         redoSketchDraft: sessionActions.redoSketchDraft,
         setSketchConstruction: sessionActions.setSketchConstruction,
@@ -283,6 +303,7 @@ type EditorApplicationSession = Pick<
   | "hiddenSketchIds"
   | "originPlaneVisibility"
   | "preselectedFeatureId"
+  | "selectedOriginPlane"
   | "selection"
   | "sketch"
   | "workspace"
@@ -297,6 +318,7 @@ function useEditorApplicationSession() {
       hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
+      selectedOriginPlane: state.selectedOriginPlane,
       selection: state.selection,
       sketch: state.sketch,
       workspace: state.workspace,
@@ -385,6 +407,7 @@ function EditorWorkspaceComposition({
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
+      selectedOriginPlane={session.selectedOriginPlane}
       workspace={session.workspace}
       selection={session.selection}
       sketchConstruction={session.sketch.construction}
@@ -453,7 +476,11 @@ function EditorApplication({
         sessionActions={sessionActions}
         workspaceActions={workspaceActions}
       />
-      <StatusBar controller={controller} selection={session.selection} />
+      <StatusBar
+        controller={controller}
+        selectedOriginPlane={session.selectedOriginPlane}
+        selection={session.selection}
+      />
     </main>
   )
 }
@@ -466,7 +493,7 @@ export function App() {
     <DocumentDisplayUnitsProvider
       displayUnits={controller.report?.snapshot.displayUnits ?? defaultDocumentDisplayUnits}
     >
-      <EditorSessionProvider>
+      <EditorSessionProvider key={controller.report?.snapshot.id ?? "loading"}>
         <EditorApplication controller={controller} />
       </EditorSessionProvider>
     </DocumentDisplayUnitsProvider>

@@ -56,6 +56,7 @@ export type EditorSessionState = Readonly<{
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedFeatureId: FeatureId | null
+  selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
   workspace: EditorWorkspaceName
@@ -79,6 +80,7 @@ export type EditorSessionActions = Readonly<{
   setCommandPaletteOpen: (open: boolean) => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
+  setSelectedOriginPlane: (plane: ViewerOriginPlane | null) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
@@ -131,6 +133,7 @@ function createEditorSessionState(): EditorSessionState {
     hiddenSketchIds: [],
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedFeatureId: null,
+    selectedOriginPlane: null,
     selection: null,
     sketch: createSketchState(),
     workspace: "model",
@@ -190,6 +193,7 @@ export function createEditorSessionStore() {
           set((state) => {
             state.workspace = "model"
             state.activePartDesignTool = null
+            state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = { kind: "select-sketch-plane" }
@@ -200,6 +204,7 @@ export function createEditorSessionStore() {
           set((state) => {
             state.workspace = "sketch"
             state.activePartDesignTool = null
+            state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
             state.sketch.activeSketchTool = { kind: "edit-sketch", sketchId: sketch.id }
@@ -211,6 +216,7 @@ export function createEditorSessionStore() {
             const tool = state.sketch.activeSketchTool
             if (!tool || !isActiveSketchEditorTool(tool) || !state.sketch.draft) return
             state.workspace = "model"
+            state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchTool = {
               kind: "select-sketch-plane",
@@ -286,6 +292,7 @@ export function createEditorSessionStore() {
               resetSketchPresentation(state.sketch, "line")
             }
             state.workspace = "sketch"
+            state.selectedOriginPlane = null
             state.selection = null
           })
         },
@@ -311,6 +318,7 @@ export function createEditorSessionStore() {
               resetSketchPresentation(state.sketch, "line")
             }
             state.workspace = "sketch"
+            state.selectedOriginPlane = null
             state.selection = null
           })
         },
@@ -335,6 +343,12 @@ export function createEditorSessionStore() {
         setOriginPlaneVisibility: (plane, visible) =>
           set((state) => {
             state.originPlaneVisibility[plane] = visible
+            if (!visible && state.selectedOriginPlane === plane) state.selectedOriginPlane = null
+          }),
+        setSelectedOriginPlane: (plane) =>
+          set((state) => {
+            state.selectedOriginPlane = plane
+            if (plane) state.selection = null
           }),
         setSketchVisibility: (sketchId, visible) =>
           set((state) => {
@@ -356,6 +370,7 @@ export function createEditorSessionStore() {
         setSelection: (selection) =>
           set((state) => {
             state.selection = selection
+            if (selection) state.selectedOriginPlane = null
           }),
         setSketchConstruction: (construction) =>
           set((state) => {
@@ -448,6 +463,7 @@ export function createEditorSessionStore() {
           set((state) => {
             state.workspace = "model"
             closeSketch(state.sketch)
+            state.selectedOriginPlane = null
             state.activePartDesignTool = tool
           }),
         switchWorkspace: (workspace) =>
@@ -455,6 +471,7 @@ export function createEditorSessionStore() {
             state.workspace = workspace
             if (workspace !== "model") {
               state.activePartDesignTool = null
+              state.selectedOriginPlane = null
               state.selection = null
             }
             if (workspace !== "sketch") closeSketch(state.sketch)

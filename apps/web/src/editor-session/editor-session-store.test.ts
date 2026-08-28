@@ -212,6 +212,32 @@ describe("editor session store", () => {
     expect(second.getState().originPlaneVisibility).toEqual({ xy: true, xz: true, yz: true })
   })
 
+  it("keeps idle origin-plane selection transient and mutually exclusive with model faces", () => {
+    const store = createEditorSessionStore()
+
+    store.getState().actions.setSelectedOriginPlane("xz")
+    expect(store.getState().selectedOriginPlane).toBe("xz")
+    expect(store.getState().selection).toBeNull()
+
+    store.getState().actions.setSelection({ featureId, faceId: 4, faceOrdinal: 2 })
+    expect(store.getState().selectedOriginPlane).toBeNull()
+
+    store.getState().actions.setSelectedOriginPlane("yz")
+    expect(store.getState().selection).toBeNull()
+    store.getState().actions.setOriginPlaneVisibility("yz", false)
+    expect(store.getState().selectedOriginPlane).toBeNull()
+  })
+
+  it("clears idle origin-plane selection when sketch creation starts", () => {
+    const store = createEditorSessionStore()
+    store.getState().actions.setSelectedOriginPlane("xz")
+
+    store.getState().actions.beginSketchCreate(createSketch())
+
+    expect(store.getState().selectedOriginPlane).toBeNull()
+    expect(store.getState().sketch.activeSketchTool).toEqual({ kind: "select-sketch-plane" })
+  })
+
   it("keeps feature visibility local and clears selection when its feature is hidden", () => {
     const first = createEditorSessionStore()
     const second = createEditorSessionStore()

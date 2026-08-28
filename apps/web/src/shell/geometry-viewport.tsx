@@ -175,7 +175,7 @@ async function initializeViewport(
   canvas: HTMLCanvasElement,
   createViewport: ViewportFactory,
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
-  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
+  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
   onSelectionCandidateStackChange: (candidates: readonly ViewerSelection[]) => void,
   onSelectionCandidateStackCommit: (candidates: readonly ViewerSelection[]) => void,
@@ -191,6 +191,7 @@ async function initializeViewport(
   latestControllerRef: RefObject<DocumentControllerState>,
   latestOriginPlaneRef: RefObject<ViewerOriginPlane | null>,
   latestOriginPlaneSelectionActiveRef: RefObject<boolean>,
+  latestOriginPlaneIdleSelectionEnabledRef: RefObject<boolean>,
   latestOriginPlaneVisibilityRef: RefObject<ViewerOriginPlaneVisibility>,
   latestFeaturePreselectionRef: RefObject<ViewerMesh | null>,
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
@@ -222,6 +223,7 @@ async function initializeViewport(
     viewport.setOriginPlaneSelection(
       latestOriginPlaneRef.current,
       latestOriginPlaneSelectionActiveRef.current,
+      latestOriginPlaneIdleSelectionEnabledRef.current,
     )
     viewport.setFeatureSelection(latestFeatureSelectionRef.current)
     viewport.setFeaturePreselection(latestFeaturePreselectionRef.current)
@@ -294,6 +296,7 @@ function useLatestViewportInputs({
   meshes,
   originPlaneSelection,
   originPlaneSelectionActive,
+  originPlaneIdleSelectionEnabled,
   originPlaneVisibility,
   sketchContext,
   sketches,
@@ -304,6 +307,7 @@ function useLatestViewportInputs({
   meshes: readonly ViewerMesh[]
   originPlaneSelection: ViewerOriginPlane | null
   originPlaneSelectionActive: boolean
+  originPlaneIdleSelectionEnabled: boolean
   originPlaneVisibility: ViewerOriginPlaneVisibility
   sketchContext: GeometryViewportSketchContext | null
   sketches: readonly ViewerSketch[]
@@ -314,6 +318,7 @@ function useLatestViewportInputs({
   const meshesRef = useRef(meshes)
   const originPlaneRef = useRef(originPlaneSelection)
   const originPlaneSelectionActiveRef = useRef(originPlaneSelectionActive)
+  const originPlaneIdleSelectionEnabledRef = useRef(originPlaneIdleSelectionEnabled)
   const originPlaneVisibilityRef = useRef(originPlaneVisibility)
   const sketchContextRef = useRef(sketchContext)
   const sketchesRef = useRef(sketches)
@@ -323,6 +328,7 @@ function useLatestViewportInputs({
   meshesRef.current = meshes
   originPlaneRef.current = originPlaneSelection
   originPlaneSelectionActiveRef.current = originPlaneSelectionActive
+  originPlaneIdleSelectionEnabledRef.current = originPlaneIdleSelectionEnabled
   originPlaneVisibilityRef.current = originPlaneVisibility
   sketchContextRef.current = sketchContext
   sketchesRef.current = sketches
@@ -333,6 +339,7 @@ function useLatestViewportInputs({
     meshesRef,
     originPlaneRef,
     originPlaneSelectionActiveRef,
+    originPlaneIdleSelectionEnabledRef,
     originPlaneVisibilityRef,
     sketchContextRef,
     sketchesRef,
@@ -346,9 +353,10 @@ function useViewportRenderer(
   sketches: readonly ViewerSketch[],
   originPlaneSelection: ViewerOriginPlane | null,
   originPlaneSelectionActive: boolean,
+  originPlaneIdleSelectionEnabled: boolean,
   originPlaneVisibility: ViewerOriginPlaneVisibility,
   onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void,
-  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void,
+  onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void,
   onSelectionChange: (selection: ViewerSelection | null) => void,
   featurePreselection: ViewerMesh | null,
   featureSelection: ViewerMesh | null,
@@ -363,6 +371,7 @@ function useViewportRenderer(
     meshes,
     originPlaneSelection,
     originPlaneSelectionActive,
+    originPlaneIdleSelectionEnabled,
     originPlaneVisibility,
     sketchContext,
     sketches,
@@ -405,6 +414,7 @@ function useViewportRenderer(
       latest.controllerRef,
       latest.originPlaneRef,
       latest.originPlaneSelectionActiveRef,
+      latest.originPlaneIdleSelectionEnabledRef,
       latest.originPlaneVisibilityRef,
       latest.featurePreselectionRef,
       latest.featureSelectionRef,
@@ -435,8 +445,12 @@ function useViewportRenderer(
   }, [sketches])
 
   useEffect(() => {
-    viewportRef.current?.setOriginPlaneSelection(originPlaneSelection, originPlaneSelectionActive)
-  }, [originPlaneSelection, originPlaneSelectionActive])
+    viewportRef.current?.setOriginPlaneSelection(
+      originPlaneSelection,
+      originPlaneSelectionActive,
+      originPlaneIdleSelectionEnabled,
+    )
+  }, [originPlaneIdleSelectionEnabled, originPlaneSelection, originPlaneSelectionActive])
 
   useEffect(() => {
     viewportRef.current?.setOriginPlaneVisibility(originPlaneVisibility)
@@ -705,6 +719,12 @@ type GeometryViewportProps = Readonly<{
   featurePreview?: FeaturePreviewState
   hiddenFeatureIds?: readonly string[]
   hiddenSketchIds?: readonly string[]
+  idleOriginPlaneSelection?:
+    | Readonly<{
+        selectedPlane: ViewerOriginPlane | null
+        onSelect: (plane: ViewerOriginPlane | null) => void
+      }>
+    | undefined
   originPlaneSelection?: Readonly<{
     mode: "create" | "replace"
     selectedPlane: ViewerOriginPlane | null
@@ -745,6 +765,18 @@ function highlightedFeatureMesh(
   return viewerFeatureMesh(controller, featureId)
 }
 
+function useHighlightedFeatureMesh(
+  controller: DocumentControllerState,
+  featureId: string | null | undefined,
+  hiddenFeatureIds: readonly string[],
+  preview: FeaturePreviewState | undefined,
+) {
+  return useMemo(
+    () => highlightedFeatureMesh(controller, featureId, hiddenFeatureIds, preview),
+    [controller, featureId, hiddenFeatureIds, preview],
+  )
+}
+
 function previewMeshes(
   preview: FeaturePreviewState | undefined,
   committedMeshes: readonly ViewerMesh[],
@@ -752,18 +784,42 @@ function previewMeshes(
   return preview?.status === "ready" ? preview.meshes : committedMeshes
 }
 
-function selectedOriginPlane(selection: GeometryViewportProps["originPlaneSelection"]) {
-  return selection?.selectedPlane ?? null
-}
-
-function selectOriginPlaneHandler(selection: GeometryViewportProps["originPlaneSelection"]) {
-  return selection?.onSelect ?? ignoreOriginPlaneSelection
+function selectedOriginPlane(
+  selection: GeometryViewportProps["originPlaneSelection"],
+  idleSelection: GeometryViewportProps["idleOriginPlaneSelection"],
+) {
+  return selection?.selectedPlane ?? idleSelection?.selectedPlane ?? null
 }
 
 function visibleOriginPlanes(
   originPlaneVisibility: GeometryViewportProps["originPlaneVisibility"],
 ) {
   return originPlaneVisibility?.visibility ?? defaultViewerOriginPlaneVisibility
+}
+
+function useOriginPlaneInteraction(
+  selection: GeometryViewportProps["originPlaneSelection"],
+  idleSelection: GeometryViewportProps["idleOriginPlaneSelection"],
+) {
+  const activeSelect = selection?.onSelect
+  const idleSelect = idleSelection?.onSelect
+  const onSelect = useCallback(
+    (plane: ViewerOriginPlane | null) => {
+      if (activeSelect) {
+        if (plane) activeSelect(plane)
+        return
+      }
+      const selectIdlePlane = idleSelect ?? ignoreOriginPlaneSelection
+      selectIdlePlane(plane)
+    },
+    [activeSelect, idleSelect],
+  )
+  return {
+    active: selection !== undefined,
+    idleSelectionEnabled: idleSelection !== undefined,
+    onSelect,
+    selectedPlane: selectedOriginPlane(selection, idleSelection),
+  }
 }
 
 function changeOriginPlaneVisibilityHandler(
@@ -891,6 +947,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     controller,
     createViewport = loadGeometryViewport,
     featurePreview,
+    idleOriginPlaneSelection,
     originPlaneSelection,
     originPlaneVisibility,
     onSelectionChange,
@@ -902,18 +959,24 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
   const t = useTranslations("app.shell.viewport")
   const { allCommittedMeshes, allHiddenFeatureIds, meshes } = useViewportMeshPresentation(props)
   const sketches = useViewportSketchPresentation(props)
-  const featurePreselection = useMemo(
-    () =>
-      highlightedFeatureMesh(controller, preselectedFeatureId, allHiddenFeatureIds, featurePreview),
-    [allHiddenFeatureIds, controller, featurePreview, preselectedFeatureId],
+  const featurePreselection = useHighlightedFeatureMesh(
+    controller,
+    preselectedFeatureId,
+    allHiddenFeatureIds,
+    featurePreview,
   )
-  const featureSelection = useMemo(
-    () =>
-      highlightedFeatureMesh(controller, selectedFeatureId, allHiddenFeatureIds, featurePreview),
-    [allHiddenFeatureIds, controller, featurePreview, selectedFeatureId],
+  const featureSelection = useHighlightedFeatureMesh(
+    controller,
+    selectedFeatureId,
+    allHiddenFeatureIds,
+    featurePreview,
   )
   const [originPlanePreselection, setOriginPlanePreselection] = useState<ViewerOriginPlane | null>(
     null,
+  )
+  const originPlaneInteraction = useOriginPlaneInteraction(
+    originPlaneSelection,
+    idleOriginPlaneSelection,
   )
   const {
     canvasRef,
@@ -928,27 +991,23 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     controller,
     meshes,
     sketches,
-    selectedOriginPlane(originPlaneSelection),
-    originPlaneSelection !== undefined,
+    originPlaneInteraction.selectedPlane,
+    originPlaneInteraction.active,
+    originPlaneInteraction.idleSelectionEnabled,
     visibleOriginPlanes(originPlaneVisibility),
     setOriginPlanePreselection,
-    selectOriginPlaneHandler(originPlaneSelection),
+    originPlaneInteraction.onSelect,
     onSelectionChange,
     featurePreselection,
     featureSelection,
     sketchContext ?? null,
   )
-  const supportCandidates = useMemo(
-    () => supportFaceCandidates(selectionCandidateStack, controller, t),
-    [controller, selectionCandidateStack, t],
+  const supportFaceSelection = useSupportFaceSelection(
+    selectionCandidateStack,
+    selectionCandidateCommit,
+    controller,
+    t,
   )
-  const supportSelectionRequest = useMemo<SupportFaceSelectionRequest>(() => {
-    if (!selectionCandidateCommit) return undefined
-    return {
-      candidates: supportFaceCandidates(selectionCandidateCommit.candidates, controller, t),
-      id: selectionCandidateCommit.id,
-    }
-  }, [controller, selectionCandidateCommit, t])
   useProjectThumbnail(controller, allCommittedMeshes)
   useClearInvalidSelection(meshes, selection, onSelectionChange)
   useSketchProjectionSynchronization(viewportRef, sketchContext)
@@ -968,8 +1027,8 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     sketches,
     message,
     originPlanePreselection,
-    supportFaceCandidates: supportCandidates,
-    supportFaceSelectionRequest: supportSelectionRequest,
+    supportFaceCandidates: supportFaceSelection.candidates,
+    supportFaceSelectionRequest: supportFaceSelection.request,
     sketchPointPreselection,
     sketchReferenceCandidateStack,
     originPlaneVisibility: visibleOriginPlanes(originPlaneVisibility),
@@ -1145,6 +1204,35 @@ type SupportFaceCandidate = Readonly<{
 type SupportFaceSelectionRequest =
   | Readonly<{ candidates: readonly SupportFaceCandidate[]; id: number }>
   | undefined
+
+function supportFaceSelectionRequest(
+  commit: Readonly<{ candidates: readonly ViewerSelection[]; id: number }> | undefined,
+  controller: DocumentControllerState,
+  t: ReturnType<typeof useTranslations<"app.shell.viewport">>,
+): SupportFaceSelectionRequest {
+  if (!commit) return undefined
+  return {
+    candidates: supportFaceCandidates(commit.candidates, controller, t),
+    id: commit.id,
+  }
+}
+
+function useSupportFaceSelection(
+  stack: readonly ViewerSelection[],
+  commit: Readonly<{ candidates: readonly ViewerSelection[]; id: number }> | undefined,
+  controller: DocumentControllerState,
+  t: ReturnType<typeof useTranslations<"app.shell.viewport">>,
+) {
+  const candidates = useMemo(
+    () => supportFaceCandidates(stack, controller, t),
+    [controller, stack, t],
+  )
+  const request = useMemo(
+    () => supportFaceSelectionRequest(commit, controller, t),
+    [commit, controller, t],
+  )
+  return { candidates, request }
+}
 
 function viewerSelectionKey(selection: ViewerSelection) {
   return `${selection.featureId}:${selection.faceId}`
@@ -1646,11 +1734,15 @@ function GeometryViewportContextChrome({
 
 function viewportOriginPlaneData(
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"],
+  idleOriginPlaneSelection: GeometryViewportProps["idleOriginPlaneSelection"],
   model: ReturnType<typeof useGeometryViewportModel>,
 ) {
   return {
     "data-origin-plane-preselection": model.originPlanePreselection ?? undefined,
-    "data-origin-plane-selection": originPlaneSelection?.selectedPlane,
+    "data-origin-plane-selection": selectedOriginPlane(
+      originPlaneSelection,
+      idleOriginPlaneSelection,
+    ),
     "data-origin-plane-visibility": viewerOriginPlanes
       .filter((plane) => model.originPlaneVisibility[plane])
       .join(","),
@@ -1697,7 +1789,13 @@ function viewportRegionClassNames(
 }
 
 export function GeometryViewport(props: GeometryViewportProps) {
-  const { featurePreview, onSelectionChange, originPlaneSelection, sketchContext } = props
+  const {
+    featurePreview,
+    idleOriginPlaneSelection,
+    onSelectionChange,
+    originPlaneSelection,
+    sketchContext,
+  } = props
   const passive = sketchContext?.mode === "normal" && !originPlaneSelection
   const displayUnits = useDocumentDisplayUnits()
   const sketchReferenceRegionRef = useRef<HTMLElement>(null)
@@ -1732,7 +1830,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
       aria-label={t("ariaLabel")}
       aria-hidden={passive ? true : undefined}
       className={regionClassNames.region}
-      {...viewportOriginPlaneData(originPlaneSelection, model)}
+      {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
       {...viewportRenderData(passive, featurePreview, model)}
       {...viewportSketchContextData(sketchContext)}
       onKeyDown={referenceInteraction.onKeyDown}

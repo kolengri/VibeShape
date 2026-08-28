@@ -174,7 +174,11 @@ export type GeometryViewport = Readonly<{
   setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
-  setOriginPlaneSelection: (selectedPlane: ViewerOriginPlane | null, active?: boolean) => void
+  setOriginPlaneSelection: (
+    selectedPlane: ViewerOriginPlane | null,
+    active?: boolean,
+    idleSelectionEnabled?: boolean,
+  ) => void
   setSelectionCandidateStackPreserved: (preserved: boolean) => void
   setSelectionPreselection: (selection: ViewerSelection | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
@@ -248,7 +252,7 @@ export function orderedEligibleViewerSelections(
 export type GeometryViewportOptions = Readonly<{
   isSelectionCandidateEligible?: (selection: ViewerSelection) => boolean
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
-  onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane) => void
+  onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane | null) => void
   onSelectionChange?: (selection: ViewerSelection | null) => void
   onSelectionCandidateStackChange?: (candidates: readonly ViewerSelection[]) => void
   onSelectionCandidateStackCommit?: (candidates: readonly ViewerSelection[]) => void
@@ -768,7 +772,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   })
   readonly #resizeObserver: ResizeObserver
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
-  readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane) => void
+  readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
   readonly #onSelectionCandidateStackChange: (candidates: readonly ViewerSelection[]) => void
   readonly #onSelectionCandidateStackCommit: (candidates: readonly ViewerSelection[]) => void
@@ -785,6 +789,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #pointerDown: Readonly<{ x: number; y: number }> | null = null
   #originPlaneSelection: ViewerOriginPlane | null = null
   #originPlaneSelectionActive = false
+  #originPlaneIdleSelectionEnabled = false
   #originPlanePreselection: ViewerOriginPlane | null = null
   #originPlaneVisibility: ViewerOriginPlaneVisibility = defaultViewerOriginPlaneVisibility
   #featurePreselection: ViewerMesh | null = null
@@ -1035,15 +1040,19 @@ class ThreeGeometryViewport implements GeometryViewport {
   setOriginPlaneSelection(
     selectedPlane: ViewerOriginPlane | null,
     active = selectedPlane !== null,
+    idleSelectionEnabled = false,
   ) {
     if (
       this.#disposed ||
-      (selectedPlane === this.#originPlaneSelection && active === this.#originPlaneSelectionActive)
+      (selectedPlane === this.#originPlaneSelection &&
+        active === this.#originPlaneSelectionActive &&
+        idleSelectionEnabled === this.#originPlaneIdleSelectionEnabled)
     ) {
       return
     }
     this.#originPlaneSelection = selectedPlane
     this.#originPlaneSelectionActive = active
+    this.#originPlaneIdleSelectionEnabled = idleSelectionEnabled
     if (!active) this.#selectionCandidateStackPreserved = false
     this.#clearSelectionCandidateStack()
     this.#setOriginPlanePreselection(null)
@@ -1051,6 +1060,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.clearSelection()
       this.#setPreselection(null)
     }
+    if (!active && !idleSelectionEnabled) this.#setOriginPlanePreselection(null)
     this.#updateOriginPlanes()
     this.#render()
   }
@@ -1316,7 +1326,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #pickOriginPlane(event: PointerEvent): ViewerOriginPlane | null {
     if (!this.#prepareRaycaster(event)) return null
     const intersection = this.#raycaster.intersectObjects(
-      [...this.#originPlaneMeshes.keys()],
+      [...this.#originPlaneMeshes.keys()].filter((mesh) => mesh.visible),
       false,
     )[0]
     return intersection ? (this.#originPlaneMeshes.get(intersection.object as Mesh) ?? null) : null
@@ -1598,8 +1608,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#setPreselection(modelSelection)
       return
     }
-    this.#clearSelectionCandidateStack()
-    this.#setPreselection(this.#pick(event))
+    this.#updateIdleSelectionPreselection(event)
   }
 
   #onPointerUp = (event: PointerEvent) => {
@@ -1617,7 +1626,27 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#commitOriginPlaneSelection(event)
       return
     }
-    this.#setSelection(this.#pick(event))
+    this.#commitIdleSelection(event)
+  }
+
+  #updateIdleSelectionPreselection(event: PointerEvent) {
+    this.#clearSelectionCandidateStack()
+    const modelSelection = this.#pick(event)
+    const plane =
+      this.#originPlaneIdleSelectionEnabled && !modelSelection ? this.#pickOriginPlane(event) : null
+    this.#setOriginPlanePreselection(plane)
+    this.#setPreselection(modelSelection)
+  }
+
+  #commitIdleSelection(event: PointerEvent) {
+    const modelSelection = this.#pick(event)
+    if (modelSelection || !this.#originPlaneIdleSelectionEnabled) {
+      this.#setOriginPlanePreselection(null)
+      this.#setSelection(modelSelection)
+      return
+    }
+    this.#setSelection(null)
+    this.#onOriginPlaneSelectionChange(this.#pickOriginPlane(event))
   }
 
   #commitSketchPointSelection(event: PointerEvent) {
@@ -1648,7 +1677,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#interactionMode === "sketch-reference-select") return
     this.#clearSketchReferencePicking()
     if (!this.#selectionCandidateStackPreserved) this.#clearSelectionCandidateStack()
-    if (this.#originPlaneSelectionActive) this.#setOriginPlanePreselection(null)
+    this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
   }
 

@@ -123,6 +123,10 @@ function renderViewport(
     selectedFeatureId?: string
   }>,
   sketchContext?: GeometryViewportSketchContext,
+  idleOriginPlaneSelection?: Readonly<{
+    selectedPlane: "xy" | "xz" | "yz" | null
+    onSelect: (plane: "xy" | "xz" | "yz" | null) => void
+  }>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -160,6 +164,7 @@ function renderViewport(
           {...(featurePreview ? { featurePreview } : {})}
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
           {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
+          {...(idleOriginPlaneSelection ? { idleOriginPlaneSelection } : {})}
         />
       </TooltipProvider>
     </I18nProvider>
@@ -568,7 +573,7 @@ describe("GeometryViewport", () => {
     expect(onSelectionChange).toHaveBeenCalledWith(selection)
     expect(port.setMeshes).toHaveBeenCalledWith([{ featureId: boxId, ...mesh }])
     expect(port.setOriginPlaneVisibility).toHaveBeenCalledWith({ xy: true, xz: true, yz: true })
-    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, false)
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, false, false)
     expect(
       screen
         .getByRole("region", { name: "3D viewport" })
@@ -754,7 +759,7 @@ describe("GeometryViewport", () => {
 
     await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
     expect(port.setMeshes).toHaveBeenCalledWith([])
-    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz", true)
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("xz", true, false)
     expect(screen.queryByText("Create a feature to display its rebuilt geometry.")).toBeNull()
     const viewport = screen.getByRole("region", { name: "3D viewport" })
     expect(viewport.getAttribute("data-origin-plane-selection")).toBe("xz")
@@ -769,6 +774,34 @@ describe("GeometryViewport", () => {
     expect(onSelect).toHaveBeenCalledWith("xy")
   })
 
+  it("keeps an idle origin-plane selection visible without activating support selection", async () => {
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        selectedPlane: "yz",
+        onSelect,
+      },
+    )
+
+    await waitFor(() => expect(createViewport).toHaveBeenCalledOnce())
+    expect(port.setOriginPlaneSelection).toHaveBeenCalledWith("yz", false, true)
+    const viewport = screen.getByRole("region", { name: "3D viewport" })
+    expect(viewport.getAttribute("data-origin-plane-selection")).toBe("yz")
+
+    const options = createViewport.mock.calls[0]?.[1]
+    options?.onOriginPlaneSelectionChange?.("xz")
+    expect(onSelect).toHaveBeenCalledWith("xz")
+    options?.onOriginPlaneSelectionChange?.(null)
+    expect(onSelect).toHaveBeenLastCalledWith(null)
+  })
+
   it("explains graphical support replacement without highlighting a false origin plane", async () => {
     const { port } = renderViewport(readyController([], []), null, {
       mode: "replace",
@@ -776,7 +809,9 @@ describe("GeometryViewport", () => {
       onSelect: vi.fn(),
     })
 
-    await waitFor(() => expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, true))
+    await waitFor(() =>
+      expect(port.setOriginPlaneSelection).toHaveBeenCalledWith(null, true, false),
+    )
     expect(
       screen.getByText(
         "Select an earlier origin plane, datum plane, or supported planar model face to replace the sketch support.",
