@@ -579,9 +579,12 @@ describe("SketchViewport", () => {
       `[data-sketch-context-entity-id="${constructionLineId}"]`,
     )
     expect(regular?.getAttribute("stroke-dasharray")).toBeNull()
-    expect(regular?.classList.contains("stroke-muted-foreground/75")).toBe(true)
+    expect(regular?.classList.contains("stroke-sketch-reference-context")).toBe(true)
     expect(construction?.getAttribute("stroke-dasharray")).toBe("5 3")
-    expect(construction?.classList.contains("stroke-muted-foreground/50")).toBe(true)
+    expect(construction?.classList.contains("stroke-sketch-reference-context/75")).toBe(true)
+    expect(screen.getByRole("group", { name: "Reference context" }).textContent).toContain(
+      "Sketch 1 · 2 entities",
+    )
   })
 
   it("renders projected construction geometry from a saved source as dashed", () => {

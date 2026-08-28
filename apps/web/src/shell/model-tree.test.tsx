@@ -268,7 +268,7 @@ describe("ModelTree History presentation", () => {
       controller: editController,
     })
 
-    expect(screen.getByText(/Rollback context/)).toBeTruthy()
+    expect(screen.getByText(/Edit point in History/)).toBeTruthy()
     expect(
       first.container
         .querySelector(`[data-history-id="${downstreamSketch.id}"]`)
@@ -277,8 +277,18 @@ describe("ModelTree History presentation", () => {
 
     first.unmount()
     const normal = renderTree({ controller: editController })
-    expect(screen.queryByText(/Rollback context/)).toBeNull()
+    expect(screen.queryByText(/Edit point in History/)).toBeNull()
     expect(normal.container.querySelector("[data-history-rolled-back='true']")).toBeNull()
+  })
+
+  it("omits rollback guidance when the edited sketch is already the last History item", () => {
+    renderTree({
+      activeSketchId: sketchId,
+      activeWorkspace: "sketch",
+    })
+
+    expect(screen.queryByText(/Edit point in History/)).toBeNull()
+    expect(document.querySelector("[data-history-rolled-back='true']")).toBeNull()
   })
 
   it("keeps datum geometry in History and out of Bodies", () => {

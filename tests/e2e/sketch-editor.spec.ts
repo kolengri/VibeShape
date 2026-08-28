@@ -351,6 +351,12 @@ test.describe("full sketch editor", () => {
     await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
+    await expect(page.getByRole("group", { name: "Reference context" })).toContainText(
+      "Sketch 1 · 3 entities",
+    )
+    await expect(page.getByText(/Edit point in History: later items are rolled back/)).toHaveCount(
+      0,
+    )
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(1)
     const earlierLine = drawing.locator("line[data-sketch-context-source-sketch-id]")
     await expect(earlierLine).toHaveCount(1)
@@ -370,6 +376,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(page.getByText(/Edit point in History: later items are rolled back/)).toBeVisible()
     await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)

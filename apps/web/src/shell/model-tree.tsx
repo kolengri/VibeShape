@@ -705,7 +705,7 @@ function HistoryGroup({
               ...props,
               row,
               rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
-              marker: rollbackIndex === index,
+              marker: rollbackIndex === index && index < view.rows.length - 1,
             }
             return row.kind === "sketch" ? (
               <SketchHistoryRow key={historyRefKey(row.ref)} {...rowProps} />

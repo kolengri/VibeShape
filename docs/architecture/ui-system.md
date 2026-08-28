@@ -115,6 +115,7 @@ Extend the base shadcn tokens with CAD-specific tokens:
 - `--background`, `--foreground`, `--card`, `--popover`, `--border`, `--input`, and `--ring`;
 - `--panel`, `--panel-muted`, `--toolbar`, and `--viewport-background`;
 - `--selection`, `--preselection`, and `--selection-foreground`;
+- `--sketch-reference-context` for visible-but-uncommitted earlier-sketch projection;
 - `--sketch-under`, `--sketch-full`, `--sketch-conflict`, and `--construction`;
 - `--feature-active`, `--feature-suppressed`, `--feature-error`, and `--feature-stale`;
 - `--diagnostic-info`, `--diagnostic-warning`, and `--diagnostic-error`;
