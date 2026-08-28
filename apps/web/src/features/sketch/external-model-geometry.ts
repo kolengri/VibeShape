@@ -18,6 +18,7 @@ import type {
 import {
   createTopologyReferenceResolver,
   featureIdSchema,
+  isOrphanedModelReference,
   isSketchExternalModelReference,
   projectedExternalCurvePointCount,
   replaceSketchExternalReference,
@@ -542,7 +543,12 @@ export function repairExternalModelGeometryCandidates(
   const reference = draft.externalReferences?.find(({ id }) => id === referenceId)
   if (!reference || !isSketchExternalModelReference(reference)) return []
   return candidates.filter((candidate) => {
-    if (candidate.featureId !== reference.reference.featureId) return false
+    if (
+      !isOrphanedModelReference(reference) &&
+      candidate.featureId !== reference.reference.featureId
+    ) {
+      return false
+    }
     if (reference.kind === "model-point") return candidate.kind === "model-point"
     if (reference.kind === "model-line") return candidate.kind === "model-line"
     if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return false

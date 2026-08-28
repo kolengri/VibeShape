@@ -5,6 +5,7 @@ import {
   clickSketchEntityAt,
   confirmSketchPlane,
   drawRectangle,
+  selectModelEdgeInViewport,
   selectOriginPlaneInViewport,
   selectSketchEntities,
   selectSketchTool,
@@ -23,7 +24,6 @@ test.describe("full sketch editor", () => {
       .getByRole("form", { name: "Create box" })
       .getByRole("button", { name: "Create box" })
       .click()
-
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch", exact: true })
@@ -83,11 +83,17 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
   })
 
-  test("keeps a selected model edge human-readable after save and reopen", async ({ page }) => {
+  test("keeps and repairs a model edge across source-feature deletion", async ({ page }) => {
+    test.setTimeout(45_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
     await toolbar.getByRole("button", { name: "Box", exact: true }).click()
     await page
       .getByRole("form", { name: "Create box" })
@@ -204,9 +210,24 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.reload()
-    await expect(
-      page.getByRole("button", { name: "Open Sketch 1 to repair 1 broken reference" }),
-    ).toBeVisible()
+    const repairSketch = page.getByRole("button", {
+      name: "Open Sketch 1 to repair 1 broken reference",
+    })
+    await expect(repairSketch).toBeVisible()
+    await repairSketch.click()
+    await taskPanel.getByRole("button", { name: "Replace reference" }).click()
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const orphanReplacementLabel = await selectModelEdgeInViewport(page, "Box 2")
+
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await expect(repairSketch).toHaveCount(0)
+
+    await page.reload()
+    await expect(repairSketch).toHaveCount(0)
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(taskPanel.getByText(orphanReplacementLabel, { exact: true })).toBeVisible()
   })
 
   test("keeps one 3D canvas while switching between normal sketch edit and orbit context", async ({
