@@ -901,6 +901,78 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
   })
 
+  test("wakes an earlier circle while placing a point without activating Use", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.5)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    const contextCircle = drawing.locator('[data-sketch-context-curve-type="circle"]')
+    await expect(contextCircle).toHaveCount(1)
+    const wakeupPoint = await contextCircle.evaluate((element) => {
+      const curve = element as unknown as {
+        getAttribute(name: string): string | null
+        getScreenCTM(): { a: number; b: number; c: number; d: number; e: number; f: number } | null
+      }
+      const matrix = curve.getScreenCTM()
+      const firstPoint = curve
+        .getAttribute("points")
+        ?.trim()
+        .split(/\s+/)[0]
+        ?.split(",")
+        .map(Number)
+      if (!matrix || !firstPoint || firstPoint.length !== 2) {
+        throw new Error("The earlier sketch circle requires a screen-space point.")
+      }
+      const [x = 0, y = 0] = firstPoint
+      return {
+        x: matrix.a * x + matrix.c * y + matrix.e,
+        y: matrix.b * x + matrix.d * y + matrix.f,
+      }
+    })
+
+    await page.mouse.move(wakeupPoint.x, wakeupPoint.y)
+
+    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
+    await expect(page.locator("[data-sketch-external-inference-label]")).toContainText(
+      "Sketch 1 · Circle 1",
+    )
+    await expect(contextCircle).toHaveAttribute(
+      "data-sketch-external-inference-source",
+      "Sketch 1 · Circle 1",
+    )
+    await expect(drawing.locator("[data-sketch-external-curve-count]")).toHaveCount(0)
+
+    await page.mouse.click(wakeupPoint.x, wakeupPoint.y)
+
+    await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
+    await expect(drawing.locator('[data-sketch-context-curve-type="circle"]')).toHaveCount(0)
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
+  })
+
   test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

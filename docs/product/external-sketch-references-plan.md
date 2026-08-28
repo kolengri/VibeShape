@@ -69,8 +69,15 @@ re-evaluate stable-reference availability. The first Intersection slice selects 
 face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
-closed. Point and Line placement now wake visible earlier-sketch points and lines, highlight and label the source, and atomically create the stable reference plus inferred constraint only after acceptance. General surfaces, multi-curve results, Pierce, curve and model-topology wake-up, non-circular curved
-model edges, and sketch-source repair UI are not implemented. Normal-view Use provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
+closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles, and
+bounded arcs, highlight and label the source, and atomically create the stable reference plus inferred
+Coincident, Point on line, or Point on curve constraint only after acceptance. Curve wake-up projects the
+pointer onto exact analytical geometry; it never infers against sampled display polylines. Shift suppresses
+the candidate, the first Line click remains provisional, and an already used curve is reused without
+creating a second reference. General surfaces, multi-curve results, Pierce, ellipse wake-up, model-curve
+wake-up, non-circular curved model edges, and sketch-source repair UI are not implemented. Normal-view Use
+provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded
+closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
 authoritative worker evaluation derive them from stable source identity and resolved support frames.
 
 ### Reference types
@@ -158,7 +165,9 @@ cannot alter evaluation order.
    Horizontal/Vertical, Parallel, Perpendicular, Concentric, Tangent, and dimensional relations where
    solver semantics permit them.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
-   visible preselection, source labels, a reference list, visibility toggle, and accessible removal are implemented. Extend automatic inference to curves and stable model topology.
+   exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
+   visibility toggle, and accessible removal are implemented. Extend automatic inference to ellipses and
+   stable curved model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and

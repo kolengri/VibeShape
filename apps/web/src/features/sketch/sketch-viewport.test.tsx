@@ -1013,6 +1013,253 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("wakes an earlier sketch circle without duplicating it before point placement", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3276")
+    const sourceCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3277")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3278"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      closed: true,
+      kind: "curve" as const,
+      label: "Layout · Circle 1",
+      points: [
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+        { world: [0, 5, 0] as const, x: 0, y: 5 },
+        { world: [-5, 0, 0] as const, x: -5, y: 0 },
+        { world: [0, -5, 0] as const, x: 0, y: -5 },
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+      ],
+      projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
+      projectedType: "circle" as const,
+      sourceEntityId: sourceCircleId,
+      sourceSketchId,
+      sourceType: "circle" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 4.8, y: 1.4 })
+
+    fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
+    expect(document.querySelector("[data-sketch-inference]")).toBeNull()
+    fireEvent.pointerMove(drawing, pointer)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Circle 1"]'),
+    ).toBeTruthy()
+    expect(document.querySelectorAll('[data-sketch-context-curve-type="circle"]')).toHaveLength(1)
+
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(reference?.kind).toBe("curve")
+    if (reference?.kind !== "curve" || !localPoint) {
+      throw new Error("Curve wake-up must create one curve reference and one local point.")
+    }
+    expect(reference.sourceSketchId).toBe(sourceSketchId)
+    expect(reference.sourceEntityId).toBe(sourceCircleId)
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-curve",
+        pointId: localPoint.id,
+        curveId: reference.projectedEntityId,
+      }),
+    )
+  })
+
+  it("wakes only the bounded positive sweep of an earlier sketch arc", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3282")
+    const sourceArcId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3283")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3284"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const anglePoint = (degrees: number) => {
+      const radians = (degrees * Math.PI) / 180
+      return { x: Math.cos(radians) * 10, y: Math.sin(radians) * 10 }
+    }
+    const start = anglePoint(350)
+    const middle = anglePoint(0)
+    const end = anglePoint(10)
+    const candidate = {
+      closed: false,
+      kind: "curve" as const,
+      label: "Layout · Arc 1",
+      points: [start, middle, end].map((point) => ({
+        ...point,
+        world: [point.x, point.y, 0] as const,
+      })),
+      projectedGeometry: { points: [{ x: 0, y: 0 }, start, end], type: "arc" as const },
+      projectedType: "arc" as const,
+      sourceEntityId: sourceArcId,
+      sourceSketchId,
+      sourceType: "arc" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, { x: 0, y: 10 }))
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeNull()
+
+    const pointer = clientPointForSketch(drawing, { x: 10.4, y: 0.2 })
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Arc 1"]'),
+    ).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference).toMatchObject({
+      kind: "curve",
+      projectedType: "arc",
+      sourceEntityId: sourceArcId,
+      sourceSketchId,
+    })
+    if (reference?.kind !== "curve" || !localPoint) {
+      throw new Error("Arc wake-up must create one curve reference and one local point.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-curve",
+        pointId: localPoint.id,
+        curveId: reference.projectedEntityId,
+      }),
+    )
+  })
+
+  it("defers circle wake-up materialization until a line placement commits", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3279")
+    const sourceCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3280")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3281"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      closed: true,
+      kind: "curve" as const,
+      label: "Layout · Circle 1",
+      points: [
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+        { world: [0, 5, 0] as const, x: 0, y: 5 },
+        { world: [-5, 0, 0] as const, x: -5, y: 0 },
+        { world: [0, -5, 0] as const, x: 0, y: -5 },
+        { world: [5, 0, 0] as const, x: 5, y: 0 },
+      ],
+      projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
+      projectedType: "circle" as const,
+      sourceEntityId: sourceCircleId,
+      sourceSketchId,
+      sourceType: "circle" as const,
+    }
+    const endCandidate = {
+      ...candidate,
+      label: "Layout · Circle 2",
+      points: [
+        { world: [24, 8, 0] as const, x: 24, y: 8 },
+        { world: [20, 12, 0] as const, x: 20, y: 12 },
+        { world: [16, 8, 0] as const, x: 16, y: 8 },
+        { world: [20, 4, 0] as const, x: 20, y: 4 },
+        { world: [24, 8, 0] as const, x: 24, y: 8 },
+      ],
+      projectedGeometry: { points: [{ x: 20, y: 8 }], radius: 4, type: "circle" as const },
+      sourceEntityId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3290"),
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "line",
+      externalContextGeometry: [candidate, endCandidate],
+      externalPointCandidates: [candidate, endCandidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const start = clientPointForSketch(drawing, { x: 5, y: 0 })
+
+    fireEvent.pointerMove(drawing, start)
+    fireEvent.pointerDown(drawing, start)
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy()
+
+    const end = clientPointForSketch(drawing, { x: 24, y: 8 })
+    fireEvent.pointerMove(drawing, end)
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Circle 2"]'),
+    ).toBeTruthy()
+    fireEvent.pointerDown(drawing, end)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const references = updated.externalReferences?.filter((reference) => reference.kind === "curve")
+    const line = updated.entities.find((entity) => entity.type === "line")
+    expect(references).toHaveLength(2)
+    if (!references || !line) {
+      throw new Error("Committed line must retain both woken external curve endpoints.")
+    }
+    const startReference = references.find(
+      (reference) => reference.sourceEntityId === sourceCircleId,
+    )
+    const endReference = references.find(
+      (reference) => reference.sourceEntityId === endCandidate.sourceEntityId,
+    )
+    expect(updated.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "point-on-curve",
+          pointId: line.startPointId,
+          curveId: startReference?.projectedEntityId,
+        }),
+        expect.objectContaining({
+          type: "point-on-curve",
+          pointId: line.endPointId,
+          curveId: endReference?.projectedEntityId,
+        }),
+      ]),
+    )
+  })
+
   it("materializes both source sketches when colliding line IDs wake an intersection", () => {
     const firstSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3250")
     const secondSourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3251")
@@ -2024,6 +2271,76 @@ describe("SketchViewport", () => {
     expect(center?.querySelector("circle")?.getAttribute("stroke")).toBe("none")
     expect(center?.querySelectorAll("line")).toHaveLength(2)
     expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeNull()
+  })
+
+  it("reuses a used external circle for later inference without duplicating its reference", async () => {
+    const projectedCurveId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3285")
+    const projectedCenterId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3286")
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3287",
+    )
+    const draft = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0 as const,
+          id: referenceId,
+          kind: "curve" as const,
+          sourceSketchId: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3288"),
+          sourceEntityId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3289"),
+          sourceType: "circle" as const,
+          projectedEntityId: projectedCurveId,
+          projectedType: "circle" as const,
+          projectedPointIds: [projectedCenterId],
+        },
+      ],
+    }
+    const base = solveResult()
+    if (!base.ok || base.response.type !== "sketchSolved") throw new Error("Expected solve result.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft,
+      editorTool: "point",
+      onDraftChange,
+      sketch: draft,
+      solveSketch: vi.fn(async () => ({
+        ...base,
+        response: {
+          ...base.response,
+          solution: {
+            ...base.response.solution,
+            points: [...base.response.solution.points, { entityId: projectedCenterId, x: 5, y: 6 }],
+            circles: [...base.response.solution.circles, { entityId: projectedCurveId, radius: 8 }],
+          },
+        },
+      })),
+    })
+
+    await waitFor(() =>
+      expect(document.querySelector("[data-sketch-external-curve-count='1']")).toBeTruthy(),
+    )
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 13.4, y: 6.1 })
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const localPoint = updated.entities.filter((entity) => entity.type === "point").at(-1)
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(updated.externalReferences?.[0]).toMatchObject({
+      id: referenceId,
+      projectedEntityId: projectedCurveId,
+    })
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-curve",
+        pointId: localPoint?.id,
+        curveId: projectedCurveId,
+      }),
+    )
   })
 
   it("keeps individually toggleable origin references visible while editing a sketch", () => {

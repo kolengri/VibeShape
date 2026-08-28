@@ -23,10 +23,26 @@ export type SketchInferenceArc = Readonly<{
   startPointId: SketchEntityId
 }>
 
+export type SketchInferenceCurve =
+  | Readonly<{
+      center: SketchPoint2
+      id: SketchEntityId
+      radius: number
+      type: "circle"
+    }>
+  | Readonly<{
+      center: SketchPoint2
+      end: SketchPoint2
+      id: SketchEntityId
+      start: SketchPoint2
+      type: "arc"
+    }>
+
 export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
   | Readonly<{ lineId: SketchEntityId; type: "midpoint" }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
+  | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
 
 export type SketchDirectionInference =
   | Readonly<{ type: "horizontal" | "vertical" }>
@@ -38,6 +54,7 @@ export type SketchPointInferenceKind =
   | "intersection"
   | "midpoint"
   | "none"
+  | "point-on-curve"
   | "point-on-line"
 
 export type SketchPointInference = Readonly<{
@@ -450,16 +467,83 @@ function nearestPointOnLineCandidate(lines: ReturnType<typeof nearbyLines>) {
     : undefined
 }
 
+const FULL_TURN = Math.PI * 2
+
+function positiveAngle(angle: number) {
+  const normalized = angle % FULL_TURN
+  return normalized >= 0 ? normalized : normalized + FULL_TURN
+}
+
+function curveProjection(point: SketchPoint2, curve: SketchInferenceCurve) {
+  const offsetX = point.x - curve.center.x
+  const offsetY = point.y - curve.center.y
+  const offsetLength = Math.hypot(offsetX, offsetY)
+  const radius =
+    curve.type === "circle"
+      ? curve.radius
+      : Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
+  if (!Number.isFinite(radius) || radius <= 0 || offsetLength <= 1e-12) return null
+  const angle = Math.atan2(offsetY, offsetX)
+  if (curve.type === "arc") {
+    const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
+    const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
+    if (positiveAngle(angle - startAngle) > positiveAngle(endAngle - startAngle) + 1e-12) {
+      return null
+    }
+  }
+  const projected = {
+    x: curve.center.x + (offsetX / offsetLength) * radius,
+    y: curve.center.y + (offsetY / offsetLength) * radius,
+  }
+  return { distanceSquared: squaredDistance(point, projected), point: projected }
+}
+
+function nearestPointOnCurveCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  let nearest:
+    | Readonly<{
+        curve: SketchInferenceCurve
+        projection: NonNullable<ReturnType<typeof curveProjection>>
+      }>
+    | undefined
+  for (const curve of curves) {
+    const projection = curveProjection(point, curve)
+    if (!projection || projection.distanceSquared > maximumDistance) continue
+    if (
+      !nearest ||
+      projection.distanceSquared < nearest.projection.distanceSquared ||
+      (projection.distanceSquared === nearest.projection.distanceSquared &&
+        curve.id.localeCompare(nearest.curve.id) < 0)
+    ) {
+      nearest = { curve, projection }
+    }
+  }
+  return nearest
+    ? {
+        kind: "point-on-curve" as const,
+        point: nearest.projection.point,
+        relations: [{ type: "point-on-curve" as const, curveId: nearest.curve.id }],
+        stableKey: nearest.curve.id,
+      }
+    : undefined
+}
+
 function pointCandidate(
   point: SketchPoint2,
   lines: readonly SketchInferenceLine[],
+  curves: readonly SketchInferenceCurve[],
   tolerance: number,
 ) {
   const nearby = nearbyLines(point, lines, tolerance)
   return (
     nearestIntersectionCandidate(point, nearby, tolerance) ??
     nearestMidpointCandidate(point, lines, tolerance) ??
-    nearestPointOnLineCandidate(nearby)
+    nearestPointOnLineCandidate(nearby) ??
+    nearestPointOnCurveCandidate(point, curves, tolerance)
   )
 }
 
@@ -662,7 +746,12 @@ function plainPointInference(point: SketchPoint2): SketchPointInference {
 }
 
 function newPointInference(input: Parameters<typeof inferSketchPoint>[0]): SketchPointInference {
-  const candidate = pointCandidate(input.point, input.lines ?? [], input.tolerance)
+  const candidate = pointCandidate(
+    input.point,
+    input.lines ?? [],
+    input.curves ?? [],
+    input.tolerance,
+  )
   if (candidate) return candidatePointInference(candidate)
   const direction = candidateDirection(input, input.point)
   return direction ? directionPointInference(direction) : plainPointInference(input.point)
@@ -672,6 +761,7 @@ export function inferSketchPoint(input: {
   anchor?: SketchPoint2
   anchorPointId?: SketchEntityId
   arcs?: readonly SketchInferenceArc[]
+  curves?: readonly SketchInferenceCurve[]
   directionLines?: readonly SketchInferenceLine[]
   lines?: readonly SketchInferenceLine[]
   point: SketchPoint2

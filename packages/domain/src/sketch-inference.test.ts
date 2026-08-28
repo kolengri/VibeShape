@@ -128,6 +128,72 @@ describe("sketch inference", () => {
     })
   })
 
+  it("infers exact point-on-curve relations for circles and bounded arcs", () => {
+    expect(
+      inferSketchPoint({
+        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
+        point: { x: 10.4, y: 0 },
+        points: [],
+        tolerance: 1,
+      }),
+    ).toMatchObject({
+      kind: "point-on-curve",
+      point: { x: 10, y: 0 },
+      relations: [{ type: "point-on-curve", curveId: arcId }],
+    })
+
+    const arc = {
+      id: arcId,
+      type: "arc" as const,
+      center: { x: 0, y: 0 },
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+    }
+    const onArc = inferSketchPoint({
+      curves: [arc],
+      point: { x: 7.4, y: 7.4 },
+      points: [],
+      tolerance: 1,
+    })
+    expect(onArc.kind).toBe("point-on-curve")
+    expect(onArc.point.x).toBeCloseTo(Math.SQRT1_2 * 10)
+    expect(onArc.point.y).toBeCloseTo(Math.SQRT1_2 * 10)
+    expect(
+      inferSketchPoint({
+        curves: [arc],
+        point: { x: -10, y: 0.2 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("none")
+  })
+
+  it("preserves existing line priority when a line and curve overlap", () => {
+    expect(
+      inferSketchPoint({
+        curves: [{ id: arcId, type: "circle", center: { x: 0, y: 0 }, radius: 10 }],
+        lines: [{ ...horizontalLine, start: { x: 8, y: 0 }, end: { x: 12, y: 0 } }],
+        point: { x: 10.2, y: 0.2 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("midpoint")
+  })
+
+  it("breaks equal-distance curve candidates by stable identity", () => {
+    expect(
+      inferSketchPoint({
+        curves: [
+          { id: secondLineId, type: "circle", center: { x: 0, y: 0 }, radius: 10 },
+          { id: firstLineId, type: "circle", center: { x: 0, y: 0 }, radius: 10 },
+        ],
+        point: { x: 10.5, y: 0 },
+        points: [],
+        tolerance: 1,
+      }).relations,
+    ).toEqual([{ type: "point-on-curve", curveId: firstLineId }])
+  })
+
   it("infers a segment intersection with both stable line relations", () => {
     const verticalLine = {
       id: secondLineId,
