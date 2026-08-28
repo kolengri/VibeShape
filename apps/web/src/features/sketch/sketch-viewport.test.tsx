@@ -395,6 +395,95 @@ function StatefulSketchViewport(
   })
 }
 
+function coplanarModelCircleCandidate(featureIdValue: string) {
+  const featureId = featureIdSchema.parse(featureIdValue)
+  return {
+    candidateId: "coplanar-circular-edge",
+    coplanar: true,
+    featureId,
+    kind: "model-curve" as const,
+    label: "Cylinder 1 · Circular edge 1",
+    passiveEligible: true,
+    points: [
+      { world: [5, 0, 0] as const, x: 5, y: 0 },
+      { world: [0, 5, 0] as const, x: 0, y: 5 },
+      { world: [-5, 0, 0] as const, x: -5, y: 0 },
+      { world: [0, -5, 0] as const, x: 0, y: -5 },
+      { world: [5, 0, 0] as const, x: 5, y: 0 },
+    ],
+    projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
+    projectedType: "circle" as const,
+    reference: {
+      schemaVersion: 0 as const,
+      featureId,
+      kind: "edge" as const,
+      semanticRole: "primitive.cylinder.edge.start",
+      signature: {
+        kind: "edge" as const,
+        geometryClass: "CIRCLE" as const,
+        measure: Math.PI * 10,
+        centroid: [0, 0, 0] as [number, number, number],
+        bounds: {
+          min: [-5, -5, 0] as [number, number, number],
+          max: [5, 5, 0] as [number, number, number],
+        },
+        boundaryCount: 0,
+        adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
+      },
+    },
+    sourceType: "circle" as const,
+  }
+}
+
+function renderModelCurveCenterWakeup(
+  editorTool: "line" | "point",
+  featureIdValue: string,
+  sketchIdValue: string,
+) {
+  const target: SketchRecord = {
+    ...sketch,
+    id: sketchIdSchema.parse(sketchIdValue),
+    entities: [],
+    constraints: [],
+    externalReferences: [],
+  }
+  const candidate = coplanarModelCircleCandidate(featureIdValue)
+  const onDraftChange = vi.fn()
+  renderViewport({
+    draft: target,
+    editorTool,
+    externalModelCandidates: [candidate],
+    onDraftChange,
+    sketch: target,
+    solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+  })
+  const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+  mockDrawingRectangle(drawing)
+  return { candidate, drawing, onDraftChange }
+}
+
+function expectModelCurveCenterRelation(
+  updated: SketchRecord,
+  candidate: ReturnType<typeof coplanarModelCircleCandidate>,
+  localPointId: SketchEntityId,
+) {
+  const reference = updated.externalReferences?.find(({ kind }) => kind === "model-curve")
+  expect(reference).toMatchObject({ kind: "model-curve", reference: candidate.reference })
+  if (reference?.kind !== "model-curve") {
+    throw new Error("Model-curve center inference must persist one stable curve reference.")
+  }
+  expect(updated.constraints).toContainEqual(
+    expect.objectContaining({
+      type: "coincident",
+      firstPointId: localPointId,
+      secondPointId: reference.projectedPointIds[0],
+    }),
+  )
+  expect(updated.constraints).not.toContainEqual(
+    expect.objectContaining({ type: "point-on-curve" }),
+  )
+}
+
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
@@ -1535,43 +1624,7 @@ describe("SketchViewport", () => {
       constraints: [],
       externalReferences: [],
     }
-    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3292")
-    const candidate = {
-      candidateId: "coplanar-circular-edge",
-      coplanar: true,
-      featureId,
-      kind: "model-curve" as const,
-      label: "Cylinder 1 · Circular edge 1",
-      passiveEligible: true,
-      points: [
-        { world: [5, 0, 0] as const, x: 5, y: 0 },
-        { world: [0, 5, 0] as const, x: 0, y: 5 },
-        { world: [-5, 0, 0] as const, x: -5, y: 0 },
-        { world: [0, -5, 0] as const, x: 0, y: -5 },
-        { world: [5, 0, 0] as const, x: 5, y: 0 },
-      ],
-      projectedGeometry: { points: [{ x: 0, y: 0 }], radius: 5, type: "circle" as const },
-      projectedType: "circle" as const,
-      reference: {
-        schemaVersion: 0 as const,
-        featureId,
-        kind: "edge" as const,
-        semanticRole: "primitive.cylinder.edge.start",
-        signature: {
-          kind: "edge" as const,
-          geometryClass: "CIRCLE" as const,
-          measure: Math.PI * 10,
-          centroid: [0, 0, 0] as [number, number, number],
-          bounds: {
-            min: [-5, -5, 0] as [number, number, number],
-            max: [5, 5, 0] as [number, number, number],
-          },
-          boundaryCount: 0,
-          adjacentGeometryClasses: ["CYLINDRE", "PLANE"],
-        },
-      },
-      sourceType: "circle" as const,
-    }
+    const candidate = coplanarModelCircleCandidate("0195b5ac-b220-7a2c-8c33-67a36a7f3292")
     const onDraftChange = vi.fn()
     renderViewport({
       draft: target,
@@ -1610,6 +1663,48 @@ describe("SketchViewport", () => {
       }),
     )
     expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("wakes a model-circle center for Point and persists its stable point", () => {
+    const { candidate, drawing, onDraftChange } = renderModelCurveCenterWakeup(
+      "point",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3295",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3296",
+    )
+    const center = clientPointForSketch(drawing, { x: 0.2, y: 0.1 })
+
+    fireEvent.pointerMove(drawing, { ...center, shiftKey: true })
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeNull()
+    fireEvent.pointerMove(drawing, center)
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeTruthy()
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeTruthy()
+    fireEvent.pointerDown(drawing, center)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const localPoint = requiredSketchEntity(updated, "point")
+    expectModelCurveCenterRelation(updated, candidate, localPoint.id)
+  })
+
+  it("keeps a model-circle center provisional until Line commits", () => {
+    const { candidate, drawing, onDraftChange } = renderModelCurveCenterWakeup(
+      "line",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3297",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3298",
+    )
+    const center = clientPointForSketch(drawing, { x: 0.2, y: 0.1 })
+    fireEvent.pointerMove(drawing, center)
+    fireEvent.pointerDown(drawing, center)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    const end = clientPointForSketch(drawing, { x: 12, y: 8 })
+    fireEvent.pointerMove(drawing, end)
+    fireEvent.pointerDown(drawing, end)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const line = requiredSketchEntity(updated, "line")
+    expectModelCurveCenterRelation(updated, candidate, line.startPointId)
   })
 
   it("excludes non-coplanar and elliptical model curves from passive inference", () => {

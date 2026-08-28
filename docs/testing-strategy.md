@@ -113,9 +113,10 @@ Model-curve wake-up coverage requires exact center/normal plane evidence, unique
 resolution, and a circle or bounded-arc projection before a candidate enters passive inference. Candidate
 tests keep parallel-offset, tilted, elliptically projected, and ambiguous circular edges outside that path.
 Component tests verify Shift suppression, source highlighting, one stable `model-curve` reference, one
-Point on curve constraint, and the absence of persisted candidate or reference-geometry payloads. The real
-Chromium Cylinder workflow samples away from the seam vertex, finishes the dependent XY sketch, and
-reopens it with the same friendly circular-edge label and constraint.
+Point on curve constraint, Point and provisional-Line center wake-up through the first stable projected
+point identity, and the absence of persisted candidate or reference-geometry payloads. The real Chromium
+Cylinder workflows sample away from the seam vertex and at an offset center, finish the dependent XY
+sketches, and reopen them with the same friendly circular-edge labels and constraints.
 
 Sketch-support replacement tests require origin-to-face and face-to-origin domain transitions to preserve all sketch/entity/constraint/external-reference identities and reject invalid support records. Viewer and component tests require a bounded, closest-first, deterministically tie-broken face stack, feature/face deduplication, exact hover labels, visual preselection while cycling, pointer and keyboard acceptance, Escape dismissal, focus restoration, and an explicitly active picker when the current support is a model face. Session tests cover entering, canceling, accepted selection, local Undo, and return to the original create/edit context. The browser workflow keeps later History items hidden, disambiguates overlapping model faces without silently accepting the first hit, replaces support through a real 3D face pick, preserves authored geometry, and verifies the same resolved support label after Finish and reopen.
 

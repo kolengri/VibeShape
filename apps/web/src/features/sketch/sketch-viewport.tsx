@@ -5353,7 +5353,7 @@ function remapPendingExternalInference(
 }
 
 function materializeExternalInference(input: {
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupBinding>
   draft: SketchRecord
   inference: SketchPointInference | undefined
   pending: PendingGeometry | null
@@ -5361,9 +5361,9 @@ function materializeExternalInference(input: {
   let draft = input.draft
   const projectedIds = new Map<SketchEntityId, SketchEntityId>()
   for (const sourceEntityId of inferredExternalEntityIds(input.inference, input.pending)) {
-    const candidate = input.candidatesByInferenceId.get(sourceEntityId)
-    if (!candidate) continue
-    const materialized = materializeWakeupCandidate(draft, candidate)
+    const binding = input.candidatesByInferenceId.get(sourceEntityId)
+    if (!binding) continue
+    const materialized = materializeWakeupCandidate(draft, binding)
     draft = materialized.sketch
     projectedIds.set(sourceEntityId, materialized.projectedEntityId)
   }
@@ -5385,14 +5385,15 @@ function materializeExternalInference(input: {
 
 function materializeWakeupCandidate(
   draft: SketchRecord,
-  candidate: ExternalWakeupCandidate,
+  binding: ExternalWakeupBinding,
 ): Readonly<{ projectedEntityId: SketchEntityId; sketch: SketchRecord }> {
+  const candidate = binding.candidate
   if (
     candidate.kind === "model-point" ||
     candidate.kind === "model-line" ||
     candidate.kind === "model-curve"
   ) {
-    return materializeModelWakeupCandidate(draft, candidate)
+    return materializeModelWakeupCandidate(draft, candidate, binding.target)
   }
   return materializeSketchWakeupCandidate(draft, candidate)
 }
@@ -5403,6 +5404,7 @@ function materializeModelWakeupCandidate(
     ExternalWakeupCandidate,
     { kind: "model-curve" | "model-line" | "model-point" }
   >,
+  target: ExternalWakeupBinding["target"],
 ) {
   const materialized = materializeExternalModelCandidate(draft, candidate)
   if (materialized.kind === "model-point") {
@@ -5412,7 +5414,12 @@ function materializeModelWakeupCandidate(
     return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
   }
   if (materialized.kind === "model-curve") {
-    return { projectedEntityId: materialized.projectedEntityId, sketch: materialized.sketch }
+    const projectedEntityId =
+      target === "curve-center" ? materialized.projectedPointIds[0] : materialized.projectedEntityId
+    if (!projectedEntityId) {
+      throw new Error("External model curve center identity is unavailable.")
+    }
+    return { projectedEntityId, sketch: materialized.sketch }
   }
   throw new Error("External model wake-up materialization changed geometry kind.")
 }
@@ -5436,12 +5443,12 @@ function materializeSketchWakeupCandidate(
 
 function externalWakeupCandidateForInference(
   inference: SketchPointInference | null,
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>,
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupBinding>,
 ) {
   if (!inference) return null
   for (const entityId of inferredExternalEntityIds(inference, null)) {
-    const candidate = candidatesByInferenceId.get(entityId)
-    if (candidate) return candidate
+    const binding = candidatesByInferenceId.get(entityId)
+    if (binding) return binding.candidate
   }
   return null
 }
@@ -5609,8 +5616,13 @@ type ExternalWakeupCandidate =
   | Extract<ExternalSketchGeometryCandidate, { kind: "curve" | "line" | "point" }>
   | Extract<ExternalModelGeometryCandidate, { kind: "model-curve" | "model-line" | "model-point" }>
 
+type ExternalWakeupBinding = Readonly<{
+  candidate: ExternalWakeupCandidate
+  target: "curve-center" | "entity"
+}>
+
 type ExternalWakeupReferences = Readonly<{
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupBinding>
   curves: readonly SketchInferenceCurve[]
   lines: readonly SketchInferenceLine[]
   points: readonly SketchInferencePoint[]
@@ -5680,7 +5692,7 @@ function canWakeExternalCandidate(candidate: ExternalWakeupCandidate, draft: Ske
 }
 
 type MutableExternalWakeupReferences = {
-  candidatesByInferenceId: Map<SketchEntityId, ExternalWakeupCandidate>
+  candidatesByInferenceId: Map<SketchEntityId, ExternalWakeupBinding>
   curves: SketchInferenceCurve[]
   inferenceIdByCandidateKey: Map<string, SketchEntityId>
   lines: SketchInferenceLine[]
@@ -5694,8 +5706,20 @@ function appendExternalWakeupPoint(
   if (candidate.kind !== "point" && candidate.kind !== "model-point") return
   const inferenceId = createBrowserSketchEntityId()
   references.inferenceIdByCandidateKey.set(candidateKey(candidate), inferenceId)
-  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.candidatesByInferenceId.set(inferenceId, { candidate, target: "entity" })
   references.points.push({ id: inferenceId, reusable: false, x: candidate.x, y: candidate.y })
+}
+
+function appendExternalModelCurveCenter(
+  candidate: ExternalWakeupCandidate,
+  references: MutableExternalWakeupReferences,
+) {
+  if (candidate.kind !== "model-curve") return
+  const center = candidate.projectedGeometry?.points[0]
+  if (!center) return
+  const inferenceId = createBrowserSketchEntityId()
+  references.candidatesByInferenceId.set(inferenceId, { candidate, target: "curve-center" })
+  references.points.push({ id: inferenceId, reusable: false, ...center })
 }
 
 function externalWakeupLineEndpointId(
@@ -5716,7 +5740,7 @@ function appendExternalWakeupLine(
 ) {
   if (candidate.kind !== "line" && candidate.kind !== "model-line") return
   const inferenceId = createBrowserSketchEntityId()
-  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.candidatesByInferenceId.set(inferenceId, { candidate, target: "entity" })
   references.lines.push({
     id: inferenceId,
     startPointId: externalWakeupLineEndpointId(
@@ -5764,7 +5788,7 @@ function appendExternalWakeupCurve(
   const curve = externalWakeupCurve(candidate)
   if (!curve) return
   const inferenceId = createBrowserSketchEntityId()
-  references.candidatesByInferenceId.set(inferenceId, candidate)
+  references.candidatesByInferenceId.set(inferenceId, { candidate, target: "entity" })
   references.curves.push({ id: inferenceId, ...curve })
 }
 
@@ -5786,6 +5810,9 @@ function externalWakeupReferences(
   }
   for (const candidate of available) {
     appendExternalWakeupPoint(candidate, references)
+  }
+  for (const candidate of available) {
+    appendExternalModelCurveCenter(candidate, references)
   }
   for (const candidate of available) {
     appendExternalWakeupLine(candidate, references)

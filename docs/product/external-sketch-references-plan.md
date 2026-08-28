@@ -76,7 +76,9 @@ pointer onto exact analytical geometry; it never infers against sampled display 
 the candidate, the first Line click remains provisional, and an already used curve is reused without
 creating a second reference. Exact coplanar circular and bounded-arc model edges use the same passive
 interaction only when their `TopoRef` resolves uniquely; parallel-offset, tilted, elliptically projected,
-and ambiguous candidates remain available only to explicit compatible workflows or fail closed. General
+and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
+center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
+curve reference and relates the local point to the curve's stable projected center identity. General
 surfaces, multi-curve results, Pierce, ellipse wake-up, non-coplanar model-curve wake-up, non-circular curved
 model edges, and sketch-source repair UI are not implemented. Normal-view Use
 provides a bounded labeled chooser when candidates overlap, while orbit selection provides bounded

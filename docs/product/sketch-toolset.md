@@ -229,8 +229,8 @@ active support plane and display unit.
 
 ## Follow-up sequence
 
-1. Add remembered wake-up references, point-to-point horizontal/vertical alignment, arc midpoint and
-   quadrant candidates, and projected/external geometry inference.
+1. Extend remembered wake-up references with point-to-point horizontal/vertical alignment, arc midpoint
+   and quadrant candidates, and remaining projected/external geometry inference.
 2. Extend Slot from a single selected line to analytical arcs and validated curve chains, then add
    splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
