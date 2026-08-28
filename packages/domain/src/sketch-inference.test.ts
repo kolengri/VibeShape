@@ -379,6 +379,70 @@ describe("sketch inference", () => {
     }
   })
 
+  it("infers all four exact rotated ellipse quadrants with stable axis intent", () => {
+    const curve = {
+      id: arcId,
+      centerPointId: firstPointId,
+      type: "ellipse" as const,
+      center: { x: 2, y: 3 },
+      primaryAxisPoint: { x: 8, y: 9 },
+      secondaryAxisPoint: { x: -1, y: 6 },
+    }
+    const cases = [
+      { axis: "primary", side: "positive", point: { x: 8.1, y: 8.9 }, expected: { x: 8, y: 9 } },
+      {
+        axis: "primary",
+        side: "negative",
+        point: { x: -4.1, y: -2.9 },
+        expected: { x: -4, y: -3 },
+      },
+      {
+        axis: "secondary",
+        side: "positive",
+        point: { x: -0.9, y: 6.1 },
+        expected: { x: -1, y: 6 },
+      },
+      { axis: "secondary", side: "negative", point: { x: 5.1, y: -0.1 }, expected: { x: 5, y: 0 } },
+    ] as const
+
+    for (const expected of cases) {
+      expect(
+        inferSketchPoint({ curves: [curve], point: expected.point, points: [], tolerance: 0.5 }),
+      ).toMatchObject({
+        kind: "quadrant",
+        point: expected.expected,
+        relations: [
+          {
+            type: "ellipse-quadrant",
+            ellipseId: arcId,
+            axis: expected.axis,
+            side: expected.side,
+          },
+        ],
+      })
+    }
+  })
+
+  it("fails closed for degenerate ellipse quadrant inference", () => {
+    expect(
+      inferSketchPoint({
+        curves: [
+          {
+            id: arcId,
+            centerPointId: firstPointId,
+            type: "ellipse",
+            center: { x: 2, y: 3 },
+            primaryAxisPoint: { x: 2, y: 3 },
+            secondaryAxisPoint: { x: -1, y: 6 },
+          },
+        ],
+        point: { x: -1, y: 6 },
+        points: [],
+        tolerance: 1,
+      }).kind,
+    ).toBe("none")
+  })
+
   it("limits arc quadrant inference to its positive bounded sweep", () => {
     const quarterArc = {
       id: arcId,
@@ -636,6 +700,42 @@ describe("sketch inference", () => {
 
       expect(inference).toMatchObject({ kind: "midpoint" })
       expect(inference.relations).toEqual([{ type: "arc-midpoint", arcId: curves[0]?.id }])
+      expect(sort).not.toHaveBeenCalled()
+    } finally {
+      sort.mockRestore()
+    }
+  })
+
+  it("selects a stable ellipse quadrant from dense coincident curves without sorting", () => {
+    const curves = Array.from({ length: 2_500 }, (_, index) => {
+      const suffix = (index + 100).toString(16).padStart(12, "0")
+      return {
+        id: `018f0000-0000-7000-9000-${suffix}` as SketchEntityId,
+        centerPointId: `018f0000-0000-7001-9000-${suffix}` as SketchEntityId,
+        type: "ellipse" as const,
+        center: { x: 0, y: 0 },
+        primaryAxisPoint: { x: 10, y: 0 },
+        secondaryAxisPoint: { x: 0, y: 5 },
+      }
+    })
+    const sort = vi.spyOn(Array.prototype, "sort")
+    try {
+      const inference = inferSketchPoint({
+        curves,
+        point: { x: -10.1, y: 0.1 },
+        points: [],
+        tolerance: 1,
+      })
+
+      expect(inference).toMatchObject({ kind: "quadrant", point: { x: -10, y: 0 } })
+      expect(inference.relations).toEqual([
+        {
+          type: "ellipse-quadrant",
+          ellipseId: curves[0]?.id,
+          axis: "primary",
+          side: "negative",
+        },
+      ])
       expect(sort).not.toHaveBeenCalled()
     } finally {
       sort.mockRestore()

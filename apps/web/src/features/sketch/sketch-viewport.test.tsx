@@ -1278,6 +1278,85 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("wakes an earlier sketch ellipse quadrant as one stable reference", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32a1")
+    const sourceEllipseId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32a2")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32a3"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      closed: true,
+      kind: "curve" as const,
+      label: "Layout · Ellipse 1",
+      points: [
+        { world: [8, 0, 0] as const, x: 8, y: 0 },
+        { world: [0, 4, 0] as const, x: 0, y: 4 },
+        { world: [-8, 0, 0] as const, x: -8, y: 0 },
+        { world: [0, -4, 0] as const, x: 0, y: -4 },
+      ],
+      projectedGeometry: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 8, y: 0 },
+          { x: 0, y: 4 },
+        ],
+        type: "ellipse" as const,
+      },
+      projectedType: "ellipse" as const,
+      sourceEntityId: sourceEllipseId,
+      sourceSketchId,
+      sourceType: "ellipse" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: -8.2, y: 0.1 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-sketch-external-inference-source="Layout · Ellipse 1"]'),
+    ).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(reference).toMatchObject({
+      kind: "curve",
+      projectedType: "ellipse",
+      sourceEntityId: sourceEllipseId,
+      sourceSketchId,
+    })
+    if (reference?.kind !== "curve" || !localPoint) {
+      throw new Error("Ellipse wake-up must create one curve reference and one local point.")
+    }
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "ellipse-quadrant",
+        pointId: localPoint.id,
+        ellipseId: reference.projectedEntityId,
+        axis: "primary",
+        side: "negative",
+      }),
+    ])
+  })
+
   it("wakes only the bounded positive sweep of an earlier sketch arc", () => {
     const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3282")
     const sourceArcId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3283")
@@ -1942,7 +2021,7 @@ describe("SketchViewport", () => {
     expectModelCurveCenterRelation(updated, candidate, line.startPointId)
   })
 
-  it("excludes non-coplanar and elliptical model curves from passive inference", () => {
+  it("excludes non-coplanar curves and wakes a coplanar model ellipse quadrant", () => {
     const target: SketchRecord = {
       ...sketch,
       id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3293"),
@@ -2012,11 +2091,26 @@ describe("SketchViewport", () => {
     const pointer = clientPointForSketch(drawing, { x: 5, y: 0 })
 
     fireEvent.pointerMove(drawing, pointer)
-    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeNull()
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
     expect(onDraftChange).toHaveBeenCalledOnce()
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
-    expect(updated.externalReferences).toHaveLength(0)
+    const reference = updated.externalReferences?.[0]
+    const localPoint = requiredSketchEntity(updated, "point")
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(reference).toMatchObject({ kind: "model-curve", projectedType: "ellipse" })
+    if (reference?.kind !== "model-curve") {
+      throw new Error("Model ellipse wake-up must persist one stable model curve reference.")
+    }
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "ellipse-quadrant",
+        pointId: localPoint.id,
+        ellipseId: reference.projectedEntityId,
+        axis: "primary",
+        side: "positive",
+      }),
+    ])
   })
 
   it("defers a model-vertex reference until the line segment commits", () => {
@@ -4494,6 +4588,57 @@ describe("SketchViewport", () => {
         arcId: arc.id,
       }),
     ])
+  })
+
+  it("persists an authored ellipse quadrant with an accessible constraint glyph", async () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const ellipseSketch = appendSketchEllipse(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b246"),
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 5 },
+    }).sketch
+    const ellipse = requiredSketchEntity(ellipseSketch, "ellipse")
+    const onDraftChange = vi.fn()
+    const view = renderViewport({
+      draft: ellipseSketch,
+      editorTool: "point",
+      sketch: ellipseSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: -10.2, y: 0.1 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const createdPoint = sketchEntitiesOfType(updated, "point").find(
+      ({ id }) => !ellipseSketch.entities.some((entity) => entity.id === id),
+    )
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "ellipse-quadrant",
+        pointId: createdPoint?.id,
+        ellipseId: ellipse.id,
+        axis: "primary",
+        side: "negative",
+      }),
+    ])
+    view.rerender(
+      viewportElement({
+        draft: updated,
+        editorTool: "point",
+        sketch: updated,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+        onDraftChange,
+      }),
+    )
+    expect(await screen.findByRole("button", { name: "Select constraint Quadrant" })).toBeTruthy()
   })
 
   it("renders selectable geometric constraint glyphs and driving dimension labels", () => {

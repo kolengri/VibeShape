@@ -50,6 +50,8 @@ const horizontalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-80
 const verticalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000029")
 const arcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000030")
 const arcMidpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000031")
+const ellipseQuadrantPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000032")
+const ellipseQuadrantId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000033")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -288,6 +290,37 @@ function createModule(
   }
 }
 
+function nativePointValues(system: {
+  entityRecords: Uint32Array
+  parameterMetadata: Uint32Array
+  parameterValues: Float64Array
+}) {
+  const parameterIndexByHandle = new Map<number, number>()
+  for (
+    let offset = 0;
+    offset < system.parameterMetadata.length;
+    offset += SKETCH_SOLVER_ABI.parameterMetadataStride
+  ) {
+    parameterIndexByHandle.set(system.parameterMetadata[offset] as number, offset / 2)
+  }
+  const values: { x: number; y: number }[] = []
+  for (
+    let offset = 0;
+    offset < system.entityRecords.length;
+    offset += SKETCH_SOLVER_ABI.entityRecordStride
+  ) {
+    if (system.entityRecords[offset + 2] !== SOLVESPACE_ENTITY_TYPE.pointIn2d) continue
+    const xIndex = parameterIndexByHandle.get(system.entityRecords[offset + 10] as number)
+    const yIndex = parameterIndexByHandle.get(system.entityRecords[offset + 11] as number)
+    if (xIndex === undefined || yIndex === undefined) continue
+    values.push({
+      x: system.parameterValues[xIndex] as number,
+      y: system.parameterValues[yIndex] as number,
+    })
+  }
+  return values
+}
+
 describe("production sketch compilation", () => {
   test("compiles arc midpoint intent with the positive-sweep branch selected", () => {
     const result = compileSketchSystem({
@@ -485,6 +518,130 @@ describe("production sketch compilation", () => {
       primaryAxisDiameterId,
       secondaryAxisDiameterId,
     ])
+  })
+
+  test("compiles ellipse quadrant intent as an exact trammel plus selected axis", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            schemaVersion: 0,
+            id: ellipseQuadrantPointId,
+            type: "point",
+            x: -7,
+            y: 3,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: ellipseQuadrantId,
+            type: "ellipse-quadrant",
+            pointId: ellipseQuadrantPointId,
+            ellipseId,
+            axis: "primary",
+            side: "negative",
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+    ])
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      4,
+    )
+    expect([...result.compiled.bindings.constraintIdsByHandle.values()]).toEqual(
+      Array.from({ length: 6 }, () => ellipseQuadrantId),
+    )
+    expect(nativePointValues(result.compiled.system).slice(-2)).toEqual([
+      { x: -15, y: 0 },
+      { x: 0, y: 0 },
+    ])
+    const pointBinding = result.compiled.bindings.pointParameters.get(ellipseQuadrantPointId)
+    expect(pointBinding).toBeDefined()
+    if (!pointBinding) return
+    expect(result.compiled.system.parameterValues[pointBinding.xIndex]).toBeCloseTo(-10)
+    expect(result.compiled.system.parameterValues[pointBinding.yIndex]).toBeCloseTo(0)
+  })
+
+  test("preserves the positive ellipse quadrant side through an axis inversion", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            schemaVersion: 0,
+            id: ellipseQuadrantPointId,
+            type: "point",
+            x: 10,
+            y: 0,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: ellipseQuadrantId,
+            type: "ellipse-quadrant",
+            pointId: ellipseQuadrantPointId,
+            ellipseId,
+            axis: "primary",
+            side: "positive",
+          },
+        ],
+      },
+      variables: [],
+      continuation: {
+        schemaVersion: 0,
+        sketchId: fixture.id,
+        sourceRevision: 4,
+        points: [
+          { entityId: ellipsePrimaryId, x: -6, y: -8 },
+          { entityId: ellipseSecondaryId, x: 4, y: -3 },
+          { entityId: ellipseQuadrantPointId, x: 9, y: 1 },
+        ],
+        circles: [],
+      },
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(nativePointValues(result.compiled.system).slice(-2)).toEqual([
+      { x: -9, y: -12 },
+      { x: 0, y: 0 },
+    ])
+    const pointBinding = result.compiled.bindings.pointParameters.get(ellipseQuadrantPointId)
+    expect(pointBinding).toBeDefined()
+    if (!pointBinding) return
+    expect(result.compiled.system.parameterValues[pointBinding.xIndex]).toBeCloseTo(-6)
+    expect(result.compiled.system.parameterValues[pointBinding.yIndex]).toBeCloseTo(-8)
   })
 
   test("compiles exact elliptical-arc endpoint loci through solver-owned trammels", () => {

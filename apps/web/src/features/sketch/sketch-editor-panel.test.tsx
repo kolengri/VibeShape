@@ -64,6 +64,7 @@ const copy = {
   horizontalDistance: "Horizontal distance",
   line: "Line",
   midpoint: "Midpoint",
+  quadrant: "Quadrant",
   noConstraints: "No constraints",
   noExternalReferences: "No external points are in use.",
   offset: "Offset",

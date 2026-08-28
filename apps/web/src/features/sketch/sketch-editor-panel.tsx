@@ -74,6 +74,7 @@ type SketchEditorPanelCopy = Readonly<{
   horizontal: string
   horizontalDistance: string
   midpoint: string
+  quadrant: string
   noConstraints: string
   offset: string
   parallel: string
@@ -112,6 +113,7 @@ function constraintName(
     "horizontal-points": copy.horizontal,
     midpoint: copy.midpoint,
     "arc-midpoint": copy.midpoint,
+    "ellipse-quadrant": copy.quadrant,
     vertical: copy.vertical,
     "vertical-points": copy.vertical,
     parallel: copy.parallel,
