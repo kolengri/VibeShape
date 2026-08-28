@@ -90,6 +90,16 @@ describe("sketch constraint tools", () => {
       "midpoint",
       "point-on-line",
     ])
+    expect(compatibleSketchConstraintTools([firstPoint, arc])).toEqual([
+      {
+        kind: "midpoint",
+        definition: { type: "arc-midpoint", pointId: firstPoint.id, arcId: arc.id },
+      },
+      {
+        kind: "point-on-curve",
+        definition: { type: "point-on-curve", pointId: firstPoint.id, curveId: arc.id },
+      },
+    ])
     expect(
       compatibleSketchConstraintTools([firstPoint, secondPoint, line]).map(({ kind }) => kind),
     ).toEqual(["symmetric"])

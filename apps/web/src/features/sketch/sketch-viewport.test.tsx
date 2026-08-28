@@ -1327,7 +1327,7 @@ describe("SketchViewport", () => {
 
     const pointer = clientPointForSketch(drawing, { x: 10.4, y: 0.2 })
     fireEvent.pointerMove(drawing, pointer)
-    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
     expect(
       document.querySelector('[data-sketch-external-inference-source="Layout · Arc 1"]'),
     ).toBeTruthy()
@@ -1347,16 +1347,9 @@ describe("SketchViewport", () => {
     }
     expect(updated.constraints).toContainEqual(
       expect.objectContaining({
-        type: "point-on-curve",
+        type: "arc-midpoint",
         pointId: localPoint.id,
-        curveId: reference.projectedEntityId,
-      }),
-    )
-    expect(updated.constraints).toContainEqual(
-      expect.objectContaining({
-        type: "horizontal-points",
-        firstPointId: localPoint.id,
-        secondPointId: reference.projectedPointIds[0],
+        arcId: reference.projectedEntityId,
       }),
     )
   })
@@ -1790,6 +1783,90 @@ describe("SketchViewport", () => {
         secondPointId: reference.projectedPointIds[0],
       }),
     )
+    expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("wakes an exact coplanar model arc and persists one arc midpoint relation", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3293"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3294")
+    const start = { x: 10, y: 0 }
+    const midpoint = { x: Math.SQRT1_2 * 10, y: Math.SQRT1_2 * 10 }
+    const end = { x: 0, y: 10 }
+    const candidate = {
+      candidateId: "coplanar-arc-edge",
+      coplanar: true,
+      featureId,
+      kind: "model-curve" as const,
+      label: "Revolve 1 · Arc edge 1",
+      passiveEligible: true,
+      points: [start, midpoint, end].map((point) => ({
+        ...point,
+        world: [point.x, point.y, 0] as [number, number, number],
+      })),
+      projectedGeometry: {
+        points: [{ x: 0, y: 0 }, start, end],
+        type: "arc" as const,
+      },
+      projectedType: "arc" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "edge" as const,
+        semanticRole: "revolve.edge.arc.start",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "CIRCLE" as const,
+          measure: Math.PI * 5,
+          centroid: [Math.SQRT1_2 * 10, Math.SQRT1_2 * 10, 0] as [number, number, number],
+          bounds: {
+            min: [0, 0, 0] as [number, number, number],
+            max: [10, 10, 0] as [number, number, number],
+          },
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["PLANE"],
+        },
+      },
+      sourceType: "arc" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 7.2, y: 7.2 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(reference).toMatchObject({ kind: "model-curve", reference: candidate.reference })
+    if (reference?.kind !== "model-curve" || !localPoint) {
+      throw new Error("Model arc midpoint wake-up must persist one curve reference and point.")
+    }
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "arc-midpoint",
+        pointId: localPoint.id,
+        arcId: reference.projectedEntityId,
+      }),
+    ])
     expect(JSON.stringify(updated)).not.toContain("candidateId")
   })
 
@@ -3478,6 +3555,37 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("maps pointer input through the centered SVG letterbox", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: emptySketch,
+      editorTool: "point",
+      sketch: emptySketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 700,
+      right: 800,
+      bottom: 700,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    fireEvent.pointerDown(drawing, { clientX: 600, clientY: 250 })
+
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const point = requiredSketchEntity(updated, "point")
+    expect(point.x).toBeCloseTo(50)
+    expect(point.y).toBeCloseTo(25)
+  })
+
   it("previews and creates a midpoint line with persistent symmetry", () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
@@ -4346,6 +4454,45 @@ describe("SketchViewport", () => {
     if (!createdLine) throw new Error("Tangent inference must create a line.")
     expect(draft.constraints).toEqual([
       expect.objectContaining({ type: "tangent", arcId: arc.id, lineId: createdLine.id }),
+    ])
+  })
+
+  it("persists authored arc midpoint inference as one durable constraint", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcSketch = appendSketchArc(emptySketch, {
+      center: { x: 0, y: 0 },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b245"),
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+    }).sketch
+    const arc = requiredSketchEntity(arcSketch, "arc")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: arcSketch,
+      editorTool: "point",
+      sketch: arcSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 7.2, y: 7.2 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const createdPoint = sketchEntitiesOfType(updated, "point").find(
+      ({ id }) => !arcSketch.entities.some((entity) => entity.id === id),
+    )
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "arc-midpoint",
+        pointId: createdPoint?.id,
+        arcId: arc.id,
+      }),
     ])
   })
 

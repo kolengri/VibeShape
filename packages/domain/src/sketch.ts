@@ -503,6 +503,13 @@ const midpointConstraintSchema = sketchConstraintEnvelopeSchema
     lineId: sketchEntityIdSchema,
   })
   .strict()
+const arcMidpointConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("arc-midpoint"),
+    pointId: sketchEntityIdSchema,
+    arcId: sketchEntityIdSchema,
+  })
+  .strict()
 const symmetricConstraintSchema = pointPairSchema
   .extend({ type: z.literal("symmetric"), lineId: sketchEntityIdSchema })
   .strict()
@@ -620,6 +627,7 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   pointOnLineConstraintSchema,
   pointOnCurveConstraintSchema,
   midpointConstraintSchema,
+  arcMidpointConstraintSchema,
   symmetricConstraintSchema,
   fixedConstraintSchema,
   horizontalPointsConstraintSchema,
@@ -791,6 +799,7 @@ const constraintEntityReferenceRules = {
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
+  "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
   symmetric: {
     firstPointId: ["point"],
     secondPointId: ["point"],
@@ -893,7 +902,9 @@ function nativeConstraintCount(structure: SketchStructure) {
       count +
       (constraint.type === "offset"
         ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
-        : 1),
+        : constraint.type === "arc-midpoint"
+          ? 2
+          : 1),
     0,
   )
   const internal = structure.entities.reduce((count, entity) => {
@@ -943,6 +954,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
         ({ type }) => type === "vertical-distance" || type === "vertical-points",
       ),
     )
+  const auxiliaryArcMidpointLineCount =
+    structure.constraints.filter(({ type }) => type === "arc-midpoint").length * 2
   return {
     entities:
       authored.entities +
@@ -950,7 +963,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
         (count, entity) => count + nativeEntityCapacity[entity.type].entities,
         0,
       ) +
-      projectionCount * 3,
+      projectionCount * 3 +
+      auxiliaryArcMidpointLineCount,
     parameters:
       authored.parameters +
       projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(

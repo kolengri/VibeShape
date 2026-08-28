@@ -243,6 +243,136 @@ function runProductionPointAlignmentEvidence(session: SketchSolverSession) {
   )
 }
 
+const productionArcMidpointFixtures = [
+  {
+    end: { x: 0, y: 10 },
+    label: "Opposite-seeded quarter arc midpoint evidence",
+    midpoint: { x: -Math.SQRT1_2 * 10, y: -Math.SQRT1_2 * 10 },
+    suffix: "201",
+  },
+  {
+    end: { x: -10, y: 0 },
+    label: "Endpoint-edited semicircle midpoint evidence",
+    midpoint: { x: Math.SQRT1_2 * 10, y: Math.SQRT1_2 * 10 },
+    suffix: "202",
+  },
+] as const
+
+function positiveAngle(angle: number) {
+  const fullTurn = Math.PI * 2
+  const normalized = angle % fullTurn
+  return normalized >= 0 ? normalized : normalized + fullTurn
+}
+
+function solveProductionArcMidpoint(
+  session: SketchSolverSession,
+  fixture: (typeof productionArcMidpointFixtures)[number],
+) {
+  const pointIds = ["1", "2", "3", "4"].map((ordinal) =>
+    sketchEntityIdSchema.parse(
+      `018f0000-0000-7000-82${fixture.suffix.slice(-1)}0-${ordinal.padStart(12, "0")}`,
+    ),
+  )
+  const [centerPointId, startPointId, endPointId, midpointPointId] = pointIds
+  requireCondition(
+    centerPointId && startPointId && endPointId && midpointPointId,
+    "Arc midpoint evidence IDs were not created.",
+  )
+  const arcId = sketchEntityIdSchema.parse(
+    `018f0000-0000-7000-82${fixture.suffix.slice(-1)}0-000000000005`,
+  )
+  const constraintId = sketchConstraintIdSchema.parse(
+    `018f0000-0000-7000-82${fixture.suffix.slice(-1)}0-000000000006`,
+  )
+  const sketch = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchIdSchema.parse(`018f0000-0000-7000-82${fixture.suffix.slice(-1)}0-000000000007`),
+    label: fixture.label,
+    plane: "xy",
+    entities: [
+      {
+        schemaVersion: 0,
+        id: centerPointId,
+        type: "point",
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: startPointId,
+        type: "point",
+        x: 10,
+        y: 0,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: endPointId,
+        type: "point",
+        ...fixture.end,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: midpointPointId,
+        type: "point",
+        ...fixture.midpoint,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: arcId,
+        type: "arc",
+        centerPointId,
+        startPointId,
+        endPointId,
+        construction: false,
+      },
+    ],
+    constraints: [
+      {
+        schemaVersion: 0,
+        id: constraintId,
+        type: "arc-midpoint",
+        pointId: midpointPointId,
+        arcId,
+      },
+    ],
+  })
+  const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
+  requireCondition(compilation.ok, `${fixture.label} production compilation failed.`)
+  const result = session.solve(compilation.compiled.system)
+  requireSuccessfulSolve(result, fixture.label)
+  const solvedPoint = (id: typeof centerPointId) => {
+    const binding = compilation.compiled.bindings.pointParameters.get(id)
+    requireCondition(binding, `${fixture.label} point binding was missing.`)
+    return {
+      x: Number(result.parameterValues[binding.xIndex]),
+      y: Number(result.parameterValues[binding.yIndex]),
+    }
+  }
+  const center = solvedPoint(centerPointId)
+  const start = solvedPoint(startPointId)
+  const end = solvedPoint(endPointId)
+  const midpoint = solvedPoint(midpointPointId)
+  const angle = (point: { x: number; y: number }) =>
+    Math.atan2(point.y - center.y, point.x - center.x)
+  const expectedHalfSweep = positiveAngle(angle(end) - angle(start)) / 2
+  const actualMidpointSweep = positiveAngle(angle(midpoint) - angle(start))
+  requireCondition(
+    Math.abs(actualMidpointSweep - expectedHalfSweep) <= 1e-7,
+    `${fixture.label} did not preserve the positive-sweep arc midpoint.`,
+  )
+  return { label: fixture.label, status: result.status, midpoint }
+}
+
+function runProductionArcMidpointEvidence(session: SketchSolverSession) {
+  return productionArcMidpointFixtures.map((fixture) =>
+    solveProductionArcMidpoint(session, fixture),
+  )
+}
+
 function requirePointAlignmentCoordinates(name: string, parameterValues: ArrayLike<number>) {
   if (name === "horizontal point alignment") {
     requireCondition(
@@ -337,6 +467,7 @@ async function main() {
   const { fully, over, under } = runStatusEvidence(session)
   const pointAlignmentConflict = runPointAlignmentConflictEvidence(session)
   const productionPointAlignment = runProductionPointAlignmentEvidence(session)
+  const productionArcMidpoint = runProductionArcMidpointEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -369,6 +500,7 @@ async function main() {
       pointAlignmentConflictSet: [...pointAlignmentConflict.failedConstraintHandles],
     },
     constraintCoverage,
+    productionArcMidpoint,
     productionPointAlignment,
     degenerateGeometry: {
       status: degenerate.status,

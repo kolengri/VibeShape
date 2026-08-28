@@ -567,4 +567,94 @@ describe("sketchRecordSchema", () => {
       }).success,
     ).toBe(false)
   })
+
+  test("accepts arc midpoint intent only for point and arc targets", () => {
+    const fixture = validSketch()
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(310),
+            type: "arc-midpoint",
+            pointId: pointD,
+            arcId: arc,
+          },
+        ],
+      }).success,
+    ).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(311),
+            type: "arc-midpoint",
+            pointId: pointD,
+            arcId: circle,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("reserves native solver constraints for arc midpoint intent", () => {
+    const fixture = validSketch()
+    const result = sketchRecordSchema.safeParse({
+      ...fixture,
+      constraints: Array.from({ length: 5_001 }, (_, index) => ({
+        schemaVersion: 0,
+        id: constraintId(1_000 + index),
+        type: "arc-midpoint",
+        pointId: pointD,
+        arcId: arc,
+      })),
+    })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["constraints"],
+        message: "Sketch constraints exceed the native solver safety limit.",
+      }),
+    )
+  })
+
+  test("reserves native solver entities for arc midpoint auxiliary lines", () => {
+    const fixture = validSketch()
+    const constraints = Array.from({ length: 2_497 }, (_, index) => ({
+      schemaVersion: 0,
+      id: constraintId(1_000 + index),
+      type: "arc-midpoint" as const,
+      pointId: pointD,
+      arcId: arc,
+    }))
+    const atLimit = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities: fixture.entities.filter(({ id }) =>
+        [pointA, pointB, pointC, pointD, arc].includes(id),
+      ),
+      constraints: constraints.slice(0, 2_496),
+    })
+    const overLimit = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities: fixture.entities.filter(({ id }) =>
+        [pointA, pointB, pointC, pointD, arc].includes(id),
+      ),
+      constraints,
+    })
+
+    expect(atLimit.success).toBe(true)
+    expect(overLimit.success).toBe(false)
+    if (overLimit.success) return
+    expect(overLimit.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["entities"],
+        message: "Sketch entities exceed the native solver safety limit.",
+      }),
+    )
+  })
 })

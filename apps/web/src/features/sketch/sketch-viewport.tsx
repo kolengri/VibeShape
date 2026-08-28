@@ -893,8 +893,16 @@ function pointerToSketchPoint(
   rectangle: Readonly<{ left: number; top: number; width: number; height: number }>,
   bounds: SketchBounds,
 ): SketchPoint2 {
-  const horizontal = rectangle.width > 0 ? (pointer.clientX - rectangle.left) / rectangle.width : 0
-  const vertical = rectangle.height > 0 ? (pointer.clientY - rectangle.top) / rectangle.height : 0
+  const scale = Math.min(
+    bounds.width > 0 ? rectangle.width / bounds.width : 0,
+    bounds.height > 0 ? rectangle.height / bounds.height : 0,
+  )
+  const contentWidth = bounds.width * scale
+  const contentHeight = bounds.height * scale
+  const contentLeft = rectangle.left + (rectangle.width - contentWidth) / 2
+  const contentTop = rectangle.top + (rectangle.height - contentHeight) / 2
+  const horizontal = contentWidth > 0 ? (pointer.clientX - contentLeft) / contentWidth : 0
+  const vertical = contentHeight > 0 ? (pointer.clientY - contentTop) / contentHeight : 0
   return {
     x: bounds.minX + horizontal * bounds.width,
     y: bounds.minY + (1 - vertical) * bounds.height,
@@ -2986,6 +2994,7 @@ const geometricConstraintLabels: Partial<
   horizontal: "H",
   "horizontal-points": "H",
   midpoint: "M",
+  "arc-midpoint": "M",
   parallel: "∥",
   perpendicular: "⊥",
   "point-on-curve": "⊙",
@@ -4259,58 +4268,113 @@ function appendInferredPointRelations(
   pointId: SketchEntityId,
   relations: readonly SketchPointRelationInference[],
 ) {
-  return relations.reduce((current, relation) => {
-    if (relation.type === "coincident") {
-      return appendInferredCoincidence(current, pointId, relation.pointId)
-    }
-    if (relation.type === "horizontal-points" || relation.type === "vertical-points") {
-      const exists = current.constraints.some(
-        (constraint) =>
-          constraint.type === relation.type &&
-          ((constraint.firstPointId === pointId && constraint.secondPointId === relation.pointId) ||
-            (constraint.firstPointId === relation.pointId && constraint.secondPointId === pointId)),
+  return relations.reduce(
+    (current, relation) => appendInferredPointRelation(current, pointId, relation),
+    sketch,
+  )
+}
+
+function appendInferredPointRelation(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  relation: SketchPointRelationInference,
+) {
+  if (relation.type === "coincident") {
+    return appendInferredCoincidence(sketch, pointId, relation.pointId)
+  }
+  if (relation.type === "horizontal-points" || relation.type === "vertical-points") {
+    return appendInferredPointAlignment(sketch, pointId, relation)
+  }
+  if (relation.type === "point-on-curve") {
+    return appendInferredPointOnCurve(sketch, pointId, relation.curveId)
+  }
+  if (relation.type === "arc-midpoint") {
+    return appendInferredArcMidpoint(sketch, pointId, relation.arcId)
+  }
+  return appendInferredLineRelation(sketch, pointId, relation)
+}
+
+function appendInferredPointAlignment(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  relation: Extract<
+    SketchPointRelationInference,
+    { type: "horizontal-points" | "vertical-points" }
+  >,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === relation.type &&
+      ((constraint.firstPointId === pointId && constraint.secondPointId === relation.pointId) ||
+        (constraint.firstPointId === relation.pointId && constraint.secondPointId === pointId)),
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: relation.type, firstPointId: pointId, secondPointId: relation.pointId },
+        createBrowserSketchConstraintId,
       )
-      return exists
-        ? current
-        : appendSketchConstraint(
-            current,
-            {
-              type: relation.type,
-              firstPointId: pointId,
-              secondPointId: relation.pointId,
-            },
-            createBrowserSketchConstraintId,
-          )
-    }
-    if (relation.type === "point-on-curve") {
-      const exists = current.constraints.some(
-        (constraint) =>
-          constraint.type === "point-on-curve" &&
-          constraint.pointId === pointId &&
-          constraint.curveId === relation.curveId,
+}
+
+function appendInferredPointOnCurve(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  curveId: SketchEntityId,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "point-on-curve" &&
+      constraint.pointId === pointId &&
+      constraint.curveId === curveId,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: "point-on-curve", pointId, curveId },
+        createBrowserSketchConstraintId,
       )
-      return exists
-        ? current
-        : appendSketchConstraint(
-            current,
-            { type: "point-on-curve", pointId, curveId: relation.curveId },
-            createBrowserSketchConstraintId,
-          )
-    }
-    const exists = current.constraints.some(
-      (constraint) =>
-        constraint.type === relation.type &&
-        constraint.pointId === pointId &&
-        constraint.lineId === relation.lineId,
-    )
-    return exists
-      ? current
-      : appendSketchConstraint(
-          current,
-          { type: relation.type, pointId, lineId: relation.lineId },
-          createBrowserSketchConstraintId,
-        )
-  }, sketch)
+}
+
+function appendInferredArcMidpoint(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  arcId: SketchEntityId,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "arc-midpoint" &&
+      constraint.pointId === pointId &&
+      constraint.arcId === arcId,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: "arc-midpoint", pointId, arcId },
+        createBrowserSketchConstraintId,
+      )
+}
+
+function appendInferredLineRelation(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  relation: Extract<SketchPointRelationInference, { lineId: SketchEntityId }>,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === relation.type &&
+      constraint.pointId === pointId &&
+      constraint.lineId === relation.lineId,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: relation.type, pointId, lineId: relation.lineId },
+        createBrowserSketchConstraintId,
+      )
 }
 
 function appendInferredCoincidence(
@@ -5342,13 +5406,9 @@ function inferredExternalEntityIds(
   const ids = new Set<SketchEntityId>()
   const appendRelations = (relations: readonly SketchPointRelationInference[]) => {
     for (const relation of relations) {
-      if (
-        relation.type === "coincident" ||
-        relation.type === "horizontal-points" ||
-        relation.type === "vertical-points"
-      )
-        ids.add(relation.pointId)
-      else if (relation.type === "point-on-curve") ids.add(relation.curveId)
+      if ("pointId" in relation) ids.add(relation.pointId)
+      else if ("curveId" in relation) ids.add(relation.curveId)
+      else if ("arcId" in relation) ids.add(relation.arcId)
       else ids.add(relation.lineId)
     }
   }
@@ -5366,15 +5426,14 @@ function remapPointRelation(
   relation: SketchPointRelationInference,
   projectedIds: ReadonlyMap<SketchEntityId, SketchEntityId>,
 ): SketchPointRelationInference {
-  if (
-    relation.type === "coincident" ||
-    relation.type === "horizontal-points" ||
-    relation.type === "vertical-points"
-  ) {
+  if ("pointId" in relation) {
     return { ...relation, pointId: projectedIds.get(relation.pointId) ?? relation.pointId }
   }
-  if (relation.type === "point-on-curve") {
+  if ("curveId" in relation) {
     return { ...relation, curveId: projectedIds.get(relation.curveId) ?? relation.curveId }
+  }
+  if ("arcId" in relation) {
+    return { ...relation, arcId: projectedIds.get(relation.arcId) ?? relation.arcId }
   }
   return { ...relation, lineId: projectedIds.get(relation.lineId) ?? relation.lineId }
 }

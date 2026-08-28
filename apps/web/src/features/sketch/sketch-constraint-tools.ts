@@ -160,12 +160,13 @@ const constraintBuilders = {
   midpoint: (entities) => {
     const points = entitiesOfType(entities, "point")
     const lines = entitiesOfType(entities, "line")
-    return entities.length === 2 &&
-      points.length === 1 &&
-      points[0] &&
-      lines.length === 1 &&
-      lines[0]
-      ? { type: "midpoint", pointId: points[0].id, lineId: lines[0].id }
+    const arcs = entitiesOfType(entities, "arc")
+    if (entities.length !== 2 || points.length !== 1 || !points[0]) return null
+    if (lines.length === 1 && lines[0]) {
+      return { type: "midpoint", pointId: points[0].id, lineId: lines[0].id }
+    }
+    return arcs.length === 1 && arcs[0]
+      ? { type: "arc-midpoint", pointId: points[0].id, arcId: arcs[0].id }
       : null
   },
   parallel: (entities) => pairedLineConstraint("parallel", entities),

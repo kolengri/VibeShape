@@ -55,7 +55,6 @@ test.describe("full sketch editor", () => {
       }
     }, cylinderRadius)
     await page.getByRole("button", { name: "Point", exact: true }).click()
-
     await page.keyboard.down("Shift")
     await page.mouse.move(sourcePoint.x, sourcePoint.y)
     await expect(drawing.locator("[data-sketch-inference]")).toHaveCount(0)
@@ -1421,6 +1420,53 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(0)
     await page.getByRole("button", { name: "Redo", exact: true }).click()
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+  })
+
+  test("persists the positive-sweep midpoint of an authored arc", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Arc tools", "Center-point arc")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.5)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.3)
+    const arc = drawing.locator('[data-sketch-entity-type="arc"]')
+    await expect(arc).toHaveCount(1)
+    const midpoint = await arc.evaluate((element) => {
+      type ScreenPoint = Readonly<{
+        x: number
+        y: number
+        matrixTransform: (matrix: unknown) => ScreenPoint
+      }>
+      const geometry = element as unknown as {
+        getPointAtLength(length: number): ScreenPoint
+        getScreenCTM(): unknown
+        getTotalLength(): number
+      }
+      const matrix = geometry.getScreenCTM()
+      if (!matrix) throw new Error("The authored arc is detached from the sketch viewport.")
+      const point = geometry.getPointAtLength(geometry.getTotalLength() / 2).matrixTransform(matrix)
+      return { x: point.x, y: point.y }
+    })
+
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.mouse.move(midpoint.x, midpoint.y)
+    await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toBeVisible()
+    await page.mouse.click(midpoint.x, midpoint.y)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
   })
 
   test("authors an elliptical arc with construction-ellipse preview and local history", async ({

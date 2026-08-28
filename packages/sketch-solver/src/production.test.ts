@@ -48,6 +48,8 @@ const secondaryAxisDiameterId = sketchConstraintIdSchema.parse(
 const secondEllipticalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000027")
 const horizontalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000028")
 const verticalPointsId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000029")
+const arcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000030")
+const arcMidpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000031")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -287,6 +289,136 @@ function createModule(
 }
 
 describe("production sketch compilation", () => {
+  test("compiles arc midpoint intent with the positive-sweep branch selected", () => {
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: sketchRecordSchema.parse({
+        schemaVersion: 0,
+        id: sketchId,
+        label: "Arc midpoint solver fixture",
+        plane: "xy",
+        entities: [
+          { schemaVersion: 0, id: pointA, type: "point", x: 0, y: 0, construction: false },
+          { schemaVersion: 0, id: pointB, type: "point", x: 10, y: 0, construction: false },
+          { schemaVersion: 0, id: pointC, type: "point", x: 0, y: 10, construction: false },
+          {
+            schemaVersion: 0,
+            id: pointD,
+            type: "point",
+            x: -Math.SQRT1_2 * 10,
+            y: -Math.SQRT1_2 * 10,
+            construction: false,
+          },
+          {
+            schemaVersion: 0,
+            id: arcId,
+            type: "arc",
+            centerPointId: pointA,
+            startPointId: pointB,
+            endPointId: pointC,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: arcMidpointId,
+            type: "arc-midpoint",
+            pointId: pointD,
+            arcId,
+          },
+        ],
+      }),
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { constraintRecords, constraintValues, entityRecords } = result.compiled.system
+    const constraintTypes = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    const entityTypes = Array.from(
+      { length: entityRecords.length / SKETCH_SOLVER_ABI.entityRecordStride },
+      (_, index) => entityRecords[index * SKETCH_SOLVER_ABI.entityRecordStride + 2],
+    )
+
+    expect(constraintTypes).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+    ])
+    expect(entityTypes.filter((type) => type === SOLVESPACE_ENTITY_TYPE.lineSegment)).toHaveLength(
+      2,
+    )
+    expect([...result.compiled.bindings.constraintIdsByHandle.values()]).toEqual([
+      arcMidpointId,
+      arcMidpointId,
+    ])
+    const midpointBinding = result.compiled.bindings.pointParameters.get(pointD)
+    expect(midpointBinding).toBeDefined()
+    if (!midpointBinding) return
+    expect(result.compiled.system.parameterValues[midpointBinding.xIndex]).toBeCloseTo(
+      Math.SQRT1_2 * 10,
+    )
+    expect(result.compiled.system.parameterValues[midpointBinding.yIndex]).toBeCloseTo(
+      Math.SQRT1_2 * 10,
+    )
+  })
+
+  test("reselects the positive-sweep arc midpoint after an endpoint edit", () => {
+    const fixture = sketchRecordSchema.parse({
+      ...sketch(),
+      entities: [
+        { schemaVersion: 0, id: pointA, type: "point", x: 0, y: 0, construction: false },
+        { schemaVersion: 0, id: pointB, type: "point", x: 10, y: 0, construction: false },
+        { schemaVersion: 0, id: pointC, type: "point", x: -10, y: 0, construction: false },
+        { schemaVersion: 0, id: pointD, type: "point", x: 0, y: 10, construction: false },
+        {
+          schemaVersion: 0,
+          id: arcId,
+          type: "arc",
+          centerPointId: pointA,
+          startPointId: pointB,
+          endPointId: pointC,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: arcMidpointId,
+          type: "arc-midpoint",
+          pointId: pointD,
+          arcId,
+        },
+      ],
+    })
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: fixture,
+      variables: [],
+      continuation: {
+        schemaVersion: 0,
+        sketchId: fixture.id,
+        sourceRevision: 4,
+        points: [
+          { entityId: pointC, x: -10, y: 0 },
+          { entityId: pointD, x: Math.SQRT1_2 * 10, y: Math.SQRT1_2 * 10 },
+        ],
+        circles: [],
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const midpointBinding = result.compiled.bindings.pointParameters.get(pointD)
+    expect(midpointBinding).toBeDefined()
+    if (!midpointBinding) return
+    expect(result.compiled.system.parameterValues[midpointBinding.xIndex]).toBeCloseTo(0)
+    expect(result.compiled.system.parameterValues[midpointBinding.yIndex]).toBeCloseTo(10)
+  })
+
   test("compiles an ellipse as perpendicular solver-owned axis lines", () => {
     const result = compileSketchSystem({ revision: 4, sketch: ellipseSketch(), variables: [] })
     expect(result.ok).toBe(true)
@@ -790,5 +922,94 @@ describe("production sketch compilation", () => {
     }
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.diameter)
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle)
+  })
+
+  test("compiles arc midpoint intent against a projected external arc", () => {
+    const externalCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000214")
+    const externalStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000215")
+    const externalEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000216")
+    const externalArcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000217")
+    const record = sketchRecordSchema.parse({
+      ...sketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000218",
+          kind: "curve",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000219",
+          sourceEntityId: "018f0000-0000-7000-8000-000000000220",
+          sourceType: "arc",
+          projectedEntityId: externalArcId,
+          projectedType: "arc",
+          projectedPointIds: [externalCenterId, externalStartId, externalEndId],
+        },
+      ],
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000221",
+          type: "arc-midpoint",
+          pointId: pointA,
+          arcId: externalArcId,
+        },
+      ],
+    })
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: record,
+      variables,
+      externalCurves: [
+        {
+          points: [
+            {
+              schemaVersion: 0,
+              id: externalCenterId,
+              type: "point",
+              x: 0,
+              y: 0,
+              construction: true,
+            },
+            {
+              schemaVersion: 0,
+              id: externalStartId,
+              type: "point",
+              x: 10,
+              y: 0,
+              construction: true,
+            },
+            {
+              schemaVersion: 0,
+              id: externalEndId,
+              type: "point",
+              x: 0,
+              y: 10,
+              construction: true,
+            },
+          ],
+          curve: {
+            schemaVersion: 0,
+            id: externalArcId,
+            type: "arc",
+            centerPointId: externalCenterId,
+            startPointId: externalStartId,
+            endPointId: externalEndId,
+            construction: true,
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const constraintTypes = Array.from(
+      { length: result.compiled.system.constraintValues.length },
+      (_, index) =>
+        result.compiled.system.constraintRecords[
+          index * SKETCH_SOLVER_ABI.constraintRecordStride + 2
+        ],
+    )
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle)
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines)
   })
 })
