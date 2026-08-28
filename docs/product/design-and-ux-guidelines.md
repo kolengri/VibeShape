@@ -302,6 +302,7 @@ Every modeling command follows `Idle -> Preview -> Validating -> Committed` or r
 - Do not show confirmation for frequent, immediately undoable edits.
 - Use `AlertDialog` for destructive or difficult-to-recover actions such as deleting a project, discarding recovery data, or replacing an external source.
 - The dialog title names the consequence, its body names the affected object, and the destructive action uses a specific verb such as `Delete project`.
+- Strict feature deletion remains disabled when document dependents exist. When every dependent is a repairable model-backed sketch reference, expose a separate destructive action that lists each affected sketch and human-readable geometry reference before preserving those references in a broken repair state. Never expose semantic roles or topology IDs in this confirmation.
 - Default focus goes to the safest reasonable action.
 - A confirmation cannot substitute for an unavailable backup or undo strategy.
 

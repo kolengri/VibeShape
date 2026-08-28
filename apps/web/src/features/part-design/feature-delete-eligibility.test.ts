@@ -41,6 +41,7 @@ describe("featureDeleteEligibility", () => {
       id("4101"),
     )
     expect(result.unavailable).toBe(false)
+    expect(result.preserveIntentAllowed).toBe(false)
     expect(result.blockers).toEqual([
       expect.objectContaining({
         dependent: { kind: "feature", id: id("4102") },
@@ -64,7 +65,14 @@ describe("featureDeleteEligibility", () => {
       ]),
       id("4101"),
     )
-    expect(result).toEqual({ blockers: [], blockerCount: 0, unavailable: true })
+    expect(result).toEqual({
+      blockers: [],
+      blockerCount: 0,
+      preservableReferences: [],
+      preservableReferenceCount: 0,
+      preserveIntentAllowed: false,
+      unavailable: true,
+    })
   })
 
   it("includes model-reference and feature-face support blockers", () => {
@@ -126,6 +134,14 @@ describe("featureDeleteEligibility", () => {
       targetFeature.id,
     )
     expect(result.unavailable).toBe(false)
+    expect(result.preserveIntentAllowed).toBe(false)
+    expect(result.preservableReferences).toEqual([
+      {
+        kind: "model-intersection",
+        referenceId: modelDependent.externalReferences?.[0]?.id,
+        sketchId: modelDependent.id,
+      },
+    ])
     expect(result.blockers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -138,6 +154,54 @@ describe("featureDeleteEligibility", () => {
         }),
       ]),
     )
+  })
+
+  it("allows preserve-intent deletion when every blocker is a model-backed sketch reference", () => {
+    const targetFeature = boxFeature("4130")
+    const dependent = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4131"),
+      label: "Repairable sketch",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4132"),
+          kind: "model-point",
+          reference: {
+            schemaVersion: 0,
+            featureId: targetFeature.id,
+            kind: "vertex",
+            signature: {
+              kind: "vertex",
+              geometryClass: "POINT",
+              measure: 0,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+              boundaryCount: 0,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: id("4133"),
+        },
+      ],
+    })
+    const result = featureDeleteEligibility(
+      { sketches: [dependent], features: [targetFeature] } as unknown as DocumentSnapshot,
+      targetFeature.id,
+    )
+
+    expect(result.preserveIntentAllowed).toBe(true)
+    expect(result.preservableReferenceCount).toBe(1)
+    expect(result.preservableReferences).toEqual([
+      {
+        kind: "model-point",
+        referenceId: dependent.externalReferences?.[0]?.id,
+        sketchId: dependent.id,
+      },
+    ])
   })
 
   it("bounds the blocker preview while retaining the total count", () => {

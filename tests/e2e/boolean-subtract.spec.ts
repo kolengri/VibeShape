@@ -67,6 +67,7 @@ test.describe("Boolean subtraction", () => {
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(page.getByRole("button", { name: "Delete feature" })).toBeDisabled()
+    await expect(page.getByRole("button", { name: "Delete and keep references" })).toHaveCount(0)
     await expect(
       page.getByText("Deletion is blocked by: Subtract 1 (feature dependency)."),
     ).toBeVisible()
