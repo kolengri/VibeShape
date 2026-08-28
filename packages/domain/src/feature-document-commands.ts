@@ -23,6 +23,11 @@ import {
 } from "./feature-collection"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import type { draftIdSchema } from "./identifiers"
+import {
+  isOrphanedModelReference,
+  isSketchExternalModelReference,
+  sketchRecordSchema,
+} from "./sketch"
 
 type FeatureCommand = Extract<
   DocumentCommand,
@@ -31,12 +36,17 @@ type FeatureCommand = Extract<
       | "org.vibeshape.feature.add"
       | "org.vibeshape.feature.update"
       | "org.vibeshape.feature.remove"
+      | "org.vibeshape.feature.remove-preserving-model-reference-intent"
       | "org.vibeshape.feature.set-suppressed"
   }
 >
 type FeatureAddedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.added" }>
 type FeatureUpdatedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.updated" }>
 type FeatureRemovedEvent = Extract<DocumentEvent, { type: "org.vibeshape.feature.removed" }>
+type FeatureRemovedPreservingIntentEvent = Extract<
+  DocumentEvent,
+  { type: "org.vibeshape.feature.removed-preserving-model-reference-intent" }
+>
 type FeatureSuppressionChangedEvent = Extract<
   DocumentEvent,
   { type: "org.vibeshape.feature.suppression-changed" }
@@ -45,6 +55,7 @@ type FeatureEvent =
   | FeatureAddedEvent
   | FeatureUpdatedEvent
   | FeatureRemovedEvent
+  | FeatureRemovedPreservingIntentEvent
   | FeatureSuppressionChangedEvent
 type TransactionId = z.infer<typeof draftIdSchema> | null
 
@@ -234,6 +245,38 @@ export function reduceFeatureDocumentEvent(
       return reduceUpdatedEvent(snapshot, event)
     case "org.vibeshape.feature.removed":
       return reduceRemovedEvent(snapshot, event)
+    case "org.vibeshape.feature.removed-preserving-model-reference-intent": {
+      const removed = reduceRemovedEvent(snapshot, {
+        ...event,
+        type: "org.vibeshape.feature.removed",
+      })
+      if (!removed.ok || !removed.snapshot) return removed
+      return {
+        ...removed,
+        snapshot: {
+          ...removed.snapshot,
+          sketches: removed.snapshot.sketches.map((sketch) =>
+            sketchRecordSchema.parse({
+              ...sketch,
+              externalReferences: sketch.externalReferences?.map((reference) =>
+                isSketchExternalModelReference(reference) &&
+                !isOrphanedModelReference(reference) &&
+                reference.reference.featureId === event.feature.id
+                  ? {
+                      ...reference,
+                      schemaVersion: 1 as const,
+                      orphanedSource: {
+                        kind: "deleted-feature" as const,
+                        featureId: event.feature.id,
+                      },
+                    }
+                  : reference,
+              ),
+            }),
+          ),
+        },
+      }
+    }
     case "org.vibeshape.feature.suppression-changed":
       return reduceSuppressionChangedEvent(snapshot, event)
   }
@@ -359,6 +402,61 @@ function createRemovedEvent(
   }
 }
 
+function createRemovedPreservingIntentEvent(
+  snapshot: DocumentSnapshot | null,
+  command: Extract<
+    FeatureCommand,
+    { kind: "org.vibeshape.feature.remove-preserving-model-reference-intent" }
+  >,
+  transactionId: TransactionId,
+): DocumentEvent | DomainDiagnostic {
+  const current = requireExistingDocumentRevision(
+    snapshot,
+    command.documentId,
+    command.baseRevision,
+  )
+  if (!current.ok) return current.diagnostic
+  const feature = current.snapshot.features.find(({ id }) => id === command.payload.featureId)
+  if (!feature)
+    return domainDiagnostic("feature-not-found", "The feature does not exist in the document.")
+  const graph = featureDependents(current.snapshot, feature.id)
+  if (!graph.ok) return graph.diagnostic
+  const preservableSketchIds = new Set(
+    current.snapshot.sketches
+      .filter((sketch) =>
+        sketch.externalReferences?.some(
+          (reference) =>
+            isSketchExternalModelReference(reference) &&
+            !isOrphanedModelReference(reference) &&
+            reference.reference.featureId === feature.id,
+        ),
+      )
+      .map(({ id }) => id),
+  )
+  const unsupportedBlockers = graph.blockers.filter(
+    (blocker) =>
+      blocker.relation !== "feature-topology-reference" ||
+      blocker.dependent.kind !== "sketch" ||
+      !preservableSketchIds.has(blocker.dependent.id),
+  )
+  if (unsupportedBlockers.length > 0) {
+    return {
+      code: "feature-in-use",
+      message: "The feature has non-model-reference dependents.",
+      retryable: false,
+      issues: unsupportedBlockers.slice(0, 8).map((blocker) => ({
+        path: blocker.ownerPath,
+        message: `Retarget or remove the ${blocker.relation} dependency before deleting the feature.`,
+      })),
+    }
+  }
+  return {
+    ...eventEnvelope(command, transactionId),
+    type: "org.vibeshape.feature.removed-preserving-model-reference-intent",
+    feature: featureRecordSchema.parse(feature),
+  }
+}
+
 function createSuppressionChangedEvent(
   snapshot: DocumentSnapshot | null,
   command: Extract<FeatureCommand, { kind: "org.vibeshape.feature.set-suppressed" }>,
@@ -417,6 +515,8 @@ export function createFeatureDocumentEvent(
       return createUpdatedEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.remove":
       return createRemovedEvent(snapshot, command, transactionId)
+    case "org.vibeshape.feature.remove-preserving-model-reference-intent":
+      return createRemovedPreservingIntentEvent(snapshot, command, transactionId)
     case "org.vibeshape.feature.set-suppressed":
       return createSuppressionChangedEvent(snapshot, command, transactionId)
   }

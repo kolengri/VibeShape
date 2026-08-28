@@ -19,12 +19,17 @@ import type {
   SketchExternalModelIntersectionReference,
   SketchExternalModelLineReference,
   SketchExternalModelPointReference,
+  SketchExternalModelReference,
   SketchExternalPointReference,
   SketchPoint2,
   SketchRecord,
   TopologyCandidate,
 } from "@vibeshape/domain"
-import { isSketchExternalModelReference, resolveTopologyReference } from "@vibeshape/domain"
+import {
+  isOrphanedModelReference,
+  isSketchExternalModelReference,
+  resolveTopologyReference,
+} from "@vibeshape/domain"
 import type {
   PlanarFaceSectionInput,
   PlanarFaceSectionResult,
@@ -557,11 +562,12 @@ function sourceSolve(
 }
 
 type ExternalReference = NonNullable<SketchRecord["externalReferences"]>[number]
-type ExternalModelReference =
+type ExternalLiveModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
   | SketchExternalModelIntersectionReference
+type ExternalModelReference = SketchExternalModelReference
 export type ExternalModelMaterializationCache = Map<string, Promise<ResolvedReference>>
 type ResolvedReference =
   | Readonly<{
@@ -618,7 +624,9 @@ async function resolveExternalReference(
   externalGeometryCache: ExternalSketchGeometryCache = new Map(),
   modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): Promise<ResolvedReference> {
-  if (isSketchExternalModelReference(reference))
+  if (isSketchExternalModelReference(reference)) {
+    if (isOrphanedModelReference(reference))
+      throw new Error("The external model reference requires repair.")
     return materializeExternalModelReference(
       document.id,
       reference,
@@ -628,6 +636,7 @@ async function resolveExternalReference(
       sectionPlanarFace,
       modelMaterializationCache,
     )
+  }
   const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
   if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
   const sourceFrame = sketchFrame(source, document, features)
@@ -695,7 +704,7 @@ async function resolveExternalReference(
 
 async function resolveExternalModelReference(
   documentId: string,
-  reference: ExternalModelReference,
+  reference: ExternalLiveModelReference,
   targetFrame: SupportFrame,
   geometryLookup: FeatureGeometryLookup | undefined,
   sectionPlanarFace: PlanarFaceSectionPort | undefined,
@@ -736,6 +745,8 @@ function materializeExternalModelReference(
   sectionPlanarFace: PlanarFaceSectionPort | undefined,
   cache: ExternalModelMaterializationCache,
 ) {
+  if (reference.schemaVersion !== 0)
+    throw new Error("The external model reference requires repair.")
   const key = `${ownerSketchId}:${reference.id}`
   const cached = cache.get(key)
   if (cached) return cached
@@ -767,6 +778,8 @@ async function inspectExternalModelReference(
   isCurrent: (() => boolean) | undefined,
 ): Promise<ModelReferenceEvidence | null> {
   if (isCurrent && !isCurrent()) return null
+  if (isOrphanedModelReference(reference))
+    return { sketchId: sketch.id, referenceId: reference.id, status: "broken" }
   let status: ModelReferenceEvidence["status"] = "broken"
   if (targetFrame) {
     try {

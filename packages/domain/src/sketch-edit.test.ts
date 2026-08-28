@@ -1145,6 +1145,46 @@ describe("sketch editing", () => {
     }
   })
 
+  it("repairs an orphaned model reference against a new producer as a live v0 reference", () => {
+    const deletedFeatureId = "018f0000-0000-7000-8000-000000000631"
+    const replacementFeatureId = "018f0000-0000-7000-8000-000000000632"
+    const referenceId = "018f0000-0000-7000-8000-000000000633" as SketchExternalReferenceId
+    const projectedPointId = "018f0000-0000-7000-8000-000000000634" as SketchEntityId
+    const sketch = sketchRecordSchema.parse({
+      ...empty(),
+      externalReferences: [
+        {
+          schemaVersion: 1,
+          id: referenceId,
+          kind: "model-point",
+          reference: topologyReference("vertex", deletedFeatureId),
+          projectedPointId,
+          orphanedSource: { kind: "deleted-feature", featureId: deletedFeatureId },
+        },
+      ],
+    })
+    const replacement = topologyReferenceWithRole(
+      topologyReference("vertex", replacementFeatureId),
+      "replacement-vertex",
+    )
+
+    const repaired = replaceSketchExternalReference(sketch, referenceId, {
+      kind: "model-point",
+      reference: replacement,
+    })
+
+    expect(repaired.externalReferences).toEqual([
+      {
+        schemaVersion: 0,
+        id: referenceId,
+        kind: "model-point",
+        reference: replacement,
+        projectedPointId,
+      },
+    ])
+    expect(repaired.constraints).toEqual(sketch.constraints)
+  })
+
   it("repairs point, line, and curve sketch references without changing projected identity", () => {
     const local = appendSketchLine(empty(), {
       createEntityId: entityId,

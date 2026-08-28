@@ -16,7 +16,16 @@ import type {
 import { type DocumentSnapshot, documentSnapshotSchema } from "./document"
 import { createDocumentDependencyGraphFromSnapshot } from "./document-graph"
 import type { draftIdSchema } from "./identifiers"
-import { type SketchRecord, sketchRecordSchema } from "./sketch"
+import {
+  isOrphanedModelReference,
+  isSketchExternalModelReference,
+  type SketchExternalModelReference,
+  type SketchExternalOrphanedModelReference,
+  type SketchExternalReference,
+  type SketchRecord,
+  sketchRecordSchema,
+} from "./sketch"
+import { replaceSketchExternalReference } from "./sketch-edit"
 
 type SketchCommand = Extract<
   DocumentCommand,
@@ -32,6 +41,72 @@ type TransactionId = z.infer<typeof draftIdSchema> | null
 
 function sketchesEqual(left: SketchRecord, right: SketchRecord) {
   return canonicalJson(left) === canonicalJson(right)
+}
+
+function modelReplacement(reference: SketchExternalModelReference) {
+  if (reference.kind === "model-point")
+    return { kind: reference.kind, reference: reference.reference } as const
+  if (reference.kind === "model-line")
+    return { kind: reference.kind, reference: reference.reference } as const
+  if (reference.kind === "model-intersection")
+    return { kind: reference.kind, reference: reference.reference } as const
+  return {
+    kind: reference.kind,
+    reference: reference.reference,
+    sourceType: reference.sourceType,
+    projectedType: reference.projectedType,
+  } as const
+}
+
+function isValidOrphanTransition(
+  previousSketch: SketchRecord,
+  previousReference: SketchExternalOrphanedModelReference,
+  nextReference: SketchExternalReference | undefined,
+) {
+  if (!nextReference) return true
+  if (isOrphanedModelReference(nextReference)) {
+    return canonicalJson(previousReference) === canonicalJson(nextReference)
+  }
+  if (!isSketchExternalModelReference(nextReference) || nextReference.schemaVersion !== 0) {
+    return false
+  }
+  try {
+    const repaired = replaceSketchExternalReference(
+      previousSketch,
+      previousReference.id,
+      modelReplacement(nextReference),
+    )
+    const expected = repaired.externalReferences?.find(({ id }) => id === previousReference.id)
+    return canonicalJson(expected) === canonicalJson(nextReference)
+  } catch {
+    return false
+  }
+}
+
+function introducesOrChangesOrphanReference(previous: SketchRecord | null, next: SketchRecord) {
+  const nextById = new Map(
+    (next.externalReferences ?? []).map((reference) => [reference.id, reference]),
+  )
+  const previousOrphans = (previous?.externalReferences ?? []).filter(isOrphanedModelReference)
+  if (
+    previous &&
+    previousOrphans.some(
+      (reference) => !isValidOrphanTransition(previous, reference, nextById.get(reference.id)),
+    )
+  ) {
+    return true
+  }
+  const previousOrphanIds = new Set(previousOrphans.map(({ id }) => id))
+  return (next.externalReferences ?? []).some(
+    (reference) => isOrphanedModelReference(reference) && !previousOrphanIds.has(reference.id),
+  )
+}
+
+function orphanIntroductionDiagnostic(): DomainDiagnostic {
+  return domainDiagnostic(
+    "invalid-sketch",
+    "Orphaned model references may only be introduced by atomic feature removal.",
+  )
 }
 
 function sketchDependents(snapshot: DocumentSnapshot, sketchId: SketchRecord["id"]) {
@@ -83,6 +158,15 @@ function reduceAddedEvent(
       diagnostic: domainDiagnostic("invalid-event", "The added sketch already exists."),
     }
   }
+  if (introducesOrChangesOrphanReference(null, event.sketch)) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "A sketch-added event cannot introduce orphaned model references.",
+      ),
+    }
+  }
   const next = parseSketches(current.snapshot, [...current.snapshot.sketches, event.sketch])
   return next.ok
     ? {
@@ -124,6 +208,15 @@ function reduceUpdatedEvent(
       diagnostic: domainDiagnostic(
         "invalid-event",
         "The sketch update event does not match the current document.",
+      ),
+    }
+  }
+  if (introducesOrChangesOrphanReference(previous, event.sketch)) {
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        "invalid-event",
+        "A sketch-updated event cannot introduce or change orphaned model references.",
       ),
     }
   }
@@ -219,6 +312,9 @@ function createAddedEvent(
       `Sketch ${command.payload.sketch.id} already exists in the document.`,
     )
   }
+  if (introducesOrChangesOrphanReference(null, command.payload.sketch)) {
+    return orphanIntroductionDiagnostic()
+  }
   const next = parseSketches(current.snapshot, [
     ...current.snapshot.sketches,
     command.payload.sketch,
@@ -251,6 +347,9 @@ function createUpdatedEvent(
       "sketch-not-found",
       `Sketch ${command.payload.sketch.id} does not exist in the document.`,
     )
+  }
+  if (introducesOrChangesOrphanReference(previous, command.payload.sketch)) {
+    return orphanIntroductionDiagnostic()
   }
   if (sketchesEqual(previous, command.payload.sketch)) {
     return domainDiagnostic("command-no-op", "The sketch already has the requested state.")

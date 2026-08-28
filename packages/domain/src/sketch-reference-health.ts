@@ -1,14 +1,19 @@
 import type { SketchEntityId, SketchExternalReferenceId, SketchId } from "./identifiers"
 import {
+  isOrphanedModelReference,
   isSketchExternalModelReference,
   projectedExternalSketchEntities,
   type SketchEntity,
   type SketchExternalModelReference,
+  type SketchExternalOrphanedModelReference,
   type SketchExternalReference,
   type SketchRecord,
 } from "./sketch"
 
-type SketchBackedExternalReference = Exclude<SketchExternalReference, SketchExternalModelReference>
+type SketchBackedExternalReference = Exclude<
+  SketchExternalReference,
+  SketchExternalModelReference | SketchExternalOrphanedModelReference
+>
 
 type ReferenceResolution = "direct-broken" | "healthy" | "transitive-broken" | "unknown"
 
@@ -92,6 +97,7 @@ function resolveReference(
   resolveModelReference: SketchModelReferenceHealthResolver | undefined,
   visiting: ReadonlySet<string>,
 ): ReferenceResolution {
+  if (isOrphanedModelReference(reference)) return "direct-broken"
   if (isSketchExternalModelReference(reference)) {
     return modelReferenceResolution(ownerSketchId, reference, resolveModelReference)
   }

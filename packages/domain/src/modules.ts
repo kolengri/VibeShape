@@ -310,6 +310,19 @@ export const featureCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse(
       },
     },
     {
+      kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.features",
+      confirmation: "destructive",
+      automation: {
+        exposure: "draft",
+        readOnly: false,
+        destructive: true,
+        idempotent: false,
+        openWorld: false,
+      },
+    },
+    {
       kind: "org.vibeshape.feature.set-suppressed",
       schemaVersion: 1,
       ownerModuleId: "org.vibeshape.core.features",

@@ -1,4 +1,6 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
+import { boxFeatureType } from "@vibeshape/domain/part-design"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { describe, expect, it } from "vitest"
 import {
   decideUpdateActivation,
@@ -366,6 +368,128 @@ describe("persistence contracts", () => {
     ).toMatchObject({
       success: true,
       data: { snapshot: { sketches: [{ id: sketchId, label: "Base profile" }] } },
+    })
+  })
+
+  it("accepts an atomic feature removal that preserves model-reference repair intent", () => {
+    const created = applyDocumentCommand(null, {
+      kind: "org.vibeshape.document.create",
+      schemaVersion: 1,
+      commandId,
+      documentId,
+      baseRevision: 0,
+      issuedAt: timestamp,
+      actor: { type: "user", userId: null },
+      payload: { name: "Repairable bracket" },
+    })
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f31d0"
+    const addedFeature = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21d3",
+      documentId,
+      baseRevision: created.snapshot.revision,
+      issuedAt: "2026-08-08T00:01:00Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: featureId,
+          type: boxFeatureType.type,
+          parameters: {
+            width: createLengthQuantity(20),
+            depth: createLengthQuantity(20),
+            height: createLengthQuantity(20),
+            centered: false,
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+    if (!addedFeature.ok) throw new Error(addedFeature.diagnostic.message)
+    const addedSketch = applyDocumentCommand(addedFeature.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21d4",
+      documentId,
+      baseRevision: addedFeature.snapshot.revision,
+      issuedAt: "2026-08-08T00:02:00Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        sketch: {
+          schemaVersion: 0,
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f21d5",
+          label: "Referenced profile",
+          plane: "xy",
+          entities: [],
+          constraints: [],
+          externalReferences: [
+            {
+              schemaVersion: 0,
+              id: "0195b5ac-b220-7a2c-8c33-67a36a7f21d6",
+              kind: "model-point",
+              reference: {
+                schemaVersion: 0,
+                featureId,
+                kind: "vertex",
+                signature: {
+                  kind: "vertex",
+                  geometryClass: "POINT",
+                  measure: 0,
+                  centroid: [0, 0, 0],
+                  bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+                  boundaryCount: 0,
+                  adjacentGeometryClasses: [],
+                },
+              },
+              projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f21d7",
+            },
+          ],
+        },
+      },
+    })
+    if (!addedSketch.ok) throw new Error(addedSketch.diagnostic.message)
+    const removed = applyDocumentCommand(addedSketch.snapshot, {
+      kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f21d8",
+      documentId,
+      baseRevision: addedSketch.snapshot.revision,
+      issuedAt: "2026-08-08T00:03:00Z",
+      actor: { type: "user", userId: null },
+      payload: { featureId },
+    })
+    if (!removed.ok) throw new Error(removed.diagnostic.message)
+
+    expect(
+      persistenceCommitInputSchema.safeParse({
+        sessionId,
+        lease: { epoch: 1, nowMs: 0 },
+        storedAt: removed.snapshot.updatedAt,
+        baseSnapshot: addedSketch.snapshot,
+        event: removed.event,
+        snapshot: removed.snapshot,
+      }),
+    ).toMatchObject({
+      success: true,
+      data: {
+        snapshot: {
+          features: [],
+          sketches: [
+            {
+              externalReferences: [
+                {
+                  schemaVersion: 1,
+                  orphanedSource: { kind: "deleted-feature", featureId },
+                },
+              ],
+            },
+          ],
+        },
+      },
     })
   })
 

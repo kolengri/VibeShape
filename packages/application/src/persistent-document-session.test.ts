@@ -1,7 +1,9 @@
 import { applyDocumentCommand } from "@vibeshape/domain/commands"
 import type { DocumentSnapshot } from "@vibeshape/domain/document"
 import type { DocumentId, SessionId, SketchEntityId, SketchId } from "@vibeshape/domain/identifiers"
+import { boxFeatureType } from "@vibeshape/domain/part-design"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
+import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
 import {
@@ -383,6 +385,141 @@ describe("persistent document session", () => {
     })
     expect(cleanReopen).toMatchObject({ ok: true, report: { status: "clean" } })
     if (cleanReopen.ok) await cleanReopen.session.close()
+  })
+
+  it("persists and reopens orphaned model-reference repair intent before rebuilding", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b1"
+    const feature = await created.session.commit({
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f22b1",
+      documentId,
+      baseRevision: 1,
+      issuedAt: "2026-08-09T00:00:01Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        feature: {
+          schemaVersion: 0,
+          id: featureId,
+          type: boxFeatureType.type,
+          parameters: {
+            width: createLengthQuantity(20),
+            depth: createLengthQuantity(20),
+            height: createLengthQuantity(20),
+            centered: false,
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        },
+      },
+    })
+    expect(feature.ok).toBe(true)
+    if (!feature.ok) return
+    const sketch = await created.session.commit({
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f22b2",
+      documentId,
+      baseRevision: 2,
+      issuedAt: "2026-08-09T00:00:02Z",
+      actor: { type: "user", userId: null },
+      payload: {
+        sketch: {
+          schemaVersion: 0,
+          id: sketchId,
+          label: "Referenced profile",
+          plane: "xy",
+          entities: [],
+          constraints: [],
+          externalReferences: [
+            {
+              schemaVersion: 0,
+              id: "0195b5ac-b220-7a2c-8c33-67a36a7f21b2",
+              kind: "model-point",
+              reference: {
+                schemaVersion: 0,
+                featureId,
+                kind: "vertex",
+                signature: {
+                  kind: "vertex",
+                  geometryClass: "POINT",
+                  measure: 0,
+                  centroid: [0, 0, 0],
+                  bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+                  boundaryCount: 0,
+                  adjacentGeometryClasses: [],
+                },
+              },
+              projectedPointId: sketchPointId,
+            },
+          ],
+        },
+      },
+    })
+    expect(sketch.ok).toBe(true)
+    if (!sketch.ok) return
+    const removed = await created.session.commit({
+      kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b220-7a2c-8c33-67a36a7f22b3",
+      documentId,
+      baseRevision: 3,
+      issuedAt: "2026-08-09T00:00:03Z",
+      actor: { type: "user", userId: null },
+      payload: { featureId },
+    })
+
+    expect(removed).toMatchObject({
+      ok: true,
+      snapshot: {
+        revision: 4,
+        features: [],
+        sketches: [
+          {
+            externalReferences: [
+              {
+                schemaVersion: 1,
+                orphanedSource: { kind: "deleted-feature", featureId },
+              },
+            ],
+          },
+        ],
+      },
+      rebuild: { ok: true, response: { revision: 4 } },
+    })
+    expect(state.repository.snapshot).toEqual(created.session.snapshot)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1, 2, 3, 4])
+
+    state.rebuildPorts[0]?.terminate()
+    const reopened = await openPersistentDocumentSession(state.dependencies, {
+      documentId,
+      sessionId: sessionA,
+      mesh,
+    })
+    expect(reopened).toMatchObject({
+      ok: true,
+      report: {
+        status: "recovered",
+        snapshot: {
+          revision: 4,
+          features: [],
+          sketches: [
+            {
+              externalReferences: [
+                {
+                  schemaVersion: 1,
+                  orphanedSource: { kind: "deleted-feature", featureId },
+                },
+              ],
+            },
+          ],
+        },
+        rebuild: { ok: true, response: { revision: 4 } },
+      },
+    })
   })
 
   it("does not advance the session or rebuild when the atomic persistence commit fails", async () => {

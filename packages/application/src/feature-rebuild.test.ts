@@ -269,6 +269,34 @@ function modelReferencedExtrusionDocument(revision: number, sourceWidth: number)
   }
 }
 
+function orphanedModelReferencedExtrusionDocument(revision: number) {
+  const live = modelReferencedExtrusionDocument(revision, 20)
+  const sketch = live.sketches[0]
+  if (!sketch) throw new Error("The model-reference scheduling fixture requires a sketch.")
+  const reference = sketch.externalReferences[0]
+  if (!reference)
+    throw new Error("The model-reference scheduling fixture requires an external reference.")
+  return {
+    ...live,
+    sketches: [
+      {
+        ...sketch,
+        externalReferences: [
+          {
+            ...reference,
+            schemaVersion: 1 as const,
+            orphanedSource: {
+              kind: "deleted-feature" as const,
+              featureId: reference.reference.featureId,
+            },
+          },
+        ],
+      },
+    ],
+    features: [live.features[0], box(featureIds.cylinder)],
+  }
+}
+
 const preparedSchedulingExtrusion = extrusionFeatureContentParametersSchema.parse({
   sketchId: schedulingSketchId,
   frame: {
@@ -790,6 +818,38 @@ describe("feature rebuild coordination", () => {
     ])
     expect(failed.geometry).toEqual([])
     expect(preparedSourceHashes).toHaveLength(2)
+  })
+
+  it("contains orphaned model-reference consumers without scheduling a deleted source", async () => {
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildDocumentFeatures({
+      document: orphanedModelReferencedExtrusionDocument(2),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry: successfulPort(requests),
+      prepareFeatureContent: ({ feature }) =>
+        feature.id === featureIds.independent
+          ? {
+              ok: false,
+              diagnostic: {
+                code: "org.vibeshape.feature.content-preparation-failed",
+                values: { reason: "external-model-reference-requires-repair" },
+              },
+            }
+          : null,
+      shouldPrepareFeatureContent: ({ id }) => id === featureIds.independent,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.evaluation.records).toEqual([
+      expect.objectContaining({ featureId: featureIds.independent, status: "failed" }),
+      expect.objectContaining({ featureId: featureIds.cylinder, status: "succeeded" }),
+    ])
+    expect(requests.map(({ featureId }) => featureId)).toEqual([featureIds.cylinder])
   })
 
   it("contains thrown and malformed feature-content preparation", async () => {

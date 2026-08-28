@@ -226,21 +226,51 @@ describe("trusted command dispatcher", () => {
     })
     if (!added.ok) return
 
+    const removed = dispatcher.dispatch(added.snapshot, {
+      kind: "org.vibeshape.feature.remove",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b216-7a2c-bc33-67a36a7f21ac",
+      documentId,
+      baseRevision: 2,
+      issuedAt: "2026-08-08T12:02:00Z",
+      actor: userActor,
+      payload: { featureId: boxFeature().id },
+    })
+    expect(removed).toMatchObject({
+      ok: true,
+      snapshot: { revision: 3, features: [] },
+      event: { type: "org.vibeshape.feature.removed" },
+    })
+    if (!removed.ok) return
+
+    const readded = dispatcher.dispatch(removed.snapshot, {
+      kind: "org.vibeshape.feature.add",
+      schemaVersion: 1,
+      commandId: "0195b5ac-b217-7a2c-8c33-67a36a7f21ac",
+      documentId,
+      baseRevision: 3,
+      issuedAt: "2026-08-08T12:03:00Z",
+      actor: userActor,
+      payload: { feature: boxFeature() },
+    })
+    expect(readded.ok).toBe(true)
+    if (!readded.ok) return
+
     expect(
-      dispatcher.dispatch(added.snapshot, {
-        kind: "org.vibeshape.feature.remove",
+      dispatcher.dispatch(readded.snapshot, {
+        kind: "org.vibeshape.feature.remove-preserving-model-reference-intent",
         schemaVersion: 1,
-        commandId: "0195b5ac-b216-7a2c-bc33-67a36a7f21ac",
+        commandId: "0195b5ac-b218-7a2c-8c33-67a36a7f21ac",
         documentId,
-        baseRevision: 2,
-        issuedAt: "2026-08-08T12:02:00Z",
+        baseRevision: 4,
+        issuedAt: "2026-08-08T12:04:00Z",
         actor: userActor,
         payload: { featureId: boxFeature().id },
       }),
     ).toMatchObject({
       ok: true,
-      snapshot: { revision: 3, features: [] },
-      event: { type: "org.vibeshape.feature.removed" },
+      snapshot: { revision: 5, features: [] },
+      event: { type: "org.vibeshape.feature.removed-preserving-model-reference-intent" },
     })
   })
 

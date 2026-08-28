@@ -84,7 +84,10 @@ function updateJournalHistory(history: HistoryItemRef[], event: DocumentEvent) {
   }
   if (event.type === "org.vibeshape.sketch.removed")
     return removeHistoryItem(history, { kind: "sketch", id: event.sketch.id })
-  if (event.type === "org.vibeshape.feature.removed")
+  if (
+    event.type === "org.vibeshape.feature.removed" ||
+    event.type === "org.vibeshape.feature.removed-preserving-model-reference-intent"
+  )
     return removeHistoryItem(history, { kind: "feature", id: event.feature.id })
   return true
 }

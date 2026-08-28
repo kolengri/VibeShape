@@ -619,6 +619,37 @@ describe("createDocumentDependencyGraph", () => {
     })
   })
 
+  it("retains typed orphan repair intent without creating a missing-source graph edge", () => {
+    const target = {
+      ...sketch("2"),
+      externalReferences: [
+        {
+          schemaVersion: 1 as const,
+          id: id("7"),
+          kind: "model-curve" as const,
+          reference: circleEdgeReference("1"),
+          sourceType: "circle" as const,
+          projectedEntityId: id("8"),
+          projectedType: "circle" as const,
+          projectedPointIds: [id("9")],
+          orphanedSource: { kind: "deleted-feature" as const, featureId: id("1") },
+        },
+      ],
+    }
+    const result = createDocumentDependencyGraph({
+      sketches: [target],
+      features: [],
+      history: [{ kind: "sketch", id: id("2") }],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.graph.edges).toEqual([])
+    expect(
+      result.graph.deletionBlockersFor({ kind: "feature", id: id("1") } as DocumentNodeRef),
+    ).toEqual([])
+  })
+
   it("reports a real cross-kind cycle before forward ordering", () => {
     const cycle = createDocumentDependencyGraph({
       sketches: [supportedSketch("1", "2")],

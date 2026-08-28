@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent, replayDocumentEvents } from "./commands"
+import { documentSnapshotSchema } from "./document"
 import { featureRecordSchema } from "./feature-graph"
-import { extrusionFeatureType } from "./part-design"
+import { boxFeatureType, extrusionFeatureType } from "./part-design"
 import { createLengthQuantity } from "./units"
 
 const documentId = "018f0000-0000-7000-8000-000000000001"
@@ -39,6 +40,68 @@ function sketch(label = "Profile") {
       },
     ],
     constraints: [],
+  } as const
+}
+
+function sketchWithOrphanReference(label = "Profile") {
+  const featureId = "018f0000-0000-7000-8000-000000000010"
+  return {
+    ...sketch(label),
+    externalReferences: [
+      {
+        schemaVersion: 1,
+        id: externalReferenceId,
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId,
+        orphanedSource: { kind: "deleted-feature", featureId },
+      },
+    ],
+  } as const
+}
+
+function sketchWithRepairedReference(
+  featureId: string,
+  projectedPoint = projectedPointId,
+  label = "Profile",
+) {
+  return {
+    ...sketch(label),
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: externalReferenceId,
+        kind: "model-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "vertex",
+          signature: {
+            kind: "vertex",
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0],
+            bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: projectedPoint,
+      },
+    ],
   } as const
 }
 
@@ -182,6 +245,161 @@ describe("sketch document commands", () => {
       reduceDocumentEvent(added.snapshot, {
         ...updated.event,
         previousSketch: sketch("Tampered previous profile"),
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
+  test("rejects orphan intent introduced outside atomic feature removal", () => {
+    const created = createDocument()
+    if (!created.ok) throw new Error(created.diagnostic.message)
+
+    expect(
+      applyDocumentCommand(created.snapshot, {
+        kind: "org.vibeshape.sketch.add",
+        schemaVersion: 1,
+        commandId: commandId(115),
+        documentId,
+        baseRevision: 1,
+        issuedAt,
+        actor,
+        payload: { sketch: sketchWithOrphanReference() },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-sketch" } })
+    expect(
+      reduceDocumentEvent(created.snapshot, {
+        schemaVersion: 1,
+        commandId: commandId(116),
+        transactionId: null,
+        documentId,
+        baseRevision: 1,
+        revision: 2,
+        issuedAt,
+        actor,
+        type: "org.vibeshape.sketch.added",
+        sketch: sketchWithOrphanReference(),
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+
+    const added = applyDocumentCommand(created.snapshot, {
+      kind: "org.vibeshape.sketch.add",
+      schemaVersion: 1,
+      commandId: commandId(117),
+      documentId,
+      baseRevision: 1,
+      issuedAt,
+      actor,
+      payload: { sketch: sketch() },
+    })
+    if (!added.ok) throw new Error(added.diagnostic.message)
+    expect(
+      applyDocumentCommand(added.snapshot, {
+        kind: "org.vibeshape.sketch.update",
+        schemaVersion: 1,
+        commandId: commandId(118),
+        documentId,
+        baseRevision: 2,
+        issuedAt,
+        actor,
+        payload: { sketch: sketchWithOrphanReference() },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-sketch" } })
+    expect(
+      reduceDocumentEvent(added.snapshot, {
+        schemaVersion: 1,
+        commandId: commandId(119),
+        transactionId: null,
+        documentId,
+        baseRevision: 2,
+        revision: 3,
+        issuedAt,
+        actor,
+        type: "org.vibeshape.sketch.updated",
+        previousSketch: sketch(),
+        sketch: sketchWithOrphanReference(),
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
+  })
+
+  test("allows canonical orphan repair but rejects projected-identity bypasses", () => {
+    const created = createDocument()
+    if (!created.ok) throw new Error(created.diagnostic.message)
+    const targetFeatureId = "018f0000-0000-7000-8000-000000000011"
+    const orphaned = documentSnapshotSchema.parse({
+      ...created.snapshot,
+      revision: 2,
+      sketches: [sketchWithOrphanReference()],
+      features: [
+        featureRecordSchema.parse({
+          schemaVersion: 0,
+          id: targetFeatureId,
+          type: boxFeatureType.type,
+          parameters: {
+            width: createLengthQuantity(20),
+            depth: createLengthQuantity(20),
+            height: createLengthQuantity(20),
+            centered: false,
+          },
+          dependencies: [],
+          references: [],
+          suppressed: false,
+        }),
+      ],
+    })
+
+    expect(
+      applyDocumentCommand(orphaned, {
+        kind: "org.vibeshape.sketch.update",
+        schemaVersion: 1,
+        commandId: commandId(1231),
+        documentId,
+        baseRevision: 2,
+        issuedAt,
+        actor,
+        payload: { sketch: sketchWithOrphanReference("Renamed orphan") },
+      }),
+    ).toMatchObject({ ok: true })
+    expect(
+      applyDocumentCommand(orphaned, {
+        kind: "org.vibeshape.sketch.update",
+        schemaVersion: 1,
+        commandId: commandId(1232),
+        documentId,
+        baseRevision: 2,
+        issuedAt,
+        actor,
+        payload: { sketch: sketchWithRepairedReference(targetFeatureId) },
+      }),
+    ).toMatchObject({ ok: true })
+
+    const invalidRepair = sketchWithRepairedReference(
+      targetFeatureId,
+      "018f0000-0000-7000-8000-000000000012",
+    )
+    expect(
+      applyDocumentCommand(orphaned, {
+        kind: "org.vibeshape.sketch.update",
+        schemaVersion: 1,
+        commandId: commandId(1233),
+        documentId,
+        baseRevision: 2,
+        issuedAt,
+        actor,
+        payload: { sketch: invalidRepair },
+      }),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-sketch" } })
+    expect(
+      reduceDocumentEvent(orphaned, {
+        schemaVersion: 1,
+        commandId: commandId(1234),
+        transactionId: null,
+        documentId,
+        baseRevision: 2,
+        revision: 3,
+        issuedAt,
+        actor,
+        type: "org.vibeshape.sketch.updated",
+        previousSketch: sketchWithOrphanReference(),
+        sketch: invalidRepair,
       }),
     ).toMatchObject({ ok: false, diagnostic: { code: "invalid-event" } })
   })

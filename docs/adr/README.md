@@ -28,6 +28,7 @@
 | [0024](0024-stable-planar-face-sketch-support.md) | Accepted | Stable planar-face sketch support with separate evaluation and body dependencies |
 | [0025](0025-first-class-offset-datum-planes.md) | Accepted | First-class signed offset datum planes that remain outside body ownership and export |
 | [0026](0026-document-dependency-graph-and-interleaved-history.md) | Accepted | A document-wide sketch/feature dependency graph with replay-safe interleaved History |
+| [0027](0027-typed-orphan-model-reference-intent.md) | Accepted | Typed orphan intent for model-backed sketch references after feature deletion |
 
 Statuses:
 

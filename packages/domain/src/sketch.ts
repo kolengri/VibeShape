@@ -1,6 +1,7 @@
 import { isString } from "is-what"
 import { z } from "zod"
 import {
+  featureIdSchema,
   type SketchEntityId,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -191,7 +192,78 @@ export const sketchExternalModelIntersectionReferenceSchema = z
     message: "A projected model intersection requires distinct endpoint IDs.",
   })
 
-export const sketchExternalReferenceSchema = z.union([
+const deletedFeatureSourceSchema = z
+  .object({ kind: z.literal("deleted-feature"), featureId: featureIdSchema })
+  .strict()
+
+const sketchExternalModelPointOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-point"),
+    reference: vertexTopoRefSchema,
+    projectedPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+const sketchExternalModelLineOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-line"),
+    reference: edgeTopoRefSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId, {
+    message: "A projected model line requires distinct endpoint IDs.",
+  })
+const sketchExternalModelCurveOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-curve"),
+    reference: edgeTopoRefSchema,
+    sourceType: z.enum(["circle", "arc"]),
+    projectedEntityId: sketchEntityIdSchema,
+    projectedType: sketchExternalCurveTypeSchema,
+    projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .superRefine(validateProjectedCurveIdentities)
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+const sketchExternalModelIntersectionOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-intersection"),
+    reference: planarFaceTopoRefSchema,
+    projectedLineId: sketchEntityIdSchema,
+    projectedStartPointId: sketchEntityIdSchema,
+    projectedEndPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId, {
+    message: "A projected model intersection requires distinct endpoint IDs.",
+  })
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+
+const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
   sketchExternalCurveReferenceSchema,
@@ -199,6 +271,14 @@ export const sketchExternalReferenceSchema = z.union([
   sketchExternalModelLineReferenceSchema,
   sketchExternalModelCurveReferenceSchema,
   sketchExternalModelIntersectionReferenceSchema,
+])
+
+export const sketchExternalReferenceSchema = z.union([
+  sketchExternalReferenceSchemaV0,
+  sketchExternalModelPointOrphanSchema,
+  sketchExternalModelLineOrphanSchema,
+  sketchExternalModelCurveOrphanSchema,
+  sketchExternalModelIntersectionOrphanSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -222,12 +302,30 @@ export type SketchExternalModelCurveReference = Readonly<
 export type SketchExternalModelIntersectionReference = Readonly<
   z.infer<typeof sketchExternalModelIntersectionReferenceSchema>
 >
+export type SketchExternalModelPointOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelPointOrphanSchema>
+>
+export type SketchExternalModelLineOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelLineOrphanSchema>
+>
+export type SketchExternalModelCurveOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelCurveOrphanSchema>
+>
+export type SketchExternalModelIntersectionOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelIntersectionOrphanSchema>
+>
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
+export type SketchExternalOrphanedModelReference =
+  | SketchExternalModelPointOrphanReference
+  | SketchExternalModelLineOrphanReference
+  | SketchExternalModelCurveOrphanReference
+  | SketchExternalModelIntersectionOrphanReference
 export type SketchExternalModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
   | SketchExternalModelIntersectionReference
+  | SketchExternalOrphanedModelReference
 
 export function isSketchExternalModelReference(
   reference: SketchExternalReference,
@@ -238,6 +336,12 @@ export function isSketchExternalModelReference(
     reference.kind === "model-curve" ||
     reference.kind === "model-intersection"
   )
+}
+
+export function isOrphanedModelReference(
+  reference: SketchExternalReference,
+): reference is SketchExternalOrphanedModelReference {
+  return reference.schemaVersion === 1 && "orphanedSource" in reference
 }
 
 const sketchEntityEnvelopeSchema = z.object({
@@ -531,7 +635,10 @@ function projectedExternalPoint(id: SketchEntityId): Extract<SketchEntity, { typ
 }
 
 function projectedExternalCurve(
-  reference: SketchExternalCurveReference | SketchExternalModelCurveReference,
+  reference:
+    | SketchExternalCurveReference
+    | SketchExternalModelCurveReference
+    | SketchExternalModelCurveOrphanReference,
 ): Exclude<SketchEntity, { type: "line" | "point" }> {
   const [centerPointId, firstPointId, secondPointId, startPointId, endPointId] =
     reference.projectedPointIds

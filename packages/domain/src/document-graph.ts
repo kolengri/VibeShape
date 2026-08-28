@@ -17,7 +17,12 @@ import {
   readExtrusionFeatureParameters,
 } from "./part-design"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
-import { isSketchExternalModelReference, type SketchRecord, sketchRecordSchema } from "./sketch"
+import {
+  isOrphanedModelReference,
+  isSketchExternalModelReference,
+  type SketchRecord,
+  sketchRecordSchema,
+} from "./sketch"
 
 const MAX_NODES = 100_256
 // Keep the retained graph bounded independently of larger per-record schema limits. The aggregate
@@ -516,30 +521,37 @@ function sketchCandidates(sketch: SketchRecord, sketchIndex: number) {
         },
       ]
     : []
-  const external = (sketch.externalReferences ?? []).map((reference, index): RelationCandidate => {
-    if (isSketchExternalModelReference(reference)) {
-      return {
-        source: { kind: "feature", id: reference.reference.featureId },
-        target,
-        relation: "feature-topology-reference",
-        missingMessage: "External model reference is missing its source feature.",
-        issue: {
-          path: `sketches.${sketchIndex}.externalReferences.${index}.reference.featureId`,
-          message: "Referenced feature does not exist.",
-        },
+  const external = (sketch.externalReferences ?? []).flatMap(
+    (reference, index): RelationCandidate[] => {
+      if (isOrphanedModelReference(reference)) return []
+      if (isSketchExternalModelReference(reference)) {
+        return [
+          {
+            source: { kind: "feature", id: reference.reference.featureId },
+            target,
+            relation: "feature-topology-reference",
+            missingMessage: "External model reference is missing its source feature.",
+            issue: {
+              path: `sketches.${sketchIndex}.externalReferences.${index}.reference.featureId`,
+              message: "Referenced feature does not exist.",
+            },
+          },
+        ]
       }
-    }
-    return {
-      source: { kind: "sketch", id: reference.sourceSketchId },
-      target,
-      relation: "external-sketch",
-      missingMessage: "External sketch reference is missing its source sketch.",
-      issue: {
-        path: `sketches.${sketchIndex}.externalReferences.${index}.sourceSketchId`,
-        message: "Referenced sketch does not exist.",
-      },
-    }
-  })
+      return [
+        {
+          source: { kind: "sketch", id: reference.sourceSketchId },
+          target,
+          relation: "external-sketch",
+          missingMessage: "External sketch reference is missing its source sketch.",
+          issue: {
+            path: `sketches.${sketchIndex}.externalReferences.${index}.sourceSketchId`,
+            message: "Referenced sketch does not exist.",
+          },
+        },
+      ]
+    },
+  )
   return [...support, ...external]
 }
 

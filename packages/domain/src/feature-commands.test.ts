@@ -63,6 +63,7 @@ function featureCommand(
     | "org.vibeshape.feature.add"
     | "org.vibeshape.feature.update"
     | "org.vibeshape.feature.remove"
+    | "org.vibeshape.feature.remove-preserving-model-reference-intent"
     | "org.vibeshape.feature.set-suppressed",
   baseRevision: number,
   payload: Record<string, unknown>,
@@ -275,6 +276,44 @@ describe("feature document commands", () => {
         issues: [{ path: "sketches.0.support.reference.featureId" }],
       },
     })
+    expect(
+      applyDocumentCommand(
+        snapshot,
+        featureCommand(
+          "org.vibeshape.feature.remove-preserving-model-reference-intent",
+          snapshot.revision,
+          { featureId: root.id },
+        ),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "feature-in-use",
+        issues: [{ path: "sketches.0.support.reference.featureId" }],
+      },
+    })
+    expect(
+      reduceDocumentEvent(snapshot, {
+        schemaVersion: 1,
+        type: "org.vibeshape.feature.removed-preserving-model-reference-intent",
+        commandId: commandIds[3],
+        transactionId: null,
+        documentId,
+        baseRevision: snapshot.revision,
+        revision: snapshot.revision + 1,
+        issuedAt: "2026-08-08T12:03:00Z",
+        actor,
+        feature: root,
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-event",
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: "sketches.0.support.reference.featureId" }),
+        ]),
+      },
+    })
   })
 
   it("blocks removal of a feature referenced by model geometry in a sketch", () => {
@@ -331,6 +370,87 @@ describe("feature document commands", () => {
     })
   })
 
+  it("removes a source feature while preserving every direct model reference as repair intent", () => {
+    const created = createDocument()
+    const root = feature(featureIds.root)
+    const addedRoot = applyFeatureCommand(
+      created.snapshot,
+      featureCommand("org.vibeshape.feature.add", 1, { feature: root }),
+    )
+    const topologyReference = {
+      schemaVersion: 0 as const,
+      featureId: root.id,
+      kind: "vertex" as const,
+      signature: {
+        kind: "vertex" as const,
+        geometryClass: "POINT",
+        measure: 0,
+        centroid: [0, 0, 0] as const,
+        bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }
+    const referenceIds = [
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3210",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+    ] as const
+    const projectedPointIds = [
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3212",
+      "0195b5ac-b220-7a2c-8c33-67a36a7f3213",
+    ] as const
+    const snapshot = documentSnapshotSchema.parse({
+      ...addedRoot.snapshot,
+      sketches: [
+        {
+          ...createEmptySketch({
+            id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3214"),
+            label: "Referenced sketch",
+            plane: "xy",
+          }),
+          externalReferences: referenceIds.map((id, index) => ({
+            schemaVersion: 0 as const,
+            id,
+            kind: "model-point" as const,
+            reference: topologyReference,
+            projectedPointId: projectedPointIds[index],
+          })),
+        },
+      ],
+    })
+
+    const removed = applyDocumentCommand(
+      snapshot,
+      featureCommand(
+        "org.vibeshape.feature.remove-preserving-model-reference-intent",
+        snapshot.revision,
+        { featureId: root.id },
+      ),
+    )
+
+    expect(removed.ok).toBe(true)
+    if (!removed.ok) return
+    expect(removed.event).toMatchObject({
+      type: "org.vibeshape.feature.removed-preserving-model-reference-intent",
+      feature: root,
+    })
+    expect(removed.snapshot.features).toEqual([])
+    expect(removed.snapshot.sketches[0]?.externalReferences).toEqual(
+      referenceIds.map((id, index) => ({
+        schemaVersion: 1,
+        id,
+        kind: "model-point",
+        reference: topologyReference,
+        projectedPointId: projectedPointIds[index],
+        orphanedSource: { kind: "deleted-feature", featureId: root.id },
+      })),
+    )
+    expect(reduceDocumentEvent(snapshot, removed.event)).toEqual({
+      ok: true,
+      snapshot: removed.snapshot,
+    })
+  })
+
   it("blocks feature deletion when an unavailable feature has no semantic-input model", () => {
     const created = createDocument()
     const root = feature(featureIds.root)
@@ -363,6 +483,22 @@ describe("feature document commands", () => {
         featureCommand("org.vibeshape.feature.remove", snapshot.revision, {
           featureId: root.id,
         }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "unavailable-dependency-model",
+        issues: [{ path: "features.1.type" }],
+      },
+    })
+    expect(
+      applyDocumentCommand(
+        snapshot,
+        featureCommand(
+          "org.vibeshape.feature.remove-preserving-model-reference-intent",
+          snapshot.revision,
+          { featureId: root.id },
+        ),
       ),
     ).toMatchObject({
       ok: false,
