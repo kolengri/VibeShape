@@ -221,6 +221,7 @@ describe("external model geometry candidates", () => {
     expect(candidates).toContainEqual(
       expect.objectContaining({
         candidateId: "vertex-1",
+        coplanar: false,
         kind: "model-point",
         label: "Mount · Vertex 1",
         position: [1, 2, 3],
@@ -234,6 +235,7 @@ describe("external model geometry candidates", () => {
     expect(candidates).toContainEqual(
       expect.objectContaining({
         candidateId: "edge-1",
+        coplanar: true,
         kind: "model-line",
         label: "Mount · Edge 1",
         start: { world: [0, 0, 0], x: 0, y: 0 },

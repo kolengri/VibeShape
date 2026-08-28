@@ -39,6 +39,7 @@ export type ExternalModelPointCandidate = Readonly<{
   reference: VertexTopoRef
   x: number
   y: number
+  coplanar?: boolean
 }>
 
 type ProjectedModelPoint = Readonly<{
@@ -55,6 +56,7 @@ export type ExternalModelLineCandidate = Readonly<{
   label: string
   reference: EdgeTopoRef
   start: ProjectedModelPoint
+  coplanar?: boolean
 }>
 
 export type ExternalModelCurveCandidate = Readonly<{
@@ -296,6 +298,7 @@ function createExternalModelPointCandidate(
     label: labels.point(featureLabel, ordinal),
     position: candidate.referenceGeometry.position,
     reference: stableVertexReference(featureId, candidate),
+    coplanar: pointIsOnSupport(targetFrame, candidate.referenceGeometry.position),
     ...projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.position),
   }
 }
@@ -328,7 +331,23 @@ function createExternalModelLineCandidate(
     label: labels.line(featureLabel, ordinal),
     reference: stableEdgeReference(featureId, candidate),
     start: { ...projectedStart, world: candidate.referenceGeometry.start },
+    coplanar:
+      pointIsOnSupport(targetFrame, candidate.referenceGeometry.start) &&
+      pointIsOnSupport(targetFrame, candidate.referenceGeometry.end),
   }
+}
+
+function pointIsOnSupport(frame: SupportFrame, point: readonly [number, number, number]) {
+  const relative = [
+    point[0] - frame.origin[0],
+    point[1] - frame.origin[1],
+    point[2] - frame.origin[2],
+  ] as const
+  return (
+    Math.abs(
+      relative[0] * frame.normal[0] + relative[1] * frame.normal[1] + relative[2] * frame.normal[2],
+    ) <= 1e-6
+  )
 }
 
 function createExternalModelCurveCandidate(
@@ -585,48 +604,158 @@ export function applyExternalModelCandidate(
   candidate: ExternalModelGeometryCandidate,
   selectedEntityIds: readonly SketchEntityId[],
 ): SketchRecord {
+  const materialized = materializeExternalModelCandidate(draft, candidate)
+  if (candidate.kind === "model-point") {
+    if (materialized.kind !== "model-point") return materialized.sketch
+    return attachExternalProjectedPoint(
+      materialized.sketch,
+      materialized.projectedPointId,
+      selectedEntityIds,
+    )
+  }
+  return materialized.sketch
+}
+
+export type MaterializedExternalModelCandidate =
+  | Readonly<{ kind: "model-point"; projectedPointId: SketchEntityId; sketch: SketchRecord }>
+  | Readonly<{
+      kind: "model-line"
+      projectedEndPointId: SketchEntityId
+      projectedLineId: SketchEntityId
+      projectedStartPointId: SketchEntityId
+      sketch: SketchRecord
+    }>
+  | Readonly<{
+      kind: "model-curve"
+      projectedEntityId: SketchEntityId
+      projectedPointIds: readonly SketchEntityId[]
+      sketch: SketchRecord
+    }>
+
+function externalModelReferenceMatchesCandidate(
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+  candidate: ExternalModelGeometryCandidate,
+) {
+  return (
+    reference.kind === candidate.kind &&
+    reference.reference.featureId === candidate.reference.featureId &&
+    reference.reference.kind === candidate.reference.kind &&
+    (candidate.reference.semanticRole
+      ? reference.reference.semanticRole === candidate.reference.semanticRole
+      : candidate.reference.lineageToken
+        ? reference.reference.lineageToken === candidate.reference.lineageToken
+        : false)
+  )
+}
+
+export function sketchReferencesExternalModelCandidate(
+  draft: SketchRecord,
+  candidate: ExternalModelGeometryCandidate,
+): boolean {
+  return (draft.externalReferences ?? []).some(
+    (reference) =>
+      isSketchExternalModelReference(reference) &&
+      externalModelReferenceMatchesCandidate(reference, candidate),
+  )
+}
+
+function existingModelMaterialization(
+  draft: SketchRecord,
+  candidate: ExternalModelGeometryCandidate,
+): MaterializedExternalModelCandidate | null {
+  const existing = (draft.externalReferences ?? []).find(
+    (reference) =>
+      isSketchExternalModelReference(reference) &&
+      externalModelReferenceMatchesCandidate(reference, candidate),
+  )
+  if (!existing || !isSketchExternalModelReference(existing)) return null
+  if (existing.kind === "model-point") {
+    return { kind: "model-point", projectedPointId: existing.projectedPointId, sketch: draft }
+  }
+  if (existing.kind === "model-line") {
+    return {
+      kind: "model-line",
+      projectedEndPointId: existing.projectedEndPointId,
+      projectedLineId: existing.projectedLineId,
+      projectedStartPointId: existing.projectedStartPointId,
+      sketch: draft,
+    }
+  }
+  if (existing.kind !== "model-curve") return null
+  return {
+    kind: "model-curve",
+    projectedEntityId: existing.projectedEntityId,
+    projectedPointIds: existing.projectedPointIds,
+    sketch: draft,
+  }
+}
+
+export function materializeExternalModelCandidate(
+  draft: SketchRecord,
+  candidate: ExternalModelGeometryCandidate,
+): MaterializedExternalModelCandidate {
+  const existing = existingModelMaterialization(draft, candidate)
+  if (existing) return existing
   const references = draft.externalReferences ?? []
   if (candidate.kind === "model-curve") {
+    const projectedEntityId = createBrowserSketchEntityId()
+    const projectedPointIds = Array.from(
+      { length: projectedExternalCurvePointCount(candidate.projectedType) },
+      () => createBrowserSketchEntityId(),
+    )
     return {
-      ...draft,
-      externalReferences: [
-        ...references,
-        {
-          schemaVersion: 0,
-          id: createBrowserSketchExternalReferenceId(),
-          kind: "model-curve",
-          reference: candidate.reference,
-          sourceType: candidate.sourceType,
-          projectedEntityId: createBrowserSketchEntityId(),
-          projectedType: candidate.projectedType,
-          projectedPointIds: Array.from(
-            { length: projectedExternalCurvePointCount(candidate.projectedType) },
-            () => createBrowserSketchEntityId(),
-          ),
-        },
-      ],
+      kind: "model-curve",
+      projectedEntityId,
+      projectedPointIds,
+      sketch: {
+        ...draft,
+        externalReferences: [
+          ...references,
+          {
+            schemaVersion: 0,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "model-curve",
+            reference: candidate.reference,
+            sourceType: candidate.sourceType,
+            projectedEntityId,
+            projectedType: candidate.projectedType,
+            projectedPointIds,
+          },
+        ],
+      },
     }
   }
   if (candidate.kind === "model-line") {
+    const projectedLineId = createBrowserSketchEntityId()
+    const projectedStartPointId = createBrowserSketchEntityId()
+    const projectedEndPointId = createBrowserSketchEntityId()
     return {
-      ...draft,
-      externalReferences: [
-        ...references,
-        {
-          schemaVersion: 0,
-          id: createBrowserSketchExternalReferenceId(),
-          kind: "model-line",
-          reference: candidate.reference,
-          projectedLineId: createBrowserSketchEntityId(),
-          projectedStartPointId: createBrowserSketchEntityId(),
-          projectedEndPointId: createBrowserSketchEntityId(),
-        },
-      ],
+      kind: "model-line",
+      projectedLineId,
+      projectedStartPointId,
+      projectedEndPointId,
+      sketch: {
+        ...draft,
+        externalReferences: [
+          ...references,
+          {
+            schemaVersion: 0,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "model-line",
+            reference: candidate.reference,
+            projectedLineId,
+            projectedStartPointId,
+            projectedEndPointId,
+          },
+        ],
+      },
     }
   }
   const projectedPointId = createBrowserSketchEntityId()
-  return attachExternalProjectedPoint(
-    {
+  return {
+    kind: "model-point",
+    projectedPointId,
+    sketch: {
       ...draft,
       externalReferences: [
         ...references,
@@ -639,9 +768,7 @@ export function applyExternalModelCandidate(
         },
       ],
     },
-    projectedPointId,
-    selectedEntityIds,
-  )
+  }
 }
 
 export function applyExternalModelCandidateSelection(
