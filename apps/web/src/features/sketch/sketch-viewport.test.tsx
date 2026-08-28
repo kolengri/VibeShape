@@ -1146,6 +1146,280 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("wakes a coplanar model vertex, suppresses with Shift, and persists one stable reference", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3212") }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3214")
+    const candidate = {
+      candidateId: "coplanar-vertex",
+      featureId,
+      kind: "model-point" as const,
+      label: "Box 1 · Vertex 1",
+      position: [5, 6, 0] as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "vertex" as const,
+        semanticRole: "box.vertex.min-min-min",
+        signature: {
+          kind: "vertex" as const,
+          geometryClass: "POINT" as const,
+          measure: 0,
+          centroid: [5, 6, 0] as [number, number, number],
+          bounds: {
+            min: [5, 6, 0] as [number, number, number],
+            max: [5, 6, 0] as [number, number, number],
+          },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      x: 5,
+      y: 6,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, candidate)
+    fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeNull()
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeTruthy()
+    expect(screen.getByText("External inference · Box 1 · Vertex 1")).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(updated.externalReferences).toHaveLength(1)
+    expect(updated.externalReferences?.[0]).toMatchObject({
+      kind: "model-point",
+      reference: candidate.reference,
+    })
+    expect(updated.constraints).toContainEqual(expect.objectContaining({ type: "coincident" }))
+    expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("wakes a coplanar model edge and persists one point-on-line relation", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3217"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3218")
+    const candidate = {
+      candidateId: "coplanar-edge",
+      coplanar: true,
+      featureId,
+      kind: "model-line" as const,
+      label: "Box 1 · Edge 1",
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "edge" as const,
+        semanticRole: "box.edge.x.y-min.z-min",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "LINE" as const,
+          measure: 20,
+          centroid: [10, 4, 0] as [number, number, number],
+          bounds: {
+            min: [0, 4, 0] as [number, number, number],
+            max: [20, 4, 0] as [number, number, number],
+          },
+          direction: [1, 0, 0] as [number, number, number],
+          directionMode: "axis" as const,
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["PLANE", "PLANE"],
+        },
+      },
+      start: { world: [0, 4, 0] as const, x: 0, y: 4 },
+      end: { world: [20, 4, 0] as const, x: 20, y: 4 },
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, { x: 5, y: 4 })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-line"]')).toBeTruthy()
+    expect(
+      document.querySelector("[data-sketch-model-inference-highlight] line")?.textContent,
+    ).toBe("Box 1 · Edge 1")
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference?.kind).toBe("model-line")
+    if (reference?.kind !== "model-line" || !localPoint) {
+      throw new Error("Model-edge wake-up must create one line reference and one local point.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-line",
+        pointId: localPoint.id,
+        lineId: reference.projectedLineId,
+      }),
+    )
+    expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("defers a model-vertex reference until the line segment commits", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3219"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3220")
+    const candidate = {
+      candidateId: "line-start-vertex",
+      coplanar: true,
+      featureId,
+      kind: "model-point" as const,
+      label: "Box 1 · Vertex 1",
+      position: [5, 6, 0] as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "vertex" as const,
+        semanticRole: "box.vertex.min-min-min",
+        signature: {
+          kind: "vertex" as const,
+          geometryClass: "POINT" as const,
+          measure: 0,
+          centroid: [5, 6, 0] as [number, number, number],
+          bounds: {
+            min: [5, 6, 0] as [number, number, number],
+            max: [5, 6, 0] as [number, number, number],
+          },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      x: 5,
+      y: 6,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "line",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const start = clientPointForSketch(drawing, candidate)
+
+    fireEvent.pointerMove(drawing, start)
+    fireEvent.pointerDown(drawing, start)
+    expect(onDraftChange).not.toHaveBeenCalled()
+
+    const end = clientPointForSketch(drawing, { x: 18, y: 14 })
+    fireEvent.pointerMove(drawing, end)
+    fireEvent.pointerDown(drawing, end)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const line = updated.entities.find((entity) => entity.type === "line")
+    expect(reference?.kind).toBe("model-point")
+    if (reference?.kind !== "model-point" || !line) {
+      throw new Error("Committed line must retain its woken model endpoint.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: line.startPointId,
+        secondPointId: reference.projectedPointId,
+      }),
+    )
+  })
+
+  it("keeps a non-coplanar model vertex out of inference but available through Use", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3221"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3222")
+    const candidate = {
+      candidateId: "non-coplanar-vertex",
+      coplanar: false,
+      featureId,
+      kind: "model-point" as const,
+      label: "Box 1 · Vertex 8",
+      position: [5, 6, 20] as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "vertex" as const,
+        semanticRole: "box.vertex.max-max-max",
+        signature: {
+          kind: "vertex" as const,
+          geometryClass: "POINT" as const,
+          measure: 0,
+          centroid: [5, 6, 20] as [number, number, number],
+          bounds: {
+            min: [5, 6, 20] as [number, number, number],
+            max: [5, 6, 20] as [number, number, number],
+          },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      x: 5,
+      y: 6,
+    }
+    const view = renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, candidate))
+
+    expect(document.querySelector("[data-sketch-inference]")).toBeNull()
+    expect(document.querySelector("[data-sketch-model-inference-highlight]")).toBeNull()
+
+    view.rerender(
+      viewportElement({
+        draft: target,
+        editorTool: "use",
+        externalModelCandidates: [candidate],
+        sketch: target,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }),
+    )
+    expect(
+      document.querySelector('[data-sketch-available-external-geometry-id="non-coplanar-vertex"]'),
+    ).toBeTruthy()
+  })
+
   it("uses a model vertex directly from the normal sketch drawing", () => {
     const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3213") }
     const sourceFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3214")

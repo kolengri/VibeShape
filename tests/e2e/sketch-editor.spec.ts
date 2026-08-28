@@ -12,6 +12,50 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("wakes a coplanar model vertex without activating Use and preserves the reference", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const vertexCandidate = page.getByRole("button", { name: /Box 1 · Vertex \d+/ }).first()
+    const candidateBounds = await vertexCandidate.boundingBox()
+    if (!candidateBounds) throw new Error("A projected Box vertex must be measurable.")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+
+    const pointer = {
+      x: candidateBounds.x + candidateBounds.width / 2,
+      y: candidateBounds.y + candidateBounds.height / 2,
+    }
+    await page.mouse.move(pointer.x, pointer.y)
+    const inferenceStatus = page.locator("[data-sketch-external-inference-label]")
+    await expect(inferenceStatus).toContainText(/External inference · Box 1 · Vertex \d+/)
+    const sourceLabel = (await inferenceStatus.textContent())?.replace("External inference · ", "")
+    if (!sourceLabel) throw new Error("Model inference must expose its resolved source label.")
+    await expect(page.locator("[data-sketch-model-inference-highlight]")).toBeVisible()
+    await page.mouse.click(pointer.x, pointer.y)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+  })
+
   test("intersects a planar model face through the real OCCT worker and rebuilds the saved sketch", async ({
     page,
   }) => {

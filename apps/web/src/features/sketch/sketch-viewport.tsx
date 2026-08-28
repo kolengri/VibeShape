@@ -135,6 +135,8 @@ import {
 import {
   applyExternalModelCandidateSelection,
   type ExternalModelGeometryCandidate,
+  materializeExternalModelCandidate,
+  sketchReferencesExternalModelCandidate,
 } from "./external-model-geometry"
 import {
   applyExternalSketchCandidateSelection,
@@ -2360,7 +2362,7 @@ function SketchExternalContextGeometry({
   highlightedCandidate,
 }: Readonly<{
   geometry: readonly ExternalSketchContextGeometry[]
-  highlightedCandidate: ExternalSketchWakeupCandidate | null
+  highlightedCandidate: ExternalWakeupCandidate | null
 }>) {
   const t = useTranslations("app.sketch.viewport")
   if (geometry.length === 0) return null
@@ -2395,6 +2397,71 @@ function SketchExternalContextCandidate({
   if (candidate.kind === "line")
     return <SketchExternalContextLine candidate={candidate} highlighted={highlighted} />
   return <SketchExternalContextPoint candidate={candidate} highlighted={highlighted} />
+}
+
+function SketchExternalModelInferenceHighlight({
+  candidate,
+}: Readonly<{ candidate: ExternalWakeupCandidate | null }>) {
+  if (candidate?.kind === "model-point") {
+    return (
+      <g
+        aria-label={candidate.label}
+        className="pointer-events-none"
+        data-sketch-model-inference-highlight
+        transform="scale(1 -1)"
+      >
+        <circle
+          cx={candidate.x}
+          cy={candidate.y}
+          r={7}
+          className="fill-background/75 stroke-amber-500"
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={candidate.x - 9}
+          x2={candidate.x + 9}
+          y1={candidate.y}
+          y2={candidate.y}
+          className="stroke-amber-500"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        />
+        <line
+          x1={candidate.x}
+          x2={candidate.x}
+          y1={candidate.y - 9}
+          y2={candidate.y + 9}
+          className="stroke-amber-500"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        />
+        <title>{candidate.label}</title>
+      </g>
+    )
+  }
+  if (candidate?.kind !== "model-line") return null
+  return (
+    <g
+      className="pointer-events-none"
+      data-sketch-model-inference-highlight
+      transform="scale(1 -1)"
+    >
+      <line
+        aria-label={candidate.label}
+        className="stroke-amber-500"
+        strokeDasharray="5 3"
+        strokeWidth={3}
+        vectorEffect="non-scaling-stroke"
+        x1={candidate.start.x}
+        x2={candidate.end.x}
+        y1={candidate.start.y}
+        y2={candidate.end.y}
+      >
+        <title>{candidate.label}</title>
+      </line>
+    </g>
+  )
 }
 
 function externalContextPresentation(
@@ -2527,7 +2594,7 @@ function SketchExternalReferencePresentation({
   bounds: SketchBounds
   contextGeometry: readonly ExternalSketchContextGeometry[]
   editorTool: SketchEditorTool
-  highlightedCandidate: ExternalSketchWakeupCandidate | null
+  highlightedCandidate: ExternalWakeupCandidate | null
   externalCurves: readonly DisplayExternalCurve[]
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
@@ -2545,6 +2612,7 @@ function SketchExternalReferencePresentation({
         geometry={contextGeometry}
         highlightedCandidate={highlightedCandidate}
       />
+      <SketchExternalModelInferenceHighlight candidate={highlightedCandidate} />
       {editorTool === "use" ? (
         <SketchAvailableExternalGeometry
           bounds={bounds}
@@ -5208,7 +5276,7 @@ function remapPendingExternalInference(
 }
 
 function materializeExternalInference(input: {
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
   draft: SketchRecord
   inference: SketchPointInference | undefined
   pending: PendingGeometry | null
@@ -5218,14 +5286,9 @@ function materializeExternalInference(input: {
   for (const sourceEntityId of inferredExternalEntityIds(input.inference, input.pending)) {
     const candidate = input.candidatesByInferenceId.get(sourceEntityId)
     if (!candidate) continue
-    const materialized = materializeExternalSketchCandidate(draft, candidate)
+    const materialized = materializeWakeupCandidate(draft, candidate)
     draft = materialized.sketch
-    if (candidate.kind === "point" && materialized.kind === "point") {
-      projectedIds.set(sourceEntityId, materialized.projectedPointId)
-    }
-    if (candidate.kind === "line" && materialized.kind === "line") {
-      projectedIds.set(sourceEntityId, materialized.projectedLineId)
-    }
+    projectedIds.set(sourceEntityId, materialized.projectedEntityId)
   }
   const inference = input.inference
     ? {
@@ -5243,9 +5306,33 @@ function materializeExternalInference(input: {
   }
 }
 
+function materializeWakeupCandidate(
+  draft: SketchRecord,
+  candidate: ExternalWakeupCandidate,
+): Readonly<{ projectedEntityId: SketchEntityId; sketch: SketchRecord }> {
+  if (candidate.kind === "model-point") {
+    const materialized = materializeExternalModelCandidate(draft, candidate)
+    if (materialized.kind !== "model-point") throw new Error("Expected a model point reference.")
+    return { projectedEntityId: materialized.projectedPointId, sketch: materialized.sketch }
+  }
+  if (candidate.kind === "model-line") {
+    const materialized = materializeExternalModelCandidate(draft, candidate)
+    if (materialized.kind !== "model-line") throw new Error("Expected a model line reference.")
+    return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
+  }
+  const materialized = materializeExternalSketchCandidate(draft, candidate)
+  if (candidate.kind === "point" && materialized.kind === "point") {
+    return { projectedEntityId: materialized.projectedPointId, sketch: materialized.sketch }
+  }
+  if (candidate.kind === "line" && materialized.kind === "line") {
+    return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
+  }
+  throw new Error("External wake-up materialization changed geometry kind.")
+}
+
 function externalWakeupCandidateForInference(
   inference: SketchPointInference | null,
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>,
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>,
 ) {
   if (!inference) return null
   for (const entityId of inferredExternalEntityIds(inference, null)) {
@@ -5412,13 +5499,12 @@ type SketchPlacementInferenceReferences = Readonly<{
   points: readonly SketchInferencePoint[]
 }>
 
-type ExternalSketchWakeupCandidate = Extract<
-  ExternalSketchGeometryCandidate,
-  { kind: "line" | "point" }
->
+type ExternalWakeupCandidate =
+  | Extract<ExternalSketchGeometryCandidate, { kind: "line" | "point" }>
+  | Extract<ExternalModelGeometryCandidate, { kind: "model-line" | "model-point" }>
 
-type ExternalSketchWakeupReferences = Readonly<{
-  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalSketchWakeupCandidate>
+type ExternalWakeupReferences = Readonly<{
+  candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
   lines: readonly SketchInferenceLine[]
   points: readonly SketchInferencePoint[]
 }>
@@ -5429,45 +5515,67 @@ const EMPTY_INFERENCE_REFERENCES: SketchInferenceReferences = {
   points: [],
 }
 
-const EMPTY_EXTERNAL_WAKEUP_REFERENCES: ExternalSketchWakeupReferences = {
+const EMPTY_EXTERNAL_WAKEUP_REFERENCES: ExternalWakeupReferences = {
   candidatesByInferenceId: new Map(),
   lines: [],
   points: [],
 }
 
-function externalSketchWakeupReferences(
-  candidates: readonly ExternalSketchGeometryCandidate[],
-  draft: SketchRecord,
-): ExternalSketchWakeupReferences {
-  const available = candidates.filter(
-    (candidate): candidate is ExternalSketchWakeupCandidate =>
-      candidate.kind !== "curve" &&
-      !(draft.externalReferences ?? []).some((reference) =>
-        externalReferenceMatchesCandidate(reference, candidate),
-      ),
+function sketchReferencesWakeupCandidate(draft: SketchRecord, candidate: ExternalWakeupCandidate) {
+  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+    return sketchReferencesExternalModelCandidate(draft, candidate)
+  }
+  return (draft.externalReferences ?? []).some((reference) =>
+    externalReferenceMatchesCandidate(reference, candidate),
   )
-  const candidatesByInferenceId = new Map<SketchEntityId, ExternalSketchWakeupCandidate>()
+}
+
+function externalWakeupReferences(
+  candidates: readonly ExternalSketchGeometryCandidate[],
+  modelCandidates: readonly ExternalModelGeometryCandidate[],
+  draft: SketchRecord,
+): ExternalWakeupReferences {
+  const available = [...candidates, ...modelCandidates].filter(
+    (candidate): candidate is ExternalWakeupCandidate =>
+      (candidate.kind === "point" ||
+        candidate.kind === "line" ||
+        candidate.kind === "model-point" ||
+        candidate.kind === "model-line") &&
+      (candidate.kind === "point" || candidate.kind === "line" || candidate.coplanar !== false) &&
+      !sketchReferencesWakeupCandidate(draft, candidate),
+  )
+  const candidatesByInferenceId = new Map<SketchEntityId, ExternalWakeupCandidate>()
   const inferenceIdByCandidateKey = new Map<string, SketchEntityId>()
   const lines: SketchInferenceLine[] = []
   const points: SketchInferencePoint[] = []
   for (const candidate of available) {
-    if (candidate.kind !== "point") continue
+    if (candidate.kind !== "point" && candidate.kind !== "model-point") continue
     const inferenceId = createBrowserSketchEntityId()
     inferenceIdByCandidateKey.set(candidateKey(candidate), inferenceId)
     candidatesByInferenceId.set(inferenceId, candidate)
     points.push({ id: inferenceId, reusable: false, x: candidate.x, y: candidate.y })
   }
   for (const candidate of available) {
-    if (candidate.kind !== "line") continue
+    if (candidate.kind !== "line" && candidate.kind !== "model-line") continue
     const inferenceId = createBrowserSketchEntityId()
-    const endpointInferenceId = (sourcePointId: SketchEntityId) =>
-      inferenceIdByCandidateKey.get(`${candidate.sourceSketchId}:${sourcePointId}`) ??
-      createBrowserSketchEntityId()
+    const endpointInferenceId = (sourcePointId?: SketchEntityId) => {
+      if (candidate.kind !== "line" || !sourcePointId) return createBrowserSketchEntityId()
+      return (
+        inferenceIdByCandidateKey.get(`${candidate.sourceSketchId}:${sourcePointId}`) ??
+        createBrowserSketchEntityId()
+      )
+    }
     candidatesByInferenceId.set(inferenceId, candidate)
     lines.push({
       id: inferenceId,
-      startPointId: endpointInferenceId(candidate.sourceStartPointId),
-      endPointId: endpointInferenceId(candidate.sourceEndPointId),
+      startPointId:
+        candidate.kind === "line"
+          ? endpointInferenceId(candidate.sourceStartPointId)
+          : endpointInferenceId(),
+      endPointId:
+        candidate.kind === "line"
+          ? endpointInferenceId(candidate.sourceEndPointId)
+          : endpointInferenceId(),
       start: candidate.start,
       end: candidate.end,
     })
@@ -5477,7 +5585,7 @@ function externalSketchWakeupReferences(
 
 function mergeSketchInferenceReferences(
   base: SketchInferenceReferences,
-  wakeup: ExternalSketchWakeupReferences,
+  wakeup: ExternalWakeupReferences,
 ): SketchPlacementInferenceReferences {
   return {
     arcs: base.arcs,
@@ -6065,7 +6173,7 @@ type SketchDrawingViewProps = Readonly<{
       witnesses: readonly SketchPoint2[]
     }> | null
     editable: boolean
-    externalInferenceCandidate: ExternalSketchWakeupCandidate | null
+    externalInferenceCandidate: ExternalWakeupCandidate | null
     geometry: SketchGeometryPresentation
     inference: SketchPointInference | null
     circularPattern: Readonly<{
@@ -6574,7 +6682,7 @@ function viewerOriginPlaneReferences(activePlane: ViewerOriginPlane) {
 function SketchExternalInferenceInstruction({
   candidate,
 }: Readonly<{
-  candidate: ExternalSketchWakeupCandidate | null
+  candidate: ExternalWakeupCandidate | null
 }>) {
   const t = useTranslations("app.sketch.viewport")
   if (!candidate) return null
@@ -7101,6 +7209,7 @@ function useSketchInferencePresentation(input: {
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   externalCandidates: readonly ExternalSketchGeometryCandidate[]
+  externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   geometry: SketchGeometryPresentation
   inference: SketchPointInference | null
 }) {
@@ -7111,9 +7220,13 @@ function useSketchInferencePresentation(input: {
   const wakeupReferences = useMemo(
     () =>
       input.draft && supportsPersistentPointRelations(input.editorTool)
-        ? externalSketchWakeupReferences(input.externalCandidates, input.draft)
+        ? externalWakeupReferences(
+            input.externalCandidates,
+            input.externalModelCandidates,
+            input.draft,
+          )
         : EMPTY_EXTERNAL_WAKEUP_REFERENCES,
-    [input.draft, input.editorTool, input.externalCandidates],
+    [input.draft, input.editorTool, input.externalCandidates, input.externalModelCandidates],
   )
   const placementReferences = useMemo(
     () => mergeSketchInferenceReferences(baseReferences, wakeupReferences),
@@ -7798,6 +7911,7 @@ function SketchDrawing({
     draft,
     editorTool,
     externalCandidates: configuration.externalPointCandidates,
+    externalModelCandidates: configuration.externalModelCandidates,
     geometry,
     inference,
   })
