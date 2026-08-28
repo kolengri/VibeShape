@@ -60,6 +60,7 @@ const icons: Readonly<Record<EditorCommandIcon, ComponentType<SVGProps<SVGSVGEle
   "datum-plane": Layers3,
   dimension: Ruler,
   extrude: BoxIcon,
+  revolve: RotateCw,
   extend: ArrowUpRight,
   line: Slash,
   "linear-pattern": Grid2X2,

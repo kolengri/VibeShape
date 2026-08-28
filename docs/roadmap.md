@@ -82,7 +82,7 @@ The production boundary and core P0 interaction slice are complete for analytica
 - P0 constraints and dimensions.
 - Solver diagnostics and conflict UX.
 - Interior-intersection splitting and general stable profile-selection interaction.
-- Add dedicated pocket and revolve features after the shared preview and target-selection contracts stabilize.
+- Extend the implemented new-body, origin-axis Revolve with selected stable axes and Add/Remove/Intersect merge scope; add a dedicated Pocket workflow after the shared preview and target-selection contracts stabilize.
 - Command-level undo/redo.
 - Unit-aware inputs.
 - Add variable-reference insertion and expression completion to the implemented free-form sketch dimensions and additional feature parameters, rather than requiring manual `#name` typing.

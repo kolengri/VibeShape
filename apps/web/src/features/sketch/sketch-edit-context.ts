@@ -4,6 +4,7 @@ import {
   type FeatureId,
   isSketchExternalModelReference,
   readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
   type SketchExternalReference,
   type SketchId,
 } from "@vibeshape/domain"
@@ -52,6 +53,9 @@ function indexFeatureDependents(
     if (extrusion) {
       appendDependent(dependents, { id: extrusion.profile.sketchId, kind: "sketch" }, dependent)
     }
+    const revolve = readRevolveFeatureParameters(feature)
+    if (revolve)
+      appendDependent(dependents, { id: revolve.profile.sketchId, kind: "sketch" }, dependent)
   }
 }
 

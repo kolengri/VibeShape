@@ -1,5 +1,6 @@
 import { isAnyObject, isArray, isString } from "is-what"
 import type { ZodError } from "zod"
+import { canonicalJson } from "./canonical-json"
 import { type DocumentNodeRef, documentNodeRefSchema, type HistoryItemRef } from "./document-node"
 import {
   type FeatureRecord,
@@ -15,6 +16,8 @@ import {
   extrusionFeatureType,
   legacyExtrusionFeatureType,
   readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
+  revolveFeatureType,
 } from "./part-design"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
@@ -42,6 +45,7 @@ export type DocumentGraphEdgeRelation =
   | "feature-dependency"
   | "feature-topology-reference"
   | "extrusion-profile"
+  | "revolve-profile"
   | "sketch-support"
   | "external-sketch"
   | "semantic-input"
@@ -139,6 +143,7 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(cylinderFeatureType.type),
   featureTypeKey(booleanFeatureType.type),
 ])
+const revolveTypeKey = featureTypeKey(revolveFeatureType.type)
 
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
@@ -150,6 +155,7 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   ) {
     return readExtrusionFeatureParameters(feature) !== null
   }
+  if (typeKey === revolveTypeKey) return readRevolveFeatureParameters(feature) !== null
   if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {
     return hasCompleteDatumPlaneDependencyModel(feature)
   }
@@ -281,7 +287,7 @@ function indexNodes(
 }
 
 function shallowFeatureRelationCount(features: readonly unknown[]) {
-  // Reserve one possible extrusion-profile relation per feature before feature-specific parsing.
+  // Reserve one possible sketch-profile relation per feature before feature-specific parsing.
   let count = features.length
   for (const feature of features) {
     if (!isAnyObject(feature)) continue
@@ -385,11 +391,15 @@ function relationCount(document: IndexedDocument) {
     count += feature.dependencies.length + feature.references.length
     if (feature.schemaVersion === 1 && feature.semanticInputs)
       count += feature.semanticInputs.length
-    if (readExtrusionFeatureParameters(feature as FeatureRecord)) count += 1
+    count += hasProfileRelation(feature as FeatureRecord) ? 1 : 0
   }
   for (const sketch of document.sketches)
     count += (sketch.support ? 1 : 0) + (sketch.externalReferences?.length ?? 0)
   return count
+}
+
+function hasProfileRelation(feature: FeatureRecord) {
+  return Boolean(readExtrusionFeatureParameters(feature) || readRevolveFeatureParameters(feature))
 }
 
 function addEdge(state: EdgeState, candidate: RelationCandidate): void {
@@ -475,6 +485,24 @@ function extrusionProfileCandidate(
   }
 }
 
+function revolveProfileCandidate(
+  feature: FeatureRecord,
+  featureIndex: number,
+): RelationCandidate | undefined {
+  const revolve = readRevolveFeatureParameters(feature)
+  if (!revolve) return
+  return {
+    source: { kind: "sketch", id: revolve.profile.sketchId },
+    target: { kind: "feature", id: feature.id },
+    relation: "revolve-profile",
+    missingMessage: "A revolve profile references a missing sketch.",
+    issue: {
+      path: `features.${featureIndex}.parameters.profile.sketchId`,
+      message: "Referenced sketch does not exist.",
+    },
+  }
+}
+
 function semanticInputCandidates(
   feature: VersionedFeatureRecord,
   featureIndex: number,
@@ -497,10 +525,12 @@ function semanticInputCandidates(
 
 function featureCandidates(feature: VersionedFeatureRecord, featureIndex: number) {
   const profile = extrusionProfileCandidate(feature as FeatureRecord, featureIndex)
+  const revolveProfile = revolveProfileCandidate(feature as FeatureRecord, featureIndex)
   return [
     ...featureDependencyCandidates(feature as FeatureRecord, featureIndex),
     ...featureTopologyCandidates(feature as FeatureRecord, featureIndex),
     ...(profile ? [profile] : []),
+    ...(revolveProfile ? [revolveProfile] : []),
     ...semanticInputCandidates(feature, featureIndex),
   ]
 }
@@ -600,15 +630,54 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
     const semanticFailure =
       feature.schemaVersion === 1 ? validateFirstPartySemanticInputs(feature, index) : undefined
     if (semanticFailure) return semanticFailure
+    const revolveSupportFailure = validateRevolveSupportIntent(document, feature, index)
+    if (revolveSupportFailure) return revolveSupportFailure
     const profile = extrusionProfileCandidate(feature as FeatureRecord, index)
+    const revolveProfile = revolveProfileCandidate(feature as FeatureRecord, index)
     const invalid = validateCandidates(document, [
       ...featureTopologyCandidates(feature as FeatureRecord, index),
       ...featureDependencyCandidates(feature as FeatureRecord, index),
       ...(profile ? [profile] : []),
+      ...(revolveProfile ? [revolveProfile] : []),
       ...semanticInputCandidates(feature, index),
     ])
     if (invalid) return invalid
   }
+}
+
+function validateRevolveSupportIntent(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  featureIndex: number,
+): GraphFailure | undefined {
+  const revolve = readRevolveFeatureParameters(feature as FeatureRecord)
+  if (!revolve) return
+  const sketch = document.sketches.find(({ id }) => id === revolve.profile.sketchId)
+  if (!sketch) return
+  const expectedReferences = sketch.support ? [sketch.support.reference] : []
+  const expectedDependencies = sketch.support ? [sketch.support.reference.featureId] : []
+  const issues = []
+  if (canonicalJson(feature.references) !== canonicalJson(expectedReferences)) {
+    issues.push({
+      path: `features.${featureIndex}.references`,
+      message: "Revolve references must exactly match the selected profile sketch support.",
+    })
+  }
+  if (
+    feature.dependencies.length !== expectedDependencies.length ||
+    feature.dependencies.some((dependency, index) => dependency !== expectedDependencies[index])
+  ) {
+    issues.push({
+      path: `features.${featureIndex}.dependencies`,
+      message: "Revolve dependencies must exactly match the selected profile sketch support owner.",
+    })
+  }
+  if (issues.length === 0) return
+  return diagnostic(
+    "invalid-feature",
+    "A revolve must retain its source sketch support intent.",
+    issues,
+  )
 }
 
 function sameDocumentNodeRefs(

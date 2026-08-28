@@ -3,6 +3,7 @@ import {
   isSketchExternalModelReference,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
   type SketchId,
   type SketchRecord,
 } from "@vibeshape/domain"
@@ -566,6 +567,16 @@ function historySourceSummary(
       sketch: historyRecordLabel(
         labelsByRef,
         { kind: "sketch", id: extrusion.profile.sketchId },
+        t("unnamedSketch"),
+      ),
+    })
+  }
+  const revolve = readRevolveFeatureParameters(feature)
+  if (revolve) {
+    return t("profileFromSketch", {
+      sketch: historyRecordLabel(
+        labelsByRef,
+        { kind: "sketch", id: revolve.profile.sketchId },
         t("unnamedSketch"),
       ),
     })

@@ -3,7 +3,7 @@ import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
-import { createLengthQuantity, lengthQuantitySchema } from "./units"
+import { angleQuantitySchema, createLengthQuantity, lengthQuantitySchema } from "./units"
 import {
   type EvaluatedVariable,
   type ExpressionValue,
@@ -123,6 +123,20 @@ export const extrusionFeatureAuthoredContentParametersSchema = z
     distance: primitiveContentLengthSchema,
     symmetric: z.boolean(),
     operation: extrusionOperationSchema,
+  })
+  .strict()
+
+const revolveAngleSchema = angleQuantitySchema.refine(
+  ({ value }) => value > 0 && value <= Math.PI * 2,
+  "Revolve angles must be greater than zero and at most 360 degrees.",
+)
+
+export const revolveFeatureParametersSchema = z
+  .object({
+    profile: sketchProfileSelectorSchema,
+    axis: z.enum(["x", "y"]),
+    angle: revolveAngleSchema,
+    operation: z.literal("new"),
   })
   .strict()
 
@@ -297,6 +311,19 @@ export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 1 },
 })
 
+export const revolveFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 1 },
+  references: { min: 0, max: 1 },
+})
+
 function isExtrusionType(feature: FeatureRecord) {
   const type = feature.type
   if (!type) return false
@@ -313,6 +340,53 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
   if (!isExtrusionType(feature)) return null
   const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
+}
+
+function isRevolveType(feature: FeatureRecord) {
+  const type = feature.type
+  return (
+    type.moduleId === revolveFeatureType.type.moduleId &&
+    type.moduleVersion === revolveFeatureType.type.moduleVersion &&
+    type.typeId === revolveFeatureType.type.typeId &&
+    type.schemaVersion === revolveFeatureType.type.schemaVersion
+  )
+}
+
+export function readRevolveFeatureParameters(feature: FeatureRecord) {
+  if (!isRevolveType(feature)) return null
+  const parsed = revolveFeatureParametersSchema.safeParse(feature.parameters)
+  return parsed.success ? parsed.data : null
+}
+
+function resolveRevolveParameters(parameters: unknown, variables: VariableValues) {
+  const parsed = revolveFeatureParametersSchema.safeParse(parameters)
+  if (!parsed.success) return { ok: true as const, parameters }
+  const angle = resolveQuantityExpression(parsed.data.angle, variables)
+  if (!angle.ok) return expressionFailure("angle", angle.diagnostic.message, angle.diagnostic.code)
+  const resolved = revolveAngleSchema.safeParse(angle.quantity)
+  return resolved.success
+    ? ({ ok: true, parameters: { ...parsed.data, angle: resolved.data } } as const)
+    : expressionFailure(
+        "angle",
+        "The expression did not resolve to a bounded angle.",
+        "invalid-angle",
+      )
+}
+
+function revolveFeatureInvariant(feature: FeatureRecord) {
+  if (!readRevolveFeatureParameters(feature)) return []
+  const supportFeatureIds = new Set(feature.references.map(({ featureId }) => featureId))
+  const dependenciesMatchReferences =
+    feature.dependencies.length === supportFeatureIds.size &&
+    feature.dependencies.every((featureId) => supportFeatureIds.has(featureId))
+  return dependenciesMatchReferences
+    ? []
+    : [
+        {
+          path: "dependencies",
+          message: "New-body revolve dependencies must match its sketch-support references.",
+        },
+      ]
 }
 
 function extrusionFeatureInvariant(feature: FeatureRecord) {
@@ -400,6 +474,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         symmetric: extrusion.symmetric,
         operation: extrusion.operation,
       })
+    },
+  },
+  {
+    type: revolveFeatureType.type,
+    parametersSchema: revolveFeatureParametersSchema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersSchema.parse(parameters)
+      return {
+        profile: revolve.profile,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: revolve.operation,
+      }
     },
   },
 ]

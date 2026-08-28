@@ -93,6 +93,8 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-extrusion",
   "create-datum-plane",
   "edit-datum-plane",
+  "create-revolve",
+  "edit-revolve",
 ])
 
 function isPreviewedFeatureToolActive(activeTool: ActivePartDesignTool | null) {
@@ -959,6 +961,7 @@ export type EditorWorkspaceActions = Readonly<{
   createCylinder: () => void
   createDatumPlane: () => void
   createExtrusion: () => Promise<boolean>
+  createRevolve: () => Promise<boolean>
   createSketch: () => void
   createSubtract: () => void
   editFeature: (featureId: FeatureId) => void
@@ -1139,6 +1142,7 @@ function EditorTaskPanel({
       onCreateBox={actions.createBox}
       onCreateCylinder={actions.createCylinder}
       onCreateExtrusion={actions.createExtrusion}
+      onCreateRevolve={actions.createRevolve}
       onCreateSketch={actions.createSketch}
       onCreateSubtract={actions.createSubtract}
       onEditSketch={actions.editSketch}

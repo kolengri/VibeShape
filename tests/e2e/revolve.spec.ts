@@ -1,0 +1,69 @@
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fixtures"
+import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
+
+async function drawProfileAwayFromBothOriginAxes(page: Page) {
+  await selectSketchTool(page, "Rectangle tools", "Rectangle G")
+  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+  const bounds = await drawing.boundingBox()
+  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+  await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.42)
+  await page.mouse.click(bounds.x + bounds.width * 0.74, bounds.y + bounds.height * 0.3)
+  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+}
+
+test.describe("selector-backed revolve", () => {
+  test("creates, previews, edits, and reopens an origin-axis solid", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawProfileAwayFromBothOriginAxes(page)
+
+    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(form.getByRole("combobox", { name: "Angle" })).toHaveValue("360 deg")
+    await form.getByRole("combobox", { name: "Revolve axis" }).selectOption("y")
+    await form.getByRole("combobox", { name: "Angle" }).fill("180 deg")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
+    await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
+    await form.getByRole("button", { name: "Create revolve" }).dblclick()
+
+    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    const editForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(editForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
+    await expect(editForm.getByRole("combobox", { name: "Angle" })).toHaveValue("180 deg")
+    await editForm.getByRole("combobox", { name: "Angle" }).fill("270 deg")
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
+      timeout: 120_000,
+    })
+    await editForm.getByRole("button", { name: "Update revolve" }).click()
+    await expect(editForm).toHaveCount(0)
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    const reopenedForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(reopenedForm.getByRole("combobox", { name: "Angle" })).toHaveValue("270 deg")
+    await expect(reopenedForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
+  })
+})

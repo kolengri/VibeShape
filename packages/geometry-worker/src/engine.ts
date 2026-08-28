@@ -14,6 +14,7 @@ import {
   type GeometryWorkerRequest,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
+  revolveFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
@@ -74,6 +75,7 @@ import {
   fuseOcctShapes,
   intersectOcctShapes,
 } from "./occt-shapes"
+import { revolveProfileCrossesAxis } from "./revolve-profile"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
 import {
   captureReplicadTopologyCandidates,
@@ -180,6 +182,8 @@ const EXTRUSION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
 const EXTRUSION_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
+const REVOLVE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -706,6 +710,7 @@ type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
+type RevolveContentParameters = ReturnType<typeof revolveFeatureContentParametersSchema.parse>
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
@@ -836,6 +841,7 @@ type ParsedFeature =
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
+  | { kind: "revolve"; parameters: RevolveContentParameters }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -959,6 +965,41 @@ function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResul
   return { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
 }
 
+function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = revolveFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Revolve content parameters are invalid.")
+  }
+  if (!revolveInputCardinalityIsValid(input, parameters.data.supportFeatureId)) {
+    return invalidInputCardinality("A new-body revolve may depend only on its sketch support.")
+  }
+  if (!supportReferencesAreValid(input, parameters.data.supportFeatureId)) {
+    return invalidInputCardinality(
+      "A revolve sketch-support reference must match its support dependency.",
+    )
+  }
+  if (revolveProfileCrossesAxis(parameters.data)) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Revolve profiles must not cross the selected axis.",
+    )
+  }
+  return { ok: true, feature: { kind: "revolve", parameters: parameters.data } }
+}
+
+function revolveInputCardinalityIsValid(
+  input: FeatureEvaluationInput,
+  supportFeatureId: string | undefined,
+) {
+  const dependenciesMatchSupport = supportFeatureId
+    ? input.dependencies.length === 1 && input.dependencies[0]?.featureId === supportFeatureId
+    : input.dependencies.length === 0
+  return (
+    input.content.feature.inputs.length === input.dependencies.length && dependenciesMatchSupport
+  )
+}
+
 function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const parameters = datumPlaneFeatureContentParametersSchema.safeParse(
     input.content.feature.parameters,
@@ -988,6 +1029,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
+  [REVOLVE_FEATURE_TYPE_KEY, parseRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 
@@ -1099,6 +1141,10 @@ function createFeatureShape(
     return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
   }
 
+  if (feature.kind === "revolve") {
+    return createRevolveShape(opencascade, feature.parameters)
+  }
+
   if (feature.kind === "datum-plane") {
     return createDatumPlaneFeatureShape(opencascade, feature.parameters)
   }
@@ -1108,7 +1154,7 @@ function createFeatureShape(
   return cutOcctShapes(opencascade, target, tool)
 }
 
-function extrusionPlane(parameters: ExtrusionContentParameters) {
+function extrusionPlane(parameters: Pick<ExtrusionContentParameters, "frame" | "plane">) {
   const frame = parameters.frame
   if (frame) {
     return {
@@ -1520,6 +1566,53 @@ function createExtrusionShape(
   }
 }
 
+function createRevolveShape(
+  opencascade: OpenCascadeInstance,
+  parameters: RevolveContentParameters,
+) {
+  const plane = extrusionPlane(parameters)
+  const makeLoop = (loop: RevolveContentParameters["outer"], reverse: boolean) => {
+    const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
+    const edges = orderedSegments.map((segment) => extrusionSegmentEdge(plane, segment, 0, reverse))
+    try {
+      return assembleWire(edges)
+    } finally {
+      for (const edge of edges) edge.delete()
+    }
+  }
+  const outer = makeLoop(parameters.outer, false)
+  try {
+    const holes: Wire[] = []
+    let face: ReturnType<typeof makeFace> | null = null
+    const origin = new opencascade.gp_Pnt_3(...parameters.axisOrigin)
+    const direction = new opencascade.gp_Dir_4(...parameters.axisDirection)
+    const axis = new opencascade.gp_Ax1_2(origin, direction)
+    try {
+      for (const hole of parameters.holes) holes.push(makeLoop(hole, true))
+      face = makeFace(outer, holes)
+      const builder = new opencascade.BRepPrimAPI_MakeRevol_1(
+        face.wrapped,
+        axis,
+        parameters.angleRadians,
+        false,
+      )
+      try {
+        return cast(builder.Shape()).asShape3D()
+      } finally {
+        builder.delete()
+      }
+    } finally {
+      axis.delete()
+      direction.delete()
+      origin.delete()
+      face?.delete()
+      for (const hole of holes) hole.delete()
+    }
+  } finally {
+    outer.delete()
+  }
+}
+
 function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   if (feature.kind === "boolean") return captureReplicadTopologyCandidates(shape)
   const extrusionRoleIndex =
@@ -1537,7 +1630,9 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
               Math.abs(dot3(context.signature.direction, feature.parameters.frame.normal)) > 0.999
               ? "datum.plane"
               : undefined
-            : extrusionFeatureSemanticRole(context, feature.parameters, extrusionRoleIndex),
+            : feature.kind === "revolve"
+              ? undefined
+              : extrusionFeatureSemanticRole(context, feature.parameters, extrusionRoleIndex),
   })
 }
 

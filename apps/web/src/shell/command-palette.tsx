@@ -30,6 +30,7 @@ const recentCommandIdsSchema = z
       editorCommandIds.createBox,
       editorCommandIds.createCylinder,
       editorCommandIds.createExtrusion,
+      editorCommandIds.createRevolve,
       editorCommandIds.createSketch,
       editorCommandIds.createSubtract,
       editorCommandIds.sketchAlignedRectangle,

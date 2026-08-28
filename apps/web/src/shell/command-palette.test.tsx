@@ -100,7 +100,8 @@ describe("EditorCommandPalette", () => {
 
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy()
     expect(screen.getByText("Extrude")).toBeTruthy()
-    expect(screen.getByText("Select a closed sketch profile first.")).toBeTruthy()
+    expect(screen.getByText("Revolve")).toBeTruthy()
+    expect(screen.getAllByText("Select a closed sketch profile first.")).toHaveLength(2)
     expect(screen.getAllByText("Start or edit a sketch first.").length).toBeGreaterThan(0)
   })
 

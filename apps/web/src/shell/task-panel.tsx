@@ -1,6 +1,7 @@
 import {
   extrusionFeatureParametersSchema,
   type FeatureRecord,
+  revolveFeatureParametersSchema,
   type SketchConstraintId,
   type SketchEntityId,
   type SketchExternalReferenceId,
@@ -48,11 +49,13 @@ import {
   isCylinderFeature,
   isDatumPlaneFeature,
   isExtrusionFeature,
+  isRevolveFeature,
 } from "../features/part-design/part-design-tool"
 import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
+import { RevolveForm, type RevolveFormMode } from "../features/revolve/revolve-form"
 import {
   externalModelReferenceLabels,
   resolvePlanarFaceSupportLabel,
@@ -79,6 +82,7 @@ type TaskPanelProps = Readonly<{
   onCreateBox: () => void
   onCreateCylinder: () => void
   onCreateExtrusion: () => Promise<boolean>
+  onCreateRevolve?: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
@@ -150,6 +154,7 @@ function useSketchEditorCopy() {
     editConstraint: t("editConstraint"),
     equal: t("equal"),
     extrude: t("extrude"),
+    revolve: t("revolve"),
     finish: t("finish"),
     fixed: t("fixed"),
     horizontal: t("horizontal"),
@@ -335,6 +340,29 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
   }
 }
 
+function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
+  const t = useTranslations("app.shell.taskPanel.revolve")
+  return {
+    title: mode === "create" ? t("title") : t("editTitle"),
+    description: t("description"),
+    submit: mode === "create" ? t("create") : t("update"),
+    validationSummary: t("validationSummary"),
+    saveFailed: mode === "create" ? t("createFailed") : t("updateFailed"),
+    parameters: t("parameters"),
+    profile: t("profile"),
+    axis: t("axis"),
+    axisX: t("axisX"),
+    axisY: t("axisY"),
+    angle: t("angle"),
+    expressionDescription: t("expressionDescription"),
+    invalidExpression: t("invalidExpression"),
+    invalidDimension: t("invalidDimension"),
+    invalidRange: t("invalidRange"),
+    staleRevision: t("staleRevision"),
+    cancel: t("cancel"),
+  }
+}
+
 function useDatumPlaneFormCopy(mode: DatumPlaneFormMode["kind"]) {
   const t = useTranslations("app.shell.taskPanel.datumPlane")
   const operationCopy = {
@@ -373,7 +401,13 @@ function useDatumPlaneFormCopy(mode: DatumPlaneFormMode["kind"]) {
 }
 
 function featureTaskContext(
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode,
+  mode:
+    | BoxFormMode
+    | CylinderFormMode
+    | BooleanFormMode
+    | ExtrusionFormMode
+    | RevolveFormMode
+    | DatumPlaneFormMode,
   revision: number,
 ) {
   return mode.kind === "edit"
@@ -520,7 +554,13 @@ function EditFeatureDeleteAction({
   onDeleted,
   report,
 }: {
-  mode: BoxFormMode | CylinderFormMode | BooleanFormMode | ExtrusionFormMode | DatumPlaneFormMode
+  mode:
+    | BoxFormMode
+    | CylinderFormMode
+    | BooleanFormMode
+    | ExtrusionFormMode
+    | RevolveFormMode
+    | DatumPlaneFormMode
   onDeleted: () => void
   report: FeatureDeleteReport
 }) {
@@ -561,6 +601,48 @@ function ExtrusionTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         options={options}
+        profileLabel={profileLabel}
+        variables={snapshot.variables}
+        onCancel={onCloseTool}
+        onPreviewChange={onPreviewChange}
+        onSave={task.onSave}
+        onSaved={onCloseTool}
+      />
+      <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
+    </aside>
+  )
+}
+
+function RevolveTaskPanel({
+  mode,
+  onCloseTool,
+  onPreviewChange,
+  report,
+}: {
+  mode: RevolveFormMode
+  onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  report: NonNullable<DocumentControllerState["report"]>
+}) {
+  const copy = useRevolveFormCopy(mode.kind)
+  const snapshot = report.snapshot
+  const t = useTranslations("app.shell.taskPanel.revolve")
+  const profile =
+    mode.kind === "create"
+      ? mode.profile
+      : revolveFeatureParametersSchema.parse(mode.feature.parameters).profile
+  const profileLabel =
+    snapshot.sketches.find(({ id }) => id === profile.sketchId)?.label ?? t("missingProfile")
+  const task = featureTaskContext(mode, snapshot.revision)
+  const panelT = useTranslations("app.shell.taskPanel")
+  return (
+    <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
+      <RevolveForm
+        key={task.key}
+        baseRevision={snapshot.revision}
+        copy={copy}
+        disabled={report.mode === "read-only"}
+        mode={mode}
         profileLabel={profileLabel}
         variables={snapshot.variables}
         onCancel={onCloseTool}
@@ -751,6 +833,25 @@ function extrusionFormMode(
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   return feature && isExtrusionFeature(feature) ? { kind: "edit", feature } : null
+}
+
+function revolveFormMode(
+  activeTool: Extract<ActivePartDesignTool, { kind: "create-revolve" | "edit-revolve" }>,
+  report: NonNullable<DocumentControllerState["report"]>,
+  featureLabel: string,
+): RevolveFormMode | null {
+  if (activeTool.kind === "create-revolve") {
+    const sketch = report.snapshot.sketches.find(({ id }) => id === activeTool.profile.sketchId)
+    const mode = {
+      kind: "create" as const,
+      createFeatureId: createBrowserFeatureId,
+      featureLabel,
+      profile: activeTool.profile,
+    }
+    return sketch?.support ? { ...mode, supportReference: sketch.support.reference } : mode
+  }
+  const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
+  return feature && isRevolveFeature(feature) ? { kind: "edit", feature } : null
 }
 
 function datumPlaneFormMode(
@@ -1138,6 +1239,26 @@ function ExtrusionToolTaskPanel({
   )
 }
 
+function RevolveToolTaskPanel({
+  activeTool,
+  onCloseTool,
+  onFeaturePreviewChange,
+  report,
+}: ActiveTaskPanelProps) {
+  if (activeTool.kind !== "create-revolve" && activeTool.kind !== "edit-revolve") return null
+  const t = useTranslations("app.shell.taskPanel.revolve")
+  const count = report.snapshot.features.filter(isRevolveFeature).length
+  const mode = revolveFormMode(activeTool, report, t("featureLabel", { number: count + 1 }))
+  return mode ? (
+    <RevolveTaskPanel
+      mode={mode}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onFeaturePreviewChange}
+      report={report}
+    />
+  ) : null
+}
+
 function SubtractToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-subtract" && activeTool.kind !== "edit-subtract") return null
   return (
@@ -1154,6 +1275,8 @@ const activeTaskPanelByKind = {
   "edit-datum-plane": DatumPlaneToolTaskPanel,
   "create-extrusion": ExtrusionToolTaskPanel,
   "edit-extrusion": ExtrusionToolTaskPanel,
+  "create-revolve": RevolveToolTaskPanel,
+  "edit-revolve": RevolveToolTaskPanel,
   "create-subtract": SubtractToolTaskPanel,
   "edit-subtract": SubtractToolTaskPanel,
 } satisfies Record<ActivePartDesignTool["kind"], (props: ActiveTaskPanelProps) => ReactNode>
@@ -1226,6 +1349,7 @@ type ActiveSketchTaskPanelState = Readonly<{
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
   onCreateExtrusion: () => Promise<boolean>
+  onCreateRevolve: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
@@ -1271,6 +1395,7 @@ function ActiveSketchTaskPanel({
   const {
     onCloseTool,
     onCreateExtrusion,
+    onCreateRevolve,
     onDraftChange,
     onReferenceRepairChange,
     onSupportReplace,
@@ -1386,6 +1511,14 @@ function ActiveSketchTaskPanel({
     }
     return succeeded
   }
+  const revolve = async () => {
+    setMessage(null)
+    const succeeded = await onCreateRevolve()
+    if (!succeeded) {
+      setMessage(activeSketchTool.kind === "edit-sketch" ? t("updateFailed") : t("createFailed"))
+    }
+    return succeeded
+  }
   return (
     <aside
       aria-label={t("taskAriaLabel")}
@@ -1421,6 +1554,7 @@ function ActiveSketchTaskPanel({
             onDraftChange,
             onExtrude: extrude,
             onFinish: finish,
+            onRevolve: revolve,
             onReferenceRepairChange,
             onSupportReplace,
             onSelectedConstraintChange,
@@ -1499,6 +1633,7 @@ function SelectedSketchTaskPanel({
   canCreate,
   canExtrude,
   onCreateExtrusion,
+  onCreateRevolve,
   onCreateSketch,
   onEditSketch,
   onSelectedProfileChange,
@@ -1509,6 +1644,7 @@ function SelectedSketchTaskPanel({
   canCreate: boolean
   canExtrude: boolean
   onCreateExtrusion: () => Promise<boolean>
+  onCreateRevolve: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1554,6 +1690,16 @@ function SelectedSketchTaskPanel({
         size="sm"
         variant="outline"
         className="mt-2 w-full"
+        disabled={!canExtrude}
+        onClick={onCreateRevolve}
+      >
+        {t("revolve")}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-2 w-full"
         disabled={!canCreate}
         onClick={() => onEditSketch(sketch.id)}
       >
@@ -1578,6 +1724,7 @@ function SketchStartTaskPanel({
   canCreate,
   canExtrude,
   onCreateExtrusion,
+  onCreateRevolve,
   onCreateSketch,
   onEditSketch,
   onSelectedProfileChange,
@@ -1589,6 +1736,7 @@ function SketchStartTaskPanel({
   canCreate: boolean
   canExtrude: boolean
   onCreateExtrusion: () => Promise<boolean>
+  onCreateRevolve: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1605,6 +1753,7 @@ function SketchStartTaskPanel({
       selectedProfile={selectedProfile}
       sketch={sketch}
       onCreateExtrusion={onCreateExtrusion}
+      onCreateRevolve={onCreateRevolve}
       onCreateSketch={onCreateSketch}
       onEditSketch={onEditSketch}
       onSelectedProfileChange={onSelectedProfileChange}
@@ -1633,6 +1782,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
         actions={{
           onCloseTool: props.onCloseTool,
           onCreateExtrusion: props.onCreateExtrusion,
+          onCreateRevolve: props.onCreateRevolve ?? (async () => false),
           onDraftChange: props.onSketchDraftChange,
           onReferenceRepairChange: props.onSketchReferenceRepairChange,
           onSupportReplace: props.onSketchSupportReplace,
@@ -1654,6 +1804,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
       )}
       profiles={props.sketchProfiles}
       onCreateExtrusion={props.onCreateExtrusion}
+      onCreateRevolve={props.onCreateRevolve ?? (async () => false)}
       report={report}
       onCreateSketch={props.onCreateSketch}
       onEditSketch={props.onEditSketch}

@@ -4,6 +4,7 @@ import {
   documentSnapshotSchema,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
+  readRevolveFeatureParameters,
 } from "@vibeshape/domain"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -18,7 +19,7 @@ type PreviewGeometryIdentity = Readonly<{
   featureId: string
 }>
 
-export type FeaturePreviewKind = "datum-plane" | "extrusion"
+export type FeaturePreviewKind = "datum-plane" | "extrusion" | "revolve"
 
 export type FeaturePreviewState = Readonly<{
   candidateMesh?: ViewerMesh
@@ -106,7 +107,9 @@ async function rebuildPreview(
 }
 
 function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
-  return readDatumPlaneFeatureParameters(candidate) ? "datum-plane" : "extrusion"
+  if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
+  if (readRevolveFeatureParameters(candidate)) return "revolve"
+  return "extrusion"
 }
 
 export function useFeaturePreview(

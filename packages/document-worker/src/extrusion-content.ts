@@ -13,12 +13,14 @@ import {
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
+  readRevolveFeatureParameters,
   type SketchEntity,
   type SketchRecord,
 } from "@vibeshape/domain"
 import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
+  revolveFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import {
   resolveSketchProfileSelector,
@@ -209,17 +211,12 @@ function materializeLoop(
   }
 }
 
-function prepareExtrusion(
+function materializeSelectedProfile(
   sketch: SketchRecord,
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
-  parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
-  frame: SupportFrame,
+  profile: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>["profile"],
 ) {
-  const resolution = resolveSketchProfileSelector(
-    parameters.profile,
-    sketch.id,
-    solution.profileResult,
-  )
+  const resolution = resolveSketchProfileSelector(profile, sketch.id, solution.profileResult)
   if (resolution.status === "ambiguous") {
     return failure("org.vibeshape.feature.sketch-profile-ambiguous", "ambiguous-profile", {
       matchCount: resolution.profileIndices.length,
@@ -240,14 +237,51 @@ function prepareExtrusion(
   if (!outer || holes.some((hole) => hole === null)) {
     return failure("org.vibeshape.feature.sketch-profile-invalid", "missing-solved-geometry")
   }
+  return { ok: true as const, outer, holes: holes.flatMap((hole) => (hole ? [hole] : [])) }
+}
+
+function prepareExtrusion(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>,
+  frame: SupportFrame,
+) {
+  const profile = materializeSelectedProfile(sketch, solution, parameters.profile)
+  if (!profile.ok) return profile
   const prepared = extrusionFeatureContentParametersSchema.safeParse({
     sketchId: sketch.id,
     ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
     frame,
-    outer,
-    holes: holes.flatMap((hole) => (hole ? [hole] : [])),
+    outer: profile.outer,
+    holes: profile.holes,
     distance: parameters.distance.value,
     symmetric: parameters.symmetric,
+    operation: parameters.operation,
+  })
+  return prepared.success
+    ? ({ ok: true, parameters: prepared.data } as const)
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function prepareRevolve(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
+  frame: SupportFrame,
+) {
+  const profile = materializeSelectedProfile(sketch, solution, parameters.profile)
+  if (!profile.ok) return profile
+  const axisDirection = parameters.axis === "x" ? frame.xAxis : frame.yAxis
+  const prepared = revolveFeatureContentParametersSchema.safeParse({
+    sketchId: sketch.id,
+    ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
+    frame,
+    outer: profile.outer,
+    holes: profile.holes,
+    axis: parameters.axis,
+    axisOrigin: frame.origin,
+    axisDirection,
+    angleRadians: parameters.angle.value,
     operation: parameters.operation,
   })
   return prepared.success
@@ -336,9 +370,63 @@ async function prepareFeatureContent(
       }),
     }
   }
-  const parameters = readExtrusionFeatureParameters(feature)
-  if (!parameters) return null
-  const sketch = document.sketches.find(({ id }) => id === parameters.profile.sketchId)
+  const extrusion = readExtrusionFeatureParameters(feature)
+  if (extrusion) {
+    return prepareProfileFeatureContent({
+      document,
+      feature: { kind: "extrusion", parameters: extrusion },
+      features,
+      geometry,
+      modelMaterializationCache,
+      sectionPlanarFace,
+      solveSketch,
+      solvedBySketchId,
+    })
+  }
+  const revolve = readRevolveFeatureParameters(feature)
+  if (!revolve) return null
+  return prepareProfileFeatureContent({
+    document,
+    feature: { kind: "revolve", parameters: revolve },
+    features,
+    geometry,
+    modelMaterializationCache,
+    sectionPlanarFace,
+    solveSketch,
+    solvedBySketchId,
+  })
+}
+
+type ProfileFeature =
+  | Readonly<{
+      kind: "extrusion"
+      parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>
+    }>
+  | Readonly<{
+      kind: "revolve"
+      parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>
+    }>
+
+async function prepareProfileFeatureContent({
+  document,
+  feature,
+  features,
+  geometry,
+  modelMaterializationCache,
+  sectionPlanarFace,
+  solveSketch,
+  solvedBySketchId,
+}: Readonly<{
+  document: DocumentSnapshot
+  feature: ProfileFeature
+  features: readonly FeatureRecord[]
+  geometry: readonly FeatureGeometryRecord[]
+  modelMaterializationCache: ExternalModelMaterializationCache
+  sectionPlanarFace: PlanarFaceSectionPort | undefined
+  solveSketch: SketchSolvePort | null
+  solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>
+}>) {
+  const sketch = document.sketches.find(({ id }) => id === feature.parameters.profile.sketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
   const frame = sketchFrame(sketch, document, features)
   if (!frame) {
@@ -361,12 +449,17 @@ async function prepareFeatureContent(
     document,
     sketch,
   )
-  return result.ok ? prepareExtrusion(sketch, result.solution, parameters, frame) : result
+  if (!result.ok) return result
+  return feature.kind === "extrusion"
+    ? prepareExtrusion(sketch, result.solution, feature.parameters, frame)
+    : prepareRevolve(sketch, result.solution, feature.parameters, frame)
 }
 
 export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
   return Boolean(
-    readDatumPlaneFeatureParameters(feature) || readExtrusionFeatureParameters(feature),
+    readDatumPlaneFeatureParameters(feature) ||
+      readExtrusionFeatureParameters(feature) ||
+      readRevolveFeatureParameters(feature),
   )
 }
 

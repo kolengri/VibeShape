@@ -34,6 +34,7 @@ import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-wor
 import { StatusBar } from "./shell/status-bar"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
+type SketchPersistenceBeforeRevolveResult = SketchPersistenceBeforeExtrusionResult
 
 type OpenSketchSaveRequest =
   | Readonly<{ kind: "failed" | "unchanged" }>
@@ -81,6 +82,7 @@ async function persistOpenSketchBeforeExtrusion(
   const result = await request.save(request.revision, request.draft)
   return result.ok ? "saved" : "failed"
 }
+const persistOpenSketchBeforeRevolve = persistOpenSketchBeforeExtrusion
 
 function selectedExtrusionProfile(
   profile: SketchProfileSelector | null,
@@ -193,6 +195,17 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     })
     return true
   }, [activeSketchId, activeSketchTool, controller.report, draft, selectedProfile, sessionActions])
+  const createRevolve = useCallback(async () => {
+    const profile = selectedExtrusionProfile(selectedProfile, activeSketchId)
+    if (!profile) return false
+    const request = openSketchSaveRequest(controller, activeSketchTool, draft)
+    const persistence: SketchPersistenceBeforeRevolveResult =
+      await persistOpenSketchBeforeRevolve(request)
+    if (persistence === "failed") return false
+    applySavedSketchToSession(persistence, request, sessionActions.saveSketch)
+    sessionActions.startPartDesignTool({ kind: "create-revolve", profile })
+    return true
+  }, [activeSketchId, activeSketchTool, controller.report, draft, selectedProfile, sessionActions])
 
   const editFeature = useCallback(
     (featureId: FeatureId) => {
@@ -212,6 +225,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
         createDatumPlane,
         createExtrusion,
+        createRevolve,
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
         editFeature,
@@ -239,6 +253,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     [
       createDatumPlane,
       createExtrusion,
+      createRevolve,
       createSketch,
       editFeature,
       editSketch,
@@ -282,6 +297,7 @@ function EditorApplication({
     session.sketch.selectedProfile !== null &&
     session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
     session.activePartDesignTool === null
+  const revolveAvailable = extrusionAvailable
   const slotFromSelectionAvailable =
     session.sketch.draft !== null &&
     selectedSketchLineId(session.sketch.draft, session.sketch.selectedEntityIds) !== null
@@ -292,6 +308,7 @@ function EditorApplication({
       createCylinder: workspaceActions.createCylinder,
       createDatumPlane: workspaceActions.createDatumPlane,
       createExtrusion: workspaceActions.createExtrusion,
+      createRevolve: workspaceActions.createRevolve,
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
       redoSketch: workspaceActions.redoSketchDraft,
@@ -307,6 +324,7 @@ function EditorApplication({
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
       extrusionAvailable,
+      revolveAvailable,
       sketchConstruction: session.sketch.construction,
       sketchCameraMode: session.sketch.cameraMode,
       sketchFinalContext: session.sketch.showFinalContext,

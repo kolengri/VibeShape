@@ -7,7 +7,7 @@ import {
   deriveLegacyHistoryWithPreferredOrder,
 } from "./document-graph"
 import { featureRecordV1Schema } from "./feature-graph"
-import { createLengthQuantity } from "./units"
+import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const id = (value: string) => `00000000-0000-7000-8000-00000000000${value}`
 const feature = (value: string, dependencies: string[] = []) => ({
@@ -97,6 +97,33 @@ const extrusion = (value: string, profileSketchId: string, references: unknown[]
     operation: "new" as const,
   },
   dependencies: references.length ? [id("3")] : [],
+  references,
+  suppressed: false,
+})
+
+const revolve = (value: string, profileSketchId: string, references: unknown[] = []) => ({
+  schemaVersion: 0 as const,
+  id: id(value),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 1,
+  },
+  parameters: {
+    profile: {
+      schemaVersion: 0 as const,
+      sketchId: id(profileSketchId),
+      outerBoundaryEntityIds: [id("8")],
+      holeBoundaryEntityIds: [],
+    },
+    axis: "x" as const,
+    angle: createAngleQuantity(360, "deg"),
+    operation: "new" as const,
+  },
+  dependencies: references.map(
+    (reference) => (reference as ReturnType<typeof faceReference>).featureId,
+  ),
   references,
   suppressed: false,
 })
@@ -447,7 +474,7 @@ describe("createDocumentDependencyGraph", () => {
     ])
   })
 
-  it("builds extrusion-profile, sketch-support, and external-sketch relations", () => {
+  it("builds profile, sketch-support, and external-sketch relations", () => {
     const source = {
       ...sketch("1"),
       entities: [
@@ -485,12 +512,17 @@ describe("createDocumentDependencyGraph", () => {
     }
     const result = createDocumentDependencyGraph({
       sketches: [source, target],
-      features: [feature("3"), extrusion("4", "1", [faceReference("3")])],
+      features: [
+        feature("3"),
+        extrusion("4", "1", [faceReference("3")]),
+        revolve("5", "2", [faceReference("3")]),
+      ],
       history: [
         { kind: "feature", id: id("3") },
         { kind: "sketch", id: id("1") },
         { kind: "sketch", id: id("2") },
         { kind: "feature", id: id("4") },
+        { kind: "feature", id: id("5") },
       ],
     })
     expect(result.ok).toBe(true)
@@ -499,7 +531,10 @@ describe("createDocumentDependencyGraph", () => {
       "external-sketch",
       "extrusion-profile",
       "feature-dependency",
+      "feature-dependency",
       "feature-topology-reference",
+      "feature-topology-reference",
+      "revolve-profile",
       "sketch-support",
     ])
     expect(result.graph.getNode({ kind: "sketch", id: id("1") } as DocumentNodeRef)?.ref).toEqual({
@@ -667,6 +702,50 @@ describe("createDocumentDependencyGraph", () => {
           { path: "sketches.0.support.reference.featureId" },
           { path: "features.0.parameters.profile.sketchId" },
         ],
+      },
+    })
+  })
+
+  it("rejects revolve support references that do not match the profile sketch", () => {
+    const result = createDocumentDependencyGraph({
+      sketches: [sketch("1")],
+      features: [feature("3"), revolve("2", "1", [faceReference("3")])],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.1.references" }, { path: "features.1.dependencies" }],
+      },
+    })
+  })
+
+  it("rejects revolve dependencies that do not match the profile sketch support owner", () => {
+    const invalidRevolve = {
+      ...revolve("2", "1"),
+      dependencies: [id("3")],
+    }
+    const result = createDocumentDependencyGraph({
+      sketches: [sketch("1")],
+      features: [feature("3"), invalidRevolve],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.1.dependencies" }],
       },
     })
   })

@@ -1,10 +1,12 @@
 import {
+  createAngleQuantity,
   createLengthQuantity,
   createRectangleSketch,
   datumPlaneFeatureType,
   documentSnapshotSchema,
   extrusionFeatureType,
   featureRecordSchema,
+  revolveFeatureType,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -284,6 +286,38 @@ describe("document extrusion content preparation", () => {
     })
     expect(second).toEqual(first)
     expect(solve).toHaveBeenCalledTimes(1)
+  })
+
+  it("prepares revolve content with a support-frame world axis", async () => {
+    const source = fixture()
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003309",
+      type: revolveFeatureType.type,
+      parameters: {
+        profile: source.feature.parameters.profile,
+        axis: "y",
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        sketchId,
+        axis: "y",
+        axisOrigin: [0, 0, 0],
+        axisDirection: [0, 0, 1],
+        angleRadians: Math.PI,
+        operation: "new",
+      },
+    })
   })
 
   it("materializes an exact solved ellipse for the geometry worker", async () => {

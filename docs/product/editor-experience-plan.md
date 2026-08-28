@@ -186,7 +186,7 @@ Exit criterion: the reference bracket can be drawn, fully constrained, diagnosed
 ### UX-5 — feature previews and history repair
 
 - Exact unsaved Extrude preview is implemented; multi-profile selection remains open.
-- Add, Remove, and Intersect operation intent is implemented; Revolve and Hole remain open.
+- Add, Remove, and Intersect Extrude operation intent is implemented. New-body Revolve around sketch-local X/Y axes now has direct profile promotion, exact preview, edit, and reload; selected stable axes, modifying Revolve operations, and Hole remain open.
 - Add manipulators paired with exact task-panel fields.
 - Add rollback/edit context and stable-reference repair UI for missing or ambiguous downstream inputs.
 
