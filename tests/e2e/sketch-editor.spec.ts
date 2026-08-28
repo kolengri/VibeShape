@@ -12,6 +12,76 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("wakes a coplanar circular model edge without activating Use", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Cylinder", exact: true }).click()
+    const createCylinderForm = page.getByRole("form", { name: "Create cylinder" })
+    const cylinderRadius = Number.parseFloat(
+      await createCylinderForm.getByRole("combobox", { name: "Radius" }).inputValue(),
+    )
+    expect(cylinderRadius).toBeGreaterThan(0)
+    await createCylinderForm.getByRole("button", { name: "Create cylinder" }).click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const sourcePoint = await drawing.evaluate((element, radius) => {
+      const svg = element as unknown as {
+        getBoundingClientRect(): { height: number; left: number; top: number; width: number }
+        viewBox: {
+          baseVal: { height: number; width: number; x: number; y: number }
+        }
+      }
+      const bounds = svg.getBoundingClientRect()
+      const viewBox = svg.viewBox.baseVal
+      if (!(bounds.width > 0 && bounds.height > 0 && viewBox.width > 0 && viewBox.height > 0)) {
+        throw new Error("The sketch viewport requires a measurable coordinate system.")
+      }
+      const sketchPoint = { x: 0, y: radius }
+      return {
+        x: bounds.left + ((sketchPoint.x - viewBox.x) / viewBox.width) * bounds.width,
+        y:
+          bounds.top +
+          ((viewBox.y + viewBox.height - sketchPoint.y) / viewBox.height) * bounds.height,
+      }
+    }, cylinderRadius)
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+
+    await page.keyboard.down("Shift")
+    await page.mouse.move(sourcePoint.x, sourcePoint.y)
+    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toHaveCount(0)
+    await page.keyboard.up("Shift")
+    await page.mouse.move(sourcePoint.x + 2, sourcePoint.y)
+
+    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
+    const inferenceStatus = page.locator("[data-sketch-external-inference-label]")
+    await expect(inferenceStatus).toContainText(/Cylinder 1 · Circular edge \d+/)
+    const sourceLabel = (await inferenceStatus.textContent())?.replace("External inference · ", "")
+    if (!sourceLabel)
+      throw new Error("Model-curve inference must expose its resolved source label.")
+    await expect(page.locator("[data-sketch-model-inference-highlight]")).toBeVisible()
+    await page.mouse.click(sourcePoint.x + 2, sourcePoint.y)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+  })
+
   test("wakes a coplanar model vertex without activating Use and preserves the reference", async ({
     page,
   }) => {

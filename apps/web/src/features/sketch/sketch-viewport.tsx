@@ -1,3 +1,4 @@
+import type { ProjectedSketchCurve } from "@vibeshape/application/sketch-curve-projection"
 import {
   materializeSketchDisplay,
   type SketchDisplayRecord,
@@ -144,7 +145,6 @@ import {
   applyExternalSketchCandidateSelection,
   availableExternalSketchGeometryCandidates,
   type ExternalSketchContextGeometry,
-  type ExternalSketchCurveContext,
   type ExternalSketchGeometryCandidate,
   externalReferenceMatchesCandidate,
   materializeExternalSketchCandidate,
@@ -2445,6 +2445,23 @@ function SketchExternalModelInferenceHighlight({
         />
         <title>{candidate.label}</title>
       </g>
+    )
+  }
+  if (candidate?.kind === "model-curve") {
+    return (
+      <polyline
+        aria-label={candidate.label}
+        className="pointer-events-none stroke-amber-500"
+        data-sketch-model-inference-highlight
+        fill="none"
+        points={candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")}
+        strokeDasharray="5 3"
+        strokeWidth={3}
+        transform="scale(1 -1)"
+        vectorEffect="non-scaling-stroke"
+      >
+        <title>{candidate.label}</title>
+      </polyline>
     )
   }
   if (candidate?.kind !== "model-line") return null
@@ -5370,7 +5387,11 @@ function materializeWakeupCandidate(
   draft: SketchRecord,
   candidate: ExternalWakeupCandidate,
 ): Readonly<{ projectedEntityId: SketchEntityId; sketch: SketchRecord }> {
-  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
     return materializeModelWakeupCandidate(draft, candidate)
   }
   return materializeSketchWakeupCandidate(draft, candidate)
@@ -5378,7 +5399,10 @@ function materializeWakeupCandidate(
 
 function materializeModelWakeupCandidate(
   draft: SketchRecord,
-  candidate: Extract<ExternalWakeupCandidate, { kind: "model-line" | "model-point" }>,
+  candidate: Extract<
+    ExternalWakeupCandidate,
+    { kind: "model-curve" | "model-line" | "model-point" }
+  >,
 ) {
   const materialized = materializeExternalModelCandidate(draft, candidate)
   if (materialized.kind === "model-point") {
@@ -5386,6 +5410,9 @@ function materializeModelWakeupCandidate(
   }
   if (materialized.kind === "model-line") {
     return { projectedEntityId: materialized.projectedLineId, sketch: materialized.sketch }
+  }
+  if (materialized.kind === "model-curve") {
+    return { projectedEntityId: materialized.projectedEntityId, sketch: materialized.sketch }
   }
   throw new Error("External model wake-up materialization changed geometry kind.")
 }
@@ -5580,7 +5607,7 @@ type SketchPlacementInferenceReferences = Readonly<{
 
 type ExternalWakeupCandidate =
   | Extract<ExternalSketchGeometryCandidate, { kind: "curve" | "line" | "point" }>
-  | Extract<ExternalModelGeometryCandidate, { kind: "model-line" | "model-point" }>
+  | Extract<ExternalModelGeometryCandidate, { kind: "model-curve" | "model-line" | "model-point" }>
 
 type ExternalWakeupReferences = Readonly<{
   candidatesByInferenceId: ReadonlyMap<SketchEntityId, ExternalWakeupCandidate>
@@ -5604,7 +5631,11 @@ const EMPTY_EXTERNAL_WAKEUP_REFERENCES: ExternalWakeupReferences = {
 }
 
 function sketchReferencesWakeupCandidate(draft: SketchRecord, candidate: ExternalWakeupCandidate) {
-  if (candidate.kind === "model-point" || candidate.kind === "model-line") {
+  if (
+    candidate.kind === "model-point" ||
+    candidate.kind === "model-line" ||
+    candidate.kind === "model-curve"
+  ) {
     return sketchReferencesExternalModelCandidate(draft, candidate)
   }
   return (draft.externalReferences ?? []).some((reference) =>
@@ -5612,12 +5643,11 @@ function sketchReferencesWakeupCandidate(draft: SketchRecord, candidate: Externa
   )
 }
 
-function isExternalWakeupCandidate(
-  candidate: ExternalUseCandidate,
-): candidate is ExternalWakeupCandidate {
-  if (candidate.kind === "curve") {
-    return candidate.projectedType === "circle" || candidate.projectedType === "arc"
-  }
+function isRoundProjectedCurve(candidate: Readonly<{ projectedType: string | null }>) {
+  return candidate.projectedType === "circle" || candidate.projectedType === "arc"
+}
+
+function isPointOrLineWakeupCandidate(candidate: ExternalUseCandidate) {
   return (
     candidate.kind === "point" ||
     candidate.kind === "line" ||
@@ -5626,7 +5656,22 @@ function isExternalWakeupCandidate(
   )
 }
 
+function isExternalWakeupCandidate(
+  candidate: ExternalUseCandidate,
+): candidate is ExternalWakeupCandidate {
+  if (candidate.kind === "curve") return isRoundProjectedCurve(candidate)
+  if (candidate.kind !== "model-curve") return isPointOrLineWakeupCandidate(candidate)
+  return (
+    candidate.passiveEligible === true &&
+    candidate.projectedGeometry !== undefined &&
+    isRoundProjectedCurve(candidate)
+  )
+}
+
 function canWakeExternalCandidate(candidate: ExternalWakeupCandidate, draft: SketchRecord) {
+  if (candidate.kind === "model-curve") {
+    return candidate.coplanar === true && !sketchReferencesWakeupCandidate(draft, candidate)
+  }
   const isCoplanar =
     candidate.kind !== "model-point" && candidate.kind !== "model-line"
       ? true
@@ -5689,7 +5734,7 @@ function appendExternalWakeupLine(
   })
 }
 
-type ExternalProjectedCurve = NonNullable<ExternalSketchCurveContext["projectedGeometry"]>
+type ExternalProjectedCurve = ProjectedSketchCurve
 
 function externalWakeupCircle(projection: ExternalProjectedCurve) {
   const center = projection.points[0]
@@ -5703,7 +5748,9 @@ function externalWakeupArc(projection: ExternalProjectedCurve) {
   return center && start && end ? ({ type: "arc", center, start, end } as const) : null
 }
 
-function externalWakeupCurve(candidate: Extract<ExternalWakeupCandidate, { kind: "curve" }>) {
+function externalWakeupCurve(
+  candidate: Extract<ExternalWakeupCandidate, { kind: "curve" | "model-curve" }>,
+) {
   const projection = candidate.projectedGeometry
   if (projection?.type === "circle") return externalWakeupCircle(projection)
   return projection?.type === "arc" ? externalWakeupArc(projection) : null
@@ -5713,7 +5760,7 @@ function appendExternalWakeupCurve(
   candidate: ExternalWakeupCandidate,
   references: MutableExternalWakeupReferences,
 ) {
-  if (candidate.kind !== "curve") return
+  if (candidate.kind !== "curve" && candidate.kind !== "model-curve") return
   const curve = externalWakeupCurve(candidate)
   if (!curve) return
   const inferenceId = createBrowserSketchEntityId()

@@ -111,6 +111,27 @@ function circleCandidate(candidateId: string): TopologyCandidate {
   }
 }
 
+function arcCandidate(candidateId: string): TopologyCandidate {
+  return {
+    candidateId,
+    kind: "edge",
+    semanticRole: `edge:${candidateId}`,
+    lineageTokens: [],
+    signature: signature("edge", "CIRCLE", [0, 2.5, 0]),
+    referenceGeometry: {
+      kind: "arc-edge",
+      center: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      radius: 5,
+      start: [5, 0, 0],
+      middle: [0, 5, 0],
+      end: [-5, 0, 0],
+    },
+  }
+}
+
 function faceCandidate(candidateId: string, semanticRole: string): TopologyCandidate {
   return {
     candidateId,
@@ -861,5 +882,90 @@ describe("apply external model candidate", () => {
     )
     expect(JSON.stringify(reference)).not.toContain("candidateId")
     expect(JSON.stringify(reference)).not.toContain("referenceGeometry")
+  })
+
+  it("marks exact coplanar model curves as passively eligible", () => {
+    const candidates = externalModelGeometryCandidates(
+      [
+        geometryRecord(featureId, [
+          circleCandidate("circle-coplanar"),
+          arcCandidate("arc-coplanar"),
+        ]),
+      ],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+
+    expect(candidates.find(({ candidateId }) => candidateId === "circle-coplanar")).toMatchObject({
+      coplanar: true,
+      kind: "model-curve",
+      passiveEligible: true,
+      projectedGeometry: { type: "circle", radius: 5 },
+      projectedType: "circle",
+    })
+    expect(candidates.find(({ candidateId }) => candidateId === "arc-coplanar")).toMatchObject({
+      coplanar: true,
+      kind: "model-curve",
+      passiveEligible: true,
+      projectedGeometry: { type: "arc", points: expect.any(Array) },
+      projectedType: "arc",
+      sourceType: "arc",
+    })
+  })
+
+  it("keeps offset, tilted, and ambiguous model curves out of passive inference", () => {
+    const offset = circleCandidate("circle-offset")
+    const tilted = circleCandidate("circle-tilted")
+    const sharedRole = "primitive.cylinder.edge.shared"
+    const ambiguousFirst = { ...circleCandidate("circle-ambiguous-a"), semanticRole: sharedRole }
+    const ambiguousSecond = { ...circleCandidate("circle-ambiguous-b"), semanticRole: sharedRole }
+    const records = [
+      geometryRecord(featureId, [
+        {
+          ...offset,
+          referenceGeometry: {
+            ...offset.referenceGeometry,
+            center: [2, 3, 4],
+          },
+        } as TopologyCandidate,
+        {
+          ...tilted,
+          referenceGeometry: {
+            ...tilted.referenceGeometry,
+            xAxis: [1, 0, 0],
+            yAxis: [0, Math.SQRT1_2, Math.SQRT1_2],
+            normal: [0, -Math.SQRT1_2, Math.SQRT1_2],
+          },
+        } as TopologyCandidate,
+        ambiguousFirst,
+        ambiguousSecond,
+      ]),
+    ]
+    const candidates = externalModelGeometryCandidates(
+      records,
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    ).filter((candidate) => candidate.kind === "model-curve")
+
+    expect(candidates.find(({ candidateId }) => candidateId === "circle-offset")).toMatchObject({
+      coplanar: false,
+      projectedType: "circle",
+    })
+    expect(candidates.find(({ candidateId }) => candidateId === "circle-tilted")).toMatchObject({
+      coplanar: false,
+      projectedType: "ellipse",
+    })
+    expect(
+      candidates.filter(({ candidateId }) => candidateId.startsWith("circle-ambiguous")),
+    ).toEqual([
+      expect.objectContaining({ passiveEligible: false }),
+      expect.objectContaining({ passiveEligible: false }),
+    ])
   })
 })
