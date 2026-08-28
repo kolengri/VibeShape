@@ -247,18 +247,21 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
-    await startPanel.getByRole("button", { name: "Create sketch" }).click()
-    await expect(viewport).toHaveAttribute("data-origin-plane-selection", /xy|xz|yz/)
-
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
     await canvas.click({ position: { x: bounds.width * 0.5, y: bounds.height * 0.5 } })
+    const statusBar = page.locator("footer[role='status']")
+    await expect(statusBar).toContainText(/Selection: Extrusion 1 · Face \d+/)
+    const selectedFaceLabel = (await statusBar.textContent())?.match(/Extrusion 1 · Face \d+/)?.[0]
+    if (!selectedFaceLabel) throw new Error("The selected extrusion face has no readable label.")
+
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
 
     const support = page.getByRole("combobox", { name: "Support plane" })
     await expect(support).toHaveValue("feature-face")
     await expect(support).toBeDisabled()
-    await expect(support).toContainText(/Extrusion 1 · Face \d+/)
+    await expect(support).toContainText(selectedFaceLabel)
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
     const supportLabel = await support.locator("option:checked").textContent()
     await drawRectangle(page)

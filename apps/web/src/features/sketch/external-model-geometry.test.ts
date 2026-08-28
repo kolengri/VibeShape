@@ -19,6 +19,7 @@ import {
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
   repairExternalModelGeometryCandidates,
+  resolveModelFaceSelectionOrdinal,
   resolvePlanarFaceSupportLabel,
 } from "./external-model-geometry"
 
@@ -191,6 +192,33 @@ describe("external model geometry candidates", () => {
         features as never,
         reference,
         labels,
+      ),
+    ).toBeNull()
+  })
+
+  it("uses the stable face presentation ordinal for a selected mesh face", () => {
+    const firstFace = { ...faceCandidate("face-a", "primitive.box.face.a"), meshFaceId: 6 }
+    const secondFace = { ...faceCandidate("face-b", "primitive.box.face.b"), meshFaceId: 1 }
+
+    expect(
+      resolveModelFaceSelectionOrdinal(
+        [geometryRecord(featureId, [secondFace, firstFace])],
+        featureId,
+        6,
+      ),
+    ).toBe(1)
+    expect(
+      resolveModelFaceSelectionOrdinal(
+        [geometryRecord(featureId, [firstFace, secondFace])],
+        featureId,
+        1,
+      ),
+    ).toBe(2)
+    expect(
+      resolveModelFaceSelectionOrdinal(
+        [geometryRecord(featureId, [firstFace, secondFace])],
+        featureId,
+        99,
       ),
     ).toBeNull()
   })

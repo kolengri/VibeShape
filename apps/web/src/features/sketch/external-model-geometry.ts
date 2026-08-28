@@ -518,6 +518,21 @@ export function resolvePlanarFaceSupportLabel(
   return feature?.label ? labels.face(feature.label, ordinal) : null
 }
 
+export function resolveModelFaceSelectionOrdinal(
+  records: readonly ExternalModelGeometryRecord[],
+  featureId: string,
+  meshFaceId: number,
+): number | null {
+  const candidates = records.find((record) => record.featureId === featureId)?.geometry
+    .topologyCandidates
+  if (!candidates) return null
+  const candidate = candidates.find(
+    (item) => item.kind === "face" && item.meshFaceId === meshFaceId,
+  )
+  if (!candidate || candidateDisplayKind(candidate) !== "face") return null
+  return candidateDisplayOrdinals(candidates).get(topologyCandidateKey(candidate)) ?? null
+}
+
 export function projectExternalModelGeometryCandidates(
   records: readonly ExternalModelGeometryRecord[],
   features: readonly FeatureRecord[],
