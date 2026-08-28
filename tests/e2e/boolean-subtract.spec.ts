@@ -19,7 +19,7 @@ test.describe("Boolean subtraction", () => {
       const form = page.getByRole("form", { name: "Create cylinder" })
       await form.getByRole("combobox", { name: "Radius" }).fill(radius)
       await form.getByRole("combobox", { name: "Height" }).fill("40 mm")
-      await form.getByRole("checkbox", { name: "Center on the origin" }).check()
+      await form.getByRole("checkbox", { name: "Center height about placement origin" }).check()
       await form.getByRole("button", { name: "Create cylinder" }).click()
       await expect(page.getByRole("treeitem", { name: label })).toBeVisible()
     }
@@ -67,7 +67,9 @@ test.describe("Boolean subtraction", () => {
 
     await page.getByRole("treeitem", { name: "Box 1" }).click()
     await expect(page.getByRole("button", { name: "Delete feature" })).toBeDisabled()
-    await expect(page.getByText("Remove dependent features first: Subtract 1.")).toBeVisible()
+    await expect(
+      page.getByText("Deletion is blocked by: Subtract 1 (feature dependency)."),
+    ).toBeVisible()
 
     await page.getByRole("treeitem", { name: "Subtract 1" }).click()
     await page.getByRole("button", { name: "Delete feature" }).click()

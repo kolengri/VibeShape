@@ -39,7 +39,6 @@ const copy = {
   confirm: "Delete feature",
   cancel: "Keep feature",
   failed: "The feature could not be deleted.",
-  inUse: "Remove dependent features first: Subtract 1.",
   readOnly: "Open the document with write access to delete features.",
 } as const
 
@@ -58,7 +57,7 @@ function renderAction(options: Partial<React.ComponentProps<typeof FeatureDelete
     <FeatureDeleteAction
       baseRevision={5}
       copy={copy}
-      dependentFeatures={[]}
+      blockedReason={null}
       disabled={false}
       feature={box}
       onDeleted={onDeleted}
@@ -73,16 +72,14 @@ afterEach(cleanup)
 
 describe("FeatureDeleteAction", () => {
   it("blocks deletion while another feature depends on the target", () => {
-    renderAction({
-      dependentFeatures: [
-        { ...box, id: featureIds.dependent, dependencies: [featureIds.box], label: "Subtract 1" },
-      ],
-    })
+    renderAction({ blockedReason: "Deletion is blocked by: Subtract 1 (feature dependency)." })
 
     expect((screen.getByRole("button", { name: copy.action }) as HTMLButtonElement).disabled).toBe(
       true,
     )
-    expect(screen.getByText(copy.inUse).textContent).toBe(copy.inUse)
+    expect(
+      screen.getByText("Deletion is blocked by: Subtract 1 (feature dependency)."),
+    ).toBeTruthy()
   })
 
   it("guards asynchronous double activation and closes only after success", async () => {
