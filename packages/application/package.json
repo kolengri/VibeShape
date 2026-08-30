@@ -11,6 +11,7 @@
     "./persistent-document-session": "./src/persistent-document-session.ts",
     "./sketch-curve-projection": "./src/sketch-curve-projection.ts",
     "./support-frame": "./src/support-frame.ts",
+    "./pierce-point": "./src/pierce-point.ts",
     "./sketch-display": "./src/sketch-display.ts"
   },
   "scripts": {

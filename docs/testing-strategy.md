@@ -384,6 +384,13 @@ The current controlled allocator plateau, executable ceilings, and hard-restart 
 
 Ordered external-sketch reference coverage includes a three-sketch chain where the final sketch graphically selects a projected line owned by the intermediate sketch. Domain validation accepts that projected identity, the document worker resolves the chain recursively, and the Playwright workflow edits the original line before requiring the final projection to update after reopen.
 
+Pierce coverage uses two perpendicular sketch supports. Pure application tests reject parallel, coplanar,
+degenerate, non-finite, and outside-segment inputs; domain and protocol tests preserve the dedicated reference
+and projected point identity; health tests require the source to remain a line; and document-worker tests
+recompute the exact crossing from the current solved source coordinates. The browser flow preselects one
+authored point, chooses the labeled earlier-sketch line in the orbitable picker, verifies Coincident and the
+read-only Pierce point, then finishes and reopens the dependent sketch without losing the relation.
+
 ## Design and UX acceptance
 
 Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).

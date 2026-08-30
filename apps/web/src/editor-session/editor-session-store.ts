@@ -400,8 +400,12 @@ export function createEditorSessionStore() {
               return
             }
             state.sketch.cameraMode = mode
-            if (mode === "normal" && state.sketch.editorTool === "intersection") {
+            if (
+              mode === "normal" &&
+              (state.sketch.editorTool === "intersection" || state.sketch.editorTool === "pierce")
+            ) {
               state.sketch.editorTool = "select"
+              state.sketch.repairReferenceId = null
             }
           }),
         setSketchFinalContext: (visible) =>
@@ -425,7 +429,7 @@ export function createEditorSessionStore() {
             state.sketch.editorTool = tool
             state.sketch.repairReferenceId = null
             if (
-              tool === "intersection" &&
+              (tool === "intersection" || tool === "pierce") &&
               isActiveSketchEditorTool(state.sketch.activeSketchTool)
             ) {
               state.sketch.cameraMode = "orbit"
@@ -462,8 +466,12 @@ export function createEditorSessionStore() {
               ({ id }) => id === referenceId,
             )
             if (!reference || reference.kind === "model-intersection") return
-            state.sketch.editorTool = "use"
+            state.sketch.editorTool = reference.kind === "pierce-point" ? "pierce" : "use"
             state.sketch.repairReferenceId = referenceId
+            if (reference.kind === "pierce-point") {
+              state.sketch.cameraMode = "orbit"
+              state.sketch.showFinalContext = false
+            }
           }),
         setSketchSelectedConstraintId: (constraintId) =>
           set((state) => {

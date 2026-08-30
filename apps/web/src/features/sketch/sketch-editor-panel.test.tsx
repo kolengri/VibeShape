@@ -79,6 +79,7 @@ const copy = {
   planeYz: "YZ plane",
   pointOnCurve: "Point on curve",
   pointOnLine: "Point on line",
+  pierceReference: (source: string) => `Pierce · ${source}`,
   point: "Point",
   profile: (number: number) => `Profile ${number}`,
   profiles: "Closed profiles",

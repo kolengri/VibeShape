@@ -67,6 +67,18 @@ export const sketchExternalLineReferenceSchema = z
     message: "A projected external line requires distinct endpoint IDs.",
   })
 
+/** A read-only point where one earlier-sketch line pierces the owning sketch support plane. */
+export const sketchExternalPiercePointReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("pierce-point"),
+    sourceSketchId: sketchIdSchema,
+    sourceLineId: sketchEntityIdSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
 export const sketchExternalCurveTypeSchema = z.enum(["circle", "arc", "ellipse", "elliptical-arc"])
 
 const projectedCurvePointCount = {
@@ -288,6 +300,7 @@ const sketchExternalModelIntersectionOrphanSchema = z
 const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
+  sketchExternalPiercePointReferenceSchema,
   sketchExternalCurveReferenceSchema,
   sketchExternalModelPointReferenceSchema,
   sketchExternalModelLineReferenceSchema,
@@ -308,6 +321,9 @@ export type SketchExternalPointReference = Readonly<
 >
 export type SketchExternalLineReference = Readonly<
   z.infer<typeof sketchExternalLineReferenceSchema>
+>
+export type SketchExternalPiercePointReference = Readonly<
+  z.infer<typeof sketchExternalPiercePointReferenceSchema>
 >
 export type SketchExternalCurveReference = Readonly<
   z.infer<typeof sketchExternalCurveReferenceSchema>

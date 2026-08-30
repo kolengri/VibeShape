@@ -88,6 +88,7 @@ type SketchEditorPanelCopy = Readonly<{
   planeYz: string
   pointOnCurve: string
   pointOnLine: string
+  pierceReference: (source: string) => string
   profile: (number: number) => string
   profiles: string
   primaryAxisDiameter: string
@@ -779,7 +780,9 @@ function ExternalReferencesSection({
 
   function referenceLabel(reference: (typeof references)[number]) {
     const resolvedLabel = labels.get(reference.id)
-    if (resolvedLabel) return resolvedLabel
+    if (resolvedLabel) {
+      return reference.kind === "pierce-point" ? copy.pierceReference(resolvedLabel) : resolvedLabel
+    }
     const candidate = candidates.find((value) =>
       externalReferenceMatchesCandidate(reference, value),
     )

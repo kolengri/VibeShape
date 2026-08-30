@@ -10,10 +10,12 @@ import { describe, expect, it } from "vitest"
 import type { ExternalSketchGeometryCandidate } from "./external-sketch-points"
 import {
   applyExternalSketchCandidateSelection,
+  applyExternalSketchPierceCandidate,
   availableExternalSketchGeometryCandidates,
   earlierSketchesForDraft,
   externalSketchContextGeometry,
   externalSketchGeometryCandidates,
+  externalSketchPierceCandidates,
   externalSketchReferenceResolution,
   repairExternalSketchGeometryCandidates,
 } from "./external-sketch-points"
@@ -37,6 +39,129 @@ const labels = {
 }
 
 describe("external sketch point candidates", () => {
+  it("materializes an exact Pierce point from a transverse earlier-sketch line", () => {
+    const localPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004030")
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sourceSketchId,
+      label: "Path",
+      plane: "xz",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: sourcePointId,
+          type: "point",
+          x: 4,
+          y: -5,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: sourceEndPointId,
+          type: "point",
+          x: 4,
+          y: 5,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: sourceLineId,
+          type: "line",
+          startPointId: sourcePointId,
+          endPointId: sourceEndPointId,
+          construction: false,
+        },
+      ],
+      constraints: [],
+    })
+    const target = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: targetSketchId,
+      label: "Target",
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: localPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+      ],
+      constraints: [],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-000000004098",
+      revision: 1,
+      name: "Pierce test",
+      sketches: [source, target],
+      features: [],
+      createdAt: "2026-08-24T00:00:00.000Z",
+      updatedAt: "2026-08-24T00:00:00.000Z",
+    })
+
+    expect(
+      externalSketchGeometryCandidates(document, target, labels).filter(
+        (candidate) => candidate.kind === "line",
+      ),
+    ).toEqual([])
+    expect(externalSketchPierceCandidates(document, target, labels)).toEqual([])
+    const parallelSolution = {
+      points: [
+        { entityId: sourcePointId, x: 4, y: 1 },
+        { entityId: sourceEndPointId, x: 4, y: 1 },
+      ],
+    } as unknown as SolvedSketchWire
+    expect(
+      externalSketchPierceCandidates(
+        document,
+        target,
+        labels,
+        document.features,
+        new Map([[source.id, parallelSolution]]),
+      ),
+    ).toEqual([])
+    const currentSolution = {
+      points: [
+        { entityId: sourcePointId, x: 4, y: -5 },
+        { entityId: sourceEndPointId, x: 4, y: 5 },
+      ],
+    } as unknown as SolvedSketchWire
+    const candidates = externalSketchPierceCandidates(
+      document,
+      target,
+      labels,
+      document.features,
+      new Map([[source.id, currentSolution]]),
+    )
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        kind: "line",
+        label: "Path · Line 1",
+        piercePoint: expect.objectContaining({ world: [4, 0, 0], x: 4, y: 0 }),
+        sourceLineId,
+        sourceSketchId,
+      }),
+    ])
+    const candidate = candidates[0]
+    if (!candidate) throw new Error("The Pierce candidate is required.")
+    const pierced = applyExternalSketchPierceCandidate(target, candidate, [localPointId])
+    const reference = pierced.externalReferences?.[0]
+    expect(reference).toEqual(
+      expect.objectContaining({ kind: "pierce-point", sourceLineId, sourceSketchId }),
+    )
+    if (reference?.kind !== "pierce-point") throw new Error("The Pierce reference is required.")
+    expect(pierced.constraints).toEqual([
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: localPointId,
+        secondPointId: reference.projectedPointId,
+      }),
+    ])
+  })
+
   it("uses every committed sketch as context for a new unsaved draft", () => {
     const source = sketchRecordSchema.parse({
       schemaVersion: 0,
@@ -844,6 +969,61 @@ describe("external sketch point candidates", () => {
       }),
     ])
     expect(repaired.constraints).toEqual(draft.constraints)
+  })
+
+  it("repairs a Pierce source while preserving the projected point and Coincident identities", () => {
+    const referenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004075",
+    )
+    const projectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004076")
+    const constraintId = "0195b5ac-b220-7a2c-8c33-000000004077"
+    const draft = sketchRecordSchema.parse({
+      ...createSketchForExternalTest(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "pierce-point",
+          sourceSketchId,
+          sourceLineId: "0195b5ac-b220-7a2c-8c33-000000004078",
+          projectedPointId,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId,
+          type: "coincident",
+          firstPointId: boundaryPointId,
+          secondPointId: projectedPointId,
+        },
+      ],
+    })
+    const replacement: ExternalSketchGeometryCandidate = {
+      kind: "line",
+      label: "Replacement line",
+      sourceLineId,
+      sourceSketchId,
+      sourceStartPointId: sourcePointId,
+      sourceEndPointId,
+      start: { world: [0, 0, -1], x: 0, y: -1 },
+      end: { world: [0, 0, 1], x: 0, y: 1 },
+    }
+
+    const repaired = applyExternalSketchCandidateSelection(draft, replacement, [], referenceId)
+
+    expect(repaired.externalReferences).toEqual([
+      expect.objectContaining({
+        id: referenceId,
+        kind: "pierce-point",
+        projectedPointId,
+        sourceLineId,
+        sourceSketchId,
+      }),
+    ])
+    expect(repaired.constraints).toEqual([
+      expect.objectContaining({ id: constraintId, secondPointId: projectedPointId }),
+    ])
   })
 })
 

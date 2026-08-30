@@ -26,6 +26,7 @@ Onshape distinguishes three related behaviors inside a Part Studio:
 | --- | --- | --- | --- |
 | Hover or place on a coplanar earlier sketch/feature vertex or edge | An inferred external constraint | The constraint remains tied to the outside entity; Onshape displays it as an external relation | `inferred` external constraint between an authored entity and a stable source selector |
 | **Use** (`U`) on an edge or sketch entity | A projected/conversion reference on the active sketch plane | The used edge updates with source geometry; source geometry-type changes can break the relation | Read-only projected external geometry plus an explicit source selector |
+| **Pierce** on a sketch point and an outside line | A point constrained to the exact line/active-plane crossing | The crossing follows the outside line while it remains transverse and bounded | Read-only Pierce point plus Coincident to the selected authored point |
 | **Intersection** on a face or surface | The intersection curve on the active sketch plane | The resulting geometry updates and is constrained to the source face/surface | Read-only intersection reference plus explicit source selector |
 
 The source behavior is documented by Onshape's [Sketch Basics](https://cad.onshape.com/help/Content/sketch_basics.htm), [Working with Constraints](https://cad.onshape.com/help/Content/Sketch/working_with_constraints.htm), [Use](https://cad.onshape.com/help/Content/Sketch/use.htm), and [Intersection](https://cad.onshape.com/help/Content/Sketch/intersection.htm) help pages. In particular, Onshape identifies relations to geometry outside the current sketch separately from internal constraints and limits `Use` to trackable geometry. VibeShape must use those principles, not copy transient tessellation or OCCT edge indices.
@@ -85,8 +86,13 @@ analytical projection is an ellipse participates at its four exact axis quadrant
 perimeter; parallel-offset, tilted,
 and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
-curve reference and relates the local point to the curve's stable projected center identity. General
-surfaces, multi-curve results, Pierce, non-coplanar model-curve wake-up,
+curve reference and relates the local point to the curve's stable projected center identity. An explicit
+selection-first **Pierce** tool accepts exactly one authored point and one visible earlier-sketch line whose
+finite world-space segment crosses the active support transversely. It persists the source sketch and line
+identities plus one projected point identity, attaches Coincident, and recomputes the exact crossing from
+the current solved source on every authoritative solve. Parallel, coplanar, degenerate, non-finite, and
+outside-segment inputs fail closed. Repair keeps the projected identity and reuses the graphical 3D line
+picker. General surfaces, multi-curve results, curved or model-edge Pierce, non-coplanar model-curve wake-up,
 spline and other non-analytical model edges, and sketch-source repair UI are not
 implemented. Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
@@ -107,6 +113,8 @@ The product exposes three explicit tools in the active sketch:
 - **Direct Select / Use external geometry**: select one eligible visible source sketch entity or projected
   feature edge directly in Select, or keep Use active for repeated projection and repair, and project it to
   the active sketch frame through the same stable candidate broker.
+- **Pierce to external line**: preselect one authored point, then choose one visible earlier-sketch line in
+  the orbitable 3D context to constrain that point to the exact bounded line/active-support crossing.
 - **Intersect geometry**: select one supported feature face or surface and create its intersection with
   the active sketch plane.
 - **External inference**: while placing or dragging authored geometry, show an external candidate and
@@ -188,9 +196,9 @@ cannot alter evaluation order.
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and
    repair diagnostics.
-5. **Intersection**: one planar face to one bounded linear section is implemented with graphical 3D
-   selection and exact OCCT evaluation. Add analytical curved and multi-segment face/surface results plus
-   explicit `Pierce` relations without approximating them from the display mesh.
+5. **Intersection and Pierce**: one planar face to one bounded linear section and one earlier-sketch line to
+   one exact transverse Pierce point are implemented with graphical 3D selection. Add analytical curved and
+   multi-segment face/surface results plus curved and model-edge Pierce without approximating display meshes.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace
    locking, update policy, and permissions as a later architectural slice.
 

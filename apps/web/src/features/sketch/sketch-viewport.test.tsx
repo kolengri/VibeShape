@@ -200,6 +200,9 @@ type SketchViewportTestProps = Readonly<{
   originPlaneVisibility?: React.ComponentProps<
     typeof SketchViewport
   >["state"]["originPlaneVisibility"]
+  pierceCandidateCount?: React.ComponentProps<
+    typeof SketchViewport
+  >["state"]["pierceCandidateCount"]
   onDraftChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDraftChange"]
   onDisplayChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onDisplayChange"]
   onEditorToolChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onEditorToolChange"]
@@ -234,23 +237,24 @@ function valueOr<Value>(value: Value | undefined, fallback: Value): Value {
 function viewportState(props: SketchViewportTestProps) {
   return {
     construction: false,
-    controller: props.controller ?? controller,
-    draft: props.draft ?? null,
-    editorTool: props.editorTool ?? "select",
+    controller: valueOr(props.controller, controller),
+    draft: valueOr(props.draft, null),
+    editorTool: valueOr(props.editorTool, "select"),
     externalContextGeometry: valueOr(
       props.externalContextGeometry,
       valueOr(props.externalPointCandidates, []),
     ),
     externalModelCandidates: valueOr(props.externalModelCandidates, []),
     externalPointCandidates: valueOr(props.externalPointCandidates, []),
-    originPlaneVisibility: props.originPlaneVisibility ?? { xy: true, xz: true, yz: true },
+    originPlaneVisibility: valueOr(props.originPlaneVisibility, { xy: true, xz: true, yz: true }),
+    pierceCandidateCount: valueOr(props.pierceCandidateCount, 0),
     repairReferenceId: valueOr(props.repairReferenceId, null),
-    selectedConstraintId: props.selectedConstraintId ?? null,
-    selectedEntityIds: props.selectedEntityIds ?? [],
+    selectedConstraintId: valueOr(props.selectedConstraintId, null),
+    selectedEntityIds: valueOr(props.selectedEntityIds, []),
     selectedProfile: null,
     sketch: props.sketch,
-    supportFeatures: props.controller?.report?.snapshot.features ?? [],
-    projectionFrame: props.projectionFrame ?? null,
+    supportFeatures: valueOr(props.controller?.report?.snapshot.features, []),
+    projectionFrame: valueOr(props.projectionFrame, null),
   } satisfies React.ComponentProps<typeof SketchViewport>["state"]
 }
 
@@ -2782,6 +2786,40 @@ describe("SketchViewport", () => {
     const button = screen.getByRole("button", { name: "Intersect planar face" })
     fireEvent.click(button)
     expect(onEditorToolChange).toHaveBeenCalledWith("intersection")
+    expect(button.textContent).toBe("")
+  })
+
+  it("activates Pierce only after one editable point is selected", () => {
+    const target = { ...sketch, id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3252") }
+    const selectedPoint = target.entities.find(({ type }) => type === "point")
+    if (!selectedPoint) throw new Error("The selected point fixture is required.")
+    const onEditorToolChange = vi.fn()
+    const { rerender } = renderViewport({
+      draft: target,
+      onEditorToolChange,
+      pierceCandidateCount: 1,
+      selectedEntityIds: [],
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Pierce to external line" }).disabled,
+    ).toBe(true)
+
+    rerender(
+      viewportElement({
+        draft: target,
+        onEditorToolChange,
+        pierceCandidateCount: 1,
+        selectedEntityIds: [selectedPoint.id],
+        sketch: target,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      }),
+    )
+    const button = screen.getByRole("button", { name: "Pierce to external line" })
+    fireEvent.click(button)
+    expect(onEditorToolChange).toHaveBeenCalledWith("pierce")
     expect(button.textContent).toBe("")
   })
 

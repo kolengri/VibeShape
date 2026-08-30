@@ -63,6 +63,7 @@ export type GeometryViewportSketchContext = Readonly<{
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
+    purpose?: "pierce" | "use"
   }>
   faceIntersectionSelection?: Readonly<{
     onSelect: (selection: ViewerSelection) => void
@@ -1620,6 +1621,76 @@ function ModelViewportChrome({
   )
 }
 
+function SketchReferenceSelectionStatus({ purpose }: Readonly<{ purpose: "pierce" | "use" }>) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <div
+      className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+      role="status"
+    >
+      {t(purpose === "pierce" ? "sketchPierceSelection" : "sketchReferenceSelection")}
+    </div>
+  )
+}
+
+function SketchReferencePreselectionStatus({
+  preselection,
+  purpose,
+}: Readonly<{
+  preselection: ViewerSketchReferenceCandidate
+  purpose: "pierce" | "use"
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <div
+      className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+      role="status"
+    >
+      {t(purpose === "pierce" ? "sketchPierceCandidate" : "sketchReferenceCandidate", {
+        label: preselection.label,
+      })}
+    </div>
+  )
+}
+
+function SketchReferenceKeyboardPicker({
+  selection,
+}: Readonly<{
+  selection: NonNullable<GeometryViewportSketchContext["referenceSelection"]>
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  const pierce = selection.purpose === "pierce"
+  if (selection.candidates.length === 0) return null
+  return (
+    <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
+      <span className="text-xs font-medium">
+        {t(pierce ? "sketchPierceKeyboardSelection" : "sketchReferenceKeyboardSelection")}
+      </span>
+      <NativeSelect
+        aria-label={t(
+          pierce ? "sketchPierceKeyboardSelection" : "sketchReferenceKeyboardSelection",
+        )}
+        className="h-8 max-w-72 text-xs"
+        defaultValue=""
+        onChange={(event) => {
+          const candidate = selection.candidates[Number(event.currentTarget.value)]
+          if (candidate) selection.onSelect(candidate)
+          event.currentTarget.value = ""
+        }}
+      >
+        <option value="">
+          {t(pierce ? "sketchPierceKeyboardPlaceholder" : "sketchReferenceKeyboardPlaceholder")}
+        </option>
+        {selection.candidates.map((candidate, index) => (
+          <option key={`${candidate.kind}:${candidate.label}:${index}`} value={index}>
+            {candidate.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </div>
+  )
+}
+
 function SketchContextChrome({
   context,
   preselection,
@@ -1631,19 +1702,13 @@ function SketchContextChrome({
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null
-  const candidates = context.referenceSelection?.candidates ?? []
+  const referenceSelection = context.referenceSelection
+  const referencePurpose = referenceSelection?.purpose === "pierce" ? "pierce" : "use"
   return (
     <>
       <WorldAxesLegend />
       <SketchReferenceSelectOtherOverlay selection={selectOther} />
-      {context.referenceSelection ? (
-        <div
-          className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
-          role="status"
-        >
-          {t("sketchReferenceSelection")}
-        </div>
-      ) : null}
+      {referenceSelection ? <SketchReferenceSelectionStatus purpose={referencePurpose} /> : null}
       {context.faceIntersectionSelection ? (
         <div
           className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
@@ -1653,35 +1718,9 @@ function SketchContextChrome({
         </div>
       ) : null}
       {preselection ? (
-        <div
-          className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
-          role="status"
-        >
-          {t("sketchReferenceCandidate", { label: preselection.label })}
-        </div>
+        <SketchReferencePreselectionStatus preselection={preselection} purpose={referencePurpose} />
       ) : null}
-      {context.referenceSelection && candidates.length > 0 ? (
-        <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
-          <span className="text-xs font-medium">{t("sketchReferenceKeyboardSelection")}</span>
-          <NativeSelect
-            aria-label={t("sketchReferenceKeyboardSelection")}
-            className="h-8 max-w-72 text-xs"
-            defaultValue=""
-            onChange={(event) => {
-              const candidate = candidates[Number(event.currentTarget.value)]
-              if (candidate) context.referenceSelection?.onSelect(candidate)
-              event.currentTarget.value = ""
-            }}
-          >
-            <option value="">{t("sketchReferenceKeyboardPlaceholder")}</option>
-            {candidates.map((candidate, index) => (
-              <option key={`${candidate.kind}:${candidate.label}:${index}`} value={index}>
-                {candidate.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      ) : null}
+      {referenceSelection ? <SketchReferenceKeyboardPicker selection={referenceSelection} /> : null}
     </>
   )
 }

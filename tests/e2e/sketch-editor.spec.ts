@@ -714,6 +714,90 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
+  test("pierces an earlier-sketch line across support planes and reopens the relation", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xz")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const sourceBounds = await drawing.boundingBox()
+    if (!sourceBounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(
+      sourceBounds.x + sourceBounds.width * 0.62,
+      sourceBounds.y + sourceBounds.height * 0.68,
+    )
+    await page.mouse.click(
+      sourceBounds.x + sourceBounds.width * 0.62,
+      sourceBounds.y + sourceBounds.height * 0.32,
+    )
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xy")
+    const targetBounds = await drawing.boundingBox()
+    if (!targetBounds) throw new Error("The target sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.mouse.click(
+      targetBounds.x + targetBounds.width * 0.42,
+      targetBounds.y + targetBounds.height * 0.54,
+    )
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    await clickSketchEntity(page, drawing.locator('[data-sketch-entity-type="point"]').first())
+
+    const pierce = page.getByRole("button", { name: "Pierce to external line", exact: true })
+    await expect(pierce).toBeEnabled({ timeout: 120_000 })
+    await pierce.click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "1")
+    await expect(
+      page.getByText("Pierce · Select an earlier-sketch line that crosses the active plane", {
+        exact: true,
+      }),
+    ).toBeVisible()
+    const canvasBounds = await viewport.locator("canvas").boundingBox()
+    if (!canvasBounds) throw new Error("The 3D Pierce-selection canvas is not visible.")
+    const pierceStatus = page.getByRole("status").filter({ hasText: "Pierce through:" })
+    let selected = false
+    const centerX = canvasBounds.x + canvasBounds.width / 2
+    const centerY = canvasBounds.y + canvasBounds.height / 2
+    const centeredOffsets = (maximum: number) =>
+      Array.from({ length: maximum / 4 + 1 }, (_, index) =>
+        index === 0 ? 0 : Math.ceil(index / 2) * 8 * (index % 2 === 0 ? -1 : 1),
+      )
+    for (const offsetY of centeredOffsets(96)) {
+      if (selected) break
+      for (const offsetX of centeredOffsets(320)) {
+        const x = centerX + offsetX
+        const y = centerY + offsetY
+        await page.mouse.move(x, y)
+        await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+        if (!(await pierceStatus.isVisible())) continue
+        await page.mouse.click(x, y)
+        selected = true
+        break
+      }
+    }
+    expect(selected).toBe(true)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText("Pierce · Sketch 1 · Line 1", { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(sketchPanel.getByText("Pierce · Sketch 1 · Line 1", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
+  })
+
   test("wakes an earlier sketch line while placing geometry without activating Use", async ({
     page,
   }) => {

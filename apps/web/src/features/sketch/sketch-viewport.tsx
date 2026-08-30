@@ -96,7 +96,7 @@ import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button, buttonVariants } from "@vibeshape/ui/components/button"
-import { IntersectionIcon, Link2, Ruler } from "@vibeshape/ui/components/icons"
+import { IntersectionIcon, Link2, PierceIcon, Ruler } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import type {
@@ -1805,6 +1805,9 @@ function contextGeometryKey(geometry: ExternalSketchContextGeometry) {
 function externalReferenceSourceKey(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
 ) {
+  if (reference.kind === "pierce-point") {
+    return `pierce:${reference.sourceSketchId}:${reference.sourceLineId}`
+  }
   if (
     reference.kind === "model-point" ||
     reference.kind === "model-line" ||
@@ -5490,7 +5493,7 @@ const placementBuilders = {
 } satisfies Record<
   Exclude<
     SketchEditorTool,
-    "dimension" | "intersection" | "select" | "use" | SketchModificationTool
+    "dimension" | "intersection" | "pierce" | "select" | "use" | SketchModificationTool
   >,
   (input: PlacementInput) => PlacementUpdate
 >
@@ -5499,6 +5502,7 @@ function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
   return isSketchSelectionTool(tool) ||
     tool === "use" ||
     tool === "intersection" ||
+    tool === "pierce" ||
     isSketchModificationTool(tool)
     ? null
     : placementBuilders[tool](input)
@@ -6112,6 +6116,7 @@ const pointInferenceSupport = {
   extend: neverSupportsPointInference,
   "inscribed-polygon": (pending) => pending?.kind !== "regular-polygon-sides",
   intersection: neverSupportsPointInference,
+  pierce: neverSupportsPointInference,
   line: alwaysSupportsPointInference,
   "linear-pattern": neverSupportsPointInference,
   "midpoint-line": alwaysSupportsPointInference,
@@ -9654,64 +9659,144 @@ function SketchPrecisionToolbar({
   )
 }
 
+function UseExternalGeometryAction({
+  active,
+  onEditorToolChange,
+}: Readonly<{
+  active: boolean
+  onEditorToolChange: (tool: SketchEditorTool) => void
+}>) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant={active ? "secondary" : "ghost"}
+          aria-label={t("useExternalGeometry")}
+          aria-pressed={active}
+          onClick={() => onEditorToolChange(active ? "select" : "use")}
+        >
+          <Link2 aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function IntersectionAction({
+  active,
+  onEditorToolChange,
+}: Readonly<{
+  active: boolean
+  onEditorToolChange: (tool: SketchEditorTool) => void
+}>) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant={active ? "secondary" : "ghost"}
+          aria-label={t("intersection")}
+          aria-pressed={active}
+          onClick={() => onEditorToolChange(active ? "select" : "intersection")}
+        >
+          <IntersectionIcon aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("intersection")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function PierceAction({
+  active,
+  enabled,
+  onEditorToolChange,
+}: Readonly<{
+  active: boolean
+  enabled: boolean
+  onEditorToolChange: (tool: SketchEditorTool) => void
+}>) {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant={active ? "secondary" : "ghost"}
+          aria-label={t("pierce")}
+          aria-pressed={active}
+          disabled={!enabled}
+          onClick={() => onEditorToolChange(active ? "select" : "pierce")}
+        >
+          <PierceIcon aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{enabled ? t("pierce") : t("pierceSelectionRequired")}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function pierceSelectionEnabled(
+  draft: SketchRecord,
+  selectedEntityIds: readonly SketchEntityId[],
+  candidateCount: number,
+) {
+  if (candidateCount === 0 || selectedEntityIds.length !== 1) return false
+  return draft.entities.find(({ id }) => id === selectedEntityIds[0])?.type === "point"
+}
+
 function SketchExternalReferenceToolbar({
   candidates,
   draft,
   editorTool,
   modelCandidateCount,
   onEditorToolChange,
+  pierceCandidateCount,
+  selectedEntityIds,
 }: Readonly<{
   candidates: readonly ExternalSketchGeometryCandidate[]
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   modelCandidateCount: number
   onEditorToolChange: (tool: SketchEditorTool) => void
+  pierceCandidateCount: number
+  selectedEntityIds: readonly SketchEntityId[]
 }>) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  const availableCandidates = useMemo(() => {
-    if (!draft) return []
+  const availableCandidateCount = useMemo(() => {
+    if (!draft) return 0
     const references = draft.externalReferences ?? []
     return candidates.filter(
       (candidate) =>
         !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
-    )
+    ).length
   }, [candidates, draft])
-  if (!draft || availableCandidates.length + modelCandidateCount === 0) return null
-  const active = editorTool === "use"
-  const intersectionActive = editorTool === "intersection"
+  if (!draft || availableCandidateCount + modelCandidateCount + pierceCandidateCount === 0)
+    return null
   return (
     <div className="flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant={active ? "secondary" : "ghost"}
-            aria-label={t("useExternalGeometry")}
-            aria-pressed={active}
-            onClick={() => onEditorToolChange(active ? "select" : "use")}
-          >
-            <Link2 aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
-      </Tooltip>
+      <UseExternalGeometryAction
+        active={editorTool === "use"}
+        onEditorToolChange={onEditorToolChange}
+      />
       {modelCandidateCount > 0 ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant={intersectionActive ? "secondary" : "ghost"}
-              aria-label={t("intersection")}
-              aria-pressed={intersectionActive}
-              onClick={() => onEditorToolChange(intersectionActive ? "select" : "intersection")}
-            >
-              <IntersectionIcon aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("intersection")}</TooltipContent>
-        </Tooltip>
+        <IntersectionAction
+          active={editorTool === "intersection"}
+          onEditorToolChange={onEditorToolChange}
+        />
+      ) : null}
+      {pierceCandidateCount > 0 ? (
+        <PierceAction
+          active={editorTool === "pierce"}
+          enabled={pierceSelectionEnabled(draft, selectedEntityIds, pierceCandidateCount)}
+          onEditorToolChange={onEditorToolChange}
+        />
       ) : null}
     </div>
   )
@@ -9726,6 +9811,7 @@ type SketchViewportState = Readonly<{
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  pierceCandidateCount?: number
   repairReferenceId: SketchExternalReferenceId | null
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
@@ -10116,6 +10202,8 @@ export function SketchViewport({
           editorTool={editorTool}
           modelCandidateCount={externalModelCandidates.length}
           onEditorToolChange={onEditorToolChange}
+          pierceCandidateCount={state.pierceCandidateCount ?? 0}
+          selectedEntityIds={selectedEntityIds}
         />
         <SketchPrecisionToolbar
           draft={draft}

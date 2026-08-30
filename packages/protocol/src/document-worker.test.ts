@@ -153,6 +153,27 @@ function envelope(revision = 1) {
 }
 
 describe("document worker protocol", () => {
+  it("preserves a stable Pierce point reference on the worker wire", () => {
+    const reference = {
+      schemaVersion: 0,
+      id: externalReferenceId,
+      kind: "pierce-point",
+      sourceSketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+      sourceLineId,
+      projectedPointId: projectedCurvePointId,
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [reference] }),
+    ).toMatchObject({ externalReferences: [reference] })
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [{ ...reference, sourceLineId: undefined }],
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts a bounded analytical external curve reference", () => {
     const reference = {
       schemaVersion: 0,

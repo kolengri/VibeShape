@@ -1,8 +1,13 @@
+import { intersectBoundedLineWithSupportPlane } from "@vibeshape/application/pierce-point"
 import {
   type ProjectedSketchCurve,
   projectSketchCurveBetweenFrames,
 } from "@vibeshape/application/sketch-curve-projection"
-import { projectSketchPointBetweenFrames, sketchFrame } from "@vibeshape/application/support-frame"
+import {
+  projectSketchPointBetweenFrames,
+  sketchFrame,
+  supportPointToWorld,
+} from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
   FeatureRecord,
@@ -62,6 +67,9 @@ export type ExternalSketchLineCandidate = Readonly<{
   end: ProjectedSketchPoint
 }>
 
+export type ExternalSketchPierceCandidate = ExternalSketchLineCandidate &
+  Readonly<{ piercePoint: ProjectedSketchPoint }>
+
 export type ExternalSketchGeometryCandidate =
   | ExternalSketchPointCandidate
   | ExternalSketchLineCandidate
@@ -109,7 +117,9 @@ export type ExternalSketchReferenceResolution = Readonly<{
 type SketchBackedExternalReference = Exclude<SketchExternalReference, SketchExternalModelReference>
 
 function sketchReferenceSourceEntityId(reference: SketchBackedExternalReference) {
-  if (reference.kind === "line") return reference.sourceLineId
+  if (reference.kind === "line" || reference.kind === "pierce-point") {
+    return reference.sourceLineId
+  }
   if (reference.kind === "curve") return reference.sourceEntityId
   return reference.sourcePointId
 }
@@ -117,7 +127,7 @@ function sketchReferenceSourceEntityId(reference: SketchBackedExternalReference)
 function sketchReferenceExpectedType(
   reference: SketchBackedExternalReference,
 ): SketchEntity["type"] {
-  if (reference.kind === "line") return "line"
+  if (reference.kind === "line" || reference.kind === "pierce-point") return "line"
   if (reference.kind === "curve") return reference.sourceType
   return "point"
 }
@@ -224,6 +234,11 @@ export function repairExternalSketchGeometryCandidates(
       (candidate): candidate is ExternalSketchLineCandidate => candidate.kind === "line",
     )
   }
+  if (reference.kind === "pierce-point") {
+    return candidates.filter(
+      (candidate): candidate is ExternalSketchLineCandidate => candidate.kind === "line",
+    )
+  }
   if (reference.kind === "curve") {
     return candidates.filter(
       (candidate): candidate is Extract<ExternalSketchGeometryCandidate, { kind: "curve" }> =>
@@ -247,8 +262,19 @@ export function availableExternalSketchGeometryCandidates(
   const references = draft.externalReferences ?? []
   return compatible.filter(
     (candidate) =>
-      !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
+      !references.some(
+        (reference) =>
+          reference.kind !== "pierce-point" &&
+          externalReferenceMatchesCandidate(reference, candidate),
+      ),
   )
+}
+
+export function availableExternalSketchPierceCandidates(
+  candidates: readonly ExternalSketchPierceCandidate[],
+  draft: SketchRecord | null,
+) {
+  return draft ? candidates : []
 }
 
 export function externalReferenceMatchesCandidate(
@@ -264,6 +290,9 @@ export function externalReferenceMatchesCandidate(
     return false
   }
   if (reference.sourceSketchId !== candidate.sourceSketchId) return false
+  if (reference.kind === "pierce-point") {
+    return candidate.kind === "line" && reference.sourceLineId === candidate.sourceLineId
+  }
   if (candidate.kind === "curve") {
     return reference.kind === "curve" && reference.sourceEntityId === candidate.sourceEntityId
   }
@@ -297,6 +326,44 @@ export function attachExternalProjectedPoint(
       )
 }
 
+export function applyExternalSketchPierceCandidate(
+  draft: SketchRecord,
+  candidate: ExternalSketchPierceCandidate,
+  selectedEntityIds: readonly SketchEntityId[],
+): SketchRecord {
+  if (selectedEntityIds.length !== 1) return draft
+  const selected = draft.entities.find(({ id }) => id === selectedEntityIds[0])
+  if (selected?.type !== "point") return draft
+  const existing = draft.externalReferences?.find(
+    (reference) =>
+      !isSketchExternalModelReference(reference) &&
+      reference.kind === "pierce-point" &&
+      reference.sourceSketchId === candidate.sourceSketchId &&
+      reference.sourceLineId === candidate.sourceLineId,
+  )
+  const projectedPointId =
+    existing && !isSketchExternalModelReference(existing) && existing.kind === "pierce-point"
+      ? existing.projectedPointId
+      : createBrowserSketchEntityId()
+  const sketch = existing
+    ? draft
+    : {
+        ...draft,
+        externalReferences: [
+          ...(draft.externalReferences ?? []),
+          {
+            schemaVersion: 0 as const,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "pierce-point" as const,
+            sourceSketchId: candidate.sourceSketchId,
+            sourceLineId: candidate.sourceLineId,
+            projectedPointId,
+          },
+        ],
+      }
+  return attachExternalProjectedPoint(sketch, projectedPointId, selectedEntityIds)
+}
+
 function applyExternalSketchCandidate(
   draft: SketchRecord,
   candidate: ExternalSketchGeometryCandidate,
@@ -318,9 +385,15 @@ export function applyExternalSketchCandidateSelection(
   selectedEntityIds: readonly SketchEntityId[],
   repairReferenceId: SketchExternalReferenceId | null,
 ): SketchRecord {
-  return repairReferenceId
-    ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
-    : applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+  if (!repairReferenceId) return applyExternalSketchCandidate(draft, candidate, selectedEntityIds)
+  const reference = draft.externalReferences?.find(({ id }) => id === repairReferenceId)
+  return reference?.kind === "pierce-point" && candidate.kind === "line"
+    ? replaceSketchExternalReference(draft, repairReferenceId, {
+        kind: "pierce-point",
+        sourceLineId: candidate.sourceLineId,
+        sourceSketchId: candidate.sourceSketchId,
+      })
+    : replaceSketchExternalReference(draft, repairReferenceId, candidate)
 }
 
 export type MaterializedExternalSketchCandidate =
@@ -399,6 +472,7 @@ function existingPointMaterialization(
     (reference) =>
       !isSketchExternalModelReference(reference) &&
       reference.kind !== "line" &&
+      reference.kind !== "pierce-point" &&
       reference.kind !== "curve" &&
       reference.sourceSketchId === candidate.sourceSketchId &&
       reference.sourcePointId === candidate.sourcePointId,
@@ -406,6 +480,7 @@ function existingPointMaterialization(
   return existing &&
     !isSketchExternalModelReference(existing) &&
     existing.kind !== "line" &&
+    existing.kind !== "pierce-point" &&
     existing.kind !== "curve"
     ? { kind: "point", projectedPointId: existing.projectedPointId, sketch: draft }
     : null
@@ -521,6 +596,53 @@ export function externalSketchGeometryCandidates(
     (geometry): geometry is ExternalSketchGeometryCandidate =>
       geometry.kind !== "curve" || geometry.projectedType !== null,
   )
+}
+
+/** Returns earlier-sketch line segments with one exact transverse crossing of the active support. */
+export function externalSketchPierceCandidates(
+  document: DocumentSnapshot,
+  draft: SketchRecord,
+  labels: ExternalSketchGeometryLabels,
+  features: readonly FeatureRecord[] = document.features,
+  solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
+): readonly ExternalSketchPierceCandidate[] {
+  const targetFrame = sketchFrame(draft, document, features)
+  if (!targetFrame) return []
+  return earlierSketchesForDraft(document, draft.id).flatMap((source) => {
+    const sourceFrame = sketchFrame(source, document, features)
+    const solution = solutionsBySketchId.get(source.id)
+    if (!sourceFrame || !solution) return []
+    const solvedPoints = new Map(solution.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
+    const sourceIndex = sourceEntityLabels(source, labels)
+    return [...sourceIndex.entities.values()].flatMap((entity) => {
+      if (entity.type !== "line") return []
+      const startPoint = solvedPoints.get(entity.startPointId)
+      const endPoint = solvedPoints.get(entity.endPointId)
+      if (!startPoint || !endPoint) return []
+      const start = projectSketchPointBetweenFrames(sourceFrame, targetFrame, startPoint)
+      const end = projectSketchPointBetweenFrames(sourceFrame, targetFrame, endPoint)
+      const piercePoint = intersectBoundedLineWithSupportPlane(start.world, end.world, targetFrame)
+      const label = sourceIndex.labels.get(entity.id)
+      if (!piercePoint || !label) return []
+      return [
+        {
+          construction: entity.construction,
+          kind: "line" as const,
+          label,
+          piercePoint: {
+            world: supportPointToWorld(targetFrame, piercePoint),
+            ...piercePoint,
+          },
+          sourceEndPointId: entity.endPointId,
+          sourceLineId: entity.id,
+          sourceSketchId: source.id,
+          sourceStartPointId: entity.startPointId,
+          start: { world: start.world, ...start.local },
+          end: { world: end.world, ...end.local },
+        },
+      ]
+    })
+  })
 }
 
 export function earlierSketchesForDraft(

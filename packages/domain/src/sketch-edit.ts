@@ -18,6 +18,7 @@ import {
   type SketchExternalModelLineReference,
   type SketchExternalModelPointReference,
   type SketchExternalModelReference,
+  type SketchExternalPiercePointReference,
   type SketchExternalPointReference,
   type SketchExternalReference,
   type SketchFeatureFaceSupport,
@@ -40,6 +41,7 @@ export type SketchSupportReplacement =
 export type SketchExternalReferenceReplacement =
   | Readonly<Pick<SketchExternalPointReference, "kind" | "sourceSketchId" | "sourcePointId">>
   | Readonly<Pick<SketchExternalLineReference, "kind" | "sourceSketchId" | "sourceLineId">>
+  | Readonly<Pick<SketchExternalPiercePointReference, "kind" | "sourceSketchId" | "sourceLineId">>
   | Readonly<
       Pick<
         SketchExternalCurveReference,
@@ -2625,6 +2627,19 @@ function replaceSketchLineReference(
   })
 }
 
+function replaceSketchPiercePointReference(
+  sketch: SketchRecord,
+  reference: SketchExternalPiercePointReference,
+  replacement: SketchExternalReferenceReplacement,
+) {
+  if (replacement.kind !== "pierce-point") throw new TypeError("A sketch reference kind mismatch.")
+  return replaceExternalReferenceRecord(sketch, reference.id, {
+    ...reference,
+    sourceSketchId: replacement.sourceSketchId,
+    sourceLineId: replacement.sourceLineId,
+  })
+}
+
 function replaceSketchCurveReference(
   sketch: SketchRecord,
   reference: SketchExternalCurveReference,
@@ -2657,6 +2672,9 @@ function replaceSketchBackedExternalReference(
   }
   if (reference.kind === "line") {
     return replaceSketchLineReference(sketch, reference, replacement)
+  }
+  if (reference.kind === "pierce-point") {
+    return replaceSketchPiercePointReference(sketch, reference, replacement)
   }
   if (reference.kind !== "curve") throw new TypeError("A sketch reference kind mismatch.")
   return replaceSketchCurveReference(sketch, reference, replacement)

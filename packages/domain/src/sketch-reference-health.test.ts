@@ -113,6 +113,35 @@ describe("inspectSketchReferenceHealth", () => {
     })
   })
 
+  it("requires a Pierce source to remain a line", () => {
+    const source = pointSketch(8, "Source")
+    const sourcePointId = source.entities[0]?.id
+    if (!sourcePointId) throw new Error("The source point fixture is required.")
+    const dependent = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id(9),
+      label: "Pierced",
+      plane: "xz",
+      entities: [],
+      constraints: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id(209),
+          kind: "pierce-point",
+          sourceSketchId: source.id,
+          sourceLineId: sourcePointId,
+          projectedPointId: id(309),
+        },
+      ],
+    })
+
+    expect(inspectSketchReferenceHealth([source, dependent]).get(dependent.id)).toMatchObject({
+      status: "broken",
+      directBrokenReferenceIds: [dependent.externalReferences?.[0]?.id],
+    })
+  })
+
   it("reports a downstream projected reference as transitively broken", () => {
     const deletedSource = { ...pointSketch(10, "Source"), entities: [] }
     const middle = projectedPointSketch(
