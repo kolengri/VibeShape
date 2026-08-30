@@ -933,6 +933,18 @@ describe("SketchViewport", () => {
       firstCandidate.label,
       secondCandidate.label,
     ])
+    expect(choices[0]?.getAttribute("data-sketch-external-overlap-active")).toBe("true")
+    expect(screen.getByText(`Use reference: ${firstCandidate.label}`)).toBeTruthy()
+
+    fireEvent.keyDown(document, { code: "Backquote", key: "`" })
+
+    expect(choices[1]?.getAttribute("data-sketch-external-overlap-active")).toBe("true")
+    expect(screen.getByText(`Use reference: ${secondCandidate.label}`)).toBeTruthy()
+
+    fireEvent.keyDown(document, { code: "Backquote", key: "~", shiftKey: true })
+
+    expect(choices[0]?.getAttribute("data-sketch-external-overlap-active")).toBe("true")
+    expect(screen.getByText(`Use reference: ${firstCandidate.label}`)).toBeTruthy()
 
     fireEvent.keyDown(document, { key: "Escape" })
 
@@ -951,6 +963,7 @@ describe("SketchViewport", () => {
     fireEvent.click(within(reopenedChooser).getByRole("button", { name: secondCandidate.label }))
 
     expect(onDraftChange).toHaveBeenCalledOnce()
+    expect(document.activeElement).toBe(drawing)
     const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
     expect(updated.externalReferences).toEqual([
       expect.objectContaining({

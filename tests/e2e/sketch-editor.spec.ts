@@ -805,12 +805,24 @@ test.describe("full sketch editor", () => {
     const chooser = page.getByRole("dialog", { name: "Choose overlapping geometry" })
     await expect(chooser).toBeVisible()
     await expect(chooser.getByRole("button")).toHaveCount(2)
-    await chooser.getByRole("button", { name: /Sketch 1 · Line 1/ }).click()
+    const initialChoice = chooser.locator("[data-sketch-external-overlap-active='true']")
+    await expect(initialChoice).toHaveCount(1)
+    const initialLabel = await initialChoice.textContent()
+    if (!initialLabel)
+      throw new Error("The initial overlap choice requires a visible source label.")
+    await page.keyboard.press("Backquote")
+    const cycledChoice = chooser.locator("[data-sketch-external-overlap-active='true']")
+    await expect(cycledChoice).toHaveCount(1)
+    await expect(cycledChoice).not.toHaveText(initialLabel)
+    const cycledLabel = await cycledChoice.textContent()
+    if (!cycledLabel) throw new Error("The cycled overlap choice requires a visible source label.")
+    await page.keyboard.press("Enter")
+    await expect(drawing).toBeFocused()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
     await expect(
       page
         .getByRole("complementary", { name: "Sketch task panel" })
-        .getByText("Sketch 1 · Line 1", { exact: true }),
+        .getByText(cycledLabel.trim(), { exact: true }),
     ).toBeVisible()
     await expect(chooser).toHaveCount(0)
   })
@@ -1065,7 +1077,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Point", exact: true }).click()
     const contextCircle = drawing.locator('[data-sketch-context-curve-type="circle"]')
     await expect(contextCircle).toHaveCount(1)
-    await expect(contextCircle).toHaveAttribute("stroke-dasharray", "2 3")
+    await expect(contextCircle).toHaveAttribute("stroke-dasharray", "5 4")
     const wakeupPoint = await contextCircle.evaluate((element) => {
       const curve = element as unknown as {
         getAttribute(name: string): string | null

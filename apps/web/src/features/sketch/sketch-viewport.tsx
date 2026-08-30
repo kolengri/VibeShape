@@ -2027,18 +2027,27 @@ function SketchAvailableExternalGeometry({
   const t = useTranslations("app.sketch.viewport")
   const viewportT = useTranslations("app.shell.viewport")
   const [chooser, setChooser] = useState<ExternalUseOverlapChooser | null>(null)
+  const [chooserActiveIndex, setChooserActiveIndex] = useState(0)
   const [focusedPreselection, setFocusedPreselection] = useState<ExternalUsePreselection | null>(
     null,
   )
   const [hoveredPreselection, setHoveredPreselection] = useState<ExternalUsePreselection | null>(
     null,
   )
-  const preselection = hoveredPreselection ?? focusedPreselection
+  const chooserCandidate = chooser?.choices[chooserActiveIndex]
+  const preselection =
+    chooser && chooserCandidate
+      ? {
+          candidate: chooserCandidate,
+          clientX: chooser.clientX,
+          clientY: chooser.clientY,
+        }
+      : (hoveredPreselection ?? focusedPreselection)
   const chooserRef = useRef<HTMLDivElement>(null)
-  const firstChoiceRef = useRef<HTMLButtonElement>(null)
+  const choiceRefs = useRef<Array<HTMLButtonElement | null>>([])
   useEffect(() => {
     if (!chooser) return
-    firstChoiceRef.current?.focus()
+    choiceRefs.current[chooserActiveIndex]?.focus()
     const closeOnPointerDown = (event: globalThis.PointerEvent) => {
       if (chooserRef.current?.contains(event.target as Node)) return
       event.preventDefault()
@@ -2046,20 +2055,31 @@ function SketchAvailableExternalGeometry({
       chooser.focusTarget.focus()
       setChooser(null)
     }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return
+    const handleChooserKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        chooser.focusTarget.focus()
+        setChooser(null)
+        return
+      }
+      if (event.code !== "Backquote") return
       event.preventDefault()
-      chooser.focusTarget.focus()
-      setChooser(null)
+      event.stopPropagation()
+      setChooserActiveIndex((current) => {
+        const direction = event.shiftKey ? -1 : 1
+        return (current + direction + chooser.choices.length) % chooser.choices.length
+      })
     }
     document.addEventListener("pointerdown", closeOnPointerDown, true)
-    document.addEventListener("keydown", closeOnEscape, true)
+    document.addEventListener("keydown", handleChooserKeyDown, true)
     return () => {
       document.removeEventListener("pointerdown", closeOnPointerDown, true)
-      document.removeEventListener("keydown", closeOnEscape, true)
+      document.removeEventListener("keydown", handleChooserKeyDown, true)
     }
-  }, [chooser])
-  const useCandidate = (candidate: ExternalUseCandidate) => {
+  }, [chooser, chooserActiveIndex])
+  const useCandidate = (candidate: ExternalUseCandidate, focusTarget?: SVGGElement) => {
+    focusTarget?.ownerSVGElement?.focus()
     setFocusedPreselection(null)
     setHoveredPreselection(null)
     onUse(candidate)
@@ -2104,7 +2124,8 @@ function SketchAvailableExternalGeometry({
                 point,
                 externalUseHitTolerance(bounds, rectangle),
               )
-              if (choices.length === 1) return useCandidate(candidate)
+              if (choices.length === 1) return useCandidate(candidate, event.currentTarget)
+              setChooserActiveIndex(0)
               setChooser({
                 choices,
                 clientX: event.clientX,
@@ -2116,12 +2137,18 @@ function SketchAvailableExternalGeometry({
               if (event.key !== "Enter" && event.key !== " ") return
               event.preventDefault()
               event.stopPropagation()
-              useCandidate(candidate)
+              useCandidate(candidate, event.currentTarget)
             }}
             role="button"
             tabIndex={0}
           >
-            <SketchAvailableExternalCandidate candidate={candidate} />
+            <SketchAvailableExternalCandidate
+              candidate={candidate}
+              highlighted={
+                chooserCandidate !== undefined &&
+                candidateKey(chooserCandidate) === candidateKey(candidate)
+              }
+            />
           </g>
         ))}
       </g>
@@ -2141,14 +2168,19 @@ function SketchAvailableExternalGeometry({
               {chooser.choices.map((choice, index) => (
                 <Button
                   key={candidateKey(choice)}
-                  ref={index === 0 ? firstChoiceRef : undefined}
+                  ref={(element) => {
+                    choiceRefs.current[index] = element
+                  }}
                   type="button"
                   className="h-auto justify-start whitespace-normal px-2 py-1.5 text-left"
+                  data-sketch-external-overlap-active={index === chooserActiveIndex || undefined}
                   size="sm"
-                  variant="ghost"
+                  variant={index === chooserActiveIndex ? "secondary" : "ghost"}
+                  onFocus={() => setChooserActiveIndex(index)}
+                  onPointerEnter={() => setChooserActiveIndex(index)}
                   onClick={() => {
                     setChooser(null)
-                    useCandidate(choice)
+                    useCandidate(choice, chooser.focusTarget)
                   }}
                 >
                   {choice.label}
@@ -2303,7 +2335,8 @@ function overlappingExternalUseCandidates(
 
 function SketchAvailableExternalCandidate({
   candidate,
-}: Readonly<{ candidate: ExternalUseCandidate }>) {
+  highlighted = false,
+}: Readonly<{ candidate: ExternalUseCandidate; highlighted?: boolean }>) {
   if (candidate.kind === "curve" || candidate.kind === "model-curve") {
     const points = candidate.points.map(({ x, y }) => `${x},${y}`).join(" ")
     return (
@@ -2319,7 +2352,10 @@ function SketchAvailableExternalCandidate({
         <polyline
           fill="none"
           points={points}
-          className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+          className={cn(
+            "pointer-events-none stroke-amber-500 transition-opacity group-hover:opacity-100 group-focus:opacity-100",
+            highlighted ? "opacity-100" : "opacity-0",
+          )}
           strokeDasharray="5 3"
           strokeWidth={2}
           vectorEffect="non-scaling-stroke"
@@ -2346,7 +2382,10 @@ function SketchAvailableExternalCandidate({
           y1={candidate.start.y}
           x2={candidate.end.x}
           y2={candidate.end.y}
-          className="pointer-events-none stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+          className={cn(
+            "pointer-events-none stroke-amber-500 transition-opacity group-hover:opacity-100 group-focus:opacity-100",
+            highlighted ? "opacity-100" : "opacity-0",
+          )}
           strokeDasharray="5 3"
           strokeWidth={2}
           vectorEffect="non-scaling-stroke"
@@ -2369,7 +2408,10 @@ function SketchAvailableExternalCandidate({
         cx={candidate.x}
         cy={candidate.y}
         r={5}
-        className="pointer-events-none fill-background/75 stroke-amber-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+        className={cn(
+          "pointer-events-none fill-background/75 stroke-amber-500 transition-opacity group-hover:opacity-100 group-focus:opacity-100",
+          highlighted ? "opacity-100" : "opacity-0",
+        )}
         strokeDasharray="3 2"
         strokeWidth={1.5}
         vectorEffect="non-scaling-stroke"
