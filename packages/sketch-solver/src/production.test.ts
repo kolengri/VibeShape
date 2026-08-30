@@ -1488,4 +1488,57 @@ describe("production sketch compilation", () => {
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle)
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines)
   })
+  test("keeps reference dimensions semantic-only", () => {
+    const base = sketchRecordSchema.parse(sketch())
+    const referenceId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000236")
+    const withReference = sketchRecordSchema.parse({
+      ...base,
+      constraints: [
+        ...base.constraints,
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          type: "distance",
+          firstPointId: pointA,
+          secondPointId: pointB,
+          mode: "reference",
+        },
+      ],
+    })
+    const baseline = compileSketchSystem({ revision: 1, sketch: base, variables })
+    const compiled = compileSketchSystem({ revision: 1, sketch: withReference, variables })
+    expect(compiled.ok).toBe(true)
+    expect(baseline.ok).toBe(true)
+    if (!compiled.ok || !baseline.ok) return
+    expect(compiled.compiled.system.constraintRecords).toEqual(
+      baseline.compiled.system.constraintRecords,
+    )
+    expect(compiled.compiled.system.constraintValues).toEqual(
+      baseline.compiled.system.constraintValues,
+    )
+    expect(Array.from(compiled.compiled.bindings.constraintIdsByHandle.values())).not.toContain(
+      referenceId,
+    )
+    const baselineSolved = solveSketchRecord(createModule(), {
+      revision: 1,
+      sketch: base,
+      variables,
+    })
+    const referenceSolved = solveSketchRecord(createModule(), {
+      revision: 1,
+      sketch: withReference,
+      variables,
+    })
+    expect(baselineSolved.ok).toBe(true)
+    expect(referenceSolved.ok).toBe(true)
+    if (!baselineSolved.ok || !referenceSolved.ok) return
+    expect(referenceSolved.solution.status).toBe(baselineSolved.solution.status)
+    expect(referenceSolved.solution.degreesOfFreedom).toBe(baselineSolved.solution.degreesOfFreedom)
+    expect(referenceSolved.solution.maximumResidual).toBe(baselineSolved.solution.maximumResidual)
+    expect(referenceSolved.solution.points).toEqual(baselineSolved.solution.points)
+    expect(referenceSolved.solution.circles).toEqual(baselineSolved.solution.circles)
+    expect(referenceSolved.solution.failedConstraintIds).toEqual(
+      baselineSolved.solution.failedConstraintIds,
+    )
+  })
 })

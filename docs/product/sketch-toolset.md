@@ -143,9 +143,11 @@ Dimensions accept an explicit unit, a bare value in the active project display u
 `#variable` expression. Authored text is preserved while solving uses canonical millimeters and
 radians. Length dimensions MUST be positive; angle inputs MUST resolve to an angle.
 
-Reference/driven dimensions, arc length, point coordinates, and construction measurements remain
-follow-up work. They require an explicit reference-versus-driving model and MUST NOT be simulated by
-adding solver constraints.
+Reference dimensions are implemented for distance, horizontal distance, vertical distance, angle,
+radius, and diameter. A reference record has an explicit `reference` mode, stores no authored value,
+adds no solver equation, and derives its parenthesized drawing value from the current solved geometry.
+Ellipse-axis reference dimensions, arc length, point coordinates, and construction measurements
+remain follow-up work.
 
 ## Interaction contract
 
@@ -153,16 +155,20 @@ adding solver constraints.
    registered command used by the toolbar and command palette. The tool accepts one line or round
    curve, or collects two points or two lines through sequential clicks without a modifier. A
    compatible selection enters spatial annotation placement. A placement click opens the exact
-   variable-aware driving-value editor at the annotation. The compact icon-only precision
-   toolbar remains available from ordinary Select mode for selection-first constraint work.
+   variable-aware editor at the annotation. The editor defaults to Driving and offers Reference only
+   for supported measurement families; Reference hides the expression input because it observes the
+   solved geometry instead of controlling it. The compact icon-only precision toolbar remains
+   available from ordinary Select mode for selection-first constraint work.
 2. Every icon has a localized accessible name and tooltip. Standard technical glyphs are preferred
    over repeated icon-and-text controls in the canvas.
 3. The task panel provides the keyboard-accessible equivalent, a variable-aware dimension expression
-   form, the applied-constraint list, conflict state, and removal controls; pointer selection never
-   transfers focus there automatically.
-4. Selecting a dimension label on the drawing selects the same stable constraint. Double-click opens
-   its anchored expression editor, while dragging changes only viewport presentation state. Selecting
-   a geometric glyph selects the matching task-panel row.
+   form, the applied-constraint list, conflict state, and removal controls. Reference rows expose the
+   same live solved measurement as the drawing annotation; pointer selection never transfers focus
+   there automatically.
+4. Selecting a dimension label on the drawing selects the same stable constraint. A driving label
+   opens its anchored expression editor on double-click. A parenthesized, dashed reference label is
+   selectable and draggable but has no value editor. Label dragging changes only viewport
+   presentation state. Selecting a geometric glyph selects the matching task-panel row.
 5. Adding, editing, or removing a constraint is one local sketch-history edit. It does not create a
    document revision until Finish succeeds.
 6. The last valid exact solved geometry remains visible while a replacement solve is pending. A
@@ -240,7 +246,7 @@ active support plane and display unit.
    splines through exact analytical or solver-backed entities.
 3. Add numeric point placement and coordinate editing, plus variable-aware Transform values and a
    relocatable manipulator origin.
-4. Add reference dimensions and a driving/reference conversion command.
+4. Add driving/reference conversion and the remaining ellipse-axis reference measurements.
 5. Extend ellipse Trim and Extend from bounded line intersections to round and ellipse boundaries,
    then add future spline entities, drag-through Trim, and explicit free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic

@@ -660,7 +660,7 @@ const secondaryAxisDiameterConstraintSchema = sketchConstraintEnvelopeSchema
   })
   .strict()
 
-export const sketchConstraintSchema = z.discriminatedUnion("type", [
+const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
   coincidenceConstraintSchema,
   horizontalConstraintSchema,
   verticalConstraintSchema,
@@ -691,8 +691,45 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   secondaryAxisDiameterConstraintSchema,
 ])
 
+const referenceDimensionSchema = z.union([
+  pointPairSchema
+    .extend({ type: z.literal("horizontal-distance"), mode: z.literal("reference") })
+    .strict(),
+  pointPairSchema
+    .extend({ type: z.literal("vertical-distance"), mode: z.literal("reference") })
+    .strict(),
+  pointPairSchema.extend({ type: z.literal("distance"), mode: z.literal("reference") }).strict(),
+  entityPairSchema.extend({ type: z.literal("angle"), mode: z.literal("reference") }).strict(),
+  sketchConstraintEnvelopeSchema
+    .extend({
+      type: z.literal("radius"),
+      curveId: sketchEntityIdSchema,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  sketchConstraintEnvelopeSchema
+    .extend({
+      type: z.literal("diameter"),
+      curveId: sketchEntityIdSchema,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+])
+
+export const sketchConstraintSchema = z.union([
+  drivingSketchConstraintSchema,
+  referenceDimensionSchema,
+])
+
 export type SketchEntity = Readonly<z.infer<typeof sketchEntitySchema>>
 export type SketchConstraint = Readonly<z.infer<typeof sketchConstraintSchema>>
+export type SketchReferenceDimension = Extract<SketchConstraint, { mode: "reference" }>
+
+export function isReferenceSketchDimension(
+  constraint: SketchConstraint,
+): constraint is SketchReferenceDimension {
+  return "mode" in constraint && constraint.mode === "reference"
+}
 
 function projectedExternalPoint(id: SketchEntityId): Extract<SketchEntity, { type: "point" }> {
   return { schemaVersion: 0, id, type: "point", x: 0, y: 0, construction: true }
@@ -947,21 +984,20 @@ function validateSketchEntityTable(
   }
 }
 
+function nativeConstraintContribution(constraint: SketchConstraint) {
+  if (isReferenceSketchDimension(constraint)) return 0
+  if (constraint.type === "offset") {
+    return constraint.linePairs.length * 2 + constraint.endpointPairs.length
+  }
+  if (constraint.type === "arc-midpoint") return 2
+  if (constraint.type === "ellipse-quadrant") return 6
+  if (constraint.type === "point-on-ellipse") return 5
+  return constraint.type === "point-on-elliptical-arc" ? 6 : 1
+}
+
 function nativeConstraintCount(structure: SketchStructure) {
   const authored = structure.constraints.reduce(
-    (count, constraint) =>
-      count +
-      (constraint.type === "offset"
-        ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
-        : constraint.type === "arc-midpoint"
-          ? 2
-          : constraint.type === "ellipse-quadrant"
-            ? 6
-            : constraint.type === "point-on-ellipse"
-              ? 5
-              : constraint.type === "point-on-elliptical-arc"
-                ? 6
-                : 1),
+    (count, constraint) => count + nativeConstraintContribution(constraint),
     0,
   )
   const internal = structure.entities.reduce((count, entity) => {

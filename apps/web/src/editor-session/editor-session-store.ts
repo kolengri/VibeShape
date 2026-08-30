@@ -38,6 +38,7 @@ export type SketchEditorSessionState = Readonly<{
   editorTool: SketchEditorTool
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
+  referenceDimensionLabels: Readonly<Record<string, string>>
   redoStack: readonly SketchRecord[]
   repairReferenceId: SketchExternalReferenceId | null
   selectedConstraintId: SketchConstraintId | null
@@ -92,6 +93,7 @@ export type EditorSessionActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchReferenceDimensionLabels: (labels: Readonly<Record<string, string>>) => void
   setSketchReferenceRepair: (referenceId: SketchExternalReferenceId | null) => void
   setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
@@ -115,6 +117,7 @@ function createSketchState(): SketchEditorSessionState {
     editorTool: "select",
     failedConstraintIds: [],
     profiles: [],
+    referenceDimensionLabels: {},
     redoStack: [],
     repairReferenceId: null,
     selectedConstraintId: null,
@@ -149,6 +152,17 @@ function sameProfile(first: SketchProfileSelector, second: SketchProfileSelector
   )
 }
 
+function sameStringRecord(
+  first: Readonly<Record<string, string>>,
+  second: Readonly<Record<string, string>>,
+) {
+  const firstEntries = Object.entries(first)
+  return (
+    firstEntries.length === Object.keys(second).length &&
+    firstEntries.every(([key, value]) => second[key] === value)
+  )
+}
+
 function resetSketchPresentation(
   sketch: Draft<SketchEditorSessionState>,
   editorTool: SketchEditorTool,
@@ -157,6 +171,7 @@ function resetSketchPresentation(
   sketch.editorTool = editorTool
   sketch.failedConstraintIds = []
   sketch.profiles = []
+  sketch.referenceDimensionLabels = {}
   sketch.repairReferenceId = null
   sketch.selectedConstraintId = null
   sketch.selectedEntityIds = []
@@ -430,6 +445,11 @@ export function createEditorSessionStore() {
               ? profiles.find((profile) => sameProfile(profile, selectedProfile))
               : undefined
             state.sketch.selectedProfile = matchingProfile ?? profiles[0] ?? null
+          }),
+        setSketchReferenceDimensionLabels: (labels) =>
+          set((state) => {
+            if (sameStringRecord(state.sketch.referenceDimensionLabels, labels)) return
+            state.sketch.referenceDimensionLabels = { ...labels }
           }),
         setSketchReferenceRepair: (referenceId) =>
           set((state) => {

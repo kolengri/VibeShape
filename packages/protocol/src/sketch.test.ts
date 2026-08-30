@@ -298,4 +298,89 @@ describe("sketch alignment wire constraints", () => {
       }),
     )
   })
+
+  test("accepts supported reference dimensions and rejects value tampering", () => {
+    const pointConstraints = [
+      {
+        schemaVersion: 0,
+        id: constraintId(30_001),
+        type: "horizontal-distance",
+        firstPointId: pointA,
+        secondPointId: pointB,
+        mode: "reference",
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(30_002),
+        type: "vertical-distance",
+        firstPointId: pointA,
+        secondPointId: pointB,
+        mode: "reference",
+      },
+      {
+        schemaVersion: 0,
+        id: constraintId(30_003),
+        type: "distance",
+        firstPointId: pointA,
+        secondPointId: pointB,
+        mode: "reference",
+      },
+    ]
+    expect(sketchWireRecordSchema.safeParse(record(pointConstraints)).success).toBe(true)
+    expect(
+      sketchWireRecordSchema.safeParse(
+        arcRecord([
+          {
+            schemaVersion: 0,
+            id: constraintId(30_004),
+            type: "radius",
+            curveId: arcId,
+            mode: "reference",
+          },
+          {
+            schemaVersion: 0,
+            id: constraintId(30_005),
+            type: "diameter",
+            curveId: arcId,
+            mode: "reference",
+          },
+        ]),
+      ).success,
+    ).toBe(true)
+    const twoLineRecord = record([
+      {
+        schemaVersion: 0,
+        id: constraintId(30_006),
+        type: "angle",
+        firstEntityId: lineId,
+        secondEntityId: constraintId(30_007),
+        mode: "reference",
+      },
+    ])
+    twoLineRecord.entities.push({
+      schemaVersion: 0,
+      id: constraintId(30_007),
+      type: "line",
+      startPointId: pointA,
+      endPointId: pointB,
+      construction: true,
+    })
+    expect(sketchWireRecordSchema.safeParse(twoLineRecord).success).toBe(true)
+    expect(
+      sketchWireRecordSchema.safeParse(
+        record([
+          {
+            ...pointConstraints[0],
+            value: {
+              schemaVersion: 0,
+              dimension: "length",
+              value: 1,
+              unit: "mm",
+              source: { value: 1, unit: "mm", expression: null },
+            },
+          },
+        ]),
+      ).success,
+    ).toBe(false)
+  })
 })

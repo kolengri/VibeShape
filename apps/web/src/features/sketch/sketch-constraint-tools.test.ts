@@ -11,6 +11,7 @@ import {
   compatibleSketchDimensionTools,
   compatibleSketchDimensionToolsForSelection,
   createSketchDimensionConstraint,
+  createSketchReferenceDimensionConstraint,
   nextSketchDimensionSelection,
 } from "./sketch-constraint-tools"
 
@@ -211,6 +212,28 @@ describe("sketch constraint tools", () => {
     expect(nextSketchDimensionSelection(dimensionSketch, [firstPoint.id], circle.id)).toEqual([
       circle.id,
     ])
+  })
+
+  it("builds value-less reference dimensions for supported families", () => {
+    expect(createSketchReferenceDimensionConstraint("distance", [line])).toEqual({
+      type: "distance",
+      firstPointId: firstPoint.id,
+      secondPointId: secondPoint.id,
+      mode: "reference",
+    })
+    expect(createSketchReferenceDimensionConstraint("angle", [line, secondLine])).toEqual({
+      type: "angle",
+      firstEntityId: line.id,
+      secondEntityId: secondLine.id,
+      mode: "reference",
+    })
+    expect(createSketchReferenceDimensionConstraint("radius", [circle])).toEqual({
+      type: "radius",
+      curveId: circle.id,
+      mode: "reference",
+    })
+    expect(createSketchReferenceDimensionConstraint("primary-axis-diameter", [ellipse])).toBeNull()
+    expect(createSketchReferenceDimensionConstraint("offset", [line])).toBeNull()
   })
 
   it("does not offer a driving dimension for read-only external geometry alone", () => {

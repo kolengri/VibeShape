@@ -1269,6 +1269,62 @@ test.describe("full sketch editor", () => {
     ).toHaveValue("35 mm")
   })
 
+  test("persists a reference dimension without driving sketch geometry", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = await drawRectangle(page)
+
+    await page.getByRole("button", { name: "Dimension", exact: true }).click()
+    const selectedLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    await selectedLine.dispatchEvent("pointerdown")
+    const lineBounds = await selectedLine.boundingBox()
+    if (!lineBounds) throw new Error("The selected line is not visible.")
+    await page.mouse.click(lineBounds.x + lineBounds.width / 2, lineBounds.y - 44)
+
+    const editor = page.getByRole("form", { name: "Dimension value" })
+    await editor.getByRole("button", { name: "Reference", exact: true }).click()
+    await expect(
+      editor.getByRole("combobox", { name: "Driving dimension expression" }),
+    ).toHaveCount(0)
+    await editor.getByRole("button", { name: "Apply dimension" }).click()
+
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(
+      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+    ).toBeVisible()
+    const annotation = page
+      .getByRole("region", { name: "2D sketch workspace" })
+      .getByRole("button", { name: /Select constraint \(.+ mm\)/ })
+    await expect(annotation).toHaveAttribute("data-sketch-dimension-mode", "reference")
+    expect(
+      await annotation.evaluate((element) => {
+        const style = element.ownerDocument.defaultView?.getComputedStyle(element)
+        if (!style) throw new Error("The browser must expose computed annotation styles.")
+        return { borderStyle: style.borderStyle, borderWidth: style.borderWidth }
+      }),
+    ).toEqual({ borderStyle: "dashed", borderWidth: "1px" })
+    await annotation.dblclick()
+    await expect(page.getByRole("form", { name: "Dimension value" })).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(
+      taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
+    ).toBeVisible()
+    await expect(
+      page
+        .getByRole("region", { name: "2D sketch workspace" })
+        .getByRole("button", { name: /Select constraint \(.+ mm\)/ }),
+    ).toHaveAttribute("data-sketch-dimension-mode", "reference")
+  })
+
   test("closes the stale task-panel editor after a canvas dimension edit", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
