@@ -1527,6 +1527,56 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="elliptical-arc"]')).toHaveCount(1)
   })
 
+  test("persists an exact point-on-elliptical-arc relation from the canvas", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Arc tools", "Elliptical arc")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.35)
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.55)
+
+    const arc = drawing.locator('[data-sketch-entity-type="elliptical-arc"]').first()
+    await expect(arc).toBeVisible()
+    const arcPoint = await arc.evaluate((element) => {
+      const geometry = element as unknown as {
+        getPointAtLength(length: number): {
+          matrixTransform(matrix: unknown): { x: number; y: number }
+        }
+        getScreenCTM(): unknown
+        getTotalLength(): number
+      }
+      const matrix = geometry.getScreenCTM()
+      if (!matrix) throw new Error("The elliptical arc is detached from the viewport.")
+      const point = geometry
+        .getPointAtLength(geometry.getTotalLength() * 0.5)
+        .matrixTransform(matrix)
+      return { x: point.x, y: point.y }
+    })
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.mouse.move(arcPoint.x, arcPoint.y)
+    await expect(drawing.locator('[data-sketch-inference="point-on-curve"]')).toBeVisible()
+    await page.mouse.click(arcPoint.x, arcPoint.y)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Select constraint Point on curve" }),
+    ).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
+  })
+
   test("drives both stable axes of a selected ellipse by diameter", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

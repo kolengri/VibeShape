@@ -249,6 +249,14 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...constraintEnvelope,
+      type: z.literal("point-on-elliptical-arc"),
+      pointId: sketchEntityIdSchema,
+      ellipticalArcId: sketchEntityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
       type: z.literal("ellipse-quadrant"),
       pointId: sketchEntityIdSchema,
       ellipseId: sketchEntityIdSchema,
@@ -698,6 +706,7 @@ const wireConstraintEntityReferenceRules = {
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
   "point-on-ellipse": { pointId: ["point"], ellipseId: ["ellipse"] },
+  "point-on-elliptical-arc": { pointId: ["point"], ellipticalArcId: ["elliptical-arc"] },
   "ellipse-quadrant": { pointId: ["point"], ellipseId: ["ellipse"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
   "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
@@ -894,7 +903,9 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
             ? 6
             : constraint.type === "point-on-ellipse"
               ? 5
-              : 1),
+              : constraint.type === "point-on-elliptical-arc"
+                ? 6
+                : 1),
     0,
   )
   const internal = sketch.entities.reduce((count, entity) => {
@@ -944,7 +955,7 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
     ({ type }) => type === "ellipse-quadrant",
   ).length
   const auxiliaryEllipseLocusCount = sketch.constraints.filter(
-    ({ type }) => type === "point-on-ellipse",
+    ({ type }) => type === "point-on-ellipse" || type === "point-on-elliptical-arc",
   ).length
   return {
     entities:

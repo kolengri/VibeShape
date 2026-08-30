@@ -10,6 +10,8 @@ This directory defines VibeShape's reviewed SolveSpace v3.2 source adaptation. I
 
 - embeds the exact source revision when building from a source archive without `.git` metadata;
 - exposes a read-only maximum-residual function from the C solver boundary;
+- adds one allowlisted private equation for the oriented-chord half-plane used by the exact bounded
+  elliptical-arc locus described in ADR-0029;
 - replaces the broad, stateful upstream Embind target with the VibeShape flat ABI;
 - emits a separate ES module and WASM file with a 16 MiB initial and 64 MiB maximum heap.
 

@@ -53,7 +53,7 @@ preselection, a source label, and direct selection without recreating the camera
 and removes references; removal also removes constraints that target the projected geometry. Deleting a
 referenced source sketch is rejected.
 
-Sketch-to-sketch Use supports analytical circles, arcs, and ellipses plus ordered reference chains. A later
+Sketch-to-sketch Use supports analytical circles, arcs, ellipses, and elliptical arcs plus ordered reference chains. A later
 sketch can graphically select projected geometry owned by an intermediate sketch, not only that sketch's
 authored entities. The projected point, line, or curve keeps the intermediate sketch as its direct owner;
 the worker recursively resolves the chain from stable projected IDs. Editing the original source updates
@@ -70,8 +70,8 @@ face in the persistent 3D viewport and asks OCCT for exactly one bounded linear 
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
 closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles,
-bounded arcs, and full ellipses, highlight and label the source, and atomically create the stable reference
-plus inferred Coincident, Point on line, Point on curve, full-ellipse Quadrant, or exact Point on ellipse constraint only after
+bounded arcs, full ellipses, and elliptical arcs, highlight and label the source, and atomically create the stable reference
+plus inferred Coincident, Point on line, Point on curve, full-ellipse Quadrant, exact Point on ellipse, or exact bounded Point on elliptical arc constraint only after
 acceptance. Curve wake-up projects the pointer onto exact analytical geometry; it never infers against
 sampled display polylines. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
@@ -82,8 +82,8 @@ perimeter; parallel-offset, tilted,
 and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
 curve reference and relates the local point to the curve's stable projected center identity. General
-surfaces, multi-curve results, Pierce, elliptical-arc wake-up,
-non-coplanar model-curve wake-up, non-circular curved model edges, and sketch-source repair UI are not
+surfaces, multi-curve results, Pierce, non-coplanar model-curve wake-up,
+non-circular curved model edges, and sketch-source repair UI are not
 implemented. Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and
@@ -176,9 +176,9 @@ cannot alter evaluation order.
    solver semantics permit them.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
    exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
-   visibility toggle, accessible removal, exact full-ellipse axis-quadrant inference, and exact generic
-   full-ellipse Point on ellipse intent are implemented. Extend automatic inference to elliptical arcs and stable non-circular
-   or non-coplanar curved model topology.
+   visibility toggle, accessible removal, exact full-ellipse axis-quadrant inference, exact generic
+   full-ellipse Point on ellipse intent, and exact positive-sweep elliptical-arc inference are implemented.
+   Extend automatic inference to stable non-circular or non-coplanar curved model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and

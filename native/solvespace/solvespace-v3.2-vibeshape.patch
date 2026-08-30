@@ -16,14 +16,82 @@ diff --git a/include/slvs.h b/include/slvs.h
 index 0e58d46..4e28c8c 100644
 --- a/include/slvs.h
 +++ b/include/slvs.h
-@@ -498,6 +498,7 @@ DLL double Slvs_GetParamValue(uint32_t ph);
+@@ -498,6 +498,8 @@ DLL double Slvs_GetParamValue(uint32_t ph);
  DLL void Slvs_SetParamValue(uint32_t ph, double value);
  
  DLL void Slvs_Solve(Slvs_System *sys, uint32_t hg);
 +DLL double Slvs_MaximumResidual();
++#define SLVS_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE 100038
  DLL void Slvs_MarkDragged(Slvs_Entity ptA);
  /**
   * Setting `bad` to a non NULL pointer enables finding of bad constraints.
+diff --git a/src/sketch.h b/src/sketch.h
+--- a/src/sketch.h
++++ b/src/sketch.h
+@@ -694,3 +694,4 @@ class ConstraintBase {
+         ARC_ARC_DIFFERENCE     = 212,
+         ARC_LINE_DIFFERENCE    = 213,
++        POINT_IN_ORIENTED_CHORD_HALF_PLANE = 214,
+         COMMENT                = 1000
+diff --git a/src/constrainteq.cpp b/src/constrainteq.cpp
+--- a/src/constrainteq.cpp
++++ b/src/constrainteq.cpp
+@@ -266,0 +267,8 @@ void ConstraintBase::Generate(ParamList *l) {
++        case Type::POINT_IN_ORIENTED_CHORD_HALF_PLANE: {
++            Param p = {};
++            valP = h.param(0);
++            p.h = valP;
++            p.val = valA;
++            l->Add(&p);
++            break;
++        }
+diff --git a/src/constrainteq.cpp b/src/constrainteq.cpp
+--- a/src/constrainteq.cpp
++++ b/src/constrainteq.cpp
+@@ -273,7 +273,17 @@ void ConstraintBase::GenerateEquations(IdList<Equation,hEquation> *l,
+     if(reference && !forReference) return;
+
+     Expr *exA = Expr::From(valA);
+     switch(type) {
++        case Type::POINT_IN_ORIENTED_CHORD_HALF_PLANE: {
++            ExprVector target = SK.GetEntity(ptA)->PointGetExprs();
++            ExprVector start = SK.GetEntity(ptB)->PointGetExprs();
++            ExprVector end = SK.GetEntity(entityA)->PointGetExprs();
++            Expr *h = (end.Minus(start).Cross(target.Minus(start))).z;
++            Expr *orientedH = other ? h : h->Negate();
++            AddEq(l, orientedH->Plus(Expr::From(valP)->Square()), 0);
++            return;
++        }
++
+         case Type::PT_PT_DISTANCE:
+             AddEq(l, Distance(workplane, ptA, ptB)->Minus(exA), 0);
+             return;
+diff --git a/src/slvs/lib.cpp b/src/slvs/lib.cpp
+--- a/src/slvs/lib.cpp
++++ b/src/slvs/lib.cpp
+@@ -52,3 +52,5 @@ case SLVS_C_LENGTH_DIFFERENCE:   return ConstraintBase::Type::LENGTH_DIFFERENCE;
+ case SLVS_C_ARC_ARC_DIFFERENCE:  return ConstraintBase::Type::ARC_ARC_DIFFERENCE;
+ case SLVS_C_ARC_LINE_DIFFERENCE: return ConstraintBase::Type::ARC_LINE_DIFFERENCE;
++case SLVS_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE:
++    return ConstraintBase::Type::POINT_IN_ORIENTED_CHORD_HALF_PLANE;
+ case SLVS_C_SYMMETRIC:           return ConstraintBase::Type::SYMMETRIC;
+diff --git a/src/slvs/lib.cpp b/src/slvs/lib.cpp
+--- a/src/slvs/lib.cpp
++++ b/src/slvs/lib.cpp
+@@ -137,3 +137,4 @@ static bool Slvs_CanInitiallySatisfy(const ConstraintBase &c) {
+     case ConstraintBase::Type::SAME_ORIENTATION:
+     case ConstraintBase::Type::WHERE_DRAGGED:
++    case ConstraintBase::Type::POINT_IN_ORIENTED_CHORD_HALF_PLANE:
+     case ConstraintBase::Type::COMMENT:
+diff --git a/src/constrainteq.cpp b/src/constrainteq.cpp
+--- a/src/constrainteq.cpp
++++ b/src/constrainteq.cpp
+@@ -63,3 +63,5 @@ bool ConstraintBase::IsProjectible() const {
+         case Type::EQUAL_RADIUS:
+             return false;
++        case Type::POINT_IN_ORIENTED_CHORD_HALF_PLANE:
++            return false;
+     }
 diff --git a/src/slvs/CMakeLists.txt b/src/slvs/CMakeLists.txt
 index d931f8f..35e8d3f 100644
 --- a/src/slvs/CMakeLists.txt

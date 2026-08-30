@@ -120,7 +120,7 @@ The completed polygon is one schema-valid domain operation and one local undo en
 | Symmetric | Exactly two points and one symmetry line | `S` | Implemented |
 | Fix point | Exactly one point | `F` | Implemented |
 | Point on line | Exactly one point and one line | `⊙` | Implemented |
-| Point on curve | Exactly one point and one circle, circular arc, or full ellipse; a full ellipse persists the exact Point on ellipse locus | `⊙` | Implemented |
+| Point on curve | Exactly one point and one circle, circular arc, full ellipse, or elliptical arc; ellipse relations persist exact full or positive-sweep bounded loci | `⊙` | Implemented |
 | Ellipse quadrant | Automatic only at one of a full ellipse's four axis extrema | `◇` | Implemented |
 
 Each selection exposes only definitions that consume the complete selection. The editor MUST NOT
@@ -187,9 +187,9 @@ adding solver constraints.
     quadrant, full-ellipse axis-quadrant and perimeter, horizontal, vertical, parallel, perpendicular, and
     endpoint-tangent candidates use deterministic priority and visible glyphs. Accepting a candidate
     persists its semantic constraint; holding `Shift` suppresses inference without changing the active
-    tool. Ellipse Quadrant is automatic-only, matching its spatial role. Point on ellipse is available
-    through automatic inference or the Point on curve action for one selected point and full ellipse;
-    elliptical-arc inference remains a separate follow-up contract.
+    tool. Ellipse Quadrant is automatic-only, matching its spatial role. Point on ellipse and Point on
+    elliptical arc are available through automatic inference or the Point on curve action for one selected
+    point and compatible curve. Elliptical-arc inference accepts only the stored positive parameter sweep.
 11. Center-origin polygon previews show the construction circle, radius guide, outline, and side
     count before commit. Circumscribed Polygon places vertices on the construction circle;
     Inscribed Polygon places the construction circle tangent to the outline. Closed-loop-dependent

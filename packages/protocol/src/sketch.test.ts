@@ -9,6 +9,7 @@ const pointC = "0195b5ac-b220-7a2c-8c33-67a36a7f3205"
 const pointD = "0195b5ac-b220-7a2c-8c33-67a36a7f3206"
 const arcId = "0195b5ac-b220-7a2c-8c33-67a36a7f3207"
 const ellipseId = "0195b5ac-b220-7a2c-8c33-67a36a7f3208"
+const ellipticalArcId = "0195b5ac-b220-7a2c-8c33-67a36a7f3209"
 
 function constraintId(index: number) {
   return `0195b5ac-b220-7a2c-8c33-${String(index).padStart(12, "0")}`
@@ -72,6 +73,29 @@ function ellipseRecord(constraints: readonly unknown[]) {
         centerPointId: pointA,
         primaryAxisPointId: pointB,
         secondaryAxisPointId: pointC,
+        construction: false,
+      },
+    ],
+  }
+}
+
+function ellipticalArcRecord(constraints: readonly unknown[]) {
+  return {
+    ...ellipseRecord(constraints),
+    entities: [
+      { schemaVersion: 0, id: pointA, type: "point", x: 0, y: 0, construction: false },
+      { schemaVersion: 0, id: pointB, type: "point", x: 10, y: 0, construction: false },
+      { schemaVersion: 0, id: pointC, type: "point", x: 0, y: 5, construction: false },
+      { schemaVersion: 0, id: pointD, type: "point", x: -10, y: 0, construction: false },
+      {
+        schemaVersion: 0,
+        id: ellipticalArcId,
+        type: "elliptical-arc",
+        centerPointId: pointA,
+        primaryAxisPointId: pointB,
+        secondaryAxisPointId: pointC,
+        startPointId: pointC,
+        endPointId: pointD,
         construction: false,
       },
     ],
@@ -232,5 +256,46 @@ describe("sketch alignment wire constraints", () => {
     expect(atEntityLimit.success).toBe(true)
     expect(entityOverflow.success).toBe(false)
     expect(constraintOverflow.success).toBe(false)
+  })
+
+  test("round-trips point-on-elliptical-arc and rejects full ellipse or round targets", () => {
+    const constraint = {
+      schemaVersion: 0,
+      id: constraintId(6_002),
+      type: "point-on-elliptical-arc",
+      pointId: pointD,
+      ellipticalArcId,
+    }
+    const parsed = sketchWireRecordSchema.safeParse(ellipticalArcRecord([constraint]))
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.constraints).toEqual([constraint])
+    expect(
+      sketchWireRecordSchema.safeParse(
+        ellipseRecord([{ ...constraint, ellipticalArcId: ellipseId }]),
+      ).success,
+    ).toBe(false)
+    expect(
+      sketchWireRecordSchema.safeParse(record([{ ...constraint, ellipticalArcId: arcId }])).success,
+    ).toBe(false)
+
+    const constraints = Array.from({ length: 2_001 }, (_, index) => ({
+      ...constraint,
+      id: constraintId(22_000 + index),
+    }))
+    expect(
+      sketchWireRecordSchema.safeParse(ellipticalArcRecord(constraints.slice(0, 1_245))).success,
+    ).toBe(true)
+    expect(
+      sketchWireRecordSchema.safeParse(ellipticalArcRecord(constraints.slice(0, 1_246))).success,
+    ).toBe(false)
+    const constraintOverflow = sketchWireRecordSchema.safeParse(ellipticalArcRecord(constraints))
+    expect(constraintOverflow.success).toBe(false)
+    if (constraintOverflow.success) return
+    expect(constraintOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["constraints"],
+        message: "Sketch constraints exceed the native solver safety limit.",
+      }),
+    )
   })
 })

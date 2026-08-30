@@ -47,6 +47,16 @@ export type SketchInferenceCurve =
       secondaryAxisPoint: SketchPoint2
       type: "ellipse"
     }>
+  | Readonly<{
+      center: SketchPoint2
+      centerPointId: SketchEntityId
+      end: SketchPoint2
+      id: SketchEntityId
+      primaryAxisPoint: SketchPoint2
+      secondaryAxisPoint: SketchPoint2
+      start: SketchPoint2
+      type: "elliptical-arc"
+    }>
 
 export type SketchPointRelationInference =
   | Readonly<{ pointId: SketchEntityId; type: "coincident" }>
@@ -61,6 +71,10 @@ export type SketchPointRelationInference =
       type: "ellipse-quadrant"
     }>
   | Readonly<{ ellipseId: SketchEntityId; type: "point-on-ellipse" }>
+  | Readonly<{
+      ellipticalArcId: SketchEntityId
+      type: "point-on-elliptical-arc"
+    }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
   | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
 
@@ -598,7 +612,7 @@ function positiveAngle(angle: number) {
 }
 
 function curveProjection(point: SketchPoint2, curve: SketchInferenceCurve) {
-  if (curve.type === "ellipse") return null
+  if (curve.type === "ellipse" || curve.type === "elliptical-arc") return null
   const offsetX = point.x - curve.center.x
   const offsetY = point.y - curve.center.y
   const offsetLength = Math.hypot(offsetX, offsetY)
@@ -656,7 +670,7 @@ function nearestPointOnCurveCandidate(
     : undefined
 }
 
-type EllipseInferenceCurve = Extract<SketchInferenceCurve, { type: "ellipse" }>
+type EllipseInferenceCurve = Extract<SketchInferenceCurve, { type: "ellipse" | "elliptical-arc" }>
 
 type EllipseProjectionGeometry = Readonly<{
   primaryDirection: SketchPoint2
@@ -764,23 +778,75 @@ function ellipsePointAtParameter(
   }
 }
 
+function ellipseParameterForPoint(
+  point: SketchPoint2,
+  curve: EllipseInferenceCurve,
+  geometry: EllipseProjectionGeometry,
+) {
+  const offset = { x: point.x - curve.center.x, y: point.y - curve.center.y }
+  const primary =
+    (offset.x * geometry.primaryDirection.x + offset.y * geometry.primaryDirection.y) /
+    geometry.primaryRadius
+  const secondary =
+    (offset.x * geometry.secondaryDirection.x + offset.y * geometry.secondaryDirection.y) /
+    geometry.secondaryRadius
+  return Math.atan2(secondary, primary)
+}
+
+function ellipseCurveContainsParameter(
+  curve: EllipseInferenceCurve,
+  geometry: EllipseProjectionGeometry,
+  parameter: number,
+) {
+  if (curve.type === "ellipse") return true
+  const startParameter = ellipseParameterForPoint(curve.start, curve, geometry)
+  const endParameter = ellipseParameterForPoint(curve.end, curve, geometry)
+  const sweep = positiveAngle(endParameter - startParameter)
+  return sweep > 1e-12 && positiveAngle(parameter - startParameter) <= sweep + 1e-12
+}
+
+function nearerEllipseProjection(
+  query: SketchPoint2,
+  candidate: SketchPoint2,
+  best: EllipseProjection | null,
+) {
+  const distanceSquared = squaredDistance(query, candidate)
+  if (!Number.isFinite(distanceSquared)) return best
+  if (best && best.distanceSquared <= distanceSquared) return best
+  return { point: candidate, distanceSquared }
+}
+
+function closestEllipticalArcEndpoint(point: SketchPoint2, curve: EllipseInferenceCurve) {
+  if (curve.type !== "elliptical-arc") return null
+  const start = nearerEllipseProjection(point, curve.start, null)
+  return nearerEllipseProjection(point, curve.end, start)
+}
+
+function closestEllipseStationaryPoint(
+  point: SketchPoint2,
+  curve: EllipseInferenceCurve,
+  geometry: EllipseProjectionGeometry,
+  initial: EllipseProjection | null,
+) {
+  let best = initial
+  for (let seed = 0; seed < ELLIPSE_NEWTON_SEED_COUNT; seed += 1) {
+    const parameter = ellipseStationaryParameter(seed, geometry)
+    if (!ellipseCurveContainsParameter(curve, geometry, parameter)) continue
+    const candidate = ellipsePointAtParameter(curve, geometry, parameter)
+    best = nearerEllipseProjection(point, candidate, best)
+  }
+  return best
+}
+
 function ellipseClosestPoint(point: SketchPoint2, curve: EllipseInferenceCurve, tolerance: number) {
   const geometry = ellipseProjectionGeometry(point, curve)
   if (!geometry || !ellipseProjectionMayBeNear(geometry, tolerance)) return null
-  let best: EllipseProjection | null = null
-  for (let seed = 0; seed < ELLIPSE_NEWTON_SEED_COUNT; seed += 1) {
-    const candidate = ellipsePointAtParameter(
-      curve,
-      geometry,
-      ellipseStationaryParameter(seed, geometry),
-    )
-    const distanceSquared = squaredDistance(point, candidate)
-    if (!Number.isFinite(distanceSquared)) continue
-    if (!best || distanceSquared < best.distanceSquared) {
-      best = { point: candidate, distanceSquared }
-    }
-  }
-  return best
+  return closestEllipseStationaryPoint(
+    point,
+    curve,
+    geometry,
+    closestEllipticalArcEndpoint(point, curve),
+  )
 }
 
 type NearestEllipseProjection = Readonly<{
@@ -810,7 +876,7 @@ function nearestPointOnEllipseCandidate(
   const maximumDistance = tolerance * tolerance
   let nearest: NearestEllipseProjection | undefined
   for (const curve of curves) {
-    if (curve.type !== "ellipse") continue
+    if (curve.type !== "ellipse" && curve.type !== "elliptical-arc") continue
     const projection = ellipseClosestPoint(point, curve, tolerance)
     if (projection && preferEllipseProjection(curve, projection, nearest, maximumDistance)) {
       nearest = { curve, projection }
@@ -820,7 +886,14 @@ function nearestPointOnEllipseCandidate(
     ? {
         kind: "point-on-curve" as const,
         point: nearest.projection.point,
-        relations: [{ type: "point-on-ellipse" as const, ellipseId: nearest.curve.id }],
+        relations: [
+          nearest.curve.type === "ellipse"
+            ? { type: "point-on-ellipse" as const, ellipseId: nearest.curve.id }
+            : {
+                type: "point-on-elliptical-arc" as const,
+                ellipticalArcId: nearest.curve.id,
+              },
+        ],
         stableKey: nearest.curve.id,
       }
     : undefined
@@ -834,14 +907,14 @@ const cardinalDirections = [
 ] as const
 
 function curveRadius(curve: SketchInferenceCurve) {
-  if (curve.type === "ellipse") return 0
+  if (curve.type === "ellipse" || curve.type === "elliptical-arc") return 0
   return curve.type === "circle"
     ? curve.radius
     : Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
 }
 
 function curveContainsAngle(curve: SketchInferenceCurve, angle: number) {
-  if (curve.type === "ellipse") return false
+  if (curve.type === "ellipse" || curve.type === "elliptical-arc") return false
   if (curve.type === "circle") return true
   const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
   const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)

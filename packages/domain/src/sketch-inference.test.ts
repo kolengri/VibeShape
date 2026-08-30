@@ -795,6 +795,53 @@ describe("sketch inference", () => {
     ).toEqual([{ type: "point-on-ellipse", ellipseId: firstPointId }])
   })
 
+  it("keeps elliptical-arc inference on the authored positive sweep", () => {
+    const pointAt = (parameter: number) => ({
+      x: Math.cos(parameter) * 10,
+      y: Math.sin(parameter) * 5,
+    })
+    const makeArc = (start: number, end: number) => ({
+      id: arcId,
+      centerPointId: firstPointId,
+      type: "elliptical-arc" as const,
+      center: { x: 0, y: 0 },
+      primaryAxisPoint: { x: 10, y: 0 },
+      secondaryAxisPoint: { x: 0, y: 5 },
+      start: pointAt(start),
+      end: pointAt(end),
+    })
+    const inferAt = (arc: ReturnType<typeof makeArc>, parameter: number) => {
+      const point = pointAt(parameter)
+      return inferSketchPoint({
+        curves: [arc],
+        point: { x: point.x + 0.05, y: point.y + 0.05 },
+        points: [],
+        tolerance: 0.2,
+      })
+    }
+
+    expect(inferAt(makeArc(0, Math.PI / 2), Math.PI / 4).relations).toEqual([
+      { type: "point-on-elliptical-arc", ellipticalArcId: arcId },
+    ])
+    expect(inferAt(makeArc(0, Math.PI / 2), (Math.PI * 5) / 4).kind).toBe("none")
+    expect(inferAt(makeArc(0, -Math.PI / 2), (Math.PI * 5) / 4).relations).toEqual([
+      { type: "point-on-elliptical-arc", ellipticalArcId: arcId },
+    ])
+    expect(inferAt(makeArc((Math.PI * 3) / 2, Math.PI / 4), Math.PI / 12).relations).toEqual([
+      { type: "point-on-elliptical-arc", ellipticalArcId: arcId },
+    ])
+    const nearEndpoint = inferSketchPoint({
+      curves: [makeArc(0, Math.PI / 2)],
+      point: { x: 10.05, y: -0.05 },
+      points: [],
+      tolerance: 0.2,
+    })
+    expect(nearEndpoint.point).toEqual(pointAt(0))
+    expect(nearEndpoint.relations).toEqual([
+      { type: "point-on-elliptical-arc", ellipticalArcId: arcId },
+    ])
+  })
+
   it("selects a stable ellipse perimeter from dense coincident curves without sorting", () => {
     const curves = Array.from({ length: 2_500 }, (_, index) => {
       const suffix = (index + 100).toString(16).padStart(12, "0")
