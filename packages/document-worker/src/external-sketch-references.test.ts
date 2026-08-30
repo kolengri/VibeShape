@@ -82,6 +82,90 @@ function solved(input: Parameters<SketchSolvePort>[0]): SolveSketchRecordResult 
 }
 
 describe("external sketch reference resolution", () => {
+  it("recomputes a stable Pierce point from the current solved source line", async () => {
+    const source = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4650"),
+      label: "Crossing line",
+      plane: "xz",
+      entities: [
+        { schemaVersion: 0, id: id("4651"), type: "point", construction: false, x: 2, y: -5 },
+        { schemaVersion: 0, id: id("4652"), type: "point", construction: false, x: 6, y: 5 },
+        {
+          schemaVersion: 0,
+          id: id("4653"),
+          type: "line",
+          construction: false,
+          startPointId: id("4651"),
+          endPointId: id("4652"),
+        },
+      ],
+      constraints: [],
+    })
+    const projectedPointId = sketchEntityIdSchema.parse(id("4654"))
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(9, 0),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4655"),
+          kind: "pierce-point",
+          sourceSketchId: source.id,
+          sourceLineId: id("4653"),
+          projectedPointId,
+        },
+      ],
+    })
+    const createDocument = (nextSource: SketchRecord) =>
+      documentSnapshotSchema.parse({
+        schemaVersion: 0,
+        id: id("4656"),
+        revision: 1,
+        name: "Pierce point",
+        displayUnits: { length: "mm", angle: "deg" },
+        variables: [],
+        sketches: [nextSource, target],
+        features: [],
+        createdAt: "2026-08-30T00:00:00.000Z",
+        updatedAt: "2026-08-30T00:00:00.000Z",
+      })
+    const initial = await resolveExternalSketchGeometry(
+      createDocument(source),
+      target,
+      vi.fn(solved),
+    )
+    const editedSource = sketchRecordSchema.parse({
+      ...source,
+      entities: source.entities.map((entity) => {
+        if (entity.type !== "point") return entity
+        return entity.id === id("4651") ? { ...entity, x: 4 } : { ...entity, x: 8 }
+      }),
+    })
+    const updated = await resolveExternalSketchGeometry(
+      createDocument(editedSource),
+      target,
+      vi.fn(solved),
+    )
+
+    expect(initial.externalPoints).toEqual([
+      expect.objectContaining({ id: projectedPointId, x: 4, y: 0 }),
+    ])
+    expect(updated.externalPoints).toEqual([
+      expect.objectContaining({ id: projectedPointId, x: 6, y: 0 }),
+    ])
+    const failedSolve = vi.fn<SketchSolvePort>(() => ({
+      ok: false,
+      diagnostic: {
+        code: "invalid-dimension",
+        message: "The source sketch cannot be solved.",
+        path: "constraints.0",
+      },
+    }))
+    await expect(
+      resolveExternalSketchGeometry(createDocument(source), target, failedSolve),
+    ).rejects.toThrow(`External Pierce source sketch ${source.id} could not be solved.`)
+  })
+
   it("materializes an exact planar-face section through the current worker-local face key", async () => {
     const featureId = id("4640")
     const contentHash = "a".repeat(64)

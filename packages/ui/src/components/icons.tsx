@@ -152,3 +152,22 @@ export function IntersectionIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export function PierceIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      {...props}
+    >
+      <path d="m3 12 9-4 9 4-9 4-9-4Z" />
+      <path d="M12 2v20" />
+      <circle cx="12" cy="12" r="2.25" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}

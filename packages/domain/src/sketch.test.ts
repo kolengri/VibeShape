@@ -565,6 +565,40 @@ describe("sketchRecordSchema", () => {
     expect(parsed.success).toBe(true)
   })
 
+  test("accepts an associative Pierce point as a coincident constraint target", () => {
+    const projectedPointId = "018f0000-0000-7000-8000-000000000317"
+    const reference = {
+      schemaVersion: 0,
+      id: "018f0000-0000-7000-8000-000000000318",
+      kind: "pierce-point",
+      sourceSketchId: "018f0000-0000-7000-8000-000000000319",
+      sourceLineId: "018f0000-0000-7000-8000-000000000320",
+      projectedPointId,
+    } as const
+    const parsed = sketchRecordSchema.safeParse({
+      ...validSketch(),
+      externalReferences: [reference],
+      constraints: [
+        ...validSketch().constraints,
+        {
+          schemaVersion: 0,
+          id: constraintId(206),
+          type: "coincident",
+          firstPointId: pointA,
+          secondPointId: projectedPointId,
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...validSketch(),
+        externalReferences: [{ ...reference, sourceLineId: undefined }],
+      }).success,
+    ).toBe(false)
+  })
+
   test("accepts point alignment constraints and rejects self or non-point references", () => {
     const fixture = validSketch()
     const valid = sketchRecordSchema.safeParse({

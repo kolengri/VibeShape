@@ -176,6 +176,7 @@ function useSketchEditorCopy() {
     planeYz: t("planeYz"),
     pointOnCurve: t("pointOnCurve"),
     pointOnLine: t("pointOnLine"),
+    pierceReference: (source: string) => t("pierceReference", { source }),
     profile: (number: number) => t("profile", { number }),
     profiles: t("profiles"),
     primaryAxisDiameter: t("primaryAxisDiameter"),

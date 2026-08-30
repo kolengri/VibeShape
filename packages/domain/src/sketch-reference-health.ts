@@ -38,12 +38,14 @@ type SourceGeometryIndex = Readonly<{
 function referenceSourceEntityId(reference: SketchBackedExternalReference) {
   if (reference.kind === "line") return reference.sourceLineId
   if (reference.kind === "curve") return reference.sourceEntityId
+  if (reference.kind === "pierce-point") return reference.sourceLineId
   return reference.sourcePointId
 }
 
 function referenceExpectedType(reference: SketchBackedExternalReference): SketchEntity["type"] {
   if (reference.kind === "line") return "line"
   if (reference.kind === "curve") return reference.sourceType
+  if (reference.kind === "pierce-point") return "line"
   return "point"
 }
 

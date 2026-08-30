@@ -1,4 +1,5 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import { intersectBoundedLineWithSupportPlane } from "@vibeshape/application/pierce-point"
 import {
   projectSketchCurveBetweenFrames,
   projectWorldCircularEdgeToSupport,
@@ -9,6 +10,7 @@ import {
   projectWorldPointToSupport,
   type SupportFrame,
   sketchFrame,
+  supportPointToWorld,
 } from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
@@ -21,6 +23,7 @@ import type {
   SketchExternalModelLineReference,
   SketchExternalModelPointReference,
   SketchExternalModelReference,
+  SketchExternalPiercePointReference,
   SketchExternalPointReference,
   SketchPoint2,
   SketchRecord,
@@ -90,6 +93,17 @@ function sourcePointResult(
   return externalPointResult(externalGeometry, sourcePointId)
 }
 
+function solvedSourcePointResult(
+  result: Extract<SolveSketchRecordResult, { ok: true }>,
+  sourcePointId: string,
+  externalGeometry?: ResolvedExternalSketchGeometry,
+) {
+  const solved = result.solution.points.find((point) => point.entityId === sourcePointId)
+  return solved
+    ? { x: solved.x, y: solved.y }
+    : externalPointResult(externalGeometry, sourcePointId)
+}
+
 function resolveExternalPoint(
   reference: SketchExternalPointReference,
   source: SketchRecord,
@@ -157,6 +171,42 @@ function resolveExternalLine(
       startPointId: reference.projectedStartPointId,
       endPointId: reference.projectedEndPointId,
     },
+  }
+}
+
+function resolveExternalPiercePoint(
+  reference: SketchExternalPiercePointReference,
+  source: SketchRecord,
+  result: SolveSketchRecordResult,
+  sourceFrame: SupportFrame,
+  targetFrame: SupportFrame,
+  externalGeometry?: ResolvedExternalSketchGeometry,
+): NonNullable<SketchCompilationInput["externalPoints"]>[number] {
+  if (!result.ok) throw new Error(`External Pierce source sketch ${source.id} could not be solved.`)
+  const sourceLine =
+    source.entities.find(({ id }) => id === reference.sourceLineId) ??
+    externalGeometry?.externalLines?.find(({ line }) => line.id === reference.sourceLineId)?.line
+  if (sourceLine?.type !== "line")
+    throw new Error(`External source line ${reference.sourceLineId} is unavailable.`)
+  const start = solvedSourcePointResult(result, sourceLine.startPointId, externalGeometry)
+  const end = solvedSourcePointResult(result, sourceLine.endPointId, externalGeometry)
+  if (!start || !end)
+    throw new Error(`External source line ${reference.sourceLineId} has unavailable endpoints.`)
+  const point = intersectBoundedLineWithSupportPlane(
+    supportPointToWorld(sourceFrame, start),
+    supportPointToWorld(sourceFrame, end),
+    targetFrame,
+  )
+  if (!point)
+    throw new Error(
+      `External source line ${reference.sourceLineId} does not pierce the target support.`,
+    )
+  return {
+    schemaVersion: 0,
+    id: reference.projectedPointId,
+    type: "point",
+    construction: true,
+    ...point,
   }
 }
 
@@ -695,6 +745,19 @@ async function resolveExternalReference(
     return {
       kind: "line",
       value: resolveExternalLine(
+        reference,
+        source,
+        result,
+        sourceFrame,
+        targetFrame,
+        resolvedSourceGeometry,
+      ),
+    }
+  }
+  if (reference.kind === "pierce-point") {
+    return {
+      kind: "point",
+      value: resolveExternalPiercePoint(
         reference,
         source,
         result,

@@ -493,6 +493,17 @@ const externalLineReferenceWireSchema = z
   .strict()
   .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
 
+const externalPiercePointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("pierce-point"),
+    sourceSketchId: sketchWireIdSchema,
+    sourceLineId: sketchEntityIdSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
 const externalCurveTypeWireSchema = z.enum(["circle", "arc", "ellipse", "elliptical-arc"])
 const projectedCurvePointCount = {
   arc: 3,
@@ -716,6 +727,7 @@ const orphanedExternalModelIntersectionReferenceWireSchema = z
 const externalReferenceWireSchema = z.union([
   externalPointReferenceWireSchema,
   externalLineReferenceWireSchema,
+  externalPiercePointReferenceWireSchema,
   externalCurveReferenceWireSchema,
   externalModelPointReferenceWireSchema,
   externalModelLineReferenceWireSchema,

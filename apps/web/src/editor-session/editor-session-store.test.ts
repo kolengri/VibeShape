@@ -490,6 +490,25 @@ describe("editor session store", () => {
     })
   })
 
+  it("opens the graphical 3D line picker for Pierce and disarms it on return to normal", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.setSketchEditorTool("pierce")
+
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchTool: { kind: "edit-sketch", sketchId },
+      cameraMode: "orbit",
+      draft: sketch,
+      editorTool: "pierce",
+      showFinalContext: false,
+    })
+
+    store.getState().actions.setSketchCameraMode("normal")
+    expect(store.getState().sketch).toMatchObject({ cameraMode: "normal", editorTool: "select" })
+  })
+
   it("shows final context only while editing a committed sketch and resets it between sessions", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch("Initial")
