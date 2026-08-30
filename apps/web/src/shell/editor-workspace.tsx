@@ -1,5 +1,9 @@
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
-import { type SupportFrame, sketchFrame } from "@vibeshape/application/support-frame"
+import {
+  type SupportFrame,
+  type SupportFrameGeometryRecord,
+  sketchFrame,
+} from "@vibeshape/application/support-frame"
 import type {
   DocumentSnapshot,
   FeatureId,
@@ -49,10 +53,10 @@ import {
   repairExternalModelGeometryCandidates,
 } from "../features/sketch/external-model-geometry"
 import {
-  applyExternalSketchPierceCandidate,
   applyExternalSketchCandidateSelection,
-  availableExternalSketchPierceCandidates,
+  applyExternalSketchPierceCandidate,
   availableExternalSketchGeometryCandidates,
+  availableExternalSketchPierceCandidates,
   type ExternalSketchContextGeometry,
   type ExternalSketchGeometryCandidate,
   type ExternalSketchPierceCandidate,
@@ -355,8 +359,11 @@ function resolvedWorkspaceSketchFrame(
   snapshot: DocumentSnapshot | undefined,
   draft: SketchRecord | null,
   supportFeatures: readonly FeatureRecord[],
+  geometry: readonly SupportFrameGeometryRecord[],
 ) {
-  return snapshot && draft ? sketchFrame(draft, snapshot, supportFeatures) : null
+  return snapshot && draft
+    ? sketchFrame(draft, snapshot, supportFeatures, new Set(), geometry)
+    : null
 }
 
 function resolvedWorkspaceFeatures(snapshot: DocumentSnapshot | undefined) {
@@ -407,6 +414,7 @@ function useWorkspaceExternalGeometry(
   hiddenSketchIds: readonly SketchId[],
   supportFeatures: readonly FeatureRecord[],
   solutions: ReadonlyMap<SketchId, SolvedSketchWire>,
+  geometry: readonly SupportFrameGeometryRecord[],
 ) {
   const t = useTranslations("app.shell.viewport")
   return useMemo(() => {
@@ -427,8 +435,9 @@ function useWorkspaceExternalGeometry(
       },
       supportFeatures,
       solutions,
+      geometry,
     ).filter(({ sourceSketchId }) => !hidden.has(sourceSketchId))
-  }, [draft, hiddenSketchIds, snapshot, solutions, supportFeatures, t])
+  }, [draft, geometry, hiddenSketchIds, snapshot, solutions, supportFeatures, t])
 }
 
 function useWorkspacePierceCandidates(
@@ -437,6 +446,7 @@ function useWorkspacePierceCandidates(
   hiddenSketchIds: readonly SketchId[],
   supportFeatures: readonly FeatureRecord[],
   solutions: ReadonlyMap<SketchId, SolvedSketchWire>,
+  geometry: readonly SupportFrameGeometryRecord[],
 ) {
   const t = useTranslations("app.shell.viewport")
   return useMemo(() => {
@@ -457,8 +467,9 @@ function useWorkspacePierceCandidates(
       },
       supportFeatures,
       solutions,
+      geometry,
     ).filter(({ sourceSketchId }) => !hidden.has(sourceSketchId))
-  }, [draft, hiddenSketchIds, snapshot, solutions, supportFeatures, t])
+  }, [draft, geometry, hiddenSketchIds, snapshot, solutions, supportFeatures, t])
 }
 
 function usableExternalGeometryCandidates(
@@ -893,19 +904,21 @@ function useAvailableWorkspaceModelCandidates(
 function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
   const snapshot = props.controller.report?.snapshot
   const supportFeatures = useMemo(() => resolvedWorkspaceFeatures(snapshot), [snapshot])
+  const geometry = committedGeometry(props.controller)
   const externalSketchSolutions = useExternalSketchSolutions(
     snapshot,
     props.sketch.draft?.id,
     props.model.hiddenSketchIds,
   )
   const frame = useMemo(
-    () => resolvedWorkspaceSketchFrame(snapshot, props.sketch.draft, supportFeatures),
+    () => resolvedWorkspaceSketchFrame(snapshot, props.sketch.draft, supportFeatures, geometry),
     [
       props.sketch.draft?.id,
       props.sketch.draft?.plane,
       props.sketch.draft?.support,
       snapshot,
       supportFeatures,
+      geometry,
     ],
   )
   const sketchActive = props.workspace === "sketch"
@@ -926,6 +939,7 @@ function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
     props.model.hiddenSketchIds,
     supportFeatures,
     externalSketchSolutions,
+    geometry,
   )
   const externalPointCandidates = useMemo(
     () => usableExternalGeometryCandidates(externalContextGeometry),
@@ -937,6 +951,7 @@ function useWorkspaceSketchGeometry(props: WorkspaceContentProps) {
     props.model.hiddenSketchIds,
     supportFeatures,
     externalSketchSolutions,
+    geometry,
   )
   return {
     displayVisibility,

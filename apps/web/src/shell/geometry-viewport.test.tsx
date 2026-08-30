@@ -823,7 +823,8 @@ describe("GeometryViewport", () => {
   it("labels and disambiguates overlapping model faces for sketch support", async () => {
     const boxSelection = { featureId: boxId, faceId: 3, faceOrdinal: 99 }
     const extrusionSelection = { featureId: booleanId, faceId: 7, faceOrdinal: 88 }
-    const unsupportedSelection = { featureId: booleanId, faceId: 9, faceOrdinal: 77 }
+    const extrusionSideSelection = { featureId: booleanId, faceId: 9, faceOrdinal: 77 }
+    const unsupportedSelection = { featureId: booleanId, faceId: 11, faceOrdinal: 66 }
     const { createViewport, onSelectionChange, port } = renderViewport(
       readyController(
         [
@@ -847,6 +848,7 @@ describe("GeometryViewport", () => {
               topologyCandidates: [
                 planarFaceCandidate("extrusion-cap", 7, "extrusion.cap.end", [0, 0, 10]),
                 planarFaceCandidate("extrusion-wall", 9, "extrusion.side.1", [10, 0, 5]),
+                planarFaceCandidate("unknown-wall", 11, "generated.face", [-10, 0, 5]),
               ],
             },
           },
@@ -860,6 +862,7 @@ describe("GeometryViewport", () => {
     const options = createViewport.mock.calls[0]?.[1]
     expect(options?.isSelectionCandidateEligible?.(boxSelection)).toBe(true)
     expect(options?.isSelectionCandidateEligible?.(extrusionSelection)).toBe(true)
+    expect(options?.isSelectionCandidateEligible?.(extrusionSideSelection)).toBe(true)
     expect(options?.isSelectionCandidateEligible?.(unsupportedSelection)).toBe(false)
     act(() =>
       options?.onSelectionCandidateStackChange?.([

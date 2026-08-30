@@ -1,7 +1,7 @@
 # Associative Sketch and Feature Workflow Plan
 
 - Status: **Planned; support and point-reference foundations are partial**
-- Reviewed: **2026-08-21**
+- Reviewed: **2026-08-30**
 - Priority: **P0 modeling workflow**
 - Scope: same-document Part Studio-style sketch placement, external references, ordered history, and feature creation
 
@@ -72,7 +72,7 @@ Those pieces do not yet form a complete associative workflow.
 | --- | --- | --- | --- |
 | Sketch history | Sketches and features are stored and presented as separate collections. | One interleaved History sequence with a validated cursor and separate body results. | P0 |
 | Evaluation dependencies | The feature DAG does not treat sketches as graph nodes. | One document dependency graph spanning sketch and feature nodes while retaining the feature DAG evaluator. | P0 |
-| Sketch support | Origin planes, Datum Plane, and a bounded set of planar feature faces work. | A typed support-frame union with stable origin/orientation and an explicit reference-coordinate-system option. | P0 |
+| Sketch support | Origin planes, Datum Plane, every planar Box face, Cylinder caps, Extrusion caps, and line-generated planar Extrusion sides work. Side supports resolve their persisted source-entity role against current evaluated geometry and fail closed when missing or ambiguous. | Add an explicit reference-coordinate-system option and broaden stable planar support only where durable topology identity exists. | P0 |
 | Support selection | Supported origin planes, Datum Planes, and planar model faces can be picked before editing or replaced graphically from an open sketch while preserving authored identities and History ordering. | Add guided diagnostics for an existing support that becomes missing or ambiguous. | P0 |
 | Editing context | The normal-to-plane canvas keeps earlier visible solved sketch points, lines, circles, arcs, ellipses, and elliptical arcs as muted context; Select provides source hover, keyboard focus, direct stable-reference activation, and bounded overlap choice. Grave accent and Shift+grave accent cycle analytical overlap candidates with matching preselection before Enter accepts one source. The mounted 3D scene retains earlier model and datum geometry. Model-tree visibility controls both representations. | Add source filters and broader selection filters without hiding eligible context. | P0 |
 | External references | Points, lines, circles, arcs, ellipses, and elliptical arcs from earlier sketches project analytically across non-degenerate support frames, and ordered sketch-to-sketch chains resolve recursively through the document graph. Stable model vertex, linear-edge, circle-edge, arc-edge, ellipse-edge, elliptical-arc-edge, and planar-face Intersection records resolve through exact rebuild-local geometry without persisting transient topology IDs. | Add spline and other non-analytical feature edges, general surface intersections, and repair diagnostics. | P0 |
@@ -517,8 +517,8 @@ eligible without leaving the viewport.
 - Stable semantic roles remain authoritative through supported primitive and extrusion changes.
 - Unsupported, type-changing, degenerate, or ambiguous topology fails closed without creating a draft reference.
 
-**Exit:** a sketch on an extrusion cap can Use its boundary edges and remain associated after upstream
-dimension changes.
+**Exit:** a sketch on an extrusion cap or line-generated planar side can Use existing geometry and remain
+associated after upstream dimension changes.
 
 ### Slice 4 — Intersection and external inference
 

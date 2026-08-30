@@ -14,6 +14,7 @@ import {
   projectSketchPointBetweenFrames,
   projectWorldPointToSupport,
   type SupportFrame,
+  type SupportFrameGeometryRecord,
   sketchFrame,
   supportPointToWorld,
 } from "./support-frame"
@@ -304,5 +305,91 @@ describe("support-frame resolution", () => {
     })
     const cyclicDocument = documentWith([], [])
     expect(sketchFrame(cyclicSketch, cyclicDocument, [datumA, datumB])).toBeNull()
+  })
+
+  it("resolves extrusion side supports from current planar geometry and follows movement", () => {
+    const feature = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: extrusionId,
+      type: extrusionFeatureType.type,
+      parameters: {
+        profile: {
+          schemaVersion: 0,
+          sketchId: sourceSketchId,
+          outerBoundaryEntityIds: [profileEntityId],
+          holeBoundaryEntityIds: [],
+        },
+        distance: createLengthQuantity(10),
+        symmetric: false,
+        operation: "new",
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+    const role = `extrusion.side.${profileEntityId}`
+    const supported = sketch({ kind: "feature-face", reference: faceReference(extrusionId, role) })
+    const document = documentWith([supported], [feature])
+    const current = (centroid: [number, number, number], direction: [number, number, number]) =>
+      ({
+        featureId: extrusionId,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "face-current",
+              kind: "face",
+              semanticRole: role,
+              lineageTokens: [],
+              signature: {
+                kind: "face",
+                geometryClass: "PLANE",
+                measure: 12,
+                centroid,
+                bounds: { min: centroid, max: centroid },
+                direction,
+                directionMode: "oriented",
+                boundaryCount: 4,
+                adjacentGeometryClasses: [],
+              },
+            },
+          ],
+        },
+      }) satisfies SupportFrameGeometryRecord
+
+    const frame = sketchFrame(supported, document, [feature], new Set(), [
+      current([3, 4, 5], [0, 1, 0]),
+    ])
+    expect(frame).toMatchObject({
+      origin: [0, 4, 0],
+      normal: [0, 1, 0],
+    })
+    expect(frame).not.toBeNull()
+    if (frame) {
+      const cross = [
+        frame.xAxis[1] * frame.yAxis[2] - frame.xAxis[2] * frame.yAxis[1],
+        frame.xAxis[2] * frame.yAxis[0] - frame.xAxis[0] * frame.yAxis[2],
+        frame.xAxis[0] * frame.yAxis[1] - frame.xAxis[1] * frame.yAxis[0],
+      ]
+      for (let axis = 0; axis < 3; axis += 1) {
+        expect(cross[axis]).toBeCloseTo(frame.normal[axis] as number)
+      }
+    }
+    expect(
+      sketchFrame(supported, document, [feature], new Set(), [current([8, 4, 5], [0, 1, 0])]),
+    ).toMatchObject({
+      origin: [0, 4, 0],
+    })
+    expect(
+      sketchFrame(supported, document, [feature], new Set(), [current([8, 7, 5], [0, 1, 0])]),
+    ).toMatchObject({
+      origin: [0, 7, 0],
+    })
+    const ambiguous = current([3, 4, 5], [0, 1, 0])
+    ;(ambiguous.geometry.topologyCandidates as unknown[]).push({
+      ...ambiguous.geometry.topologyCandidates[0],
+      candidateId: "face-other",
+    })
+    expect(sketchFrame(supported, document, [feature], new Set(), [ambiguous])).toBeNull()
+    expect(sketchFrame(supported, document, [feature], new Set(), [])).toBeNull()
   })
 })

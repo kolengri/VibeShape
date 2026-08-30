@@ -717,7 +717,7 @@ async function resolveExternalReference(
   }
   const source = document.sketches.find((candidate) => candidate.id === reference.sourceSketchId)
   if (!source) throw new Error(`External source sketch ${reference.sourceSketchId} is missing.`)
-  const sourceFrame = sketchFrame(source, document, features)
+  const sourceFrame = sketchFrame(source, document, features, new Set(), geometryLookup)
   if (!sourceFrame) throw new Error(`External source support ${source.id} is unavailable.`)
   // Resolve the source's own projections so a later sketch can target their stable IDs.
   const resolvedSourceGeometry = await sourceExternalGeometry(
@@ -903,7 +903,7 @@ export async function inspectExternalModelReferenceHealth(
 ) {
   const evidence: ModelReferenceEvidence[] = []
   for (const sketch of document.sketches) {
-    const targetFrame = sketchFrame(sketch, document, features)
+    const targetFrame = sketchFrame(sketch, document, features, new Set(), geometryLookup)
     for (const reference of sketch.externalReferences ?? []) {
       if (!isSketchExternalModelReference(reference)) continue
       const record = await inspectExternalModelReference(
@@ -935,7 +935,7 @@ export async function resolveExternalSketchGeometry(
   externalGeometryCache: ExternalSketchGeometryCache = new Map(),
   modelMaterializationCache: ExternalModelMaterializationCache = new Map(),
 ): Promise<ResolvedExternalSketchGeometry> {
-  const targetFrame = sketchFrame(sketch, document, features)
+  const targetFrame = sketchFrame(sketch, document, features, new Set(), geometryLookup)
   if (!targetFrame) throw new Error(`Sketch support ${sketch.id} is unavailable.`)
   const points: NonNullable<SketchCompilationInput["externalPoints"]> = []
   const lines: NonNullable<SketchCompilationInput["externalLines"]> = []

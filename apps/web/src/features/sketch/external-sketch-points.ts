@@ -5,6 +5,7 @@ import {
 } from "@vibeshape/application/sketch-curve-projection"
 import {
   projectSketchPointBetweenFrames,
+  type SupportFrameGeometryRecord,
   sketchFrame,
   supportPointToWorld,
 } from "@vibeshape/application/support-frame"
@@ -585,6 +586,7 @@ export function externalSketchGeometryCandidates(
   labels: ExternalSketchGeometryLabels,
   features: readonly FeatureRecord[] = document.features,
   solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
+  geometry: readonly SupportFrameGeometryRecord[] = [],
 ): readonly ExternalSketchGeometryCandidate[] {
   return externalSketchContextGeometry(
     document,
@@ -592,6 +594,7 @@ export function externalSketchGeometryCandidates(
     labels,
     features,
     solutionsBySketchId,
+    geometry,
   ).filter(
     (geometry): geometry is ExternalSketchGeometryCandidate =>
       geometry.kind !== "curve" || geometry.projectedType !== null,
@@ -605,11 +608,12 @@ export function externalSketchPierceCandidates(
   labels: ExternalSketchGeometryLabels,
   features: readonly FeatureRecord[] = document.features,
   solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
+  geometry: readonly SupportFrameGeometryRecord[] = [],
 ): readonly ExternalSketchPierceCandidate[] {
-  const targetFrame = sketchFrame(draft, document, features)
+  const targetFrame = sketchFrame(draft, document, features, new Set(), geometry)
   if (!targetFrame) return []
   return earlierSketchesForDraft(document, draft.id).flatMap((source) => {
-    const sourceFrame = sketchFrame(source, document, features)
+    const sourceFrame = sketchFrame(source, document, features, new Set(), geometry)
     const solution = solutionsBySketchId.get(source.id)
     if (!sourceFrame || !solution) return []
     const solvedPoints = new Map(solution.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
@@ -677,8 +681,9 @@ export function externalSketchContextGeometry(
   labels: ExternalSketchGeometryLabels,
   features: readonly FeatureRecord[] = document.features,
   solutionsBySketchId: ReadonlyMap<SketchRecord["id"], SolvedSketchWire> = new Map(),
+  geometry: readonly SupportFrameGeometryRecord[] = [],
 ): readonly ExternalSketchContextGeometry[] {
-  const targetFrame = sketchFrame(draft, document, features)
+  const targetFrame = sketchFrame(draft, document, features, new Set(), geometry)
   if (!targetFrame) return []
   const sources = earlierSketchesForDraft(document, draft.id)
   return sources.flatMap((source) =>
@@ -689,6 +694,7 @@ export function externalSketchContextGeometry(
       targetFrame,
       labels,
       solutionsBySketchId.get(source.id) ?? null,
+      geometry,
     ),
   )
 }
@@ -955,8 +961,9 @@ function externalGeometryFromSketch(
   targetFrame: NonNullable<ReturnType<typeof sketchFrame>>,
   labels: ExternalSketchGeometryLabels,
   solution: SolvedSketchWire | null,
+  geometry: readonly SupportFrameGeometryRecord[],
 ): readonly ExternalSketchContextGeometry[] {
-  const sourceFrame = sketchFrame(source, document, features)
+  const sourceFrame = sketchFrame(source, document, features, new Set(), geometry)
   if (!sourceFrame) return []
   const solvedPoints = new Map(solution?.points.map(({ entityId, x, y }) => [entityId, { x, y }]))
   const solvedRadii = new Map(solution?.circles.map(({ entityId, radius }) => [entityId, radius]))

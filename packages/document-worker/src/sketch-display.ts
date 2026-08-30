@@ -45,6 +45,7 @@ export async function createSketchDisplayRecords(
       sketch,
       result?.ok ? result.solution : null,
       features,
+      geometry,
     )
     if (record) records.push(record)
   }

@@ -37,6 +37,23 @@ describe("selectedSketchSupport", () => {
     })
   })
 
+  it("accepts a planar extrusion side with a stable source-entity role", () => {
+    expect(
+      selectedSketchSupport(featureId, 42, [
+        candidate({ semanticRole: "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f2603" }),
+      ]),
+    ).toMatchObject({
+      plane: "xy",
+      support: {
+        kind: "feature-face",
+        reference: {
+          featureId,
+          semanticRole: "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f2603",
+        },
+      },
+    })
+  })
+
   it("rejects curved, unmapped, and transient-only faces", () => {
     expect(
       selectedSketchSupport(featureId, 42, [
@@ -46,6 +63,17 @@ describe("selectedSketchSupport", () => {
     expect(selectedSketchSupport(featureId, 7, [candidate()])).toBeNull()
     expect(
       selectedSketchSupport(featureId, 42, [candidate({ semanticRole: undefined })]),
+    ).toBeNull()
+    expect(
+      selectedSketchSupport(featureId, 42, [candidate({ semanticRole: "extrusion.side." })]),
+    ).toBeNull()
+    expect(
+      selectedSketchSupport(featureId, 42, [
+        candidate({
+          semanticRole: "extrusion.side.source-line",
+          signature: { ...candidate().signature, geometryClass: "CYLINDRE" },
+        }),
+      ]),
     ).toBeNull()
   })
 })
