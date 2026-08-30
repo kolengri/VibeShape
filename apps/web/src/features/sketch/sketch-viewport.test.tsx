@@ -4938,6 +4938,49 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("adds an exact point-on-ellipse relation from a direct canvas selection", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const ellipseSketch = appendSketchEllipse(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b248"),
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryRadiusPoint: { x: 0, y: 5 },
+    }).sketch
+    const ellipse = requiredSketchEntity(ellipseSketch, "ellipse")
+    const point = {
+      schemaVersion: 0,
+      id: sketchEntityIdSchema.parse("0195b5ac-b249-7a2c-8c33-000000000001"),
+      type: "point",
+      x: 7,
+      y: 3,
+      construction: false,
+    } as const
+    const selectedSketch = { ...ellipseSketch, entities: [...ellipseSketch.entities, point] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: selectedSketch,
+      sketch: selectedSketch,
+      selectedEntityIds: [point.id, ellipse.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+
+    const action = screen.getByRole("button", { name: "Point on curve" })
+    expect(action).toBeTruthy()
+    fireEvent.click(action)
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.arrayContaining([
+          expect.objectContaining({
+            type: "point-on-ellipse",
+            pointId: point.id,
+            ellipseId: ellipse.id,
+          }),
+        ]),
+      }),
+    )
+  })
+
   it("collects compatible geometry through the first-class Dimension tool", () => {
     const selectedLine = requiredSketchEntity(sketch, "line")
     const onSelectionChange = vi.fn()
