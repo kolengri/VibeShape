@@ -168,13 +168,24 @@ export const sketchExternalModelCurveReferenceSchema = z
     id: sketchExternalReferenceIdSchema,
     kind: z.literal("model-curve"),
     reference: edgeTopoRefSchema,
-    sourceType: z.enum(["circle", "arc"]),
+    sourceType: sketchExternalCurveTypeSchema,
     projectedEntityId: sketchEntityIdSchema,
     projectedType: sketchExternalCurveTypeSchema,
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
   })
   .strict()
-  .superRefine(validateProjectedCurveIdentities)
+  .superRefine((reference, context) => {
+    validateProjectedCurveIdentities(reference, context)
+    const expectedGeometryClass =
+      reference.sourceType === "circle" || reference.sourceType === "arc" ? "CIRCLE" : "ELLIPSE"
+    if (reference.reference.signature.geometryClass !== expectedGeometryClass) {
+      context.addIssue({
+        code: "custom",
+        path: ["reference", "signature", "geometryClass"],
+        message: "Model curve source type must match topology geometry.",
+      })
+    }
+  })
 
 /** A read-only bounded line created by intersecting one stable planar model face with the sketch. */
 export const sketchExternalModelIntersectionReferenceSchema = z
@@ -233,14 +244,25 @@ const sketchExternalModelCurveOrphanSchema = z
     id: sketchExternalReferenceIdSchema,
     kind: z.literal("model-curve"),
     reference: edgeTopoRefSchema,
-    sourceType: z.enum(["circle", "arc"]),
+    sourceType: sketchExternalCurveTypeSchema,
     projectedEntityId: sketchEntityIdSchema,
     projectedType: sketchExternalCurveTypeSchema,
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
     orphanedSource: deletedFeatureSourceSchema,
   })
   .strict()
-  .superRefine(validateProjectedCurveIdentities)
+  .superRefine((reference, context) => {
+    validateProjectedCurveIdentities(reference, context)
+    const expectedGeometryClass =
+      reference.sourceType === "circle" || reference.sourceType === "arc" ? "CIRCLE" : "ELLIPSE"
+    if (reference.reference.signature.geometryClass !== expectedGeometryClass) {
+      context.addIssue({
+        code: "custom",
+        path: ["reference", "signature", "geometryClass"],
+        message: "Model curve source type must match topology geometry.",
+      })
+    }
+  })
   .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
     message: "An orphaned model reference must retain its source feature identity.",
   })

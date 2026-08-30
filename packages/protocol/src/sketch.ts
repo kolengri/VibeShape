@@ -523,13 +523,24 @@ const externalModelCurveReferenceWireSchema = z
     id: sketchExternalReferenceIdSchema,
     kind: z.literal("model-curve"),
     reference: edgeTopoRefWireSchema,
-    sourceType: z.enum(["circle", "arc"]),
+    sourceType: externalCurveTypeWireSchema,
     projectedEntityId: sketchEntityIdSchema,
     projectedType: externalCurveTypeWireSchema,
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
   })
   .strict()
-  .superRefine(validateProjectedCurveWireIdentities)
+  .superRefine((reference, context) => {
+    validateProjectedCurveWireIdentities(reference, context)
+    const expectedGeometryClass =
+      reference.sourceType === "circle" || reference.sourceType === "arc" ? "CIRCLE" : "ELLIPSE"
+    if (reference.reference.signature.geometryClass !== expectedGeometryClass) {
+      context.addIssue({
+        code: "custom",
+        path: ["reference", "signature", "geometryClass"],
+        message: "Model curve source type must match topology geometry.",
+      })
+    }
+  })
 
 const externalModelIntersectionReferenceWireSchema = z
   .object({
@@ -606,7 +617,7 @@ const orphanedExternalModelCurveReferenceWireSchema = z
     id: sketchExternalReferenceIdSchema,
     kind: z.literal("model-curve"),
     reference: edgeTopoRefWireSchema,
-    sourceType: z.enum(["circle", "arc"]),
+    sourceType: externalCurveTypeWireSchema,
     projectedEntityId: sketchEntityIdSchema,
     projectedType: externalCurveTypeWireSchema,
     projectedPointIds: z.array(sketchEntityIdSchema).min(1).max(5),
@@ -616,6 +627,15 @@ const orphanedExternalModelCurveReferenceWireSchema = z
   .superRefine((reference, context) => {
     validateProjectedCurveWireIdentities(reference, context)
     validateOrphanedModelReference(reference, context)
+    const expectedGeometryClass =
+      reference.sourceType === "circle" || reference.sourceType === "arc" ? "CIRCLE" : "ELLIPSE"
+    if (reference.reference.signature.geometryClass !== expectedGeometryClass) {
+      context.addIssue({
+        code: "custom",
+        path: ["reference", "signature", "geometryClass"],
+        message: "Model curve source type must match topology geometry.",
+      })
+    }
   })
 
 const orphanedExternalModelIntersectionReferenceWireSchema = z

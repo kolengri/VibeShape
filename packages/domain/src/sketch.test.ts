@@ -483,6 +483,55 @@ describe("sketchRecordSchema", () => {
     expect(parsed.success).toBe(true)
   })
 
+  test("accepts elliptical model curves and rejects topology-class drift", () => {
+    const reference = {
+      schemaVersion: 0,
+      id: "018f0000-0000-7000-8000-000000000411",
+      kind: "model-curve",
+      reference: {
+        schemaVersion: 0,
+        featureId: "018f0000-0000-7000-8000-000000000412",
+        kind: "edge",
+        semanticRole: "extrusion.side.ellipse",
+        signature: {
+          kind: "edge",
+          geometryClass: "ELLIPSE",
+          measure: 25.5,
+          centroid: [0, 0, 0],
+          bounds: { min: [-5, -3, 0], max: [5, 3, 0] },
+          boundaryCount: 0,
+          adjacentGeometryClasses: [],
+        },
+      },
+      sourceType: "ellipse",
+      projectedEntityId: "018f0000-0000-7000-8000-000000000413",
+      projectedType: "ellipse",
+      projectedPointIds: [
+        "018f0000-0000-7000-8000-000000000414",
+        "018f0000-0000-7000-8000-000000000415",
+        "018f0000-0000-7000-8000-000000000416",
+      ],
+    } as const
+
+    expect(
+      sketchRecordSchema.safeParse({ ...validSketch(), externalReferences: [reference] }).success,
+    ).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...validSketch(),
+        externalReferences: [
+          {
+            ...reference,
+            reference: {
+              ...reference.reference,
+              signature: { ...reference.reference.signature, geometryClass: "CIRCLE" },
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   test("accepts a read-only external curve as an associative constraint target", () => {
     const fixture = validSketch()
     const projectedCircleId = "018f0000-0000-7000-8000-000000000307"

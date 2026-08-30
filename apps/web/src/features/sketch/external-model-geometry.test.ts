@@ -28,8 +28,11 @@ const hiddenFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005
 const sketchId = "0195b5ac-b220-7a2c-8c33-000000005003"
 const selectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000005004")
 const labels = {
-  curve: (feature: string, kind: "arc" | "circle", ordinal: number) =>
-    `${feature} · ${kind} ${ordinal}`,
+  curve: (
+    feature: string,
+    kind: "arc" | "circle" | "ellipse" | "elliptical-arc",
+    ordinal: number,
+  ) => `${feature} · ${kind} ${ordinal}`,
   face: (feature: string, ordinal: number) => `${feature} · Face ${ordinal}`,
   line: (feature: string, ordinal: number) => `${feature} · Edge ${ordinal}`,
   point: (feature: string, ordinal: number) => `${feature} · Vertex ${ordinal}`,
@@ -128,6 +131,47 @@ function arcCandidate(candidateId: string): TopologyCandidate {
       start: [5, 0, 0],
       middle: [0, 5, 0],
       end: [-5, 0, 0],
+    },
+  }
+}
+
+function ellipseCandidate(candidateId: string): TopologyCandidate {
+  return {
+    candidateId,
+    kind: "edge",
+    semanticRole: `edge:${candidateId}`,
+    lineageTokens: [],
+    signature: signature("edge", "ELLIPSE", [0, 0, 0]),
+    referenceGeometry: {
+      kind: "ellipse-edge",
+      center: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      majorRadius: 10,
+      minorRadius: 5,
+    },
+  }
+}
+
+function ellipticalArcCandidate(candidateId: string): TopologyCandidate {
+  return {
+    candidateId,
+    kind: "edge",
+    semanticRole: `edge:${candidateId}`,
+    lineageTokens: [],
+    signature: signature("edge", "ELLIPSE", [0, 2.5, 0]),
+    referenceGeometry: {
+      kind: "elliptical-arc-edge",
+      center: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      majorRadius: 10,
+      minorRadius: 5,
+      start: [10, 0, 0],
+      middle: [0, 5, 0],
+      end: [-10, 0, 0],
     },
   }
 }
@@ -344,6 +388,42 @@ describe("external model geometry candidates", () => {
       }),
     )
     expect(candidates[0]?.kind === "model-curve" ? candidates[0].points : []).toHaveLength(65)
+  })
+
+  it("offers exact projected candidates for full and bounded elliptical model edges", () => {
+    const candidates = externalModelGeometryCandidates(
+      [
+        geometryRecord(featureId, [
+          ellipseCandidate("ellipse-1"),
+          ellipticalArcCandidate("elliptical-arc-1"),
+        ]),
+      ],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        candidateId: "ellipse-1",
+        kind: "model-curve",
+        label: "Mount · ellipse 1",
+        projectedType: "ellipse",
+        sourceType: "ellipse",
+      }),
+      expect.objectContaining({
+        candidateId: "elliptical-arc-1",
+        kind: "model-curve",
+        label: "Mount · elliptical-arc 2",
+        projectedType: "elliptical-arc",
+        sourceType: "elliptical-arc",
+      }),
+    ])
+    expect(
+      candidates.map((candidate) => candidate.kind === "model-curve" && candidate.points.length),
+    ).toEqual([65, 49])
   })
 
   it("does not duplicate a circular edge after its transient candidate identity changes", () => {
@@ -884,12 +964,51 @@ describe("apply external model candidate", () => {
     expect(JSON.stringify(reference)).not.toContain("referenceGeometry")
   })
 
+  it("persists stable role-ordered identities for model ellipse curve kinds", () => {
+    const candidates = externalModelGeometryCandidates(
+      [
+        geometryRecord(featureId, [
+          ellipseCandidate("ellipse-1"),
+          ellipticalArcCandidate("elliptical-arc-1"),
+        ]),
+      ],
+      features as never,
+      [featureId],
+      draft(),
+      targetFrame,
+      labels,
+    )
+
+    const references = candidates.map((candidate) => {
+      const result = sketchRecordSchema.parse(applyExternalModelCandidate(draft(), candidate, []))
+      return result.externalReferences?.[0]
+    })
+    expect(references[0]).toMatchObject({
+      kind: "model-curve",
+      sourceType: "ellipse",
+      projectedType: "ellipse",
+    })
+    expect(references[1]).toMatchObject({
+      kind: "model-curve",
+      sourceType: "elliptical-arc",
+      projectedType: "elliptical-arc",
+    })
+    expect(
+      references[0]?.kind === "model-curve" ? references[0].projectedPointIds : [],
+    ).toHaveLength(3)
+    expect(
+      references[1]?.kind === "model-curve" ? references[1].projectedPointIds : [],
+    ).toHaveLength(5)
+  })
+
   it("marks exact coplanar model curves as passively eligible", () => {
     const candidates = externalModelGeometryCandidates(
       [
         geometryRecord(featureId, [
           circleCandidate("circle-coplanar"),
           arcCandidate("arc-coplanar"),
+          ellipseCandidate("ellipse-coplanar"),
+          ellipticalArcCandidate("elliptical-arc-coplanar"),
         ]),
       ],
       features as never,
@@ -913,6 +1032,24 @@ describe("apply external model candidate", () => {
       projectedGeometry: { type: "arc", points: expect.any(Array) },
       projectedType: "arc",
       sourceType: "arc",
+    })
+    expect(candidates.find(({ candidateId }) => candidateId === "ellipse-coplanar")).toMatchObject({
+      coplanar: true,
+      kind: "model-curve",
+      passiveEligible: true,
+      projectedGeometry: { type: "ellipse", points: expect.any(Array) },
+      projectedType: "ellipse",
+      sourceType: "ellipse",
+    })
+    expect(
+      candidates.find(({ candidateId }) => candidateId === "elliptical-arc-coplanar"),
+    ).toMatchObject({
+      coplanar: true,
+      kind: "model-curve",
+      passiveEligible: true,
+      projectedGeometry: { type: "elliptical-arc", points: expect.any(Array) },
+      projectedType: "elliptical-arc",
+      sourceType: "elliptical-arc",
     })
   })
 

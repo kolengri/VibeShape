@@ -2,6 +2,7 @@ import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebui
 import {
   projectSketchCurveBetweenFrames,
   projectWorldCircularEdgeToSupport,
+  projectWorldEllipticalEdgeToSupport,
 } from "@vibeshape/application/sketch-curve-projection"
 import {
   projectSketchPointBetweenFrames,
@@ -348,6 +349,28 @@ async function resolveExternalModelIntersection(
 }
 
 type ExternalCurveInput = NonNullable<SketchCompilationInput["externalCurves"]>[number]
+type ReferenceGeometry = NonNullable<ProtocolTopologyCandidate["referenceGeometry"]>
+type ModelCurveGeometry = Exclude<ReferenceGeometry, { kind: "line-edge" | "vertex" }>
+
+const MODEL_CURVE_SOURCE_EXPECTATION = {
+  circle: { geometryClass: "CIRCLE", geometryKind: "circle-edge" },
+  arc: { geometryClass: "CIRCLE", geometryKind: "arc-edge" },
+  ellipse: { geometryClass: "ELLIPSE", geometryKind: "ellipse-edge" },
+  "elliptical-arc": { geometryClass: "ELLIPSE", geometryKind: "elliptical-arc-edge" },
+} as const satisfies Record<
+  SketchExternalModelCurveReference["sourceType"],
+  Readonly<{ geometryClass: string; geometryKind: ModelCurveGeometry["kind"] }>
+>
+
+function modelCurveGeometry(geometry: ReferenceGeometry): ModelCurveGeometry | null {
+  return geometry.kind === "vertex" || geometry.kind === "line-edge" ? null : geometry
+}
+
+function projectWorldModelCurveToSupport(geometry: ModelCurveGeometry, targetFrame: SupportFrame) {
+  return geometry.kind === "circle-edge" || geometry.kind === "arc-edge"
+    ? projectWorldCircularEdgeToSupport(geometry, targetFrame)
+    : projectWorldEllipticalEdgeToSupport(geometry, targetFrame)
+}
 
 function requiredProjectedPoint(
   points: ExternalCurveInput["points"],
@@ -456,15 +479,20 @@ function resolveExternalModelCurve(
 ): ExternalCurveInput {
   const candidate = resolvedModelCandidate(reference, lookup)
   const geometry = candidate.referenceGeometry
+  if (candidate.kind !== "edge" || !geometry) {
+    throw new Error(`External model curve ${reference.id} has mismatched geometry.`)
+  }
+  const expected = MODEL_CURVE_SOURCE_EXPECTATION[reference.sourceType]
   if (
-    candidate.kind !== "edge" ||
-    candidate.signature.geometryClass !== "CIRCLE" ||
-    (geometry?.kind !== "circle-edge" && geometry?.kind !== "arc-edge") ||
-    (reference.sourceType === "circle") !== (geometry.kind === "circle-edge")
+    candidate.signature.geometryClass !== expected.geometryClass ||
+    geometry.kind !== expected.geometryKind
   ) {
     throw new Error(`External model curve ${reference.id} has mismatched geometry.`)
   }
-  const projection = projectWorldCircularEdgeToSupport(geometry, targetFrame)
+  const curveGeometry = modelCurveGeometry(geometry)
+  const projection = curveGeometry
+    ? projectWorldModelCurveToSupport(curveGeometry, targetFrame)
+    : null
   if (!projection) {
     throw new Error(`External model curve ${reference.id} has a degenerate projection.`)
   }

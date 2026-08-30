@@ -2665,7 +2665,11 @@ function replaceSketchBackedExternalReference(
 function modelReferenceGeometryClass(reference: SketchExternalModelReference) {
   if (reference.kind === "model-point") return "POINT"
   if (reference.kind === "model-line") return "LINE"
-  if (reference.kind === "model-curve") return "CIRCLE"
+  if (reference.kind === "model-curve") {
+    return reference.sourceType === "circle" || reference.sourceType === "arc"
+      ? "CIRCLE"
+      : "ELLIPSE"
+  }
   return "PLANE"
 }
 

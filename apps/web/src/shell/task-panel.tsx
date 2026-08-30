@@ -57,6 +57,7 @@ import {
 } from "../features/reference-geometry/datum-plane-form"
 import { RevolveForm, type RevolveFormMode } from "../features/revolve/revolve-form"
 import {
+  externalModelCurveLabelKind,
   externalModelReferenceLabels,
   resolvePlanarFaceSupportLabel,
 } from "../features/sketch/external-model-geometry"
@@ -457,7 +458,11 @@ function useAffectedFeatureReferences(
   const viewportT = useTranslations("app.shell.viewport")
   const referenceLabelCopy = {
     curve: (feature, kind, ordinal) =>
-      viewportT("externalModelCurveCandidate", { feature, kind, ordinal }),
+      viewportT("externalModelCurveCandidate", {
+        feature,
+        kind: externalModelCurveLabelKind(kind),
+        ordinal,
+      }),
     face: (feature, ordinal) => viewportT("externalModelFaceReference", { feature, ordinal }),
     line: (feature, ordinal) => viewportT("externalModelLineCandidate", { feature, ordinal }),
     point: (feature, ordinal) => viewportT("externalModelPointCandidate", { feature, ordinal }),
@@ -1454,7 +1459,11 @@ function ActiveSketchTaskPanel({
         draft.externalReferences,
         {
           curve: (feature, kind, ordinal) =>
-            viewportT("externalModelCurveCandidate", { feature, kind, ordinal }),
+            viewportT("externalModelCurveCandidate", {
+              feature,
+              kind: externalModelCurveLabelKind(kind),
+              ordinal,
+            }),
           face: (feature, ordinal) => viewportT("externalModelFaceReference", { feature, ordinal }),
           line: (feature, ordinal) => viewportT("externalModelLineCandidate", { feature, ordinal }),
           point: (feature, ordinal) =>

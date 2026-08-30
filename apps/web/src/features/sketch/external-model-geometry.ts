@@ -2,8 +2,11 @@ import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebui
 import {
   type ProjectedSketchCurve,
   projectWorldCircularEdgeToSupport,
+  projectWorldEllipticalEdgeToSupport,
   sampleWorldCircularEdge,
+  sampleWorldEllipticalEdge,
   type WorldCircularEdgeGeometry,
+  type WorldEllipticalEdgeGeometry,
 } from "@vibeshape/application/sketch-curve-projection"
 import { projectWorldPointToSupport, type SupportFrame } from "@vibeshape/application/support-frame"
 import type {
@@ -72,8 +75,10 @@ export type ExternalModelCurveCandidate = Readonly<{
   projectedGeometry?: ProjectedSketchCurve
   projectedType: "circle" | "arc" | "ellipse" | "elliptical-arc"
   reference: EdgeTopoRef
-  sourceType: "circle" | "arc"
+  sourceType: ExternalModelCurveSourceType
 }>
+
+export type ExternalModelCurveSourceType = "arc" | "circle" | "ellipse" | "elliptical-arc"
 
 export type ExternalModelGeometryCandidate =
   | ExternalModelPointCandidate
@@ -81,10 +86,14 @@ export type ExternalModelGeometryCandidate =
   | ExternalModelCurveCandidate
 
 export type ExternalModelGeometryLabels = Readonly<{
-  curve: (featureLabel: string, kind: "circle" | "arc", ordinal: number) => string
+  curve: (featureLabel: string, kind: ExternalModelCurveSourceType, ordinal: number) => string
   line: (featureLabel: string, ordinal: number) => string
   point: (featureLabel: string, ordinal: number) => string
 }>
+
+export function externalModelCurveLabelKind(kind: ExternalModelCurveSourceType) {
+  return kind === "elliptical-arc" ? "ellipticalArc" : kind
+}
 
 export type ExternalModelReferenceLabels = ExternalModelGeometryLabels &
   Readonly<{
@@ -121,15 +130,26 @@ function candidateKey(
 }
 
 type CandidateDisplayKind = "curve" | "face" | "line" | "point"
+type ProtocolReferenceGeometry = NonNullable<ProtocolTopologyCandidate["referenceGeometry"]>
+
+const EDGE_DISPLAY_BY_REFERENCE_KIND = {
+  vertex: null,
+  "line-edge": { displayKind: "line", geometryClass: "LINE" },
+  "circle-edge": { displayKind: "curve", geometryClass: "CIRCLE" },
+  "arc-edge": { displayKind: "curve", geometryClass: "CIRCLE" },
+  "ellipse-edge": { displayKind: "curve", geometryClass: "ELLIPSE" },
+  "elliptical-arc-edge": { displayKind: "curve", geometryClass: "ELLIPSE" },
+} as const satisfies Record<
+  ProtocolReferenceGeometry["kind"],
+  Readonly<{ displayKind: CandidateDisplayKind; geometryClass: string }> | null
+>
 
 function edgeDisplayKind(candidate: ProtocolTopologyCandidate): CandidateDisplayKind | null {
-  if (candidate.signature.geometryClass === "LINE") {
-    return candidate.referenceGeometry?.kind === "line-edge" ? "line" : null
-  }
-  if (candidate.signature.geometryClass !== "CIRCLE") return null
-  return candidate.referenceGeometry?.kind === "circle-edge" ||
-    candidate.referenceGeometry?.kind === "arc-edge"
-    ? "curve"
+  const geometry = candidate.referenceGeometry
+  if (candidate.kind !== "edge" || !geometry) return null
+  const display = EDGE_DISPLAY_BY_REFERENCE_KIND[geometry.kind]
+  return display && candidate.signature.geometryClass === display.geometryClass
+    ? display.displayKind
     : null
 }
 
@@ -355,7 +375,22 @@ function pointIsOnSupport(frame: SupportFrame, point: readonly [number, number, 
   )
 }
 
-function circularEdgeIsCoplanar(frame: SupportFrame, geometry: WorldCircularEdgeGeometry) {
+type WorldModelCurveGeometry = WorldCircularEdgeGeometry | WorldEllipticalEdgeGeometry
+
+function modelCurveGeometry(candidate: ProtocolTopologyCandidate): WorldModelCurveGeometry | null {
+  if (candidate.kind !== "edge") return null
+  const geometry = candidate.referenceGeometry
+  if (!geometry) return null
+  if (geometry.kind === "circle-edge" || geometry.kind === "arc-edge") {
+    return candidate.signature.geometryClass === "CIRCLE" ? geometry : null
+  }
+  if (geometry.kind === "ellipse-edge" || geometry.kind === "elliptical-arc-edge") {
+    return candidate.signature.geometryClass === "ELLIPSE" ? geometry : null
+  }
+  return null
+}
+
+function modelCurveIsCoplanar(frame: SupportFrame, geometry: WorldModelCurveGeometry) {
   const normalAlignment = Math.abs(
     geometry.normal[0] * frame.normal[0] +
       geometry.normal[1] * frame.normal[1] +
@@ -364,11 +399,17 @@ function circularEdgeIsCoplanar(frame: SupportFrame, geometry: WorldCircularEdge
   if (Math.abs(normalAlignment - 1) > 1e-6 || !pointIsOnSupport(frame, geometry.center)) {
     return false
   }
-  return geometry.kind === "circle-edge"
-    ? true
-    : [geometry.start, geometry.middle, geometry.end].every((point) =>
-        pointIsOnSupport(frame, point),
-      )
+  if (geometry.kind === "circle-edge" || geometry.kind === "ellipse-edge") return true
+  return [geometry.start, geometry.middle, geometry.end].every((point) =>
+    pointIsOnSupport(frame, point),
+  )
+}
+
+function modelCurveSourceType(geometry: WorldModelCurveGeometry): ExternalModelCurveSourceType {
+  if (geometry.kind === "circle-edge") return "circle"
+  if (geometry.kind === "arc-edge") return "arc"
+  if (geometry.kind === "ellipse-edge") return "ellipse"
+  return "elliptical-arc"
 }
 
 function createExternalModelCurveCandidate(
@@ -379,24 +420,24 @@ function createExternalModelCurveCandidate(
   ordinal: number,
   labels: ExternalModelGeometryLabels,
 ): ExternalModelCurveCandidate | null {
-  const geometry = candidate.referenceGeometry
-  if (
-    candidate.kind !== "edge" ||
-    candidate.signature.geometryClass !== "CIRCLE" ||
-    (geometry?.kind !== "circle-edge" && geometry?.kind !== "arc-edge")
-  ) {
-    return null
-  }
-  const projection = projectWorldCircularEdgeToSupport(geometry, targetFrame)
+  const geometry = modelCurveGeometry(candidate)
+  if (!geometry) return null
+  const circular = geometry.kind === "circle-edge" || geometry.kind === "arc-edge"
+  const projection = circular
+    ? projectWorldCircularEdgeToSupport(geometry, targetFrame)
+    : projectWorldEllipticalEdgeToSupport(geometry, targetFrame)
   if (!projection) return null
-  const sourceType = geometry.kind === "circle-edge" ? "circle" : "arc"
-  const points = sampleWorldCircularEdge(geometry).map((world) => ({
+  const sourceType = modelCurveSourceType(geometry)
+  const worldPoints = circular
+    ? sampleWorldCircularEdge(geometry)
+    : sampleWorldEllipticalEdge(geometry)
+  const points = worldPoints.map((world) => ({
     world,
     ...projectWorldPointToSupport(targetFrame, world),
   }))
   return {
     candidateId: candidate.candidateId,
-    coplanar: circularEdgeIsCoplanar(targetFrame, geometry),
+    coplanar: modelCurveIsCoplanar(targetFrame, geometry),
     featureId,
     kind: "model-curve",
     label: labels.curve(featureLabel, sourceType, ordinal),
@@ -479,11 +520,8 @@ function resolvedModelReferenceLabel(
   if (displayKind === "line") return labels.line(featureLabel, ordinal)
   if (displayKind === "face") return labels.face(featureLabel, ordinal)
   if (displayKind !== "curve") return null
-  return labels.curve(
-    featureLabel,
-    candidate.referenceGeometry?.kind === "arc-edge" ? "arc" : "circle",
-    ordinal,
-  )
+  const geometry = modelCurveGeometry(candidate)
+  return geometry ? labels.curve(featureLabel, modelCurveSourceType(geometry), ordinal) : null
 }
 
 export function externalModelReferenceLabels(

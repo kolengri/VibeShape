@@ -244,6 +244,43 @@ describe("document worker protocol", () => {
         externalReferences: [{ ...curveReference, projectedType: "arc" }],
       }).success,
     ).toBe(false)
+
+    const ellipseReference = {
+      ...curveReference,
+      reference: {
+        ...curveReference.reference,
+        semanticRole: "extrusion.side.ellipse",
+        signature: {
+          ...curveReference.reference.signature,
+          geometryClass: "ELLIPSE",
+        },
+      },
+      sourceType: "ellipse",
+      projectedType: "ellipse",
+      projectedPointIds: [
+        projectedCurvePointId,
+        "0195b5ac-b213-7f2c-9c33-67a36a7f219a",
+        "0195b5ac-b213-7f2c-9c33-67a36a7f219b",
+      ],
+    } as const
+
+    expect(
+      sketchWireRecordSchema.parse({ ...sketch(), externalReferences: [ellipseReference] }),
+    ).toMatchObject({ externalReferences: [ellipseReference] })
+    expect(
+      sketchWireRecordSchema.safeParse({
+        ...sketch(),
+        externalReferences: [
+          {
+            ...ellipseReference,
+            reference: {
+              ...ellipseReference.reference,
+              signature: { ...ellipseReference.reference.signature, geometryClass: "CIRCLE" },
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts only a well-formed orphaned model reference", () => {
@@ -304,7 +341,7 @@ describe("document worker protocol", () => {
     expect(
       documentWorkerRequestSchema.safeParse({
         ...envelope(),
-        protocolVersion: 13,
+        protocolVersion: 14,
         type: "rebuildDocument",
         document: document(),
         mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },

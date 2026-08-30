@@ -799,6 +799,245 @@ describe("external sketch reference resolution", () => {
     ])
   })
 
+  it("materializes an exact elliptical model edge as read-only curve geometry", async () => {
+    const featureId = id("4630")
+    const projectedEntityId = id("4631")
+    const projectedCenterId = id("4632")
+    const projectedPrimaryId = id("4633")
+    const projectedSecondaryId = id("4634")
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const signature = {
+      kind: "edge" as const,
+      geometryClass: "ELLIPSE",
+      measure: 25.5,
+      centroid: [2, 3, 0],
+      bounds: { min: [-3, 0, 0], max: [7, 6, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(8, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4635"),
+          kind: "model-curve",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "edge.elliptical",
+            signature,
+          },
+          sourceType: "ellipse",
+          projectedEntityId,
+          projectedType: "ellipse",
+          projectedPointIds: [projectedCenterId, projectedPrimaryId, projectedSecondaryId],
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4636"),
+      revision: 1,
+      name: "Elliptical model reference",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-30T00:00:00.000Z",
+      updatedAt: "2026-08-30T00:00:00.000Z",
+    })
+    const geometry = [
+      {
+        featureId,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "edge:rebuilt-ellipse",
+              kind: "edge",
+              semanticRole: "edge.elliptical",
+              lineageTokens: [],
+              signature,
+              referenceGeometry: {
+                kind: "ellipse-edge",
+                center: [2, 3, 0],
+                xAxis: [1, 0, 0],
+                yAxis: [0, 1, 0],
+                normal: [0, 0, 1],
+                majorRadius: 5,
+                minorRadius: 3,
+              },
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometry,
+    )
+
+    expect(result.externalCurves).toEqual([
+      {
+        points: [
+          expect.objectContaining({ id: projectedCenterId, x: 2, y: 3 }),
+          expect.objectContaining({ id: projectedPrimaryId, x: 7, y: 3 }),
+          expect.objectContaining({ id: projectedSecondaryId, x: 2, y: 6 }),
+        ],
+        curve: expect.objectContaining({
+          id: projectedEntityId,
+          type: "ellipse",
+          centerPointId: projectedCenterId,
+          primaryAxisPointId: projectedPrimaryId,
+          secondaryAxisPointId: projectedSecondaryId,
+          construction: true,
+        }),
+      },
+    ])
+  })
+
+  it("materializes a bounded elliptical model edge with stable endpoint identities", async () => {
+    const featureId = id("4640")
+    const projectedEntityId = id("4641")
+    const projectedPointIds = [id("4642"), id("4643"), id("4644"), id("4645"), id("4646")]
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const signature = {
+      kind: "edge" as const,
+      geometryClass: "ELLIPSE",
+      measure: 12.75,
+      centroid: [2, 4.5, 0],
+      bounds: { min: [-3, 3, 0], max: [7, 6, 0] },
+      boundaryCount: 0,
+      adjacentGeometryClasses: [],
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(8, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: id("4647"),
+          kind: "model-curve",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "edge.elliptical-arc",
+            signature,
+          },
+          sourceType: "elliptical-arc",
+          projectedEntityId,
+          projectedType: "elliptical-arc",
+          projectedPointIds,
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4648"),
+      revision: 1,
+      name: "Elliptical arc model reference",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-30T00:00:00.000Z",
+      updatedAt: "2026-08-30T00:00:00.000Z",
+    })
+    const geometry = [
+      {
+        featureId,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "edge:rebuilt-elliptical-arc",
+              kind: "edge",
+              semanticRole: "edge.elliptical-arc",
+              lineageTokens: [],
+              signature,
+              referenceGeometry: {
+                kind: "elliptical-arc-edge",
+                center: [2, 3, 0],
+                xAxis: [1, 0, 0],
+                yAxis: [0, 1, 0],
+                normal: [0, 0, 1],
+                majorRadius: 5,
+                minorRadius: 3,
+                start: [7, 3, 0],
+                middle: [2, 6, 0],
+                end: [-3, 3, 0],
+              },
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+
+    const result = await resolveExternalSketchGeometry(
+      document,
+      target,
+      vi.fn(solved),
+      [],
+      new Map(),
+      geometry,
+    )
+
+    expect(result.externalCurves).toEqual([
+      {
+        points: [
+          expect.objectContaining({ id: projectedPointIds[0], x: 2, y: 3 }),
+          expect.objectContaining({ id: projectedPointIds[1], x: 7, y: 3 }),
+          expect.objectContaining({ id: projectedPointIds[2], x: 2, y: 6 }),
+          expect.objectContaining({ id: projectedPointIds[3], x: 7, y: 3 }),
+          expect.objectContaining({ id: projectedPointIds[4], x: -3, y: 3 }),
+        ],
+        curve: expect.objectContaining({
+          id: projectedEntityId,
+          type: "elliptical-arc",
+          centerPointId: projectedPointIds[0],
+          primaryAxisPointId: projectedPointIds[1],
+          secondaryAxisPointId: projectedPointIds[2],
+          startPointId: projectedPointIds[3],
+          endPointId: projectedPointIds[4],
+          construction: true,
+        }),
+      },
+    ])
+  })
+
   it("resolves a source sketch through its own external-reference chain", async () => {
     const first = pointSketch(1, 12)
     const second = sketchRecordSchema.parse({

@@ -1074,7 +1074,7 @@ describe("sketch editing", () => {
         schemaVersion: 0 as const,
         id: "018f0000-0000-7000-8000-000000000603" as SketchExternalReferenceId,
         kind: "model-curve" as const,
-        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000613"),
+        reference: topologyReference("edge", "018f0000-0000-7000-8000-000000000613", "CIRCLE"),
         sourceType: "circle" as const,
         projectedEntityId: "018f0000-0000-7000-8000-000000000625" as SketchEntityId,
         projectedType: "circle" as const,

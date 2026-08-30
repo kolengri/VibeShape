@@ -198,6 +198,67 @@ describe("geometry worker protocol", () => {
     ).toBe(false)
   })
 
+  it("accepts exact full and bounded elliptical edges and rejects off-locus points", () => {
+    const base = {
+      candidateId: "edge:ellipse",
+      kind: "edge" as const,
+      lineageTokens: [],
+      signature: {
+        kind: "edge" as const,
+        geometryClass: "ELLIPSE",
+        measure: 24,
+        centroid: [0, 0, 0],
+        bounds: { min: [-5, -3, 0], max: [5, 3, 0] },
+        boundaryCount: 0,
+        adjacentGeometryClasses: [],
+      },
+    }
+    const frame = {
+      center: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+      majorRadius: 5,
+      minorRadius: 3,
+    }
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: { kind: "ellipse-edge", ...frame },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "elliptical-arc-edge",
+          ...frame,
+          start: [5, 0, 0],
+          middle: [0, 3, 0],
+          end: [-5, 0, 0],
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: {
+          kind: "elliptical-arc-edge",
+          ...frame,
+          start: [5, 0, 0],
+          middle: [0, 3.2, 0],
+          end: [-5, 0, 0],
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      topologyCandidateSchema.safeParse({
+        ...base,
+        referenceGeometry: { kind: "ellipse-edge", ...frame, majorRadius: 2 },
+      }).success,
+    ).toBe(false)
+  })
+
   it("rejects mismatched, non-finite, and degenerate reference geometry", () => {
     const base = {
       candidateId: "vertex:0",

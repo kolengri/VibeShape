@@ -2287,6 +2287,100 @@ describe("SketchViewport", () => {
     ])
   })
 
+  it("wakes an exact bounded model elliptical-arc perimeter", () => {
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f329b"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f329c")
+    const candidate = {
+      candidateId: "elliptical-arc-edge",
+      coplanar: true,
+      featureId,
+      kind: "model-curve" as const,
+      label: "Extrusion 1 · Elliptical arc edge 1",
+      passiveEligible: true,
+      points: [
+        { world: [10, 0, 0] as const, x: 10, y: 0 },
+        { world: [0, 5, 0] as const, x: 0, y: 5 },
+        { world: [-10, 0, 0] as const, x: -10, y: 0 },
+      ],
+      projectedGeometry: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 0, y: 5 },
+          { x: 10, y: 0 },
+          { x: -10, y: 0 },
+        ],
+        type: "elliptical-arc" as const,
+      },
+      projectedType: "elliptical-arc" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId,
+        kind: "edge" as const,
+        semanticRole: "extrusion.cap.end.curve.elliptical-arc",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "ELLIPSE" as const,
+          measure: 24.22,
+          centroid: [0, 2.5, 0] as [number, number, number],
+          bounds: {
+            min: [-10, 0, 0] as [number, number, number],
+            max: [10, 5, 0] as [number, number, number],
+          },
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["PLANE"],
+        },
+      },
+      sourceType: "elliptical-arc" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, {
+      x: 10 / Math.sqrt(2),
+      y: 5 / Math.sqrt(2),
+    })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = requiredSketchEntity(updated, "point")
+    expect(reference).toMatchObject({
+      kind: "model-curve",
+      projectedType: "elliptical-arc",
+      sourceType: "elliptical-arc",
+    })
+    if (reference?.kind !== "model-curve") {
+      throw new Error("Model elliptical-arc wake-up must persist one stable model curve reference.")
+    }
+    expect(reference.projectedPointIds).toHaveLength(5)
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "point-on-elliptical-arc",
+        pointId: localPoint.id,
+        ellipticalArcId: reference.projectedEntityId,
+      }),
+    ])
+  })
+
   it("defers a model-vertex reference until the line segment commits", () => {
     const target: SketchRecord = {
       ...sketch,

@@ -118,7 +118,7 @@ export type ViewerModelCurveCandidate = Readonly<{
   featureId: string
   candidateId: string
   points: readonly ViewerVector3[]
-  sourceType: "arc" | "circle"
+  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc"
 }>
 
 export type ViewerSketchReferenceCandidate =
