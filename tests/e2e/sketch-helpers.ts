@@ -170,11 +170,11 @@ export async function clickSketchEntityAt(
     },
     Math.min(1, Math.max(0, fraction)),
   )
-  if (additive) await page.keyboard.down("Control")
+  if (additive) await page.keyboard.down("Shift")
   try {
     await page.mouse.click(position.x, position.y)
   } finally {
-    if (additive) await page.keyboard.up("Control")
+    if (additive) await page.keyboard.up("Shift")
   }
 }
 

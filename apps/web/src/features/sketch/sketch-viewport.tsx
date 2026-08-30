@@ -158,7 +158,7 @@ import {
   SketchCircularPatternForm,
 } from "./sketch-circular-pattern-form"
 import {
-  compatibleSketchConstraintTools,
+  compatibleSketchConstraintToolsForSelection,
   compatibleSketchDimensionToolsForSelection,
   nextSketchDimensionSelection,
   type SketchConstraintToolKind,
@@ -1822,58 +1822,19 @@ function externalReferenceSourceKey(
   return `${reference.sourceSketchId}:${entityId}`
 }
 
-function hasCoincidentPointConstraint(
-  sketch: SketchRecord,
-  firstPointId: SketchEntityId,
-  secondPointId: SketchEntityId,
-) {
-  return sketch.constraints.some(
-    (constraint) =>
-      constraint.type === "coincident" &&
-      ((constraint.firstPointId === firstPointId && constraint.secondPointId === secondPointId) ||
-        (constraint.firstPointId === secondPointId && constraint.secondPointId === firstPointId)),
-  )
-}
-
-function attachExternalPointToSelection(
-  sketch: SketchRecord,
-  projectedPointId: SketchEntityId,
-  selectedEntityIds: readonly SketchEntityId[],
-) {
-  const selectedPoints = selectedSketchEntities(sketch, selectedEntityIds).filter(
-    (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
-  )
-  if (selectedPoints.length !== 1) return sketch
-  const selectedPoint = selectedPoints[0]
-  if (!selectedPoint || hasCoincidentPointConstraint(sketch, selectedPoint.id, projectedPointId)) {
-    return sketch
-  }
-  return appendSketchConstraint(
-    sketch,
-    {
-      type: "coincident",
-      firstPointId: selectedPoint.id,
-      secondPointId: projectedPointId,
-    },
-    createBrowserSketchConstraintId,
-  )
-}
-
 function SketchExternalPoints({
   markerScale,
-  onAttach,
   onSelect,
   points,
   selectedEntityIds,
 }: Readonly<{
   markerScale: number
-  onAttach: ((projectedPointId: SketchEntityId) => void) | null
   onSelect: ((entityId: SketchEntityId, additive: boolean) => void) | null
   points: readonly DisplayPoint[]
   selectedEntityIds: readonly SketchEntityId[]
 }>) {
   if (points.length === 0) return null
-  const interactive = onAttach !== null || onSelect !== null
+  const interactive = onSelect !== null
   const selected = new Set(selectedEntityIds)
   const markerExtent = 4 * markerScale
   return (
@@ -1891,11 +1852,7 @@ function SketchExternalPoints({
           onPointerDown={(event) => {
             if (!interactive) return
             event.stopPropagation()
-            if (onSelect) {
-              onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
-            } else {
-              onAttach?.(point.id)
-            }
+            onSelect?.(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
           }}
         >
           <circle cx={point.x} cy={point.y} r={7 * markerScale} fill="transparent" stroke="none" />
@@ -1965,7 +1922,11 @@ function SketchExternalLines({
             y1={line.start.y}
             x2={line.end.x}
             y2={line.end.y}
-            className={selected.has(line.id) ? "stroke-amber-500" : "stroke-sky-500"}
+            className={
+              selected.has(line.id)
+                ? "pointer-events-none stroke-amber-500"
+                : "pointer-events-none stroke-sky-500"
+            }
             strokeDasharray="5 3"
             strokeWidth={selected.has(line.id) ? 2.5 : 1.75}
             vectorEffect="non-scaling-stroke"
@@ -2703,7 +2664,6 @@ function SketchExternalReferencePresentation({
   pointsById,
   selectedEntityIds,
   solvedCircles,
-  onAttach,
   onSelect,
   onUse,
 }: Readonly<{
@@ -2719,7 +2679,6 @@ function SketchExternalReferencePresentation({
   selectedEntityIds: readonly SketchEntityId[]
   pointsById: SketchPointLookup
   solvedCircles: ReadonlyMap<string, number>
-  onAttach: (projectedPointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onUse: (candidate: ExternalUseCandidate) => void
 }>) {
@@ -2742,7 +2701,6 @@ function SketchExternalReferencePresentation({
         externalLines={externalLines}
         externalPoints={externalPoints}
         markerScale={markerScale}
-        onAttach={onAttach}
         onSelect={onSelect}
         pointsById={pointsById}
         selectedEntityIds={selectedEntityIds}
@@ -2773,7 +2731,6 @@ function SketchMaterializedExternalGeometry({
   externalLines,
   externalPoints,
   markerScale,
-  onAttach,
   onSelect,
   pointsById,
   selectedEntityIds,
@@ -2784,7 +2741,6 @@ function SketchMaterializedExternalGeometry({
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   markerScale: number
-  onAttach: (projectedPointId: SketchEntityId) => void
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   pointsById: SketchPointLookup
   selectedEntityIds: readonly SketchEntityId[]
@@ -2810,8 +2766,7 @@ function SketchMaterializedExternalGeometry({
         markerScale={markerScale}
         points={externalPoints}
         selectedEntityIds={selectedEntityIds}
-        onAttach={editorTool === "select" && selectedEntityIds.length === 1 ? onAttach : null}
-        onSelect={editorTool === "dimension" ? onSelect : null}
+        onSelect={isSketchSelectionTool(editorTool) ? onSelect : null}
       />
     </>
   )
@@ -2872,7 +2827,6 @@ function SketchExternalReferenceLayer({
       selectedEntityIds={selectedEntityIds}
       pointsById={state.geometry.pointsById}
       solvedCircles={state.geometry.solvedCircles}
-      onAttach={externalReferences.attach}
       onSelect={onSelect}
       onUse={externalReferences.use}
     />
@@ -8441,15 +8395,7 @@ function useExternalReferenceInteraction({
     },
     [draft, onDraftChange, onEditorToolChange, repairReferenceId, selectedEntityIds],
   )
-  const attach = useCallback(
-    (projectedPointId: SketchEntityId) => {
-      if (!draft) return
-      const next = attachExternalPointToSelection(draft, projectedPointId, selectedEntityIds)
-      if (next !== draft) onDraftChange(next)
-    },
-    [draft, onDraftChange, selectedEntityIds],
-  )
-  return { attach, availableCandidates, contextCandidates, use }
+  return { availableCandidates, contextCandidates, use }
 }
 
 function sketchSplitActions({
@@ -9637,11 +9583,9 @@ function SketchPrecisionToolbar({
 }>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   const viewportT = useTranslations("app.sketch.viewport")
-  const entities = useMemo(
-    () => (draft ? selectedSketchConstraintEntities(draft, selectedEntityIds) : []),
-    [draft, selectedEntityIds],
-  )
-  const constraints = compatibleSketchConstraintTools(entities)
+  const constraints = draft
+    ? compatibleSketchConstraintToolsForSelection(draft, selectedEntityIds)
+    : []
   const dimensions = draft
     ? compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
     : []

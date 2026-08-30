@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest"
 import {
   compatibleSketchConstraintTools,
+  compatibleSketchConstraintToolsForSelection,
   compatibleSketchDimensionTools,
   compatibleSketchDimensionToolsForSelection,
   createSketchDimensionConstraint,
@@ -79,6 +80,21 @@ const secondLine = { ...line, id: entityId(12) } as const satisfies SketchEntity
 const dimensionSketch = {
   constraints: [],
   entities: [firstPoint, secondPoint, line, secondLine, circle, ellipse],
+} as unknown as SketchRecord
+const externalPointId = entityId(98)
+const externalConstraintSketch = {
+  constraints: [],
+  entities: [firstPoint],
+  externalReferences: [
+    {
+      schemaVersion: 0,
+      id: "0195b5ac-b221-7a2c-8c33-000000000099",
+      kind: "point",
+      sourceSketchId: "0195b5ac-b221-7a2c-8c33-000000000100",
+      sourcePointId: entityId(97),
+      projectedPointId: externalPointId,
+    },
+  ],
 } as unknown as SketchRecord
 
 describe("sketch constraint tools", () => {
@@ -154,6 +170,18 @@ describe("sketch constraint tools", () => {
         },
       },
     ])
+  })
+
+  it("offers constraints between authored and external geometry but not external-only edits", () => {
+    expect(
+      compatibleSketchConstraintToolsForSelection(externalConstraintSketch, [
+        firstPoint.id,
+        externalPointId,
+      ]).map(({ kind }) => kind),
+    ).toEqual(["coincident", "horizontal", "vertical"])
+    expect(
+      compatibleSketchConstraintToolsForSelection(externalConstraintSketch, [externalPointId]),
+    ).toEqual([])
   })
 
   it("offers drawing dimensions and builds their semantic definitions", () => {

@@ -1,7 +1,7 @@
 # External Sketch References Plan
 
 - Status: **In progress**
-- Reviewed: **2026-08-28**
+- Reviewed: **2026-08-30**
 - Scope: same-document, same-model external references for the sketch-first workflow
 
 This is the detailed external-reference slice of the broader
@@ -39,9 +39,13 @@ part of this first slice. See [Derived](https://cad.onshape.com/help/Content/Par
 ### Implemented point-and-line foundation
 
 The delivered foundation lets a dependent sketch retain a **projected point or line reference** to an
-earlier saved sketch or a stable model vertex or linear feature edge. A point can attach one authored point
-with a Coincident relation. A projected line is read-only construction geometry whose fixed projected endpoints can drive Point on line, Parallel,
-Perpendicular, Equal, Angle, and other compatible solver relations without becoming a profile boundary. A
+earlier saved sketch or a stable model vertex or linear feature edge. Committed projected points and lines
+participate in the normal canvas multi-selection alongside authored geometry, so the precision toolbar can
+apply Coincident, Horizontal/Vertical, Point on line, Parallel, Perpendicular, Equal, Angle, and other
+compatible relations without a form-first reference workflow. A projected line remains read-only
+construction geometry whose fixed endpoints can drive those relations without becoming a profile boundary.
+Selections containing only projected read-only entities expose no mutating constraint or driving-dimension
+actions; at least one authored entity must participate. A
 sketch references persist only stable source and projected entity IDs. Model references persist a versioned
 `TopoRef` plus projected entity IDs; they never persist candidate IDs, mesh ordinals, native hashes, or
 coordinates. The document worker resolves current source coordinates before every solve, transforms them
@@ -170,10 +174,11 @@ cannot alter evaluation order.
 
 1. **Schema and graph groundwork**: add explicit sketch dependency edges, versioned external-reference
    records, migration/default behavior, cycle detection, deletion protection, and replay tests.
-2. **Coplanar sketch-to-sketch Use**: support point/line/circle/arc references between saved sketches on
-   equivalent frames. Resolve exact source geometry, show it read-only, and allow Coincident,
-   Horizontal/Vertical, Parallel, Perpendicular, Concentric, Tangent, and dimensional relations where
-   solver semantics permit them.
+2. **Coplanar sketch-to-sketch Use**: point, line, circle, arc, ellipse, and elliptical-arc references
+   resolve as exact read-only geometry on equivalent frames. Normal canvas selection supports compatible
+   Coincident, Horizontal/Vertical, Point on line/curve, Parallel, Perpendicular, Equal, Concentric,
+   Tangent, and dimensional relations where solver semantics permit them. Projected-only selections remain
+   non-mutating.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
    exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
    visibility toggle, accessible removal, exact full-ellipse axis-quadrant inference, exact generic

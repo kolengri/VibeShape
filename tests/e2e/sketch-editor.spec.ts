@@ -1136,6 +1136,250 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-external-line-count='2']")).toHaveCount(1)
   })
 
+  test("propagates an equal constraint between authored and projected sketch lines", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.44)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await page.getByRole("button", { name: "Sketch 1 · Line 1", exact: true }).press("Enter")
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.62)
+    await page.mouse.click(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.68)
+    await page.keyboard.up("Shift")
+    await selectSketchEntities(page, drawing, "line", [0])
+    const projectedLine = drawing
+      .locator("[data-sketch-external-line-id] > line:not(.stroke-transparent)")
+      .first()
+    await clickSketchEntity(page, projectedLine, true)
+
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await expect(precisionTools.getByRole("button", { name: "Parallel" })).toBeVisible()
+    await expect(precisionTools.getByRole("button", { name: "Perpendicular" })).toBeVisible()
+    await expect(precisionTools.getByRole("button", { name: "Equal" })).toBeVisible()
+    await precisionTools.getByRole("button", { name: "Equal" }).click()
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const equalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Equal" })
+    await expect(equalConstraint).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const sourceEndpoint = drawing.locator('[data-sketch-entity-type="point"]').last()
+    const endpointBounds = await sourceEndpoint.boundingBox()
+    if (!endpointBounds) throw new Error("The source endpoint is not visible.")
+    const sourceX = endpointBounds.x + endpointBounds.width / 2
+    const sourceY = endpointBounds.y + endpointBounds.height / 2
+    await page.mouse.move(sourceX, sourceY)
+    await page.mouse.down()
+    await page.mouse.move(sourceX + 90, sourceY, { steps: 8 })
+    await page.mouse.up()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(equalConstraint).toBeVisible()
+    const authoredLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    const updatedProjectedLine = drawing
+      .locator("[data-sketch-external-line-id] > line:not(.stroke-transparent)")
+      .first()
+    await expect
+      .poll(async () => {
+        const [authoredLength, projectedLength] = await Promise.all([
+          authoredLine.evaluate((element) =>
+            (element as unknown as { getTotalLength(): number }).getTotalLength(),
+          ),
+          updatedProjectedLine.evaluate((element) =>
+            (element as unknown as { getTotalLength(): number }).getTotalLength(),
+          ),
+        ])
+        return Math.abs(authoredLength - projectedLength)
+      })
+      .toBeLessThan(0.01)
+  })
+
+  test("selects a projected point and preserves its manual relation after source edits", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.44)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.65)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await page.getByRole("button", { name: "Sketch 1 · Point 1", exact: true }).press("Enter")
+    await expect(drawing.locator("[data-sketch-external-reference-count='1']")).toHaveCount(1)
+
+    await selectSketchEntities(page, drawing, "point", [0])
+    const projectedPoint = drawing.locator("[data-sketch-external-point-id]").first()
+    const projectedBounds = await projectedPoint.boundingBox()
+    if (!projectedBounds) throw new Error("The projected point is not visible.")
+    await page.keyboard.down("Shift")
+    await page.mouse.click(
+      projectedBounds.x + projectedBounds.width / 2,
+      projectedBounds.y + projectedBounds.height / 2,
+    )
+    await page.keyboard.up("Shift")
+
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await expect(precisionTools.getByRole("button", { name: "Coincident" })).toBeVisible()
+    await expect(precisionTools.getByRole("button", { name: "Horizontal" })).toBeVisible()
+    await precisionTools.getByRole("button", { name: "Horizontal" }).click()
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const horizontalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Horizontal" })
+    await expect(horizontalConstraint).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const sourcePoint = drawing.locator('[data-sketch-entity-type="point"]').first()
+    const sourceBounds = await sourcePoint.boundingBox()
+    if (!sourceBounds) throw new Error("The source point is not visible.")
+    const sourceX = sourceBounds.x + sourceBounds.width / 2
+    const sourceY = sourceBounds.y + sourceBounds.height / 2
+    await page.mouse.move(sourceX, sourceY)
+    await page.mouse.down()
+    await page.mouse.move(sourceX, sourceY - 70, { steps: 8 })
+    await page.mouse.up()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(horizontalConstraint).toBeVisible()
+    await expect
+      .poll(async () => {
+        const authoredY = Number(
+          await drawing.locator('[data-sketch-entity-type="point"]').first().getAttribute("cy"),
+        )
+        const projectedY = Number(
+          await drawing
+            .locator("[data-sketch-external-point-id] > line")
+            .first()
+            .getAttribute("y1"),
+        )
+        return Math.abs(authoredY - projectedY)
+      })
+      .toBeLessThan(0.01)
+  })
+
+  test("propagates concentric circles through a projected sketch curve", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.44)
+    await page.mouse.click(bounds.x + bounds.width * 0.52, bounds.y + bounds.height * 0.44)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.64)
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.64)
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    await page.getByRole("button", { name: "Sketch 1 · Circle 1", exact: true }).press("Enter")
+    await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const authoredCircle = drawing.locator('[data-sketch-entity-type="circle"]').last()
+    await clickSketchEntity(page, authoredCircle)
+    await expect(authoredCircle).toHaveClass(/stroke-ring/)
+    const projectedCircle = drawing
+      .locator('[aria-label="External sketch curves"] [data-sketch-entity-type="circle"]')
+      .first()
+    await clickSketchEntityAt(page, projectedCircle, 0.5, true)
+    await expect(projectedCircle).toHaveClass(/stroke-ring/)
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await expect(precisionTools.getByRole("button", { name: "Concentric" })).toBeVisible()
+    await precisionTools.getByRole("button", { name: "Concentric" }).click()
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const concentricConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Concentric" })
+    await expect(concentricConstraint).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const sourceCenter = drawing.locator('[data-sketch-entity-type="point"]').first()
+    const centerBounds = await sourceCenter.boundingBox()
+    if (!centerBounds) throw new Error("The source circle center is not visible.")
+    const centerX = centerBounds.x + centerBounds.width / 2
+    const centerY = centerBounds.y + centerBounds.height / 2
+    await page.mouse.move(centerX, centerY)
+    await page.mouse.down()
+    await page.mouse.move(centerX + 60, centerY - 55, { steps: 8 })
+    await page.mouse.up()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(concentricConstraint).toBeVisible()
+    await expect
+      .poll(async () => {
+        const localCenter = drawing.locator('[data-sketch-entity-type="point"]').first()
+        const externalCenter = drawing.locator("[data-sketch-external-point-id]").first()
+        const [localX, localY, projectedCenter] = await Promise.all([
+          localCenter.getAttribute("cx"),
+          localCenter.getAttribute("cy"),
+          externalCenter.evaluate((element) => {
+            const line = element.querySelector("line")
+            if (!line) throw new Error("The projected circle center marker is missing.")
+            return {
+              x: (Number(line.getAttribute("x1")) + Number(line.getAttribute("x2"))) / 2,
+              y: Number(line.getAttribute("y1")),
+            }
+          }),
+        ])
+        return Math.hypot(Number(localX) - projectedCenter.x, Number(localY) - projectedCenter.y)
+      })
+      .toBeLessThan(0.01)
+  })
+
   test("uses an earlier analytical circle directly from the sketch viewport", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
