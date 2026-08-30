@@ -1,8 +1,20 @@
-import { featureIdSchema, topologyCandidateSchema } from "@vibeshape/domain"
+import {
+  createEmptySketch,
+  featureIdSchema,
+  sketchIdSchema,
+  sketchRecordSchema,
+  topologyCandidateSchema,
+} from "@vibeshape/domain"
+import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
-import { selectedPlanarFaceReference, selectedSketchSupport } from "./sketch-support"
+import {
+  inspectSketchSupportHealth,
+  selectedPlanarFaceReference,
+  selectedSketchSupport,
+} from "./sketch-support"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
+const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2610")
 
 function candidate(overrides: Record<string, unknown> = {}) {
   return topologyCandidateSchema.parse({
@@ -24,6 +36,52 @@ function candidate(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   })
+}
+
+function supportedSketch() {
+  const support = selectedSketchSupport(featureId, 42, [candidate()])
+  if (!support) throw new Error("The fixture must create a planar sketch support.")
+  return createEmptySketch({ id: sketchId, label: "Supported sketch", ...support })
+}
+
+function rebuiltResponse(
+  topologyCandidates: readonly ReturnType<typeof candidate>[],
+  status: "succeeded" | "failed" | "blocked" | "suppressed" = "succeeded",
+) {
+  const record =
+    status === "succeeded"
+      ? { featureId, status, contentHash: "a".repeat(64) }
+      : status === "failed"
+        ? {
+            featureId,
+            status,
+            diagnostics: [{ code: "test.failure", values: {} }],
+          }
+        : status === "blocked"
+          ? { featureId, status, blockedBy: [featureId] }
+          : { featureId, status }
+  return {
+    type: "documentRebuilt",
+    requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f2611",
+    documentId: "0195b5ac-b220-7a2c-8c33-67a36a7f2612",
+    revision: 0,
+    evaluation: {
+      records: [record],
+      dirtyFeatureIds: [],
+      evaluatedFeatureIds: [],
+      reusedFeatureIds: [],
+    },
+    geometry: [
+      {
+        featureId,
+        contentHash: "a".repeat(64),
+        meshPolicy: "visible",
+        geometry: { topologyCandidates },
+      },
+    ],
+    sketches: [],
+    modelReferenceEvidence: [],
+  } as unknown as Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>
 }
 
 describe("selectedSketchSupport", () => {
@@ -101,5 +159,74 @@ describe("selectedPlanarFaceReference", () => {
       ]),
     ).toBeNull()
     expect(selectedPlanarFaceReference(featureId, 7, [candidate()])).toBeNull()
+  })
+})
+
+describe("inspectSketchSupportHealth", () => {
+  it("distinguishes resolved, missing, and ambiguous topology without retargeting", () => {
+    const sketch = supportedSketch()
+
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([candidate()]))).toEqual({
+      status: "resolved",
+    })
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([]))).toEqual({
+      status: "missing",
+    })
+    expect(
+      inspectSketchSupportHealth(
+        sketch,
+        rebuiltResponse([candidate(), candidate({ candidateId: "face:1", meshFaceId: 43 })]),
+      ),
+    ).toEqual({ status: "ambiguous" })
+  })
+
+  it("reports unavailable evaluation as unknown instead of a broken support", () => {
+    const sketch = supportedSketch()
+
+    expect(inspectSketchSupportHealth(sketch, undefined)).toEqual({ status: "unknown" })
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([], "failed"))).toEqual({
+      status: "unknown",
+    })
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([], "blocked"))).toEqual({
+      status: "unknown",
+    })
+  })
+
+  it("fails closed when a resolved candidate is no longer an oriented plane", () => {
+    const sketch = supportedSketch()
+    const curved = candidate({
+      signature: {
+        ...candidate().signature,
+        geometryClass: "CYLINDRE",
+      },
+    })
+
+    expect(inspectSketchSupportHealth(sketch, rebuiltResponse([curved]))).toEqual({
+      status: "missing",
+    })
+  })
+
+  it("rejects a schema-valid planar reference without an accepted support role", () => {
+    const sketch = supportedSketch()
+    const unsupported = sketchRecordSchema.parse({
+      ...sketch,
+      support: {
+        ...sketch.support,
+        reference: { ...sketch.support?.reference, semanticRole: undefined },
+      },
+    })
+
+    expect(inspectSketchSupportHealth(unsupported, rebuiltResponse([candidate()]))).toEqual({
+      status: "missing",
+    })
+  })
+
+  it("does not assign support health to an origin-plane sketch", () => {
+    expect(
+      inspectSketchSupportHealth(
+        createEmptySketch({ id: sketchId, label: "Origin sketch", plane: "xy" }),
+        rebuiltResponse([candidate()]),
+      ),
+    ).toBeNull()
   })
 })

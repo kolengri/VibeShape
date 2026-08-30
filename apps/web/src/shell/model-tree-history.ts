@@ -8,8 +8,12 @@ import {
   type SketchRecord,
   type SketchReferenceHealth,
 } from "@vibeshape/domain"
-import type { DocumentModelReferenceEvidence } from "@vibeshape/protocol"
+import type { DocumentModelReferenceEvidence, DocumentWorkerResponse } from "@vibeshape/protocol"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
+import {
+  inspectSketchSupportHealth,
+  type SketchSupportHealth,
+} from "../features/sketch/sketch-support"
 
 export type HistoryViewRow = Readonly<{
   ref: DocumentNodeRef
@@ -19,6 +23,7 @@ export type HistoryViewRow = Readonly<{
   dependencies: readonly DocumentNodeRef[]
   dependents: readonly DocumentNodeRef[]
   referenceHealth: SketchReferenceHealth | null
+  supportHealth: SketchSupportHealth | null
 }>
 
 export type ModelTreeHistoryView = Readonly<{
@@ -53,6 +58,7 @@ function modelReferenceHealthResolver(
 export function selectModelTreeHistory(
   snapshot: Snapshot,
   modelReferenceEvidence?: readonly DocumentModelReferenceEvidence[],
+  rebuild?: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
 ): ModelTreeHistoryView {
   const referenceHealth = inspectSketchReferenceHealth(
     snapshot.sketches,
@@ -71,6 +77,7 @@ export function selectModelTreeHistory(
         dependencies: [],
         dependents: [],
         referenceHealth: referenceHealth.get(record.id) ?? null,
+        supportHealth: inspectSketchSupportHealth(record, rebuild),
       })),
       ...snapshot.features.map((record) => ({
         ref: { kind: "feature" as const, id: record.id },
@@ -80,6 +87,7 @@ export function selectModelTreeHistory(
         dependencies: [],
         dependents: [],
         referenceHealth: null,
+        supportHealth: null,
       })),
     ]
     return {
@@ -107,6 +115,10 @@ export function selectModelTreeHistory(
         referenceHealth:
           ref.kind === "sketch"
             ? (referenceHealth.get(node.record.id as SketchRecord["id"]) ?? null)
+            : null,
+        supportHealth:
+          ref.kind === "sketch"
+            ? inspectSketchSupportHealth(node.record as SketchRecord, rebuild)
             : null,
       },
     ]

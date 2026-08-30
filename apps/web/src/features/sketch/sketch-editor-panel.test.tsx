@@ -74,6 +74,9 @@ const copy = {
   perpendicular: "Perpendicular",
   plane: "Support plane",
   planeFeatureFace: "Selected model face",
+  supportAmbiguous: "The saved support face is ambiguous. Replace support to continue.",
+  supportMissing: "The saved support face is missing. Replace support to continue.",
+  supportUnavailable: "The support cannot be checked while its source feature is unavailable.",
   planeXy: "XY plane",
   planeXz: "XZ plane",
   planeYz: "YZ plane",
@@ -121,6 +124,31 @@ function lineSketch() {
   }).sketch
 }
 
+function supportedLineSketch() {
+  return sketchRecordSchema.parse({
+    ...lineSketch(),
+    support: {
+      kind: "feature-face" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4103"),
+        kind: "face" as const,
+        signature: {
+          kind: "face" as const,
+          geometryClass: "PLANE" as const,
+          measure: 10,
+          centroid: [0, 0, 5] as const,
+          bounds: { min: [0, 0, 5] as const, max: [0, 0, 5] as const },
+          boundaryCount: 4,
+          adjacentGeometryClasses: [] as const,
+          direction: [0, 0, 1] as const,
+          directionMode: "oriented" as const,
+        },
+      },
+    },
+  })
+}
+
 function renderPanel(
   sketch: ReturnType<typeof lineSketch>,
   selectedEntityIds: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedEntityIds"],
@@ -160,6 +188,7 @@ function renderPanel(
   referenceDimensionLabels: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["referenceDimensionLabels"] = {},
+  supportProblem: React.ComponentProps<typeof SketchEditorPanel>["state"]["supportProblem"] = null,
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -183,6 +212,7 @@ function renderPanel(
               selectedEntityIds,
               selectedProfile: extrusion?.profile ?? null,
               supportLabel,
+              supportProblem,
               variables,
             }}
             actions={{
@@ -209,28 +239,7 @@ afterEach(cleanup)
 
 describe("SketchEditorPanel", () => {
   it("displays the resolved support face label", () => {
-    const sketch = sketchRecordSchema.parse({
-      ...lineSketch(),
-      support: {
-        kind: "feature-face" as const,
-        reference: {
-          schemaVersion: 0 as const,
-          featureId: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4103"),
-          kind: "face" as const,
-          signature: {
-            kind: "face" as const,
-            geometryClass: "PLANE" as const,
-            measure: 10,
-            centroid: [0, 0, 5] as const,
-            bounds: { min: [0, 0, 5] as const, max: [0, 0, 5] as const },
-            boundaryCount: 4,
-            adjacentGeometryClasses: [] as const,
-            direction: [0, 0, 1] as const,
-            directionMode: "oriented" as const,
-          },
-        },
-      },
-    })
+    const sketch = supportedLineSketch()
 
     renderPanel(
       sketch,
@@ -249,6 +258,32 @@ describe("SketchEditorPanel", () => {
     )
 
     expect(screen.getByRole("option", { name: "Mount · Face 1" })).toBeTruthy()
+  })
+
+  it("makes a missing support explicit next to its graphical repair action", () => {
+    renderPanel(
+      supportedLineSketch(),
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map(),
+      null,
+      vi.fn(),
+      vi.fn(),
+      null,
+      new Set(),
+      {},
+      "missing",
+    )
+
+    expect(
+      screen.getAllByText("The saved support face is missing. Replace support to continue."),
+    ).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "Replace support" })).toBeTruthy()
   })
 
   it("starts graphical support replacement without mutating the draft", async () => {

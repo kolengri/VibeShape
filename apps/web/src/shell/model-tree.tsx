@@ -282,6 +282,7 @@ function SketchTreeItem({
   active,
   controller,
   onActivate,
+  onSketchSupportRepair,
   onFeatureRename,
   onSketchDeleted,
   onSketchRemove,
@@ -289,6 +290,7 @@ function SketchTreeItem({
   onVisibilityChange,
   renameBlocked,
   referenceHealth,
+  supportHealth,
   sketch,
   unnamedSketch,
   visible,
@@ -296,6 +298,7 @@ function SketchTreeItem({
   active: boolean
   controller: DocumentControllerState
   onActivate: (sketchId: SketchId) => void
+  onSketchSupportRepair: (sketchId: SketchId) => void
   onFeatureRename: FeatureRenameHandler
   onSketchDeleted: () => void
   onSketchRemove: SketchRemoveHandler
@@ -303,6 +306,7 @@ function SketchTreeItem({
   onVisibilityChange: (sketchId: SketchId, visible: boolean) => void
   renameBlocked: boolean
   referenceHealth: HistoryViewRow["referenceHealth"]
+  supportHealth: HistoryViewRow["supportHealth"]
   sketch: SketchRecord
   unnamedSketch: string
   visible: boolean
@@ -329,9 +333,11 @@ function SketchTreeItem({
         renameDisabled={renameDisabled}
       />
       <BrokenSketchReferenceAction
-        health={referenceHealth}
+        referenceHealth={referenceHealth}
+        supportHealth={supportHealth}
         label={label}
         onActivate={() => onActivate(sketch.id)}
+        onSupportRepair={() => onSketchSupportRepair(sketch.id)}
         t={t}
       />
       <SketchTreeActions
@@ -358,19 +364,31 @@ function brokenReferenceCount(health: HistoryViewRow["referenceHealth"]) {
 }
 
 function BrokenSketchReferenceAction({
-  health,
+  referenceHealth,
+  supportHealth,
   label,
   onActivate,
+  onSupportRepair,
   t,
 }: {
-  health: HistoryViewRow["referenceHealth"]
+  referenceHealth: HistoryViewRow["referenceHealth"]
+  supportHealth: HistoryViewRow["supportHealth"]
   label: string
   onActivate: () => void
+  onSupportRepair: () => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const count = brokenReferenceCount(health)
+  const supportBroken = supportHealth?.status === "missing" || supportHealth?.status === "ambiguous"
+  const count = brokenReferenceCount(referenceHealth) + (supportBroken ? 1 : 0)
   if (count === 0) return null
-  const repairLabel = t("repairBrokenSketchReferences", { sketch: label, count })
+  const repairLabel = supportBroken
+    ? t(
+        supportHealth.status === "ambiguous"
+          ? "repairAmbiguousSketchSupport"
+          : "repairMissingSketchSupport",
+        { sketch: label },
+      )
+    : t("repairBrokenSketchReferences", { sketch: label, count })
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -380,7 +398,7 @@ function BrokenSketchReferenceAction({
           size="icon-xs"
           className="text-destructive hover:text-destructive"
           aria-label={repairLabel}
-          onClick={onActivate}
+          onClick={supportBroken ? onSupportRepair : onActivate}
         >
           <CircleAlert aria-hidden="true" />
         </Button>
@@ -404,6 +422,33 @@ function SketchReferenceHealthSummary({
         direct: health.directBrokenReferenceIds.length,
         chained: health.transitiveBrokenReferenceIds.length,
       })}
+    </p>
+  )
+}
+
+function SketchSupportHealthSummary({
+  health,
+  t,
+}: {
+  health: HistoryViewRow["supportHealth"]
+  t: ReturnType<typeof useTranslations>
+}) {
+  if (!health || health.status === "resolved") return null
+  const message =
+    health.status === "missing"
+      ? "missingSketchSupportSummary"
+      : health.status === "ambiguous"
+        ? "ambiguousSketchSupportSummary"
+        : "unknownSketchSupportSummary"
+  return (
+    <p
+      className={cn(
+        "ml-8 truncate px-2 text-[10px]",
+        health.status === "unknown" ? "text-muted-foreground" : "text-destructive",
+      )}
+      role="status"
+    >
+      {t(message)}
     </p>
   )
 }
@@ -478,6 +523,7 @@ type ModelTreeProps = {
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
+  onSketchSupportRepair: (sketchId: SketchId) => void
   onAllSketchVisibilityToggle: () => void
   onSketchRename: SketchRenameHandler
   onSketchVisibilityChange: (sketchId: SketchId, visible: boolean) => void
@@ -637,6 +683,7 @@ function SketchHistoryRow({
         active={row.ref.id === props.activeSketchId}
         controller={props.controller}
         onActivate={props.onSketchActivate}
+        onSketchSupportRepair={props.onSketchSupportRepair}
         onFeatureRename={props.onFeatureRename}
         onSketchDeleted={props.onSketchDeleted}
         onSketchRemove={props.onSketchRemove}
@@ -644,12 +691,14 @@ function SketchHistoryRow({
         onVisibilityChange={props.onSketchVisibilityChange}
         renameBlocked={row.ref.id === props.sketchRenameBlockedId}
         referenceHealth={row.referenceHealth}
+        supportHealth={row.supportHealth}
         sketch={row.record as SketchRecord}
         unnamedSketch={t("unnamedSketch")}
         visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
       />
       <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
       <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
+      <SketchSupportHealthSummary health={row.supportHealth} t={t} />
       {marker && (
         <div role="status" className="px-2 text-[11px] text-muted-foreground">
           {t("rollbackMarker")}
@@ -879,6 +928,7 @@ export function ModelTree(props: ModelTreeProps) {
   const snapshot = report?.snapshot
   const rebuild = report?.rebuild
   const modelReferenceEvidence = rebuild?.ok ? rebuild.response.modelReferenceEvidence : undefined
+  const rebuiltResponse = rebuild?.ok ? rebuild.response : undefined
   const historyView = useMemo(
     () =>
       selectModelTreeHistory(
@@ -887,8 +937,9 @@ export function ModelTree(props: ModelTreeProps) {
           features: snapshot?.features ?? [],
         },
         modelReferenceEvidence,
+        rebuiltResponse,
       ),
-    [modelReferenceEvidence, snapshot],
+    [modelReferenceEvidence, rebuiltResponse, snapshot],
   )
   const sketchIds = historyView.rows
     .filter((row) => row.kind === "sketch")
