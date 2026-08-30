@@ -496,6 +496,13 @@ const pointOnCurveConstraintSchema = sketchConstraintEnvelopeSchema
     curveId: sketchEntityIdSchema,
   })
   .strict()
+const pointOnEllipseConstraintSchema = sketchConstraintEnvelopeSchema
+  .extend({
+    type: z.literal("point-on-ellipse"),
+    pointId: sketchEntityIdSchema,
+    ellipseId: sketchEntityIdSchema,
+  })
+  .strict()
 const ellipseQuadrantConstraintSchema = sketchConstraintEnvelopeSchema
   .extend({
     type: z.literal("ellipse-quadrant"),
@@ -635,6 +642,7 @@ export const sketchConstraintSchema = z.discriminatedUnion("type", [
   concentricConstraintSchema,
   pointOnLineConstraintSchema,
   pointOnCurveConstraintSchema,
+  pointOnEllipseConstraintSchema,
   ellipseQuadrantConstraintSchema,
   midpointConstraintSchema,
   arcMidpointConstraintSchema,
@@ -808,6 +816,7 @@ const constraintEntityReferenceRules = {
   },
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
+  "point-on-ellipse": { pointId: ["point"], ellipseId: ["ellipse"] },
   "ellipse-quadrant": { pointId: ["point"], ellipseId: ["ellipse"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
   "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
@@ -917,7 +926,9 @@ function nativeConstraintCount(structure: SketchStructure) {
           ? 2
           : constraint.type === "ellipse-quadrant"
             ? 6
-            : 1),
+            : constraint.type === "point-on-ellipse"
+              ? 5
+              : 1),
     0,
   )
   const internal = structure.entities.reduce((count, entity) => {
@@ -972,6 +983,9 @@ function nativeSketchCapacity(structure: SketchStructure) {
   const auxiliaryEllipseQuadrantCount = structure.constraints.filter(
     ({ type }) => type === "ellipse-quadrant",
   ).length
+  const auxiliaryEllipseLocusCount = structure.constraints.filter(
+    ({ type }) => type === "point-on-ellipse",
+  ).length
   return {
     entities:
       authored.entities +
@@ -981,7 +995,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
       ) +
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
-      auxiliaryEllipseQuadrantCount * 4,
+      auxiliaryEllipseQuadrantCount * 4 +
+      auxiliaryEllipseLocusCount * 4,
     parameters:
       authored.parameters +
       projectedExternalSketchEntities(structure.externalReferences ?? []).reduce(
@@ -989,7 +1004,8 @@ function nativeSketchCapacity(structure: SketchStructure) {
         0,
       ) +
       projectionCount * 4 +
-      auxiliaryEllipseQuadrantCount * 4,
+      auxiliaryEllipseQuadrantCount * 4 +
+      auxiliaryEllipseLocusCount * 4,
   }
 }
 

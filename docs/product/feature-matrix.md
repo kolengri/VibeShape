@@ -78,11 +78,11 @@ Visible earlier sketch points and analytical curves now remain as muted normal-v
 
 Saved-sketch visibility is transient presentation state rather than authored model intent. Each saved sketch has an independent icon-only Show/Hide action. The model-tree header and the shared `Shift+H` command toggle every current saved sketch without changing document semantics, suppression, rollback, or the active editable draft; individual visibility can then be overridden again. The same state filters analytical normal-view context and saved Three.js orbit displays without duplicating geometry.
 
-The full-ellipse Quadrant slice extends the sketch inference baseline above: authored full ellipses,
+The full-ellipse inference slice extends the sketch baseline above: authored full ellipses,
 earlier-sketch full ellipses, and uniquely resolved coplanar model circles projected as ellipses expose
-all four exact axis extrema. Acceptance persists the selected primary or secondary axis plus positive or
-negative side, so a later axis reversal cannot switch the intended endpoint. Elliptical-arc wake-up and
-generic point-on-ellipse intent remain open.
+all four exact axis extrema and the complete analytical perimeter. Quadrant acceptance persists the selected
+primary or secondary axis plus positive or negative side, so a later axis reversal cannot switch the intended
+endpoint. Generic perimeter acceptance persists one exact Point on ellipse locus. Elliptical-arc wake-up remains open.
 
 ## Parametric 3D features
 

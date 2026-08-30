@@ -124,6 +124,7 @@ function constraintName(
     concentric: copy.concentric,
     "point-on-line": copy.pointOnLine,
     "point-on-curve": copy.pointOnCurve,
+    "point-on-ellipse": copy.pointOnCurve,
     fixed: copy.fixed,
     "horizontal-distance": copy.horizontalDistance,
     offset: copy.offset,

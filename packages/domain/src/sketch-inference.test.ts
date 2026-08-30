@@ -742,6 +742,88 @@ describe("sketch inference", () => {
     }
   })
 
+  it("projects to the nearest point on a rotated ellipse with a distinct relation", () => {
+    const angle = Math.PI / 6
+    const primary = { x: Math.cos(angle) * 10, y: Math.sin(angle) * 10 }
+    const secondary = { x: -Math.sin(angle) * 5, y: Math.cos(angle) * 5 }
+    const parameter = Math.PI / 3
+    const point = {
+      x: primary.x * Math.cos(parameter) + secondary.x * Math.sin(parameter) + 0.05,
+      y: primary.y * Math.cos(parameter) + secondary.y * Math.sin(parameter) + 0.05,
+    }
+    const ellipseId = "018f0000-0000-7000-9000-000000000099" as SketchEntityId
+    const inference = inferSketchPoint({
+      curves: [
+        {
+          id: ellipseId,
+          centerPointId: firstPointId,
+          type: "ellipse",
+          center: { x: 0, y: 0 },
+          primaryAxisPoint: primary,
+          secondaryAxisPoint: secondary,
+        },
+      ],
+      point,
+      points: [],
+      tolerance: 0.2,
+    })
+    expect(inference.kind).toBe("point-on-curve")
+    expect(inference.relations).toEqual([{ type: "point-on-ellipse", ellipseId }])
+    expect(Math.hypot(inference.point.x - point.x, inference.point.y - point.y)).toBeLessThan(0.2)
+    const primaryCoordinate = (inference.point.x * primary.x + inference.point.y * primary.y) / 10
+    const secondaryCoordinate =
+      (inference.point.x * secondary.x + inference.point.y * secondary.y) / 5
+    expect((primaryCoordinate / 10) ** 2 + (secondaryCoordinate / 5) ** 2).toBeCloseTo(1, 10)
+  })
+
+  it("keeps ellipse inference within tolerance and breaks equal ties by curve ID", () => {
+    const makeEllipse = (id: SketchEntityId) => ({
+      id,
+      centerPointId: firstPointId,
+      type: "ellipse" as const,
+      center: { x: 0, y: 0 },
+      primaryAxisPoint: { x: 10, y: 0 },
+      secondaryAxisPoint: { x: 0, y: 5 },
+    })
+    const curves = [makeEllipse(secondPointId), makeEllipse(firstPointId)]
+    expect(
+      inferSketchPoint({ curves, point: { x: 7.3, y: 3.7 }, points: [], tolerance: 0.1 }).kind,
+    ).toBe("none")
+    expect(
+      inferSketchPoint({ curves, point: { x: 7.12, y: 3.58 }, points: [], tolerance: 0.2 })
+        .relations,
+    ).toEqual([{ type: "point-on-ellipse", ellipseId: firstPointId }])
+  })
+
+  it("selects a stable ellipse perimeter from dense coincident curves without sorting", () => {
+    const curves = Array.from({ length: 2_500 }, (_, index) => {
+      const suffix = (index + 100).toString(16).padStart(12, "0")
+      return {
+        id: `018f0000-0000-7000-9000-${suffix}` as SketchEntityId,
+        centerPointId: `018f0000-0000-7001-9000-${suffix}` as SketchEntityId,
+        type: "ellipse" as const,
+        center: { x: 0, y: 0 },
+        primaryAxisPoint: { x: 10, y: 0 },
+        secondaryAxisPoint: { x: 0, y: 5 },
+      }
+    })
+    const sort = vi.spyOn(Array.prototype, "sort")
+    try {
+      const inference = inferSketchPoint({
+        curves,
+        point: { x: 7.12, y: 3.58 },
+        points: [],
+        tolerance: 0.2,
+      })
+
+      expect(inference).toMatchObject({ kind: "point-on-curve" })
+      expect(inference.relations).toEqual([{ type: "point-on-ellipse", ellipseId: curves[0]?.id }])
+      expect(sort).not.toHaveBeenCalled()
+    } finally {
+      sort.mockRestore()
+    }
+  })
+
   it("infers parallel and perpendicular direction from a connected non-axis line", () => {
     const diagonalLine = {
       ...horizontalLine,

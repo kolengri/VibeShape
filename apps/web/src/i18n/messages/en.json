@@ -904,6 +904,8 @@
         "dimensionKindSecondaryAxisDiameter": "Secondary axis",
         "dimensionKindOffset": "Offset",
         "editDimension": "Edit dimension {label}",
+        "pointOnCurve": "Point on curve",
+        "pointOnLine": "Point on line",
         "quadrant": "Quadrant",
         "mirrorSelectAxis": "Select a mirror line, then select geometry to mirror.",
         "mirrorSelectAxisForSelection": "Select a mirror line for the selected geometry.",

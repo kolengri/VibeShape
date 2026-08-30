@@ -3135,6 +3135,7 @@ const geometricConstraintLabels: Partial<
   parallel: "∥",
   perpendicular: "⊥",
   "point-on-curve": "⊙",
+  "point-on-ellipse": "⊙",
   "point-on-line": "⊙",
   tangent: "T",
   symmetric: "S",
@@ -4432,6 +4433,9 @@ function appendInferredPointRelation(
   if (relation.type === "point-on-curve") {
     return appendInferredPointOnCurve(sketch, pointId, relation.curveId)
   }
+  if (relation.type === "point-on-ellipse") {
+    return appendInferredPointOnEllipse(sketch, pointId, relation.ellipseId)
+  }
   if (relation.type === "ellipse-quadrant") {
     return appendInferredEllipseQuadrant(sketch, pointId, relation)
   }
@@ -4480,6 +4484,26 @@ function appendInferredPointOnCurve(
     : appendSketchConstraint(
         sketch,
         { type: "point-on-curve", pointId, curveId },
+        createBrowserSketchConstraintId,
+      )
+}
+
+function appendInferredPointOnEllipse(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  ellipseId: SketchEntityId,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "point-on-ellipse" &&
+      constraint.pointId === pointId &&
+      constraint.ellipseId === ellipseId,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: "point-on-ellipse", pointId, ellipseId },
         createBrowserSketchConstraintId,
       )
 }
@@ -5581,6 +5605,7 @@ const pointRelationReferenceKeys = {
   "horizontal-points": "pointId",
   midpoint: "lineId",
   "point-on-curve": "curveId",
+  "point-on-ellipse": "ellipseId",
   "point-on-line": "lineId",
   "vertical-points": "pointId",
 } as const satisfies Record<
@@ -9360,8 +9385,14 @@ function useSketchViewportPresentation(
   const displayUnits = useDocumentDisplayUnits()
   const editDimensionLabel = useCallback((label: string) => t("editDimension", { label }), [t])
   const accessibleConstraintLabel = useCallback(
-    (label: string, constraintType: SketchRecord["constraints"][number]["type"]) =>
-      constraintType === "ellipse-quadrant" ? t("quadrant") : label,
+    (label: string, constraintType: SketchRecord["constraints"][number]["type"]) => {
+      if (constraintType === "ellipse-quadrant") return t("quadrant")
+      if (constraintType === "point-on-curve" || constraintType === "point-on-ellipse") {
+        return t("pointOnCurve")
+      }
+      if (constraintType === "point-on-line") return t("pointOnLine")
+      return label
+    },
     [t],
   )
   const selectConstraintLabel = useCallback(
