@@ -20,6 +20,7 @@ import { CircleAlert, Layers3, Link2, Pencil, Trash2, X } from "@vibeshape/ui/co
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useMemo, useState } from "react"
 import { createBrowserSketchConstraintId } from "../../document/document-controller"
 import {
@@ -83,6 +84,9 @@ type SketchEditorPanelCopy = Readonly<{
   perpendicular: string
   plane: string
   planeFeatureFace: string
+  supportAmbiguous: string
+  supportMissing: string
+  supportUnavailable: string
   planeXy: string
   planeXz: string
   planeYz: string
@@ -306,10 +310,43 @@ function SketchDimensionForm({
   )
 }
 
+type SketchSupportProblem = "missing" | "ambiguous" | "unknown" | null
+
+function sketchSupportProblemText(
+  problem: Exclude<SketchSupportProblem, null>,
+  copy: SketchEditorPanelCopy,
+) {
+  if (problem === "missing") return copy.supportMissing
+  if (problem === "ambiguous") return copy.supportAmbiguous
+  return copy.supportUnavailable
+}
+
+function SketchSupportProblemMessage({
+  copy,
+  problem,
+}: {
+  copy: SketchEditorPanelCopy
+  problem: SketchSupportProblem
+}) {
+  if (!problem) return null
+  return (
+    <p
+      className={cn(
+        "text-xs",
+        problem === "unknown" ? "text-muted-foreground" : "text-destructive",
+      )}
+      role="status"
+    >
+      {sketchSupportProblemText(problem, copy)}
+    </p>
+  )
+}
+
 function SketchSetupSection({
   copy,
   disabled,
   draft,
+  supportProblem,
   supportLabel,
   onDraftChange,
   onSupportReplace,
@@ -317,6 +354,7 @@ function SketchSetupSection({
   copy: SketchEditorPanelCopy
   disabled: boolean
   draft: SketchRecord
+  supportProblem: SketchSupportProblem
   supportLabel: string | null
   onDraftChange: (draft: SketchRecord) => void
   onSupportReplace: () => void
@@ -336,7 +374,11 @@ function SketchSetupSection({
             }
           >
             {draft.support ? (
-              <option value="feature-face">{supportLabel ?? copy.planeFeatureFace}</option>
+              <option value="feature-face">
+                {supportProblem && supportProblem !== "unknown"
+                  ? sketchSupportProblemText(supportProblem, copy)
+                  : (supportLabel ?? copy.planeFeatureFace)}
+              </option>
             ) : null}
             <option value="xy">{copy.planeXy}</option>
             <option value="xz">{copy.planeXz}</option>
@@ -358,6 +400,7 @@ function SketchSetupSection({
             <TooltipContent>{copy.replaceSupport}</TooltipContent>
           </Tooltip>
         </div>
+        <SketchSupportProblemMessage copy={copy} problem={supportProblem} />
       </Field>
     </section>
   )
@@ -899,6 +942,7 @@ type SketchEditorPanelState = Readonly<{
   selectedConstraintId: SketchConstraintId | null
   selectedProfile: SketchProfileSelector | null
   supportLabel: string | null
+  supportProblem: SketchSupportProblem
   variables: readonly VariableDefinition[]
 }>
 
@@ -939,6 +983,7 @@ export function SketchEditorPanel({
     selectedConstraintId,
     selectedProfile,
     supportLabel,
+    supportProblem,
     variables,
   } = state
   const {
@@ -970,6 +1015,7 @@ export function SketchEditorPanel({
           copy={copy}
           disabled={disabled}
           draft={draft}
+          supportProblem={supportProblem}
           supportLabel={supportLabel}
           onDraftChange={onDraftChange}
           onSupportReplace={onSupportReplace}

@@ -66,6 +66,7 @@ import {
   externalSketchReferenceResolution,
 } from "../features/sketch/external-sketch-points"
 import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
+import { inspectSketchSupportHealth } from "../features/sketch/sketch-support"
 import {
   type ActiveSketchEditorTool,
   type ActiveSketchTool,
@@ -171,6 +172,9 @@ function useSketchEditorCopy() {
     perpendicular: t("perpendicular"),
     plane: t("plane"),
     planeFeatureFace: t("planeFeatureFace"),
+    supportAmbiguous: t("supportAmbiguous"),
+    supportMissing: t("supportMissing"),
+    supportUnavailable: t("supportUnavailable"),
     planeXy: t("planeXy"),
     planeXz: t("planeXz"),
     planeYz: t("planeYz"),
@@ -1504,6 +1508,13 @@ function ActiveSketchTaskPanel({
         : null,
     [draft.support, report.rebuild, report.snapshot.features, viewportT],
   )
+  const supportHealth = useMemo(
+    () =>
+      inspectSketchSupportHealth(draft, report.rebuild.ok ? report.rebuild.response : undefined),
+    [draft, report.rebuild],
+  )
+  const supportProblem =
+    supportHealth && supportHealth.status !== "resolved" ? supportHealth.status : null
   const modeDescription =
     activeSketchTool.kind === "edit-sketch" ? t("editModeDescription") : t("createModeDescription")
   const finish = async () => {
@@ -1567,6 +1578,7 @@ function ActiveSketchTaskPanel({
             selectedEntityIds,
             selectedProfile,
             supportLabel,
+            supportProblem,
             variables: report.snapshot.variables,
           }}
           actions={{

@@ -104,7 +104,7 @@ Exit criterion: a printable bracket can be built without direct primitives and r
 
 - Active-sketch draft undo/redo is implemented. Add rollback-aware committed history editing, suppression, reorder validation, and command-level undo/redo.
 - Highlight downstream failures at the owning feature.
-- Resolve stable topology references conservatively; ambiguous references open repair UI instead of guessing.
+- Stable sketch-support references resolve conservatively. History distinguishes missing and ambiguous supports from unavailable upstream evaluation, and its repair action opens graphical support replacement instead of guessing. Replacement preserves the sketch's stable entity and constraint identities.
 - Expose the same bounded repair choices through automation contracts.
 
 Exit criterion: editing an early sketch or feature either rebuilds deterministically or identifies the exact downstream operation that needs repair.

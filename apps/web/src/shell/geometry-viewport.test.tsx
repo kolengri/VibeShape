@@ -837,7 +837,7 @@ describe("GeometryViewport", () => {
             geometry: {
               mesh,
               topologyCandidates: [
-                planarFaceCandidate("box-face", 3, "primitive.box.face.top", [0, 0, 0]),
+                planarFaceCandidate("box-face", 3, "primitive.box.cap.end", [0, 0, 0]),
               ],
             },
           },

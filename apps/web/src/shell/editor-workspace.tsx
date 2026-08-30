@@ -1220,6 +1220,10 @@ function editedSketchId(activeTool: ActiveSketchTool | null) {
 
 function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
   const { actions, activeSketchId, activeSketchTool, activeTool, controller, workspace } = props
+  const repairSketchSupport = (sketchId: SketchId) => {
+    actions.editSketch(sketchId)
+    actions.beginSketchSupportReplacement()
+  }
   return (
     <ModelTree
       activeWorkspace={workspace}
@@ -1233,6 +1237,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onSketchActivate={actions.editSketch}
+      onSketchSupportRepair={repairSketchSupport}
       onSketchDeleted={actions.closeTool}
       onSketchRemove={removeSketch}
       onSketchRename={updateSketch}

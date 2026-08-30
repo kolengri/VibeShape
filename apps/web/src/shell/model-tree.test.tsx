@@ -152,6 +152,71 @@ function controllerWithBrokenModelReference() {
   }
 }
 
+function controllerWithMissingSketchSupport(ownerStatus: "succeeded" | "failed" = "succeeded") {
+  const target = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f2820",
+    label: "Face sketch",
+    plane: "xy",
+    support: {
+      kind: "feature-face",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "face",
+        semanticRole: "primitive.box.cap.end",
+        signature: {
+          kind: "face",
+          geometryClass: "PLANE",
+          measure: 400,
+          centroid: [0, 0, 20],
+          bounds: { min: [-10, -10, 20], max: [10, 10, 20] },
+          direction: [0, 0, 1],
+          directionMode: "oriented",
+          boundaryCount: 4,
+          adjacentGeometryClasses: ["PLANE", "PLANE", "PLANE", "PLANE"],
+        },
+        intent: { nearPoint: [0, 0, 20], expectedDirection: [0, 0, 1] },
+      },
+    },
+    entities: [],
+    constraints: [],
+  })
+  return {
+    target,
+    controller: {
+      ...controller,
+      report: {
+        ...controller.report,
+        snapshot: { features: [feature], revision: 8, sketches: [target] },
+        rebuild: {
+          ok: true,
+          response: {
+            evaluation: {
+              records: [
+                ownerStatus === "succeeded"
+                  ? { featureId, status: ownerStatus, contentHash: "a".repeat(64) }
+                  : {
+                      featureId,
+                      status: ownerStatus,
+                      diagnostics: [{ code: "test.failure", values: {} }],
+                    },
+              ],
+            },
+            geometry: [
+              {
+                featureId,
+                geometry: { topologyCandidates: [] },
+              },
+            ],
+            modelReferenceEvidence: [],
+          },
+        },
+      },
+    } as unknown as DocumentControllerState,
+  }
+}
+
 class ResizeObserverMock {
   observe() {}
   unobserve() {}
@@ -174,6 +239,7 @@ type RenderTreeOptions = Partial<
     | "onFeaturePreselectionChange"
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
+    | "onSketchSupportRepair"
     | "onAllSketchVisibilityToggle"
     | "onSketchDeleted"
     | "onSketchRemove"
@@ -195,6 +261,7 @@ function renderTree({
   onFeaturePreselectionChange = vi.fn(),
   onFeatureVisibilityChange = vi.fn(),
   onSketchActivate = vi.fn(),
+  onSketchSupportRepair = vi.fn(),
   onAllSketchVisibilityToggle = vi.fn(),
   onSketchDeleted = vi.fn(),
   onSketchRemove = vi.fn().mockResolvedValue({ ok: true }),
@@ -220,6 +287,7 @@ function renderTree({
           onFeaturePreselectionChange={onFeaturePreselectionChange}
           onFeatureVisibilityChange={onFeatureVisibilityChange}
           onSketchActivate={onSketchActivate}
+          onSketchSupportRepair={onSketchSupportRepair}
           onAllSketchVisibilityToggle={onAllSketchVisibilityToggle}
           onSketchDeleted={onSketchDeleted}
           onSketchRemove={onSketchRemove}
@@ -446,6 +514,42 @@ describe("ModelTree selection", () => {
       }),
     ).toBeTruthy()
     expect(screen.getByText("Needs repair: 1 direct failure; no chained failures.")).toBeTruthy()
+  })
+
+  it("opens graphical support replacement directly from a missing-support badge", async () => {
+    const user = userEvent.setup()
+    const onSketchActivate = vi.fn()
+    const onSketchSupportRepair = vi.fn()
+    const broken = controllerWithMissingSketchSupport()
+
+    renderTree({
+      controller: broken.controller,
+      onSketchActivate,
+      onSketchSupportRepair,
+    })
+
+    expect(screen.getByText("Needs repair: the support face is missing.")).toBeTruthy()
+    const repair = screen.getByRole("button", {
+      name: "Replace the missing support for Face sketch",
+    })
+    await user.click(repair)
+    expect(onSketchSupportRepair).toHaveBeenCalledWith(broken.target.id)
+    expect(onSketchActivate).not.toHaveBeenCalled()
+  })
+
+  it("does not offer topology repair while the support owner is unavailable", () => {
+    const unavailable = controllerWithMissingSketchSupport("failed")
+
+    renderTree({ controller: unavailable.controller })
+
+    expect(
+      screen.getByText("Support status is unavailable while its source feature is unavailable."),
+    ).toBeTruthy()
+    expect(
+      screen.queryByRole("button", {
+        name: "Replace the missing support for Face sketch",
+      }),
+    ).toBeNull()
   })
 })
 
