@@ -173,13 +173,14 @@ const constraintBuilders = {
   perpendicular: (entities) => pairedLineConstraint("perpendicular", entities),
   "point-on-curve": (entities) => {
     const points = entitiesOfType(entities, "point")
-    const targets = roundCurves(entities)
-    return entities.length === 2 &&
-      points.length === 1 &&
-      points[0] &&
-      targets.length === 1 &&
-      targets[0]
-      ? { type: "point-on-curve", pointId: points[0].id, curveId: targets[0].id }
+    if (entities.length !== 2 || points.length !== 1 || !points[0]) return null
+    const roundTarget = roundCurves(entities)[0]
+    if (roundTarget) {
+      return { type: "point-on-curve", pointId: points[0].id, curveId: roundTarget.id }
+    }
+    const ellipseTarget = entitiesOfType(entities, "ellipse")[0]
+    return ellipseTarget
+      ? { type: "point-on-ellipse", pointId: points[0].id, ellipseId: ellipseTarget.id }
       : null
   },
   "point-on-line": (entities) => {

@@ -109,6 +109,11 @@ relationship only after the second click. The Playwright workflow wakes an earli
 activating Use, verifies that no duplicate reference geometry exists before or after acceptance, and
 reopens the saved dependent sketch with the same friendly source label and constraint.
 
+Selection-driven ellipse-locus coverage requires one selected point plus one full ellipse to expose the
+existing Point on curve action, persist one exact Point on ellipse relation, and survive Finish and reopen
+in Chromium, Firefox, and WebKit. The same compatibility gate must exclude elliptical arcs until their
+bounded-locus constraint contract exists.
+
 Model-curve wake-up coverage requires exact center/normal plane evidence, unique stable-topology
 resolution, and a circle, bounded-arc, or exact full-ellipse projection before a candidate enters passive inference. Candidate
 tests keep parallel-offset, tilted, and ambiguous circular edges outside that path.

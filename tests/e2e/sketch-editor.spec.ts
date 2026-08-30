@@ -1642,6 +1642,49 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
   })
 
+  test("constrains a selected point to a selected full ellipse", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.28)
+    await page.keyboard.up("Shift")
+
+    await selectSketchEntities(page, drawing, "point", [3])
+    await clickSketchEntity(
+      page,
+      drawing.locator('[data-sketch-entity-type="ellipse"]').first(),
+      true,
+    )
+    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await precisionTools.getByRole("button", { name: "Point on curve" }).click()
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const constraintRow = sketchPanel
+      .getByRole("listitem")
+      .getByRole("button", { name: "Point on curve" })
+    await expect(constraintRow).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Select constraint Point on curve" }),
+    ).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(constraintRow).toBeVisible()
+  })
+
   test("authors midpoint-line and three-point-circle family variants", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

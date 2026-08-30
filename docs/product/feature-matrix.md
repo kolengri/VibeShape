@@ -82,7 +82,9 @@ The full-ellipse inference slice extends the sketch baseline above: authored ful
 earlier-sketch full ellipses, and uniquely resolved coplanar model circles projected as ellipses expose
 all four exact axis extrema and the complete analytical perimeter. Quadrant acceptance persists the selected
 primary or secondary axis plus positive or negative side, so a later axis reversal cannot switch the intended
-endpoint. Generic perimeter acceptance persists one exact Point on ellipse locus. Elliptical-arc wake-up remains open.
+endpoint. Generic perimeter acceptance persists one exact Point on ellipse locus. The same exact relation is
+available deliberately by selecting one point and one full ellipse and invoking Point on curve.
+Elliptical-arc wake-up and bounded perimeter constraints remain open.
 
 ## Parametric 3D features
 
