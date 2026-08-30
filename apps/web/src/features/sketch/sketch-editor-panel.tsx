@@ -34,7 +34,7 @@ import {
   externalReferenceMatchesCandidate,
 } from "./external-sketch-points"
 import {
-  compatibleSketchConstraintTools,
+  compatibleSketchConstraintToolsForSelection,
   compatibleSketchDimensionToolsForSelection,
   createSketchReferenceDimensionConstraint,
   type SketchDimensionKind,
@@ -387,6 +387,7 @@ function ConstraintAction({
 }
 
 function SketchConstraintSection({
+  actions,
   copy,
   entities,
   onAdd,
@@ -394,6 +395,7 @@ function SketchConstraintSection({
   selectionKey,
   variables,
 }: {
+  actions: ReturnType<typeof compatibleSketchConstraintToolsForSelection>
   copy: SketchEditorPanelCopy
   entities: readonly SketchEntity[]
   onAdd: (definition: SketchConstraintDefinition) => void
@@ -401,9 +403,11 @@ function SketchConstraintSection({
   selectionKey: string
   variables: readonly VariableDefinition[]
 }) {
-  const availableActions = compatibleSketchConstraintTools(entities).map(
-    ({ definition, kind }) => ({ definition, kind, label: constraintName(kind, copy) }),
-  )
+  const availableActions = actions.map(({ definition, kind }) => ({
+    definition,
+    kind,
+    label: constraintName(kind, copy),
+  }))
   return (
     <section className="grid gap-2 border-t pt-3">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -949,6 +953,7 @@ export function SketchEditorPanel({
     () => selectedSketchConstraintEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
   )
+  const constraintActions = compatibleSketchConstraintToolsForSelection(draft, selectedEntityIds)
   const optionKinds = compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
   const options = dimensionOptions(optionKinds, copy)
   const apply = (definition: SketchConstraintDefinition) => {
@@ -977,6 +982,7 @@ export function SketchEditorPanel({
           repairReferenceId={repairReferenceId}
         />
         <SketchConstraintSection
+          actions={constraintActions}
           copy={copy}
           entities={entities}
           options={options}

@@ -231,6 +231,15 @@ export function compatibleSketchConstraintTools(entities: readonly SketchEntity[
   })
 }
 
+export function compatibleSketchConstraintToolsForSelection(
+  sketch: SketchRecord,
+  ids: readonly SketchEntityId[],
+) {
+  const authoredIds = new Set(sketch.entities.map(({ id }) => id))
+  if (!ids.some((id) => authoredIds.has(id))) return []
+  return compatibleSketchConstraintTools(selectedSketchConstraintEntities(sketch, ids))
+}
+
 export function compatibleSketchDimensionTools(
   entities: readonly SketchEntity[],
 ): readonly SketchDimensionKind[] {

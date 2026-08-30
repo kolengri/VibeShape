@@ -2909,6 +2909,61 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("selects a committed external point for manual constraints", async () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3230")
+    const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3231")
+    const projectedPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3232")
+    const localPoint = requiredSketchEntity(sketch, "point")
+    const target: SketchRecord = {
+      ...sketch,
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3233"),
+          kind: "point",
+          sourceSketchId,
+          sourcePointId,
+          projectedPointId,
+        },
+      ],
+    }
+    const onSelectionChange = vi.fn()
+    const solveSketch = vi.fn(async () =>
+      solveResult(new Map([[projectedPointId, { x: 40, y: 30 }]])),
+    )
+    const view = renderViewport({
+      draft: target,
+      onSelectionChange,
+      selectedEntityIds: [localPoint.id],
+      sketch: target,
+      solveSketch,
+    })
+
+    const externalPoint = await waitFor(() => {
+      const element = document.querySelector(
+        `[data-sketch-external-point-id="${projectedPointId}"]`,
+      )
+      if (!element) throw new Error("The committed external point must be rendered.")
+      return element
+    })
+    fireEvent.pointerDown(externalPoint, { shiftKey: true })
+    expect(onSelectionChange).toHaveBeenCalledWith([localPoint.id, projectedPointId])
+
+    view.rerender(
+      viewportElement({
+        draft: target,
+        onSelectionChange,
+        selectedEntityIds: [localPoint.id, projectedPointId],
+        sketch: target,
+        solveSketch,
+      }),
+    )
+    expect(screen.getByRole("toolbar", { name: "Sketch precision tools" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Coincident" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Horizontal" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Vertical" })).toBeTruthy()
+  })
+
   it("infers point-on-line from a committed external line", async () => {
     const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3226")
     const sourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3227")
@@ -3106,8 +3161,10 @@ describe("SketchViewport", () => {
     }
     const base = solveResult()
     if (!base.ok || base.response.type !== "sketchSolved") throw new Error("Expected solve result.")
+    const onSelectionChange = vi.fn()
     renderViewport({
       draft,
+      onSelectionChange,
       sketch: draft,
       solveSketch: vi.fn(async () => ({
         ...base,
@@ -3129,6 +3186,12 @@ describe("SketchViewport", () => {
     expect(center?.querySelector("circle")?.getAttribute("stroke")).toBe("none")
     expect(center?.querySelectorAll("line")).toHaveLength(2)
     expect(document.querySelector('[data-sketch-context-curve-type="circle"]')).toBeNull()
+    const curve = document.querySelector(
+      '[aria-label="External sketch curves"] [data-sketch-entity-type="circle"]',
+    )
+    if (!curve) throw new Error("The projected circle must expose a selection target.")
+    fireEvent.pointerDown(curve)
+    expect(onSelectionChange).toHaveBeenCalledWith([projectedCurveId])
   })
 
   it("reuses a used external circle for later inference without duplicating its reference", async () => {

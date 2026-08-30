@@ -1400,6 +1400,140 @@ describe("production sketch compilation", () => {
     expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointOnCircle)
   })
 
+  test("compiles concentric and equal constraints against projected model geometry", () => {
+    const externalStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000250")
+    const externalEndId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000251")
+    const externalLineId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000252")
+    const externalCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000253")
+    const externalCircleId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000254")
+    const equalId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000255")
+    const concentricId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000256")
+    const record = sketchRecordSchema.parse({
+      ...sketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000257",
+          kind: "model-line",
+          reference: {
+            schemaVersion: 0,
+            featureId: "018f0000-0000-7000-8000-000000000258",
+            kind: "edge",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 20,
+              centroid: [10, 20, 0],
+              bounds: { min: [0, 20, 0], max: [20, 20, 0] },
+              direction: [1, 0, 0],
+              directionMode: "axis",
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedLineId: externalLineId,
+          projectedStartPointId: externalStartId,
+          projectedEndPointId: externalEndId,
+        },
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000259",
+          kind: "curve",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000260",
+          sourceEntityId: "018f0000-0000-7000-8000-000000000261",
+          sourceType: "circle",
+          projectedEntityId: externalCircleId,
+          projectedType: "circle",
+          projectedPointIds: [externalCenterId],
+        },
+      ],
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: equalId,
+          type: "equal",
+          firstEntityId: externalLineId,
+          secondEntityId: lineId,
+        },
+        {
+          schemaVersion: 0,
+          id: concentricId,
+          type: "concentric",
+          firstEntityId: circleId,
+          secondEntityId: externalCircleId,
+        },
+      ],
+    })
+    const result = compileSketchSystem({
+      revision: 5,
+      sketch: record,
+      variables,
+      externalLines: [
+        {
+          startPoint: {
+            schemaVersion: 0,
+            id: externalStartId,
+            type: "point",
+            x: 0,
+            y: 20,
+            construction: true,
+          },
+          endPoint: {
+            schemaVersion: 0,
+            id: externalEndId,
+            type: "point",
+            x: 20,
+            y: 20,
+            construction: true,
+          },
+          line: {
+            schemaVersion: 0,
+            id: externalLineId,
+            type: "line",
+            startPointId: externalStartId,
+            endPointId: externalEndId,
+            construction: true,
+          },
+        },
+      ],
+      externalCurves: [
+        {
+          points: [
+            {
+              schemaVersion: 0,
+              id: externalCenterId,
+              type: "point",
+              x: 12,
+              y: 8,
+              construction: true,
+            },
+          ],
+          curve: {
+            schemaVersion: 0,
+            id: externalCircleId,
+            type: "circle",
+            centerPointId: externalCenterId,
+            radius: 6,
+            construction: true,
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const constraintTypes = Array.from(
+      { length: result.compiled.system.constraintValues.length },
+      (_, index) =>
+        result.compiled.system.constraintRecords[
+          index * SKETCH_SOLVER_ABI.constraintRecordStride + 2
+        ],
+    )
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines)
+    expect(constraintTypes).toContain(SOLVESPACE_CONSTRAINT_TYPE.pointsCoincident)
+  })
+
   test("compiles arc midpoint intent against a projected external arc", () => {
     const externalCenterId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000214")
     const externalStartId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000215")

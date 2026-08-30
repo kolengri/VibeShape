@@ -1071,8 +1071,14 @@ function selectEllipticalArcPointSeeds(
   }
 }
 
-function curveCenterPoint(sketch: SketchRecord, entityId: SketchEntityId) {
-  const entity = sketch.entities.find((candidate) => candidate.id === entityId)
+function curveCenterPoint(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+  entityId: SketchEntityId,
+) {
+  const entity = sketchEntitiesWithExternalCurves(sketch, externalCurves).find(
+    (candidate) => candidate.id === entityId,
+  )
   if (entity?.type !== "circle" && entity?.type !== "arc") {
     throw new Error(`Sketch curve ${entityId} does not have a center point.`)
   }
@@ -1252,6 +1258,8 @@ function addRelationshipConstraint(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
   constraint: RelationshipConstraint,
+  externalLines: readonly z.infer<typeof externalLineSchema>[],
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
 ) {
   if (isOrientationConstraint(constraint)) {
     builder.addConstraint(constraint.id, orientationConstraintNativeTypes[constraint.type], {
@@ -1267,14 +1275,15 @@ function addRelationshipConstraint(
     return
   }
   if (constraint.type === "equal") {
-    const first = sketch.entities.find((entity) => entity.id === constraint.firstEntityId)
-    const firstIsExternalLine = sketch.externalReferences?.some(
-      (reference) =>
-        reference.kind === "line" && reference.projectedLineId === constraint.firstEntityId,
-    )
+    const lineIds = new Set([
+      ...sketch.entities.flatMap((entity) => (entity.type === "line" ? [entity.id] : [])),
+      ...externalLines.map(({ line }) => line.id),
+    ])
+    const equalLines =
+      lineIds.has(constraint.firstEntityId) && lineIds.has(constraint.secondEntityId)
     builder.addConstraint(
       constraint.id,
-      first?.type === "line" || firstIsExternalLine
+      equalLines
         ? SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines
         : SOLVESPACE_CONSTRAINT_TYPE.equalRadius,
       {
@@ -1292,8 +1301,8 @@ function addRelationshipConstraint(
     return
   }
   builder.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointsCoincident, {
-    pointA: builder.entity(curveCenterPoint(sketch, constraint.firstEntityId)),
-    pointB: builder.entity(curveCenterPoint(sketch, constraint.secondEntityId)),
+    pointA: builder.entity(curveCenterPoint(sketch, externalCurves, constraint.firstEntityId)),
+    pointB: builder.entity(curveCenterPoint(sketch, externalCurves, constraint.secondEntityId)),
   })
 }
 
@@ -1485,6 +1494,8 @@ function addConstraint(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
   constraint: SketchConstraint,
+  externalLines: readonly z.infer<typeof externalLineSchema>[],
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
   variables: ReturnType<typeof evaluateVariableDefinitions>,
   pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
 ) {
@@ -1502,7 +1513,7 @@ function addConstraint(
     return true
   }
   if (isRelationshipConstraint(constraint)) {
-    addRelationshipConstraint(builder, sketch, constraint)
+    addRelationshipConstraint(builder, sketch, constraint, externalLines, externalCurves)
     return true
   }
   return addDimensionConstraint(builder, sketch, constraint, variables)
@@ -1598,11 +1609,25 @@ function addFixedExternalCurves(
 function addSketchConstraints(
   builder: ProductionSketchBuilder,
   sketch: SketchRecord,
+  externalLines: readonly z.infer<typeof externalLineSchema>[],
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
   variables: ReturnType<typeof evaluateVariableDefinitions>,
   pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
 ) {
   for (const [index, constraint] of sketch.constraints.entries()) {
-    if (!addConstraint(builder, sketch, constraint, variables, pointValues)) return index
+    if (
+      !addConstraint(
+        builder,
+        sketch,
+        constraint,
+        externalLines,
+        externalCurves,
+        variables,
+        pointValues,
+      )
+    ) {
+      return index
+    }
   }
   return null
 }
@@ -1675,6 +1700,8 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   const invalidConstraintIndex = addSketchConstraints(
     builder,
     input.data.sketch,
+    input.data.externalLines,
+    input.data.externalCurves,
     variables,
     pointValues,
   )
