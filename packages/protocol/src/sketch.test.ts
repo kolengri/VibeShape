@@ -202,4 +202,35 @@ describe("sketch alignment wire constraints", () => {
       }),
     )
   })
+
+  test("round-trips point-on-ellipse and rejects non-ellipse targets", () => {
+    const constraint = {
+      schemaVersion: 0,
+      id: constraintId(6_001),
+      type: "point-on-ellipse",
+      pointId: pointD,
+      ellipseId,
+    }
+    const parsed = sketchWireRecordSchema.safeParse(ellipseRecord([constraint]))
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.constraints).toEqual([constraint])
+    expect(
+      sketchWireRecordSchema.safeParse(record([{ ...constraint, ellipseId: arcId }])).success,
+    ).toBe(false)
+
+    const constraints = Array.from({ length: 2_001 }, (_, index) => ({
+      ...constraint,
+      id: constraintId(20_000 + index),
+    }))
+    const atEntityLimit = sketchWireRecordSchema.safeParse(
+      ellipseRecord(constraints.slice(0, 1_247)),
+    )
+    const entityOverflow = sketchWireRecordSchema.safeParse(
+      ellipseRecord(constraints.slice(0, 1_248)),
+    )
+    const constraintOverflow = sketchWireRecordSchema.safeParse(ellipseRecord(constraints))
+    expect(atEntityLimit.success).toBe(true)
+    expect(entityOverflow.success).toBe(false)
+    expect(constraintOverflow.success).toBe(false)
+  })
 })

@@ -60,6 +60,7 @@ export type SketchPointRelationInference =
       side: "negative" | "positive"
       type: "ellipse-quadrant"
     }>
+  | Readonly<{ ellipseId: SketchEntityId; type: "point-on-ellipse" }>
   | Readonly<{ lineId: SketchEntityId; type: "point-on-line" }>
   | Readonly<{ curveId: SketchEntityId; type: "point-on-curve" }>
 
@@ -655,6 +656,176 @@ function nearestPointOnCurveCandidate(
     : undefined
 }
 
+type EllipseInferenceCurve = Extract<SketchInferenceCurve, { type: "ellipse" }>
+
+type EllipseProjectionGeometry = Readonly<{
+  primaryDirection: SketchPoint2
+  primaryRadius: number
+  secondaryDirection: SketchPoint2
+  secondaryRadius: number
+  targetPrimary: number
+  targetSecondary: number
+}>
+
+type EllipseProjection = Readonly<{ distanceSquared: number; point: SketchPoint2 }>
+
+const ELLIPSE_NEWTON_SEED_COUNT = 4
+const ELLIPSE_NEWTON_ITERATION_LIMIT = 16
+
+function ellipseProjectionGeometry(
+  point: SketchPoint2,
+  curve: EllipseInferenceCurve,
+): EllipseProjectionGeometry | null {
+  const primary = {
+    x: curve.primaryAxisPoint.x - curve.center.x,
+    y: curve.primaryAxisPoint.y - curve.center.y,
+  }
+  const secondary = {
+    x: curve.secondaryAxisPoint.x - curve.center.x,
+    y: curve.secondaryAxisPoint.y - curve.center.y,
+  }
+  const primaryRadius = Math.hypot(primary.x, primary.y)
+  const secondaryRadius = Math.hypot(secondary.x, secondary.y)
+  const cross = primary.x * secondary.y - primary.y * secondary.x
+  const dot = primary.x * secondary.x + primary.y * secondary.y
+  if (
+    !Number.isFinite(primaryRadius) ||
+    !Number.isFinite(secondaryRadius) ||
+    primaryRadius <= 0 ||
+    secondaryRadius <= 0 ||
+    !Number.isFinite(cross) ||
+    Math.abs(cross) <= Number.EPSILON * primaryRadius * secondaryRadius ||
+    !Number.isFinite(dot) ||
+    Math.abs(dot) > 1e-6 * primaryRadius * secondaryRadius
+  )
+    return null
+  const primaryDirection = { x: primary.x / primaryRadius, y: primary.y / primaryRadius }
+  const secondaryDirection = { x: secondary.x / secondaryRadius, y: secondary.y / secondaryRadius }
+  const offset = { x: point.x - curve.center.x, y: point.y - curve.center.y }
+  return {
+    primaryDirection,
+    primaryRadius,
+    secondaryDirection,
+    secondaryRadius,
+    targetPrimary: offset.x * primaryDirection.x + offset.y * primaryDirection.y,
+    targetSecondary: offset.x * secondaryDirection.x + offset.y * secondaryDirection.y,
+  }
+}
+
+function ellipseProjectionMayBeNear(geometry: EllipseProjectionGeometry, tolerance: number) {
+  const outsideX = Math.max(Math.abs(geometry.targetPrimary) - geometry.primaryRadius, 0)
+  const outsideY = Math.max(Math.abs(geometry.targetSecondary) - geometry.secondaryRadius, 0)
+  if (outsideX * outsideX + outsideY * outsideY > tolerance * tolerance) return false
+  const centerDistance = Math.hypot(geometry.targetPrimary, geometry.targetSecondary)
+  const minimumRadius = Math.min(geometry.primaryRadius, geometry.secondaryRadius)
+  const maximumRadius = Math.max(geometry.primaryRadius, geometry.secondaryRadius)
+  return centerDistance >= minimumRadius - tolerance && centerDistance <= maximumRadius + tolerance
+}
+
+function ellipseStationaryParameter(seed: number, geometry: EllipseProjectionGeometry) {
+  const { primaryRadius, secondaryRadius, targetPrimary, targetSecondary } = geometry
+  const radiusDifference = primaryRadius * primaryRadius - secondaryRadius * secondaryRadius
+  let parameter = (FULL_TURN * seed) / ELLIPSE_NEWTON_SEED_COUNT
+  for (let iteration = 0; iteration < ELLIPSE_NEWTON_ITERATION_LIMIT; iteration += 1) {
+    const sine = Math.sin(parameter)
+    const cosine = Math.cos(parameter)
+    const first =
+      radiusDifference * sine * cosine +
+      secondaryRadius * targetSecondary * cosine -
+      primaryRadius * targetPrimary * sine
+    const second =
+      radiusDifference * (cosine * cosine - sine * sine) -
+      secondaryRadius * targetSecondary * sine -
+      primaryRadius * targetPrimary * cosine
+    if (!Number.isFinite(first) || !Number.isFinite(second) || Math.abs(second) < 1e-14) break
+    const next = parameter - first / second
+    if (Math.abs(next - parameter) < 1e-14) return next
+    parameter = next
+  }
+  return parameter
+}
+
+function ellipsePointAtParameter(
+  curve: EllipseInferenceCurve,
+  geometry: EllipseProjectionGeometry,
+  parameter: number,
+) {
+  const cosine = Math.cos(parameter)
+  const sine = Math.sin(parameter)
+  return {
+    x:
+      curve.center.x +
+      geometry.primaryDirection.x * geometry.primaryRadius * cosine +
+      geometry.secondaryDirection.x * geometry.secondaryRadius * sine,
+    y:
+      curve.center.y +
+      geometry.primaryDirection.y * geometry.primaryRadius * cosine +
+      geometry.secondaryDirection.y * geometry.secondaryRadius * sine,
+  }
+}
+
+function ellipseClosestPoint(point: SketchPoint2, curve: EllipseInferenceCurve, tolerance: number) {
+  const geometry = ellipseProjectionGeometry(point, curve)
+  if (!geometry || !ellipseProjectionMayBeNear(geometry, tolerance)) return null
+  let best: EllipseProjection | null = null
+  for (let seed = 0; seed < ELLIPSE_NEWTON_SEED_COUNT; seed += 1) {
+    const candidate = ellipsePointAtParameter(
+      curve,
+      geometry,
+      ellipseStationaryParameter(seed, geometry),
+    )
+    const distanceSquared = squaredDistance(point, candidate)
+    if (!Number.isFinite(distanceSquared)) continue
+    if (!best || distanceSquared < best.distanceSquared) {
+      best = { point: candidate, distanceSquared }
+    }
+  }
+  return best
+}
+
+type NearestEllipseProjection = Readonly<{
+  curve: EllipseInferenceCurve
+  projection: EllipseProjection
+}>
+
+function preferEllipseProjection(
+  curve: EllipseInferenceCurve,
+  projection: EllipseProjection,
+  nearest: NearestEllipseProjection | undefined,
+  maximumDistance: number,
+) {
+  if (projection.distanceSquared > maximumDistance) return false
+  if (!nearest || projection.distanceSquared < nearest.projection.distanceSquared) return true
+  return (
+    projection.distanceSquared === nearest.projection.distanceSquared &&
+    curve.id.localeCompare(nearest.curve.id) < 0
+  )
+}
+
+function nearestPointOnEllipseCandidate(
+  point: SketchPoint2,
+  curves: readonly SketchInferenceCurve[],
+  tolerance: number,
+) {
+  const maximumDistance = tolerance * tolerance
+  let nearest: NearestEllipseProjection | undefined
+  for (const curve of curves) {
+    if (curve.type !== "ellipse") continue
+    const projection = ellipseClosestPoint(point, curve, tolerance)
+    if (projection && preferEllipseProjection(curve, projection, nearest, maximumDistance)) {
+      nearest = { curve, projection }
+    }
+  }
+  return nearest
+    ? {
+        kind: "point-on-curve" as const,
+        point: nearest.projection.point,
+        relations: [{ type: "point-on-ellipse" as const, ellipseId: nearest.curve.id }],
+        stableKey: nearest.curve.id,
+      }
+    : undefined
+}
+
 const cardinalDirections = [
   { alignmentType: "horizontal-points", angle: 0, xScale: 1, yScale: 0 },
   { alignmentType: "vertical-points", angle: Math.PI / 2, xScale: 0, yScale: 1 },
@@ -1025,6 +1196,7 @@ function pointCandidate(
     nearestPointOnLineCandidate(nearby) ??
     nearestArcMidpointCandidate(point, curves, tolerance) ??
     nearestCurveQuadrantCandidate(point, curves, tolerance) ??
+    nearestPointOnEllipseCandidate(point, curves, tolerance) ??
     nearestPointOnCurveCandidate(point, curves, tolerance) ??
     nearestPointAlignmentCandidate(point, points, tolerance, anchor)
   )

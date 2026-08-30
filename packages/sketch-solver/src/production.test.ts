@@ -52,6 +52,8 @@ const arcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000030")
 const arcMidpointId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000031")
 const ellipseQuadrantPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000032")
 const ellipseQuadrantId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000033")
+const ellipseLocusPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8000-000000000034")
+const ellipseLocusId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8000-000000000035")
 
 function sketch(distance = createLengthQuantity(10, "mm", "#width")) {
   return sketchRecordSchema.parse({
@@ -587,6 +589,92 @@ describe("production sketch compilation", () => {
     if (!pointBinding) return
     expect(result.compiled.system.parameterValues[pointBinding.xIndex]).toBeCloseTo(-10)
     expect(result.compiled.system.parameterValues[pointBinding.yIndex]).toBeCloseTo(0)
+  })
+
+  test("compiles generic point-on-ellipse as one authored exact locus", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            schemaVersion: 0,
+            id: ellipseLocusPointId,
+            type: "point",
+            x: 6,
+            y: 3,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: ellipseLocusId,
+            type: "point-on-ellipse",
+            pointId: ellipseLocusPointId,
+            ellipseId,
+          },
+        ],
+      },
+      variables: [],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const { constraintRecords, constraintValues } = result.compiled.system
+    const types = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    expect(types).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.perpendicular,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+    ])
+    expect(Array.from(result.compiled.bindings.constraintIdsByHandle.values())).toEqual(
+      Array(5).fill(ellipseLocusId),
+    )
+  })
+
+  test("fails closed when point-on-ellipse targets a degenerate full ellipse", () => {
+    const fixture = ellipseSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities.map((entity) =>
+            entity.id === ellipsePrimaryId && entity.type === "point"
+              ? { ...entity, x: 0, y: 0 }
+              : entity,
+          ),
+          {
+            schemaVersion: 0,
+            id: ellipseLocusPointId,
+            type: "point",
+            x: 0,
+            y: 5,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: ellipseLocusId,
+            type: "point-on-ellipse",
+            pointId: ellipseLocusPointId,
+            ellipseId,
+          },
+        ],
+      },
+      variables: [],
+    })
+
+    expect(result.ok).toBe(false)
   })
 
   test("preserves the positive ellipse quadrant side through an axis inversion", () => {

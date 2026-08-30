@@ -471,8 +471,15 @@ class ProductionSketchBuilder {
     const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(ellipse)
     const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
     const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
-    const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
-    const secondaryRadius = Math.max(Math.hypot(secondaryVector.x, secondaryVector.y), 1e-6)
+    const primaryRadius = Math.hypot(primaryVector.x, primaryVector.y)
+    const secondaryRadius = Math.hypot(secondaryVector.x, secondaryVector.y)
+    if (
+      !Number.isFinite(primaryRadius) ||
+      !Number.isFinite(secondaryRadius) ||
+      primaryRadius <= 0 ||
+      secondaryRadius <= 0
+    )
+      return false
     const primaryDirection = {
       x: primaryVector.x / primaryRadius,
       y: primaryVector.y / primaryRadius,
@@ -494,6 +501,43 @@ class ProductionSketchBuilder {
       secondaryDirection,
       constraint.axis,
       constraint.side,
+    )
+    return true
+  }
+
+  addEllipsePointLocusConstraint(
+    constraint: Extract<SketchConstraint, { type: "point-on-ellipse" }>,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  ) {
+    const ellipse = this.#ellipseEntities.get(constraint.ellipseId)
+    if (!ellipse) return false
+    const center = pointValues.get(ellipse.centerPointId)
+    const primary = pointValues.get(ellipse.primaryAxisPointId)
+    const secondary = pointValues.get(ellipse.secondaryAxisPointId)
+    if (!center || !primary || !secondary) return false
+    const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(ellipse)
+    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+    const primaryRadius = Math.hypot(primaryVector.x, primaryVector.y)
+    const secondaryRadius = Math.hypot(secondaryVector.x, secondaryVector.y)
+    if (
+      !Number.isFinite(primaryRadius) ||
+      !Number.isFinite(secondaryRadius) ||
+      primaryRadius <= 0 ||
+      secondaryRadius <= 0
+    )
+      return false
+    this.#addEllipsePointLocus(
+      constraint.id,
+      ellipse,
+      constraint.pointId,
+      pointValues,
+      primaryAxis,
+      secondaryAxis,
+      primaryRadius,
+      secondaryRadius,
+      { x: primaryVector.x / primaryRadius, y: primaryVector.y / primaryRadius },
+      { x: secondaryVector.x / secondaryRadius, y: secondaryVector.y / secondaryRadius },
     )
     return true
   }
@@ -898,6 +942,7 @@ type PointConstraint = Extract<
       | "vertical-points"
       | "point-on-line"
       | "point-on-curve"
+      | "point-on-ellipse"
       | "midpoint"
       | "arc-midpoint"
       | "symmetric"
@@ -925,6 +970,7 @@ const pointConstraintTypes = new Set<SketchConstraint["type"]>([
   "vertical-points",
   "point-on-line",
   "point-on-curve",
+  "point-on-ellipse",
   "midpoint",
   "arc-midpoint",
   "symmetric",
@@ -1276,6 +1322,9 @@ function addConstraint(
 ) {
   if (constraint.type === "ellipse-quadrant") {
     return builder.addEllipseQuadrant(constraint, pointValues)
+  }
+  if (constraint.type === "point-on-ellipse") {
+    return builder.addEllipsePointLocusConstraint(constraint, pointValues)
   }
   if (isPointConstraint(constraint)) {
     addPointConstraint(builder, constraint)

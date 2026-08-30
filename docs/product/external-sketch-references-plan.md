@@ -71,17 +71,18 @@ sketch plane. It persists only the face `TopoRef` and projected line identities;
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
 closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles,
 bounded arcs, and full ellipses, highlight and label the source, and atomically create the stable reference
-plus inferred Coincident, Point on line, Point on curve, or full-ellipse Quadrant constraint only after
+plus inferred Coincident, Point on line, Point on curve, full-ellipse Quadrant, or exact Point on ellipse constraint only after
 acceptance. Curve wake-up projects the pointer onto exact analytical geometry; it never infers against
 sampled display polylines. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
 creating a second reference. Exact coplanar circular and bounded-arc model edges use the same passive
 interaction only when their `TopoRef` resolves uniquely. A uniquely resolved coplanar model circle whose
-analytical projection is an ellipse participates at its four exact axis quadrants; parallel-offset, tilted,
+analytical projection is an ellipse participates at its four exact axis quadrants and complete exact
+perimeter; parallel-offset, tilted,
 and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
 curve reference and relates the local point to the curve's stable projected center identity. General
-surfaces, multi-curve results, Pierce, elliptical-arc wake-up, generic point-on-ellipse inference,
+surfaces, multi-curve results, Pierce, elliptical-arc wake-up,
 non-coplanar model-curve wake-up, non-circular curved model edges, and sketch-source repair UI are not
 implemented. Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
@@ -175,8 +176,8 @@ cannot alter evaluation order.
    solver semantics permit them.
 3. **Editor interaction**: the icon-only `Use external geometry` tool, point/line external inference,
    exact earlier-sketch circle/arc inference, visible preselection, source labels, a reference list,
-   visibility toggle, accessible removal, and exact full-ellipse axis-quadrant inference are implemented.
-   Extend automatic inference to elliptical arcs, generic point-on-ellipse intent, and stable non-circular
+   visibility toggle, accessible removal, exact full-ellipse axis-quadrant inference, and exact generic
+   full-ellipse Point on ellipse intent are implemented. Extend automatic inference to elliptical arcs and stable non-circular
    or non-coplanar curved model topology.
 4. **Feature-edge Use**: exact vertex, linear-edge, circle-edge, and arc-edge payloads, stable
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit

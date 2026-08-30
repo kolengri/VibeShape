@@ -636,6 +636,84 @@ describe("sketchRecordSchema", () => {
     ).toBe(false)
   })
 
+  test("accepts point-on-ellipse only for full ellipse targets", () => {
+    const fixture = validSketch()
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(314),
+            type: "point-on-ellipse",
+            pointId: pointD,
+            ellipseId: ellipse,
+          },
+        ],
+      }).success,
+    ).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(315),
+            type: "point-on-ellipse",
+            pointId: pointD,
+            ellipseId: circle,
+          },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("reserves native solver capacity for point-on-ellipse intent", () => {
+    const fixture = validSketch()
+    const constraints = Array.from({ length: 2_001 }, (_, index) => ({
+      schemaVersion: 0,
+      id: constraintId(20_000 + index),
+      type: "point-on-ellipse" as const,
+      pointId: pointD,
+      ellipseId: ellipse,
+    }))
+    const ellipseEntities = fixture.entities.filter(({ id }) =>
+      [pointA, pointB, pointC, pointD, ellipse].includes(id),
+    )
+    const atEntityLimit = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities: ellipseEntities,
+      constraints: constraints.slice(0, 1_247),
+    })
+    const entityOverflow = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities: ellipseEntities,
+      constraints: constraints.slice(0, 1_248),
+    })
+    const constraintOverflow = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities: ellipseEntities,
+      constraints,
+    })
+
+    expect(atEntityLimit.success).toBe(true)
+    expect(entityOverflow.success).toBe(false)
+    expect(constraintOverflow.success).toBe(false)
+    if (entityOverflow.success || constraintOverflow.success) return
+    expect(entityOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["entities"],
+        message: "Sketch entities exceed the native solver safety limit.",
+      }),
+    )
+    expect(constraintOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["constraints"],
+        message: "Sketch constraints exceed the native solver safety limit.",
+      }),
+    )
+  })
+
   test("reserves native solver constraints for arc midpoint intent", () => {
     const fixture = validSketch()
     const result = sketchRecordSchema.safeParse({

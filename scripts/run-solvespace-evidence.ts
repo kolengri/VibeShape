@@ -2,12 +2,14 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import {
+  type SketchEntityId,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchIdSchema,
 } from "../packages/domain/src/identifiers"
-import { sketchRecordSchema } from "../packages/domain/src/sketch"
+import { type SketchRecord, sketchRecordSchema } from "../packages/domain/src/sketch"
 import {
+  type CompiledSketchSystem,
   compileSketchSystem,
   type FlatSketchSystemInput,
   type NativeSketchSolverModule,
@@ -81,6 +83,36 @@ function requireSuccessfulSolve(result: SketchSolveResult, fixtureName: string) 
     `${fixtureName} failed with ${result.status}.`,
   )
   requireCondition(result.maximumResidual <= 1e-7, `${fixtureName} residual exceeded tolerance.`)
+}
+
+function solvedProductionPoint(
+  compilation: CompiledSketchSystem,
+  result: SketchSolveResult,
+  id: SketchEntityId,
+  fixtureName: string,
+) {
+  const binding = compilation.bindings.pointParameters.get(id)
+  requireCondition(binding, `${fixtureName} point binding was missing.`)
+  return {
+    x: Number(result.parameterValues[binding.xIndex]),
+    y: Number(result.parameterValues[binding.yIndex]),
+  }
+}
+
+function solveProductionSketch(
+  session: SketchSolverSession,
+  sketch: SketchRecord,
+  fixtureName: string,
+) {
+  const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
+  requireCondition(compilation.ok, `${fixtureName} production compilation failed.`)
+  const result = session.solve(compilation.compiled.system)
+  requireSuccessfulSolve(result, fixtureName)
+  return {
+    point: (id: SketchEntityId) =>
+      solvedProductionPoint(compilation.compiled, result, id, fixtureName),
+    result,
+  }
 }
 
 function solveNative(module: NativeSketchSolverModule, system: FlatSketchSystemInput) {
@@ -340,18 +372,7 @@ function solveProductionArcMidpoint(
       },
     ],
   })
-  const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
-  requireCondition(compilation.ok, `${fixture.label} production compilation failed.`)
-  const result = session.solve(compilation.compiled.system)
-  requireSuccessfulSolve(result, fixture.label)
-  const solvedPoint = (id: typeof centerPointId) => {
-    const binding = compilation.compiled.bindings.pointParameters.get(id)
-    requireCondition(binding, `${fixture.label} point binding was missing.`)
-    return {
-      x: Number(result.parameterValues[binding.xIndex]),
-      y: Number(result.parameterValues[binding.yIndex]),
-    }
-  }
+  const { point: solvedPoint, result } = solveProductionSketch(session, sketch, fixture.label)
   const center = solvedPoint(centerPointId)
   const start = solvedPoint(startPointId)
   const end = solvedPoint(endPointId)
@@ -472,18 +493,7 @@ function runProductionEllipseQuadrantEvidence(session: SketchSolverSession) {
         },
       ],
     })
-    const compilation = compileSketchSystem({ revision: 1, sketch, variables: [] })
-    requireCondition(compilation.ok, `${fixture.label} production compilation failed.`)
-    const result = session.solve(compilation.compiled.system)
-    requireSuccessfulSolve(result, fixture.label)
-    const solvedPoint = (id: typeof centerPointId) => {
-      const binding = compilation.compiled.bindings.pointParameters.get(id)
-      requireCondition(binding, `${fixture.label} point binding was missing.`)
-      return {
-        x: Number(result.parameterValues[binding.xIndex]),
-        y: Number(result.parameterValues[binding.yIndex]),
-      }
-    }
+    const { point: solvedPoint, result } = solveProductionSketch(session, sketch, fixture.label)
     const center = solvedPoint(centerPointId)
     const axisPoint = solvedPoint(
       fixture.axis === "primary" ? primaryAxisPointId : secondaryAxisPointId,
@@ -509,6 +519,124 @@ function runProductionEllipseQuadrantEvidence(session: SketchSolverSession) {
       side: fixture.side,
       status: result.status,
     }
+  })
+}
+
+function ellipseLocusInvariant(
+  center: { x: number; y: number },
+  primaryPoint: { x: number; y: number },
+  secondaryPoint: { x: number; y: number },
+  locusPoint: { x: number; y: number },
+) {
+  const primary = { x: primaryPoint.x - center.x, y: primaryPoint.y - center.y }
+  const secondary = { x: secondaryPoint.x - center.x, y: secondaryPoint.y - center.y }
+  const offset = { x: locusPoint.x - center.x, y: locusPoint.y - center.y }
+  const primaryRadius = Math.hypot(primary.x, primary.y)
+  const secondaryRadius = Math.hypot(secondary.x, secondary.y)
+  requireCondition(primaryRadius > 0 && secondaryRadius > 0, "Solved ellipse axes degenerated.")
+  const primaryCoordinate = (offset.x * primary.x + offset.y * primary.y) / primaryRadius
+  const secondaryCoordinate = (offset.x * secondary.x + offset.y * secondary.y) / secondaryRadius
+  return (
+    (primaryCoordinate * primaryCoordinate) / (primaryRadius * primaryRadius) +
+    (secondaryCoordinate * secondaryCoordinate) / (secondaryRadius * secondaryRadius)
+  )
+}
+
+function runProductionEllipseLocusEvidence(session: SketchSolverSession) {
+  const centerPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000001")
+  const primaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000002")
+  const secondaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000003")
+  const locusPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000004")
+  const ellipseId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000005")
+  const constraintId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8310-000000000006")
+  const fixtures = [
+    {
+      label: "Rotated primary-major ellipse locus evidence",
+      point: { x: 5, y: 2 },
+      primary: { x: 6, y: 8 },
+      secondary: { x: -4, y: 3 },
+    },
+    {
+      label: "Rotated secondary-major ellipse locus evidence",
+      point: { x: -2, y: 7 },
+      primary: { x: 3, y: 4 },
+      secondary: { x: -8, y: 6 },
+    },
+    {
+      label: "Axis-inverted ellipse locus evidence",
+      point: { x: -7, y: -1 },
+      primary: { x: -6, y: -8 },
+      secondary: { x: 4, y: -3 },
+    },
+  ] as const
+  return fixtures.map((fixture, index) => {
+    const sketch = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchIdSchema.parse(`018f0000-0000-7000-8310-${String(index + 7).padStart(12, "0")}`),
+      label: fixture.label,
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: centerPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: primaryAxisPointId,
+          type: "point",
+          ...fixture.primary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: secondaryAxisPointId,
+          type: "point",
+          ...fixture.secondary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: locusPointId,
+          type: "point",
+          ...fixture.point,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: ellipseId,
+          type: "ellipse",
+          centerPointId,
+          primaryAxisPointId,
+          secondaryAxisPointId,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId,
+          type: "point-on-ellipse",
+          pointId: locusPointId,
+          ellipseId,
+        },
+      ],
+    })
+    const { point: solvedPoint, result } = solveProductionSketch(session, sketch, fixture.label)
+    const invariant = ellipseLocusInvariant(
+      solvedPoint(centerPointId),
+      solvedPoint(primaryAxisPointId),
+      solvedPoint(secondaryAxisPointId),
+      solvedPoint(locusPointId),
+    )
+    requireCondition(
+      Math.abs(invariant - 1) <= 1e-7,
+      `${fixture.label} left the exact full-ellipse locus.`,
+    )
+    return { invariant, label: fixture.label, status: result.status }
   })
 }
 
@@ -608,6 +736,7 @@ async function main() {
   const productionPointAlignment = runProductionPointAlignmentEvidence(session)
   const productionArcMidpoint = runProductionArcMidpointEvidence(session)
   const productionEllipseQuadrant = runProductionEllipseQuadrantEvidence(session)
+  const productionEllipseLocus = runProductionEllipseLocusEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -641,6 +770,7 @@ async function main() {
     },
     constraintCoverage,
     productionArcMidpoint,
+    productionEllipseLocus,
     productionEllipseQuadrant,
     productionPointAlignment,
     degenerateGeometry: {

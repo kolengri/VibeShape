@@ -241,6 +241,14 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...constraintEnvelope,
+      type: z.literal("point-on-ellipse"),
+      pointId: sketchEntityIdSchema,
+      ellipseId: sketchEntityIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
       type: z.literal("ellipse-quadrant"),
       pointId: sketchEntityIdSchema,
       ellipseId: sketchEntityIdSchema,
@@ -689,6 +697,7 @@ const wireConstraintEntityReferenceRules = {
   },
   "point-on-line": { pointId: ["point"], lineId: ["line"] },
   "point-on-curve": { pointId: ["point"], curveId: ["circle", "arc"] },
+  "point-on-ellipse": { pointId: ["point"], ellipseId: ["ellipse"] },
   "ellipse-quadrant": { pointId: ["point"], ellipseId: ["ellipse"] },
   midpoint: { pointId: ["point"], lineId: ["line"] },
   "arc-midpoint": { pointId: ["point"], arcId: ["arc"] },
@@ -883,7 +892,9 @@ function nativeWireConstraintCount(sketch: SketchWireStructure) {
           ? 2
           : constraint.type === "ellipse-quadrant"
             ? 6
-            : 1),
+            : constraint.type === "point-on-ellipse"
+              ? 5
+              : 1),
     0,
   )
   const internal = sketch.entities.reduce((count, entity) => {
@@ -932,6 +943,9 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
   const auxiliaryEllipseQuadrantCount = sketch.constraints.filter(
     ({ type }) => type === "ellipse-quadrant",
   ).length
+  const auxiliaryEllipseLocusCount = sketch.constraints.filter(
+    ({ type }) => type === "point-on-ellipse",
+  ).length
   return {
     entities:
       authored.entities +
@@ -941,7 +955,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
       ) +
       projectionCount * 3 +
       auxiliaryArcMidpointLineCount +
-      auxiliaryEllipseQuadrantCount * 4,
+      auxiliaryEllipseQuadrantCount * 4 +
+      auxiliaryEllipseLocusCount * 4,
     parameters:
       authored.parameters +
       wireProjectedExternalGeometry(sketch).reduce(
@@ -949,7 +964,8 @@ function nativeWireCapacity(sketch: SketchWireStructure) {
         0,
       ) +
       projectionCount * 4 +
-      auxiliaryEllipseQuadrantCount * 4,
+      auxiliaryEllipseQuadrantCount * 4 +
+      auxiliaryEllipseLocusCount * 4,
   }
 }
 
