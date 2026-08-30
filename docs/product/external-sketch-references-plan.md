@@ -69,11 +69,11 @@ re-evaluate stable-reference availability. The first Intersection slice selects 
 face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
 worker-local. Parallel, coplanar, disjoint, ambiguous, multi-edge, nonlinear, and zero-length results fail
-closed. Point and Line placement now wake visible earlier-sketch points, lines, analytical circles,
+closed. Point and Line placement plus existing-point drag now wake visible earlier-sketch points, lines, analytical circles,
 bounded arcs, full ellipses, and elliptical arcs, highlight and label the source, and atomically create the stable reference
 plus inferred Coincident, Point on line, Point on curve, full-ellipse Quadrant, exact Point on ellipse, or exact bounded Point on elliptical arc constraint only after
-acceptance. Curve wake-up projects the pointer onto exact analytical geometry; it never infers against
-sampled display polylines. Shift suppresses
+acceptance. Drag release materializes the same stable reference and inferred relation as placement in one local edit; pointer motion mutates no document state. Curve wake-up projects the pointer onto exact analytical geometry through a prebuilt nearby-candidate index; it never infers against
+sampled display polylines or scans the complete curve set per frame. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
 creating a second reference. Exact coplanar circular, bounded circular-arc, elliptical, and bounded elliptical-arc model edges use the same passive
 interaction only when their `TopoRef` resolves uniquely. A uniquely resolved coplanar model circle whose

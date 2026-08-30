@@ -777,6 +777,78 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
+  test("drags an existing point onto an earlier sketch line and reopens the association", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const createSketch = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The source sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.38, bounds.y + bounds.height * 0.44)
+    await page.mouse.click(bounds.x + bounds.width * 0.64, bounds.y + bounds.height * 0.44)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await createSketch.click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.44, bounds.y + bounds.height * 0.66)
+    await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.7)
+    await page.keyboard.up("Shift")
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+
+    const contextLine = drawing.locator("[data-sketch-context-geometry-count] line").first()
+    await expect(contextLine).toHaveCount(1)
+    const wakeupPoint = await contextLine.evaluate((element) => {
+      const line = element as unknown as {
+        getAttribute(name: string): string | null
+        getScreenCTM(): { a: number; b: number; c: number; d: number; e: number; f: number } | null
+      }
+      const matrix = line.getScreenCTM()
+      if (!matrix) throw new Error("The earlier sketch line requires a screen transform.")
+      const x = Number(line.getAttribute("x1")) * 0.7 + Number(line.getAttribute("x2")) * 0.3
+      const y = Number(line.getAttribute("y1")) * 0.7 + Number(line.getAttribute("y2")) * 0.3
+      return {
+        x: matrix.a * x + matrix.c * y + matrix.e,
+        y: matrix.b * x + matrix.d * y + matrix.f,
+      }
+    })
+    const localPoint = drawing.locator('[data-sketch-entity-type="point"]').last()
+    const localPointBounds = await localPoint.boundingBox()
+    if (!localPointBounds) throw new Error("The local sketch point is not visible.")
+
+    await page.mouse.move(
+      localPointBounds.x + localPointBounds.width / 2,
+      localPointBounds.y + localPointBounds.height / 2,
+    )
+    await page.mouse.down()
+    await page.mouse.move(wakeupPoint.x, wakeupPoint.y, { steps: 8 })
+    await expect(drawing.locator('[data-sketch-inference="point-on-line"]')).toBeVisible()
+    await expect(page.locator("[data-sketch-external-inference-label]")).toContainText(
+      "Sketch 1 · Line",
+    )
+    await page.mouse.up()
+
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
+    await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
+    await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+  })
+
   test("chooses one overlapping earlier-sketch line directly in Select", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

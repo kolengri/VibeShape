@@ -643,6 +643,98 @@ describe("sketch inference", () => {
     ).toMatchObject({ kind: "point-on-line", point: { x: 400, y: 0 } })
   })
 
+  it("queries analytical curves conservatively and preserves full-inference results", () => {
+    const circle = {
+      id: arcId,
+      centerPointId: firstPointId,
+      type: "circle" as const,
+      center: { x: 0, y: 0 },
+      radius: 1_000,
+    }
+    const boundedArc = {
+      id: secondLineId,
+      centerPointId: firstPointId,
+      type: "arc" as const,
+      center: { x: 0, y: 0 },
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+    }
+    const rotatedEllipse = {
+      id: thirdPointId,
+      centerPointId: firstPointId,
+      type: "ellipse" as const,
+      center: { x: 0, y: 0 },
+      primaryAxisPoint: { x: 3, y: 3 },
+      secondaryAxisPoint: { x: -1, y: 1 },
+    }
+    const boundedEllipticalArc = {
+      id: fourthPointId,
+      centerPointId: secondPointId,
+      type: "elliptical-arc" as const,
+      center: { x: 20, y: 0 },
+      primaryAxisPoint: { x: 24, y: 0 },
+      secondaryAxisPoint: { x: 20, y: 2 },
+      start: { x: 24, y: 0 },
+      end: { x: 20, y: 2 },
+    }
+    const farCurves = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `018f0000-0000-7004-9000-${index.toString().padStart(12, "0")}` as SketchEntityId,
+      centerPointId: firstPointId,
+      type: "circle" as const,
+      center: { x: 1_000 + index * 10, y: 1_000 },
+      radius: 2,
+    }))
+    const curves = [circle, boundedArc, rotatedEllipse, boundedEllipticalArc, ...farCurves]
+    const query = createSketchInferenceCandidateQuery({
+      arcs: [
+        {
+          id: boundedArc.id,
+          center: boundedArc.center,
+          startPointId: firstPointId,
+          endPointId: secondPointId,
+        },
+      ],
+      cellSize: 1,
+      curves,
+      lines: [],
+      points: [],
+    })
+
+    expect(query({ x: 4.2, y: 4.2 }, 0.5).curves.map(({ id }) => id)).toEqual([
+      circle.id,
+      boundedArc.id,
+      rotatedEllipse.id,
+    ])
+    expect(query({ x: -10, y: 0 }, 0.5).curves.map(({ id }) => id)).toEqual([
+      circle.id,
+      boundedArc.id,
+    ])
+    expect(query({ x: 400, y: 0 }, 1).curves).toEqual([circle])
+    expect(query({ x: 400, y: 0 }, 1).arcs).toEqual([])
+
+    const ellipticalArcPoint = { x: 22.9, y: 1.4 }
+    expect(query(ellipticalArcPoint, 0.2).curves).toContainEqual(boundedEllipticalArc)
+    expect(
+      inferSketchPoint({
+        ...query(ellipticalArcPoint, 0.2),
+        point: ellipticalArcPoint,
+        tolerance: 0.2,
+      }),
+    ).toEqual(
+      inferSketchPoint({
+        curves,
+        point: ellipticalArcPoint,
+        points: [],
+        tolerance: 0.2,
+      }),
+    )
+
+    const point = { x: 4.2, y: 4.2 }
+    expect(inferSketchPoint({ ...query(point, 0.5), point, tolerance: 0.5 })).toEqual(
+      inferSketchPoint({ curves, point, points: [], tolerance: 0.5 }),
+    )
+  })
+
   it("selects a stable quadrant from dense coincident curves without sorting candidates", () => {
     const curves = Array.from({ length: 2_500 }, (_, index) => {
       const suffix = (index + 100).toString(16).padStart(12, "0")
@@ -654,12 +746,18 @@ describe("sketch inference", () => {
         radius: 10,
       }
     })
+    const query = createSketchInferenceCandidateQuery({
+      cellSize: 1,
+      curves,
+      lines: [],
+      points: [],
+    })
     const sort = vi.spyOn(Array.prototype, "sort")
     try {
+      const point = { x: 10.1, y: 0.1 }
       const inference = inferSketchPoint({
-        curves,
-        point: { x: 10.1, y: 0.1 },
-        points: [],
+        ...query(point, 1),
+        point,
         tolerance: 1,
       })
 
