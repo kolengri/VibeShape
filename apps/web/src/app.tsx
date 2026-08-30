@@ -272,6 +272,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchVisibility: sessionActions.setSketchVisibility,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
         setSketchProfiles: sessionActions.setSketchProfiles,
+        setSketchReferenceDimensionLabels: sessionActions.setSketchReferenceDimensionLabels,
         setSketchReferenceRepair: sessionActions.setSketchReferenceRepair,
         setSketchSelectedConstraintId: sessionActions.setSketchSelectedConstraintId,
         setSketchSelectedEntityIds: sessionActions.setSketchSelectedEntityIds,
@@ -418,6 +419,7 @@ function EditorWorkspaceComposition({
       sketchRepairReferenceId={session.sketch.repairReferenceId}
       sketchFailedConstraintIds={session.sketch.failedConstraintIds}
       sketchProfiles={session.sketch.profiles}
+      sketchReferenceDimensionLabels={session.sketch.referenceDimensionLabels}
       sketchSelectedConstraintId={session.sketch.selectedConstraintId}
       sketchSelectedEntityIds={session.sketch.selectedEntityIds}
       sketchSelectedProfile={session.sketch.selectedProfile}

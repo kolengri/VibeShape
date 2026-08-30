@@ -6,6 +6,7 @@ import {
   rectangleSketchProfileSelector,
   updateRectangleSketch,
 } from "./rectangle-sketch"
+import { sketchRecordSchema } from "./sketch"
 import { createLengthQuantity } from "./units"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3001")
@@ -91,5 +92,27 @@ describe("rectangular sketch template", () => {
         height: createLengthQuantity(20),
       }),
     ).toThrow("not a supported rectangular sketch")
+  })
+
+  it("does not treat a reference measurement as driving rectangle intent", () => {
+    const sketch = rectangle()
+    const changed = sketchRecordSchema.parse({
+      ...sketch,
+      constraints: sketch.constraints.map((constraint) =>
+        constraint.type === "horizontal-distance"
+          ? {
+              schemaVersion: constraint.schemaVersion,
+              id: constraint.id,
+              type: constraint.type,
+              firstPointId: constraint.firstPointId,
+              secondPointId: constraint.secondPointId,
+              mode: "reference",
+            }
+          : constraint,
+      ),
+    })
+
+    expect(rectangleSketchDefinition(changed)).toBeNull()
+    expect(rectangleSketchProfileSelector(changed)).toBeNull()
   })
 })

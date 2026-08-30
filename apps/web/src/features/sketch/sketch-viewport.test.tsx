@@ -211,6 +211,9 @@ type SketchViewportTestProps = Readonly<{
     typeof SketchViewport
   >["actions"]["onOriginPlaneVisibilityChange"]
   onProfilesChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onProfilesChange"]
+  onReferenceDimensionLabelsChange?: React.ComponentProps<
+    typeof SketchViewport
+  >["actions"]["onReferenceDimensionLabelsChange"]
   onSelectionChange?: React.ComponentProps<typeof SketchViewport>["actions"]["onSelectionChange"]
   selectedConstraintId?: React.ComponentProps<
     typeof SketchViewport
@@ -265,16 +268,17 @@ function ProjectionProbe({
 
 function viewportActions(props: SketchViewportTestProps) {
   return {
-    onDisplayChange: props.onDisplayChange ?? noOperation,
-    onDraftChange: props.onDraftChange ?? noOperation,
-    onEditorToolChange: props.onEditorToolChange ?? noOperation,
-    onConstraintSelectionChange: props.onConstraintSelectionChange ?? noOperation,
+    onDisplayChange: valueOr(props.onDisplayChange, noOperation),
+    onDraftChange: valueOr(props.onDraftChange, noOperation),
+    onEditorToolChange: valueOr(props.onEditorToolChange, noOperation),
+    onConstraintSelectionChange: valueOr(props.onConstraintSelectionChange, noOperation),
     onFailedConstraintsChange: noOperation,
-    onOriginPlaneVisibilityChange: props.onOriginPlaneVisibilityChange ?? noOperation,
-    onProfileSelect: props.onProfileSelect ?? noOperation,
-    onProfilesChange: props.onProfilesChange ?? noOperation,
+    onOriginPlaneVisibilityChange: valueOr(props.onOriginPlaneVisibilityChange, noOperation),
+    onProfileSelect: valueOr(props.onProfileSelect, noOperation),
+    onProfilesChange: valueOr(props.onProfilesChange, noOperation),
+    onReferenceDimensionLabelsChange: valueOr(props.onReferenceDimensionLabelsChange, noOperation),
     onRedo: noOperation,
-    onSelectionChange: props.onSelectionChange ?? noOperation,
+    onSelectionChange: valueOr(props.onSelectionChange, noOperation),
     onUndo: noOperation,
   } satisfies React.ComponentProps<typeof SketchViewport>["actions"]
 }
@@ -5138,6 +5142,90 @@ describe("SketchViewport", () => {
         }),
       ),
     )
+  })
+
+  it("renders a reference dimension from live solved geometry without an expression editor", async () => {
+    const driving = sketch.constraints.find(
+      (constraint) => constraint.type === "horizontal-distance" && "value" in constraint,
+    )
+    if (!driving) throw new Error("The rectangle fixture must contain a width dimension.")
+    const reference = sketchRecordSchema.parse({
+      ...sketch,
+      constraints: sketch.constraints.map((constraint) =>
+        constraint.id === driving.id
+          ? {
+              schemaVersion: constraint.schemaVersion,
+              id: constraint.id,
+              type: constraint.type,
+              firstPointId: driving.firstPointId,
+              secondPointId: driving.secondPointId,
+              mode: "reference",
+            }
+          : constraint,
+      ),
+    })
+    const first = requiredSketchEntity(reference, "point", driving.firstPointId)
+    const second = requiredSketchEntity(reference, "point", driving.secondPointId)
+    const onReferenceDimensionLabelsChange = vi.fn()
+    const solveSketch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        solveResult(
+          new Map([
+            [first.id, { x: 5, y: first.y }],
+            [second.id, { x: 47, y: second.y }],
+          ]),
+        ),
+      )
+      .mockImplementation(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: reference,
+      selectedConstraintId: driving.id,
+      sketch: reference,
+      onReferenceDimensionLabelsChange,
+      solveSketch,
+    })
+
+    const annotation = await waitFor(() => {
+      const element = document.querySelector(
+        `[data-sketch-constraint-id="${driving.id}"][data-sketch-dimension-mode="reference"]`,
+      )
+      if (!element) throw new Error("The reference dimension annotation must be rendered.")
+      expect(element.textContent).toBe("(42 mm)")
+      return element
+    })
+    expect(annotation.className).toContain("border-dashed")
+    expect(annotation.getAttribute("aria-label")).toBe("Select constraint (42 mm)")
+    expect(onReferenceDimensionLabelsChange).toHaveBeenLastCalledWith({
+      [driving.id]: "(42 mm)",
+    })
+
+    const changed = sketchRecordSchema.parse({
+      ...reference,
+      constraints: reference.constraints.map((constraint) =>
+        constraint.type === "vertical-distance" && "value" in constraint
+          ? { ...constraint, value: createLengthQuantity(20) }
+          : constraint,
+      ),
+    })
+    view.rerender(
+      viewportElement({
+        draft: changed,
+        selectedConstraintId: driving.id,
+        sketch: reference,
+        onReferenceDimensionLabelsChange,
+        solveSketch,
+      }),
+    )
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(annotation.textContent).toBe("(42 mm)")
+    expect(onReferenceDimensionLabelsChange).toHaveBeenLastCalledWith({
+      [driving.id]: "(42 mm)",
+    })
+
+    fireEvent.doubleClick(annotation)
+    expect(screen.queryByRole("form", { name: "Dimension value" })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Driving dimension expression" })).toBeNull()
   })
 
   it("offers icon-only precision tools for the current sketch selection", () => {

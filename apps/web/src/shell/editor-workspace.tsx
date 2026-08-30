@@ -120,6 +120,7 @@ type WorkspaceContentProps = Readonly<{
     onOriginPlaneSelect: (plane: ViewerOriginPlane | null) => void
     onSketchProfileSelect: (profile: SketchProfileSelector) => void
     onSketchProfilesChange: (profiles: readonly SketchProfileSelector[]) => void
+    onSketchReferenceDimensionLabelsChange: (labels: Readonly<Record<string, string>>) => void
     onSketchRedo: () => void
     onSketchConstraintSelectionChange: (constraintId: SketchConstraintId | null) => void
     onSketchSelectionChange: (entityIds: readonly SketchEntityId[]) => void
@@ -200,6 +201,7 @@ function SketchWorkspaceContent({
         onOriginPlaneVisibilityChange: actions.onOriginPlaneVisibilityChange,
         onProfileSelect: actions.onSketchProfileSelect,
         onProfilesChange: actions.onSketchProfilesChange,
+        onReferenceDimensionLabelsChange: actions.onSketchReferenceDimensionLabelsChange,
         onRedo: actions.onSketchRedo,
         onConstraintSelectionChange: actions.onSketchConstraintSelectionChange,
         onSelectionChange: actions.onSketchSelectionChange,
@@ -1001,6 +1003,7 @@ export type EditorWorkspaceActions = Readonly<{
   setSketchEditorTool: (tool: SketchEditorTool) => void
   setSketchFailedConstraintIds: (constraintIds: readonly SketchConstraintId[]) => void
   setSketchProfiles: (profiles: readonly SketchProfileSelector[]) => void
+  setSketchReferenceDimensionLabels: (labels: Readonly<Record<string, string>>) => void
   setSketchReferenceRepair: (referenceId: SketchExternalReferenceId | null) => void
   setSketchSelectedConstraintId: (constraintId: SketchConstraintId | null) => void
   setSketchSelectedEntityIds: (entityIds: readonly SketchEntityId[]) => void
@@ -1036,6 +1039,7 @@ type EditorWorkspaceProps = Readonly<{
   sketchEditorTool: SketchEditorTool
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchReferenceDimensionLabels: Readonly<Record<string, string>>
   sketchRepairReferenceId: SketchExternalReferenceId | null
   sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
@@ -1115,6 +1119,7 @@ function EditorContent({
         onOriginPlaneSelect: actions.selectOriginPlane,
         onSketchProfileSelect: actions.setSketchSelectedProfile,
         onSketchProfilesChange: actions.setSketchProfiles,
+        onSketchReferenceDimensionLabelsChange: actions.setSketchReferenceDimensionLabels,
         onSketchRedo: actions.redoSketchDraft,
         onSketchConstraintSelectionChange: actions.setSketchSelectedConstraintId,
         onSketchSelectionChange: actions.setSketchSelectedEntityIds,
@@ -1178,6 +1183,7 @@ function EditorTaskPanel({
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
+      sketchReferenceDimensionLabels={props.sketchReferenceDimensionLabels}
       sketchRepairReferenceId={props.sketchRepairReferenceId}
       sketchSelectedConstraintId={props.sketchSelectedConstraintId}
       sketchSelectedEntityIds={props.sketchSelectedEntityIds}

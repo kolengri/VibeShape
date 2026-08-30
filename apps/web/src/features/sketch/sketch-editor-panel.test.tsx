@@ -43,9 +43,11 @@ const copy = {
   diameter: "Diameter",
   dimension: "Dimension type",
   dimensionExpression: "Driving expression",
+  dimensionMode: "Dimension mode",
   dimensionInvalid: "Invalid dimension",
   dimensions: "Dimensions",
   distance: "Distance",
+  driving: "Driving",
   externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
   brokenExternalReference: "Broken external reference.",
@@ -82,6 +84,7 @@ const copy = {
   profiles: "Closed profiles",
   primaryAxisDiameter: "Primary axis diameter",
   radius: "Radius",
+  reference: "Reference",
   rectangle: "Rectangle",
   redo: "Redo",
   remove: "Remove",
@@ -153,6 +156,9 @@ function renderPanel(
   missingExternalReferenceIds: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["missingExternalReferenceIds"] = new Set(),
+  referenceDimensionLabels: React.ComponentProps<
+    typeof SketchEditorPanel
+  >["state"]["referenceDimensionLabels"] = {},
 ) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
@@ -170,6 +176,7 @@ function renderPanel(
               failedConstraintIds,
               message: null,
               profiles: extrusion?.profile ? [extrusion.profile] : [],
+              referenceDimensionLabels,
               repairReferenceId,
               selectedConstraintId,
               selectedEntityIds,
@@ -608,6 +615,70 @@ describe("SketchEditorPanel", () => {
         ],
       }),
     )
+  })
+
+  it("creates a value-less reference dimension from the task-panel fallback", async () => {
+    const user = userEvent.setup()
+    const sketch = lineSketch()
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The line fixture must contain one line.")
+    const onDraftChange = renderPanel(sketch, [line.id])
+
+    await user.click(screen.getByRole("button", { name: "Reference" }))
+    expect(screen.queryByRole("combobox", { name: "Driving expression" })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Add constraint" }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: [
+          expect.objectContaining({
+            type: "distance",
+            firstPointId: line.startPointId,
+            secondPointId: line.endPointId,
+            mode: "reference",
+          }),
+        ],
+      }),
+    )
+    const changed = onDraftChange.mock.calls[0]?.[0]
+    expect(changed?.constraints[0]).not.toHaveProperty("value")
+  })
+
+  it("exposes the live reference measurement in the accessible constraint row", () => {
+    const sketch = lineSketch()
+    const line = sketch.entities.find((entity) => entity.type === "line")
+    if (!line) throw new Error("The line fixture must contain one line.")
+    const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-000000000004")
+    const constrained = appendSketchConstraint(
+      sketch,
+      {
+        type: "distance",
+        firstPointId: line.startPointId,
+        secondPointId: line.endPointId,
+        mode: "reference",
+      },
+      () => constraintId,
+    )
+
+    renderPanel(
+      constrained,
+      [],
+      vi.fn(),
+      [],
+      undefined,
+      [],
+      null,
+      undefined,
+      new Map(),
+      null,
+      vi.fn(),
+      vi.fn(),
+      null,
+      new Set(),
+      { [constraintId]: "(21.541 mm)" },
+    )
+
+    expect(screen.getByRole("button", { name: "Distance · Reference · (21.541 mm)" })).toBeTruthy()
   })
 
   it("edits an existing line dimension without replacing its identity", async () => {

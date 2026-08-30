@@ -6,6 +6,7 @@ import {
   sketchIdSchema,
 } from "@vibeshape/domain/identifiers"
 import {
+  isReferenceSketchDimension,
   MAX_SKETCH_COORDINATE_MM,
   type SketchConstraint,
   type SketchEntity,
@@ -1322,16 +1323,17 @@ function isLinePairConstraint(
   return linePairConstraintTypes.has(constraint.type)
 }
 
+type DrivingDimensionConstraint = Extract<DimensionConstraint, { value: unknown }>
 type DistanceConstraint = Extract<
-  DimensionConstraint,
+  DrivingDimensionConstraint,
   { type: "horizontal-distance" | "vertical-distance" | "distance" }
 >
-type RadialConstraint = Extract<DimensionConstraint, { type: "radius" | "diameter" }>
+type RadialConstraint = Extract<DrivingDimensionConstraint, { type: "radius" | "diameter" }>
 type EllipseAxisDiameterConstraint = Extract<
-  DimensionConstraint,
+  DrivingDimensionConstraint,
   { type: "primary-axis-diameter" | "secondary-axis-diameter" }
 >
-type OffsetConstraint = Extract<DimensionConstraint, { type: "offset" }>
+type OffsetConstraint = Extract<DrivingDimensionConstraint, { type: "offset" }>
 
 function addDistanceConstraint(
   builder: ProductionSketchBuilder,
@@ -1360,7 +1362,7 @@ function addDistanceConstraint(
 
 function addAngleConstraint(
   builder: ProductionSketchBuilder,
-  constraint: Extract<DimensionConstraint, { type: "angle" }>,
+  constraint: Extract<DrivingDimensionConstraint, { type: "angle" }>,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
 ) {
   const value = resolveDimension(constraint, variables)
@@ -1448,7 +1450,17 @@ function addDimensionConstraint(
   constraint: DimensionConstraint,
   variables: ReturnType<typeof evaluateVariableDefinitions>,
 ) {
-  if (constraint.type === "ellipse-quadrant") return false
+  if (isReferenceSketchDimension(constraint)) return true
+  if (!("value" in constraint)) return false
+  return addDrivingDimensionConstraint(builder, sketch, constraint, variables)
+}
+
+function addDrivingDimensionConstraint(
+  builder: ProductionSketchBuilder,
+  sketch: SketchRecord,
+  constraint: DrivingDimensionConstraint,
+  variables: ReturnType<typeof evaluateVariableDefinitions>,
+) {
   if (
     constraint.type === "horizontal-distance" ||
     constraint.type === "vertical-distance" ||

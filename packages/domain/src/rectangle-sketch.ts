@@ -199,7 +199,17 @@ export function rectangleSketchDefinition(sketch: SketchRecord): RectangleSketch
     (constraint): constraint is Extract<SketchConstraint, { type: "vertical" }> =>
       constraint.type === "vertical",
   )
-  if (!fixed || !width || !height || horizontal.length !== 2 || vertical.length !== 2) return null
+  if (
+    !fixed ||
+    !width ||
+    !("value" in width) ||
+    !height ||
+    !("value" in height) ||
+    horizontal.length !== 2 ||
+    vertical.length !== 2
+  ) {
+    return null
+  }
 
   const widthLine = lineForPoints(lines, width.firstPointId, width.secondPointId)
   const heightLine = lineForPoints(lines, height.firstPointId, height.secondPointId)

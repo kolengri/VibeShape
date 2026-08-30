@@ -202,7 +202,7 @@ const entityPair = {
   firstEntityId: sketchEntityIdSchema,
   secondEntityId: sketchEntityIdSchema,
 }
-const sketchConstraintSchema = z.discriminatedUnion("type", [
+const drivingSketchConstraintSchema = z.discriminatedUnion("type", [
   z.object({ ...constraintEnvelope, type: z.literal("coincident"), ...pointPair }).strict(),
   z
     .object({ ...constraintEnvelope, type: z.literal("horizontal"), lineId: sketchEntityIdSchema })
@@ -414,6 +414,59 @@ const sketchConstraintSchema = z.discriminatedUnion("type", [
     })
     .strict(),
 ])
+
+const referenceDimensionSchema = z.union([
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("horizontal-distance"),
+      ...pointPair,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("vertical-distance"),
+      ...pointPair,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("distance"),
+      ...pointPair,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("angle"),
+      ...entityPair,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("radius"),
+      curveId: sketchEntityIdSchema,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+  z
+    .object({
+      ...constraintEnvelope,
+      type: z.literal("diameter"),
+      curveId: sketchEntityIdSchema,
+      mode: z.literal("reference"),
+    })
+    .strict(),
+])
+
+const sketchConstraintSchema = z.union([drivingSketchConstraintSchema, referenceDimensionSchema])
 
 const externalPointReferenceWireSchema = z
   .object({
@@ -911,21 +964,20 @@ function wireProjectedExternalGeometry(sketch: SketchWireStructure) {
   return (sketch.externalReferences ?? []).flatMap(wireProjectedExternalEntities)
 }
 
+function nativeWireConstraintContribution(constraint: z.infer<typeof sketchConstraintSchema>) {
+  if ("mode" in constraint && constraint.mode === "reference") return 0
+  if (constraint.type === "offset") {
+    return constraint.linePairs.length * 2 + constraint.endpointPairs.length
+  }
+  if (constraint.type === "arc-midpoint") return 2
+  if (constraint.type === "ellipse-quadrant") return 6
+  if (constraint.type === "point-on-ellipse") return 5
+  return constraint.type === "point-on-elliptical-arc" ? 6 : 1
+}
+
 function nativeWireConstraintCount(sketch: SketchWireStructure) {
   const authored = sketch.constraints.reduce(
-    (count, constraint) =>
-      count +
-      (constraint.type === "offset"
-        ? constraint.linePairs.length * 2 + constraint.endpointPairs.length
-        : constraint.type === "arc-midpoint"
-          ? 2
-          : constraint.type === "ellipse-quadrant"
-            ? 6
-            : constraint.type === "point-on-ellipse"
-              ? 5
-              : constraint.type === "point-on-elliptical-arc"
-                ? 6
-                : 1),
+    (count, constraint) => count + nativeWireConstraintContribution(constraint),
     0,
   )
   const internal = sketch.entities.reduce((count, entity) => {

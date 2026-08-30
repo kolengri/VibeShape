@@ -297,6 +297,70 @@ export function createSketchDimensionConstraint(
   return createLinearDimensionConstraint(kind, entities, value)
 }
 
+export function createSketchReferenceDimensionConstraint(
+  kind: SketchDimensionKind,
+  entities: readonly SketchEntity[],
+): SketchConstraintDefinition | null {
+  if (
+    kind === "offset" ||
+    kind === "primary-axis-diameter" ||
+    kind === "secondary-axis-diameter" ||
+    !compatibleSketchDimensionTools(entities).includes(kind)
+  ) {
+    return null
+  }
+  if (kind === "angle") return createReferenceAngleDimension(entities)
+  if (kind === "radius" || kind === "diameter") {
+    return createReferenceRadialDimension(kind, entities)
+  }
+  return createReferenceLinearDimension(kind, entities)
+}
+
+function createReferenceAngleDimension(
+  entities: readonly SketchEntity[],
+): SketchConstraintDefinition | null {
+  const lines = pair(entitiesOfType(entities, "line"))
+  return lines
+    ? {
+        type: "angle",
+        firstEntityId: lines[0].id,
+        secondEntityId: lines[1].id,
+        mode: "reference",
+      }
+    : null
+}
+
+function createReferenceRadialDimension(
+  kind: "radius" | "diameter",
+  entities: readonly SketchEntity[],
+): SketchConstraintDefinition | null {
+  const curve = roundCurves(entities)[0]
+  if (!curve) return null
+  return kind === "radius"
+    ? { type: "radius", curveId: curve.id, mode: "reference" }
+    : { type: "diameter", curveId: curve.id, mode: "reference" }
+}
+
+function createReferenceLinearDimension(
+  kind: "distance" | "horizontal-distance" | "vertical-distance",
+  entities: readonly SketchEntity[],
+): SketchConstraintDefinition | null {
+  const points = pair(entitiesOfType(entities, "point"))
+  const line = entitiesOfType(entities, "line")[0]
+  const pointIds = points
+    ? ([points[0].id, points[1].id] as const)
+    : kind === "distance" && line
+      ? ([line.startPointId, line.endPointId] as const)
+      : null
+  if (!pointIds) return null
+  const ids = { firstPointId: pointIds[0], secondPointId: pointIds[1] }
+  if (kind === "distance") return { type: "distance", ...ids, mode: "reference" }
+  if (kind === "horizontal-distance") {
+    return { type: "horizontal-distance", ...ids, mode: "reference" }
+  }
+  return { type: "vertical-distance", ...ids, mode: "reference" }
+}
+
 function createAngleDimensionConstraint(
   entities: readonly SketchEntity[],
   value: SketchDimensionValue,
@@ -319,7 +383,9 @@ function createRoundDimensionConstraint(
 ): SketchConstraintDefinition | null {
   const curve = roundCurves(entities)[0]
   return curve && value.dimension === "length" && value.value > 0
-    ? { type: kind, curveId: curve.id, value }
+    ? kind === "radius"
+      ? { type: "radius", curveId: curve.id, value }
+      : { type: "diameter", curveId: curve.id, value }
     : null
 }
 
@@ -350,12 +416,9 @@ function createLinearDimensionConstraint(
     : kind === "distance" && line
       ? ([line.startPointId, line.endPointId] as const)
       : null
-  return pointIds
-    ? {
-        type: kind,
-        firstPointId: pointIds[0],
-        secondPointId: pointIds[1],
-        value,
-      }
-    : null
+  if (!pointIds) return null
+  const ids = { firstPointId: pointIds[0], secondPointId: pointIds[1], value }
+  if (kind === "distance") return { type: "distance", ...ids }
+  if (kind === "horizontal-distance") return { type: "horizontal-distance", ...ids }
+  return { type: "vertical-distance", ...ids }
 }

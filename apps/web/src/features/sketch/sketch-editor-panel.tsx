@@ -1,5 +1,6 @@
 import {
   appendSketchConstraint,
+  isReferenceSketchDimension,
   removeSketchConstraints,
   removeSketchExternalReference,
   type SketchConstraintDefinition,
@@ -35,6 +36,7 @@ import {
 import {
   compatibleSketchConstraintTools,
   compatibleSketchDimensionToolsForSelection,
+  createSketchReferenceDimensionConstraint,
   type SketchDimensionKind,
   selectedSketchConstraintEntities,
 } from "./sketch-constraint-tools"
@@ -100,6 +102,9 @@ type SketchEditorPanelCopy = Readonly<{
   useExternalGeometry: string
   vertical: string
   verticalDistance: string
+  driving: string
+  reference: string
+  dimensionMode: string
 }>
 
 type DimensionOption = Readonly<{ kind: SketchDimensionKind; label: string }>
@@ -179,15 +184,29 @@ function SketchDimensionForm({
   const [message, setMessage] = useState<string | null>(null)
   const firstOption = options[0]
   const suggestions = variableExpressionSuggestions(variables)
+  const referenceAvailable = options.some(
+    ({ kind }) => createSketchReferenceDimensionConstraint(kind, entities) !== null,
+  )
   const form = useAppForm({
     defaultValues: {
       kind: firstOption?.kind ?? ("distance" as SketchDimensionKind),
+      mode: "driving" as "driving" | "reference",
       expression:
         firstOption?.kind === "angle"
           ? defaultAngleExpression(Math.PI / 2, displayUnits.angle)
           : defaultLengthExpression(10, displayUnits.length),
     },
     onSubmit: ({ value }) => {
+      if (value.mode === "reference") {
+        const definition = createSketchReferenceDimensionConstraint(value.kind, entities)
+        if (!definition) {
+          setMessage(copy.dimensionInvalid)
+          return
+        }
+        setMessage(null)
+        onAdd(definition)
+        return
+      }
       const definition = createSketchDimensionDefinition(
         value.kind,
         value.expression,
@@ -228,24 +247,57 @@ function SketchDimensionForm({
           </Field>
         )}
       </form.Field>
-      <form.Field name="expression">
-        {(field) => (
-          <VariableExpressionField
-            id="sketch-dimension-expression"
-            name={field.name}
-            label={copy.dimensionExpression}
-            value={field.state.value}
-            error={message ?? undefined}
-            suggestions={suggestions}
-            inputClassName="font-mono tabular-nums"
-            onBlur={field.handleBlur}
-            onValueChange={(value) => {
-              setMessage(null)
-              field.handleChange(value)
-            }}
-          />
-        )}
-      </form.Field>
+      {referenceAvailable ? (
+        <form.Field name="mode">
+          {(field) => (
+            <div className="grid gap-1">
+              <FieldLabel>{copy.dimensionMode}</FieldLabel>
+              <fieldset className="flex gap-1">
+                <legend className="sr-only">{copy.dimensionMode}</legend>
+                {(["driving", "reference"] as const).map((candidate) => (
+                  <Button
+                    key={candidate}
+                    type="button"
+                    size="xs"
+                    variant={field.state.value === candidate ? "secondary" : "outline"}
+                    aria-pressed={field.state.value === candidate}
+                    onClick={() => {
+                      setMessage(null)
+                      field.handleChange(candidate)
+                    }}
+                  >
+                    {candidate === "driving" ? copy.driving : copy.reference}
+                  </Button>
+                ))}
+              </fieldset>
+            </div>
+          )}
+        </form.Field>
+      ) : null}
+      <form.Subscribe selector={(state) => state.values.mode}>
+        {(dimensionMode) =>
+          dimensionMode === "reference" ? null : (
+            <form.Field name="expression">
+              {(field) => (
+                <VariableExpressionField
+                  id="sketch-dimension-expression"
+                  name={field.name}
+                  label={copy.dimensionExpression}
+                  value={field.state.value}
+                  error={message ?? undefined}
+                  suggestions={suggestions}
+                  inputClassName="font-mono tabular-nums"
+                  onBlur={field.handleBlur}
+                  onValueChange={(value) => {
+                    setMessage(null)
+                    field.handleChange(value)
+                  }}
+                />
+              )}
+            </form.Field>
+          )
+        }
+      </form.Subscribe>
       <form.SubmitButton size="xs" requireDirty={false}>
         {copy.addConstraint}
       </form.SubmitButton>
@@ -437,6 +489,7 @@ function AppliedConstraintRow({
   onRemove,
   onSave,
   onSelect,
+  referenceValue,
   selected,
   variables,
 }: {
@@ -448,10 +501,12 @@ function AppliedConstraintRow({
   onRemove: () => void
   onSave: (value: SketchDimensionValue) => void
   onSelect: () => void
+  referenceValue: string | null
   selected: boolean
   variables: readonly VariableDefinition[]
 }) {
   const value = constraintValue(constraint)
+  const isReference = isReferenceSketchDimension(constraint)
   return (
     <li
       aria-invalid={failed || undefined}
@@ -467,6 +522,8 @@ function AppliedConstraintRow({
           onClick={onSelect}
         >
           {constraintName(constraint.type, copy)}
+          {isReference ? ` · ${copy.reference}` : null}
+          {referenceValue ? ` · ${referenceValue}` : null}
           {value ? ` · ${value}` : ""}
           {failed ? ` · ${copy.conflict}` : ""}
         </Button>
@@ -556,6 +613,7 @@ function AppliedConstraintsSection({
   failedConstraintIds,
   onDraftChange,
   onSelectedConstraintChange,
+  referenceDimensionLabels,
   selectedConstraintId,
   variables,
 }: {
@@ -564,6 +622,7 @@ function AppliedConstraintsSection({
   failedConstraintIds: readonly string[]
   onDraftChange: (draft: SketchRecord) => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
+  referenceDimensionLabels: Readonly<Record<string, string>>
   selectedConstraintId: SketchConstraintId | null
   variables: readonly VariableDefinition[]
 }) {
@@ -589,6 +648,7 @@ function AppliedConstraintsSection({
                 onDraftChange(removeSketchConstraints(draft, [constraint.id]))
               }}
               onSelect={() => onSelectedConstraintChange(constraint.id)}
+              referenceValue={referenceDimensionLabels[constraint.id] ?? null}
               onSave={(value) => {
                 onDraftChange(setSketchDimensionValue(draft, constraint.id, value))
                 onSelectedConstraintChange(null)
@@ -826,6 +886,7 @@ type SketchEditorPanelState = Readonly<{
   failedConstraintIds: readonly string[]
   message: string | null
   profiles: readonly SketchProfileSelector[]
+  referenceDimensionLabels: Readonly<Record<string, string>>
   repairReferenceId: SketchExternalReferenceId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedConstraintId: SketchConstraintId | null
@@ -865,6 +926,7 @@ export function SketchEditorPanel({
     failedConstraintIds,
     message,
     profiles,
+    referenceDimensionLabels,
     repairReferenceId,
     selectedEntityIds,
     selectedConstraintId,
@@ -926,6 +988,7 @@ export function SketchEditorPanel({
           copy={copy}
           draft={draft}
           failedConstraintIds={failedConstraintIds}
+          referenceDimensionLabels={referenceDimensionLabels}
           selectedConstraintId={selectedConstraintId}
           variables={variables}
           onDraftChange={onDraftChange}

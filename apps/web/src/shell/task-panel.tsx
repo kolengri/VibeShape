@@ -104,6 +104,7 @@ type TaskPanelProps = Readonly<{
   sketchDraft: SketchRecord | null
   sketchFailedConstraintIds: readonly SketchConstraintId[]
   sketchProfiles: readonly SketchProfileSelector[]
+  sketchReferenceDimensionLabels: Readonly<Record<string, string>>
   sketchRepairReferenceId: SketchExternalReferenceId | null
   sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
@@ -141,6 +142,8 @@ function useSketchEditorCopy() {
     dimension: t("dimension"),
     dimensionExpression: t("dimensionExpression"),
     dimensionInvalid: t("dimensionInvalid"),
+    dimensionMode: t("dimensionMode"),
+    driving: t("driving"),
     dimensions: t("dimensions"),
     distance: t("distance"),
     externalReferenceDescription: t("externalReferenceDescription"),
@@ -177,6 +180,7 @@ function useSketchEditorCopy() {
     profiles: t("profiles"),
     primaryAxisDiameter: t("primaryAxisDiameter"),
     radius: t("radius"),
+    reference: t("reference"),
     remove: t("removeConstraint"),
     saveDimension: t("saveDimension"),
     selectionHint: t("constraintSelectionHint"),
@@ -1346,6 +1350,7 @@ type ActiveSketchTaskPanelState = Readonly<{
   draft: SketchRecord
   failedConstraintIds: readonly SketchConstraintId[]
   profiles: readonly SketchProfileSelector[]
+  referenceDimensionLabels: Readonly<Record<string, string>>
   selectedConstraintId: SketchConstraintId | null
   selectedEntityIds: readonly SketchEntityId[]
   repairReferenceId: SketchExternalReferenceId | null
@@ -1393,6 +1398,7 @@ function ActiveSketchTaskPanel({
     draft,
     failedConstraintIds,
     profiles,
+    referenceDimensionLabels,
     repairReferenceId,
     selectedConstraintId,
     selectedEntityIds,
@@ -1552,6 +1558,7 @@ function ActiveSketchTaskPanel({
             failedConstraintIds,
             message,
             profiles,
+            referenceDimensionLabels,
             repairReferenceId,
             selectedConstraintId,
             selectedEntityIds,
@@ -1784,6 +1791,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
           draft: props.sketchDraft,
           failedConstraintIds: props.sketchFailedConstraintIds,
           profiles: props.sketchProfiles,
+          referenceDimensionLabels: props.sketchReferenceDimensionLabels,
           repairReferenceId: props.sketchRepairReferenceId,
           selectedConstraintId: props.sketchSelectedConstraintId,
           selectedEntityIds: props.sketchSelectedEntityIds,

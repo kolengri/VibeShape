@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { sketchRecordSchema } from "./sketch"
+import { isReferenceSketchDimension, sketchRecordSchema } from "./sketch"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000001"
@@ -986,5 +986,45 @@ describe("sketchRecordSchema", () => {
         message: "Sketch constraints exceed the native solver safety limit.",
       }),
     )
+  })
+
+  test("accepts supported reference dimensions without a measured value", () => {
+    const fixture = validSketch()
+    const references = [
+      { type: "horizontal-distance", firstPointId: pointA, secondPointId: pointB },
+      { type: "vertical-distance", firstPointId: pointA, secondPointId: pointC },
+      { type: "distance", firstPointId: pointA, secondPointId: pointD },
+      { type: "angle", firstEntityId: lineA, secondEntityId: lineB },
+      { type: "radius", curveId: circle },
+      { type: "diameter", curveId: arc },
+    ]
+    const parsed = sketchRecordSchema.parse({
+      ...fixture,
+      constraints: references.map((reference, index) => ({
+        schemaVersion: 0,
+        id: constraintId(30_000 + index),
+        mode: "reference",
+        ...reference,
+      })),
+    })
+
+    expect(parsed.constraints).toHaveLength(references.length)
+    expect(parsed.constraints.every(isReferenceSketchDimension)).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: constraintId(31_000),
+            type: "distance",
+            firstPointId: pointA,
+            secondPointId: pointB,
+            mode: "reference",
+            value: createLengthQuantity(20),
+          },
+        ],
+      }).success,
+    ).toBe(false)
   })
 })
