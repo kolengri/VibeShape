@@ -5,6 +5,7 @@ import {
   appendSketchArc,
   appendSketchCircle,
   appendSketchEllipse,
+  appendSketchEllipticalArc,
   appendSketchLine,
   appendSketchRectangle,
   createLengthQuantity,
@@ -1445,6 +1446,87 @@ describe("SketchViewport", () => {
         type: "point-on-ellipse",
         pointId: localPoint.id,
         ellipseId: reference.projectedEntityId,
+      }),
+    ])
+  })
+
+  it("wakes only the bounded sweep of an earlier sketch elliptical arc", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32c1")
+    const sourceArcId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32c2")
+    const target: SketchRecord = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32c3"),
+      entities: [],
+      constraints: [],
+      externalReferences: [],
+    }
+    const candidate = {
+      closed: false,
+      kind: "curve" as const,
+      label: "Layout · Elliptical arc 1",
+      points: [
+        { x: 10, y: 0 },
+        { x: 10 / Math.sqrt(2), y: 5 / Math.sqrt(2) },
+        { x: 0, y: 5 },
+      ].map((point) => ({ ...point, world: [point.x, point.y, 0] as const })),
+      projectedGeometry: {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 0, y: 5 },
+          { x: 10, y: 0 },
+          { x: 0, y: 5 },
+        ],
+        type: "elliptical-arc" as const,
+      },
+      projectedType: "elliptical-arc" as const,
+      sourceEntityId: sourceArcId,
+      sourceSketchId,
+      sourceType: "elliptical-arc" as const,
+    }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const outside = clientPointForSketch(drawing, { x: -10, y: 0 })
+    fireEvent.pointerMove(drawing, outside)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeNull()
+
+    const inside = clientPointForSketch(drawing, {
+      x: 10 / Math.sqrt(2),
+      y: 5 / Math.sqrt(2),
+    })
+    fireEvent.pointerMove(drawing, inside)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, inside)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    const localPoint = updated.entities.find((entity) => entity.type === "point")
+    expect(reference).toMatchObject({
+      kind: "curve",
+      projectedType: "elliptical-arc",
+      sourceEntityId: sourceArcId,
+      sourceSketchId,
+    })
+    if (reference?.kind !== "curve" || !localPoint) {
+      throw new Error("Elliptical-arc wake-up must create one reference and one local point.")
+    }
+    expect(reference.projectedPointIds).toHaveLength(5)
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "point-on-elliptical-arc",
+        pointId: localPoint.id,
+        ellipticalArcId: reference.projectedEntityId,
       }),
     ])
   })
@@ -4787,6 +4869,62 @@ describe("SketchViewport", () => {
     ).toBeTruthy()
   })
 
+  it("persists an exact point-on-elliptical-arc relation on the bounded sweep", async () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcSketch = appendSketchEllipticalArc(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b24a"),
+      endPoint: { kind: "new", point: { x: 0, y: 5 } },
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryAxisPoint: { x: 0, y: 5 },
+      startPoint: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const arc = requiredSketchEntity(arcSketch, "elliptical-arc")
+    const onDraftChange = vi.fn()
+    const view = renderViewport({
+      draft: arcSketch,
+      editorTool: "point",
+      sketch: arcSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const pointer = clientPointForSketch(drawing, {
+      x: 10 / Math.sqrt(2),
+      y: 5 / Math.sqrt(2),
+    })
+
+    fireEvent.pointerMove(drawing, pointer)
+    expect(document.querySelector('[data-sketch-inference="point-on-curve"]')).toBeTruthy()
+    fireEvent.pointerDown(drawing, pointer)
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const createdPoint = sketchEntitiesOfType(updated, "point").find(
+      ({ id }) => !arcSketch.entities.some((entity) => entity.id === id),
+    )
+    expect(updated.constraints).toEqual([
+      expect.objectContaining({
+        type: "point-on-elliptical-arc",
+        pointId: createdPoint?.id,
+        ellipticalArcId: arc.id,
+      }),
+    ])
+    view.rerender(
+      viewportElement({
+        draft: updated,
+        editorTool: "point",
+        sketch: updated,
+        solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+        onDraftChange,
+      }),
+    )
+    expect(
+      await screen.findByRole("button", { name: "Select constraint Point on curve" }),
+    ).toBeTruthy()
+  })
+
   it("renders selectable geometric constraint glyphs and driving dimension labels", () => {
     const onConstraintSelectionChange = vi.fn()
     renderViewport({
@@ -4975,6 +5113,49 @@ describe("SketchViewport", () => {
             type: "point-on-ellipse",
             pointId: point.id,
             ellipseId: ellipse.id,
+          }),
+        ]),
+      }),
+    )
+  })
+
+  it("adds an exact point-on-elliptical-arc relation from a direct canvas selection", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const arcSketch = appendSketchEllipticalArc(emptySketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b24b"),
+      endPoint: { kind: "new", point: { x: 0, y: 5 } },
+      primaryAxisPoint: { kind: "new", point: { x: 10, y: 0 } },
+      secondaryAxisPoint: { x: 0, y: 5 },
+      startPoint: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const arc = requiredSketchEntity(arcSketch, "elliptical-arc")
+    const point = {
+      schemaVersion: 0,
+      id: sketchEntityIdSchema.parse("0195b5ac-b24c-7a2c-8c33-000000000001"),
+      type: "point",
+      x: 7,
+      y: 3,
+      construction: false,
+    } as const
+    const selectedSketch = { ...arcSketch, entities: [...arcSketch.entities, point] }
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: selectedSketch,
+      sketch: selectedSketch,
+      selectedEntityIds: [point.id, arc.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Point on curve" }))
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.arrayContaining([
+          expect.objectContaining({
+            type: "point-on-elliptical-arc",
+            pointId: point.id,
+            ellipticalArcId: arc.id,
           }),
         ]),
       }),

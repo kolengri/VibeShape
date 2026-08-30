@@ -253,6 +253,11 @@ export type SketchCompilationDiagnostic = Readonly<{
 }>
 
 type PointBinding = Readonly<{ xIndex: number; yIndex: number }>
+type BoundedEllipticalArcLocus = Readonly<{
+  constraintId: SketchConstraintId
+  pointId: SketchEntityId
+  arc: Extract<SketchEntity, { type: "elliptical-arc" }>
+}>
 type SketchBindings = Readonly<{
   pointParameters: ReadonlyMap<SketchEntityId, PointBinding>
   circleRadiusParameters: ReadonlyMap<SketchEntityId, number>
@@ -264,6 +269,7 @@ export type CompiledSketchSystem = Readonly<{
   revision: number
   system: FlatSketchSystemInput
   bindings: SketchBindings
+  boundedEllipticalArcLoci: readonly BoundedEllipticalArcLocus[]
 }>
 
 export type SketchCompilationResult =
@@ -314,6 +320,60 @@ function ellipseLocusParameters(input: {
   return { cosine: rawCosine / parameterScale, sine: rawSine / parameterScale }
 }
 
+function ellipseGeometry(
+  entity: Extract<SketchEntity, { type: "ellipse" | "elliptical-arc" }>,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const center = pointValues.get(entity.centerPointId)
+  const primary = pointValues.get(entity.primaryAxisPointId)
+  const secondary = pointValues.get(entity.secondaryAxisPointId)
+  if (!center || !primary || !secondary) return null
+  const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
+  const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
+  const primaryRadius = Math.hypot(primaryVector.x, primaryVector.y)
+  const secondaryRadius = Math.hypot(secondaryVector.x, secondaryVector.y)
+  const orientation = primaryVector.x * secondaryVector.y - primaryVector.y * secondaryVector.x
+  if (!isPositiveFinite(primaryRadius) || !isPositiveFinite(secondaryRadius)) return null
+  if (!Number.isFinite(orientation)) return null
+  if (Math.abs(orientation) <= Number.EPSILON * primaryRadius * secondaryRadius) return null
+  return {
+    center,
+    orientation,
+    primaryDirection: {
+      x: primaryVector.x / primaryRadius,
+      y: primaryVector.y / primaryRadius,
+    },
+    primaryRadius,
+    secondaryDirection: {
+      x: secondaryVector.x / secondaryRadius,
+      y: secondaryVector.y / secondaryRadius,
+    },
+    secondaryRadius,
+  }
+}
+
+function isPositiveFinite(value: number) {
+  return Number.isFinite(value) && value > 0
+}
+
+function ellipticalArcPointGeometry(
+  arc: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  pointId: SketchEntityId,
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const geometry = ellipseGeometry(arc, pointValues)
+  if (!geometry) return null
+  const point = pointValues.get(pointId)
+  const start = pointValues.get(arc.startPointId)
+  const end = pointValues.get(arc.endPointId)
+  if (!point || !start || !end) return null
+  const chord = { x: end.x - start.x, y: end.y - start.y }
+  if (!isPositiveFinite(Math.hypot(chord.x, chord.y)) || Math.hypot(chord.x, chord.y) <= 1e-9) {
+    return null
+  }
+  return { chord, end, geometry, point, start }
+}
+
 class ProductionSketchBuilder {
   readonly #parameterMetadata: number[] = []
   readonly #parameterValues: number[] = []
@@ -327,6 +387,10 @@ class ProductionSketchBuilder {
   readonly #constraintIdsByHandle = new Map<number, SketchConstraintId>()
   readonly #ellipseAxes = new Map<string, Readonly<{ primary: number; secondary: number }>>()
   readonly #ellipseEntities = new Map<string, Extract<SketchEntity, { type: "ellipse" }>>()
+  readonly #ellipticalArcEntities = new Map<
+    string,
+    Extract<SketchEntity, { type: "elliptical-arc" }>
+  >()
   readonly #ellipseEndpointLoci = new Set<string>()
   #nextParameter = 11
   #nextEntity = 301
@@ -422,6 +486,7 @@ class ProductionSketchBuilder {
       throw new Error(`Sketch elliptical arc ${entity.id} is missing initial axis points.`)
     }
     const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(entity)
+    this.#ellipticalArcEntities.set(entity.id, entity)
     const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
     const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
     const primaryRadius = Math.max(Math.hypot(primaryVector.x, primaryVector.y), 1e-6)
@@ -464,30 +529,9 @@ class ProductionSketchBuilder {
   ) {
     const ellipse = this.#ellipseEntities.get(constraint.ellipseId)
     if (!ellipse) return false
-    const center = pointValues.get(ellipse.centerPointId)
-    const primary = pointValues.get(ellipse.primaryAxisPointId)
-    const secondary = pointValues.get(ellipse.secondaryAxisPointId)
-    if (!center || !primary || !secondary) return false
+    const geometry = ellipseGeometry(ellipse, pointValues)
+    if (!geometry) return false
     const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(ellipse)
-    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
-    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
-    const primaryRadius = Math.hypot(primaryVector.x, primaryVector.y)
-    const secondaryRadius = Math.hypot(secondaryVector.x, secondaryVector.y)
-    if (
-      !Number.isFinite(primaryRadius) ||
-      !Number.isFinite(secondaryRadius) ||
-      primaryRadius <= 0 ||
-      secondaryRadius <= 0
-    )
-      return false
-    const primaryDirection = {
-      x: primaryVector.x / primaryRadius,
-      y: primaryVector.y / primaryRadius,
-    }
-    const secondaryDirection = {
-      x: secondaryVector.x / secondaryRadius,
-      y: secondaryVector.y / secondaryRadius,
-    }
     this.#addEllipsePointLocus(
       constraint.id,
       ellipse,
@@ -495,10 +539,10 @@ class ProductionSketchBuilder {
       pointValues,
       primaryAxis,
       secondaryAxis,
-      primaryRadius,
-      secondaryRadius,
-      primaryDirection,
-      secondaryDirection,
+      geometry.primaryRadius,
+      geometry.secondaryRadius,
+      geometry.primaryDirection,
+      geometry.secondaryDirection,
       constraint.axis,
       constraint.side,
     )
@@ -511,22 +555,9 @@ class ProductionSketchBuilder {
   ) {
     const ellipse = this.#ellipseEntities.get(constraint.ellipseId)
     if (!ellipse) return false
-    const center = pointValues.get(ellipse.centerPointId)
-    const primary = pointValues.get(ellipse.primaryAxisPointId)
-    const secondary = pointValues.get(ellipse.secondaryAxisPointId)
-    if (!center || !primary || !secondary) return false
+    const geometry = ellipseGeometry(ellipse, pointValues)
+    if (!geometry) return false
     const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(ellipse)
-    const primaryVector = { x: primary.x - center.x, y: primary.y - center.y }
-    const secondaryVector = { x: secondary.x - center.x, y: secondary.y - center.y }
-    const primaryRadius = Math.hypot(primaryVector.x, primaryVector.y)
-    const secondaryRadius = Math.hypot(secondaryVector.x, secondaryVector.y)
-    if (
-      !Number.isFinite(primaryRadius) ||
-      !Number.isFinite(secondaryRadius) ||
-      primaryRadius <= 0 ||
-      secondaryRadius <= 0
-    )
-      return false
     this.#addEllipsePointLocus(
       constraint.id,
       ellipse,
@@ -534,11 +565,45 @@ class ProductionSketchBuilder {
       pointValues,
       primaryAxis,
       secondaryAxis,
-      primaryRadius,
-      secondaryRadius,
-      { x: primaryVector.x / primaryRadius, y: primaryVector.y / primaryRadius },
-      { x: secondaryVector.x / secondaryRadius, y: secondaryVector.y / secondaryRadius },
+      geometry.primaryRadius,
+      geometry.secondaryRadius,
+      geometry.primaryDirection,
+      geometry.secondaryDirection,
     )
+    return true
+  }
+
+  addEllipticalArcPointLocusConstraint(
+    constraint: Extract<SketchConstraint, { type: "point-on-elliptical-arc" }>,
+    pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+  ) {
+    const arc = this.#ellipticalArcEntities.get(constraint.ellipticalArcId)
+    if (!arc) return false
+    const pointGeometry = ellipticalArcPointGeometry(arc, constraint.pointId, pointValues)
+    if (!pointGeometry) return false
+    const { chord, geometry, point, start } = pointGeometry
+    const { primary: primaryAxis, secondary: secondaryAxis } = this.#ellipseAxisHandles(arc)
+    this.#addEllipsePointLocus(
+      constraint.id,
+      arc,
+      constraint.pointId,
+      pointValues,
+      primaryAxis,
+      secondaryAxis,
+      geometry.primaryRadius,
+      geometry.secondaryRadius,
+      geometry.primaryDirection,
+      geometry.secondaryDirection,
+    )
+    const chordCross = chord.x * (point.y - start.y) - chord.y * (point.x - start.x)
+    const orientedCross = geometry.orientation > 0 ? chordCross : -chordCross
+    this.addConstraint(constraint.id, SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane, {
+      pointA: this.entity(constraint.pointId),
+      pointB: this.entity(arc.startPointId),
+      entityA: this.entity(arc.endPointId),
+      other: geometry.orientation > 0 ? 1 : 0,
+      value: Math.sqrt(Math.max(-orientedCross, 0)),
+    })
     return true
   }
 
@@ -863,16 +928,25 @@ function positiveSweepArcMidpoint(
   }
 }
 
+function authoredSketchPointIds(sketch: SketchRecord) {
+  return new Set(sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])))
+}
+
+function sketchEntitiesWithExternalCurves(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+) {
+  return [...sketch.entities, ...externalCurves.map(({ curve }) => curve)]
+}
+
 function selectPositiveSweepArcMidpointSeeds(
   sketch: SketchRecord,
   externalCurves: readonly z.infer<typeof externalCurveSchema>[],
   pointValues: Map<SketchEntityId, { x: number; y: number }>,
 ) {
-  const authoredPointIds = new Set(
-    sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
-  )
+  const authoredPointIds = authoredSketchPointIds(sketch)
   const arcs = new Map(
-    [...sketch.entities, ...externalCurves.map(({ curve }) => curve)].flatMap((entity) =>
+    sketchEntitiesWithExternalCurves(sketch, externalCurves).flatMap((entity) =>
       entity.type === "arc" ? [[entity.id, entity] as const] : [],
     ),
   )
@@ -890,11 +964,9 @@ function selectEllipseQuadrantSeeds(
   externalCurves: readonly z.infer<typeof externalCurveSchema>[],
   pointValues: Map<SketchEntityId, { x: number; y: number }>,
 ) {
-  const authoredPointIds = new Set(
-    sketch.entities.flatMap((entity) => (entity.type === "point" ? [entity.id] : [])),
-  )
+  const authoredPointIds = authoredSketchPointIds(sketch)
   const ellipses = new Map(
-    [...sketch.entities, ...externalCurves.map(({ curve }) => curve)].flatMap((entity) =>
+    sketchEntitiesWithExternalCurves(sketch, externalCurves).flatMap((entity) =>
       entity.type === "ellipse" ? [[entity.id, entity] as const] : [],
     ),
   )
@@ -913,6 +985,88 @@ function selectEllipseQuadrantSeeds(
       x: center.x + (axisPoint.x - center.x) * side,
       y: center.y + (axisPoint.y - center.y) * side,
     })
+  }
+}
+
+function ellipseParameter(
+  point: { x: number; y: number },
+  geometry: NonNullable<ReturnType<typeof ellipseGeometry>>,
+) {
+  const offset = { x: point.x - geometry.center.x, y: point.y - geometry.center.y }
+  return Math.atan2(
+    (offset.x * geometry.secondaryDirection.x + offset.y * geometry.secondaryDirection.y) /
+      geometry.secondaryRadius,
+    (offset.x * geometry.primaryDirection.x + offset.y * geometry.primaryDirection.y) /
+      geometry.primaryRadius,
+  )
+}
+
+function ellipsePointAt(
+  parameter: number,
+  geometry: NonNullable<ReturnType<typeof ellipseGeometry>>,
+) {
+  return {
+    x:
+      geometry.center.x +
+      geometry.primaryDirection.x * geometry.primaryRadius * Math.cos(parameter) +
+      geometry.secondaryDirection.x * geometry.secondaryRadius * Math.sin(parameter),
+    y:
+      geometry.center.y +
+      geometry.primaryDirection.y * geometry.primaryRadius * Math.cos(parameter) +
+      geometry.secondaryDirection.y * geometry.secondaryRadius * Math.sin(parameter),
+  }
+}
+
+function ellipticalArcInteriorSeed(
+  arc: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  point: { x: number; y: number },
+  pointValues: ReadonlyMap<SketchEntityId, { x: number; y: number }>,
+) {
+  const start = pointValues.get(arc.startPointId)
+  const end = pointValues.get(arc.endPointId)
+  const geometry = ellipseGeometry(arc, pointValues)
+  if (!start || !end || !geometry) return null
+  const startParameter = ellipseParameter(start, geometry)
+  const endParameter = ellipseParameter(end, geometry)
+  const pointParameter = ellipseParameter(point, geometry)
+  const sweep = positiveAngle(endParameter - startParameter)
+  if (sweep <= 1e-12) return null
+  const offset = positiveAngle(pointParameter - startParameter)
+  const boundaryInset = Math.min(sweep / 2, 1e-3)
+  if (offset <= 1e-12) return ellipsePointAt(startParameter + boundaryInset, geometry)
+  if (sweep - offset <= 1e-12) return ellipsePointAt(endParameter - boundaryInset, geometry)
+  if (offset < sweep) return ellipsePointAt(pointParameter, geometry)
+  const startDistance = Math.hypot(point.x - start.x, point.y - start.y)
+  const endDistance = Math.hypot(point.x - end.x, point.y - end.y)
+  return ellipsePointAt(
+    startDistance <= endDistance ? startParameter + boundaryInset : endParameter - boundaryInset,
+    geometry,
+  )
+}
+
+function selectEllipticalArcPointSeeds(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+  pointValues: Map<SketchEntityId, { x: number; y: number }>,
+) {
+  const authoredPointIds = authoredSketchPointIds(sketch)
+  const arcs = new Map(
+    sketchEntitiesWithExternalCurves(sketch, externalCurves).flatMap((entity) =>
+      entity.type === "elliptical-arc" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+  for (const constraint of sketch.constraints) {
+    if (
+      constraint.type !== "point-on-elliptical-arc" ||
+      !authoredPointIds.has(constraint.pointId)
+    ) {
+      continue
+    }
+    const arc = arcs.get(constraint.ellipticalArcId)
+    const point = pointValues.get(constraint.pointId)
+    if (!arc || !point) continue
+    const seed = ellipticalArcInteriorSeed(arc, point, pointValues)
+    if (seed) pointValues.set(constraint.pointId, seed)
   }
 }
 
@@ -943,6 +1097,7 @@ type PointConstraint = Extract<
       | "point-on-line"
       | "point-on-curve"
       | "point-on-ellipse"
+      | "point-on-elliptical-arc"
       | "midpoint"
       | "arc-midpoint"
       | "symmetric"
@@ -971,6 +1126,7 @@ const pointConstraintTypes = new Set<SketchConstraint["type"]>([
   "point-on-line",
   "point-on-curve",
   "point-on-ellipse",
+  "point-on-elliptical-arc",
   "midpoint",
   "arc-midpoint",
   "symmetric",
@@ -1326,6 +1482,9 @@ function addConstraint(
   if (constraint.type === "point-on-ellipse") {
     return builder.addEllipsePointLocusConstraint(constraint, pointValues)
   }
+  if (constraint.type === "point-on-elliptical-arc") {
+    return builder.addEllipticalArcPointLocusConstraint(constraint, pointValues)
+  }
   if (isPointConstraint(constraint)) {
     addPointConstraint(builder, constraint)
     return true
@@ -1436,6 +1595,22 @@ function addSketchConstraints(
   return null
 }
 
+function boundedEllipticalArcLoci(
+  sketch: SketchRecord,
+  externalCurves: readonly z.infer<typeof externalCurveSchema>[],
+): readonly BoundedEllipticalArcLocus[] {
+  const arcs = new Map(
+    [...sketch.entities, ...externalCurves.map(({ curve }) => curve)].flatMap((entity) =>
+      entity.type === "elliptical-arc" ? [[entity.id, entity] as const] : [],
+    ),
+  )
+  return sketch.constraints.flatMap((constraint) => {
+    if (constraint.type !== "point-on-elliptical-arc") return []
+    const arc = arcs.get(constraint.ellipticalArcId)
+    return arc ? [{ constraintId: constraint.id, pointId: constraint.pointId, arc }] : []
+  })
+}
+
 export function compileSketchSystem(inputValue: SketchCompilationInput): SketchCompilationResult {
   const input = sketchCompilationInputSchema.safeParse(inputValue)
   if (!input.success) {
@@ -1473,6 +1648,7 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
   }
   selectPositiveSweepArcMidpointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
   selectEllipseQuadrantSeeds(input.data.sketch, input.data.externalCurves, pointValues)
+  selectEllipticalArcPointSeeds(input.data.sketch, input.data.externalCurves, pointValues)
 
   const builder = new ProductionSketchBuilder()
   addSketchEntities(
@@ -1505,6 +1681,10 @@ export function compileSketchSystem(inputValue: SketchCompilationInput): SketchC
       revision: input.data.revision,
       system: builder.build(input.data.draggedPoints.map((target) => target.entityId)),
       bindings: builder.bindings(),
+      boundedEllipticalArcLoci: boundedEllipticalArcLoci(
+        input.data.sketch,
+        input.data.externalCurves,
+      ),
     },
   }
 }
@@ -1550,13 +1730,33 @@ function profileResultForSolve(
   }
 }
 
+function invalidBoundedEllipticalArcConstraintIds(
+  loci: readonly BoundedEllipticalArcLocus[],
+  points: readonly z.infer<typeof pointSolutionSchema>[],
+) {
+  const pointValues = new Map(points.map((point) => [point.entityId, point] as const))
+  return loci.flatMap(({ arc, constraintId, pointId }) => {
+    const geometry = ellipseGeometry(arc, pointValues)
+    const start = pointValues.get(arc.startPointId)
+    const end = pointValues.get(arc.endPointId)
+    const point = pointValues.get(pointId)
+    if (!geometry || !start || !end || !point) return [constraintId]
+    const sweep = positiveAngle(ellipseParameter(end, geometry) - ellipseParameter(start, geometry))
+    const offset = positiveAngle(
+      ellipseParameter(point, geometry) - ellipseParameter(start, geometry),
+    )
+    const parameterTolerance = 1e-7
+    return sweep > parameterTolerance && offset <= sweep + parameterTolerance ? [] : [constraintId]
+  })
+}
+
 export function solveSketchRecord(
   module: NativeSketchSolverModule,
   input: SketchCompilationInput,
 ): SolveSketchRecordResult {
   const compilation = compileSketchSystem(input)
   if (!compilation.ok) return compilation
-  const { bindings, revision, sketch, system } = compilation.compiled
+  const { bindings, boundedEllipticalArcLoci, revision, sketch, system } = compilation.compiled
   const result = solveSketchSystem(module, system)
   const points = [...bindings.pointParameters].map(([entityId, binding]) =>
     pointSolutionSchema.parse({
@@ -1568,7 +1768,7 @@ export function solveSketchRecord(
   const circles = [...bindings.circleRadiusParameters].map(([entityId, index]) =>
     circleSolutionSchema.parse({ entityId, radius: result.parameterValues[index] }),
   )
-  const failedConstraintIds = [
+  const nativeFailedConstraintIds = [
     ...new Set(
       [...result.failedConstraintHandles].flatMap((handle) => {
         const constraintId = bindings.constraintIdsByHandle.get(handle)
@@ -1576,19 +1776,27 @@ export function solveSketchRecord(
       }),
     ),
   ]
+  const boundedArcFailedConstraintIds = invalidBoundedEllipticalArcConstraintIds(
+    boundedEllipticalArcLoci,
+    points,
+  )
+  const failedConstraintIds = [
+    ...new Set([...nativeFailedConstraintIds, ...boundedArcFailedConstraintIds]),
+  ]
+  const status = boundedArcFailedConstraintIds.length > 0 ? "failed" : result.status
   return {
     ok: true,
     solution: {
       schemaVersion: 0,
       sketchId: sketch.id,
       sourceRevision: revision,
-      status: result.status,
+      status,
       degreesOfFreedom: result.degreesOfFreedom,
       maximumResidual: result.maximumResidual,
       points,
       circles,
       failedConstraintIds,
-      profileResult: profileResultForSolve(result.status, sketch, { points, circles }),
+      profileResult: profileResultForSolve(status, sketch, { points, circles }),
       heapCapacityBytes: result.heapCapacityBytes,
       solverBuild: SKETCH_SOLVER_BUILD,
     },

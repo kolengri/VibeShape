@@ -110,7 +110,16 @@ describe("sketch constraint tools", () => {
         },
       },
     ])
-    expect(compatibleSketchConstraintTools([firstPoint, ellipticalArc])).toEqual([])
+    expect(compatibleSketchConstraintTools([firstPoint, ellipticalArc])).toEqual([
+      {
+        kind: "point-on-curve",
+        definition: {
+          type: "point-on-elliptical-arc",
+          pointId: firstPoint.id,
+          ellipticalArcId: ellipticalArc.id,
+        },
+      },
+    ])
     expect(
       compatibleSketchConstraintTools([firstPoint, secondPoint, line]).map(({ kind }) => kind),
     ).toEqual(["symmetric"])

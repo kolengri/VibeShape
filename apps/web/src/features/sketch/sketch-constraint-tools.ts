@@ -179,8 +179,16 @@ const constraintBuilders = {
       return { type: "point-on-curve", pointId: points[0].id, curveId: roundTarget.id }
     }
     const ellipseTarget = entitiesOfType(entities, "ellipse")[0]
-    return ellipseTarget
-      ? { type: "point-on-ellipse", pointId: points[0].id, ellipseId: ellipseTarget.id }
+    if (ellipseTarget) {
+      return { type: "point-on-ellipse", pointId: points[0].id, ellipseId: ellipseTarget.id }
+    }
+    const ellipticalArcTarget = entitiesOfType(entities, "elliptical-arc")[0]
+    return ellipticalArcTarget
+      ? {
+          type: "point-on-elliptical-arc",
+          pointId: points[0].id,
+          ellipticalArcId: ellipticalArcTarget.id,
+        }
       : null
   },
   "point-on-line": (entities) => {

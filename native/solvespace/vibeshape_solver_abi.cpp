@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -20,6 +21,8 @@ constexpr std::size_t CONSTRAINT_RECORD_STRIDE = 12;
 constexpr std::size_t MAX_PARAMETER_COUNT = 10000;
 constexpr std::size_t MAX_ENTITY_COUNT = 5000;
 constexpr std::size_t MAX_CONSTRAINT_COUNT = 10000;
+constexpr std::uint32_t VIBESHAPE_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE =
+    SLVS_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE;
 
 enum class AbiStatus : int {
     OKAY = 0,
@@ -123,12 +126,14 @@ AbiStatus ValidateRecords(
     }
 
     std::unordered_set<std::uint32_t> entityHandles;
+    std::unordered_map<std::uint32_t, std::uint32_t> entityTypes;
     for (std::size_t offset = 0; offset < entityRecords.size(); offset += ENTITY_RECORD_STRIDE) {
         const std::uint32_t handle = entityRecords[offset];
         const std::uint32_t group = entityRecords[offset + 1];
         if (handle == 0 || group == 0 || !entityHandles.insert(handle).second) {
             return AbiStatus::INVALID_HANDLE;
         }
+        entityTypes.emplace(handle, entityRecords[offset + 2]);
         if (!IsSupportedEntityType(entityRecords[offset + 2])) {
             return AbiStatus::UNSUPPORTED_TYPE;
         }
@@ -155,7 +160,10 @@ AbiStatus ValidateRecords(
         if (handle == 0 || group == 0 || !constraintHandles.insert(handle).second) {
             return AbiStatus::INVALID_HANDLE;
         }
-        if (type < SLVS_C_POINTS_COINCIDENT || type > SLVS_C_ARC_LINE_DIFFERENCE) {
+        if (
+            (type < SLVS_C_POINTS_COINCIDENT || type > SLVS_C_ARC_LINE_DIFFERENCE) &&
+            type != VIBESHAPE_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE
+        ) {
             return AbiStatus::UNSUPPORTED_TYPE;
         }
         if (!ContainsReference(entityHandles, constraintRecords[offset + 3])) {
@@ -163,6 +171,26 @@ AbiStatus ValidateRecords(
         }
         for (std::size_t reference = 4; reference <= 9; ++reference) {
             if (!ContainsReference(entityHandles, constraintRecords[offset + reference])) {
+                return AbiStatus::INVALID_REFERENCE;
+            }
+        }
+        if (type == VIBESHAPE_C_POINT_IN_ORIENTED_CHORD_HALF_PLANE) {
+            const auto hasEntityType = [&entityTypes](std::uint32_t handle, std::uint32_t type) {
+                const auto found = entityTypes.find(handle);
+                return found != entityTypes.end() && found->second == type;
+            };
+            if (
+                constraintRecords[offset + 3] == 0 ||
+                !hasEntityType(constraintRecords[offset + 3], SLVS_E_WORKPLANE) ||
+                !hasEntityType(constraintRecords[offset + 4], SLVS_E_POINT_IN_2D) ||
+                !hasEntityType(constraintRecords[offset + 5], SLVS_E_POINT_IN_2D) ||
+                !hasEntityType(constraintRecords[offset + 6], SLVS_E_POINT_IN_2D) ||
+                constraintRecords[offset + 7] != 0 ||
+                constraintRecords[offset + 8] != 0 ||
+                constraintRecords[offset + 9] != 0 ||
+                constraintRecords[offset + 10] > 1 ||
+                constraintRecords[offset + 11] != 0
+            ) {
                 return AbiStatus::INVALID_REFERENCE;
             }
         }

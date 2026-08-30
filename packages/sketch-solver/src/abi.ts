@@ -42,6 +42,7 @@ export const SOLVESPACE_CONSTRAINT_TYPE = {
   projectedPointDistance: 100_030,
   whereDragged: 100_031,
   curveCurveTangent: 100_032,
+  pointInOrientedChordHalfPlane: 100_038,
 } as const
 
 const uint32ArraySchema = z.custom<Uint32Array>(
@@ -87,7 +88,10 @@ function hasSupportedConstraintTypes(records: Uint32Array) {
     offset += SKETCH_SOLVER_ABI.constraintRecordStride
   ) {
     const type = records[offset + 2] as number
-    if (type < 100_000 || type > 100_037) {
+    if (
+      !(type >= SOLVESPACE_CONSTRAINT_TYPE.pointsCoincident && type <= 100_037) &&
+      type !== SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane
+    ) {
       return false
     }
   }
@@ -100,6 +104,56 @@ function collectHandles(records: Uint32Array, stride: number) {
     handles.add(records[offset] as number)
   }
   return handles
+}
+
+function collectEntityTypes(records: Uint32Array) {
+  const entityTypes = new Map<number, number>()
+  for (let offset = 0; offset < records.length; offset += SKETCH_SOLVER_ABI.entityRecordStride) {
+    entityTypes.set(records[offset] as number, records[offset + 2] as number)
+  }
+  return entityTypes
+}
+
+function hasExpectedOrientedChordEntityRoles(
+  record: Uint32Array,
+  entityTypes: ReadonlyMap<number, number>,
+) {
+  const expectedRoles = [
+    [3, SOLVESPACE_ENTITY_TYPE.workplane],
+    [4, SOLVESPACE_ENTITY_TYPE.pointIn2d],
+    [5, SOLVESPACE_ENTITY_TYPE.pointIn2d],
+    [6, SOLVESPACE_ENTITY_TYPE.pointIn2d],
+  ] as const
+  return expectedRoles.every(([index, type]) => entityTypes.get(record[index] as number) === type)
+}
+
+function hasValidOrientedChordRecord(
+  record: Uint32Array,
+  entityTypes: ReadonlyMap<number, number>,
+) {
+  if (!hasExpectedOrientedChordEntityRoles(record, entityTypes)) return false
+  if (![7, 8, 9, 11].every((index) => record[index] === 0)) return false
+  return record[10] === 0 || record[10] === 1
+}
+
+function hasValidPrivateConstraintRecords(system: {
+  constraintRecords: Uint32Array
+  entityRecords: Uint32Array
+}) {
+  const entityTypes = collectEntityTypes(system.entityRecords)
+  for (
+    let offset = 0;
+    offset < system.constraintRecords.length;
+    offset += SKETCH_SOLVER_ABI.constraintRecordStride
+  ) {
+    const record = system.constraintRecords.subarray(
+      offset,
+      offset + SKETCH_SOLVER_ABI.constraintRecordStride,
+    )
+    if (record[2] !== SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane) continue
+    if (!hasValidOrientedChordRecord(record, entityTypes)) return false
+  }
+  return true
 }
 
 function hasValidReferences(system: {
@@ -216,6 +270,10 @@ export const flatSketchSystemSchema = z
   })
   .refine((system) => hasSupportedConstraintTypes(system.constraintRecords), {
     message: "Constraint records contain an unsupported native type.",
+  })
+  .refine((system) => hasValidPrivateConstraintRecords(system), {
+    message: "Private constraint records do not match the reviewed ABI shape.",
+    path: ["constraintRecords"],
   })
   .refine((system) => hasValidReferences(system), {
     message: "Sketch system contains an unknown parameter or entity reference.",

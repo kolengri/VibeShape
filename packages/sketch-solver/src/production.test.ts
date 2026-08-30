@@ -677,6 +677,237 @@ describe("production sketch compilation", () => {
     expect(result.ok).toBe(false)
   })
 
+  test("compiles bounded point-on-elliptical-arc intent as one authored locus", () => {
+    const fixture = ellipticalArcSketch()
+    const result = compileSketchSystem({
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            schemaVersion: 0,
+            id: ellipseLocusPointId,
+            type: "point",
+            x: 0,
+            y: -5,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0,
+            id: ellipseLocusId,
+            type: "point-on-elliptical-arc",
+            pointId: ellipseLocusPointId,
+            ellipticalArcId,
+          },
+        ],
+      },
+      variables: [],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const { constraintRecords, constraintValues } = result.compiled.system
+    const types = Array.from(
+      { length: constraintValues.length },
+      (_, index) => constraintRecords[index * SKETCH_SOLVER_ABI.constraintRecordStride + 2],
+    )
+    expect(types.slice(-6)).toEqual([
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.pointOnLine,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.equalLengthLines,
+      SOLVESPACE_CONSTRAINT_TYPE.parallel,
+      SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane,
+    ])
+    expect(Array.from(result.compiled.bindings.constraintIdsByHandle.values()).slice(-6)).toEqual(
+      Array(6).fill(ellipseLocusId),
+    )
+    const halfPlaneOffset = (constraintValues.length - 1) * SKETCH_SOLVER_ABI.constraintRecordStride
+    expect(constraintRecords[halfPlaneOffset + 10]).toBe(1)
+    expect(constraintValues.at(-1)).toBeGreaterThan(0)
+    const pointBinding = result.compiled.bindings.pointParameters.get(ellipseLocusPointId)
+    expect(pointBinding).toBeDefined()
+    if (!pointBinding) return
+    expect(result.compiled.system.parameterValues[pointBinding.xIndex]).toBeCloseTo(-10)
+    expect(result.compiled.system.parameterValues[pointBinding.yIndex]).toBeCloseTo(0.005)
+  })
+
+  test("fails closed when a native result crosses to the complementary elliptical arc", () => {
+    const fixture = ellipticalArcSketch()
+    const input = {
+      revision: 4,
+      sketch: {
+        ...fixture,
+        entities: [
+          ...fixture.entities,
+          {
+            schemaVersion: 0 as const,
+            id: ellipseLocusPointId,
+            type: "point" as const,
+            x: 0,
+            y: -5,
+            construction: false,
+          },
+        ],
+        constraints: [
+          {
+            schemaVersion: 0 as const,
+            id: ellipseLocusId,
+            type: "point-on-elliptical-arc" as const,
+            pointId: ellipseLocusPointId,
+            ellipticalArcId,
+          },
+        ],
+      },
+      variables: [],
+    }
+    const compilation = compileSketchSystem(input)
+    expect(compilation.ok).toBe(true)
+    if (!compilation.ok) return
+    const pointBinding = compilation.compiled.bindings.pointParameters.get(ellipseLocusPointId)
+    expect(pointBinding).toBeDefined()
+    if (!pointBinding) return
+
+    const solved = solveSketchRecord(
+      createModule((values) => {
+        const crossed = values.slice()
+        crossed[pointBinding.xIndex] = 0
+        crossed[pointBinding.yIndex] = -5
+        return { parameterValues: crossed }
+      }),
+      input,
+    )
+
+    expect(solved.ok).toBe(true)
+    if (!solved.ok) return
+    expect(solved.solution.status).toBe("failed")
+    expect(solved.solution.failedConstraintIds).toEqual([ellipseLocusId])
+    expect(solved.solution.profileResult.diagnostics).toEqual([
+      expect.objectContaining({ code: "invalid-solution" }),
+    ])
+  })
+
+  test("fails closed when a native result crosses a projected external elliptical arc", () => {
+    const record = sketchRecordSchema.parse({
+      ...sketch(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: "018f0000-0000-7000-8000-000000000236",
+          kind: "curve",
+          sourceSketchId: "018f0000-0000-7000-8000-000000000237",
+          sourceEntityId: "018f0000-0000-7000-8000-000000000238",
+          sourceType: "elliptical-arc",
+          projectedEntityId: ellipticalArcId,
+          projectedType: "elliptical-arc",
+          projectedPointIds: [
+            ellipseCenterId,
+            ellipsePrimaryId,
+            ellipseSecondaryId,
+            ellipticalArcStartId,
+            ellipticalArcEndId,
+          ],
+        },
+      ],
+      constraints: [
+        ...sketch().constraints,
+        {
+          schemaVersion: 0,
+          id: ellipseLocusId,
+          type: "point-on-elliptical-arc",
+          pointId: pointA,
+          ellipticalArcId,
+        },
+      ],
+    })
+    const input = {
+      revision: 4,
+      sketch: record,
+      variables,
+      externalCurves: [
+        {
+          points: [
+            {
+              schemaVersion: 0 as const,
+              id: ellipseCenterId,
+              type: "point" as const,
+              x: 0,
+              y: 0,
+              construction: true,
+            },
+            {
+              schemaVersion: 0 as const,
+              id: ellipsePrimaryId,
+              type: "point" as const,
+              x: 10,
+              y: 0,
+              construction: true,
+            },
+            {
+              schemaVersion: 0 as const,
+              id: ellipseSecondaryId,
+              type: "point" as const,
+              x: 0,
+              y: 5,
+              construction: true,
+            },
+            {
+              schemaVersion: 0 as const,
+              id: ellipticalArcStartId,
+              type: "point" as const,
+              x: 6,
+              y: 4,
+              construction: true,
+            },
+            {
+              schemaVersion: 0 as const,
+              id: ellipticalArcEndId,
+              type: "point" as const,
+              x: -10,
+              y: 0,
+              construction: true,
+            },
+          ],
+          curve: {
+            schemaVersion: 0 as const,
+            id: ellipticalArcId,
+            type: "elliptical-arc" as const,
+            centerPointId: ellipseCenterId,
+            primaryAxisPointId: ellipsePrimaryId,
+            secondaryAxisPointId: ellipseSecondaryId,
+            startPointId: ellipticalArcStartId,
+            endPointId: ellipticalArcEndId,
+            construction: true,
+          },
+        },
+      ],
+    }
+    const compilation = compileSketchSystem(input)
+    expect(compilation.ok).toBe(true)
+    if (!compilation.ok) return
+    const pointBinding = compilation.compiled.bindings.pointParameters.get(pointA)
+    expect(pointBinding).toBeDefined()
+    if (!pointBinding) return
+
+    const solved = solveSketchRecord(
+      createModule((values) => {
+        const crossed = values.slice()
+        crossed[pointBinding.xIndex] = 0
+        crossed[pointBinding.yIndex] = -5
+        return { parameterValues: crossed }
+      }),
+      input,
+    )
+
+    expect(solved.ok).toBe(true)
+    if (!solved.ok) return
+    expect(solved.solution.status).toBe("failed")
+    expect(solved.solution.failedConstraintIds).toEqual([ellipseLocusId])
+  })
+
   test("preserves the positive ellipse quadrant side through an axis inversion", () => {
     const fixture = ellipseSketch()
     const result = compileSketchSystem({

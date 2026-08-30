@@ -80,7 +80,9 @@ const successfulStatuses = new Set(["fully-constrained", "under-constrained"])
 function requireSuccessfulSolve(result: SketchSolveResult, fixtureName: string) {
   requireCondition(
     successfulStatuses.has(result.status),
-    `${fixtureName} failed with ${result.status}.`,
+    `${fixtureName} failed with ${result.status}; failed handles: ${[
+      ...result.failedConstraintHandles,
+    ].join(", ")}; residual: ${result.maximumResidual}.`,
   )
   requireCondition(result.maximumResidual <= 1e-7, `${fixtureName} residual exceeded tolerance.`)
 }
@@ -542,6 +544,38 @@ function ellipseLocusInvariant(
   )
 }
 
+function ellipseEvidenceGeometry(
+  center: { x: number; y: number },
+  primaryPoint: { x: number; y: number },
+  secondaryPoint: { x: number; y: number },
+) {
+  const primary = { x: primaryPoint.x - center.x, y: primaryPoint.y - center.y }
+  const secondary = { x: secondaryPoint.x - center.x, y: secondaryPoint.y - center.y }
+  const primaryRadius = Math.hypot(primary.x, primary.y)
+  const secondaryRadius = Math.hypot(secondary.x, secondary.y)
+  if (primaryRadius <= 1e-12 || secondaryRadius <= 1e-12) return null
+  return {
+    center,
+    primaryDirection: { x: primary.x / primaryRadius, y: primary.y / primaryRadius },
+    primaryRadius,
+    secondaryDirection: { x: secondary.x / secondaryRadius, y: secondary.y / secondaryRadius },
+    secondaryRadius,
+  }
+}
+
+function ellipseEvidenceParameter(
+  point: { x: number; y: number },
+  geometry: NonNullable<ReturnType<typeof ellipseEvidenceGeometry>>,
+) {
+  const offset = { x: point.x - geometry.center.x, y: point.y - geometry.center.y }
+  return Math.atan2(
+    (offset.x * geometry.secondaryDirection.x + offset.y * geometry.secondaryDirection.y) /
+      geometry.secondaryRadius,
+    (offset.x * geometry.primaryDirection.x + offset.y * geometry.primaryDirection.y) /
+      geometry.primaryRadius,
+  )
+}
+
 function runProductionEllipseLocusEvidence(session: SketchSolverSession) {
   const centerPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000001")
   const primaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8310-000000000002")
@@ -637,6 +671,160 @@ function runProductionEllipseLocusEvidence(session: SketchSolverSession) {
       `${fixture.label} left the exact full-ellipse locus.`,
     )
     return { invariant, label: fixture.label, status: result.status }
+  })
+}
+
+function runProductionEllipticalArcLocusEvidence(session: SketchSolverSession) {
+  const centerPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000001")
+  const primaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000002")
+  const secondaryAxisPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000003")
+  const startPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000004")
+  const endPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000005")
+  const locusPointId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000006")
+  const arcId = sketchEntityIdSchema.parse("018f0000-0000-7000-8320-000000000007")
+  const locusConstraintId = sketchConstraintIdSchema.parse("018f0000-0000-7000-8320-000000000013")
+  const fixtures = [
+    {
+      label: "Rotated minor elliptical-arc locus evidence",
+      primary: { x: 8, y: 6 },
+      secondary: { x: -3, y: 4 },
+      startParameter: 0,
+      endParameter: Math.PI / 2,
+      pointParameter: Math.PI,
+    },
+    {
+      label: "Rotated major elliptical-arc locus evidence",
+      primary: { x: 8, y: 6 },
+      secondary: { x: -3, y: 4 },
+      startParameter: Math.PI / 2,
+      endParameter: 0,
+      pointParameter: Math.PI,
+    },
+    {
+      label: "Wrapped elliptical-arc locus evidence",
+      primary: { x: 8, y: 6 },
+      secondary: { x: -3, y: 4 },
+      startParameter: (3 * Math.PI) / 2,
+      endParameter: Math.PI / 3,
+      pointParameter: 0,
+    },
+    {
+      label: "Axis-inverted elliptical-arc locus evidence",
+      primary: { x: -8, y: -6 },
+      secondary: { x: -3, y: 4 },
+      startParameter: 0,
+      endParameter: Math.PI / 2,
+      pointParameter: Math.PI,
+    },
+  ] as const
+  const pointAt = (
+    primary: { x: number; y: number },
+    secondary: { x: number; y: number },
+    parameter: number,
+  ) => ({
+    x: primary.x * Math.cos(parameter) + secondary.x * Math.sin(parameter),
+    y: primary.y * Math.cos(parameter) + secondary.y * Math.sin(parameter),
+  })
+
+  return fixtures.map((fixture, index) => {
+    const start = pointAt(fixture.primary, fixture.secondary, fixture.startParameter)
+    const end = pointAt(fixture.primary, fixture.secondary, fixture.endParameter)
+    const locus = pointAt(fixture.primary, fixture.secondary, fixture.pointParameter)
+    const sketch = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: sketchIdSchema.parse(`018f0000-0000-7000-8320-${String(index + 14).padStart(12, "0")}`),
+      label: fixture.label,
+      plane: "xy",
+      entities: [
+        {
+          schemaVersion: 0,
+          id: centerPointId,
+          type: "point",
+          x: 0,
+          y: 0,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: primaryAxisPointId,
+          type: "point",
+          ...fixture.primary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: secondaryAxisPointId,
+          type: "point",
+          ...fixture.secondary,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: startPointId,
+          type: "point",
+          ...start,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: endPointId,
+          type: "point",
+          ...end,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: locusPointId,
+          type: "point",
+          ...locus,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: arcId,
+          type: "elliptical-arc",
+          centerPointId,
+          primaryAxisPointId,
+          secondaryAxisPointId,
+          startPointId,
+          endPointId,
+          construction: false,
+        },
+      ],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: locusConstraintId,
+          type: "point-on-elliptical-arc",
+          pointId: locusPointId,
+          ellipticalArcId: arcId,
+        },
+      ],
+    })
+    const { point: solvedPoint, result } = solveProductionSketch(session, sketch, fixture.label)
+    const center = solvedPoint(centerPointId)
+    const primary = solvedPoint(primaryAxisPointId)
+    const secondary = solvedPoint(secondaryAxisPointId)
+    const solvedStart = solvedPoint(startPointId)
+    const solvedEnd = solvedPoint(endPointId)
+    const solvedLocus = solvedPoint(locusPointId)
+    const geometry = ellipseEvidenceGeometry(center, primary, secondary)
+    requireCondition(geometry, `${fixture.label} solved with degenerate axes.`)
+    const sweep = positiveAngle(
+      ellipseEvidenceParameter(solvedEnd, geometry) -
+        ellipseEvidenceParameter(solvedStart, geometry),
+    )
+    const offset = positiveAngle(
+      ellipseEvidenceParameter(solvedLocus, geometry) -
+        ellipseEvidenceParameter(solvedStart, geometry),
+    )
+    const invariant = ellipseLocusInvariant(center, primary, secondary, solvedLocus)
+    requireCondition(
+      Math.abs(invariant - 1) <= 1e-7,
+      `${fixture.label} left the exact ellipse locus.`,
+    )
+    requireCondition(offset <= sweep + 1e-7, `${fixture.label} crossed to the complementary arc.`)
+    return { invariant, label: fixture.label, offset, status: result.status, sweep }
   })
 }
 
@@ -737,6 +925,7 @@ async function main() {
   const productionArcMidpoint = runProductionArcMidpointEvidence(session)
   const productionEllipseQuadrant = runProductionEllipseQuadrantEvidence(session)
   const productionEllipseLocus = runProductionEllipseLocusEvidence(session)
+  const productionEllipticalArcLocus = runProductionEllipticalArcLocusEvidence(session)
   const { fixtures: coverageFixtures, results: constraintCoverage } = runCoverageEvidence(session)
   const largestConstraintPerturbationResidual = runConstraintPerturbations(
     session,
@@ -770,6 +959,7 @@ async function main() {
     },
     constraintCoverage,
     productionArcMidpoint,
+    productionEllipticalArcLocus,
     productionEllipseLocus,
     productionEllipseQuadrant,
     productionPointAlignment,

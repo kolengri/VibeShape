@@ -3136,6 +3136,7 @@ const geometricConstraintLabels: Partial<
   perpendicular: "⊥",
   "point-on-curve": "⊙",
   "point-on-ellipse": "⊙",
+  "point-on-elliptical-arc": "⊙",
   "point-on-line": "⊙",
   tangent: "T",
   symmetric: "S",
@@ -4436,6 +4437,9 @@ function appendInferredPointRelation(
   if (relation.type === "point-on-ellipse") {
     return appendInferredPointOnEllipse(sketch, pointId, relation.ellipseId)
   }
+  if (relation.type === "point-on-elliptical-arc") {
+    return appendInferredPointOnEllipticalArc(sketch, pointId, relation.ellipticalArcId)
+  }
   if (relation.type === "ellipse-quadrant") {
     return appendInferredEllipseQuadrant(sketch, pointId, relation)
   }
@@ -4504,6 +4508,26 @@ function appendInferredPointOnEllipse(
     : appendSketchConstraint(
         sketch,
         { type: "point-on-ellipse", pointId, ellipseId },
+        createBrowserSketchConstraintId,
+      )
+}
+
+function appendInferredPointOnEllipticalArc(
+  sketch: SketchRecord,
+  pointId: SketchEntityId,
+  ellipticalArcId: SketchEntityId,
+) {
+  const exists = sketch.constraints.some(
+    (constraint) =>
+      constraint.type === "point-on-elliptical-arc" &&
+      constraint.pointId === pointId &&
+      constraint.ellipticalArcId === ellipticalArcId,
+  )
+  return exists
+    ? sketch
+    : appendSketchConstraint(
+        sketch,
+        { type: "point-on-elliptical-arc", pointId, ellipticalArcId },
         createBrowserSketchConstraintId,
       )
 }
@@ -5606,11 +5630,12 @@ const pointRelationReferenceKeys = {
   midpoint: "lineId",
   "point-on-curve": "curveId",
   "point-on-ellipse": "ellipseId",
+  "point-on-elliptical-arc": "ellipticalArcId",
   "point-on-line": "lineId",
   "vertical-points": "pointId",
 } as const satisfies Record<
   SketchPointRelationInference["type"],
-  "arcId" | "curveId" | "ellipseId" | "lineId" | "pointId"
+  "arcId" | "curveId" | "ellipseId" | "ellipticalArcId" | "lineId" | "pointId"
 >
 
 function pointRelationEntityId(relation: SketchPointRelationInference) {
@@ -5984,7 +6009,8 @@ function isPassiveInferenceCurve(candidate: Readonly<{ projectedType: string | n
   return (
     candidate.projectedType === "circle" ||
     candidate.projectedType === "arc" ||
-    candidate.projectedType === "ellipse"
+    candidate.projectedType === "ellipse" ||
+    candidate.projectedType === "elliptical-arc"
   )
 }
 
@@ -6110,13 +6136,28 @@ function externalWakeupEllipse(projection: ExternalProjectedCurve) {
     : null
 }
 
+function externalWakeupEllipticalArc(projection: ExternalProjectedCurve) {
+  const [center, primaryAxisPoint, secondaryAxisPoint, start, end] = projection.points
+  return center && primaryAxisPoint && secondaryAxisPoint && start && end
+    ? ({
+        type: "elliptical-arc",
+        center,
+        primaryAxisPoint,
+        secondaryAxisPoint,
+        start,
+        end,
+      } as const)
+    : null
+}
+
 function externalWakeupCurve(
   candidate: Extract<ExternalWakeupCandidate, { kind: "curve" | "model-curve" }>,
 ) {
   const projection = candidate.projectedGeometry
   if (projection?.type === "circle") return externalWakeupCircle(projection)
   if (projection?.type === "arc") return externalWakeupArc(projection)
-  return projection?.type === "ellipse" ? externalWakeupEllipse(projection) : null
+  if (projection?.type === "ellipse") return externalWakeupEllipse(projection)
+  return projection?.type === "elliptical-arc" ? externalWakeupEllipticalArc(projection) : null
 }
 
 function appendExternalWakeupCurve(
@@ -6256,6 +6297,29 @@ function appendEllipseInferenceReference(
   })
 }
 
+function appendEllipticalArcInferenceReference(
+  entity: Extract<SketchEntity, { type: "elliptical-arc" }>,
+  presentation: SketchGeometryPresentation,
+  curves: SketchInferenceCurve[],
+) {
+  const center = presentation.pointsById.get(entity.centerPointId)
+  const primaryAxisPoint = presentation.pointsById.get(entity.primaryAxisPointId)
+  const secondaryAxisPoint = presentation.pointsById.get(entity.secondaryAxisPointId)
+  const start = presentation.pointsById.get(entity.startPointId)
+  const end = presentation.pointsById.get(entity.endPointId)
+  if (!center || !primaryAxisPoint || !secondaryAxisPoint || !start || !end) return
+  curves.push({
+    id: entity.id,
+    centerPointId: entity.centerPointId,
+    type: "elliptical-arc",
+    center,
+    primaryAxisPoint,
+    secondaryAxisPoint,
+    start,
+    end,
+  })
+}
+
 function appendCurveInferenceReferences(
   entity: SketchEntity,
   presentation: SketchGeometryPresentation,
@@ -6277,6 +6341,10 @@ function appendCurveInferenceReferences(
   }
   if (entity.type === "ellipse") {
     appendEllipseInferenceReference(entity, presentation, references.curves)
+    return
+  }
+  if (entity.type === "elliptical-arc") {
+    appendEllipticalArcInferenceReference(entity, presentation, references.curves)
   }
 }
 
@@ -9387,7 +9455,11 @@ function useSketchViewportPresentation(
   const accessibleConstraintLabel = useCallback(
     (label: string, constraintType: SketchRecord["constraints"][number]["type"]) => {
       if (constraintType === "ellipse-quadrant") return t("quadrant")
-      if (constraintType === "point-on-curve" || constraintType === "point-on-ellipse") {
+      if (
+        constraintType === "point-on-curve" ||
+        constraintType === "point-on-ellipse" ||
+        constraintType === "point-on-elliptical-arc"
+      ) {
         return t("pointOnCurve")
       }
       if (constraintType === "point-on-line") return t("pointOnLine")

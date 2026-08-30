@@ -668,6 +668,125 @@ describe("sketchRecordSchema", () => {
     ).toBe(false)
   })
 
+  test("accepts point-on-elliptical-arc only for bounded elliptical-arc targets", () => {
+    const ellipticalArc = "018f0000-0000-7000-8000-000000000011"
+    const pointE = "018f0000-0000-7000-8000-000000000012"
+    const fixture = validSketch()
+    const boundedFixture = {
+      ...fixture,
+      entities: [
+        ...fixture.entities,
+        {
+          schemaVersion: 0,
+          id: pointE,
+          type: "point" as const,
+          x: -20,
+          y: 20,
+          construction: false,
+        },
+        {
+          schemaVersion: 0,
+          id: ellipticalArc,
+          type: "elliptical-arc" as const,
+          centerPointId: pointA,
+          primaryAxisPointId: pointB,
+          secondaryAxisPointId: pointC,
+          startPointId: pointD,
+          endPointId: pointE,
+          construction: false,
+        },
+      ],
+    }
+    const constraint = {
+      schemaVersion: 0,
+      id: constraintId(316),
+      type: "point-on-elliptical-arc" as const,
+      pointId: pointD,
+      ellipticalArcId: ellipticalArc,
+    }
+
+    expect(
+      sketchRecordSchema.safeParse({ ...boundedFixture, constraints: [constraint] }).success,
+    ).toBe(true)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...fixture,
+        constraints: [{ ...constraint, ellipticalArcId: ellipse }],
+      }).success,
+    ).toBe(false)
+    expect(
+      sketchRecordSchema.safeParse({
+        ...boundedFixture,
+        constraints: [{ ...constraint, ellipticalArcId: arc }],
+      }).success,
+    ).toBe(false)
+  })
+
+  test("reserves native solver capacity for point-on-elliptical-arc intent", () => {
+    const ellipticalArc = "018f0000-0000-7000-8000-000000000011"
+    const pointE = "018f0000-0000-7000-8000-000000000012"
+    const fixture = validSketch()
+    const entities = [
+      ...[pointA, pointB, pointC, pointD, pointE, ellipticalArc]
+        .map((id) =>
+          id === pointE
+            ? {
+                schemaVersion: 0,
+                id: pointE,
+                type: "point" as const,
+                x: -20,
+                y: 20,
+                construction: false,
+              }
+            : fixture.entities.find((entity) => entity.id === id),
+        )
+        .filter((entity): entity is NonNullable<typeof entity> => entity !== undefined),
+      {
+        schemaVersion: 0,
+        id: ellipticalArc,
+        type: "elliptical-arc" as const,
+        centerPointId: pointA,
+        primaryAxisPointId: pointB,
+        secondaryAxisPointId: pointC,
+        startPointId: pointD,
+        endPointId: pointE,
+        construction: false,
+      },
+    ]
+    const constraints = Array.from({ length: 2_001 }, (_, index) => ({
+      schemaVersion: 0,
+      id: constraintId(21_000 + index),
+      type: "point-on-elliptical-arc" as const,
+      pointId: pointD,
+      ellipticalArcId: ellipticalArc,
+    }))
+    const atEntityLimit = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities,
+      constraints: constraints.slice(0, 1_245),
+    })
+    const entityOverflow = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities,
+      constraints: constraints.slice(0, 1_246),
+    })
+    const constraintOverflow = sketchRecordSchema.safeParse({
+      ...fixture,
+      entities,
+      constraints,
+    })
+    expect(atEntityLimit.success).toBe(true)
+    expect(entityOverflow.success).toBe(false)
+    expect(constraintOverflow.success).toBe(false)
+    if (constraintOverflow.success) return
+    expect(constraintOverflow.error.issues).toContainEqual(
+      expect.objectContaining({
+        path: ["constraints"],
+        message: "Sketch constraints exceed the native solver safety limit.",
+      }),
+    )
+  })
+
   test("reserves native solver capacity for point-on-ellipse intent", () => {
     const fixture = validSketch()
     const constraints = Array.from({ length: 2_001 }, (_, index) => ({

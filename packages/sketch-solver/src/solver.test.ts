@@ -4,6 +4,8 @@ import {
   type NativeFlatSolveResult,
   type NativeSketchSolverModule,
   SKETCH_SOLVER_ABI,
+  SOLVESPACE_CONSTRAINT_TYPE,
+  SOLVESPACE_ENTITY_TYPE,
 } from "./abi"
 import { SketchSolverSession, solveSketchSystem } from "./solver"
 
@@ -59,6 +61,126 @@ describe("solveSketchSystem", () => {
   test("rejects incompatible native ABI strides", () => {
     const module = { ...createModule(), ENTITY_RECORD_STRIDE: 15 }
     expect(() => solveSketchSystem(module, emptySystem)).toThrow(/ABI strides/)
+  })
+
+  test("accepts the bounded elliptical-arc half-plane native constraint type", () => {
+    const module = createModule()
+    const system = {
+      ...emptySystem,
+      entityRecords: new Uint32Array([
+        1,
+        1,
+        SOLVESPACE_ENTITY_TYPE.workplane,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        1,
+        SOLVESPACE_ENTITY_TYPE.pointIn2d,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        1,
+        SOLVESPACE_ENTITY_TYPE.pointIn2d,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4,
+        1,
+        SOLVESPACE_ENTITY_TYPE.pointIn2d,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      ]),
+      constraintRecords: new Uint32Array([
+        1,
+        2,
+        SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane,
+        1,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+      ]),
+      constraintValues: new Float64Array([0]),
+    }
+
+    solveSketchSystem(module, system)
+    expect(module.solveFlatSystem).toHaveBeenCalledOnce()
+  })
+
+  test("rejects a malformed bounded elliptical-arc half-plane record before native code", () => {
+    const module = createModule()
+    const system = {
+      ...emptySystem,
+      constraintRecords: new Uint32Array([
+        1,
+        2,
+        SOLVESPACE_CONSTRAINT_TYPE.pointInOrientedChordHalfPlane,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      ]),
+      constraintValues: new Float64Array([0]),
+    }
+
+    expect(() => solveSketchSystem(module, system)).toThrow(/reviewed ABI shape/)
+    expect(module.solveFlatSystem).not.toHaveBeenCalled()
+  })
+
+  test("rejects native constraint types beyond the reviewed range", () => {
+    const module = createModule()
+    const system = {
+      ...emptySystem,
+      constraintRecords: new Uint32Array([1, 2, 100_039, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      constraintValues: new Float64Array([0]),
+    }
+
+    expect(() => solveSketchSystem(module, system)).toThrow(/unsupported native type/)
+    expect(module.solveFlatSystem).not.toHaveBeenCalled()
   })
 
   test("rejects non-finite input before crossing the native boundary", () => {
