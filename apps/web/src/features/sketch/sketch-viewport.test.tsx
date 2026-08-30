@@ -5873,6 +5873,285 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("drags an authored point onto an earlier sketch point as one associative edit", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d1")
+    const sourcePointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d2")
+    const target = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d3"),
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "point" as const,
+      label: "Layout · Point 1",
+      sourceSketchId,
+      sourcePointId,
+      world: [50, 24, 0] as const,
+      x: 50,
+      y: 24,
+    }
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const onDraftChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: target,
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = sketchEntitiesOfType(target, "point")[0]
+    if (!draggedPoint) throw new Error("The drag fixture requires an authored point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The authored point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 1 })
+    fireEvent.pointerMove(drawing, {
+      ...clientPointForSketch(drawing, candidate),
+      pointerId: 1,
+    })
+    const frame = frames.shift()
+    if (!frame) throw new Error("External drag inference must schedule one animation frame.")
+    act(() => frame(0))
+
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeTruthy()
+    expect(screen.getByText("External inference · Layout · Point 1")).toBeTruthy()
+    expect(onDraftChange).not.toHaveBeenCalled()
+    view.rerender(
+      viewportElement({
+        draft: target,
+        externalContextGeometry: [{ ...candidate }],
+        externalPointCandidates: [{ ...candidate }],
+        onDraftChange,
+        sketch: target,
+        solveSketch,
+      }),
+    )
+    expect(screen.getByText("External inference · Layout · Point 1")).toBeTruthy()
+    fireEvent.pointerLeave(drawing, { pointerId: 1 })
+    expect(screen.getByText("External inference · Layout · Point 1")).toBeTruthy()
+    fireEvent.pointerUp(drawing, { pointerId: 1 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    expect(reference).toMatchObject({
+      kind: "point",
+      sourcePointId,
+      sourceSketchId,
+    })
+    if (reference?.kind !== "point") {
+      throw new Error("Point drag wake-up must create one stable point reference.")
+    }
+    expect(updated.entities).toContainEqual(
+      expect.objectContaining({ id: draggedPoint.id, type: "point", x: 50, y: 24 }),
+    )
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: draggedPoint.id,
+        secondPointId: reference.projectedPointId,
+      }),
+    )
+  })
+
+  it("preserves external midpoint priority while dragging onto an earlier sketch line", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32e1")
+    const sourceLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32e2")
+    const target = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32e3"),
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "line" as const,
+      label: "Layout · Line 1",
+      sourceSketchId,
+      sourceLineId,
+      sourceStartPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32e4"),
+      sourceEndPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32e5"),
+      start: { world: [40, 24, 0] as const, x: 40, y: 24 },
+      end: { world: [60, 24, 0] as const, x: 60, y: 24 },
+    }
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = sketchEntitiesOfType(target, "point")[0]
+    if (!draggedPoint) throw new Error("The drag fixture requires an authored point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The authored point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 4 })
+    fireEvent.pointerMove(drawing, {
+      ...clientPointForSketch(drawing, { x: 50, y: 24 }),
+      pointerId: 4,
+    })
+    const frame = frames.shift()
+    if (!frame) throw new Error("External midpoint inference must schedule one animation frame.")
+    act(() => frame(0))
+
+    expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    expect(screen.getByText("External inference · Layout · Line 1")).toBeTruthy()
+    fireEvent.pointerUp(drawing, { pointerId: 4 })
+
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    if (reference?.kind !== "line") {
+      throw new Error("Midpoint drag wake-up must create one stable line reference.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "midpoint",
+        pointId: draggedPoint.id,
+        lineId: reference.projectedLineId,
+      }),
+    )
+  })
+
+  it("drags an authored point onto a stable model curve without persisting renderer identity", () => {
+    const target = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d4"),
+      externalReferences: [],
+    }
+    const candidate = coplanarModelCircleCandidate("0195b5ac-b220-7a2c-8c33-67a36a7f32d5")
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const onDraftChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: target,
+      externalModelCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = sketchEntitiesOfType(target, "point")[0]
+    if (!draggedPoint) throw new Error("The drag fixture requires an authored point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The authored point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 2 })
+    fireEvent.pointerMove(drawing, {
+      ...clientPointForSketch(drawing, { x: 5.2, y: 0.1 }),
+      pointerId: 2,
+    })
+    const frame = frames.shift()
+    if (!frame) throw new Error("Model-curve drag inference must schedule one animation frame.")
+    act(() => frame(0))
+
+    expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    expect(screen.getByText(`External inference · ${candidate.label}`)).toBeTruthy()
+    const rebuiltCandidate = { ...candidate, candidateId: "rebuilt-circular-edge" }
+    view.rerender(
+      viewportElement({
+        draft: target,
+        externalModelCandidates: [rebuiltCandidate],
+        onDraftChange,
+        sketch: target,
+        solveSketch,
+      }),
+    )
+    expect(screen.getByText(`External inference · ${candidate.label}`)).toBeTruthy()
+    fireEvent.pointerUp(drawing, { pointerId: 2 })
+
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    const reference = updated.externalReferences?.[0]
+    expect(reference).toMatchObject({ kind: "model-curve", reference: candidate.reference })
+    if (reference?.kind !== "model-curve") {
+      throw new Error("Model-curve drag wake-up must create one stable curve reference.")
+    }
+    expect(updated.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "point-on-curve",
+        pointId: draggedPoint.id,
+        curveId: reference.projectedEntityId,
+      }),
+    )
+    expect(JSON.stringify(updated)).not.toContain("candidateId")
+  })
+
+  it("suppresses external drag inference with Shift", () => {
+    const sourceSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d6")
+    const target = {
+      ...sketch,
+      id: sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d7"),
+      externalReferences: [],
+    }
+    const candidate = {
+      kind: "point" as const,
+      label: "Layout · Point 2",
+      sourceSketchId,
+      sourcePointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f32d8"),
+      world: [50, 24, 0] as const,
+      x: 50,
+      y: 24,
+    }
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: target,
+      externalContextGeometry: [candidate],
+      externalPointCandidates: [candidate],
+      onDraftChange,
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const draggedPoint = sketchEntitiesOfType(target, "point")[0]
+    if (!draggedPoint) throw new Error("The drag fixture requires an authored point.")
+    const pointElement = document.querySelector(`[data-sketch-entity-id="${draggedPoint.id}"]`)
+    if (!pointElement) throw new Error("The authored point must be rendered.")
+
+    fireEvent.pointerDown(pointElement, { pointerId: 3 })
+    fireEvent.pointerMove(drawing, {
+      ...clientPointForSketch(drawing, candidate),
+      pointerId: 3,
+      shiftKey: true,
+    })
+    const frame = frames.shift()
+    if (!frame) throw new Error("Suppressed drag must still schedule one animation frame.")
+    act(() => frame(0))
+
+    expect(document.querySelector("[data-sketch-inference]")).toBeNull()
+    expect(document.querySelector("[data-sketch-external-inference-label]")).toBeNull()
+    fireEvent.pointerUp(drawing, { pointerId: 3, shiftKey: true })
+
+    const updated = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(updated.externalReferences).toEqual([])
+    expect(updated.constraints).toHaveLength(target.constraints.length)
+  })
+
   it("renders the latest drag immediately and coalesces stale in-flight solves", async () => {
     const firstPoint = pointEntities[0]
     if (!firstPoint) throw new Error("The rectangle fixture must contain a point.")

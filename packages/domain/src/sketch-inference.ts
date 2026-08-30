@@ -109,11 +109,14 @@ export type SketchInferenceCandidateQuery<
   point: SketchPoint2,
   tolerance: number,
 ) => Readonly<{
+  arcs: readonly SketchInferenceArc[]
+  curves: readonly SketchInferenceCurve[]
   lines: readonly SketchInferenceLine[]
   points: readonly Point[]
 }>
 
 const MAX_INDEXED_LINE_CELLS = 256
+const MAX_INDEXED_CURVE_CELLS = 256
 const MAX_SPATIAL_INDEX_LEVELS = 32
 
 type PointCandidate = Readonly<{
@@ -308,55 +311,173 @@ function indexedLineCells(line: SketchInferenceLine, baseCellSize: number) {
   return null
 }
 
+type SpatialBounds = Readonly<{ maxX: number; maxY: number; minX: number; minY: number }>
+
+function curveSpatialBounds(curve: SketchInferenceCurve): SpatialBounds | null {
+  let minX: number
+  let maxX: number
+  let minY: number
+  let maxY: number
+  if (curve.type === "circle" || curve.type === "arc") {
+    const radius =
+      curve.type === "circle"
+        ? curve.radius
+        : Math.hypot(curve.start.x - curve.center.x, curve.start.y - curve.center.y)
+    if (!Number.isFinite(radius) || radius < 0) return null
+    minX = curve.center.x - radius
+    maxX = curve.center.x + radius
+    minY = curve.center.y - radius
+    maxY = curve.center.y + radius
+  } else {
+    const primaryX = curve.primaryAxisPoint.x - curve.center.x
+    const primaryY = curve.primaryAxisPoint.y - curve.center.y
+    const secondaryX = curve.secondaryAxisPoint.x - curve.center.x
+    const secondaryY = curve.secondaryAxisPoint.y - curve.center.y
+    const extentX = Math.hypot(primaryX, secondaryX)
+    const extentY = Math.hypot(primaryY, secondaryY)
+    if (!Number.isFinite(extentX) || !Number.isFinite(extentY)) return null
+    minX = curve.center.x - extentX
+    maxX = curve.center.x + extentX
+    minY = curve.center.y - extentY
+    maxY = curve.center.y + extentY
+  }
+  return [minX, maxX, minY, maxY].every(Number.isFinite) ? { minX, maxX, minY, maxY } : null
+}
+
+function boundsSpatialCells(bounds: SpatialBounds, cellSize: number) {
+  const minCellX = spatialCell(bounds.minX, cellSize)
+  const maxCellX = spatialCell(bounds.maxX, cellSize)
+  const minCellY = spatialCell(bounds.minY, cellSize)
+  const maxCellY = spatialCell(bounds.maxY, cellSize)
+  const cellCount = (maxCellX - minCellX + 1) * (maxCellY - minCellY + 1)
+  if (!Number.isSafeInteger(cellCount) || cellCount > MAX_INDEXED_CURVE_CELLS) return null
+  const cells: string[] = []
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+      cells.push(spatialCellKey(cellX, cellY))
+    }
+  }
+  return cells
+}
+
+function indexedCurveCells(curve: SketchInferenceCurve, baseCellSize: number) {
+  const bounds = curveSpatialBounds(curve)
+  if (!bounds) return null
+  let cellSize = baseCellSize
+  for (let level = 0; level < MAX_SPATIAL_INDEX_LEVELS; level += 1) {
+    const cells = boundsSpatialCells(bounds, cellSize)
+    if (cells) return { cells, cellSize }
+    cellSize *= 4
+    if (!Number.isFinite(cellSize)) break
+  }
+  return null
+}
+
+type SpatialCandidateIndex<Candidate> = Readonly<{
+  bucketsByCellSize: ReadonlyMap<number, ReadonlyMap<string, readonly Candidate[]>>
+  overflow: readonly Candidate[]
+}>
+
+function createSpatialCandidateIndex<Candidate>(
+  candidates: readonly Candidate[],
+  cellSize: number,
+  indexedCells: (
+    candidate: Candidate,
+    cellSize: number,
+  ) => Readonly<{
+    cells: readonly string[]
+    cellSize: number
+  }> | null,
+): SpatialCandidateIndex<Candidate> {
+  const bucketsByCellSize = new Map<number, Map<string, Candidate[]>>()
+  const overflow: Candidate[] = []
+  for (const candidate of candidates) {
+    const indexed = indexedCells(candidate, cellSize)
+    if (!indexed) {
+      overflow.push(candidate)
+      continue
+    }
+    let buckets = bucketsByCellSize.get(indexed.cellSize)
+    if (!buckets) {
+      buckets = new Map()
+      bucketsByCellSize.set(indexed.cellSize, buckets)
+    }
+    for (const cell of indexed.cells) addSpatialCandidate(buckets, cell, candidate)
+  }
+  return { bucketsByCellSize, overflow }
+}
+
+function querySpatialCandidateIndex<Candidate extends Readonly<{ id: SketchEntityId }>>(
+  index: SpatialCandidateIndex<Candidate>,
+  point: SketchPoint2,
+  tolerance: number,
+) {
+  const candidatesById = new Map<SketchEntityId, Candidate>()
+  for (const [cellSize, buckets] of index.bucketsByCellSize) {
+    const radius = Math.max(0, Math.ceil(tolerance / cellSize))
+    for (const candidate of queriedSpatialCandidates(buckets, point, radius, cellSize)) {
+      candidatesById.set(candidate.id, candidate)
+    }
+  }
+  for (const candidate of index.overflow) candidatesById.set(candidate.id, candidate)
+  return [...candidatesById.values()]
+}
+
+function queryPointCandidates<Point extends SketchInferencePoint>(
+  pointsByX: readonly Point[],
+  pointsByY: readonly Point[],
+  point: SketchPoint2,
+  tolerance: number,
+) {
+  const pointsById = new Map<SketchEntityId, Point>()
+  for (const candidate of queriedAxisCandidates(pointsByX, "x", point.x, tolerance)) {
+    pointsById.set(candidate.id, candidate)
+  }
+  for (const candidate of queriedAxisCandidates(pointsByY, "y", point.y, tolerance)) {
+    pointsById.set(candidate.id, candidate)
+  }
+  return [...pointsById.values()]
+}
+
+function matchingArcCandidates(
+  curves: readonly SketchInferenceCurve[],
+  arcsById: ReadonlyMap<SketchEntityId, SketchInferenceArc>,
+) {
+  return curves.flatMap((curve) => {
+    const arc = arcsById.get(curve.id)
+    return arc ? [arc] : []
+  })
+}
+
 export function createSketchInferenceCandidateQuery<Point extends SketchInferencePoint>(input: {
   cellSize: number
   lines: readonly SketchInferenceLine[]
   points: readonly Point[]
+  curves?: readonly SketchInferenceCurve[]
+  arcs?: readonly SketchInferenceArc[]
 }): SketchInferenceCandidateQuery<Point> {
+  const curves = input.curves ?? []
+  const arcs = input.arcs ?? []
+  const arcsById = new Map(arcs.map((arc) => [arc.id, arc]))
   if (!Number.isFinite(input.cellSize) || input.cellSize <= 0) {
     return (_point, tolerance) => {
       requireInferenceTolerance(tolerance)
-      return { lines: input.lines, points: input.points }
+      return { arcs, curves, lines: input.lines, points: input.points }
     }
   }
-  const lineBucketsByCellSize = new Map<number, Map<string, SketchInferenceLine[]>>()
   const pointsByX = sortedAxisCandidates(input.points, "x")
   const pointsByY = sortedAxisCandidates(input.points, "y")
-  const overflowLines: SketchInferenceLine[] = []
-  for (const line of input.lines) {
-    const indexed = indexedLineCells(line, input.cellSize)
-    if (!indexed) {
-      overflowLines.push(line)
-      continue
-    }
-    let buckets = lineBucketsByCellSize.get(indexed.cellSize)
-    if (!buckets) {
-      buckets = new Map()
-      lineBucketsByCellSize.set(indexed.cellSize, buckets)
-    }
-    for (const cell of indexed.cells) addSpatialCandidate(buckets, cell, line)
-  }
+  const lineIndex = createSpatialCandidateIndex(input.lines, input.cellSize, indexedLineCells)
+  const curveIndex = createSpatialCandidateIndex(curves, input.cellSize, indexedCurveCells)
 
   return (point, tolerance) => {
     requireInferenceTolerance(tolerance)
-    const linesById = new Map<SketchEntityId, SketchInferenceLine>()
-    for (const [cellSize, buckets] of lineBucketsByCellSize) {
-      const radius = Math.max(0, Math.ceil(tolerance / cellSize))
-      for (const line of queriedSpatialCandidates(buckets, point, radius, cellSize)) {
-        linesById.set(line.id, line)
-      }
-    }
-    for (const line of overflowLines) linesById.set(line.id, line)
-    const pointsById = new Map<SketchEntityId, Point>()
-    for (const candidate of queriedAxisCandidates(pointsByX, "x", point.x, tolerance)) {
-      pointsById.set(candidate.id, candidate)
-    }
-    for (const candidate of queriedAxisCandidates(pointsByY, "y", point.y, tolerance)) {
-      pointsById.set(candidate.id, candidate)
-    }
+    const nearbyCurves = querySpatialCandidateIndex(curveIndex, point, tolerance)
     return {
-      lines: [...linesById.values()],
-      points: [...pointsById.values()],
+      arcs: matchingArcCandidates(nearbyCurves, arcsById),
+      curves: nearbyCurves,
+      lines: querySpatialCandidateIndex(lineIndex, point, tolerance),
+      points: queryPointCandidates(pointsByX, pointsByY, point, tolerance),
     }
   }
 }
