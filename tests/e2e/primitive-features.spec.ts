@@ -1,3 +1,4 @@
+import { projectWorldEllipticalEdgeToSupport } from "../../packages/application/src/sketch-curve-projection"
 import type { GeometryWorkerResponse } from "../../packages/protocol/src"
 import { expect, test } from "./fixtures"
 
@@ -14,7 +15,10 @@ interface FeatureEvaluationHarnessState {
   extrusion: FeatureResponse | null
   circularArcExtrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
-  ellipticalArcExtrusion: FeatureResponse | null
+  ellipticalArcMinor: FeatureResponse | null
+  ellipticalArcMajor: FeatureResponse | null
+  ellipticalArcWrapped: FeatureResponse | null
+  ellipticalArcReflected: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
@@ -54,6 +58,184 @@ function expectMesh(result: FeatureResponse) {
   expect(result.mesh.triangleFaceIds.length).toBe(result.mesh.indices.length / 3)
 }
 
+type EllipticalArcCase = Readonly<{
+  name: string
+  result: FeatureResponse | null
+  start: readonly [number, number]
+  end: readonly [number, number]
+  sweep: number
+  bounds: { min: readonly number[]; max: readonly number[] }
+  middleAngle: number
+  primaryAxisPoint: readonly [number, number]
+  secondaryAxisPoint: readonly [number, number]
+}>
+
+type Vector3 = readonly [number, number, number]
+
+type EllipticalArcFixture = Omit<EllipticalArcCase, "result"> &
+  Readonly<{
+    resultKey:
+      | "ellipticalArcMinor"
+      | "ellipticalArcMajor"
+      | "ellipticalArcWrapped"
+      | "ellipticalArcReflected"
+  }>
+
+const ellipticalArcFixtures: readonly EllipticalArcFixture[] = [
+  {
+    name: "minor",
+    resultKey: "ellipticalArcMinor",
+    start: [10, 0],
+    end: [0, 5],
+    sweep: Math.PI / 2,
+    middleAngle: Math.PI / 4,
+    primaryAxisPoint: [10, 0],
+    secondaryAxisPoint: [0, 5],
+    bounds: { min: [0, 0, 0], max: [10, 5, 12] },
+  },
+  {
+    name: "major",
+    resultKey: "ellipticalArcMajor",
+    start: [0, 5],
+    end: [10, 0],
+    sweep: Math.PI * 1.5,
+    middleAngle: Math.PI * 1.25,
+    primaryAxisPoint: [10, 0],
+    secondaryAxisPoint: [0, 5],
+    bounds: { min: [-10, -5, 0], max: [10, 5, 12] },
+  },
+  {
+    name: "wrapped",
+    resultKey: "ellipticalArcWrapped",
+    start: [10 * Math.cos(0.2), -5 * Math.sin(0.2)],
+    end: [10 * Math.cos(0.2), 5 * Math.sin(0.2)],
+    sweep: 0.4,
+    middleAngle: 0,
+    primaryAxisPoint: [10, 0],
+    secondaryAxisPoint: [0, 5],
+    bounds: {
+      min: [10 * Math.cos(0.2), -5 * Math.sin(0.2), 0],
+      max: [10, 5 * Math.sin(0.2), 12],
+    },
+  },
+  {
+    name: "reflected",
+    resultKey: "ellipticalArcReflected",
+    start: [-10, 0],
+    end: [10, 0],
+    sweep: Math.PI,
+    middleAngle: Math.PI / 2,
+    primaryAxisPoint: [-10, 0],
+    secondaryAxisPoint: [0, 5],
+    bounds: { min: [-10, 0, 0], max: [10, 5, 12] },
+  },
+]
+
+function expectPointOnEllipse(
+  point: Vector3,
+  center: Vector3,
+  xAxis: Vector3,
+  yAxis: Vector3,
+  majorRadius: number,
+  minorRadius: number,
+) {
+  const relative: Vector3 = [point[0] - center[0], point[1] - center[1], point[2] - center[2]]
+  const x = relative[0] * xAxis[0] + relative[1] * xAxis[1] + relative[2] * xAxis[2]
+  const y = relative[0] * yAxis[0] + relative[1] * yAxis[1] + relative[2] * yAxis[2]
+  expect(x ** 2 / majorRadius ** 2 + y ** 2 / minorRadius ** 2).toBeCloseTo(1, 6)
+}
+
+function requireProjectedPoint(points: readonly { x: number; y: number }[], index: number) {
+  const point = points[index]
+  if (!point) throw new Error(`Expected projected point ${index}.`)
+  return point
+}
+
+function expectEllipticalArcCase(fixture: EllipticalArcCase) {
+  const result = requireResult(fixture.result)
+  expect(result.shape.valid).toBe(true)
+  expect(result.shape.solidCount).toBe(1)
+  const area = (10 * 5 * (fixture.sweep - Math.sin(fixture.sweep))) / 2
+  expect(result.shape.volume, fixture.name).toBeCloseTo(area * 12, 5)
+  expectBounds(result.shape.bounds, fixture.bounds)
+  const edges = result.topologyCandidates.filter(
+    (candidate) => candidate.referenceGeometry?.kind === "elliptical-arc-edge",
+  )
+  expect(edges).toHaveLength(2)
+  for (const candidate of edges) {
+    if (candidate.referenceGeometry?.kind !== "elliptical-arc-edge") continue
+    const geometry = candidate.referenceGeometry
+    expect(geometry.majorRadius).toBeCloseTo(10, 6)
+    expect(geometry.minorRadius).toBeCloseTo(5, 6)
+    expect(Math.hypot(...geometry.xAxis)).toBeCloseTo(1, 6)
+    expect(Math.hypot(...geometry.yAxis)).toBeCloseTo(1, 6)
+    expect(Math.hypot(...geometry.normal)).toBeCloseTo(1, 6)
+    const cross: Vector3 = [
+      geometry.xAxis[1] * geometry.yAxis[2] - geometry.xAxis[2] * geometry.yAxis[1],
+      geometry.xAxis[2] * geometry.yAxis[0] - geometry.xAxis[0] * geometry.yAxis[2],
+      geometry.xAxis[0] * geometry.yAxis[1] - geometry.xAxis[1] * geometry.yAxis[0],
+    ]
+    expect(
+      cross[0] * geometry.normal[0] + cross[1] * geometry.normal[1] + cross[2] * geometry.normal[2],
+    ).toBeCloseTo(1, 6)
+    for (const point of [geometry.start, geometry.middle, geometry.end]) {
+      expectPointOnEllipse(point, geometry.center, geometry.xAxis, geometry.yAxis, 10, 5)
+    }
+    const authored: readonly (readonly [number, number])[] = [fixture.start, fixture.end]
+    const captured: readonly (readonly [number, number])[] = [
+      [geometry.start[0], geometry.start[1]],
+      [geometry.end[0], geometry.end[1]],
+    ]
+    expect(
+      captured.some((point) =>
+        authored.some(
+          (expected) => Math.hypot(point[0] - expected[0], point[1] - expected[1]) < 1e-6,
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      captured.every((point) =>
+        authored.some(
+          (expected) => Math.hypot(point[0] - expected[0], point[1] - expected[1]) < 1e-6,
+        ),
+      ),
+    ).toBe(true)
+    const expectedMiddle: readonly [number, number] = [
+      fixture.primaryAxisPoint[0] * Math.cos(fixture.middleAngle) +
+        fixture.secondaryAxisPoint[0] * Math.sin(fixture.middleAngle),
+      fixture.primaryAxisPoint[1] * Math.cos(fixture.middleAngle) +
+        fixture.secondaryAxisPoint[1] * Math.sin(fixture.middleAngle),
+    ]
+    expect(
+      Math.hypot(geometry.middle[0] - expectedMiddle[0], geometry.middle[1] - expectedMiddle[1]),
+    ).toBeLessThan(1e-5)
+    const projected = projectWorldEllipticalEdgeToSupport(geometry, {
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 1, 0],
+      normal: [0, 0, 1],
+    })
+    expect(projected?.type).toBe("elliptical-arc")
+    expect(projected).not.toBeNull()
+    if (projected?.type !== "elliptical-arc") continue
+    const projectedStart = requireProjectedPoint(projected.points, 3)
+    const projectedEnd = requireProjectedPoint(projected.points, 4)
+    expect(
+      Math.hypot(projectedStart.x - geometry.start[0], projectedStart.y - geometry.start[1]),
+    ).toBeLessThan(1e-6)
+    expect(
+      Math.hypot(projectedEnd.x - geometry.end[0], projectedEnd.y - geometry.end[1]),
+    ).toBeLessThan(1e-6)
+  }
+  expectMesh(result)
+}
+
+function expectEllipticalArcCases(state: FeatureEvaluationHarnessState) {
+  for (const fixture of ellipticalArcFixtures) {
+    expectEllipticalArcCase({ ...fixture, result: state[fixture.resultKey] })
+  }
+}
+
 test("evaluates and caches canonical primitive and Boolean features in the geometry worker", async ({
   page,
 }) => {
@@ -74,7 +256,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   const extrusion = requireResult(state.extrusion)
   const circularArcExtrusion = requireResult(state.circularArcExtrusion)
   const ellipseExtrusion = requireResult(state.ellipseExtrusion)
-  const ellipticalArcExtrusion = requireResult(state.ellipticalArcExtrusion)
   const extrusionAdd = requireResult(state.extrusionAdd)
   const extrusionIntersect = requireResult(state.extrusionIntersect)
   const extrusionRemove = requireResult(state.extrusionRemove)
@@ -225,22 +406,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   )
   expectMesh(ellipseExtrusion)
 
-  expect(ellipticalArcExtrusion.cache.brepHit).toBe(false)
-  expect(ellipticalArcExtrusion.shape.valid).toBe(true)
-  expect(ellipticalArcExtrusion.shape.solidCount).toBe(1)
-  expect(ellipticalArcExtrusion.shape.volume).toBeCloseTo(Math.PI * 10 * 5 * 6, 5)
-  expectBounds(ellipticalArcExtrusion.shape.bounds, { min: [-10, 0, 0], max: [10, 5, 12] })
-  expect(
-    ellipticalArcExtrusion.topologyCandidates.flatMap(({ semanticRole }) => semanticRole ?? []),
-  ).toEqual(
-    expect.arrayContaining([
-      "extrusion.cap.start",
-      "extrusion.cap.end",
-      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3311",
-      "extrusion.side.0195b5ac-b220-7a2c-8c33-67a36a7f3312",
-    ]),
-  )
-  expectMesh(ellipticalArcExtrusion)
+  expectEllipticalArcCases(state)
 
   expect(extrusionAdd.shape.volume).toBeCloseTo(20 * 30 * 25.4 + 20 * 10 * 18 - 10 * 10 * 18, 5)
   expectBounds(extrusionAdd.shape.bounds, { min: [-10, -15, 0], max: [20, 15, 25.4] })
@@ -265,7 +431,7 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 13 }).flatMap(() => [
+    ...Array.from({ length: 16 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -279,6 +445,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 12, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 15, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })
