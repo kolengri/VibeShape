@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest"
 import {
   projectSketchCurveBetweenFrames,
   projectWorldCircularEdgeToSupport,
+  projectWorldEllipticalEdgeToSupport,
   sampleWorldCircularEdge,
+  sampleWorldEllipticalEdge,
 } from "./sketch-curve-projection"
 import type { SupportFrame } from "./support-frame"
 
@@ -68,6 +70,82 @@ describe("analytical sketch curve projection", () => {
     expect(sampled[2]?.[0]).toBeCloseTo(-Math.sqrt(12.5))
   })
 
+  it("projects and samples a bounded ellipse from exact role points", () => {
+    const geometry = {
+      kind: "elliptical-arc-edge" as const,
+      center: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+      majorRadius: 5,
+      minorRadius: 3,
+      start: [5, 0, 0] as const,
+      middle: [0, 3, 0] as const,
+      end: [-5, 0, 0] as const,
+    }
+    expect(projectWorldEllipticalEdgeToSupport(geometry, xy)).toEqual({
+      type: "elliptical-arc",
+      points: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 0, y: 3 },
+        { x: 5, y: 0 },
+        { x: -5, y: 0 },
+      ],
+    })
+    const sampled = sampleWorldEllipticalEdge(geometry, 2)
+    expect(sampled[0]).toEqual([5, 0, 0])
+    expect(sampled[1]?.[1]).toBeCloseTo(3)
+    expect(sampled.at(-1)?.[0]).toBeCloseTo(-5)
+    expect(sampled.at(-1)?.[1]).toBeCloseTo(0)
+  })
+
+  it("preserves reflected and major elliptical-arc branches", () => {
+    const reflected = {
+      kind: "elliptical-arc-edge" as const,
+      center: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+      majorRadius: 5,
+      minorRadius: 3,
+      start: [5, 0, 0] as const,
+      middle: [0, -3, 0] as const,
+      end: [-5, 0, 0] as const,
+    }
+    expect(projectWorldEllipticalEdgeToSupport(reflected, xy)).toEqual({
+      type: "elliptical-arc",
+      points: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 0, y: -3 },
+        { x: 5, y: 0 },
+        { x: -5, y: 0 },
+      ],
+    })
+    expect(sampleWorldEllipticalEdge(reflected, 2)[1]?.[1]).toBeCloseTo(-3)
+
+    const major = {
+      ...reflected,
+      middle: [-5, 0, 0] as const,
+      end: [0, -3, 0] as const,
+    }
+    const projectedMajor = projectWorldEllipticalEdgeToSupport(major, xy)
+    expect(projectedMajor).toMatchObject({
+      type: "elliptical-arc",
+      points: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 0, y: 3 },
+        { x: 5, y: 0 },
+        { x: 0, y: -3 },
+      ],
+    })
+    const sampledMajor = sampleWorldEllipticalEdge(major, 3)
+    expect(sampledMajor[2]?.[0]).toBeCloseTo(-5)
+    expect(sampledMajor.at(-1)?.[1]).toBeCloseTo(-3)
+  })
+
   it("bounds transient circular display sampling", () => {
     const geometry = {
       kind: "circle-edge" as const,
@@ -80,6 +158,21 @@ describe("analytical sketch curve projection", () => {
 
     expect(() => sampleWorldCircularEdge(geometry, 0)).toThrow(RangeError)
     expect(() => sampleWorldCircularEdge(geometry, 4_097)).toThrow(RangeError)
+  })
+
+  it("bounds transient elliptical display sampling", () => {
+    const geometry = {
+      kind: "ellipse-edge" as const,
+      center: [0, 0, 0] as const,
+      xAxis: [1, 0, 0] as const,
+      yAxis: [0, 1, 0] as const,
+      normal: [0, 0, 1] as const,
+      majorRadius: 5,
+      minorRadius: 3,
+    }
+
+    expect(() => sampleWorldEllipticalEdge(geometry, 0)).toThrow(RangeError)
+    expect(() => sampleWorldEllipticalEdge(geometry, 4_097)).toThrow(RangeError)
   })
 
   it("fails closed when a circular model edge projects to a line", () => {

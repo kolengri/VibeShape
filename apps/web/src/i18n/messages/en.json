@@ -801,7 +801,7 @@
       },
       "viewport": {
         "externalLineCandidate": "{sketch} · Line {ordinal}",
-        "externalModelCurveCandidate": "{feature} · {kind, select, circle {Circular edge} arc {Arc edge} other {Curved edge}} {ordinal}",
+        "externalModelCurveCandidate": "{feature} · {kind, select, circle {Circular edge} arc {Arc edge} ellipse {Elliptical edge} ellipticalArc {Elliptical arc edge} other {Curved edge}} {ordinal}",
         "externalModelFaceReference": "{feature} · Face {ordinal}",
         "externalModelLineCandidate": "{feature} · Edge {ordinal}",
         "externalModelPointCandidate": "{feature} · Vertex {ordinal}",

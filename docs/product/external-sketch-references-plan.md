@@ -58,13 +58,13 @@ sketch can graphically select projected geometry owned by an intermediate sketch
 authored entities. The projected point, line, or curve keeps the intermediate sketch as its direct owner;
 the worker recursively resolves the chain from stable projected IDs. Editing the original source updates
 compatible downstream projections without rewriting their reference identities. The worker boundary
-publishes exact vertex positions, linear endpoints, and analytical circle or bounded-arc
+publishes exact vertex positions, linear endpoints, and analytical circle, bounded circular-arc, ellipse, or bounded elliptical-arc
 frames for generic topology candidates. Analytical Box boundaries, Cylinder rim roles, and prepared source
 point/entity IDs give supported candidates stable roles across parameter edits; distinct coincident source
 points remain unlabeled so resolution fails closed instead of choosing one by traversal order. Authoritative
 sketch solving resolves model references fail-closed. Normal and orbit views provide the same graphical
-preselection and creation path for vertices, linear edges, circles, and circular arcs without persisting
-display samples. Circular display samples are cached per rebuild and support frame, while draft changes only
+preselection and creation path for vertices, linear edges, circles, circular arcs, ellipses, and elliptical arcs without persisting
+display samples. Curved display samples are cached per rebuild and support frame, while draft changes only
 re-evaluate stable-reference availability. The first Intersection slice selects one visible planar model
 face in the persistent 3D viewport and asks OCCT for exactly one bounded linear section against the active
 sketch plane. It persists only the face `TopoRef` and projected line identities; the current face hash stays
@@ -75,7 +75,7 @@ plus inferred Coincident, Point on line, Point on curve, full-ellipse Quadrant, 
 acceptance. Curve wake-up projects the pointer onto exact analytical geometry; it never infers against
 sampled display polylines. Shift suppresses
 the candidate, the first Line click remains provisional, and an already used curve is reused without
-creating a second reference. Exact coplanar circular and bounded-arc model edges use the same passive
+creating a second reference. Exact coplanar circular, bounded circular-arc, elliptical, and bounded elliptical-arc model edges use the same passive
 interaction only when their `TopoRef` resolves uniquely. A uniquely resolved coplanar model circle whose
 analytical projection is an ellipse participates at its four exact axis quadrants and complete exact
 perimeter; parallel-offset, tilted,
@@ -83,7 +83,7 @@ and ambiguous candidates remain available only to explicit compatible workflows 
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
 curve reference and relates the local point to the curve's stable projected center identity. General
 surfaces, multi-curve results, Pierce, non-coplanar model-curve wake-up,
-non-circular curved model edges, and sketch-source repair UI are not
+spline and other non-analytical model edges, and sketch-source repair UI are not
 implemented. Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
 closest-first disambiguation and grave-accent cycling. Persisted coordinates remain disposable: both UI preview and

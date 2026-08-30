@@ -1,7 +1,7 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 11 as const
+export const GEOMETRY_PROTOCOL_VERSION = 12 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -604,6 +604,109 @@ const arcEdgeReferenceGeometrySchema = z
     }
   })
 
+const ellipticalEdgeGeometryShape = {
+  center: topologyVector3Schema,
+  xAxis: topologyVector3Schema,
+  yAxis: topologyVector3Schema,
+  normal: topologyVector3Schema,
+  majorRadius: finiteNumberSchema.min(0.001),
+  minorRadius: finiteNumberSchema.min(0.001),
+}
+
+function validateEllipticalEdgeFrame(
+  geometry: z.infer<z.ZodObject<typeof ellipticalEdgeGeometryShape>>,
+  context: z.RefinementCtx,
+) {
+  const axes = [geometry.xAxis, geometry.yAxis, geometry.normal]
+  if (axes.some((axis) => !normalizedVector(axis))) {
+    context.addIssue({ code: "custom", message: "Elliptical edge axes must be normalized." })
+    return
+  }
+  if (
+    Math.abs(vectorDot(geometry.xAxis, geometry.yAxis)) > 1e-6 ||
+    Math.abs(vectorDot(geometry.xAxis, geometry.normal)) > 1e-6 ||
+    Math.abs(vectorDot(geometry.yAxis, geometry.normal)) > 1e-6
+  ) {
+    context.addIssue({ code: "custom", message: "Elliptical edge axes must be orthogonal." })
+  } else if (vectorDot(vectorCross(geometry.xAxis, geometry.yAxis), geometry.normal) < 1 - 1e-6) {
+    context.addIssue({ code: "custom", message: "Elliptical edge axes must be right-handed." })
+  }
+  if (geometry.majorRadius < geometry.minorRadius) {
+    context.addIssue({
+      code: "custom",
+      path: ["majorRadius"],
+      message: "Major radius must be at least minor radius.",
+    })
+  }
+}
+
+function ellipticalPointError(
+  geometry: {
+    center: readonly [number, number, number]
+    xAxis: readonly [number, number, number]
+    yAxis: readonly [number, number, number]
+    majorRadius: number
+    minorRadius: number
+  },
+  point: readonly [number, number, number],
+) {
+  const offset = [
+    point[0] - geometry.center[0],
+    point[1] - geometry.center[1],
+    point[2] - geometry.center[2],
+  ] as const
+  const x = vectorDot(offset, geometry.xAxis) / geometry.majorRadius
+  const y = vectorDot(offset, geometry.yAxis) / geometry.minorRadius
+  const plane = vectorDot(offset, vectorCross(geometry.xAxis, geometry.yAxis))
+  return {
+    radial: Math.abs(x * x + y * y - 1),
+    plane: Math.abs(plane),
+    distance: Math.hypot(...offset),
+  }
+}
+
+const ellipseEdgeReferenceGeometrySchema = z
+  .object({ kind: z.literal("ellipse-edge"), ...ellipticalEdgeGeometryShape })
+  .strict()
+  .superRefine(validateEllipticalEdgeFrame)
+
+const ellipticalArcEdgeReferenceGeometrySchema = z
+  .object({
+    kind: z.literal("elliptical-arc-edge"),
+    ...ellipticalEdgeGeometryShape,
+    start: topologyVector3Schema,
+    middle: topologyVector3Schema,
+    end: topologyVector3Schema,
+  })
+  .strict()
+  .superRefine((geometry, context) => {
+    validateEllipticalEdgeFrame(geometry, context)
+    for (const key of ["start", "middle", "end"] as const) {
+      const tolerance = 1e-6 * Math.max(1, geometry.majorRadius)
+      const error = ellipticalPointError(geometry, geometry[key])
+      if (error.radial > 1e-6 || error.plane > tolerance) {
+        context.addIssue({
+          code: "custom",
+          path: [key],
+          message: "Elliptical arc points must lie on the analytical ellipse.",
+        })
+      }
+    }
+    if (
+      Math.hypot(
+        geometry.end[0] - geometry.start[0],
+        geometry.end[1] - geometry.start[1],
+        geometry.end[2] - geometry.start[2],
+      ) <= 1e-9
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["end"],
+        message: "Elliptical arc endpoints must be distinct.",
+      })
+    }
+  })
+
 export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -625,6 +728,8 @@ export const topologyReferenceGeometrySchema = z.discriminatedUnion("kind", [
     ),
   circleEdgeReferenceGeometrySchema,
   arcEdgeReferenceGeometrySchema,
+  ellipseEdgeReferenceGeometrySchema,
+  ellipticalArcEdgeReferenceGeometrySchema,
 ])
 
 const topologyCandidateBaseSchema = z
@@ -639,16 +744,26 @@ const topologyCandidateBaseSchema = z
   })
   .strict()
 
+const REFERENCE_GEOMETRY_CANDIDATE_KIND = {
+  vertex: { geometryClass: "POINT", topologyKind: "vertex" },
+  "line-edge": { geometryClass: "LINE", topologyKind: "edge" },
+  "circle-edge": { geometryClass: "CIRCLE", topologyKind: "edge" },
+  "arc-edge": { geometryClass: "CIRCLE", topologyKind: "edge" },
+  "ellipse-edge": { geometryClass: "ELLIPSE", topologyKind: "edge" },
+  "elliptical-arc-edge": { geometryClass: "ELLIPSE", topologyKind: "edge" },
+} as const satisfies Record<
+  z.infer<typeof topologyReferenceGeometrySchema>["kind"],
+  Readonly<{ geometryClass: string; topologyKind: z.infer<typeof topologyKindSchema> }>
+>
+
 function referenceGeometryMatchesCandidate(candidate: z.infer<typeof topologyCandidateBaseSchema>) {
   const geometry = candidate.referenceGeometry
   if (!geometry) return true
-  if (geometry.kind === "vertex") {
-    return candidate.kind === "vertex" && candidate.signature.geometryClass === "POINT"
-  }
-  if (geometry.kind === "line-edge") {
-    return candidate.kind === "edge" && candidate.signature.geometryClass === "LINE"
-  }
-  return candidate.kind === "edge" && candidate.signature.geometryClass === "CIRCLE"
+  const expected = REFERENCE_GEOMETRY_CANDIDATE_KIND[geometry.kind]
+  return (
+    candidate.kind === expected.topologyKind &&
+    candidate.signature.geometryClass === expected.geometryClass
+  )
 }
 
 export const topologyCandidateSchema = topologyCandidateBaseSchema

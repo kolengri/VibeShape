@@ -32,6 +32,27 @@ type ReferenceGeometry =
       middle: Vector3
       end: Vector3
     }
+  | {
+      kind: "ellipse-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      majorRadius: number
+      minorRadius: number
+    }
+  | {
+      kind: "elliptical-arc-edge"
+      center: Vector3
+      xAxis: Vector3
+      yAxis: Vector3
+      normal: Vector3
+      majorRadius: number
+      minorRadius: number
+      start: Vector3
+      middle: Vector3
+      end: Vector3
+    }
 
 interface TopologySample {
   candidateId: string
@@ -138,6 +159,44 @@ function readCircularReferenceGeometry(edge: Edge): ReferenceGeometry | undefine
   }
 }
 
+function readEllipticalReferenceGeometry(edge: Edge): ReferenceGeometry | undefined {
+  if (edge.geomType !== "ELLIPSE") return undefined
+  const opencascade = getOC()
+  const adaptor = new opencascade.BRepAdaptor_Curve_2(edge.wrapped)
+  try {
+    const ellipse = adaptor.Ellipse()
+    try {
+      const position = ellipse.Position()
+      try {
+        const geometry = {
+          center: readOcctCoordinate(position.Location()),
+          xAxis: readOcctCoordinate(position.XDirection()),
+          yAxis: readOcctCoordinate(position.YDirection()),
+          normal: readOcctCoordinate(position.Direction()),
+          majorRadius: ellipse.MajorRadius(),
+          minorRadius: ellipse.MinorRadius(),
+        }
+        if (adaptor.IsClosed()) return { kind: "ellipse-edge", ...geometry }
+        const first = adaptor.FirstParameter()
+        const last = adaptor.LastParameter()
+        return {
+          kind: "elliptical-arc-edge",
+          ...geometry,
+          start: readOcctCoordinate(adaptor.Value(first)),
+          middle: readOcctCoordinate(adaptor.Value((first + last) / 2)),
+          end: readOcctCoordinate(adaptor.Value(last)),
+        }
+      } finally {
+        position.delete()
+      }
+    } finally {
+      ellipse.delete()
+    }
+  } finally {
+    adaptor.delete()
+  }
+}
+
 function readFaceSample(face: Face, index: number): TopologySample {
   const properties = measureShapeSurfaceProperties(face)
   const edges = face.edges
@@ -177,7 +236,9 @@ function readEdgeSample(edge: Edge, index: number) {
             start,
             end,
           }
-        : readCircularReferenceGeometry(edge)
+        : edge.geomType === "ELLIPSE"
+          ? readEllipticalReferenceGeometry(edge)
+          : readCircularReferenceGeometry(edge)
     return {
       endpoints: [start, end] as const,
       sample: {

@@ -12,6 +12,51 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("uses an exact elliptical edge from a rebuilt extrusion", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const taskPanel = page.getByRole("complementary", { name: "Task panel" })
+    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    await selectSketchTool(page, "Circle tools", "Center-point ellipse")
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.55)
+    await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
+    await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
+
+    await page.getByRole("button", { name: "Extrude selected profile", exact: true }).click()
+    const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
+    await expect(extrusionForm).toBeVisible()
+    await extrusionForm.getByRole("button", { name: "Create extrusion", exact: true }).click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+
+    await taskPanel.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xy")
+    await page.getByRole("button", { name: "Use external geometry", exact: true }).click()
+    const ellipseEdge = page
+      .getByRole("button", { name: /Extrusion 1 · Elliptical edge \d+/ })
+      .first()
+    await expect(ellipseEdge).toBeVisible({ timeout: 120_000 })
+    const sourceLabel = await ellipseEdge.getAttribute("aria-label")
+    if (!sourceLabel) throw new Error("The exact model ellipse edge must expose a source label.")
+    await ellipseEdge.focus()
+    await page.keyboard.press("Enter")
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+  })
+
   test("wakes a coplanar circular model edge without activating Use", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

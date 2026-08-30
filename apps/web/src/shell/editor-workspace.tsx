@@ -43,6 +43,7 @@ import {
   applyExternalModelIntersection,
   availableExternalModelGeometryCandidates,
   type ExternalModelGeometryCandidate,
+  externalModelCurveLabelKind,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
   repairExternalModelGeometryCandidates,
@@ -752,7 +753,11 @@ function useProjectedWorkspaceModelCandidates(
       frame,
       {
         curve: (feature, kind, ordinal) =>
-          t("externalModelCurveCandidate", { feature, kind, ordinal }),
+          t("externalModelCurveCandidate", {
+            feature,
+            kind: externalModelCurveLabelKind(kind),
+            ordinal,
+          }),
         line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
         point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
       },
