@@ -1453,6 +1453,8 @@ function ActiveSketchTaskPanel({
     draft,
     sketchReferenceLabels,
     resolveDocumentFeatureParameters(report.snapshot),
+    new Map(),
+    report.rebuild.ok ? report.rebuild.response.geometry : [],
   )
   const sketchReferenceResolution = useMemo(
     () => externalSketchReferenceResolution(report.snapshot, draft, sketchReferenceLabels),

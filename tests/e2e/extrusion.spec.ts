@@ -272,6 +272,73 @@ test.describe("selector-backed extrusion", () => {
     ).toHaveText(supportLabel ?? "")
   })
 
+  test("creates and rebuilds a sketch on a planar extrusion side", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("form", { name: "Extrude profile" })
+      .getByRole("button", { name: "Create extrusion" })
+      .click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    await canvas.click({ position: { x: bounds.width * 0.72, y: bounds.height * 0.45 } })
+
+    const support = page.getByRole("combobox", { name: "Support plane" })
+    await expect(support).toHaveValue("feature-face")
+    const sideLabel = await support.locator("option:checked").textContent()
+    if (!sideLabel) throw new Error("The planar extrusion side has no readable label.")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(support.locator("option:checked")).toHaveText(sideLabel)
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "2",
+    )
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("form", { name: "Extrude profile" })
+      .getByRole("button", { name: "Create extrusion" })
+      .click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
+      timeout: 120_000,
+    })
+
+    await page.getByRole("treeitem", { name: "Extrusion 1" }).click()
+    const editForm = page.getByRole("form", { name: "Edit extrusion" })
+    await editForm.getByRole("combobox", { name: "Distance" }).fill("20 mm")
+    await editForm.getByRole("button", { name: "Update extrusion" }).click()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
+      timeout: 120_000,
+    })
+    await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await expect(support.locator("option:checked")).toHaveText(sideLabel)
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(
+      "data-rendered-sketch-count",
+      "2",
+    )
+  })
+
   test("chooses an exact sketch support when model faces overlap", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

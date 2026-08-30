@@ -21,7 +21,8 @@ function supportedPlanarRole(role: string | undefined) {
   if (role === "primitive.cylinder.cap.start") return true
   if (role === "primitive.cylinder.cap.end") return true
   if (role === "extrusion.cap.start") return true
-  return role === "extrusion.cap.end"
+  if (role === "extrusion.cap.end") return true
+  return role.startsWith("extrusion.side.") && role.length > "extrusion.side.".length
 }
 
 export function selectedPlanarFaceReference(

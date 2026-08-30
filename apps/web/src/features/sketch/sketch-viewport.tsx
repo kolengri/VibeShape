@@ -9936,8 +9936,22 @@ function useActiveSketchDisplay({
   const display = useMemo(() => {
     const snapshot = controller.report?.snapshot
     if (interactive || !snapshot || !activeSketch) return null
-    return materializeSketchDisplay(snapshot, activeSketch, displaySolution, features)
-  }, [activeSketch, controller.report?.snapshot, displaySolution, features, interactive])
+    const rebuild = controller.report?.rebuild
+    return materializeSketchDisplay(
+      snapshot,
+      activeSketch,
+      displaySolution,
+      features,
+      rebuild?.ok && rebuild.response ? rebuild.response.geometry : [],
+    )
+  }, [
+    activeSketch,
+    controller.report?.rebuild,
+    controller.report?.snapshot,
+    displaySolution,
+    features,
+    interactive,
+  ])
   useEffect(() => onDisplayChange(display), [display, onDisplayChange])
   useEffect(() => () => onDisplayChange(null), [onDisplayChange])
 }

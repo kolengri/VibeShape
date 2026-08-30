@@ -1,11 +1,15 @@
-import { type SupportFrame, sketchFrame } from "@vibeshape/application/support-frame"
+import {
+  type SupportFrame,
+  type SupportFrameGeometryRecord,
+  sketchFrame,
+} from "@vibeshape/application/support-frame"
 import {
   type DocumentSnapshot,
   type FeatureRecord,
+  projectedExternalSketchEntities,
   type SketchEntity,
   type SketchPoint2,
   type SketchRecord,
-  projectedExternalSketchEntities,
   sketchCurvePointIds,
   sketchEllipseGeometry,
   sketchEllipsePointAt,
@@ -245,8 +249,9 @@ export function materializeSketchDisplay(
   sketch: SketchRecord,
   solution: SketchDisplaySolution | null = null,
   features: readonly FeatureRecord[] = document.features,
+  geometry: readonly SupportFrameGeometryRecord[] = [],
 ): SketchDisplayRecord | null {
-  const frame = sketchFrame(sketch, document, features)
+  const frame = sketchFrame(sketch, document, features, new Set(), geometry)
   if (!frame) return null
   const entities = [...sketch.entities, ...resolvedExternalDisplayEntities(sketch, solution)]
   const { points, radii } = solvedGeometry(entities, solution)

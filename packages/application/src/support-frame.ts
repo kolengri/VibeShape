@@ -5,12 +5,24 @@ import {
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
+  resolveTopologyReference,
   type SketchRecord,
+  type TopologyCandidate,
 } from "@vibeshape/domain"
 import { extrusionFrameSchema } from "@vibeshape/protocol"
 
 export type SupportFrame = ReturnType<typeof extrusionFrameSchema.parse>
 type Vector3 = readonly [number, number, number]
+export type SupportFrameGeometryRecord = Readonly<{
+  featureId: string
+  geometry: Readonly<{
+    topologyCandidates: readonly (TopologyCandidate & Readonly<{ referenceGeometry?: unknown }>)[]
+  }>
+}>
+type CurrentGeometry =
+  | SupportFrameGeometryRecord
+  | readonly SupportFrameGeometryRecord[]
+  | ReadonlyMap<string, SupportFrameGeometryRecord>
 
 export type SupportPoint2 = Readonly<{ x: number; y: number }>
 
@@ -79,6 +91,74 @@ function frameFromNormal(origin: Vector3, normal: Vector3): SupportFrame | null 
     yAxis: cross(unitNormal, xAxis),
     normal: unitNormal,
   })
+}
+
+function projectAnchorOntoPlane(anchor: Vector3, planePoint: Vector3, normal: Vector3): Vector3 {
+  const offset = dot(
+    [planePoint[0] - anchor[0], planePoint[1] - anchor[1], planePoint[2] - anchor[2]],
+    normal,
+  )
+  return [
+    anchor[0] + normal[0] * offset,
+    anchor[1] + normal[1] * offset,
+    anchor[2] + normal[2] * offset,
+  ]
+}
+
+function currentFeatureGeometry(
+  geometry: CurrentGeometry | undefined,
+  featureId: string,
+): SupportFrameGeometryRecord | undefined {
+  if (!geometry) return undefined
+  if ("get" in geometry) return geometry.get(featureId)
+  if ("featureId" in geometry) return geometry.featureId === featureId ? geometry : undefined
+  return geometry.find((record) => record.featureId === featureId)
+}
+
+function domainCandidate(
+  candidate: SupportFrameGeometryRecord["geometry"]["topologyCandidates"][number],
+): TopologyCandidate {
+  const { referenceGeometry: _referenceGeometry, ...result } = candidate
+  return result
+}
+
+function orientedPlanarGeometry(
+  candidate: SupportFrameGeometryRecord["geometry"]["topologyCandidates"][number] | undefined,
+): Readonly<{ centroid: Vector3; direction: Vector3 }> | null {
+  if (candidate?.kind !== "face") return null
+  const { signature } = candidate
+  if (
+    signature.geometryClass !== "PLANE" ||
+    signature.directionMode !== "oriented" ||
+    !signature.direction
+  ) {
+    return null
+  }
+  return { centroid: signature.centroid, direction: signature.direction }
+}
+
+function currentPlanarSupportFrame(
+  reference: NonNullable<SketchRecord["support"]>["reference"],
+  geometry: CurrentGeometry | undefined,
+): SupportFrame | null {
+  const record = currentFeatureGeometry(geometry, reference.featureId)
+  if (!record) return null
+  const resolution = resolveTopologyReference(
+    reference,
+    record.geometry.topologyCandidates.map(domainCandidate),
+  )
+  if (resolution.status !== "resolved") return null
+  const plane = orientedPlanarGeometry(
+    record.geometry.topologyCandidates.find(
+      ({ candidateId }) => candidateId === resolution.candidateId,
+    ),
+  )
+  if (!plane) return null
+  const anchor = reference.intent?.nearPoint ?? reference.signature.centroid
+  return frameFromNormal(
+    projectAnchorOntoPlane(anchor, plane.centroid, plane.direction),
+    plane.direction,
+  )
 }
 
 function originPlaneFrame(plane: SketchRecord["plane"]): SupportFrame {
@@ -169,12 +249,13 @@ function extrusionSupportFrame(
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
   visitedFeatureIds: ReadonlySet<string>,
+  geometry: CurrentGeometry | undefined,
 ) {
   const parameters = readExtrusionFeatureParameters(feature)
   if (!parameters) return null
   const sourceSketch = document.sketches.find(({ id }) => id === parameters.profile.sketchId)
   if (!sourceSketch) return null
-  const frame = sketchFrame(sourceSketch, document, features, visitedFeatureIds)
+  const frame = sketchFrame(sourceSketch, document, features, visitedFeatureIds, geometry)
   if (!frame) return null
   const start = parameters.symmetric ? -parameters.distance.value / 2 : 0
   if (role === "extrusion.cap.start") return translatedFrame(frame, start, true)
@@ -188,6 +269,7 @@ export function datumPlaneFrame(
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
   visitedFeatureIds: ReadonlySet<string>,
+  geometry?: CurrentGeometry,
 ): SupportFrame | null {
   const parameters = readDatumPlaneFeatureParameters(feature)
   if (!parameters) return null
@@ -205,6 +287,7 @@ export function datumPlaneFrame(
             document,
             features,
             new Set([...visitedFeatureIds, source.id]),
+            geometry,
           )
         })()
   return baseFrame ? translatedFrame(baseFrame, parameters.offset.value) : null
@@ -216,6 +299,7 @@ function featureSupportFrame(
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
   visitedFeatureIds: ReadonlySet<string>,
+  geometry: CurrentGeometry | undefined,
 ): SupportFrame | null {
   if (feature.type.typeId === "org.vibeshape.feature.part-design.box") {
     return boxSupportFrame(feature, role)
@@ -224,13 +308,13 @@ function featureSupportFrame(
     return cylinderSupportFrame(feature, role)
   }
   if (feature.type.typeId === "org.vibeshape.feature.part-design.extrusion") {
-    return extrusionSupportFrame(feature, role, document, features, visitedFeatureIds)
+    return extrusionSupportFrame(feature, role, document, features, visitedFeatureIds, geometry)
   }
   if (
     feature.type.typeId === "org.vibeshape.feature.reference-geometry.datum-plane" &&
     role === "datum.plane"
   ) {
-    return datumPlaneFrame(feature, document, features, visitedFeatureIds)
+    return datumPlaneFrame(feature, document, features, visitedFeatureIds, geometry)
   }
   return null
 }
@@ -240,6 +324,7 @@ export function sketchFrame(
   document: DocumentSnapshot,
   features: readonly FeatureRecord[],
   visitedFeatureIds: ReadonlySet<string> = new Set(),
+  geometry?: CurrentGeometry,
 ): SupportFrame | null {
   const support = sketch.support
   if (!support) return originPlaneFrame(sketch.plane)
@@ -248,11 +333,18 @@ export function sketchFrame(
   if (!role || visitedFeatureIds.has(reference.featureId)) return null
   const feature = features.find(({ id }) => id === reference.featureId)
   if (!feature) return null
-  return featureSupportFrame(
-    feature,
-    role,
-    document,
-    features,
-    new Set([...visitedFeatureIds, reference.featureId]),
+  return (
+    featureSupportFrame(
+      feature,
+      role,
+      document,
+      features,
+      new Set([...visitedFeatureIds, reference.featureId]),
+      geometry,
+    ) ??
+    (feature.type.typeId === "org.vibeshape.feature.part-design.extrusion" &&
+    role.startsWith("extrusion.side.")
+      ? currentPlanarSupportFrame(reference, geometry)
+      : null)
   )
 }

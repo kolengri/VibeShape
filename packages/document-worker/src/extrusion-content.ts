@@ -428,7 +428,7 @@ async function prepareProfileFeatureContent({
 }>) {
   const sketch = document.sketches.find(({ id }) => id === feature.parameters.profile.sketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
-  const frame = sketchFrame(sketch, document, features)
+  const frame = sketchFrame(sketch, document, features, new Set(), geometry)
   if (!frame) {
     return failure("org.vibeshape.feature.sketch-support-missing", "support-unresolved")
   }
