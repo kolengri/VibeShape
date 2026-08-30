@@ -40,7 +40,10 @@ interface FeatureEvaluationHarnessState {
   extrusion: FeatureResponse | null
   circularArcExtrusion: FeatureResponse | null
   ellipseExtrusion: FeatureResponse | null
-  ellipticalArcExtrusion: FeatureResponse | null
+  ellipticalArcMinor: FeatureResponse | null
+  ellipticalArcMajor: FeatureResponse | null
+  ellipticalArcWrapped: FeatureResponse | null
+  ellipticalArcReflected: FeatureResponse | null
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
@@ -72,8 +75,11 @@ const extrusionAddFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a
 const extrusionRemoveFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3108")
 const extrusionIntersectFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3109")
 const ellipseExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3110")
-const ellipticalArcExtrusionFeatureId = featureIdSchema.parse(
-  "0195b5ac-b220-7a2c-8c33-67a36a7f3111",
+const ellipticalArcMinorFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3111")
+const ellipticalArcMajorFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3114")
+const ellipticalArcWrappedFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3115")
+const ellipticalArcReflectedFeatureId = featureIdSchema.parse(
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3116",
 )
 const circularArcExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3113")
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
@@ -90,13 +96,37 @@ const profilePointIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3324",
 ] as const
 const ellipseProfileEntityId = "0195b5ac-b220-7a2c-8c33-67a36a7f3310"
-const ellipticalArcProfileEntityIds = [
+const ellipticalArcMinorProfileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3311",
   "0195b5ac-b220-7a2c-8c33-67a36a7f3312",
 ] as const
-const ellipticalArcProfilePointIds = [
+const ellipticalArcMinorProfilePointIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3331",
   "0195b5ac-b220-7a2c-8c33-67a36a7f3332",
+] as const
+const ellipticalArcMajorProfileEntityIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3341",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3342",
+] as const
+const ellipticalArcMajorProfilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3361",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3362",
+] as const
+const ellipticalArcWrappedProfileEntityIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3351",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3352",
+] as const
+const ellipticalArcWrappedProfilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3371",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3372",
+] as const
+const ellipticalArcReflectedProfileEntityIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3381",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3382",
+] as const
+const ellipticalArcReflectedProfilePointIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3391",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f3392",
 ] as const
 const circularArcProfileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3313",
@@ -116,7 +146,10 @@ const state: FeatureEvaluationHarnessState = {
   extrusion: null,
   circularArcExtrusion: null,
   ellipseExtrusion: null,
-  ellipticalArcExtrusion: null,
+  ellipticalArcMinor: null,
+  ellipticalArcMajor: null,
+  ellipticalArcWrapped: null,
+  ellipticalArcReflected: null,
   extrusionAdd: null,
   extrusionIntersect: null,
   extrusionRemove: null,
@@ -226,38 +259,88 @@ const ellipseExtrusionContentParameters = extrusionFeatureContentParametersSchem
   operation: "new",
 })
 
-const ellipticalArcExtrusionContentParameters = extrusionFeatureContentParametersSchema.parse({
-  sketchId,
-  plane: "xy",
-  outer: {
-    sourceEntityIds: ellipticalArcProfileEntityIds,
-    segments: [
-      {
-        entityId: ellipticalArcProfileEntityIds[0],
-        type: "elliptical-arc",
-        startPointId: ellipticalArcProfilePointIds[1],
-        endPointId: ellipticalArcProfilePointIds[0],
-        center: [0, 0],
-        primaryAxisPoint: [10, 0],
-        secondaryAxisPoint: [0, 5],
-        start: [10, 0],
-        end: [-10, 0],
-      },
-      {
-        entityId: ellipticalArcProfileEntityIds[1],
-        type: "line",
-        startPointId: ellipticalArcProfilePointIds[0],
-        endPointId: ellipticalArcProfilePointIds[1],
-        start: [-10, 0],
-        end: [10, 0],
-      },
-    ],
-  },
-  holes: [],
-  distance: 12,
-  symmetric: false,
-  operation: "new",
-})
+function ellipticalArcExtrusionContentParameters(
+  entityIds: readonly [string, string],
+  pointIds: readonly [string, string],
+  primaryAxisPoint: readonly [number, number],
+  secondaryAxisPoint: readonly [number, number],
+  startAngle: number,
+  endAngle: number,
+) {
+  const point = (angle: number) =>
+    [
+      primaryAxisPoint[0] * Math.cos(angle) + secondaryAxisPoint[0] * Math.sin(angle),
+      primaryAxisPoint[1] * Math.cos(angle) + secondaryAxisPoint[1] * Math.sin(angle),
+    ] as [number, number]
+  const start = point(startAngle)
+  const end = point(endAngle)
+  return extrusionFeatureContentParametersSchema.parse({
+    sketchId,
+    plane: "xy",
+    outer: {
+      sourceEntityIds: entityIds,
+      segments: [
+        {
+          entityId: entityIds[0],
+          type: "elliptical-arc",
+          startPointId: pointIds[0],
+          endPointId: pointIds[1],
+          center: [0, 0],
+          primaryAxisPoint,
+          secondaryAxisPoint,
+          start,
+          end,
+        },
+        {
+          entityId: entityIds[1],
+          type: "line",
+          startPointId: pointIds[1],
+          endPointId: pointIds[0],
+          start: end,
+          end: start,
+        },
+      ],
+    },
+    holes: [],
+    distance: 12,
+    symmetric: false,
+    operation: "new",
+  })
+}
+
+const ellipticalArcMinorContentParameters = ellipticalArcExtrusionContentParameters(
+  ellipticalArcMinorProfileEntityIds,
+  ellipticalArcMinorProfilePointIds,
+  [10, 0],
+  [0, 5],
+  0,
+  Math.PI / 2,
+)
+const ellipticalArcMajorContentParameters = ellipticalArcExtrusionContentParameters(
+  ellipticalArcMajorProfileEntityIds,
+  ellipticalArcMajorProfilePointIds,
+  [10, 0],
+  [0, 5],
+  Math.PI / 2,
+  0,
+)
+const wrappedDelta = 0.2
+const ellipticalArcWrappedContentParameters = ellipticalArcExtrusionContentParameters(
+  ellipticalArcWrappedProfileEntityIds,
+  ellipticalArcWrappedProfilePointIds,
+  [10, 0],
+  [0, 5],
+  Math.PI * 2 - wrappedDelta,
+  wrappedDelta,
+)
+const ellipticalArcReflectedContentParameters = ellipticalArcExtrusionContentParameters(
+  ellipticalArcReflectedProfileEntityIds,
+  ellipticalArcReflectedProfilePointIds,
+  [-10, 0],
+  [0, 5],
+  0,
+  Math.PI,
+)
 
 const circularArcExtrusionContentParameters = extrusionFeatureContentParametersSchema.parse({
   sketchId,
@@ -525,13 +608,37 @@ async function run() {
       [],
       ellipseExtrusionContentParameters,
     )
-    state.ellipticalArcExtrusion = await evaluateExtrusion(
+    state.ellipticalArcMinor = await evaluateExtrusion(
       client,
       environment,
-      ellipticalArcExtrusionFeatureId,
+      ellipticalArcMinorFeatureId,
       "new",
       [],
-      ellipticalArcExtrusionContentParameters,
+      ellipticalArcMinorContentParameters,
+    )
+    state.ellipticalArcMajor = await evaluateExtrusion(
+      client,
+      environment,
+      ellipticalArcMajorFeatureId,
+      "new",
+      [],
+      ellipticalArcMajorContentParameters,
+    )
+    state.ellipticalArcWrapped = await evaluateExtrusion(
+      client,
+      environment,
+      ellipticalArcWrappedFeatureId,
+      "new",
+      [],
+      ellipticalArcWrappedContentParameters,
+    )
+    state.ellipticalArcReflected = await evaluateExtrusion(
+      client,
+      environment,
+      ellipticalArcReflectedFeatureId,
+      "new",
+      [],
+      ellipticalArcReflectedContentParameters,
     )
     state.circularArcExtrusion = await evaluateExtrusion(
       client,
