@@ -181,6 +181,7 @@ The X, Y, and Z axes may use conventional red, green, and blue, but every axis M
 - A rejected click explains the required entity type without opening a modal.
 - Selection never changes because a rebuild guessed a topological match. Ambiguous references enter repair UX.
 - Tiny or occluded entities remain reachable through a bounded candidate list or cycle-selection command.
+- A feature task that consumes geometry keeps its current semantic selection visible and replaceable in the viewport. The task panel reports the selection and may activate a selection target, but it MUST NOT become a separate dropdown-only source of spatial intent. Multi-input commands such as Revolve expose one active graphical target at a time, use pressed state plus readable value labels to distinguish Profile from Axis, and return to the next required target after a successful pick.
 
 ### Camera and Navigation
 

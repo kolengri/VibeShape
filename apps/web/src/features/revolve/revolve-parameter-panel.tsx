@@ -1,3 +1,6 @@
+import { Button } from "@vibeshape/ui/components/button"
+import { Scan } from "@vibeshape/ui/components/icons"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
 
@@ -5,6 +8,8 @@ export type RevolveParameterPanelCopy = ParameterPanelCopy &
   Readonly<{
     parameters: string
     profile: string
+    profileSelectAriaLabel: string
+    profileSelectHint: string
   }>
 
 export function RevolveParameterPanel({
@@ -17,7 +22,9 @@ export function RevolveParameterPanel({
   footerAction,
   message,
   onCancel,
+  onProfileSelectionRequest,
   profileLabel,
+  profileSelectionActive = false,
 }: {
   copy: RevolveParameterPanelCopy
   disabled?: boolean
@@ -28,7 +35,9 @@ export function RevolveParameterPanel({
   footerAction: ReactNode
   message?: ReactNode
   onCancel: () => void
+  onProfileSelectionRequest?: (() => void) | undefined
   profileLabel: string
+  profileSelectionActive?: boolean
 }) {
   return (
     <ParameterPanel
@@ -41,7 +50,23 @@ export function RevolveParameterPanel({
     >
       <div className="grid gap-1 rounded-md border bg-panel-muted px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
-        <output className="text-sm">{profileLabel}</output>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left"
+              disabled={disabled || !onProfileSelectionRequest}
+              variant={profileSelectionActive ? "secondary" : "ghost"}
+              aria-label={copy.profileSelectAriaLabel}
+              aria-pressed={profileSelectionActive}
+              {...(onProfileSelectionRequest ? { onClick: onProfileSelectionRequest } : {})}
+            >
+              <Scan className="size-4 shrink-0" aria-hidden="true" />
+              <span>{profileLabel}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copy.profileSelectHint}</TooltipContent>
+        </Tooltip>
       </div>
       {operationField}
       {targetField}

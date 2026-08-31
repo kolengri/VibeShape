@@ -20,13 +20,17 @@ import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
 import { submitFeatureMutation } from "../part-design/primitive-form"
+import {
+  profileSelectorsEqual,
+  topologyReferencesEqual,
+} from "../part-design/profile-feature-selection"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { VariableExpressionField } from "../variables/variable-expression-field"
@@ -40,6 +44,8 @@ type Values = Readonly<{
   axis: RevolveAxis
   angle: string
   operation: string
+  profile: SketchProfileSelector
+  supportReference: TopoRef | null
   targetFeatureId: string
 }>
 export type RevolveFormCopy = RevolveParameterPanelCopy &
@@ -74,25 +80,29 @@ export type RevolveFormMode =
       profile: SketchProfileSelector
       supportReference?: TopoRef
     }>
-  | Readonly<{ kind: "edit"; feature: FeatureRecord }>
+  | Readonly<{
+      kind: "edit"
+      feature: FeatureRecord
+      profile: SketchProfileSelector
+      supportReference?: TopoRef
+    }>
 
-function valuesFromFeature(feature: FeatureRecord): Values {
+function valuesFromFeature(
+  feature: FeatureRecord,
+  profile: SketchProfileSelector,
+  supportReference: TopoRef | undefined,
+): Values {
   const p = readRevolveFeatureParameters(feature)
   if (!p) throw new Error("Revolve parameters are unavailable.")
   return {
     axis: p.axis,
     angle: p.angle.source.expression ?? `${p.angle.source.value} ${p.angle.source.unit}`,
     operation: p.operation,
+    profile,
+    supportReference: supportReference ?? null,
     targetFeatureId: feature.dependencies[0] ?? "",
   }
 }
-function profileForMode(mode: RevolveFormMode) {
-  if (mode.kind === "create") return mode.profile
-  const parameters = readRevolveFeatureParameters(mode.feature)
-  if (!parameters) throw new Error("Revolve parameters are unavailable.")
-  return parameters.profile
-}
-
 function featureIdForMode(mode: RevolveFormMode) {
   return mode.kind === "edit" ? mode.feature.id : mode.createFeatureId()
 }
@@ -102,11 +112,14 @@ function defaultValuesForMode(
   angleUnit: "rad" | "deg",
   targetOptions: readonly { id: FeatureId; label: string }[],
 ): Values {
-  if (mode.kind === "edit") return valuesFromFeature(mode.feature)
+  if (mode.kind === "edit")
+    return valuesFromFeature(mode.feature, mode.profile, mode.supportReference)
   return {
     axis: { kind: "origin-axis", axis: "x" },
     angle: defaultAngleExpression(Math.PI * 2, angleUnit),
     operation: "new",
+    profile: mode.profile,
+    supportReference: mode.supportReference ?? null,
     targetFeatureId: targetOptions[0]?.id ?? "",
   }
 }
@@ -118,18 +131,58 @@ function invalidFieldName(issues: Readonly<Record<string, string>>) {
 function previewHandler(onPreviewChange?: (feature: FeatureRecord | null) => void) {
   return onPreviewChange ?? IGNORE_PREVIEW
 }
+
+type RevolveSubmitHandlerInput = Readonly<{
+  baseRevision: number
+  copy: RevolveFormCopy
+  displayUnit: "rad" | "deg"
+  featureId: FeatureId
+  focusInvalidField: (fieldName: string) => void
+  mode: RevolveFormMode
+  onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
+  onSaved: () => void
+  options: readonly { id: FeatureId; label: string }[]
+  setIssues: (issues: Readonly<Record<string, string | undefined>>) => void
+  setMessage: (message: string | null) => void
+  variables: readonly VariableDefinition[]
+}>
+
+function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
+  return async ({ value }: { value: Values }) => {
+    const parsed = parseValues(value, input.variables, input.displayUnit, input.copy, input.options)
+    if (!parsed.ok) {
+      input.setIssues(parsed.issues)
+      input.setMessage(input.copy.validationSummary)
+      input.focusInvalidField(invalidFieldName(parsed.issues))
+      return
+    }
+    input.setIssues({})
+    input.setMessage(null)
+    await submitFeatureMutation({
+      baseRevision: input.baseRevision,
+      copy: input.copy,
+      feature: record(
+        input.mode,
+        input.featureId,
+        parsed.parameters,
+        parsed.targetFeatureId,
+        parsed.supportReference,
+      ),
+      onSave: input.onSave,
+      onSaved: input.onSaved,
+      setMessage: input.setMessage,
+    })
+  }
+}
+
 function record(
   mode: RevolveFormMode,
   id: FeatureId,
   parameters: ReturnType<typeof revolveFeatureParametersSchema.parse>,
   targetFeatureId: FeatureId | null,
+  supportReference: TopoRef | null,
 ) {
-  const references =
-    mode.kind === "create"
-      ? mode.supportReference
-        ? [mode.supportReference]
-        : []
-      : mode.feature.references
+  const references = supportReference ? [supportReference] : []
   const dependencies = expectedRevolveDependencyIds(
     parameters,
     targetFeatureId,
@@ -152,7 +205,6 @@ function record(
 }
 function parseValues(
   values: Values,
-  profile: SketchProfileSelector,
   variables: readonly VariableDefinition[],
   unit: "rad" | "deg",
   copy: RevolveFormCopy,
@@ -164,13 +216,18 @@ function parseValues(
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
   const parsed = revolveFeatureParametersSchema.safeParse({
-    profile,
+    profile: values.profile,
     axis: values.axis,
     angle: angle.quantity,
     operation,
   })
   if (!parsed.success) return { ok: false as const, issues: { angle: copy.invalidRange } }
-  return { ok: true as const, parameters: parsed.data, targetFeatureId: target.featureId }
+  return {
+    ok: true as const,
+    parameters: parsed.data,
+    supportReference: values.supportReference,
+    targetFeatureId: target.featureId,
+  }
 }
 
 function parseAngle(
@@ -210,7 +267,6 @@ function RevolvePreviewSync({
   mode,
   onPreviewChange,
   options,
-  profile,
   values,
   variables,
 }: {
@@ -220,25 +276,29 @@ function RevolvePreviewSync({
   mode: RevolveFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
   options: readonly { id: FeatureId; label: string }[]
-  profile: SketchProfileSelector
   values: Values
   variables: readonly VariableDefinition[]
 }) {
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, options, profile, variables },
+    input: { copy, displayUnit, mode, options, variables },
     onPreviewChange,
     values,
     resolve: (currentValues, input) => {
       const parsed = parseValues(
         currentValues,
-        input.profile,
         input.variables,
         input.displayUnit,
         input.copy,
         input.options,
       )
       return parsed.ok
-        ? record(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
+        ? record(
+            input.mode,
+            featureId,
+            parsed.parameters,
+            parsed.targetFeatureId,
+            parsed.supportReference,
+          )
         : null
     },
   })
@@ -250,12 +310,16 @@ function RevolveAxisField({
   copy,
   disabled,
   onChange,
+  onSelectionRequest,
+  selectionActive,
   value,
 }: Readonly<{
   axisLineLabel?: string | undefined
   copy: Pick<RevolveFormCopy, "axis" | "axisSelectHint" | "axisX" | "axisY">
   disabled: boolean
   onChange: (axis: RevolveAxis) => void
+  onSelectionRequest?: (() => void) | undefined
+  selectionActive: boolean
   value: RevolveAxis
 }>) {
   return (
@@ -275,7 +339,10 @@ function RevolveAxisField({
                   variant={selected ? "secondary" : "outline"}
                   aria-label={label}
                   aria-pressed={selected}
-                  onClick={() => onChange({ kind: "origin-axis", axis })}
+                  onClick={() => {
+                    onSelectionRequest?.()
+                    onChange({ kind: "origin-axis", axis })
+                  }}
                 >
                   {axis.toUpperCase()}
                 </Button>
@@ -285,12 +352,24 @@ function RevolveAxisField({
           )
         })}
       </div>
-      <output className="flex min-h-9 items-center gap-2 rounded-md border border-dashed bg-panel-muted px-3 py-2 text-sm">
-        <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className={axisLineLabel ? undefined : "text-muted-foreground"}>
-          {axisLineLabel ?? copy.axisSelectHint}
-        </span>
-      </output>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            className="h-auto min-h-9 justify-start gap-2 border-dashed px-3 py-2 text-left"
+            variant={selectionActive ? "secondary" : "outline"}
+            aria-label={copy.axisSelectHint}
+            aria-pressed={selectionActive}
+            {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
+          >
+            <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className={axisLineLabel ? undefined : "text-muted-foreground"}>
+              {axisLineLabel ?? copy.axisSelectHint}
+            </span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{copy.axisSelectHint}</TooltipContent>
+      </Tooltip>
     </fieldset>
   )
 }
@@ -308,22 +387,20 @@ function RevolveAxisSelectionSync({
   return null
 }
 
-export function RevolveForm({
-  axisLineLabel,
-  axisSelection,
-  baseRevision,
-  copy,
-  disabled = false,
-  mode,
-  onCancel,
-  onSave,
-  onSaved,
-  onPreviewChange,
-  onAxisChange,
-  options,
-  profileLabel,
-  variables,
-}: {
+function RevolveProfileSelectionSync({
+  onChange,
+  profile,
+  supportReference,
+}: Readonly<{
+  onChange: (profile: SketchProfileSelector, supportReference: TopoRef | null) => void
+  profile: SketchProfileSelector
+  supportReference: TopoRef | null
+}>) {
+  useLayoutEffect(() => onChange(profile, supportReference), [onChange, profile, supportReference])
+  return null
+}
+
+export type RevolveFormProps = Readonly<{
   axisLineLabel?: string | undefined
   axisSelection?: RevolveAxis | undefined
   baseRevision: number
@@ -335,12 +412,17 @@ export function RevolveForm({
   onSaved: () => void
   onPreviewChange?: (feature: FeatureRecord | null) => void
   onAxisChange?: ((axis: RevolveAxis) => void) | undefined
+  onAxisSelectionRequest?: (() => void) | undefined
+  onProfileSelectionRequest?: (() => void) | undefined
   options?: readonly { id: FeatureId; label: string }[]
   profileLabel: string
+  profileSelectionActive?: boolean
   variables: readonly VariableDefinition[]
-}) {
-  const targetOptions = options ?? EMPTY_TARGET_OPTIONS
-  const updatePreview = previewHandler(onPreviewChange)
+}>
+
+function useRevolveFormController(props: RevolveFormProps) {
+  const targetOptions = props.options ?? EMPTY_TARGET_OPTIONS
+  const updatePreview = previewHandler(props.onPreviewChange)
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -350,159 +432,236 @@ export function RevolveForm({
     setIssues,
     setMessage,
     suggestions,
-  } = useParameterFormState(variables)
-  const profile = profileForMode(mode)
-  const [featureId] = useState(() => featureIdForMode(mode))
+  } = useParameterFormState(props.variables)
+  const [featureId] = useState(() => featureIdForMode(props.mode))
   const form = useAppForm({
-    defaultValues: defaultValuesForMode(mode, displayUnits.angle, targetOptions),
-    onSubmit: async ({ value }) => {
-      const parsed = parseValues(value, profile, variables, displayUnits.angle, copy, targetOptions)
-      if (!parsed.ok) {
-        setIssues(parsed.issues)
-        setMessage(copy.validationSummary)
-        const fieldName = invalidFieldName(parsed.issues)
-        formElementRef.current?.querySelector<HTMLElement>(`[name="${fieldName}"]`)?.focus()
-        return
-      }
-      setIssues({})
-      setMessage(null)
-      await submitFeatureMutation({
-        baseRevision,
-        copy,
-        feature: record(mode, featureId, parsed.parameters, parsed.targetFeatureId),
-        onSave,
-        onSaved,
-        setMessage,
-      })
-    },
+    defaultValues: defaultValuesForMode(props.mode, displayUnits.angle, targetOptions),
+    onSubmit: revolveSubmitHandler({
+      baseRevision: props.baseRevision,
+      copy: props.copy,
+      displayUnit: displayUnits.angle,
+      featureId,
+      focusInvalidField: (fieldName) =>
+        formElementRef.current?.querySelector<HTMLElement>(`[name="${fieldName}"]`)?.focus(),
+      mode: props.mode,
+      onSave: props.onSave,
+      onSaved: props.onSaved,
+      options: targetOptions,
+      setIssues,
+      setMessage,
+      variables: props.variables,
+    }),
   })
   const applyAxisSelection = useCallback(
     (axis: RevolveAxis) => form.setFieldValue("axis", axis),
     [form],
   )
+  const applyProfileSelection = useCallback(
+    (profile: SketchProfileSelector, supportReference: TopoRef | null) => {
+      if (!profileSelectorsEqual(form.getFieldValue("profile"), profile)) {
+        form.setFieldValue("profile", profile)
+      }
+      if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
+        form.setFieldValue("supportReference", supportReference)
+      }
+    },
+    [form],
+  )
+
+  return {
+    ...props,
+    applyAxisSelection,
+    applyProfileSelection,
+    clearSubmissionErrors,
+    disabled: props.disabled ?? false,
+    displayUnits,
+    featureId,
+    form,
+    formElementRef,
+    issues,
+    message,
+    profileSelectionActive: props.profileSelectionActive ?? false,
+    suggestions,
+    targetOptions,
+    updatePreview,
+  } as const
+}
+
+type RevolveFormController = ReturnType<typeof useRevolveFormController>
+
+function RevolvePreviewField({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
   return (
-    <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
-      <RevolveAxisSelectionSync axisSelection={axisSelection} onChange={applyAxisSelection} />
-      <form.Subscribe selector={(state) => state.values}>
-        {(values) => (
-          <RevolvePreviewSync
-            copy={copy}
-            displayUnit={displayUnits.angle}
-            featureId={featureId}
-            mode={mode}
-            onPreviewChange={updatePreview}
-            options={targetOptions}
-            profile={profile}
-            values={values}
-            variables={variables}
-          />
-        )}
-      </form.Subscribe>
-      <RevolveParameterPanel
-        copy={copy}
-        disabled={disabled}
-        message={message}
-        profileLabel={profileLabel}
-        operationField={
-          <form.Field name="operation">
+    <form.Subscribe selector={(state) => state.values}>
+      {(values) => (
+        <RevolvePreviewSync
+          copy={controller.copy}
+          displayUnit={controller.displayUnits.angle}
+          featureId={controller.featureId}
+          mode={controller.mode}
+          onPreviewChange={controller.updatePreview}
+          options={controller.targetOptions}
+          values={values}
+          variables={controller.variables}
+        />
+      )}
+    </form.Subscribe>
+  )
+}
+
+function RevolveOperationField({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
+  return (
+    <form.Field name="operation">
+      {(field) => (
+        <NativeSelectField
+          name={field.name}
+          value={field.state.value}
+          label={controller.copy.operation}
+          disabled={controller.disabled}
+          onChange={(event) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(event.currentTarget.value)
+          }}
+        >
+          <option value="new">{controller.copy.operationNew}</option>
+          <option value="add">{controller.copy.operationAdd}</option>
+          <option value="remove">{controller.copy.operationRemove}</option>
+          <option value="intersect">{controller.copy.operationIntersect}</option>
+        </NativeSelectField>
+      )}
+    </form.Field>
+  )
+}
+
+function RevolveTargetField({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
+  return (
+    <form.Subscribe selector={(state) => state.values.operation}>
+      {(operation) =>
+        operation === "new" ? null : (
+          <form.Field name="targetFeatureId">
             {(field) => (
               <NativeSelectField
                 name={field.name}
                 value={field.state.value}
-                label={copy.operation}
-                disabled={disabled}
+                label={controller.copy.target}
+                description={controller.copy.targetDescription}
+                error={controller.issues.targetFeatureId}
+                disabled={controller.disabled}
+                required
                 onChange={(event) => {
-                  clearSubmissionErrors()
+                  controller.clearSubmissionErrors()
                   field.handleChange(event.currentTarget.value)
                 }}
               >
-                <option value="new">{copy.operationNew}</option>
-                <option value="add">{copy.operationAdd}</option>
-                <option value="remove">{copy.operationRemove}</option>
-                <option value="intersect">{copy.operationIntersect}</option>
+                {controller.targetOptions.length === 0 ? (
+                  <option value="">{controller.copy.missingTarget}</option>
+                ) : null}
+                {controller.targetOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
               </NativeSelectField>
             )}
           </form.Field>
-        }
-        targetField={
-          <form.Subscribe selector={(state) => state.values.operation}>
-            {(operation) =>
-              operation === "new" ? null : (
-                <form.Field name="targetFeatureId">
-                  {(field) => (
-                    <NativeSelectField
-                      name={field.name}
-                      value={field.state.value}
-                      label={copy.target}
-                      description={copy.targetDescription}
-                      error={issues.targetFeatureId}
-                      disabled={disabled}
-                      required
-                      onChange={(event) => {
-                        clearSubmissionErrors()
-                        field.handleChange(event.currentTarget.value)
-                      }}
-                    >
-                      {targetOptions.length === 0 ? (
-                        <option value="">{copy.missingTarget}</option>
-                      ) : null}
-                      {targetOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelectField>
-                  )}
-                </form.Field>
-              )
-            }
-          </form.Subscribe>
-        }
-        onCancel={onCancel}
-        axisField={
-          <form.Field name="axis">
-            {(field) => (
-              <RevolveAxisField
-                axisLineLabel={axisLineLabel}
-                copy={copy}
-                disabled={disabled}
-                value={field.state.value}
-                onChange={(axis) => {
-                  clearSubmissionErrors()
-                  field.handleChange(axis)
-                  onAxisChange?.(axis)
-                }}
-              />
-            )}
-          </form.Field>
-        }
-        angleField={
-          <form.Field name="angle">
-            {(field) => (
-              <VariableExpressionField
-                id="revolve-angle"
-                name={field.name}
-                label={copy.angle}
-                description={copy.expressionDescription}
-                error={issues.angle}
-                value={field.state.value}
-                disabled={disabled}
-                suggestions={suggestions}
-                onBlur={field.handleBlur}
-                onValueChange={(value: string) => {
-                  clearSubmissionErrors()
-                  field.handleChange(value)
-                }}
-              />
-            )}
-          </form.Field>
-        }
+        )
+      }
+    </form.Subscribe>
+  )
+}
+
+function RevolveAxisFormField({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
+  return (
+    <form.Field name="axis">
+      {(field) => (
+        <RevolveAxisField
+          axisLineLabel={controller.axisLineLabel}
+          copy={controller.copy}
+          disabled={controller.disabled}
+          selectionActive={!controller.profileSelectionActive}
+          value={field.state.value}
+          onSelectionRequest={controller.onAxisSelectionRequest}
+          onChange={(axis) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(axis)
+            controller.onAxisChange?.(axis)
+          }}
+        />
+      )}
+    </form.Field>
+  )
+}
+
+function RevolveAngleField({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
+  return (
+    <form.Field name="angle">
+      {(field) => (
+        <VariableExpressionField
+          id="revolve-angle"
+          name={field.name}
+          label={controller.copy.angle}
+          description={controller.copy.expressionDescription}
+          error={controller.issues.angle}
+          value={field.state.value}
+          disabled={controller.disabled}
+          suggestions={controller.suggestions}
+          onBlur={field.handleBlur}
+          onValueChange={(value: string) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(value)
+          }}
+        />
+      )}
+    </form.Field>
+  )
+}
+
+function RevolveFormView({ controller }: { controller: RevolveFormController }) {
+  const { form } = controller
+  return (
+    <Form
+      ref={controller.formElementRef}
+      form={form}
+      aria-label={controller.copy.title}
+      className="gap-0"
+    >
+      <RevolveProfileSelectionSync
+        profile={controller.mode.profile}
+        supportReference={controller.mode.supportReference ?? null}
+        onChange={controller.applyProfileSelection}
+      />
+      <RevolveAxisSelectionSync
+        axisSelection={controller.axisSelection}
+        onChange={controller.applyAxisSelection}
+      />
+      <RevolvePreviewField controller={controller} />
+      <RevolveParameterPanel
+        copy={controller.copy}
+        disabled={controller.disabled}
+        message={controller.message}
+        profileLabel={controller.profileLabel}
+        profileSelectionActive={controller.profileSelectionActive}
+        onProfileSelectionRequest={controller.onProfileSelectionRequest}
+        operationField={<RevolveOperationField controller={controller} />}
+        targetField={<RevolveTargetField controller={controller} />}
+        onCancel={controller.onCancel}
+        axisField={<RevolveAxisFormField controller={controller} />}
+        angleField={<RevolveAngleField controller={controller} />}
         footerAction={
-          <form.SubmitButton disabled={disabled} requireDirty={false} size="sm">
-            {copy.submit}
+          <form.SubmitButton disabled={controller.disabled} requireDirty={false} size="sm">
+            {controller.copy.submit}
           </form.SubmitButton>
         }
       />
     </Form>
   )
+}
+
+export function RevolveForm(props: RevolveFormProps) {
+  const controller = useRevolveFormController(props)
+  return <RevolveFormView controller={controller} />
 }

@@ -667,12 +667,15 @@
           "createFailed": "The extrusion could not be created. Your parameter value is preserved.",
           "updateFailed": "The extrusion could not be updated. Your parameter value is preserved."
         },
+        "selectedProfileLabel": "{sketch} · Profile {number}",
         "revolve": {
           "title": "Revolve profile",
           "description": "Create a new solid by revolving the selected stable sketch profile around an axis.",
           "editTitle": "Edit revolve",
           "parameters": "Revolve parameters",
           "profile": "Selected profile",
+          "profileSelectAriaLabel": "Select a profile in the 3D viewport: {profile}",
+          "profileSelectHint": "Select a profile in the 3D viewport",
           "operation": "Result operation",
           "operationNew": "New body",
           "operationAdd": "Add to body",

@@ -12,7 +12,7 @@ import {
 } from "@vibeshape/domain"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useState } from "react"
+import { useCallback, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
@@ -25,6 +25,10 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import {
+  profileSelectorsEqual,
+  topologyReferencesEqual,
+} from "../part-design/profile-feature-selection"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import {
@@ -57,6 +61,8 @@ type ExtrusionFormCopy = ExtrusionParameterPanelCopy &
 type ExtrusionFormValues = Readonly<{
   distance: string
   operation: string
+  profile: SketchProfileSelector
+  supportReference: TopoRef | null
   symmetric: boolean
   targetFeatureId: string
 }>
@@ -69,10 +75,14 @@ export type ExtrusionTargetOption = Readonly<{
 function defaultValues(
   unit: ReturnType<typeof useDocumentDisplayUnits>["length"],
   options: readonly ExtrusionTargetOption[],
+  profile: SketchProfileSelector,
+  supportReference: TopoRef | undefined,
 ): ExtrusionFormValues {
   return {
     distance: defaultLengthExpression(10, unit),
     operation: "new",
+    profile,
+    supportReference: supportReference ?? null,
     symmetric: false,
     targetFeatureId: options[0]?.id ?? "",
   }
@@ -89,22 +99,24 @@ export type ExtrusionFormMode =
   | Readonly<{
       feature: FeatureRecord
       kind: "edit"
+      profile: SketchProfileSelector
+      supportReference?: TopoRef
     }>
 
-function valuesFromFeature(feature: FeatureRecord): ExtrusionFormValues {
+function valuesFromFeature(
+  feature: FeatureRecord,
+  profile: SketchProfileSelector,
+  supportReference: TopoRef | undefined,
+): ExtrusionFormValues {
   const parameters = extrusionFeatureParametersSchema.parse(feature.parameters)
   return {
     distance: quantityExpression(parameters.distance),
     operation: parameters.operation,
+    profile,
+    supportReference: supportReference ?? null,
     symmetric: parameters.symmetric,
     targetFeatureId: feature.dependencies[0] ?? "",
   }
-}
-
-function profileForMode(mode: ExtrusionFormMode) {
-  return mode.kind === "create"
-    ? mode.profile
-    : extrusionFeatureParametersSchema.parse(mode.feature.parameters).profile
 }
 
 function extrusionRecord(
@@ -112,13 +124,9 @@ function extrusionRecord(
   featureId: FeatureId,
   parameters: ReturnType<typeof extrusionFeatureParametersSchema.parse>,
   targetFeatureId: FeatureId | null,
+  supportReference: TopoRef | null,
 ) {
-  const references =
-    mode.kind === "create"
-      ? mode.supportReference
-        ? [mode.supportReference]
-        : []
-      : mode.feature.references
+  const references = supportReference ? [supportReference] : []
   const dependencies = [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
     (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
   )
@@ -150,7 +158,6 @@ function ExtrusionPreviewSync({
   mode,
   onPreviewChange,
   options,
-  profile,
   values,
   variables,
 }: {
@@ -160,25 +167,29 @@ function ExtrusionPreviewSync({
   mode: ExtrusionFormMode
   onPreviewChange: (feature: FeatureRecord | null) => void
   options: readonly ExtrusionTargetOption[]
-  profile: SketchProfileSelector
   values: ExtrusionFormValues
   variables: readonly VariableDefinition[]
 }) {
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, options, profile, variables },
+    input: { copy, displayUnit, mode, options, variables },
     onPreviewChange,
     values,
     resolve: (currentValues, input) => {
       const parsed = parseValues(
         currentValues,
-        input.profile,
         input.variables,
         input.options,
         input.copy,
         input.displayUnit,
       )
       return parsed.ok
-        ? extrusionRecord(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
+        ? extrusionRecord(
+            input.mode,
+            featureId,
+            parsed.parameters,
+            parsed.targetFeatureId,
+            parsed.supportReference,
+          )
         : null
     },
   })
@@ -187,7 +198,6 @@ function ExtrusionPreviewSync({
 
 function parseValues(
   values: ExtrusionFormValues,
-  profile: SketchProfileSelector,
   variables: readonly VariableDefinition[],
   options: readonly ExtrusionTargetOption[],
   copy: ExtrusionFormCopy,
@@ -216,13 +226,27 @@ function parseValues(
   return {
     ok: true as const,
     targetFeatureId,
+    supportReference: values.supportReference,
     parameters: extrusionFeatureParametersSchema.parse({
-      profile,
+      profile: values.profile,
       distance: distance.quantity,
       symmetric: values.symmetric,
       operation,
     }),
   }
+}
+
+function ExtrusionProfileSelectionSync({
+  onChange,
+  profile,
+  supportReference,
+}: Readonly<{
+  onChange: (profile: SketchProfileSelector, supportReference: TopoRef | null) => void
+  profile: SketchProfileSelector
+  supportReference: TopoRef | null
+}>) {
+  useLayoutEffect(() => onChange(profile, supportReference), [onChange, profile, supportReference])
+  return null
 }
 
 export function ExtrusionForm({
@@ -260,17 +284,16 @@ export function ExtrusionForm({
     setMessage,
     suggestions,
   } = useParameterFormState(variables)
-  const profile = profileForMode(mode)
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
   const form = useAppForm({
     defaultValues:
       mode.kind === "edit"
-        ? valuesFromFeature(mode.feature)
-        : defaultValues(displayUnits.length, options),
+        ? valuesFromFeature(mode.feature, mode.profile, mode.supportReference)
+        : defaultValues(displayUnits.length, options, mode.profile, mode.supportReference),
     onSubmit: async ({ value }) => {
-      const parsed = parseValues(value, profile, variables, options, copy, displayUnits.length)
+      const parsed = parseValues(value, variables, options, copy, displayUnits.length)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)
@@ -283,16 +306,38 @@ export function ExtrusionForm({
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: extrusionRecord(mode, featureId, parsed.parameters, parsed.targetFeatureId),
+        feature: extrusionRecord(
+          mode,
+          featureId,
+          parsed.parameters,
+          parsed.targetFeatureId,
+          parsed.supportReference,
+        ),
         onSave,
         onSaved,
         setMessage,
       })
     },
   })
+  const applyProfileSelection = useCallback(
+    (profile: SketchProfileSelector, supportReference: TopoRef | null) => {
+      if (!profileSelectorsEqual(form.getFieldValue("profile"), profile)) {
+        form.setFieldValue("profile", profile)
+      }
+      if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
+        form.setFieldValue("supportReference", supportReference)
+      }
+    },
+    [form],
+  )
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      <ExtrusionProfileSelectionSync
+        profile={mode.profile}
+        supportReference={mode.supportReference ?? null}
+        onChange={applyProfileSelection}
+      />
       {onPreviewChange ? (
         <form.Subscribe selector={(state) => state.values}>
           {(values) => (
@@ -303,7 +348,6 @@ export function ExtrusionForm({
               mode={mode}
               onPreviewChange={onPreviewChange}
               options={options}
-              profile={profile}
               values={values}
               variables={variables}
             />

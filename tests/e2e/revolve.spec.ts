@@ -13,7 +13,72 @@ async function drawProfileAwayFromBothOriginAxes(page: Page) {
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
 }
 
+async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
+  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+  const bounds = await drawing.boundingBox()
+  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  const rectangles = [
+    [0.18, 0.42, 0.4, 0.28],
+    [0.6, 0.42, 0.82, 0.28],
+  ] as const
+  for (const [startX, startY, endX, endY] of rectangles) {
+    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
+    await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
+    await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
+  }
+  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+}
+
 test.describe("selector-backed revolve", () => {
+  test("reselects a profile without closing create or edit", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawTwoProfilesAwayFromOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
+      timeout: 120_000,
+    })
+    const profilePicker = viewport.getByRole("combobox", { name: "Select saved profile" })
+    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    let form = page.getByRole("form", { name: "Revolve profile" })
+    await form
+      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+      .click()
+    await profilePicker.selectOption({ label: "Sketch 1 · Profile 2" })
+    await expect(form).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await form.getByRole("button", { name: "Create revolve" }).click()
+
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    const editForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await editForm
+      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2" })
+      .click()
+    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
+    await expect(editForm).toBeVisible()
+    await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await editForm.getByRole("button", { name: "Update revolve" }).click()
+
+    await page.getByRole("treeitem", { name: "Variables" }).click()
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    form = page.getByRole("form", { name: "Edit revolve" })
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+  })
+
   test("creates, previews, edits, and reopens a graphical sketch-line-axis solid", async ({
     page,
   }) => {
@@ -35,10 +100,14 @@ test.describe("selector-backed revolve", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     await drawProfileAwayFromBothOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    const profilePicker = viewport.getByRole("combobox", { name: "Select saved profile" })
+    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
 
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     const form = page.getByRole("form", { name: "Revolve profile" })
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(form.getByRole("combobox", { name: "Angle" })).toHaveValue("360 deg")
     await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "8")
     await viewport
@@ -47,8 +116,7 @@ test.describe("selector-backed revolve", () => {
     await expect(form.getByText("Sketch 1 · Line 1")).toBeVisible()
 
     await form.getByRole("button", { name: "Cancel" }).click()
-    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     const reopenedCreateForm = page.getByRole("form", { name: "Revolve profile" })
     await expect(
@@ -126,10 +194,14 @@ test.describe("selector-backed revolve", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     await drawProfileAwayFromBothOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await viewport
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
 
     const form = page.getByRole("form", { name: "Revolve profile" })
-    const viewport = page.getByRole("region", { name: "3D viewport" })
     const picker = viewport.getByRole("combobox", {
       name: "Select a Revolve axis with the keyboard",
     })
