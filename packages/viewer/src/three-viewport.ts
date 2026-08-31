@@ -198,6 +198,15 @@ export type ViewerCameraPose = Readonly<{
   up: ViewerVector3
 }>
 
+export type ViewerStandardView =
+  | "back"
+  | "bottom"
+  | "front"
+  | "isometric"
+  | "left"
+  | "right"
+  | "top"
+
 export type ViewerInteractionMode = "select" | "camera-only" | "sketch-reference-select"
 
 export type OrthographicFrustum = Readonly<{
@@ -240,6 +249,7 @@ export type GeometryViewport = Readonly<{
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   showTranslationGizmo: (position: ViewerVector3) => void
   hideTranslationGizmo: () => void
+  setStandardView: (view: ViewerStandardView) => void
   fit: () => void
   clearSelection: () => void
   dispose: () => void
@@ -477,6 +487,39 @@ export function viewerCameraPoseForFrame(
     ],
     target: [...frame.origin],
     up: [...frame.yAxis],
+  }
+}
+
+const standardViewDirections = {
+  back: [0, 1, 0],
+  bottom: [0, 0, -1],
+  front: [0, -1, 0],
+  isometric: [1, -1, 0.8],
+  left: [-1, 0, 0],
+  right: [1, 0, 0],
+  top: [0, 0, 1],
+} as const satisfies Record<ViewerStandardView, ViewerVector3>
+
+/** Preserves the orbit target and distance while deriving a deterministic Z-up standard view. */
+export function viewerCameraPoseForStandardView(
+  view: ViewerStandardView,
+  target: ViewerVector3,
+  distance: number,
+): ViewerCameraPose | null {
+  if (!target.every(Number.isFinite) || !Number.isFinite(distance) || distance <= 0) {
+    return null
+  }
+  const [x, y, z] = standardViewDirections[view]
+  const directionLength = Math.hypot(x, y, z)
+  const direction = [x / directionLength, y / directionLength, z / directionLength] as const
+  return {
+    position: [
+      target[0] + direction[0] * distance,
+      target[1] + direction[1] * distance,
+      target[2] + direction[2] * distance,
+    ],
+    target: [...target],
+    up: view === "top" || view === "bottom" ? [0, 1, 0] : [0, 0, 1],
   }
 }
 
@@ -1387,6 +1430,21 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#pointerDown = null
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
     this.#translationControls.enabled = true
+    this.#render()
+  }
+
+  setStandardView(view: ViewerStandardView) {
+    if (this.#disposed) return
+    const target = this.#controls.target.toArray() as [number, number, number]
+    const distance = this.#camera.position.distanceTo(this.#controls.target)
+    const pose = viewerCameraPoseForStandardView(view, target, distance)
+    if (!pose) return
+    this.#clearSketchReferencePicking()
+    this.#camera.position.set(...pose.position)
+    this.#camera.up.set(...pose.up)
+    this.#controls.target.set(...pose.target)
+    this.#updateClippingToScene()
+    this.#controls.update()
     this.#render()
   }
 
