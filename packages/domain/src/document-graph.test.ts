@@ -117,7 +117,7 @@ const revolve = (value: string, profileSketchId: string, references: unknown[] =
       outerBoundaryEntityIds: [id("8")],
       holeBoundaryEntityIds: [],
     },
-    axis: "x" as const,
+    axis: { kind: "origin-axis" as const, axis: "x" as const },
     angle: createAngleQuantity(360, "deg"),
     operation: "new" as const,
   },
@@ -126,6 +126,17 @@ const revolve = (value: string, profileSketchId: string, references: unknown[] =
   ),
   references,
   suppressed: false,
+})
+
+const legacyRevolveV2 = (value: string, profileSketchId: string) => ({
+  ...revolve(value, profileSketchId),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 2,
+  },
+  parameters: { ...revolve(value, profileSketchId).parameters, axis: "x" as const },
 })
 
 const modifyingRevolve = (
@@ -742,6 +753,33 @@ describe("createDocumentDependencyGraph", () => {
       diagnostic: {
         code: "invalid-feature",
         issues: [{ path: "features.1.references" }, { path: "features.1.dependencies" }],
+      },
+    })
+  })
+
+  it("keeps saved schema-version-2 revolves in the complete dependency model", () => {
+    const profile = sketch("1")
+    const savedRevolve = legacyRevolveV2("2", "1")
+    const result = createDocumentDependencyGraph({
+      sketches: [profile],
+      features: [savedRevolve],
+      history: [
+        { kind: "sketch", id: profile.id },
+        { kind: "feature", id: savedRevolve.id },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      graph: {
+        dependencyModelIssues: [],
+        edges: [
+          {
+            relation: "revolve-profile",
+            source: { kind: "sketch", id: profile.id },
+            target: { kind: "feature", id: savedRevolve.id },
+          },
+        ],
       },
     })
   })

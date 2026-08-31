@@ -7,7 +7,7 @@ import {
   type SketchFeatureFaceSupport,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -20,6 +20,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
 type OriginPlane = "xy" | "xz" | "yz"
@@ -165,24 +166,22 @@ function DatumPlanePreviewSync({
   values: DatumPlaneFormValues
   variables: Parameters<typeof parsePrimitiveLengthExpression>[1]
 }>) {
-  const inputRef = useRef({ copy, displayUnit, mode, variables })
-  inputRef.current = { copy, displayUnit, mode, variables }
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const input = inputRef.current
+  useDebouncedFeaturePreview({
+    input: { copy, displayUnit, mode, variables },
+    onPreviewChange,
+    values,
+    resolve: (currentValues, input) => {
       const parsed = parsedDatumPlaneRecord(
-        values,
+        currentValues,
         input.mode,
         featureId,
         input.variables,
         input.copy,
         input.displayUnit,
       )
-      onPreviewChange(parsed.ok ? parsed.feature : null)
-    }, 180)
-    return () => window.clearTimeout(timeout)
-  }, [featureId, onPreviewChange, values])
-  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+      return parsed.ok ? parsed.feature : null
+    },
+  })
   return null
 }
 

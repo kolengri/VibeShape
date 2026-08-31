@@ -8,6 +8,7 @@ import {
   extrusionFeatureType,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
+  legacyRevolveFeatureTypeV2,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
@@ -34,6 +35,7 @@ const extrusionTypeKeys = new Set([
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
   featureTypeKey(legacyRevolveFeatureType.type),
+  featureTypeKey(legacyRevolveFeatureTypeV2.type),
 ])
 
 export function projectFirstPartyFeatureSemanticInputs(

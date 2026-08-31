@@ -89,7 +89,7 @@ const revolve = featureRecordSchema.parse({
   type: revolveFeatureType.type,
   parameters: {
     profile: extrusion.parameters.profile,
-    axis: "y",
+    axis: { kind: "origin-axis", axis: "y" },
     angle: createAngleQuantity(180, "deg"),
     operation: "new",
   },

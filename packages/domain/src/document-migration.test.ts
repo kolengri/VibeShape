@@ -5,9 +5,9 @@ import type { DocumentSnapshot } from "./document"
 import { migrateDocumentSnapshot } from "./document-migration"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import { sketchIdSchema } from "./identifiers"
-import { boxFeatureType, extrusionFeatureType } from "./part-design"
+import { boxFeatureType, extrusionFeatureType, legacyRevolveFeatureTypeV2 } from "./part-design"
 import { createEmptySketch } from "./sketch-edit"
-import { createLengthQuantity } from "./units"
+import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const uuid = (value: number) => `0195b5ac-b220-7a2c-8c33-${value.toString().padStart(12, "0")}`
 const actor = { type: "user", userId: "org.vibeshape.user.migration-test" } as const
@@ -318,6 +318,39 @@ describe("document snapshot migration", () => {
       { kind: "sketch", id: source.sketches[0]?.id },
     ])
     expect(result.snapshot.features[1]?.semanticInputs).toBeNull()
+  })
+
+  it("projects the profile input when migrating a saved schema-version-2 revolve", () => {
+    const source = snapshotWithExtrusionAndUnavailableFeature()
+    const profile = source.sketches[0]
+    if (!profile) throw new Error("The migration fixture must contain a profile sketch.")
+    const savedRevolve = featureRecordSchema.parse({
+      ...source.features[0],
+      type: legacyRevolveFeatureTypeV2.type,
+      parameters: {
+        profile: {
+          schemaVersion: 0,
+          sketchId: profile.id,
+          outerBoundaryEntityIds: [uuid(25)],
+          holeBoundaryEntityIds: [],
+        },
+        axis: "y",
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+      dependencies: [],
+      references: [],
+    })
+    const result = migrateDocumentSnapshot({
+      ...source,
+      features: [savedRevolve],
+    })
+
+    expect(result).toMatchObject({ ok: true, provenance: "snapshot-derived" })
+    if (!result.ok) return
+    expect(result.snapshot.features[0]?.semanticInputs).toEqual([
+      { kind: "sketch", id: profile.id },
+    ])
   })
 
   it("rejects a malformed known feature instead of treating it as an unavailable extension", () => {

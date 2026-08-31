@@ -17,6 +17,7 @@ import {
   extrusionFeatureType,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
+  legacyRevolveFeatureTypeV2,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
@@ -147,6 +148,7 @@ const dependencyCompleteFeatureTypeKeys = new Set([
 ])
 const revolveTypeKey = featureTypeKey(revolveFeatureType.type)
 const legacyRevolveTypeKey = featureTypeKey(legacyRevolveFeatureType.type)
+const legacyRevolveTypeV2Key = featureTypeKey(legacyRevolveFeatureTypeV2.type)
 
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
@@ -158,7 +160,11 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   ) {
     return readExtrusionFeatureParameters(feature) !== null
   }
-  if (typeKey === revolveTypeKey || typeKey === legacyRevolveTypeKey) {
+  if (
+    typeKey === revolveTypeKey ||
+    typeKey === legacyRevolveTypeKey ||
+    typeKey === legacyRevolveTypeV2Key
+  ) {
     return readRevolveFeatureParameters(feature) !== null
   }
   if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {

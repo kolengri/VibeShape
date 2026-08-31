@@ -2,6 +2,7 @@ import { z } from "zod"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
+import { sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
 import { angleQuantitySchema, createLengthQuantity, lengthQuantitySchema } from "./units"
 import {
@@ -140,10 +141,25 @@ const legacyRevolveFeatureParametersSchema = z
   })
   .strict()
 
+const legacyRevolveFeatureParametersV2Schema = legacyRevolveFeatureParametersSchema.extend({
+  operation: extrusionOperationSchema,
+})
+
+export const revolveAxisSchema = z.union([
+  z.object({ kind: z.literal("origin-axis"), axis: z.enum(["x", "y"]) }).strict(),
+  z
+    .object({
+      kind: z.literal("sketch-line"),
+      sketchId: sketchIdSchema,
+      entityId: sketchEntityIdSchema,
+    })
+    .strict(),
+])
+
 export const revolveFeatureParametersSchema = z
   .object({
     profile: sketchProfileSelectorSchema,
-    axis: z.enum(["x", "y"]),
+    axis: revolveAxisSchema,
     angle: revolveAngleSchema,
     operation: extrusionOperationSchema,
   })
@@ -326,6 +342,19 @@ export const revolveFeatureType = featureTypeDescriptorSchema.parse({
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 3,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 2 },
+  references: { min: 0, max: 1 },
+})
+
+export const legacyRevolveFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
     schemaVersion: 2,
   },
   classification: "solid",
@@ -364,9 +393,13 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
   return parsed.success ? parsed.data : null
 }
 
-function isRevolveType(feature: FeatureRecord) {
+export function isRevolveType(feature: FeatureRecord) {
   const type = feature.type
-  return [legacyRevolveFeatureType.type, revolveFeatureType.type].some(
+  return [
+    legacyRevolveFeatureType.type,
+    legacyRevolveFeatureTypeV2.type,
+    revolveFeatureType.type,
+  ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
       type.moduleVersion === expected.moduleVersion &&
@@ -378,14 +411,25 @@ function isRevolveType(feature: FeatureRecord) {
 export function readRevolveFeatureParameters(feature: FeatureRecord) {
   if (!isRevolveType(feature)) return null
   const parsed = z
-    .union([legacyRevolveFeatureParametersSchema, revolveFeatureParametersSchema])
+    .union([
+      legacyRevolveFeatureParametersSchema,
+      legacyRevolveFeatureParametersV2Schema,
+      revolveFeatureParametersSchema,
+    ])
     .safeParse(feature.parameters)
-  return parsed.success ? parsed.data : null
+  if (!parsed.success) return null
+  return typeof parsed.data.axis === "string"
+    ? { ...parsed.data, axis: { kind: "origin-axis" as const, axis: parsed.data.axis } }
+    : parsed.data
 }
 
 function resolveRevolveParameters(parameters: unknown, variables: VariableValues) {
   const parsed = z
-    .union([legacyRevolveFeatureParametersSchema, revolveFeatureParametersSchema])
+    .union([
+      legacyRevolveFeatureParametersSchema,
+      legacyRevolveFeatureParametersV2Schema,
+      revolveFeatureParametersSchema,
+    ])
     .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const angle = resolveQuantityExpression(parsed.data.angle, variables)
@@ -403,22 +447,33 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
 function revolveFeatureInvariant(feature: FeatureRecord) {
   const parameters = readRevolveFeatureParameters(feature)
   if (!parameters) return []
+  const issues: Array<{ path: string; message: string }> = []
+  if (
+    parameters.axis.kind === "sketch-line" &&
+    parameters.axis.sketchId !== parameters.profile.sketchId
+  ) {
+    issues.push({
+      path: "parameters.axis.sketchId",
+      message: "A sketch-line revolve axis must belong to the selected profile sketch.",
+    })
+  }
   const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
   const minimumDependencyCount = parameters.operation === "new" ? supportDependencyCount : 1
   const maximumDependencyCount =
     parameters.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
-  return feature.dependencies.length >= minimumDependencyCount &&
-    feature.dependencies.length <= maximumDependencyCount
-    ? []
-    : [
-        {
-          path: "dependencies",
-          message:
-            parameters.operation === "new"
-              ? "New-body revolve dependencies must match its sketch-support references."
-              : `${parameters.operation} revolve requires one target plus any distinct sketch-support dependency.`,
-        },
-      ]
+  if (
+    feature.dependencies.length < minimumDependencyCount ||
+    feature.dependencies.length > maximumDependencyCount
+  ) {
+    issues.push({
+      path: "dependencies",
+      message:
+        parameters.operation === "new"
+          ? "New-body revolve dependencies must match its sketch-support references."
+          : `${parameters.operation} revolve requires one target plus any distinct sketch-support dependency.`,
+    })
+  }
+  return issues
 }
 
 function extrusionFeatureInvariant(feature: FeatureRecord) {
@@ -517,9 +572,24 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       const revolve = legacyRevolveFeatureParametersSchema.parse(parameters)
       return {
         profile: revolve.profile,
-        axis: revolve.axis,
+        axis: { kind: "origin-axis", axis: revolve.axis } as const,
         angle: revolve.angle.value,
         operation: "new" as const,
+      }
+    },
+  },
+  {
+    type: legacyRevolveFeatureTypeV2.type,
+    parametersSchema: legacyRevolveFeatureParametersV2Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = legacyRevolveFeatureParametersV2Schema.parse(parameters)
+      return {
+        profile: revolve.profile,
+        axis: { kind: "origin-axis", axis: revolve.axis },
+        angle: revolve.angle.value,
+        operation: revolve.operation,
       }
     },
   },

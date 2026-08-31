@@ -1,8 +1,10 @@
 import {
   boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
   type DocumentSnapshot,
   featureIdSchema,
+  legacyRevolveFeatureTypeV2,
   sketchRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
@@ -73,6 +75,43 @@ describe("featureDeleteEligibility", () => {
       preserveIntentAllowed: false,
       unavailable: true,
     })
+  })
+
+  it("keeps deletion available when a saved schema-version-2 revolve is present", () => {
+    const profile = sketchRecordSchema.parse({
+      schemaVersion: 0,
+      id: id("4150"),
+      label: "Profile",
+      plane: "xy",
+      entities: [],
+      constraints: [],
+    })
+    const savedRevolve = {
+      schemaVersion: 0 as const,
+      id: id("4151"),
+      type: legacyRevolveFeatureTypeV2.type,
+      parameters: {
+        profile: {
+          schemaVersion: 0 as const,
+          sketchId: profile.id,
+          outerBoundaryEntityIds: [id("4152")],
+          holeBoundaryEntityIds: [],
+        },
+        axis: "x" as const,
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new" as const,
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const result = featureDeleteEligibility(
+      { sketches: [profile], features: [savedRevolve] } as unknown as DocumentSnapshot,
+      savedRevolve.id,
+    )
+
+    expect(result.unavailable).toBe(false)
+    expect(result.blockerCount).toBe(0)
   })
 
   it("includes model-reference and feature-face support blockers", () => {

@@ -95,7 +95,7 @@ Exit criterion: users can choose among multiple regions without relying on creat
 
 - Extend Extrude from New to Add, Remove, and Intersect with explicit merge scope.
 - Sketch-on-planar-face and signed offset Datum Plane support are implemented. Add mid-plane, angular, three-point, axis, and point reference modes after stable edge/vertex selection.
-- Add Revolve, Hole, Fillet, Chamfer, Shell, Pattern, and Mirror as ordinary ordered features.
+- Extend the implemented selector-backed Revolve from origin and same-sketch line axes to stable model-edge and connector axes, then add Hole, Fillet, Chamfer, Shell, Pattern, and Mirror as ordinary ordered features.
 - Keep command availability driven by selected geometry and registered module capabilities.
 
 Exit criterion: a printable bracket can be built without direct primitives and remains valid across its parameter-change matrix.

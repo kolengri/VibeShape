@@ -503,7 +503,7 @@ describe("geometry worker protocol", () => {
       },
       outer: profile,
       holes: [],
-      axis: "x" as const,
+      axis: { kind: "origin-axis" as const, axis: "x" as const },
       axisOrigin: [0, 0, 0] as [number, number, number],
       axisDirection: [1, 0, 0] as [number, number, number],
       angleRadians: Math.PI,
@@ -537,6 +537,38 @@ describe("geometry worker protocol", () => {
       revolveFeatureContentParametersSchema.safeParse({
         ...content,
         axisDirection: [0, 1, 0],
+      }).success,
+    ).toBe(false)
+    const sketchLineAxis = {
+      ...content,
+      axis: {
+        kind: "sketch-line" as const,
+        sketchId: content.sketchId,
+        entityId: "0195b5ac-b220-7a2c-8c33-67a36a7f3211",
+      },
+      axisOrigin: [4, 5, 0] as [number, number, number],
+      axisDirection: [Math.SQRT1_2, Math.SQRT1_2, 0] as [number, number, number],
+    }
+    expect(revolveFeatureContentParametersSchema.safeParse(sketchLineAxis).success).toBe(true)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...sketchLineAxis,
+        axis: {
+          ...sketchLineAxis.axis,
+          sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...sketchLineAxis,
+        axisOrigin: [4, 5, 1],
+      }).success,
+    ).toBe(false)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...sketchLineAxis,
+        axisDirection: [Math.SQRT1_2, 0, Math.SQRT1_2],
       }).success,
     ).toBe(false)
   })

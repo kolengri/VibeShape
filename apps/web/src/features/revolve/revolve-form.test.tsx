@@ -7,11 +7,14 @@ import {
   type FeatureId,
   featureIdSchema,
   featureRecordSchema,
+  type revolveFeatureParametersSchema,
   revolveFeatureType,
+  sketchEntityIdSchema,
   sketchProfileSelectorSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
+import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
 import { RevolveForm, type RevolveFormMode } from "./revolve-form"
@@ -39,6 +42,7 @@ const copy = {
   axis: "Revolve axis",
   axisX: "Horizontal sketch axis (X)",
   axisY: "Vertical sketch axis (Y)",
+  axisSelectHint: "Select a line in the viewport.",
   angle: "Angle",
   expressionDescription: "Enter an angle or #variable.",
   submit: "Create revolve",
@@ -65,7 +69,7 @@ const existingFeature = featureRecordSchema.parse({
   type: revolveFeatureType.type,
   parameters: {
     profile,
-    axis: "y",
+    axis: { kind: "origin-axis", axis: "y" },
     angle: createAngleQuantity(180, "deg", "#sweep"),
     operation: "new",
   },
@@ -96,22 +100,26 @@ function renderForm(
   },
   onPreviewChange = vi.fn(),
   options: readonly { id: FeatureId; label: string }[] = [],
+  axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"],
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update revolve" } : copy
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
-      <RevolveForm
-        baseRevision={4}
-        copy={formCopy}
-        mode={mode}
-        options={options}
-        profileLabel="Sketch 1"
-        variables={variables}
-        onCancel={vi.fn()}
-        onPreviewChange={onPreviewChange}
-        onSave={onSave}
-        onSaved={onSaved}
-      />
+      <TooltipProvider>
+        <RevolveForm
+          {...(axisSelection ? { axisLineLabel: "Sketch 1 · Line 1", axisSelection } : {})}
+          baseRevision={4}
+          copy={formCopy}
+          mode={mode}
+          options={options}
+          profileLabel="Sketch 1"
+          variables={variables}
+          onCancel={vi.fn()}
+          onPreviewChange={onPreviewChange}
+          onSave={onSave}
+          onSaved={onSaved}
+        />
+      </TooltipProvider>
     </I18nProvider>,
   )
   return { formCopy, onPreviewChange, onSave, onSaved }
@@ -129,19 +137,40 @@ describe("RevolveForm", () => {
         expect.objectContaining({
           id: featureId,
           parameters: expect.objectContaining({
-            axis: "x",
+            axis: { kind: "origin-axis", axis: "x" },
             angle: expect.objectContaining({ value: Math.PI * 2 }),
           }),
         }),
       ),
     )
-    await user.selectOptions(screen.getByRole("combobox", { name: copy.axis }), "y")
+    await user.click(screen.getByRole("button", { name: copy.axisY }))
     await waitFor(() =>
       expect(onPreviewChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ parameters: expect.objectContaining({ axis: "y" }) }),
+        expect.objectContaining({
+          parameters: expect.objectContaining({ axis: { kind: "origin-axis", axis: "y" } }),
+        }),
       ),
     )
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("accepts a graphical stable sketch-line axis from the viewport", async () => {
+    const onPreviewChange = vi.fn()
+    const axisSelection = {
+      kind: "sketch-line" as const,
+      sketchId: profile.sketchId,
+      entityId: sketchEntityIdSchema.parse(profile.outerBoundaryEntityIds[0]),
+    }
+    renderForm(undefined, undefined, undefined, onPreviewChange, [], axisSelection)
+
+    expect(screen.getByText("Sketch 1 · Line 1")).toBeTruthy()
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({ axis: axisSelection }),
+        }),
+      ),
+    )
   })
 
   it("resolves a variable and prevents duplicate asynchronous submission", async () => {
@@ -196,7 +225,9 @@ describe("RevolveForm", () => {
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
     const angle = screen.getByRole("combobox", { name: copy.angle })
     expect((angle as HTMLInputElement).value).toBe("#sweep")
-    expect((screen.getByRole("combobox", { name: copy.axis }) as HTMLSelectElement).value).toBe("y")
+    expect(screen.getByRole("button", { name: copy.axisY }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
     await user.clear(angle)
     await user.type(angle, "90 deg")
     await user.dblClick(screen.getByRole("button", { name: formCopy.submit }))
@@ -208,7 +239,7 @@ describe("RevolveForm", () => {
         id: existingFeature.id,
         label: existingFeature.label,
         parameters: expect.objectContaining({
-          axis: "y",
+          axis: { kind: "origin-axis", axis: "y" },
           angle: expect.objectContaining({
             value: Math.PI / 2,
             source: expect.objectContaining({ expression: "90 deg" }),
