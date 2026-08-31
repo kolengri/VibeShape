@@ -234,6 +234,11 @@ function renderViewport(
       intent: "replace" | "toggle",
     ) => void
   }>,
+  translationGizmo?: Readonly<{
+    featureId: string
+    position: readonly [number, number, number]
+    onPositionChange: (position: readonly [number, number, number]) => void
+  }>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -253,6 +258,8 @@ function renderViewport(
     setSketches: vi.fn(),
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
+    showTranslationGizmo: vi.fn(),
+    hideTranslationGizmo: vi.fn(),
     fit: vi.fn(),
     clearSelection: vi.fn(),
     dispose: vi.fn(),
@@ -276,6 +283,7 @@ function renderViewport(
           {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
           {...(idleOriginPlaneSelection ? { idleOriginPlaneSelection } : {})}
           {...(sketchProfileSelection ? { sketchProfileSelection } : {})}
+          {...(translationGizmo ? { translationGizmo } : {})}
         />
       </TooltipProvider>
     </I18nProvider>
@@ -304,6 +312,32 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("shows primitive translation and forwards world-space position changes", async () => {
+    const onPositionChange = vi.fn()
+    const { createViewport, port } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { featureId: boxId, position: [1, 2, 3], onPositionChange },
+    )
+
+    await waitFor(() => expect(port.showTranslationGizmo).toHaveBeenCalledWith([1, 2, 3]))
+    expect(
+      screen
+        .getByRole("region", { name: "3D viewport" })
+        .getAttribute("data-translation-gizmo-feature"),
+    ).toBe(boxId)
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onTranslationGizmoPositionChange?.([4, 5, 6]))
+    expect(onPositionChange).toHaveBeenCalledWith([4, 5, 6])
+  })
+
   it("adapts bounded saved profile loops to one stable viewer region", () => {
     const [sketch] = viewerSketches(readyController([], [], [profileSketchDisplay]))
 

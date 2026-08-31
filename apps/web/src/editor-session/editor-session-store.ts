@@ -17,7 +17,15 @@ import type { ViewerSelection } from "@vibeshape/viewer/three-viewport"
 import type { Draft } from "immer"
 import { immer } from "zustand/middleware/immer"
 import { createStore } from "zustand/vanilla"
-import type { ActivePartDesignTool } from "../features/part-design/part-design-tool"
+import {
+  type ActivePartDesignTool,
+  isPrimitivePartDesignTool,
+} from "../features/part-design/part-design-tool"
+import {
+  finitePrimitivePlacement,
+  type PrimitivePlacement,
+  type PrimitivePlacementRequest,
+} from "../features/part-design/primitive-placement"
 import type { SelectedSketchSupport } from "../features/sketch/sketch-support"
 import {
   type ActiveSketchTool,
@@ -57,6 +65,7 @@ export type EditorSessionState = Readonly<{
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedFeatureId: FeatureId | null
+  primitivePlacementRequest: PrimitivePlacementRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
@@ -87,6 +96,7 @@ export type EditorSessionActions = Readonly<{
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setSelectedOriginPlane: (plane: ViewerOriginPlane | null) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
+  setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
   setSelection: (selection: ViewerSelection | null) => void
@@ -140,6 +150,7 @@ function createEditorSessionState(): EditorSessionState {
     hiddenSketchIds: [],
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedFeatureId: null,
+    primitivePlacementRequest: null,
     selectedOriginPlane: null,
     selection: null,
     sketch: createSketchState(),
@@ -251,6 +262,7 @@ export function createEditorSessionStore() {
         closeActiveTool: () =>
           set((state) => {
             state.activePartDesignTool = null
+            state.primitivePlacementRequest = null
             const activeSketchTool = state.sketch.activeSketchTool
             if (activeSketchTool?.kind === "select-sketch-plane" && activeSketchTool.returnTo) {
               state.workspace = "sketch"
@@ -376,6 +388,17 @@ export function createEditorSessionStore() {
         setFeaturePreselection: (featureId) =>
           set((state) => {
             state.preselectedFeatureId = featureId
+          }),
+        setPrimitivePlacement: (featureId, position) =>
+          set((state) => {
+            if (!finitePrimitivePlacement(position)) return
+            const tool = state.activePartDesignTool
+            if (!isPrimitivePartDesignTool(tool)) return
+            state.primitivePlacementRequest = {
+              featureId,
+              position: [...position],
+              sequence: (state.primitivePlacementRequest?.sequence ?? 0) + 1,
+            }
           }),
         setOriginPlaneVisibility: (plane, visible) =>
           set((state) => {
@@ -526,6 +549,7 @@ export function createEditorSessionStore() {
             state.workspace = "model"
             closeSketch(state.sketch)
             state.selectedOriginPlane = null
+            state.primitivePlacementRequest = null
             state.activePartDesignTool = tool
           }),
         switchWorkspace: (workspace) =>
@@ -533,6 +557,7 @@ export function createEditorSessionStore() {
             state.workspace = workspace
             if (workspace !== "model") {
               state.activePartDesignTool = null
+              state.primitivePlacementRequest = null
               state.selectedOriginPlane = null
               state.selection = null
             }

@@ -43,6 +43,7 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
+import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
 import { terminalFeatureIds } from "../features/part-design/terminal-features"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
@@ -278,6 +279,7 @@ async function initializeViewport(
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
   latestSketchContextRef: RefObject<GeometryViewportSketchContext | null>,
   latestSketchProfileSelectionRef: RefObject<GeometryViewportProps["sketchProfileSelection"]>,
+  latestTranslationGizmoRef: RefObject<GeometryViewportProps["translationGizmo"]>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
   try {
@@ -296,6 +298,8 @@ async function initializeViewport(
       onSketchProfileCandidateStackCommit,
       onSketchProfilePreselectionChange,
       onSketchProfileSelectionChange,
+      onTranslationGizmoPositionChange: (position) =>
+        latestTranslationGizmoRef.current?.onPositionChange(position),
     })
     if (mount.cancelled) {
       viewport.dispose()
@@ -319,6 +323,8 @@ async function initializeViewport(
     )
     viewport.setFeatureSelection(latestFeatureSelectionRef.current)
     viewport.setFeaturePreselection(latestFeaturePreselectionRef.current)
+    const translationGizmo = latestTranslationGizmoRef.current
+    if (translationGizmo) viewport.showTranslationGizmo(translationGizmo.position)
     viewport.fit()
     synchronizeViewportSketchContext(viewport, latestSketchContextRef.current)
     setRendererFailed(false)
@@ -393,6 +399,7 @@ function useLatestViewportInputs({
   sketchContext,
   sketches,
   sketchProfileSelection,
+  translationGizmo,
 }: Readonly<{
   controller: DocumentControllerState
   featurePreselection: ViewerMesh | null
@@ -405,6 +412,7 @@ function useLatestViewportInputs({
   sketchContext: GeometryViewportSketchContext | null
   sketches: readonly ViewerSketch[]
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"]
+  translationGizmo: GeometryViewportProps["translationGizmo"]
 }>) {
   const controllerRef = useRef(controller)
   const featurePreselectionRef = useRef(featurePreselection)
@@ -417,6 +425,7 @@ function useLatestViewportInputs({
   const sketchContextRef = useRef(sketchContext)
   const sketchesRef = useRef(sketches)
   const sketchProfileSelectionRef = useRef(sketchProfileSelection)
+  const translationGizmoRef = useRef(translationGizmo)
   controllerRef.current = controller
   featurePreselectionRef.current = featurePreselection
   featureSelectionRef.current = featureSelection
@@ -428,6 +437,7 @@ function useLatestViewportInputs({
   sketchContextRef.current = sketchContext
   sketchesRef.current = sketches
   sketchProfileSelectionRef.current = sketchProfileSelection
+  translationGizmoRef.current = translationGizmo
   return {
     controllerRef,
     featurePreselectionRef,
@@ -440,6 +450,7 @@ function useLatestViewportInputs({
     sketchContextRef,
     sketchesRef,
     sketchProfileSelectionRef,
+    translationGizmoRef,
   }
 }
 
@@ -467,6 +478,21 @@ function useViewportSketchReferenceInteractionState() {
   return { candidateStack, preselection, setCandidateStack, setPreselection }
 }
 
+function useTranslationGizmoSynchronization(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  translationGizmo: GeometryViewportProps["translationGizmo"],
+) {
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    if (translationGizmo) {
+      viewport.showTranslationGizmo(translationGizmo.position)
+      return
+    }
+    viewport.hideTranslationGizmo()
+  }, [translationGizmo, viewportRef])
+}
+
 function useViewportRenderer(
   createViewport: ViewportFactory,
   controller: DocumentControllerState,
@@ -483,6 +509,7 @@ function useViewportRenderer(
   featureSelection: ViewerMesh | null,
   sketchContext: GeometryViewportSketchContext | null,
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"],
+  translationGizmo: GeometryViewportProps["translationGizmo"],
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
@@ -498,6 +525,7 @@ function useViewportRenderer(
     sketchContext,
     sketches,
     sketchProfileSelection,
+    translationGizmo,
   })
   const [rendererFailed, setRendererFailed] = useState(false)
   const sketchReferenceInteraction = useViewportSketchReferenceInteractionState()
@@ -564,6 +592,7 @@ function useViewportRenderer(
       latest.featureSelectionRef,
       latest.sketchContextRef,
       latest.sketchProfileSelectionRef,
+      latest.translationGizmoRef,
       setRendererFailed,
     )
     return () => {
@@ -826,7 +855,10 @@ type PreviewMessageKey =
   | "previewReady"
 
 const PREVIEW_MESSAGE_KEYS: Readonly<
-  Record<"datum-plane" | "extrusion" | "revolve", Record<ActivePreviewStatus, PreviewMessageKey>>
+  Record<
+    "datum-plane" | "extrusion" | "primitive" | "revolve",
+    Record<ActivePreviewStatus, PreviewMessageKey>
+  >
 > = {
   "datum-plane": {
     error: "datumPreviewFailed",
@@ -834,6 +866,11 @@ const PREVIEW_MESSAGE_KEYS: Readonly<
     ready: "datumPreviewReady",
   },
   extrusion: {
+    error: "previewFailed",
+    loading: "previewLoading",
+    ready: "previewReady",
+  },
+  primitive: {
     error: "previewFailed",
     loading: "previewLoading",
     ready: "previewReady",
@@ -903,6 +940,11 @@ type GeometryViewportProps = Readonly<{
       profiles: readonly SketchProfileSelector[],
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
+  }>
+  translationGizmo?: Readonly<{
+    featureId: string
+    onPositionChange: (position: PrimitivePlacement) => void
+    position: PrimitivePlacement
   }>
 }>
 
@@ -1182,7 +1224,9 @@ function useGeometryViewportInteraction(
     scene.featureSelection,
     sketchContext ?? null,
     sketchProfileSelection,
+    props.translationGizmo,
   )
+  useTranslationGizmoSynchronization(viewportRef, props.translationGizmo)
   const supportFaceSelection = useSupportFaceSelection(
     selectionCandidateStack,
     selectionCandidateCommit,
@@ -2401,6 +2445,8 @@ export function GeometryViewport(props: GeometryViewportProps) {
       {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
       {...viewportRenderData(passive, featurePreview, model)}
       {...viewportSketchContextData(sketchContext)}
+      data-translation-gizmo-feature={props.translationGizmo?.featureId}
+      data-translation-gizmo-position={props.translationGizmo?.position.join(",")}
       onKeyDown={referenceInteraction.onKeyDown}
       onPointerDown={referenceInteraction.onPointerDown}
       onPointerEnter={referenceInteraction.onPointerEnter}

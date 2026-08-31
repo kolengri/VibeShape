@@ -61,6 +61,31 @@ function selectedFeatureFaceSupport() {
 }
 
 describe("editor session store", () => {
+  it("keeps graphical primitive placement transient and scoped to the active tool", () => {
+    const store = createEditorSessionStore()
+
+    store.getState().actions.setPrimitivePlacement(featureId, [1, 2, 3])
+    expect(store.getState().primitivePlacementRequest).toBeNull()
+
+    store.getState().actions.startPartDesignTool({ kind: "create-box" })
+    store.getState().actions.setPrimitivePlacement(featureId, [1, 2, 3])
+    expect(store.getState().primitivePlacementRequest).toEqual({
+      featureId,
+      position: [1, 2, 3],
+      sequence: 1,
+    })
+
+    store.getState().actions.setPrimitivePlacement(featureId, [4, 5, 6])
+    expect(store.getState().primitivePlacementRequest).toEqual({
+      featureId,
+      position: [4, 5, 6],
+      sequence: 2,
+    })
+
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().primitivePlacementRequest).toBeNull()
+  })
+
   it("owns one external-reference repair mode and clears it with ordinary tool changes", () => {
     const store = createEditorSessionStore()
     const sketch = sketchRecordSchema.parse({

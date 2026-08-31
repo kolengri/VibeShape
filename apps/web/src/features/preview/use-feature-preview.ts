@@ -10,6 +10,7 @@ import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createBrowserDocumentId } from "../../document/document-controller"
 import { PRODUCT_MESH_POLICY } from "../../document/document-worker-settings"
+import { isBoxFeature, isCylinderFeature } from "../part-design/part-design-tool"
 import { terminalFeatureIds } from "../part-design/terminal-features"
 
 type PreviewSession = Pick<ReturnType<typeof createDocumentWorkerSession>, "rebuild" | "terminate">
@@ -19,7 +20,7 @@ type PreviewGeometryIdentity = Readonly<{
   featureId: string
 }>
 
-export type FeaturePreviewKind = "datum-plane" | "extrusion" | "revolve"
+export type FeaturePreviewKind = "datum-plane" | "extrusion" | "primitive" | "revolve"
 
 export type FeaturePreviewState = Readonly<{
   candidateMesh?: ViewerMesh
@@ -106,9 +107,12 @@ async function rebuildPreview(
   }
 }
 
-function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
+export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
   if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
   if (readRevolveFeatureParameters(candidate)) return "revolve"
+  if (isBoxFeature(candidate) || isCylinderFeature(candidate)) {
+    return "primitive"
+  }
   return "extrusion"
 }
 

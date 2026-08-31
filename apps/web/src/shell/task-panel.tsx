@@ -50,6 +50,7 @@ import {
   isRevolveFeature,
   modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
+import type { PrimitivePlacementRequest } from "../features/part-design/primitive-placement"
 import {
   profileSelectorsEqual,
   profileSupportReference,
@@ -93,6 +94,7 @@ type TaskPanelProps = Readonly<{
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
+  primitivePlacementRequest: PrimitivePlacementRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onFeatureProfilesClear?: (() => void) | undefined
@@ -765,10 +767,14 @@ function RevolveTaskPanel({
 function BoxTaskPanel({
   mode,
   onCloseTool,
+  onPreviewChange,
+  placementRequest,
   report,
 }: {
   mode: BoxFormMode
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  placementRequest: PrimitivePlacementRequest | null
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -786,8 +792,10 @@ function BoxTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         onCancel={onCloseTool}
+        onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
+        placementRequest={placementRequest}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -831,10 +839,14 @@ function DatumPlaneTaskPanel({
 function CylinderTaskPanel({
   mode,
   onCloseTool,
+  onPreviewChange,
+  placementRequest,
   report,
 }: {
   mode: CylinderFormMode
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  placementRequest: PrimitivePlacementRequest | null
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -852,8 +864,10 @@ function CylinderTaskPanel({
         disabled={report.mode === "read-only"}
         mode={mode}
         onCancel={onCloseTool}
+        onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
+        placementRequest={placementRequest}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -1182,25 +1196,41 @@ function canCreateSubtract(controller: DocumentControllerState) {
 function ActiveBoxTaskPanel({
   activeTool,
   onCloseTool,
+  onPreviewChange,
+  placementRequest,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-box" | "edit-box" }>
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  placementRequest: PrimitivePlacementRequest | null
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel")
   const boxCount = report.snapshot.features.filter(isBoxFeature).length
   const mode = boxFormMode(activeTool, report, t("box.featureLabel", { number: boxCount + 1 }))
-  return mode ? <BoxTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+  return mode ? (
+    <BoxTaskPanel
+      report={report}
+      mode={mode}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onPreviewChange}
+      placementRequest={placementRequest}
+    />
+  ) : null
 }
 
 function ActiveCylinderTaskPanel({
   activeTool,
   onCloseTool,
+  onPreviewChange,
+  placementRequest,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-cylinder" | "edit-cylinder" }>
   onCloseTool: () => void
+  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  placementRequest: PrimitivePlacementRequest | null
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -1210,7 +1240,15 @@ function ActiveCylinderTaskPanel({
     report,
     t("cylinder.featureLabel", { number: cylinderCount + 1 }),
   )
-  return mode ? <CylinderTaskPanel report={report} mode={mode} onCloseTool={onCloseTool} /> : null
+  return mode ? (
+    <CylinderTaskPanel
+      report={report}
+      mode={mode}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onPreviewChange}
+      placementRequest={placementRequest}
+    />
+  ) : null
 }
 
 function ActiveDatumPlaneTaskPanel({
@@ -1353,6 +1391,7 @@ type ActiveTaskPanelProps = Readonly<{
   onFeatureProfilesClear?: TaskPanelProps["onFeatureProfilesClear"] | undefined
   onCloseTool: () => void
   onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  primitivePlacementRequest: PrimitivePlacementRequest | null
   onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
   onRevolveAxisSelectionRequest?: TaskPanelProps["onRevolveAxisSelectionRequest"] | undefined
   onRevolveProfileSelectionRequest?: TaskPanelProps["onRevolveProfileSelectionRequest"] | undefined
@@ -1362,15 +1401,41 @@ type ActiveTaskPanelProps = Readonly<{
   revolveProfileSelectionActive?: TaskPanelProps["revolveProfileSelectionActive"] | undefined
 }>
 
-function BoxToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
+function BoxToolTaskPanel({
+  activeTool,
+  onCloseTool,
+  onFeaturePreviewChange,
+  primitivePlacementRequest,
+  report,
+}: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-box" && activeTool.kind !== "edit-box") return null
-  return <ActiveBoxTaskPanel activeTool={activeTool} onCloseTool={onCloseTool} report={report} />
+  return (
+    <ActiveBoxTaskPanel
+      activeTool={activeTool}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onFeaturePreviewChange}
+      placementRequest={primitivePlacementRequest}
+      report={report}
+    />
+  )
 }
 
-function CylinderToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
+function CylinderToolTaskPanel({
+  activeTool,
+  onCloseTool,
+  onFeaturePreviewChange,
+  primitivePlacementRequest,
+  report,
+}: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-cylinder" && activeTool.kind !== "edit-cylinder") return null
   return (
-    <ActiveCylinderTaskPanel activeTool={activeTool} onCloseTool={onCloseTool} report={report} />
+    <ActiveCylinderTaskPanel
+      activeTool={activeTool}
+      onCloseTool={onCloseTool}
+      onPreviewChange={onFeaturePreviewChange}
+      placementRequest={primitivePlacementRequest}
+      report={report}
+    />
   )
 }
 
@@ -1512,6 +1577,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
         report={report}
         onCloseTool={props.onCloseTool}
         onFeaturePreviewChange={props.onFeaturePreviewChange}
+        primitivePlacementRequest={props.primitivePlacementRequest}
         onRevolveAxisChange={props.onRevolveAxisChange}
         onRevolveAxisSelectionRequest={props.onRevolveAxisSelectionRequest}
         onRevolveProfileSelectionRequest={props.onRevolveProfileSelectionRequest}
