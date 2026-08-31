@@ -18,13 +18,17 @@ import {
   readRevolveFeatureParameters,
   resolveTopologyReference,
   type SketchEntity,
+  type SketchProfileSelector,
+  type SketchProfileSet,
   type SketchRecord,
 } from "@vibeshape/domain"
 import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
+  extrusionMultiProfileFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
+  revolveMultiProfileFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import {
   resolveSketchProfileSelector,
@@ -244,6 +248,42 @@ function materializeSelectedProfile(
   return { ok: true as const, outer, holes: holes.flatMap((hole) => (hole ? [hole] : [])) }
 }
 
+/**
+ * Materialize each authored selector separately. The profile-set schema owns
+ * canonical ordering and bounds; this function deliberately does not merge
+ * adjacent loops or infer a replacement selector.
+ */
+function materializeSelectedProfiles(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  selectors: readonly SketchProfileSelector[],
+) {
+  if (selectors.some((selector) => selector.sketchId !== sketch.id)) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "multi-profile-sketch-mismatch")
+  }
+  const profiles = selectors.map((selector) =>
+    materializeSelectedProfile(sketch, solution, selector),
+  )
+  const failed = profiles.find((profile) => !profile.ok)
+  return (
+    failed ?? {
+      ok: true as const,
+      profiles: profiles.flatMap((profile) =>
+        profile.ok ? [{ outer: profile.outer, holes: profile.holes }] : [],
+      ),
+    }
+  )
+}
+
+type MultiProfileParameters = Readonly<{
+  profiles: SketchProfileSet
+  distance?: { readonly value: number }
+  symmetric?: boolean
+  angle?: { readonly value: number }
+  operation: "new" | "add" | "remove" | "intersect"
+  axis?: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>["axis"]
+}>
+
 function prepareExtrusion(
   sketch: SketchRecord,
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
@@ -265,6 +305,39 @@ function prepareExtrusion(
   return prepared.success
     ? ({ ok: true, parameters: prepared.data } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function prepareMultiExtrusion(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  parameters: MultiProfileParameters,
+  frame: SupportFrame,
+) {
+  if (parameters.operation !== "new") {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "multi-profile-operation-unsupported",
+    )
+  }
+  if (!parameters.distance || parameters.symmetric === undefined) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
+  }
+  const profiles = materializeSelectedProfiles(sketch, solution, parameters.profiles.profiles)
+  if (!profiles.ok) return profiles
+  const prepared = extrusionMultiProfileFeatureContentParametersSchema.safeParse({
+    sketchId: sketch.id,
+    ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
+    frame,
+    profiles: profiles.profiles,
+    distance: parameters.distance.value,
+    symmetric: parameters.symmetric,
+    operation: "new",
+  })
+  return prepared.success
+    ? ({ ok: true, parameters: prepared.data as never } as const)
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set", {
+        issue: prepared.error.issues[0]?.message ?? "unknown-schema-issue",
+      })
 }
 
 function prepareRevolve(
@@ -293,6 +366,42 @@ function prepareRevolve(
   return prepared.success
     ? ({ ok: true, parameters: prepared.data } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function prepareMultiRevolve(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  parameters: MultiProfileParameters,
+  frame: SupportFrame,
+  geometry: readonly FeatureGeometryRecord[],
+) {
+  if (parameters.operation !== "new") {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "multi-profile-operation-unsupported",
+    )
+  }
+  if (!parameters.angle || !parameters.axis) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
+  }
+  const profiles = materializeSelectedProfiles(sketch, solution, parameters.profiles.profiles)
+  if (!profiles.ok) return profiles
+  const resolvedAxis = resolveRevolveAxis(sketch, solution, parameters.axis, frame, geometry)
+  if (!resolvedAxis.ok) return resolvedAxis
+  const prepared = revolveMultiProfileFeatureContentParametersSchema.safeParse({
+    sketchId: sketch.id,
+    ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
+    frame,
+    profiles: profiles.profiles,
+    axis: parameters.axis,
+    axisOrigin: resolvedAxis.origin,
+    axisDirection: resolvedAxis.direction,
+    angleRadians: parameters.angle.value,
+    operation: "new",
+  })
+  return prepared.success
+    ? ({ ok: true, parameters: prepared.data } as const)
+    : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set")
 }
 
 function resolveRevolveAxis(
@@ -528,10 +637,22 @@ async function prepareFeatureContent(
     }
   }
   const extrusion = readExtrusionFeatureParameters(feature)
+  if (extrusion && feature.type.schemaVersion === 3) {
+    return prepareProfileFeatureContent({
+      document,
+      feature: { kind: "extrusion", parameters: extrusion, multiProfile: true },
+      features,
+      geometry,
+      modelMaterializationCache,
+      sectionPlanarFace,
+      solveSketch,
+      solvedBySketchId,
+    })
+  }
   if (extrusion) {
     return prepareProfileFeatureContent({
       document,
-      feature: { kind: "extrusion", parameters: extrusion },
+      feature: { kind: "extrusion", parameters: extrusion, multiProfile: false },
       features,
       geometry,
       modelMaterializationCache,
@@ -542,9 +663,21 @@ async function prepareFeatureContent(
   }
   const revolve = readRevolveFeatureParameters(feature)
   if (!revolve) return null
+  if (feature.type.schemaVersion === 5) {
+    return prepareProfileFeatureContent({
+      document,
+      feature: { kind: "revolve", parameters: revolve, multiProfile: true },
+      features,
+      geometry,
+      modelMaterializationCache,
+      sectionPlanarFace,
+      solveSketch,
+      solvedBySketchId,
+    })
+  }
   return prepareProfileFeatureContent({
     document,
-    feature: { kind: "revolve", parameters: revolve },
+    feature: { kind: "revolve", parameters: revolve, multiProfile: false },
     features,
     geometry,
     modelMaterializationCache,
@@ -558,22 +691,15 @@ type ProfileFeature =
   | Readonly<{
       kind: "extrusion"
       parameters: NonNullable<ReturnType<typeof readExtrusionFeatureParameters>>
+      multiProfile: boolean
     }>
   | Readonly<{
       kind: "revolve"
       parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>
+      multiProfile: boolean
     }>
 
-async function prepareProfileFeatureContent({
-  document,
-  feature,
-  features,
-  geometry,
-  modelMaterializationCache,
-  sectionPlanarFace,
-  solveSketch,
-  solvedBySketchId,
-}: Readonly<{
+type ProfileFeatureContentInput = Readonly<{
   document: DocumentSnapshot
   feature: ProfileFeature
   features: readonly FeatureRecord[]
@@ -582,8 +708,39 @@ async function prepareProfileFeatureContent({
   sectionPlanarFace: PlanarFaceSectionPort | undefined
   solveSketch: SketchSolvePort | null
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>
-}>) {
-  const sketch = document.sketches.find(({ id }) => id === feature.parameters.profile.sketchId)
+}>
+
+function prepareSolvedProfileFeature(
+  input: ProfileFeatureContentInput,
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  frame: SupportFrame,
+) {
+  const { feature, geometry } = input
+  const multiProfile = feature.multiProfile
+    ? (feature.parameters.profiles as SketchProfileSet | undefined)
+    : null
+  if (multiProfile) {
+    const multiParameters = { ...feature.parameters, profiles: multiProfile }
+    return feature.kind === "extrusion"
+      ? prepareMultiExtrusion(sketch, solution, multiParameters, frame)
+      : prepareMultiRevolve(sketch, solution, multiParameters, frame, geometry)
+  }
+  return feature.kind === "extrusion"
+    ? prepareExtrusion(sketch, solution, feature.parameters, frame)
+    : prepareRevolve(sketch, solution, feature.parameters, frame, geometry)
+}
+
+function profileFeatureSketchId(feature: ProfileFeature) {
+  if (!feature.multiProfile) return feature.parameters.profile.sketchId
+  const profiles = feature.parameters.profiles as SketchProfileSet | undefined
+  return profiles?.profiles[0]?.sketchId ?? null
+}
+
+async function prepareProfileFeatureContent(input: ProfileFeatureContentInput) {
+  const { document, feature, features, geometry, solveSketch } = input
+  const profileSketchId = profileFeatureSketchId(feature)
+  const sketch = document.sketches.find(({ id }) => id === profileSketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
   const frame = sketchFrame(sketch, document, features, new Set(), geometry)
   if (!frame) {
@@ -594,22 +751,20 @@ async function prepareProfileFeatureContent({
   }
   const result = validatedSolution(
     await solveSketchOnce(
-      solvedBySketchId,
+      input.solvedBySketchId,
       solveSketch,
       document,
       sketch,
       features,
       geometry,
-      sectionPlanarFace,
-      modelMaterializationCache,
+      input.sectionPlanarFace,
+      input.modelMaterializationCache,
     ),
     document,
     sketch,
   )
   if (!result.ok) return result
-  return feature.kind === "extrusion"
-    ? prepareExtrusion(sketch, result.solution, feature.parameters, frame)
-    : prepareRevolve(sketch, result.solution, feature.parameters, frame, geometry)
+  return prepareSolvedProfileFeature(input, sketch, result.solution, frame)
 }
 
 export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {

@@ -86,6 +86,8 @@ export type ViewerSketchProfile = Readonly<{
   holePositions: readonly Float32Array[]
 }>
 
+export type ViewerSketchProfileSelectionIntent = "replace" | "toggle"
+
 export type ViewerSketchPointCandidate = Readonly<{
   kind?: "point"
   label: string
@@ -192,6 +194,7 @@ export type GeometryViewport = Readonly<{
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
   setSketchProfilePreselection: (profile: ViewerSketchProfile | null) => void
   setSketchProfileSelection: (profile: ViewerSketchProfile | null) => void
+  setSketchProfileSelections: (profiles: readonly ViewerSketchProfile[]) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (
     selectedPlane: ViewerOriginPlane | null,
@@ -283,7 +286,10 @@ export type GeometryViewportOptions = Readonly<{
   onSketchProfileCandidateStackChange?: (candidates: readonly ViewerSketchProfile[]) => void
   onSketchProfileCandidateStackCommit?: (candidates: readonly ViewerSketchProfile[]) => void
   onSketchProfilePreselectionChange?: (profile: ViewerSketchProfile | null) => void
-  onSketchProfileSelectionChange?: (profile: ViewerSketchProfile | null) => void
+  onSketchProfileSelectionChange?: (
+    profile: ViewerSketchProfile | null,
+    intent: ViewerSketchProfileSelectionIntent,
+  ) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -299,7 +305,10 @@ function viewerSelectionEligibilityCallback(
 }
 
 function viewerSketchProfileCallbacks(options: GeometryViewportOptions) {
-  const ignoreProfileChange = (_profile: ViewerSketchProfile | null) => undefined
+  const ignoreProfileChange = (
+    _profile: ViewerSketchProfile | null,
+    _intent?: ViewerSketchProfileSelectionIntent,
+  ) => undefined
   const ignoreProfileStackChange = (_profiles: readonly ViewerSketchProfile[]) => undefined
   return {
     candidateStackChange: options.onSketchProfileCandidateStackChange ?? ignoreProfileStackChange,
@@ -955,7 +964,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     candidates: readonly ViewerSketchProfile[],
   ) => void
   readonly #onSketchProfilePreselectionChange: (profile: ViewerSketchProfile | null) => void
-  readonly #onSketchProfileSelectionChange: (profile: ViewerSketchProfile | null) => void
+  readonly #onSketchProfileSelectionChange: (
+    profile: ViewerSketchProfile | null,
+    intent: ViewerSketchProfileSelectionIntent,
+  ) => void
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
@@ -973,7 +985,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #selection: ViewerSelection | null = null
   #sketchProfiles = new Map<Mesh, ViewerSketchProfile>()
   #sketchProfilePreselection: ViewerSketchProfile | null = null
-  #sketchProfileSelection: ViewerSketchProfile | null = null
+  #sketchProfileSelections: readonly ViewerSketchProfile[] = []
   #sketchProfileCandidateStack: readonly ViewerSketchProfile[] = []
   #sketchPointCandidates: readonly (ViewerSketchPointCandidate | ViewerModelPointCandidate)[] = []
   #sketchReferenceCandidateStack: readonly ViewerSketchReferenceCandidate[] = []
@@ -1158,7 +1170,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#sketchProfileSelectionGroup)
     this.#sketchProfiles.clear()
     this.#setSketchProfilePreselection(null, false)
-    this.#setSketchProfileSelection(null, false)
+    this.#setSketchProfileSelections([], false)
     for (const sketch of sketches) {
       this.#addSketchLines(
         sketch.sketchId,
@@ -1247,7 +1259,12 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setSketchProfileSelection(profile: ViewerSketchProfile | null) {
     if (this.#disposed) return
-    this.#setSketchProfileSelection(profile, false)
+    this.#setSketchProfileSelections(profile ? [profile] : [], false)
+  }
+
+  setSketchProfileSelections(profiles: readonly ViewerSketchProfile[]) {
+    if (this.#disposed) return
+    this.#setSketchProfileSelections(profiles, false)
   }
 
   setOriginPlaneSelection(
@@ -1561,15 +1578,19 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
-  #setSketchProfileSelection(profile: ViewerSketchProfile | null, notify = true) {
-    const key = profile ? viewerSketchProfileKey(profile.selector) : null
-    const currentKey = this.#sketchProfileSelection
-      ? viewerSketchProfileKey(this.#sketchProfileSelection.selector)
-      : null
-    if (key === currentKey) return
-    this.#sketchProfileSelection = profile
+  #setSketchProfileSelections(
+    profiles: readonly ViewerSketchProfile[],
+    notify = true,
+    intent: ViewerSketchProfileSelectionIntent = "replace",
+  ) {
+    if (sameSketchProfileStack(profiles, this.#sketchProfileSelections)) {
+      if (notify) this.#onSketchProfileSelectionChange(profiles[0] ?? null, intent)
+      return
+    }
+    this.#sketchProfileSelections = profiles
     disposeModelGroup(this.#sketchProfileSelectionGroup)
-    if (profile) {
+    for (const profile of profiles) {
+      const key = viewerSketchProfileKey(profile.selector)
       const source = [...this.#sketchProfiles.entries()].find(
         ([, candidate]) => viewerSketchProfileKey(candidate.selector) === key,
       )?.[0]
@@ -1579,7 +1600,7 @@ class ThreeGeometryViewport implements GeometryViewport {
         this.#sketchProfileSelectionGroup.add(highlight)
       }
     }
-    if (notify) this.#onSketchProfileSelectionChange(profile)
+    if (notify) this.#onSketchProfileSelectionChange(profiles[0] ?? null, intent)
     this.#render()
   }
 
@@ -1957,13 +1978,17 @@ class ThreeGeometryViewport implements GeometryViewport {
       }
       this.#setOriginPlanePreselection(null)
       this.#setSelection(null)
-      this.#setSketchProfileSelection(target.profiles[0] ?? null)
+      this.#setSketchProfileSelections(
+        target.profiles.slice(0, 1),
+        true,
+        event.shiftKey ? "toggle" : "replace",
+      )
       return
     }
     if (target.kind === "model") {
       this.#clearSketchProfileCandidateStack()
       this.#setOriginPlanePreselection(null)
-      this.#setSketchProfileSelection(null)
+      this.#setSketchProfileSelections([])
       this.#setSelection(target.selection)
       return
     }
@@ -1971,12 +1996,12 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#clearSketchProfileCandidateStack()
       this.#setOriginPlanePreselection(null)
       this.#setSelection(null)
-      this.#setSketchProfileSelection(null)
+      this.#setSketchProfileSelections([])
       return
     }
     this.#setSelection(null)
     this.#clearSketchProfileCandidateStack()
-    this.#setSketchProfileSelection(null)
+    this.#setSketchProfileSelections([])
     this.#onOriginPlaneSelectionChange(this.#pickOriginPlane(event))
   }
 

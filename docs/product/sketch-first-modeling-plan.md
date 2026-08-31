@@ -82,11 +82,11 @@ Exit criterion: the reference flange and bracket profiles can be created, fully 
 
 ### Slice 4 — profile-region selection and extrusion preview
 
-Status: stable single-profile selection, saved-profile 3D picking, and in-task graphical profile reselection for Extrude and Revolve create/edit are implemented. [ADR-0034](../adr/0034-versioned-multi-profile-feature-input.md) now fixes the bounded persistent selector-set and one-solid delivery contract; executable multi-profile feature input remains open.
+Status: stable saved-profile 3D picking and in-task graphical profile selection are implemented for Extrude and Revolve create/edit. Primary click replaces the selection and `Shift`-click toggles profiles from one sketch. New feature versions persist the canonical bounded set, solve the source sketch once, preview and build one analytical tool per profile, retain one-to-many valid solids, and reopen with the complete selection. Multi-profile Add, Remove, Intersect, cross-sketch sets, and stable per-solid result identity remain open under [ADR-0034](../adr/0034-versioned-multi-profile-feature-input.md).
 
 - Render solver-produced closed regions as selectable areas behind entity strokes in the sketch editor and as hoverable, clickable regions on their exact support frames after Finish or reload.
 - Persist only canonical stable boundary-entity selectors.
-- Detect and list multiple regions, holes, and islands within the bounded profile contract; the current extrusion accepts one selected profile.
+- Detect and list multiple regions, holes, and islands within the bounded profile contract; Extrude and Revolve New accept up to 64 same-sketch profiles.
 - Preview the transient solid in the 3D viewport while distance, direction, and symmetric state change.
 - Show the exact selection set in the task panel and preserve it after validation failures.
 

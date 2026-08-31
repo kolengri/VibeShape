@@ -28,6 +28,7 @@ import type {
 } from "@vibeshape/viewer/origin-planes"
 import type {
   ViewerSelection,
+  ViewerSketchProfileSelectionIntent,
   ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
@@ -47,8 +48,9 @@ import {
 import {
   ineligibleProfileSketchIds,
   isProfileFeatureTool,
+  nextProfileFeatureSelection,
   profileFeatureToolKey,
-  profileForFeatureTool,
+  profilesForFeatureTool,
   revolveAxisAfterProfileSelection,
 } from "../features/part-design/profile-feature-selection"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
@@ -144,6 +146,7 @@ type WorkspaceContentProps = Readonly<{
     onSavedSketchProfileSelect: (
       profile: SketchProfileSelector | null,
       profiles: readonly SketchProfileSelector[],
+      intent: ViewerSketchProfileSelectionIntent,
     ) => void
     onRevolveAxisChange: (axis: RevolveAxis) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -185,6 +188,7 @@ type WorkspaceContentProps = Readonly<{
     selectedConstraintId: SketchConstraintId | null
     selectedEntityIds: readonly SketchEntityId[]
     selectedProfile: SketchProfileSelector | null
+    selectedProfiles: readonly SketchProfileSelector[]
     selectedSketch: SketchRecord | null
     showFinalContext: boolean
   }>
@@ -319,7 +323,7 @@ function ModelingWorkspaceContent({
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
       sketchProfileSelection={{
-        selectedProfile: sketch.activeTool ? null : sketch.selectedProfile,
+        selectedProfiles: sketch.activeTool ? [] : sketch.selectedProfiles,
         onSelect: actions.onSavedSketchProfileSelect,
       }}
       {...(activeSketchDisplay
@@ -1524,17 +1528,17 @@ function useProfileFeatureSelection(
   snapshot: DocumentSnapshot | undefined,
 ) {
   const key = profileFeatureToolKey(activeTool)
-  const fallback = profileForFeatureTool(activeTool, snapshot)
+  const fallback = profilesForFeatureTool(activeTool, snapshot)
   const [state, setState] = useState<
-    Readonly<{ key: string; value: SketchProfileSelector | null }>
+    Readonly<{ key: string; value: readonly SketchProfileSelector[] }>
   >(() => ({ key, value: fallback }))
   useEffect(() => {
     if (key !== "inactive") return
-    setState((current) => (current.key === "inactive" ? current : { key: "inactive", value: null }))
+    setState((current) => (current.key === "inactive" ? current : { key: "inactive", value: [] }))
   }, [key])
   const value = state.key === key ? state.value : fallback
   const setValue = useCallback(
-    (profile: SketchProfileSelector) => setState({ key, value: profile }),
+    (profiles: readonly SketchProfileSelector[]) => setState({ key, value: profiles }),
     [key],
   )
   return { value, setValue }
@@ -1583,7 +1587,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
 }
 
 function EditorContent({
-  featureProfileSelection,
+  featureProfileSelections,
   featureProfileHiddenSketchIds,
   featurePreview,
   onFeatureProfileChange,
@@ -1593,10 +1597,13 @@ function EditorContent({
   onRevolveAxisChange,
   props,
 }: {
-  featureProfileSelection: SketchProfileSelector | null
+  featureProfileSelections: readonly SketchProfileSelector[]
   featureProfileHiddenSketchIds: readonly SketchId[]
   featurePreview: ReturnType<typeof useFeaturePreview>
-  onFeatureProfileChange: (profile: SketchProfileSelector) => void
+  onFeatureProfileChange: (
+    profile: SketchProfileSelector,
+    intent: ViewerSketchProfileSelectionIntent,
+  ) => void
   revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
   revolveSelectionPurpose: RevolveSelectionPurpose
@@ -1610,9 +1617,9 @@ function EditorContent({
     <WorkspaceContent
       actions={{
         onSelectionChange: actions.select,
-        onSavedSketchProfileSelect: (profile, profiles) => {
+        onSavedSketchProfileSelect: (profile, profiles, intent) => {
           if (isProfileFeatureTool(props.activeTool)) {
-            if (profile) onFeatureProfileChange(profile)
+            if (profile) onFeatureProfileChange(profile, intent)
             return
           }
           if (profile) {
@@ -1663,8 +1670,13 @@ function EditorContent({
         selectedConstraintId: props.sketchSelectedConstraintId,
         selectedEntityIds: props.sketchSelectedEntityIds,
         selectedProfile: isProfileFeatureTool(props.activeTool)
-          ? featureProfileSelection
+          ? (featureProfileSelections[0] ?? null)
           : props.sketchSelectedProfile,
+        selectedProfiles: isProfileFeatureTool(props.activeTool)
+          ? featureProfileSelections
+          : props.sketchSelectedProfile
+            ? [props.sketchSelectedProfile]
+            : [],
         selectedSketch,
         showFinalContext: props.sketchFinalContext,
       }}
@@ -1673,7 +1685,9 @@ function EditorContent({
 }
 
 function EditorTaskPanel({
-  featureProfileSelection,
+  featureProfileSelections,
+  onFeatureProfileRemove,
+  onFeatureProfilesClear,
   onFeaturePreviewChange,
   onRevolveAxisChange,
   onRevolveSelectionPurposeChange,
@@ -1682,7 +1696,9 @@ function EditorTaskPanel({
   revolveAxisSelection,
   revolveSelectionPurpose,
 }: {
-  featureProfileSelection: SketchProfileSelector | null
+  featureProfileSelections: readonly SketchProfileSelector[]
+  onFeatureProfileRemove: (profile: SketchProfileSelector) => void
+  onFeatureProfilesClear: () => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onRevolveAxisChange: (axis: RevolveAxis) => void
   onRevolveSelectionPurposeChange: (purpose: RevolveSelectionPurpose) => void
@@ -1702,7 +1718,9 @@ function EditorTaskPanel({
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
       controller={props.controller}
-      featureProfileSelection={featureProfileSelection ?? undefined}
+      featureProfileSelections={featureProfileSelections}
+      onFeatureProfileRemove={onFeatureProfileRemove}
+      onFeatureProfilesClear={onFeatureProfilesClear}
       workspace={props.workspace}
       onCloseTool={actions.closeTool}
       onCreateBox={actions.createBox}
@@ -1780,7 +1798,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   const revolveAxisCandidates = useRevolveAxisCandidates(
     props.controller,
     props.activeTool,
-    featureProfileSelection.value,
+    featureProfileSelection.value[0] ?? null,
     props.hiddenFeatureIds,
     revolveAxisSelection.value,
   )
@@ -1789,20 +1807,37 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     [props.activeTool, snapshot],
   )
   const selectFeatureProfile = useCallback(
-    (profile: SketchProfileSelector) => {
-      const previousProfile = featureProfileSelection.value
-      featureProfileSelection.setValue(profile)
+    (profile: SketchProfileSelector, intent: ViewerSketchProfileSelectionIntent) => {
+      const previousProfile = featureProfileSelection.value[0] ?? null
+      const nextProfiles = nextProfileFeatureSelection(
+        featureProfileSelection.value,
+        profile,
+        intent,
+      )
+      featureProfileSelection.setValue(nextProfiles)
       if (props.activeTool?.kind !== "create-revolve" && props.activeTool?.kind !== "edit-revolve")
         return
       const nextAxis = revolveAxisAfterProfileSelection(
         revolveAxisSelection.value,
         previousProfile,
-        profile,
+        nextProfiles[0] ?? profile,
       )
       if (nextAxis) revolveAxisSelection.setValue(nextAxis)
       revolveSelectionPurpose.setValue("axis")
     },
     [featureProfileSelection, props.activeTool, revolveAxisSelection, revolveSelectionPurpose],
+  )
+  const removeFeatureProfile = useCallback(
+    (profile: SketchProfileSelector) => {
+      featureProfileSelection.setValue(
+        nextProfileFeatureSelection(featureProfileSelection.value, profile, "toggle"),
+      )
+    },
+    [featureProfileSelection],
+  )
+  const clearFeatureProfiles = useCallback(
+    () => featureProfileSelection.setValue([]),
+    [featureProfileSelection],
   )
   return (
     <SketchProjectionProvider>
@@ -1810,7 +1845,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
         <EditorModelTree props={props} />
         <EditorContent
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
-          featureProfileSelection={featureProfileSelection.value}
+          featureProfileSelections={featureProfileSelection.value}
           featurePreview={featurePreview}
           onFeatureProfileChange={selectFeatureProfile}
           onRevolveAxisChange={revolveAxisSelection.setValue}
@@ -1820,7 +1855,9 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
         <EditorTaskPanel
-          featureProfileSelection={featureProfileSelection.value}
+          featureProfileSelections={featureProfileSelection.value}
+          onFeatureProfileRemove={removeFeatureProfile}
+          onFeatureProfilesClear={clearFeatureProfiles}
           onFeaturePreviewChange={setPreviewFeature}
           onRevolveAxisChange={revolveAxisSelection.setValue}
           onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}

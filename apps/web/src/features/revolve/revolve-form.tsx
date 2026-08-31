@@ -1,5 +1,6 @@
 import {
   createAngleQuantity,
+  createSketchProfileSet,
   evaluateExpression,
   evaluateVariableDefinitions,
   expectedRevolveDependencyIds,
@@ -8,10 +9,13 @@ import {
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
+  multiProfileRevolveFeatureParametersSchema,
+  multiProfileRevolveFeatureType,
   readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
   revolveFeatureType,
   type SketchProfileSelector,
+  type SketchProfileSet,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
@@ -44,7 +48,7 @@ type Values = Readonly<{
   axis: RevolveAxis
   angle: string
   operation: string
-  profile: SketchProfileSelector
+  profiles: SketchProfileSet
   supportReference: TopoRef | null
   targetFeatureId: string
 }>
@@ -77,19 +81,19 @@ export type RevolveFormMode =
       kind: "create"
       createFeatureId: () => FeatureId
       featureLabel: string
-      profile: SketchProfileSelector
+      profiles: readonly SketchProfileSelector[]
       supportReference?: TopoRef
     }>
   | Readonly<{
       kind: "edit"
       feature: FeatureRecord
-      profile: SketchProfileSelector
+      profiles: readonly SketchProfileSelector[]
       supportReference?: TopoRef
     }>
 
 function valuesFromFeature(
   feature: FeatureRecord,
-  profile: SketchProfileSelector,
+  profiles: readonly SketchProfileSelector[],
   supportReference: TopoRef | undefined,
 ): Values {
   const p = readRevolveFeatureParameters(feature)
@@ -98,7 +102,7 @@ function valuesFromFeature(
     axis: p.axis,
     angle: p.angle.source.expression ?? `${p.angle.source.value} ${p.angle.source.unit}`,
     operation: p.operation,
-    profile,
+    profiles: createSketchProfileSet(profiles),
     supportReference: supportReference ?? null,
     targetFeatureId: feature.dependencies[0] ?? "",
   }
@@ -113,12 +117,12 @@ function defaultValuesForMode(
   targetOptions: readonly { id: FeatureId; label: string }[],
 ): Values {
   if (mode.kind === "edit")
-    return valuesFromFeature(mode.feature, mode.profile, mode.supportReference)
+    return valuesFromFeature(mode.feature, mode.profiles, mode.supportReference)
   return {
     axis: { kind: "origin-axis", axis: "x" },
     angle: defaultAngleExpression(Math.PI * 2, angleUnit),
     operation: "new",
-    profile: mode.profile,
+    profiles: createSketchProfileSet(mode.profiles),
     supportReference: mode.supportReference ?? null,
     targetFeatureId: targetOptions[0]?.id ?? "",
   }
@@ -178,23 +182,41 @@ function revolveSubmitHandler(input: RevolveSubmitHandlerInput) {
 function record(
   mode: RevolveFormMode,
   id: FeatureId,
-  parameters: ReturnType<typeof revolveFeatureParametersSchema.parse>,
+  parameters:
+    | ReturnType<typeof revolveFeatureParametersSchema.parse>
+    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
   const references = supportReference ? [supportReference] : []
+  const dependencyParameters =
+    "profile" in parameters
+      ? parameters
+      : { ...parameters, profile: parameters.profiles.profiles[0] as SketchProfileSelector }
   const dependencies = expectedRevolveDependencyIds(
-    parameters,
+    dependencyParameters,
     targetFeatureId,
     references.map(({ featureId }) => featureId),
   )
   return featureRecordSchema.parse(
     mode.kind === "edit"
-      ? { ...mode.feature, type: revolveFeatureType.type, parameters, references, dependencies }
+      ? {
+          ...mode.feature,
+          type:
+            "profiles" in parameters
+              ? multiProfileRevolveFeatureType.type
+              : revolveFeatureType.type,
+          parameters,
+          references,
+          dependencies,
+        }
       : {
           schemaVersion: 0,
           id,
-          type: revolveFeatureType.type,
+          type:
+            "profiles" in parameters
+              ? multiProfileRevolveFeatureType.type
+              : revolveFeatureType.type,
           parameters,
           references,
           dependencies,
@@ -213,14 +235,25 @@ function parseValues(
   const angle = parseAngle(values.angle, variables, unit, copy)
   if (!angle.ok) return angle
   const operation = extrusionOperationSchema.parse(values.operation)
+  if (values.profiles.profiles.length > 1 && operation !== "new") {
+    return { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
+  }
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
-  const parsed = revolveFeatureParametersSchema.safeParse({
-    profile: values.profile,
-    axis: values.axis,
-    angle: angle.quantity,
-    operation,
-  })
+  const parsed =
+    values.profiles.profiles.length > 1
+      ? multiProfileRevolveFeatureParametersSchema.safeParse({
+          profiles: values.profiles,
+          axis: values.axis,
+          angle: angle.quantity,
+          operation,
+        })
+      : revolveFeatureParametersSchema.safeParse({
+          profile: values.profiles.profiles[0],
+          axis: values.axis,
+          angle: angle.quantity,
+          operation,
+        })
   if (!parsed.success) return { ok: false as const, issues: { angle: copy.invalidRange } }
   return {
     ok: true as const,
@@ -389,14 +422,17 @@ function RevolveAxisSelectionSync({
 
 function RevolveProfileSelectionSync({
   onChange,
-  profile,
+  profiles,
   supportReference,
 }: Readonly<{
-  onChange: (profile: SketchProfileSelector, supportReference: TopoRef | null) => void
-  profile: SketchProfileSelector
+  onChange: (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => void
+  profiles: readonly SketchProfileSelector[]
   supportReference: TopoRef | null
 }>) {
-  useLayoutEffect(() => onChange(profile, supportReference), [onChange, profile, supportReference])
+  useLayoutEffect(
+    () => onChange(profiles, supportReference),
+    [onChange, profiles, supportReference],
+  )
   return null
 }
 
@@ -416,6 +452,9 @@ export type RevolveFormProps = Readonly<{
   onProfileSelectionRequest?: (() => void) | undefined
   options?: readonly { id: FeatureId; label: string }[]
   profileLabel: string
+  profileLabels?: readonly string[]
+  onProfileRemove?: ((index: number) => void) | undefined
+  onProfilesClear?: (() => void) | undefined
   profileSelectionActive?: boolean
   variables: readonly VariableDefinition[]
 }>
@@ -457,9 +496,17 @@ function useRevolveFormController(props: RevolveFormProps) {
     [form],
   )
   const applyProfileSelection = useCallback(
-    (profile: SketchProfileSelector, supportReference: TopoRef | null) => {
-      if (!profileSelectorsEqual(form.getFieldValue("profile"), profile)) {
-        form.setFieldValue("profile", profile)
+    (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => {
+      const nextProfiles = createSketchProfileSet(profiles)
+      const currentProfiles = form.getFieldValue("profiles")
+      const matches =
+        currentProfiles.profiles.length === nextProfiles.profiles.length &&
+        currentProfiles.profiles.every((profile, index) =>
+          profileSelectorsEqual(profile, nextProfiles.profiles[index] ?? null),
+        )
+      if (!matches) {
+        form.setFieldValue("profiles", nextProfiles)
+        if (nextProfiles.profiles.length > 1) form.setFieldValue("operation", "new")
       }
       if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
         form.setFieldValue("supportReference", supportReference)
@@ -512,25 +559,29 @@ function RevolvePreviewField({ controller }: { controller: RevolveFormController
 function RevolveOperationField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
   return (
-    <form.Field name="operation">
-      {(field) => (
-        <NativeSelectField
-          name={field.name}
-          value={field.state.value}
-          label={controller.copy.operation}
-          disabled={controller.disabled}
-          onChange={(event) => {
-            controller.clearSubmissionErrors()
-            field.handleChange(event.currentTarget.value)
-          }}
-        >
-          <option value="new">{controller.copy.operationNew}</option>
-          <option value="add">{controller.copy.operationAdd}</option>
-          <option value="remove">{controller.copy.operationRemove}</option>
-          <option value="intersect">{controller.copy.operationIntersect}</option>
-        </NativeSelectField>
+    <form.Subscribe selector={(state) => state.values.profiles.profiles.length}>
+      {(profileCount) => (
+        <form.Field name="operation">
+          {(field) => (
+            <NativeSelectField
+              name={field.name}
+              value={field.state.value}
+              label={controller.copy.operation}
+              disabled={controller.disabled || profileCount > 1}
+              onChange={(event) => {
+                controller.clearSubmissionErrors()
+                field.handleChange(event.currentTarget.value)
+              }}
+            >
+              <option value="new">{controller.copy.operationNew}</option>
+              <option value="add">{controller.copy.operationAdd}</option>
+              <option value="remove">{controller.copy.operationRemove}</option>
+              <option value="intersect">{controller.copy.operationIntersect}</option>
+            </NativeSelectField>
+          )}
+        </form.Field>
       )}
-    </form.Field>
+    </form.Subscribe>
   )
 }
 
@@ -630,7 +681,7 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
       className="gap-0"
     >
       <RevolveProfileSelectionSync
-        profile={controller.mode.profile}
+        profiles={controller.mode.profiles}
         supportReference={controller.mode.supportReference ?? null}
         onChange={controller.applyProfileSelection}
       />
@@ -643,7 +694,9 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
         copy={controller.copy}
         disabled={controller.disabled}
         message={controller.message}
-        profileLabel={controller.profileLabel}
+        profileLabels={controller.profileLabels ?? [controller.profileLabel]}
+        onProfileRemove={controller.onProfileRemove}
+        onProfilesClear={controller.onProfilesClear}
         profileSelectionActive={controller.profileSelectionActive}
         onProfileSelectionRequest={controller.onProfileSelectionRequest}
         operationField={<RevolveOperationField controller={controller} />}

@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest"
 import type { ActivePartDesignTool } from "./part-design-tool"
 import {
   ineligibleProfileSketchIds,
+  nextProfileFeatureSelection,
   profileForFeatureTool,
   profileSelectorsEqual,
   revolveAxisAfterProfileSelection,
@@ -98,6 +99,20 @@ describe("profile feature selection", () => {
         ],
       }),
     ).toBe(false)
+  })
+
+  it("replaces, toggles, and canonically orders task-local profile selections", () => {
+    const second = sketchProfileSelectorSchema.parse({
+      ...profile,
+      outerBoundaryEntityIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f6112")],
+    })
+    expect(nextProfileFeatureSelection([profile], second, "replace")).toEqual([second])
+    expect(nextProfileFeatureSelection([second], profile, "toggle")).toEqual([profile, second])
+    expect(nextProfileFeatureSelection([profile, second], profile, "toggle")).toEqual([second])
+    expect(nextProfileFeatureSelection([profile], profile, "toggle")).toEqual([])
+    expect(
+      nextProfileFeatureSelection([profile], { ...second, sketchId: laterSketchId }, "toggle"),
+    ).toEqual([{ ...second, sketchId: laterSketchId }])
   })
 
   it("compares topology references by semantic content instead of object identity", () => {

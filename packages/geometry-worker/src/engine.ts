@@ -4,6 +4,7 @@ import {
   cylinderFeatureContentParametersSchema,
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
+  extrusionMultiProfileFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
@@ -15,6 +16,7 @@ import {
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
   revolveFeatureContentParametersSchema,
+  revolveMultiProfileFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
@@ -182,6 +184,8 @@ const EXTRUSION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
 const EXTRUSION_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
+const EXTRUSION_FEATURE_TYPE_V3_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#3"
 const REVOLVE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
 const REVOLVE_FEATURE_TYPE_V2_KEY =
@@ -190,6 +194,8 @@ const REVOLVE_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#3"
 const REVOLVE_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#4"
+const REVOLVE_FEATURE_TYPE_V5_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#5"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -716,8 +722,14 @@ type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
+type ExtrusionMultiProfileContentParameters = ReturnType<
+  typeof extrusionMultiProfileFeatureContentParametersSchema.parse
+>
 export type RevolveContentParameters = ReturnType<
   typeof revolveFeatureContentParametersSchema.parse
+>
+type RevolveMultiProfileContentParameters = ReturnType<
+  typeof revolveMultiProfileFeatureContentParametersSchema.parse
 >
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
@@ -849,7 +861,9 @@ type ParsedFeature =
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
+  | { kind: "multi-extrusion"; parameters: ExtrusionMultiProfileContentParameters }
   | { kind: "revolve"; parameters: RevolveContentParameters }
+  | { kind: "multi-revolve"; parameters: RevolveMultiProfileContentParameters }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -991,6 +1005,29 @@ function parseExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResul
   return { ok: true, feature: { kind: "extrusion", parameters: parameters.data } }
 }
 
+function parseMultiExtrusionFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = extrusionMultiProfileFeatureContentParametersSchema.safeParse(
+    feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Multi-profile extrusion content parameters are invalid.",
+    )
+  }
+  if (
+    !newBodyInputCardinalityIsValid(input.dependencies, parameters.data.supportFeatureId) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId) ||
+    feature.inputs.length !== input.dependencies.length
+  ) {
+    return invalidInputCardinality(
+      "A multi-profile extrusion may depend only on its sketch support.",
+    )
+  }
+  return { ok: true, feature: { kind: "multi-extrusion", parameters: parameters.data } }
+}
+
 function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   const parameters = revolveFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -1016,6 +1053,42 @@ function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult 
     )
   }
   return { ok: true, feature: { kind: "revolve", parameters: parameters.data } }
+}
+
+function parseMultiRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = revolveMultiProfileFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Multi-profile revolve content parameters are invalid.",
+    )
+  }
+  if (
+    !newBodyInputCardinalityIsValid(input.dependencies, parameters.data.supportFeatureId) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId) ||
+    feature.inputs.length !== input.dependencies.length
+  ) {
+    return invalidInputCardinality("A multi-profile revolve may depend only on its sketch support.")
+  }
+  if (
+    parameters.data.axis.kind === "model-edge" &&
+    parameters.data.axis.reference.kind !== "edge"
+  ) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "A multi-profile revolve axis must reference an edge.",
+    )
+  }
+  for (const profile of parameters.data.profiles) {
+    if (revolveProfileCrossesAxis({ ...parameters.data, ...profile })) {
+      return featureFailure(
+        "invalid-feature-parameters",
+        "Revolve profiles must not cross the selected axis.",
+      )
+    }
+  }
+  return { ok: true, feature: { kind: "multi-revolve", parameters: parameters.data } }
 }
 
 function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -1080,10 +1153,12 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
+  [EXTRUSION_FEATURE_TYPE_V3_KEY, parseMultiExtrusionFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V4_KEY, parseRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V5_KEY, parseMultiRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 
@@ -1172,40 +1247,54 @@ function createDatumPlaneFeatureShape(
   }
 }
 
+function createProfileFeatureShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<
+    ParsedFeature,
+    { kind: "extrusion" | "multi-extrusion" | "revolve" | "multi-revolve" }
+  >,
+  dependencyShapes: readonly Shape3D[],
+) {
+  switch (feature.kind) {
+    case "extrusion":
+      return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    case "multi-extrusion":
+      return createMultiExtrusionFeatureShape(opencascade, feature.parameters)
+    case "revolve":
+      return createRevolveFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    case "multi-revolve":
+      return createMultiRevolveFeatureShape(opencascade, feature.parameters)
+  }
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: ParsedFeature,
   dependencyShapes: readonly Shape3D[],
 ) {
-  if (feature.kind === "box") {
-    const { width, depth, height, centered, origin } = feature.parameters
-    return createOcctBox(opencascade, [width, depth, height], centered, origin)
+  switch (feature.kind) {
+    case "box": {
+      const { width, depth, height, centered, origin } = feature.parameters
+      return createOcctBox(opencascade, [width, depth, height], centered, origin)
+    }
+    case "cylinder": {
+      const { radius, height, centered, origin } = feature.parameters
+      return createOcctCylinder(opencascade, radius, height, [
+        origin[0],
+        origin[1],
+        origin[2] + (centered ? -height / 2 : 0),
+      ])
+    }
+    case "datum-plane":
+      return createDatumPlaneFeatureShape(opencascade, feature.parameters)
+    case "boolean": {
+      const [target, tool] = dependencyShapes
+      if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
+      return cutOcctShapes(opencascade, target, tool)
+    }
+    default:
+      return createProfileFeatureShape(opencascade, feature, dependencyShapes)
   }
-
-  if (feature.kind === "cylinder") {
-    const { radius, height, centered, origin } = feature.parameters
-    return createOcctCylinder(opencascade, radius, height, [
-      origin[0],
-      origin[1],
-      origin[2] + (centered ? -height / 2 : 0),
-    ])
-  }
-
-  if (feature.kind === "extrusion") {
-    return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
-  }
-
-  if (feature.kind === "revolve") {
-    return createRevolveFeatureShape(opencascade, feature.parameters, dependencyShapes)
-  }
-
-  if (feature.kind === "datum-plane") {
-    return createDatumPlaneFeatureShape(opencascade, feature.parameters)
-  }
-
-  const [target, tool] = dependencyShapes
-  if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
-  return cutOcctShapes(opencascade, target, tool)
 }
 
 function extrusionPlane(parameters: Pick<ExtrusionContentParameters, "frame" | "plane">) {
@@ -1570,8 +1659,8 @@ function extrusionSegmentEdge(
 }
 
 function extrusionLoopWire(
-  parameters: ExtrusionContentParameters,
-  loop: ExtrusionContentParameters["outer"],
+  parameters: Pick<ExtrusionContentParameters, "frame" | "plane">,
+  loop: { segments: ExtrusionContentParameters["outer"]["segments"] },
   offset: number,
   reverse: boolean,
 ) {
@@ -1589,7 +1678,11 @@ function extrusionLoopWire(
 
 function createExtrusionShape(
   opencascade: OpenCascadeInstance,
-  parameters: ExtrusionContentParameters,
+  parameters: Pick<ExtrusionContentParameters, "frame" | "plane" | "distance" | "symmetric"> &
+    Readonly<{
+      outer: ExtrusionContentParameters["outer"]
+      holes: ExtrusionContentParameters["holes"]
+    }>,
 ) {
   const plane = extrusionPlane(parameters)
   const startOffset = parameters.symmetric ? -parameters.distance / 2 : 0
@@ -1622,10 +1715,20 @@ function createExtrusionShape(
 
 function createRevolveShape(
   opencascade: OpenCascadeInstance,
-  parameters: RevolveContentParameters,
+  parameters: Pick<
+    RevolveContentParameters,
+    "frame" | "axisOrigin" | "axisDirection" | "angleRadians"
+  > &
+    Readonly<{
+      outer: RevolveContentParameters["outer"]
+      holes: RevolveContentParameters["holes"]
+    }>,
 ) {
   const plane = extrusionPlane(parameters)
-  const makeLoop = (loop: RevolveContentParameters["outer"], reverse: boolean) => {
+  const makeLoop = (
+    loop: { segments: RevolveContentParameters["outer"]["segments"] },
+    reverse: boolean,
+  ) => {
     const orderedSegments = reverse ? [...loop.segments].reverse() : loop.segments
     const edges = orderedSegments.map((segment) => extrusionSegmentEdge(plane, segment, 0, reverse))
     try {
@@ -1693,26 +1796,113 @@ function createRevolveFeatureShape(
   }
 }
 
+function combineMultiProfileTools<Profile>(
+  opencascade: OpenCascadeInstance,
+  profiles: readonly Profile[],
+  createTool: (profile: Profile) => Shape3D,
+) {
+  let combined: Shape3D | null = null
+  try {
+    for (const profile of profiles) {
+      const tool = createTool(profile)
+      if (!combined) {
+        combined = tool
+        continue
+      }
+      const previous = combined
+      combined = null
+      try {
+        combined = fuseOcctShapes(opencascade, previous, tool)
+      } finally {
+        previous.delete()
+        tool.delete()
+      }
+    }
+    if (!combined) throw new Error("Multi-profile content must contain at least one profile.")
+    return combined
+  } catch (error) {
+    if (combined) {
+      try {
+        combined.delete()
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+    throw error
+  }
+}
+
+function createMultiExtrusionFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: ExtrusionMultiProfileContentParameters,
+) {
+  return combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
+    createExtrusionShape(opencascade, { ...parameters, ...profile }),
+  )
+}
+
+function createMultiRevolveFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: RevolveMultiProfileContentParameters,
+) {
+  return combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
+    createRevolveShape(opencascade, { ...parameters, ...profile }),
+  )
+}
+
+function multiExtrusionRoleParameters(
+  parameters: ExtrusionMultiProfileContentParameters,
+): ExtrusionContentParameters | undefined {
+  const [first, ...rest] = parameters.profiles
+  if (!first) return undefined
+  return {
+    ...parameters,
+    outer: first.outer,
+    holes: [...first.holes, ...rest.flatMap((profile) => [profile.outer, ...profile.holes])],
+  }
+}
+
+function datumPlaneTopologySemanticRole(
+  context: TopologyCandidateContext,
+  parameters: DatumPlaneContentParameters,
+) {
+  if (context.kind !== "face" || context.signature.geometryClass !== "PLANE") return undefined
+  const direction = context.signature.direction
+  if (!direction) return undefined
+  return Math.abs(dot3(direction, parameters.frame.normal)) > 0.999 ? "datum.plane" : undefined
+}
+
+function featureTopologySemanticRole(
+  context: TopologyCandidateContext,
+  feature: ParsedFeature,
+  extrusionParameters: ExtrusionContentParameters | undefined,
+  extrusionRoleIndex: ExtrusionRoleIndex | undefined,
+) {
+  if (extrusionParameters) {
+    return extrusionFeatureSemanticRole(context, extrusionParameters, extrusionRoleIndex)
+  }
+  if (feature.kind === "box") return boxFeatureSemanticRole(context, feature.parameters)
+  if (feature.kind === "cylinder") return cylinderFeatureSemanticRole(context, feature.parameters)
+  if (feature.kind === "datum-plane") {
+    return datumPlaneTopologySemanticRole(context, feature.parameters)
+  }
+  return undefined
+}
+
 function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   if (feature.kind === "boolean") return captureReplicadTopologyCandidates(shape)
-  const extrusionRoleIndex =
-    feature.kind === "extrusion" ? createExtrusionRoleIndex(feature.parameters) : undefined
+  const extrusionParameters =
+    feature.kind === "extrusion"
+      ? feature.parameters
+      : feature.kind === "multi-extrusion"
+        ? multiExtrusionRoleParameters(feature.parameters)
+        : undefined
+  const extrusionRoleIndex = extrusionParameters
+    ? createExtrusionRoleIndex(extrusionParameters)
+    : undefined
   return captureReplicadTopologyCandidates(shape, {
     semanticRole: (context) =>
-      feature.kind === "box"
-        ? boxFeatureSemanticRole(context, feature.parameters)
-        : feature.kind === "cylinder"
-          ? cylinderFeatureSemanticRole(context, feature.parameters)
-          : feature.kind === "datum-plane"
-            ? context.kind === "face" &&
-              context.signature.geometryClass === "PLANE" &&
-              context.signature.direction &&
-              Math.abs(dot3(context.signature.direction, feature.parameters.frame.normal)) > 0.999
-              ? "datum.plane"
-              : undefined
-            : feature.kind === "revolve"
-              ? undefined
-              : extrusionFeatureSemanticRole(context, feature.parameters, extrusionRoleIndex),
+      featureTopologySemanticRole(context, feature, extrusionParameters, extrusionRoleIndex),
   })
 }
 
@@ -1723,8 +1913,17 @@ function evaluateFeatureGeometry(
 ) {
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
-  if (!metrics.valid || metrics.solidCount !== 1 || metrics.volume <= 0) {
-    throw new Error("Feature evaluation did not produce one valid positive-volume solid.")
+  const maximumSolidCount =
+    feature.kind === "multi-extrusion" || feature.kind === "multi-revolve"
+      ? feature.parameters.profiles.length
+      : 1
+  if (
+    !metrics.valid ||
+    metrics.solidCount < 1 ||
+    metrics.solidCount > maximumSolidCount ||
+    metrics.volume <= 0
+  ) {
+    throw new Error("Feature evaluation did not produce a valid bounded positive-volume result.")
   }
   return {
     metrics,

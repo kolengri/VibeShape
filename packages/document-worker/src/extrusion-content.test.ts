@@ -3,10 +3,12 @@ import {
   createAngleQuantity,
   createLengthQuantity,
   createRectangleSketch,
+  createSketchProfileSet,
   datumPlaneFeatureType,
   documentSnapshotSchema,
   extrusionFeatureType,
   featureRecordSchema,
+  multiProfileExtrusionFeatureType,
   revolveFeatureType,
   type SketchRecord,
   sketchConstraintIdSchema,
@@ -157,6 +159,93 @@ function extrusionFixture(sketch: SketchRecord) {
     maximumResidual: 0,
     points,
     circles: [],
+    failedConstraintIds: [],
+    profileResult,
+    heapCapacityBytes: 1024,
+    solverBuild: SKETCH_SOLVER_BUILD,
+  } as const
+  return { document, feature, solution }
+}
+
+function multiCircleFixture() {
+  const firstCenterId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003450")
+  const secondCenterId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003451")
+  const firstCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003452")
+  const secondCircleId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003453")
+  const sketch = sketchRecordSchema.parse({
+    schemaVersion: 0,
+    id: sketchId,
+    label: "Two profiles",
+    plane: "xy",
+    entities: [
+      { schemaVersion: 0, id: firstCenterId, type: "point", x: -8, y: 0, construction: false },
+      { schemaVersion: 0, id: secondCenterId, type: "point", x: 8, y: 0, construction: false },
+      {
+        schemaVersion: 0,
+        id: firstCircleId,
+        type: "circle",
+        centerPointId: firstCenterId,
+        radius: 5,
+        construction: false,
+      },
+      {
+        schemaVersion: 0,
+        id: secondCircleId,
+        type: "circle",
+        centerPointId: secondCenterId,
+        radius: 5,
+        construction: false,
+      },
+    ],
+    constraints: [],
+  })
+  const points = [
+    { entityId: firstCenterId, x: -8, y: 0 },
+    { entityId: secondCenterId, x: 8, y: 0 },
+  ]
+  const circles = [
+    { entityId: firstCircleId, radius: 5 },
+    { entityId: secondCircleId, radius: 5 },
+  ]
+  const profileResult = detectSketchProfiles(sketch, { points, circles })
+  const selectors = [0, 1].map((index) =>
+    createSketchProfileSelector(sketch.id, profileResult, index),
+  )
+  if (!selectors[0] || !selectors[1]) throw new Error("Expected two circle profiles.")
+  const feature = featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b220-7a2c-8c33-000000003454",
+    type: multiProfileExtrusionFeatureType.type,
+    parameters: {
+      profiles: createSketchProfileSet([selectors[1], selectors[0]]),
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      operation: "new",
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  })
+  const document = documentSnapshotSchema.parse({
+    schemaVersion: 0,
+    id: "0195b5ac-b213-7f2c-9c33-67a36a7f21ad",
+    revision: 1,
+    name: "Multi-profile preparation",
+    variables: [],
+    sketches: [sketch],
+    features: [feature],
+    createdAt: "2026-08-31T00:00:00.000Z",
+    updatedAt: "2026-08-31T00:00:00.000Z",
+  })
+  const solution = {
+    schemaVersion: 0,
+    sketchId,
+    sourceRevision: document.revision,
+    status: "under-constrained",
+    degreesOfFreedom: 4,
+    maximumResidual: 0,
+    points,
+    circles,
     failedConstraintIds: [],
     profileResult,
     heapCapacityBytes: 1024,
@@ -346,6 +435,25 @@ describe("document extrusion content preparation", () => {
       },
     })
     expect(second).toEqual(first)
+    expect(solve).toHaveBeenCalledTimes(1)
+  })
+
+  it("solves once and materializes every canonical profile selector", async () => {
+    const { document, feature, solution } = multiCircleFixture()
+    const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution }))
+    const prepare = createDocumentFeatureContentPreparer(solve)
+
+    const prepared = await prepare({ document, feature })
+    expect(prepared, JSON.stringify(prepared)).toMatchObject({
+      ok: true,
+      parameters: {
+        profiles: [
+          { outer: { sourceEntityIds: [expect.any(String)] }, holes: [] },
+          { outer: { sourceEntityIds: [expect.any(String)] }, holes: [] },
+        ],
+        operation: "new",
+      },
+    })
     expect(solve).toHaveBeenCalledTimes(1)
   })
 

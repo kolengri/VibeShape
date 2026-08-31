@@ -3,7 +3,11 @@ import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { type FeatureId, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
-import { sketchProfileSelectorSchema } from "./sketch-profile-selector"
+import {
+  createSketchProfileSet,
+  sketchProfileSelectorSchema,
+  sketchProfileSetSchema,
+} from "./sketch-profile-selector"
 import { edgeTopoRefSchema } from "./topology"
 import { angleQuantitySchema, createLengthQuantity, lengthQuantitySchema } from "./units"
 import {
@@ -128,6 +132,34 @@ export const extrusionFeatureAuthoredContentParametersSchema = z
   })
   .strict()
 
+function profilesShareSketch(profiles: readonly { sketchId: string }[]) {
+  return profiles.every((profile) => profile.sketchId === profiles[0]?.sketchId)
+}
+
+const multiProfileSetSchema = sketchProfileSetSchema.refine(
+  ({ profiles }) => profilesShareSketch(profiles),
+  "All selected profiles must belong to the same sketch.",
+)
+
+export const extrusionFeatureParametersV3Schema = z
+  .object({
+    profiles: multiProfileSetSchema,
+    distance: primitiveLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
+export const multiProfileExtrusionFeatureParametersSchema = extrusionFeatureParametersV3Schema
+
+export const extrusionFeatureAuthoredContentParametersV3Schema = z
+  .object({
+    profiles: sketchProfileSetSchema,
+    distance: primitiveContentLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
+
 const revolveAngleSchema = angleQuantitySchema.refine(
   ({ value }) => value > 0 && value <= Math.PI * 2,
   "Revolve angles must be greater than zero and at most 360 degrees.",
@@ -179,6 +211,23 @@ export const revolveFeatureParametersSchema = z
     operation: extrusionOperationSchema,
   })
   .strict()
+
+export const revolveFeatureParametersV5Schema = z
+  .object({
+    profiles: multiProfileSetSchema,
+    axis: revolveAxisSchema,
+    angle: revolveAngleSchema,
+    operation: z.literal("new"),
+  })
+  .strict()
+export const multiProfileRevolveFeatureParametersSchema = revolveFeatureParametersV5Schema
+
+type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {
+  profiles?: z.infer<typeof sketchProfileSetSchema>
+}
+type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
+  profiles?: z.infer<typeof sketchProfileSetSchema>
+}
 
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
 
@@ -268,6 +317,15 @@ function resolveCylinderParameters(parameters: unknown, variables: VariableValue
 }
 
 function resolveExtrusionParameters(parameters: unknown, variables: VariableValues) {
+  const multiProfile = extrusionFeatureParametersV3Schema.safeParse(parameters)
+  if (multiProfile.success) {
+    const distance = resolveLengthParameter("distance", multiProfile.data.distance, variables)
+    if (!distance.ok) return distance
+    return {
+      ok: true,
+      parameters: { ...multiProfile.data, distance: distance.quantity },
+    } as const
+  }
   const parsed = z
     .object({
       profile: sketchProfileSelectorSchema,
@@ -351,6 +409,20 @@ export const extrusionFeatureType = featureTypeDescriptorSchema.parse({
   references: { min: 0, max: 1 },
 })
 
+export const extrusionFeatureTypeV3 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.extrusion",
+    schemaVersion: 3,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 2 },
+  references: { min: 0, max: 1 },
+})
+export const multiProfileExtrusionFeatureType = extrusionFeatureTypeV3
+
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -363,6 +435,20 @@ export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   dependencies: { min: 0, max: 3 },
   references: { min: 0, max: 1 },
 })
+
+export const revolveFeatureTypeV5 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 5,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 3 },
+  references: { min: 0, max: 1 },
+})
+export const multiProfileRevolveFeatureType = revolveFeatureTypeV5
 
 export const legacyRevolveFeatureTypeV3 = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
@@ -406,28 +492,10 @@ export const legacyRevolveFeatureType = featureTypeDescriptorSchema.parse({
 function isExtrusionType(feature: FeatureRecord) {
   const type = feature.type
   if (!type) return false
-  return [legacyExtrusionFeatureType.type, extrusionFeatureType.type].some(
-    (expected) =>
-      type.moduleId === expected.moduleId &&
-      type.moduleVersion === expected.moduleVersion &&
-      type.typeId === expected.typeId &&
-      type.schemaVersion === expected.schemaVersion,
-  )
-}
-
-export function readExtrusionFeatureParameters(feature: FeatureRecord) {
-  if (!isExtrusionType(feature)) return null
-  const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
-  return parsed.success ? parsed.data : null
-}
-
-export function isRevolveType(feature: FeatureRecord) {
-  const type = feature.type
   return [
-    legacyRevolveFeatureType.type,
-    legacyRevolveFeatureTypeV2.type,
-    legacyRevolveFeatureTypeV3.type,
-    revolveFeatureType.type,
+    legacyExtrusionFeatureType.type,
+    extrusionFeatureType.type,
+    extrusionFeatureTypeV3.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -437,7 +505,46 @@ export function isRevolveType(feature: FeatureRecord) {
   )
 }
 
-export function readRevolveFeatureParameters(feature: FeatureRecord) {
+export function readExtrusionFeatureParameters(
+  feature: FeatureRecord,
+): NormalizedExtrusionParameters | null {
+  if (!isExtrusionType(feature)) return null
+  const parsed = z
+    .union([extrusionFeatureParametersSchema, extrusionFeatureParametersV3Schema])
+    .safeParse(feature.parameters)
+  if (!parsed.success) return null
+  if ("profile" in parsed.data) return parsed.data
+  const profile = parsed.data.profiles.profiles[0]
+  return profile ? ({ ...parsed.data, profile } as NormalizedExtrusionParameters) : null
+}
+
+export function readExtrusionProfileSet(feature: FeatureRecord) {
+  const parameters = readExtrusionFeatureParameters(feature)
+  return parameters
+    ? createSketchProfileSet(parameters.profiles?.profiles ?? [parameters.profile])
+    : null
+}
+
+export function isRevolveType(feature: FeatureRecord) {
+  const type = feature.type
+  return [
+    legacyRevolveFeatureType.type,
+    legacyRevolveFeatureTypeV2.type,
+    legacyRevolveFeatureTypeV3.type,
+    revolveFeatureType.type,
+    revolveFeatureTypeV5.type,
+  ].some(
+    (expected) =>
+      type.moduleId === expected.moduleId &&
+      type.moduleVersion === expected.moduleVersion &&
+      type.typeId === expected.typeId &&
+      type.schemaVersion === expected.schemaVersion,
+  )
+}
+
+export function readRevolveFeatureParameters(
+  feature: FeatureRecord,
+): NormalizedRevolveParameters | null {
   if (!isRevolveType(feature)) return null
   const parsed = z
     .union([
@@ -445,12 +552,24 @@ export function readRevolveFeatureParameters(feature: FeatureRecord) {
       legacyRevolveFeatureParametersV2Schema,
       legacyRevolveFeatureParametersV3Schema,
       revolveFeatureParametersSchema,
+      revolveFeatureParametersV5Schema,
     ])
     .safeParse(feature.parameters)
   if (!parsed.success) return null
-  return typeof parsed.data.axis === "string"
-    ? { ...parsed.data, axis: { kind: "origin-axis" as const, axis: parsed.data.axis } }
-    : parsed.data
+  const normalized =
+    typeof parsed.data.axis === "string"
+      ? { ...parsed.data, axis: { kind: "origin-axis" as const, axis: parsed.data.axis } }
+      : parsed.data
+  if ("profile" in normalized) return normalized
+  const profile = normalized.profiles.profiles[0]
+  return profile ? ({ ...normalized, profile } as NormalizedRevolveParameters) : null
+}
+
+export function readRevolveProfileSet(feature: FeatureRecord) {
+  const parameters = readRevolveFeatureParameters(feature)
+  return parameters
+    ? createSketchProfileSet(parameters.profiles?.profiles ?? [parameters.profile])
+    : null
 }
 
 export function revolveAxisSourceFeatureId(
@@ -480,6 +599,7 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
       legacyRevolveFeatureParametersV2Schema,
       legacyRevolveFeatureParametersV3Schema,
       revolveFeatureParametersSchema,
+      revolveFeatureParametersV5Schema,
     ])
     .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
@@ -545,25 +665,40 @@ function revolveDependencyIssue(
   return null
 }
 
-function extrusionFeatureInvariant(feature: FeatureRecord) {
-  const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
-  if (!parameters.success) return []
+function extrusionDependencyIssue(feature: FeatureRecord) {
   const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
+  const multiProfile = extrusionFeatureParametersV3Schema.safeParse(feature.parameters)
+  if (multiProfile.success) {
+    return feature.dependencies.length === supportDependencyCount
+      ? null
+      : {
+          path: "dependencies",
+          message:
+            "Multi-profile new-body extrusion dependencies must match sketch-support references.",
+        }
+  }
+  const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) return null
   const minimumDependencyCount = parameters.data.operation === "new" ? supportDependencyCount : 1
   const maximumDependencyCount =
     parameters.data.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
-  return feature.dependencies.length >= minimumDependencyCount &&
+  const valid =
+    feature.dependencies.length >= minimumDependencyCount &&
     feature.dependencies.length <= maximumDependencyCount
-    ? []
-    : [
-        {
-          path: "dependencies",
-          message:
-            parameters.data.operation === "new"
-              ? "New-body extrusion dependencies must match its sketch-support references."
-              : `${parameters.data.operation} extrusion requires one target plus any distinct sketch-support dependency.`,
-        },
-      ]
+  return valid
+    ? null
+    : {
+        path: "dependencies",
+        message:
+          parameters.data.operation === "new"
+            ? "New-body extrusion dependencies must match its sketch-support references."
+            : `${parameters.data.operation} extrusion requires one target plus any distinct sketch-support dependency.`,
+      }
+}
+
+function extrusionFeatureInvariant(feature: FeatureRecord) {
+  const issue = extrusionDependencyIssue(feature)
+  return issue ? [issue] : []
 }
 
 export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[] = [
@@ -633,6 +768,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   {
+    type: extrusionFeatureTypeV3.type,
+    parametersSchema: extrusionFeatureParametersV3Schema,
+    validateFeature: extrusionFeatureInvariant,
+    resolveParameters: resolveExtrusionParameters,
+    contentParameters(parameters) {
+      const extrusion = extrusionFeatureParametersV3Schema.parse(parameters)
+      return extrusionFeatureAuthoredContentParametersV3Schema.parse({
+        profiles: extrusion.profiles,
+        distance: extrusion.distance.value,
+        symmetric: extrusion.symmetric,
+        operation: extrusion.operation,
+      })
+    },
+  },
+  {
     type: legacyRevolveFeatureType.type,
     parametersSchema: legacyRevolveFeatureParametersSchema,
     validateFeature: revolveFeatureInvariant,
@@ -686,6 +836,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       const revolve = revolveFeatureParametersSchema.parse(parameters)
       return {
         profile: revolve.profile,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: revolve.operation,
+      }
+    },
+  },
+  {
+    type: revolveFeatureTypeV5.type,
+    parametersSchema: revolveFeatureParametersV5Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersV5Schema.parse(parameters)
+      return {
+        profiles: revolve.profiles,
         axis: revolve.axis,
         angle: revolve.angle.value,
         operation: revolve.operation,

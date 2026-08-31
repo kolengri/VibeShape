@@ -812,8 +812,24 @@ function documentSchedulingFeatures(
       dependencies: [
         ...new Set([
           ...feature.dependencies,
-          ...(extrusion ? sketchModelFeatureIds(document, extrusion.profile.sketchId) : []),
-          ...(revolve ? sketchModelFeatureIds(document, revolve.profile.sketchId) : []),
+          ...(extrusion
+            ? [
+                ...new Set(
+                  (extrusion.profiles?.profiles ?? [extrusion.profile]).flatMap((profile) =>
+                    sketchModelFeatureIds(document, profile.sketchId),
+                  ),
+                ),
+              ]
+            : []),
+          ...(revolve
+            ? [
+                ...new Set(
+                  (revolve.profiles?.profiles ?? [revolve.profile]).flatMap((profile) =>
+                    sketchModelFeatureIds(document, profile.sketchId),
+                  ),
+                ),
+              ]
+            : []),
         ]),
       ],
     }

@@ -93,7 +93,9 @@ type TaskPanelProps = Readonly<{
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
-  featureProfileSelection?: SketchProfileSelector | undefined
+  featureProfileSelections?: readonly SketchProfileSelector[] | undefined
+  onFeatureProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
+  onFeatureProfilesClear?: (() => void) | undefined
   onRevolveAxisChange?:
     | ((axis: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]) => void)
     | undefined
@@ -342,6 +344,8 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
     ...operationCopy,
     parameters: t("parameters"),
     profile: t("profile"),
+    clearProfiles: t("clearProfiles"),
+    removeProfile: (profile: string) => t("removeProfile", { profile }),
     distance: t("distance"),
     symmetric: t("symmetric"),
     expressionDescription: t("expressionDescription"),
@@ -349,6 +353,7 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
+    missingProfile: t("missingProfile"),
     missingTarget: t("missingTarget"),
     operation: t("operation"),
     operationAdd: t("operationAdd"),
@@ -371,6 +376,8 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"], profileLabel: string)
     saveFailed: mode === "create" ? t("createFailed") : t("updateFailed"),
     parameters: t("parameters"),
     profile: t("profile"),
+    clearProfiles: t("clearProfiles"),
+    removeProfile: (profile: string) => t("removeProfile", { profile }),
     profileSelectAriaLabel: t("profileSelectAriaLabel", { profile: profileLabel }),
     profileSelectHint: t("profileSelectHint"),
     axis: t("axis"),
@@ -607,12 +614,16 @@ function EditFeatureDeleteAction({
 function ExtrusionTaskPanel({
   mode,
   onCloseTool,
+  onProfileRemove,
+  onProfilesClear,
   onPreviewChange,
   options,
   report,
 }: {
   mode: ExtrusionFormMode
   onCloseTool: () => void
+  onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
+  onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly ExtrusionTargetOption[]
   report: NonNullable<DocumentControllerState["report"]>
@@ -621,12 +632,12 @@ function ExtrusionTaskPanel({
   const copy = useExtrusionFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   const t = useTranslations("app.shell.taskPanel")
-  const profileLabel = selectedProfileLabel(
-    report,
-    mode.profile,
-    t("extrusion.missingProfile"),
-    (sketch, number) => t("selectedProfileLabel", { sketch, number }),
+  const profileLabels = mode.profiles.map((profile) =>
+    selectedProfileLabel(report, profile, t("extrusion.missingProfile"), (sketch, number) =>
+      t("selectedProfileLabel", { sketch, number }),
+    ),
   )
+  const profileLabel = profileLabels.join(", ")
   return (
     <aside aria-label={t("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <ExtrusionForm
@@ -637,6 +648,13 @@ function ExtrusionTaskPanel({
         mode={mode}
         options={options}
         profileLabel={profileLabel}
+        profileLabels={profileLabels}
+        onProfileRemove={
+          onProfileRemove
+            ? (index) => onProfileRemove(mode.profiles[index] as SketchProfileSelector)
+            : undefined
+        }
+        onProfilesClear={onProfilesClear}
         variables={snapshot.variables}
         onCancel={onCloseTool}
         onPreviewChange={onPreviewChange}
@@ -676,6 +694,8 @@ function RevolveTaskPanel({
   onAxisSelectionRequest,
   onCloseTool,
   onPreviewChange,
+  onProfileRemove,
+  onProfilesClear,
   onProfileSelectionRequest,
   options,
   profileSelectionActive,
@@ -690,6 +710,8 @@ function RevolveTaskPanel({
   onAxisSelectionRequest?: (() => void) | undefined
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
+  onProfilesClear?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
   options: readonly { id: FeatureRecord["id"]; label: string }[]
   profileSelectionActive?: boolean | undefined
@@ -698,12 +720,12 @@ function RevolveTaskPanel({
   const snapshot = report.snapshot
   const t = useTranslations("app.shell.taskPanel.revolve")
   const panelT = useTranslations("app.shell.taskPanel")
-  const profileLabel = selectedProfileLabel(
-    report,
-    mode.profile,
-    t("missingProfile"),
-    (sketch, number) => panelT("selectedProfileLabel", { sketch, number }),
+  const profileLabels = mode.profiles.map((profile) =>
+    selectedProfileLabel(report, profile, t("missingProfile"), (sketch, number) =>
+      panelT("selectedProfileLabel", { sketch, number }),
+    ),
   )
+  const profileLabel = profileLabels.join(", ")
   const copy = useRevolveFormCopy(mode.kind, profileLabel)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
@@ -718,6 +740,13 @@ function RevolveTaskPanel({
         mode={mode}
         options={options}
         profileLabel={profileLabel}
+        profileLabels={profileLabels}
+        onProfileRemove={
+          onProfileRemove
+            ? (index) => onProfileRemove(mode.profiles[index] as SketchProfileSelector)
+            : undefined
+        }
+        onProfilesClear={onProfilesClear}
         profileSelectionActive={profileSelectionActive ?? false}
         variables={snapshot.variables}
         onCancel={onCloseTool}
@@ -905,8 +934,9 @@ function extrusionFormMode(
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>,
   report: NonNullable<DocumentControllerState["report"]>,
   featureLabel: string,
-  profile: SketchProfileSelector | null,
+  profiles: readonly SketchProfileSelector[],
 ): ExtrusionFormMode | null {
+  const profile = profiles[0]
   if (!profile) return null
   const supportReference = profileSupportReference(report.snapshot, profile)
   if (activeTool.kind === "create-extrusion")
@@ -915,23 +945,24 @@ function extrusionFormMode(
           kind: "create",
           createFeatureId: createBrowserFeatureId,
           featureLabel,
-          profile,
+          profiles,
           supportReference,
         }
-      : { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel, profile }
+      : { kind: "create", createFeatureId: createBrowserFeatureId, featureLabel, profiles }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   if (!feature || !isExtrusionFeature(feature)) return null
   return supportReference
-    ? { kind: "edit", feature, profile, supportReference }
-    : { kind: "edit", feature, profile }
+    ? { kind: "edit", feature, profiles, supportReference }
+    : { kind: "edit", feature, profiles }
 }
 
 function revolveFormMode(
   activeTool: Extract<ActivePartDesignTool, { kind: "create-revolve" | "edit-revolve" }>,
   report: NonNullable<DocumentControllerState["report"]>,
   featureLabel: string,
-  profile: SketchProfileSelector | null,
+  profiles: readonly SketchProfileSelector[],
 ): RevolveFormMode | null {
+  const profile = profiles[0]
   if (!profile) return null
   const supportReference = profileSupportReference(report.snapshot, profile)
   if (activeTool.kind === "create-revolve") {
@@ -939,15 +970,15 @@ function revolveFormMode(
       kind: "create" as const,
       createFeatureId: createBrowserFeatureId,
       featureLabel,
-      profile,
+      profiles,
     }
     return supportReference ? { ...mode, supportReference } : mode
   }
   const feature = report.snapshot.features.find(({ id }) => id === activeTool.featureId)
   if (!feature || !isRevolveFeature(feature)) return null
   return supportReference
-    ? { kind: "edit", feature, profile, supportReference }
-    : { kind: "edit", feature, profile }
+    ? { kind: "edit", feature, profiles, supportReference }
+    : { kind: "edit", feature, profiles }
 }
 
 function datumPlaneFormMode(
@@ -1206,16 +1237,48 @@ function ActiveDatumPlaneTaskPanel({
   ) : null
 }
 
+function EmptyProfileFeatureTaskPanel({
+  cancel,
+  description,
+  onCloseTool,
+  title,
+}: Readonly<{
+  cancel: string
+  description: string
+  onCloseTool: () => void
+  title: string
+}>) {
+  const panelT = useTranslations("app.shell.taskPanel")
+  return (
+    <aside
+      aria-label={panelT("ariaLabel")}
+      className="grid min-h-0 content-between gap-4 overflow-auto border-l bg-panel p-4"
+    >
+      <div className="grid gap-2">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Button type="button" size="sm" variant="outline" onClick={onCloseTool}>
+        {cancel}
+      </Button>
+    </aside>
+  )
+}
+
 function ActiveExtrusionTaskPanel({
   activeTool,
-  featureProfileSelection,
+  featureProfileSelections,
   onCloseTool,
+  onProfileRemove,
+  onProfilesClear,
   onPreviewChange,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
-  featureProfileSelection?: SketchProfileSelector | undefined
+  featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onCloseTool: () => void
+  onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
+  onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
@@ -1226,9 +1289,17 @@ function ActiveExtrusionTaskPanel({
     activeTool,
     report,
     t("featureLabel", { number: extrusionCount + 1 }),
-    featureProfileSelection ?? null,
+    featureProfileSelections ?? [],
   )
-  if (!mode) return null
+  if (!mode)
+    return (
+      <EmptyProfileFeatureTaskPanel
+        cancel={t("cancel")}
+        description={t("profileSelectionRequired")}
+        onCloseTool={onCloseTool}
+        title={t(activeTool.kind === "edit-extrusion" ? "editTitle" : "title")}
+      />
+    )
   const options = extrusionOptions(
     report,
     mode.kind === "edit" ? mode.feature.id : undefined,
@@ -1240,6 +1311,8 @@ function ActiveExtrusionTaskPanel({
       mode={mode}
       options={options}
       onCloseTool={onCloseTool}
+      onProfileRemove={onProfileRemove}
+      onProfilesClear={onProfilesClear}
       onPreviewChange={onPreviewChange}
     />
   )
@@ -1275,7 +1348,9 @@ function ActiveSubtractTaskPanel({
 
 type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
-  featureProfileSelection?: SketchProfileSelector | undefined
+  featureProfileSelections?: readonly SketchProfileSelector[] | undefined
+  onFeatureProfileRemove?: TaskPanelProps["onFeatureProfileRemove"] | undefined
+  onFeatureProfilesClear?: TaskPanelProps["onFeatureProfilesClear"] | undefined
   onCloseTool: () => void
   onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
@@ -1319,8 +1394,10 @@ function DatumPlaneToolTaskPanel({
 
 function ExtrusionToolTaskPanel({
   activeTool,
-  featureProfileSelection,
+  featureProfileSelections,
   onCloseTool,
+  onFeatureProfileRemove,
+  onFeatureProfilesClear,
   onFeaturePreviewChange,
   report,
 }: ActiveTaskPanelProps) {
@@ -1328,8 +1405,10 @@ function ExtrusionToolTaskPanel({
   return (
     <ActiveExtrusionTaskPanel
       activeTool={activeTool}
-      featureProfileSelection={featureProfileSelection}
+      featureProfileSelections={featureProfileSelections}
       onCloseTool={onCloseTool}
+      onProfileRemove={onFeatureProfileRemove}
+      onProfilesClear={onFeatureProfilesClear}
       onPreviewChange={onFeaturePreviewChange}
       report={report}
     />
@@ -1345,7 +1424,7 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
     props.activeTool,
     props.report,
     t("featureLabel", { number: count + 1 }),
-    props.featureProfileSelection ?? null,
+    props.featureProfileSelections ?? [],
   )
   const modelTreeT = useTranslations("app.shell.modelTree")
   const options = mode
@@ -1364,12 +1443,21 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
       onAxisSelectionRequest={props.onRevolveAxisSelectionRequest}
       onCloseTool={props.onCloseTool}
       onPreviewChange={props.onFeaturePreviewChange}
+      onProfileRemove={props.onFeatureProfileRemove}
+      onProfilesClear={props.onFeatureProfilesClear}
       onProfileSelectionRequest={props.onRevolveProfileSelectionRequest}
       options={options}
       profileSelectionActive={props.revolveProfileSelectionActive}
       report={props.report}
     />
-  ) : null
+  ) : (
+    <EmptyProfileFeatureTaskPanel
+      cancel={t("cancel")}
+      description={t("profileSelectionRequired")}
+      onCloseTool={props.onCloseTool}
+      title={t(props.activeTool.kind === "edit-revolve" ? "editTitle" : "title")}
+    />
+  )
 }
 
 function SubtractToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
@@ -1412,50 +1500,40 @@ function canExtrudeSelectedSketch(
   )
 }
 
-function ModelTaskPanel({
-  activeSketchId,
-  activeTool,
-  controller,
-  featureProfileSelection,
-  onCloseTool,
-  onCreateBox,
-  onCreateCylinder,
-  onCreateSketch,
-  onCreateSubtract,
-  onFeaturePreviewChange,
-  onRevolveAxisChange,
-  onRevolveAxisSelectionRequest,
-  onRevolveProfileSelectionRequest,
-  revolveAxisLineLabel,
-  revolveAxisSelection,
-  revolveProfileSelectionActive,
-  sketchSelectedProfile,
-}: TaskPanelProps) {
-  const report = controller.report
-  const canCreate = canCreateFeature(controller)
-  return activeTool && report ? (
-    <ActiveTaskPanel
-      activeTool={activeTool}
-      featureProfileSelection={featureProfileSelection}
-      report={report}
-      onCloseTool={onCloseTool}
-      onFeaturePreviewChange={onFeaturePreviewChange}
-      onRevolveAxisChange={onRevolveAxisChange}
-      onRevolveAxisSelectionRequest={onRevolveAxisSelectionRequest}
-      onRevolveProfileSelectionRequest={onRevolveProfileSelectionRequest}
-      revolveAxisLineLabel={revolveAxisLineLabel}
-      revolveAxisSelection={revolveAxisSelection}
-      revolveProfileSelectionActive={revolveProfileSelectionActive}
-    />
-  ) : (
+function ModelTaskPanel(props: TaskPanelProps) {
+  const report = props.controller.report
+  if (props.activeTool && report) {
+    return (
+      <ActiveTaskPanel
+        activeTool={props.activeTool}
+        featureProfileSelections={props.featureProfileSelections}
+        onFeatureProfileRemove={props.onFeatureProfileRemove}
+        onFeatureProfilesClear={props.onFeatureProfilesClear}
+        report={report}
+        onCloseTool={props.onCloseTool}
+        onFeaturePreviewChange={props.onFeaturePreviewChange}
+        onRevolveAxisChange={props.onRevolveAxisChange}
+        onRevolveAxisSelectionRequest={props.onRevolveAxisSelectionRequest}
+        onRevolveProfileSelectionRequest={props.onRevolveProfileSelectionRequest}
+        revolveAxisLineLabel={props.revolveAxisLineLabel}
+        revolveAxisSelection={props.revolveAxisSelection}
+        revolveProfileSelectionActive={props.revolveProfileSelectionActive}
+      />
+    )
+  }
+  return (
     <StartTaskPanel
-      canCreate={canCreate}
-      canExtrude={canExtrudeSelectedSketch(controller, activeSketchId, sketchSelectedProfile)}
-      canSubtract={canCreateSubtract(controller)}
-      onCreateBox={onCreateBox}
-      onCreateCylinder={onCreateCylinder}
-      onCreateSketch={onCreateSketch}
-      onCreateSubtract={onCreateSubtract}
+      canCreate={canCreateFeature(props.controller)}
+      canExtrude={canExtrudeSelectedSketch(
+        props.controller,
+        props.activeSketchId,
+        props.sketchSelectedProfile,
+      )}
+      canSubtract={canCreateSubtract(props.controller)}
+      onCreateBox={props.onCreateBox}
+      onCreateCylinder={props.onCreateCylinder}
+      onCreateSketch={props.onCreateSketch}
+      onCreateSubtract={props.onCreateSubtract}
     />
   )
 }

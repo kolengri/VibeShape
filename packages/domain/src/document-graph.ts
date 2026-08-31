@@ -16,6 +16,7 @@ import {
   cylinderFeatureType,
   expectedRevolveDependencyIds,
   extrusionFeatureType,
+  extrusionFeatureTypeV3,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -23,6 +24,7 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
+  revolveFeatureTypeV5,
 } from "./part-design"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
@@ -151,11 +153,16 @@ const dependencyCompleteFeatureTypeKeys = new Set([
 const revolveTypeKeys = new Set(
   [
     revolveFeatureType,
+    revolveFeatureTypeV5,
     legacyRevolveFeatureType,
     legacyRevolveFeatureTypeV2,
     legacyRevolveFeatureTypeV3,
   ].map(({ type }) => featureTypeKey(type)),
 )
+const multiProfileResultTypeKeys = new Set([
+  featureTypeKey(extrusionFeatureTypeV3.type),
+  featureTypeKey(revolveFeatureTypeV5.type),
+])
 
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
@@ -163,7 +170,8 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
   if (
     typeKey === featureTypeKey(legacyExtrusionFeatureType.type) ||
-    typeKey === featureTypeKey(extrusionFeatureType.type)
+    typeKey === featureTypeKey(extrusionFeatureType.type) ||
+    typeKey === featureTypeKey(extrusionFeatureTypeV3.type)
   ) {
     return readExtrusionFeatureParameters(feature) !== null
   }
@@ -493,7 +501,7 @@ function extrusionProfileCandidate(
     relation: "extrusion-profile",
     missingMessage: "An extrusion profile references a missing sketch.",
     issue: {
-      path: `features.${featureIndex}.parameters.profile.sketchId`,
+      path: `features.${featureIndex}.parameters.${extrusion.profiles ? "profiles.profiles.0" : "profile"}.sketchId`,
       message: "Referenced sketch does not exist.",
     },
   }
@@ -511,7 +519,7 @@ function revolveProfileCandidate(
     relation: "revolve-profile",
     missingMessage: "A revolve profile references a missing sketch.",
     issue: {
-      path: `features.${featureIndex}.parameters.profile.sketchId`,
+      path: `features.${featureIndex}.parameters.${revolve.profiles ? "profiles.profiles.0" : "profile"}.sketchId`,
       message: "Referenced sketch does not exist.",
     },
   }
@@ -646,6 +654,8 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
     if (semanticFailure) return semanticFailure
     const revolveSupportFailure = validateRevolveSupportIntent(document, feature, index)
     if (revolveSupportFailure) return revolveSupportFailure
+    const multiProfileInputFailure = validateMultiProfileResultInputs(document, feature, index)
+    if (multiProfileInputFailure) return multiProfileInputFailure
     const profile = extrusionProfileCandidate(feature as FeatureRecord, index)
     const revolveProfile = revolveProfileCandidate(feature as FeatureRecord, index)
     const invalid = validateCandidates(document, [
@@ -657,6 +667,45 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
     ])
     if (invalid) return invalid
   }
+}
+
+function modifyingInputIndexes(feature: VersionedFeatureRecord) {
+  if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type)) {
+    return feature.dependencies.map((_, index) => index)
+  }
+  const extrusion = readExtrusionFeatureParameters(feature as FeatureRecord)
+  if (extrusion?.operation !== undefined && extrusion.operation !== "new") return [0]
+  const revolve = readRevolveFeatureParameters(feature as FeatureRecord)
+  return revolve?.operation !== undefined && revolve.operation !== "new" ? [0] : []
+}
+
+function validateMultiProfileResultInputs(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  featureIndex: number,
+): GraphFailure | undefined {
+  const invalidDependencyIndex = modifyingInputIndexes(feature).find((dependencyIndex) => {
+    const dependencyId = feature.dependencies[dependencyIndex]
+    if (!dependencyId) return false
+    const source = document.byKey.get(key({ kind: "feature", id: dependencyId }))
+    return (
+      source?.ref.kind === "feature" &&
+      "type" in source.record &&
+      multiProfileResultTypeKeys.has(featureTypeKey(source.record.type))
+    )
+  })
+  if (invalidDependencyIndex === undefined) return
+  return diagnostic(
+    "invalid-feature",
+    "Multi-profile results cannot be used as modifying feature inputs.",
+    [
+      {
+        path: `features.${featureIndex}.dependencies.${invalidDependencyIndex}`,
+        message:
+          "Select a single-solid result until stable per-solid multi-profile result identity is available.",
+      },
+    ],
+  )
 }
 
 function validateRevolveSupportIntent(

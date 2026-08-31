@@ -12,8 +12,11 @@ import {
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
+  multiProfileRevolveFeatureParametersSchema,
+  multiProfileRevolveFeatureType,
   partDesignFeatureTypeHandlers,
   readRevolveFeatureParameters,
+  readRevolveProfileSet,
   revolveFeatureParametersSchema,
   revolveFeatureType,
 } from "./part-design"
@@ -25,6 +28,10 @@ const profile = {
   sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
   outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
   holeBoundaryEntityIds: [],
+}
+const secondProfile = {
+  ...profile,
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3221"],
 }
 
 const parameters = {
@@ -128,6 +135,28 @@ describe("selector-backed revolve feature", () => {
         parameters: { ...parameters, axis: "x", operation: "new" },
       }),
     ).toMatchObject({ ok: true })
+  })
+
+  it("registers a same-sketch multi-profile new-body version without changing legacy reads", () => {
+    const feature = featureRecordSchema.parse({
+      ...revolve(),
+      type: multiProfileRevolveFeatureType.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+        axis: parameters.axis,
+        angle: parameters.angle,
+        operation: "new",
+      },
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readRevolveProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
+    expect(readRevolveProfileSet(revolve())?.profiles).toEqual([profile])
+    expect(
+      multiProfileRevolveFeatureParametersSchema.safeParse({
+        ...feature.parameters,
+        operation: "remove",
+      }).success,
+    ).toBe(false)
   })
 
   it("normalizes schema-version-2 origin-axis intent without widening its stored contract", () => {
