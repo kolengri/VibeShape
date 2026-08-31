@@ -261,6 +261,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
         select,
+        selectSavedSketchProfile: sessionActions.selectSavedSketchProfile,
         selectOriginPlane: sessionActions.setSelectedOriginPlane,
         selectSketchPlane: sessionActions.selectSketchPlane,
         redoSketchDraft: sessionActions.redoSketchDraft,

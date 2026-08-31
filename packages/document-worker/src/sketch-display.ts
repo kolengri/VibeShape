@@ -43,7 +43,7 @@ export async function createSketchDisplayRecords(
     const record = materializeSketchDisplay(
       document,
       sketch,
-      result?.ok ? result.solution : null,
+      result?.ok && result.solution.status !== "failed" ? result.solution : null,
       features,
       geometry,
     )

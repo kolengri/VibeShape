@@ -76,6 +76,10 @@ export type EditorSessionActions = Readonly<{
       selectedProfile: SketchProfileSelector | null
     }>,
   ) => void
+  selectSavedSketchProfile: (
+    profile: SketchProfileSelector,
+    profiles: readonly SketchProfileSelector[],
+  ) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   selectSketchSupport: (support: SelectedSketchSupport) => void
   setCommandPaletteOpen: (open: boolean) => void
@@ -289,6 +293,24 @@ export function createEditorSessionStore() {
               state.sketch.selectedProfile = presentation.selectedProfile
             }
           }),
+        selectSavedSketchProfile: (profile, profiles) =>
+          set((state) => {
+            const matchingProfile = profiles.find((candidate) => sameProfile(candidate, profile))
+            if (!matchingProfile) return
+            state.workspace = "model"
+            state.activePartDesignTool = null
+            state.preselectedFeatureId = null
+            state.selectedOriginPlane = null
+            state.selection = null
+            state.sketch.activeSketchId = matchingProfile.sketchId
+            state.sketch.activeSketchTool = null
+            resetSketchDraft(state.sketch, null)
+            resetSketchPresentation(state.sketch, "select")
+            state.sketch.profiles = profiles.filter(
+              (candidate) => candidate.sketchId === matchingProfile.sketchId,
+            )
+            state.sketch.selectedProfile = matchingProfile
+          }),
         selectSketchPlane: (plane) => {
           const { activeSketchTool, draft } = get().sketch
           if (activeSketchTool?.kind !== "select-sketch-plane" || !draft) return
@@ -370,6 +392,9 @@ export function createEditorSessionStore() {
             state.hiddenSketchIds = visible
               ? state.hiddenSketchIds.filter((id) => id !== sketchId)
               : [...new Set([...state.hiddenSketchIds, sketchId])]
+            if (!visible && state.sketch.activeSketchId === sketchId) {
+              closeSketch(state.sketch)
+            }
           }),
         toggleAllSketchVisibility: (sketchIds) =>
           set((state) => {
@@ -381,6 +406,13 @@ export function createEditorSessionStore() {
             state.hiddenSketchIds = allHidden
               ? state.hiddenSketchIds.filter((id) => !currentSketchIdSet.has(id))
               : [...new Set([...state.hiddenSketchIds, ...currentSketchIds])]
+            if (
+              !allHidden &&
+              state.sketch.activeSketchId &&
+              currentSketchIdSet.has(state.sketch.activeSketchId)
+            ) {
+              closeSketch(state.sketch)
+            }
           }),
         setSelection: (selection) =>
           set((state) => {

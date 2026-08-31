@@ -13,6 +13,7 @@ import { createEditorSessionStore } from "./editor-session-store"
 
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3201")
 const boundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3201")
+const secondBoundaryEntityId = sketchEntityIdSchema.parse("0195b5ac-b221-7a2c-8c33-67a36a7f3202")
 const constraintId = sketchConstraintIdSchema.parse("0195b5ac-b222-7a2c-8c33-67a36a7f3201")
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3202")
 const referenceId = sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3203")
@@ -276,6 +277,20 @@ describe("editor session store", () => {
     expect(first.getState().hiddenSketchIds).toEqual([])
   })
 
+  it("clears a graphical saved-profile selection when its sketch is hidden", () => {
+    const store = createEditorSessionStore()
+    const profile = createProfile()
+
+    store.getState().actions.selectSavedSketchProfile(profile, [profile])
+    store.getState().actions.setSketchVisibility(sketchId, false)
+
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchId: null,
+      profiles: [],
+      selectedProfile: null,
+    })
+  })
+
   it("toggles all current sketches while preserving individual visibility overrides", () => {
     const store = createEditorSessionStore()
     const secondSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3290")
@@ -289,6 +304,21 @@ describe("editor session store", () => {
 
     store.getState().actions.setSketchVisibility(secondSketchId, false)
     expect(store.getState().hiddenSketchIds).toEqual([secondSketchId])
+  })
+
+  it("clears a graphical saved-profile selection when all sketches are hidden", () => {
+    const store = createEditorSessionStore()
+    const profile = createProfile()
+
+    store.getState().actions.selectSavedSketchProfile(profile, [profile])
+    store.getState().actions.toggleAllSketchVisibility([sketchId])
+
+    expect(store.getState().hiddenSketchIds).toEqual([sketchId])
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchId: null,
+      profiles: [],
+      selectedProfile: null,
+    })
   })
 
   it("owns the create-sketch support-selection lifecycle without committing a document", () => {
@@ -597,5 +627,29 @@ describe("editor session store", () => {
       redoStack: [],
     })
     expect(store.getState().workspace).toBe("model")
+  })
+
+  it("selects a saved sketch profile from the model viewport without entering sketch edit", () => {
+    const store = createEditorSessionStore()
+    const firstProfile = createProfile()
+    const secondProfile = {
+      ...firstProfile,
+      outerBoundaryEntityIds: [secondBoundaryEntityId],
+    } satisfies SketchProfileSelector
+
+    store.getState().actions.selectSavedSketchProfile(secondProfile, [firstProfile, secondProfile])
+
+    expect(store.getState()).toMatchObject({
+      activePartDesignTool: null,
+      selection: null,
+      workspace: "model",
+      sketch: {
+        activeSketchId: sketchId,
+        activeSketchTool: null,
+        draft: null,
+        profiles: [firstProfile, secondProfile],
+        selectedProfile: secondProfile,
+      },
+    })
   })
 })

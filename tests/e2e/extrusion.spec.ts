@@ -2,6 +2,93 @@ import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
 
 test.describe("selector-backed extrusion", () => {
+  test("selects a saved profile through the compact picker after reload", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page.reload()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
+      timeout: 120_000,
+    })
+    const profile = page.getByRole("combobox", { name: "Select saved profile" })
+    await profile.focus()
+    await expect(profile).toBeFocused()
+    await profile.selectOption({ label: "Sketch 1 · Profile 1" })
+
+    await expect(profile).toHaveValue(/.+/)
+    await expect(viewport).toHaveAttribute("data-selected-sketch-profile", /.+/)
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
+    await expect(
+      page
+        .getByRole("toolbar", { name: "Model commands" })
+        .getByRole("button", { name: "Extrude", exact: true }),
+    ).toBeEnabled()
+  })
+
+  test("selects a saved profile directly in the 3D viewport after reload", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    const startPanel = page.getByRole("complementary", { name: "Task panel" })
+    await startPanel.getByRole("button", { name: "Create sketch" }).click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page.reload()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
+      timeout: 120_000,
+    })
+    const extrudeCommand = page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+    await expect(extrudeCommand).toBeDisabled()
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const samples = [
+      { x: bounds.width * 0.5, y: bounds.height * 0.5 },
+      { x: bounds.width * 0.45, y: bounds.height * 0.5 },
+      { x: bounds.width * 0.55, y: bounds.height * 0.5 },
+      { x: bounds.width * 0.5, y: bounds.height * 0.45 },
+      { x: bounds.width * 0.5, y: bounds.height * 0.55 },
+    ]
+    let activeSample = samples[0]
+    let sampleIndex = 0
+    await expect
+      .poll(async () => {
+        activeSample = samples[sampleIndex % samples.length]
+        sampleIndex += 1
+        if (activeSample) await canvas.hover({ position: activeSample })
+        return viewport.getAttribute("data-preselected-sketch-profile")
+      })
+      .not.toBeNull()
+    if (!activeSample) throw new Error("The saved profile has no hover sample.")
+    await expect(viewport.getByText("Select profile: Sketch 1 · Profile 1")).toBeVisible()
+    await canvas.click({ position: activeSample })
+
+    await expect(viewport).toHaveAttribute("data-selected-sketch-profile", /.+/)
+    await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
+    await expect(extrudeCommand).toBeEnabled()
+    await extrudeCommand.click()
+    await expect(page.getByRole("form", { name: "Extrude profile" })).toBeVisible()
+  })
+
   test("creates, rebuilds, edits, and reopens a variable-driven solid", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

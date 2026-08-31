@@ -23,6 +23,7 @@ import {
   PointsMaterial,
   Raycaster,
   Scene,
+  ShapeUtils,
   Sphere,
   Vector2,
   Vector3,
@@ -63,10 +64,26 @@ export type ViewerMesh = Readonly<{
 
 export type ViewerSketch = Readonly<{
   sketchId: string
+  frame?: ViewerFrame
+  profiles?: readonly ViewerSketchProfile[]
   curvePositions: Float32Array
   constructionCurvePositions: Float32Array
   pointPositions: Float32Array
   constructionPointPositions: Float32Array
+}>
+
+/** Durable profile identity; boundary entity ordering is part of the selector contract. */
+export type ViewerSketchProfileSelector = Readonly<{
+  schemaVersion: 0
+  sketchId: string
+  outerBoundaryEntityIds: readonly string[]
+  holeBoundaryEntityIds: readonly (readonly string[])[]
+}>
+
+export type ViewerSketchProfile = Readonly<{
+  selector: ViewerSketchProfileSelector
+  outerPositions: Float32Array
+  holePositions: readonly Float32Array[]
 }>
 
 export type ViewerSketchPointCandidate = Readonly<{
@@ -173,6 +190,8 @@ export type GeometryViewport = Readonly<{
   setMeshes: (meshes: readonly ViewerMesh[]) => void
   setSketchReferenceCandidates: (candidates: readonly ViewerSketchReferenceCandidate[]) => void
   setSketchReferencePreselection: (candidate: ViewerSketchReferenceCandidate | null) => void
+  setSketchProfilePreselection: (profile: ViewerSketchProfile | null) => void
+  setSketchProfileSelection: (profile: ViewerSketchProfile | null) => void
   setSketches: (sketches: readonly ViewerSketch[]) => void
   setOriginPlaneSelection: (
     selectedPlane: ViewerOriginPlane | null,
@@ -261,6 +280,10 @@ export type GeometryViewportOptions = Readonly<{
   ) => void
   onSketchReferencePreselectionChange?: (candidate: ViewerSketchReferenceCandidate | null) => void
   onSketchReferenceSelectionChange?: (candidate: ViewerSketchReferenceCandidate) => void
+  onSketchProfileCandidateStackChange?: (candidates: readonly ViewerSketchProfile[]) => void
+  onSketchProfileCandidateStackCommit?: (candidates: readonly ViewerSketchProfile[]) => void
+  onSketchProfilePreselectionChange?: (profile: ViewerSketchProfile | null) => void
+  onSketchProfileSelectionChange?: (profile: ViewerSketchProfile | null) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -273,6 +296,17 @@ function viewerSelectionEligibilityCallback(
   callback: ((selection: ViewerSelection) => boolean) | undefined,
 ) {
   return callback ?? (() => true)
+}
+
+function viewerSketchProfileCallbacks(options: GeometryViewportOptions) {
+  const ignoreProfileChange = (_profile: ViewerSketchProfile | null) => undefined
+  const ignoreProfileStackChange = (_profiles: readonly ViewerSketchProfile[]) => undefined
+  return {
+    candidateStackChange: options.onSketchProfileCandidateStackChange ?? ignoreProfileStackChange,
+    candidateStackCommit: options.onSketchProfileCandidateStackCommit ?? ignoreProfileStackChange,
+    preselection: options.onSketchProfilePreselectionChange ?? ignoreProfileChange,
+    selection: options.onSketchProfileSelectionChange ?? ignoreProfileChange,
+  }
 }
 
 export function orthographicFrustum(viewHeight: number, aspect: number): OrthographicFrustum {
@@ -419,6 +453,59 @@ export function createViewerSketchGeometry(positions: Float32Array) {
   return geometry
 }
 
+export function viewerSketchProfileKey(selector: ViewerSketchProfileSelector) {
+  return `${selector.schemaVersion}:${selector.sketchId}:${selector.outerBoundaryEntityIds.join(",")}|${selector.holeBoundaryEntityIds.map((hole) => hole.join(",")).join("|")}`
+}
+
+/** Triangulates a local XY profile and places its vertices in the supplied sketch frame. */
+export function createViewerSketchProfileGeometry(
+  profile: ViewerSketchProfile,
+  frame: ViewerFrame,
+): BufferGeometry | null {
+  if (!isValidViewerFrame(frame)) return null
+  const contours = [profile.outerPositions, ...profile.holePositions]
+  if (contours.some((positions) => positions.length < 6 || positions.length % 2 !== 0)) return null
+  const vectors = contours.map((positions) => {
+    const points: Vector2[] = []
+    for (let index = 0; index < positions.length; index += 2) {
+      const x = positions[index]
+      const y = positions[index + 1]
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+      points.push(new Vector2(x, y))
+    }
+    return points
+  })
+  if (vectors.some((points) => points === null)) return null
+  const points = vectors as Vector2[][]
+  const triangles = ShapeUtils.triangulateShape(points[0] ?? [], points.slice(1))
+  if (triangles.length === 0) return null
+  const vertexCount = contours.reduce((total, positions) => total + positions.length / 2, 0)
+  const worldPositions = new Float32Array(vertexCount * 3)
+  let vertexOffset = 0
+  for (const positions of contours) {
+    for (let index = 0; index < positions.length; index += 2) {
+      const x = positions[index] ?? 0
+      const y = positions[index + 1] ?? 0
+      const offset = (vertexOffset + index / 2) * 3
+      worldPositions[offset] = frame.origin[0] + frame.xAxis[0] * x + frame.yAxis[0] * y
+      worldPositions[offset + 1] = frame.origin[1] + frame.xAxis[1] * x + frame.yAxis[1] * y
+      worldPositions[offset + 2] = frame.origin[2] + frame.xAxis[2] * x + frame.yAxis[2] * y
+    }
+    vertexOffset += positions.length / 2
+  }
+  const indices = new Uint32Array(triangles.length * 3)
+  triangles.forEach((triangle, index) => {
+    indices.set(triangle, index * 3)
+  })
+  const geometry = new BufferGeometry()
+  geometry.setAttribute("position", new BufferAttribute(worldPositions, 3))
+  geometry.setIndex(new BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
 export function viewerFaceOrdinal(mesh: ViewerMesh, faceId: number) {
   const seen = new Set<number>()
   for (const candidate of mesh.triangleFaceIds) {
@@ -508,6 +595,22 @@ function sameSelectionStack(left: readonly ViewerSelection[], right: readonly Vi
   )
 }
 
+function sameSketchProfileStack(
+  left: readonly ViewerSketchProfile[],
+  right: readonly ViewerSketchProfile[],
+) {
+  return (
+    left.length === right.length &&
+    left.every((profile, index) => {
+      const other = right[index]
+      return (
+        other !== undefined &&
+        viewerSketchProfileKey(profile.selector) === viewerSketchProfileKey(other.selector)
+      )
+    })
+  )
+}
+
 function isViewerSketchPointCandidate(
   candidate: ViewerSketchReferenceCandidate,
 ): candidate is ViewerSketchPointCandidate | ViewerModelPointCandidate {
@@ -586,6 +689,41 @@ type SketchReferenceHit = Readonly<{
   distance: number
 }>
 
+export type ViewerSketchProfileHit = Readonly<{
+  profile: ViewerSketchProfile
+  distance: number
+}>
+
+type IdleSelectionTarget =
+  | Readonly<{ kind: "profile"; profiles: readonly ViewerSketchProfile[] }>
+  | Readonly<{ kind: "model"; selection: ViewerSelection }>
+  | Readonly<{ kind: "empty" }>
+
+export function orderedUniqueViewerSketchProfiles(
+  hits: readonly ViewerSketchProfileHit[],
+  limit = MAX_SELECTION_CANDIDATES,
+) {
+  const safeLimit = Math.max(0, Math.floor(limit))
+  const sorted = [...hits].sort(
+    (left, right) =>
+      (Number.isFinite(left.distance) ? left.distance : Infinity) -
+        (Number.isFinite(right.distance) ? right.distance : Infinity) ||
+      viewerSketchProfileKey(left.profile.selector).localeCompare(
+        viewerSketchProfileKey(right.profile.selector),
+      ),
+  )
+  const seen = new Set<string>()
+  const profiles: ViewerSketchProfile[] = []
+  for (const hit of sorted) {
+    const key = viewerSketchProfileKey(hit.profile.selector)
+    if (seen.has(key)) continue
+    seen.add(key)
+    profiles.push(hit.profile)
+    if (profiles.length >= safeLimit) break
+  }
+  return profiles
+}
+
 function orderedUniqueSketchReferenceCandidates(hits: SketchReferenceHit[]) {
   hits.sort(
     (left, right) =>
@@ -627,6 +765,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #controls: OrbitControls
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
+  readonly #sketchProfileGroup = new Group()
+  readonly #sketchProfilePreselectionGroup = new Group()
+  readonly #sketchProfileSelectionGroup = new Group()
   readonly #sketchPointCandidateGroup = new Group()
   readonly #sketchPointPreselectionGroup = new Group()
   readonly #originPlaneGroup = new Group()
@@ -742,6 +883,30 @@ class ThreeGeometryViewport implements GeometryViewport {
     polygonOffsetFactor: -3,
     side: DoubleSide,
   })
+  readonly #sketchProfileMaterial = new MeshBasicMaterial({
+    color: new Color("#65a9ee"),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  readonly #sketchProfilePreselectionMaterial = new MeshBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.35,
+    depthWrite: false,
+    side: DoubleSide,
+  })
+  readonly #sketchProfileSelectionMaterial = new MeshBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    side: DoubleSide,
+  })
   readonly #featurePreselectionMaterial = new MeshBasicMaterial({
     color: new Color("#65a9ee"),
     depthTest: false,
@@ -783,6 +948,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     candidate: ViewerSketchReferenceCandidate | null,
   ) => void
   readonly #onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void
+  readonly #onSketchProfileCandidateStackChange: (
+    candidates: readonly ViewerSketchProfile[],
+  ) => void
+  readonly #onSketchProfileCandidateStackCommit: (
+    candidates: readonly ViewerSketchProfile[],
+  ) => void
+  readonly #onSketchProfilePreselectionChange: (profile: ViewerSketchProfile | null) => void
+  readonly #onSketchProfileSelectionChange: (profile: ViewerSketchProfile | null) => void
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
@@ -798,6 +971,10 @@ class ThreeGeometryViewport implements GeometryViewport {
   #selectionCandidateStack: readonly ViewerSelection[] = []
   #selectionCandidateStackPreserved = false
   #selection: ViewerSelection | null = null
+  #sketchProfiles = new Map<Mesh, ViewerSketchProfile>()
+  #sketchProfilePreselection: ViewerSketchProfile | null = null
+  #sketchProfileSelection: ViewerSketchProfile | null = null
+  #sketchProfileCandidateStack: readonly ViewerSketchProfile[] = []
   #sketchPointCandidates: readonly (ViewerSketchPointCandidate | ViewerModelPointCandidate)[] = []
   #sketchReferenceCandidateStack: readonly ViewerSketchReferenceCandidate[] = []
   #sketchPointObject: Points | null = null
@@ -814,6 +991,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    const sketchProfileCallbacks = viewerSketchProfileCallbacks(options)
     this.#isSelectionCandidateEligible = viewerSelectionEligibilityCallback(
       options.isSelectionCandidateEligible,
     )
@@ -833,6 +1011,10 @@ class ThreeGeometryViewport implements GeometryViewport {
       options.onSketchReferencePreselectionChange ?? (() => undefined)
     this.#onSketchReferenceSelectionChange =
       options.onSketchReferenceSelectionChange ?? (() => undefined)
+    this.#onSketchProfileCandidateStackChange = sketchProfileCallbacks.candidateStackChange
+    this.#onSketchProfileCandidateStackCommit = sketchProfileCallbacks.candidateStackCommit
+    this.#onSketchProfilePreselectionChange = sketchProfileCallbacks.preselection
+    this.#onSketchProfileSelectionChange = sketchProfileCallbacks.selection
     const context = canvas.getContext("webgl2", {
       alpha: true,
       antialias: true,
@@ -846,6 +1028,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.#scene.add(this.#modelGroup)
     this.#scene.add(this.#sketchGroup)
+    this.#scene.add(this.#sketchProfileGroup)
+    this.#scene.add(this.#sketchProfilePreselectionGroup)
+    this.#scene.add(this.#sketchProfileSelectionGroup)
     this.#scene.add(this.#sketchPointCandidateGroup)
     this.#scene.add(this.#sketchPointPreselectionGroup)
     this.#createOriginPlanes()
@@ -966,7 +1151,14 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setSketches(sketches: readonly ViewerSketch[]) {
     if (this.#disposed) return
+    this.#clearSketchProfileCandidateStack()
     disposeModelGroup(this.#sketchGroup)
+    disposeModelGroup(this.#sketchProfileGroup)
+    disposeModelGroup(this.#sketchProfilePreselectionGroup)
+    disposeModelGroup(this.#sketchProfileSelectionGroup)
+    this.#sketchProfiles.clear()
+    this.#setSketchProfilePreselection(null, false)
+    this.#setSketchProfileSelection(null, false)
     for (const sketch of sketches) {
       this.#addSketchLines(
         sketch.sketchId,
@@ -993,6 +1185,17 @@ class ThreeGeometryViewport implements GeometryViewport {
         sketch.constructionPointPositions,
         this.#sketchConstructionPointMaterial,
       )
+      if (sketch.frame && sketch.profiles) {
+        for (const profile of sketch.profiles) {
+          const geometry = createViewerSketchProfileGeometry(profile, sketch.frame)
+          if (!geometry) continue
+          const mesh = new Mesh(geometry, this.#sketchProfileMaterial)
+          mesh.name = `sketch-profile:${viewerSketchProfileKey(profile.selector)}`
+          mesh.renderOrder = 3
+          this.#sketchProfileGroup.add(mesh)
+          this.#sketchProfiles.set(mesh, profile)
+        }
+      }
     }
     this.#render()
   }
@@ -1037,6 +1240,16 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#setSketchPointPreselection(candidate)
   }
 
+  setSketchProfilePreselection(profile: ViewerSketchProfile | null) {
+    if (this.#disposed) return
+    this.#setSketchProfilePreselection(profile, false)
+  }
+
+  setSketchProfileSelection(profile: ViewerSketchProfile | null) {
+    if (this.#disposed) return
+    this.#setSketchProfileSelection(profile, false)
+  }
+
   setOriginPlaneSelection(
     selectedPlane: ViewerOriginPlane | null,
     active = selectedPlane !== null,
@@ -1059,6 +1272,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (active) {
       this.clearSelection()
       this.#setPreselection(null)
+      this.#setSketchProfilePreselection(null)
     }
     if (!active && !idleSelectionEnabled) this.#setOriginPlanePreselection(null)
     this.#updateOriginPlanes()
@@ -1121,6 +1335,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#interactionMode = mode
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
+    this.#clearSketchProfileCandidateStack()
     if (mode === "camera-only" || mode === "sketch-reference-select") {
       this.#pointerDown = null
       this.#setOriginPlanePreselection(null)
@@ -1136,6 +1351,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   fit() {
     if (this.#disposed) return
     this.#clearSketchReferencePicking()
+    this.#clearSketchProfileCandidateStack()
     const bounds = new Box3().setFromObject(this.#modelGroup).expandByObject(this.#sketchGroup)
     if (bounds.isEmpty()) {
       this.#viewHeight = DEFAULT_VIEW_HEIGHT
@@ -1195,6 +1411,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#sketchGroup)
     disposeModelGroup(this.#sketchPointCandidateGroup)
     disposeModelGroup(this.#sketchPointPreselectionGroup)
+    disposeModelGroup(this.#sketchProfileGroup)
+    disposeModelGroup(this.#sketchProfilePreselectionGroup)
+    disposeModelGroup(this.#sketchProfileSelectionGroup)
     disposeMaterials(this.#modelSurfaceMaterials)
     disposeMaterials(this.#modelEdgeMaterials)
     disposeModelGroup(this.#originPlaneGroup)
@@ -1214,6 +1433,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#sketchPointPreselectionMaterial.dispose()
     this.#sketchLineCandidateMaterial.dispose()
     this.#sketchLinePreselectionMaterial.dispose()
+    this.#sketchProfileMaterial.dispose()
+    this.#sketchProfilePreselectionMaterial.dispose()
+    this.#sketchProfileSelectionMaterial.dispose()
     this.#preselectionMaterial.dispose()
     this.#selectionMaterial.dispose()
     this.#featurePreselectionMaterial.dispose()
@@ -1259,6 +1481,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const bounds = new Box3()
       .setFromObject(this.#modelGroup)
       .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#sketchProfileGroup)
       .expandByObject(this.#sketchPointCandidateGroup)
     if (bounds.isEmpty()) {
       this.#camera.near = 0.01
@@ -1279,6 +1502,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const bounds = new Box3()
       .setFromObject(this.#modelGroup)
       .expandByObject(this.#sketchGroup)
+      .expandByObject(this.#sketchProfileGroup)
       .expandByObject(this.#sketchPointCandidateGroup)
     if (bounds.isEmpty()) return
     const sphere = bounds.getBoundingSphere(new Sphere())
@@ -1290,8 +1514,85 @@ class ThreeGeometryViewport implements GeometryViewport {
     )
   }
 
-  #pick(event: PointerEvent): ViewerSelection | null {
-    return this.#pickSelectionStack(event)[0] ?? null
+  #pickIdleSelectionTarget(event: PointerEvent): IdleSelectionTarget {
+    if (!this.#prepareRaycaster(event)) return { kind: "empty" }
+    const modelHit = this.#raycaster.intersectObjects(this.#surfaceMeshes, false).flatMap((hit) => {
+      const selection = this.#selectionFromIntersection(hit)
+      return selection ? [{ selection, distance: hit.distance }] : []
+    })[0]
+    const profileHits = this.#raycaster
+      .intersectObjects([...this.#sketchProfiles.keys()], false)
+      .flatMap((hit) => {
+        const profile = this.#sketchProfiles.get(hit.object as Mesh)
+        return profile ? [{ profile, distance: hit.distance }] : []
+      })
+    const profiles = orderedUniqueViewerSketchProfiles(profileHits)
+    const profile = profiles[0]
+    const profileKey = profile ? viewerSketchProfileKey(profile.selector) : null
+    const profileDistance =
+      profileHits.find(
+        ({ profile: candidate }) => viewerSketchProfileKey(candidate.selector) === profileKey,
+      )?.distance ?? Infinity
+    if (profile && (!modelHit || profileDistance <= modelHit.distance + 1e-6)) {
+      return { kind: "profile", profiles }
+    }
+    return modelHit ? { kind: "model", selection: modelHit.selection } : { kind: "empty" }
+  }
+
+  #setSketchProfilePreselection(profile: ViewerSketchProfile | null, notify = true) {
+    const key = profile ? viewerSketchProfileKey(profile.selector) : null
+    const currentKey = this.#sketchProfilePreselection
+      ? viewerSketchProfileKey(this.#sketchProfilePreselection.selector)
+      : null
+    if (key === currentKey) return
+    this.#sketchProfilePreselection = profile
+    disposeModelGroup(this.#sketchProfilePreselectionGroup)
+    if (profile) {
+      const source = [...this.#sketchProfiles.entries()].find(
+        ([, candidate]) => viewerSketchProfileKey(candidate.selector) === key,
+      )?.[0]
+      if (source) {
+        const highlight = new Mesh(source.geometry.clone(), this.#sketchProfilePreselectionMaterial)
+        highlight.renderOrder = 6
+        this.#sketchProfilePreselectionGroup.add(highlight)
+      }
+    }
+    if (notify) this.#onSketchProfilePreselectionChange(profile)
+    this.#render()
+  }
+
+  #setSketchProfileSelection(profile: ViewerSketchProfile | null, notify = true) {
+    const key = profile ? viewerSketchProfileKey(profile.selector) : null
+    const currentKey = this.#sketchProfileSelection
+      ? viewerSketchProfileKey(this.#sketchProfileSelection.selector)
+      : null
+    if (key === currentKey) return
+    this.#sketchProfileSelection = profile
+    disposeModelGroup(this.#sketchProfileSelectionGroup)
+    if (profile) {
+      const source = [...this.#sketchProfiles.entries()].find(
+        ([, candidate]) => viewerSketchProfileKey(candidate.selector) === key,
+      )?.[0]
+      if (source) {
+        const highlight = new Mesh(source.geometry.clone(), this.#sketchProfileSelectionMaterial)
+        highlight.renderOrder = 7
+        this.#sketchProfileSelectionGroup.add(highlight)
+      }
+    }
+    if (notify) this.#onSketchProfileSelectionChange(profile)
+    this.#render()
+  }
+
+  #setSketchProfileCandidateStack(stack: readonly ViewerSketchProfile[]) {
+    if (sameSketchProfileStack(stack, this.#sketchProfileCandidateStack)) return
+    this.#sketchProfileCandidateStack = stack
+    this.#onSketchProfileCandidateStackChange(stack)
+  }
+
+  #clearSketchProfileCandidateStack() {
+    if (this.#sketchProfileCandidateStack.length === 0) return
+    this.#sketchProfileCandidateStack = []
+    this.#onSketchProfileCandidateStackChange([])
   }
 
   #pickSelectionStack(event: PointerEvent, eligibleOnly = false): readonly ViewerSelection[] {
@@ -1311,7 +1612,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #selectionFromIntersection(intersection: {
     object: { name: string }
-    faceIndex: number | null | undefined
+    faceIndex?: number | null | undefined
   }): ViewerSelection | null {
     if (!intersection || intersection.faceIndex === undefined || intersection.faceIndex === null) {
       return null
@@ -1424,6 +1725,8 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onControlsChange = () => {
     this.#clearSelectionCandidateStack()
     this.#clearSketchReferencePicking()
+    this.#clearSketchProfileCandidateStack()
+    this.#setSketchProfilePreselection(null)
     this.#render()
   }
 
@@ -1606,6 +1909,7 @@ class ThreeGeometryViewport implements GeometryViewport {
       const plane = modelSelection ? null : this.#pickOriginPlane(event)
       this.#setOriginPlanePreselection(plane)
       this.#setPreselection(modelSelection)
+      this.#setSketchProfilePreselection(null)
       return
     }
     this.#updateIdleSelectionPreselection(event)
@@ -1631,21 +1935,48 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #updateIdleSelectionPreselection(event: PointerEvent) {
     this.#clearSelectionCandidateStack()
-    const modelSelection = this.#pick(event)
+    const target = this.#pickIdleSelectionTarget(event)
+    const profiles = target.kind === "profile" ? target.profiles : []
+    this.#setSketchProfileCandidateStack(profiles)
     const plane =
-      this.#originPlaneIdleSelectionEnabled && !modelSelection ? this.#pickOriginPlane(event) : null
+      this.#originPlaneIdleSelectionEnabled && target.kind === "empty"
+        ? this.#pickOriginPlane(event)
+        : null
     this.#setOriginPlanePreselection(plane)
-    this.#setPreselection(modelSelection)
+    this.#setPreselection(target.kind === "model" ? target.selection : null)
+    this.#setSketchProfilePreselection(target.kind === "profile" ? (profiles[0] ?? null) : null)
   }
 
   #commitIdleSelection(event: PointerEvent) {
-    const modelSelection = this.#pick(event)
-    if (modelSelection || !this.#originPlaneIdleSelectionEnabled) {
+    const target = this.#pickIdleSelectionTarget(event)
+    if (target.kind === "profile") {
+      this.#setSketchProfileCandidateStack(target.profiles)
+      if (target.profiles.length > 1) {
+        this.#onSketchProfileCandidateStackCommit(target.profiles)
+        return
+      }
       this.#setOriginPlanePreselection(null)
-      this.#setSelection(modelSelection)
+      this.#setSelection(null)
+      this.#setSketchProfileSelection(target.profiles[0] ?? null)
+      return
+    }
+    if (target.kind === "model") {
+      this.#clearSketchProfileCandidateStack()
+      this.#setOriginPlanePreselection(null)
+      this.#setSketchProfileSelection(null)
+      this.#setSelection(target.selection)
+      return
+    }
+    if (!this.#originPlaneIdleSelectionEnabled) {
+      this.#clearSketchProfileCandidateStack()
+      this.#setOriginPlanePreselection(null)
+      this.#setSelection(null)
+      this.#setSketchProfileSelection(null)
       return
     }
     this.#setSelection(null)
+    this.#clearSketchProfileCandidateStack()
+    this.#setSketchProfileSelection(null)
     this.#onOriginPlaneSelectionChange(this.#pickOriginPlane(event))
   }
 
@@ -1677,8 +2008,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#interactionMode === "sketch-reference-select") return
     this.#clearSketchReferencePicking()
     if (!this.#selectionCandidateStackPreserved) this.#clearSelectionCandidateStack()
+    this.#clearSketchProfileCandidateStack()
     this.#setOriginPlanePreselection(null)
     this.#setPreselection(null)
+    this.#setSketchProfilePreselection(null)
   }
 
   #render = () => {
