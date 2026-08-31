@@ -14,10 +14,12 @@ import {
   booleanFeatureType,
   boxFeatureType,
   cylinderFeatureType,
+  expectedRevolveDependencyIds,
   extrusionFeatureType,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
+  legacyRevolveFeatureTypeV3,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
@@ -146,9 +148,14 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(cylinderFeatureType.type),
   featureTypeKey(booleanFeatureType.type),
 ])
-const revolveTypeKey = featureTypeKey(revolveFeatureType.type)
-const legacyRevolveTypeKey = featureTypeKey(legacyRevolveFeatureType.type)
-const legacyRevolveTypeV2Key = featureTypeKey(legacyRevolveFeatureTypeV2.type)
+const revolveTypeKeys = new Set(
+  [
+    revolveFeatureType,
+    legacyRevolveFeatureType,
+    legacyRevolveFeatureTypeV2,
+    legacyRevolveFeatureTypeV3,
+  ].map(({ type }) => featureTypeKey(type)),
+)
 
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
@@ -160,11 +167,7 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   ) {
     return readExtrusionFeatureParameters(feature) !== null
   }
-  if (
-    typeKey === revolveTypeKey ||
-    typeKey === legacyRevolveTypeKey ||
-    typeKey === legacyRevolveTypeV2Key
-  ) {
+  if (revolveTypeKeys.has(typeKey)) {
     return readRevolveFeatureParameters(feature) !== null
   }
   if (typeKey === featureTypeKey(datumPlaneFeatureType.type)) {
@@ -667,30 +670,10 @@ function validateRevolveSupportIntent(
   if (!sketch) return
   const expectedReferences = sketch.support ? [sketch.support.reference] : []
   const supportFeatureId = sketch.support?.reference.featureId
-  const issues = []
-  if (canonicalJson(feature.references) !== canonicalJson(expectedReferences)) {
-    issues.push({
-      path: `features.${featureIndex}.references`,
-      message: "Revolve references must exactly match the selected profile sketch support.",
-    })
-  }
-  const expectedDependencyOrder = expectedRevolveDependencyOrder(
-    revolve.operation,
-    feature.dependencies[0],
-    supportFeatureId,
-  )
-  if (
-    expectedDependencyOrder === null ||
-    !orderedIdsMatch(feature.dependencies, expectedDependencyOrder)
-  ) {
-    issues.push({
-      path: `features.${featureIndex}.dependencies`,
-      message:
-        revolve.operation === "new"
-          ? "New-body revolve dependencies must exactly match the selected profile sketch support owner."
-          : "Modifying revolve dependencies must contain the target first and then any distinct profile sketch support owner.",
-    })
-  }
+  const issues = [
+    revolveReferenceIssue(feature, featureIndex, expectedReferences),
+    revolveDependencyOrderIssue(feature, featureIndex, revolve, supportFeatureId),
+  ].flatMap((issue) => (issue ? [issue] : []))
   if (issues.length === 0) return
   return diagnostic(
     "invalid-feature",
@@ -699,16 +682,42 @@ function validateRevolveSupportIntent(
   )
 }
 
-function expectedRevolveDependencyOrder(
-  operation: "new" | "add" | "remove" | "intersect",
-  targetFeatureId: FeatureId | undefined,
+function revolveReferenceIssue(
+  feature: VersionedFeatureRecord,
+  featureIndex: number,
+  expectedReferences: readonly unknown[],
+) {
+  if (canonicalJson(feature.references) === canonicalJson(expectedReferences)) return null
+  return {
+    path: `features.${featureIndex}.references`,
+    message: "Revolve references must exactly match the selected profile sketch support.",
+  }
+}
+
+function revolveDependencyOrderIssue(
+  feature: VersionedFeatureRecord,
+  featureIndex: number,
+  revolve: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
   supportFeatureId: FeatureId | undefined,
-): readonly FeatureId[] | null {
-  if (operation === "new") return supportFeatureId ? [supportFeatureId] : []
-  if (!targetFeatureId) return null
-  return supportFeatureId && supportFeatureId !== targetFeatureId
-    ? [targetFeatureId, supportFeatureId]
-    : [targetFeatureId]
+) {
+  const targetFeatureId = revolve.operation === "new" ? null : (feature.dependencies[0] ?? null)
+  const expectedDependencyOrder = expectedRevolveDependencyIds(
+    revolve,
+    targetFeatureId,
+    supportFeatureId ? [supportFeatureId] : [],
+  )
+  const matches = !(
+    (revolve.operation !== "new" && targetFeatureId === null) ||
+    !orderedIdsMatch(feature.dependencies, expectedDependencyOrder)
+  )
+  if (matches) return null
+  return {
+    path: `features.${featureIndex}.dependencies`,
+    message:
+      revolve.operation === "new"
+        ? "New-body revolve dependencies must contain the profile support owner and model-edge axis source in canonical order."
+        : "Modifying revolve dependencies must contain the target first, followed by distinct profile support and model-edge axis sources.",
+  }
 }
 
 function orderedIdsMatch(actual: readonly FeatureId[], expected: readonly FeatureId[]) {

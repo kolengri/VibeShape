@@ -11,6 +11,7 @@ import {
 import {
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
+  legacyRevolveFeatureTypeV3,
   partDesignFeatureTypeHandlers,
   readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
@@ -34,6 +35,23 @@ const parameters = {
 }
 
 const targetFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
+const modelEdgeReference = {
+  schemaVersion: 0 as const,
+  featureId: targetFeatureId,
+  kind: "edge" as const,
+  semanticRole: "primitive.box.edge.x.y-min.z-min",
+  signature: {
+    kind: "edge" as const,
+    geometryClass: "LINE",
+    measure: 20,
+    centroid: [0, 0, 0] as const,
+    bounds: { min: [-10, 0, 0] as const, max: [10, 0, 0] as const },
+    direction: [1, 0, 0] as const,
+    directionMode: "axis" as const,
+    boundaryCount: 2,
+    adjacentGeometryClasses: ["PLANE", "PLANE"],
+  },
+}
 
 function registry() {
   const modules = createModuleRegistry([documentCoreModule, featureCoreModule, partDesignModule])
@@ -144,6 +162,41 @@ describe("selector-backed revolve feature", () => {
       ok: false,
       diagnostic: { issues: [{ path: "parameters.axis.sketchId" }] },
     })
+  })
+
+  it("persists a model-edge axis as stable topology intent and an evaluation-only dependency", () => {
+    const feature = featureRecordSchema.parse({
+      ...revolve(),
+      parameters: { ...parameters, axis: { kind: "model-edge", reference: modelEdgeReference } },
+      dependencies: [targetFeatureId],
+    })
+
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readRevolveFeatureParameters(feature)?.axis).toEqual({
+      kind: "model-edge",
+      reference: modelEdgeReference,
+    })
+    expect(featureBodyDependencyIds(feature)).toEqual([])
+    expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
+      ok: false,
+      diagnostic: { issues: [{ path: "dependencies" }] },
+    })
+  })
+
+  it("keeps schema-version-3 sketch-line axes readable", () => {
+    const feature = featureRecordSchema.parse({
+      ...revolve(),
+      type: legacyRevolveFeatureTypeV3.type,
+      parameters: {
+        ...parameters,
+        axis: {
+          kind: "sketch-line",
+          sketchId: profile.sketchId,
+          entityId: profile.outerBoundaryEntityIds[0],
+        },
+      },
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
   })
 
   it("resolves an angle expression and emits transient authored content", () => {

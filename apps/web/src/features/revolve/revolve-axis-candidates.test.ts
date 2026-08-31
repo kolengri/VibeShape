@@ -1,12 +1,17 @@
 import {
   type DocumentSnapshot,
+  edgeTopoRefSchema,
+  featureIdSchema,
   type SketchRecord,
   sketchEntityIdSchema,
   sketchIdSchema,
 } from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
-import { revolveSketchLineAxisCandidates } from "./revolve-axis-candidates"
+import {
+  revolveModelEdgeAxisCandidates,
+  revolveSketchLineAxisCandidates,
+} from "./revolve-axis-candidates"
 
 describe("revolveSketchLineAxisCandidates", () => {
   it("materializes exact solved construction and profile lines in their support frame", () => {
@@ -122,5 +127,52 @@ describe("revolveSketchLineAxisCandidates", () => {
         () => "Line",
       ),
     ).toEqual([])
+  })
+})
+
+describe("revolveModelEdgeAxisCandidates", () => {
+  const featureId = featureIdSchema.parse("01900000-0000-7000-8000-000000000201")
+  const reference = edgeTopoRefSchema.parse({
+    schemaVersion: 0 as const,
+    featureId,
+    kind: "edge" as const,
+    semanticRole: "primitive.box.edge.x.y-min.z-min",
+    signature: {
+      kind: "edge" as const,
+      geometryClass: "LINE",
+      measure: 10,
+      centroid: [5, 0, 0],
+      bounds: { min: [0, 0, 0], max: [10, 0, 0] },
+      direction: [1, 0, 0],
+      directionMode: "axis" as const,
+      boundaryCount: 2,
+      adjacentGeometryClasses: ["PLANE", "PLANE"],
+    },
+  })
+
+  it("preserves stable topology intent while discarding noncoplanar lines", () => {
+    const candidate = {
+      candidateId: "edge:7",
+      featureId: reference.featureId,
+      kind: "model-line" as const,
+      label: "Box 1 · Edge 3",
+      reference,
+      start: { x: 0, y: 0, world: [0, 0, 0] as const },
+      end: { x: 10, y: 0, world: [10, 0, 0] as const },
+      coplanar: true,
+    }
+
+    expect(revolveModelEdgeAxisCandidates([candidate])).toEqual([
+      {
+        axis: { kind: "model-edge", reference },
+        candidateId: "edge:7",
+        featureId: reference.featureId,
+        kind: "model-line",
+        label: "Box 1 · Edge 3",
+        start: [0, 0, 0],
+        end: [10, 0, 0],
+      },
+    ])
+    expect(revolveModelEdgeAxisCandidates([{ ...candidate, coplanar: false }])).toEqual([])
   })
 })

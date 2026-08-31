@@ -5,6 +5,7 @@ import {
   sketchFrame,
 } from "@vibeshape/application/support-frame"
 import {
+  canonicalJson,
   type DocumentSnapshot,
   type FeatureId,
   type FeatureRecord,
@@ -45,7 +46,8 @@ import {
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
-  type RevolveSketchLineAxisCandidate,
+  type RevolveAxisCandidate,
+  revolveModelEdgeAxisCandidates,
   revolveSketchLineAxisCandidates,
 } from "../features/revolve/revolve-axis-candidates"
 import {
@@ -154,7 +156,7 @@ type WorkspaceContentProps = Readonly<{
     selectedOriginPlane: ViewerOriginPlane | null
     selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
-    revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+    revolveAxisCandidates: readonly RevolveAxisCandidate[]
     revolveAxisSelectionActive: boolean
   }>
   sketch: Readonly<{
@@ -1097,11 +1099,14 @@ function useRevolveAxisReferenceSelection(props: WorkspaceContentProps) {
       referenceSelection: {
         candidates: props.model.revolveAxisCandidates,
         onSelect: (candidate) => {
-          if (candidate.kind !== "line") return
-          const match = props.model.revolveAxisCandidates.find(
-            ({ sourceSketchId, sourceLineId }) =>
-              sourceSketchId === candidate.sourceSketchId &&
-              sourceLineId === candidate.sourceLineId,
+          const match = props.model.revolveAxisCandidates.find((axisCandidate) =>
+            candidate.kind === "line" && axisCandidate.kind === "line"
+              ? axisCandidate.sourceSketchId === candidate.sourceSketchId &&
+                axisCandidate.sourceLineId === candidate.sourceLineId
+              : candidate.kind === "model-line" && axisCandidate.kind === "model-line"
+                ? axisCandidate.featureId === candidate.featureId &&
+                  axisCandidate.candidateId === candidate.candidateId
+                : false,
           )
           if (match) props.actions.onRevolveAxisChange(match.axis)
         },
@@ -1259,11 +1264,12 @@ function revolveProfileSketchId(
 function useRevolveAxisCandidates(
   controller: DocumentControllerState,
   activeTool: ActivePartDesignTool | null,
+  hiddenFeatureIds: readonly FeatureId[],
 ) {
   const t = useTranslations("app.shell.viewport")
   const snapshot = controller.report?.snapshot
   const sketchId = revolveProfileSketchId(activeTool, snapshot)
-  const [candidates, setCandidates] = useState<readonly RevolveSketchLineAxisCandidate[]>([])
+  const [candidates, setCandidates] = useState<readonly RevolveAxisCandidate[]>([])
   useEffect(() => {
     const sketch = snapshot?.sketches.find(({ id }) => id === sketchId)
     const rebuild = controller.report?.rebuild
@@ -1278,21 +1284,54 @@ function useRevolveAxisCandidates(
         setCandidates([])
         return
       }
-      setCandidates(
-        revolveSketchLineAxisCandidates(
+      const features = resolveDocumentFeatureParameters(snapshot)
+      const frame = sketchFrame(sketch, snapshot, features, new Set(), rebuild.response.geometry)
+      const editedFeatureIndex =
+        activeTool?.kind === "edit-revolve"
+          ? snapshot.features.findIndex(({ id }) => id === activeTool.featureId)
+          : snapshot.features.length
+      const earlierFeatures = snapshot.features.slice(0, Math.max(0, editedFeatureIndex))
+      const selectedAxis = defaultRevolveAxis(activeTool, snapshot)
+      const selectedSourceId =
+        selectedAxis?.kind === "model-edge" ? selectedAxis.reference.featureId : null
+      const hidden = new Set(hiddenFeatureIds)
+      const visibleAxisSourceIds = earlierFeatures.flatMap(({ id }) =>
+        !hidden.has(id) || id === selectedSourceId ? [id] : [],
+      )
+      const modelCandidates = frame
+        ? projectExternalModelGeometryCandidates(
+            rebuild.response.geometry,
+            snapshot.features,
+            visibleAxisSourceIds,
+            frame,
+            {
+              curve: (feature, kind, ordinal) =>
+                t("externalModelCurveCandidate", {
+                  feature,
+                  kind: externalModelCurveLabelKind(kind),
+                  ordinal,
+                }),
+              line: (feature, ordinal) => t("externalModelLineCandidate", { feature, ordinal }),
+              point: (feature, ordinal) => t("externalModelPointCandidate", { feature, ordinal }),
+            },
+          ).filter((candidate) => candidate.kind === "model-line")
+        : []
+      setCandidates([
+        ...revolveSketchLineAxisCandidates(
           snapshot,
           sketch,
           result.response.solution,
-          resolveDocumentFeatureParameters(snapshot),
+          features,
           rebuild.response.geometry,
           (sketchLabel, ordinal) => t("revolveAxisLineCandidate", { sketch: sketchLabel, ordinal }),
         ),
-      )
+        ...revolveModelEdgeAxisCandidates(modelCandidates),
+      ])
     })
     return () => {
       active = false
     }
-  }, [controller.report?.rebuild, sketchId, snapshot, t])
+  }, [activeTool, controller.report?.rebuild, hiddenFeatureIds, sketchId, snapshot, t])
   return candidates
 }
 
@@ -1381,7 +1420,7 @@ function EditorContent({
   props,
 }: {
   featurePreview: ReturnType<typeof useFeaturePreview>
-  revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+  revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
   onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
@@ -1451,18 +1490,14 @@ function EditorTaskPanel({
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
-  revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+  revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
 }) {
   const { actions } = props
-  const selectedAxisLabel =
-    revolveAxisSelection?.kind === "sketch-line"
-      ? revolveAxisCandidates.find(
-          ({ axis }) =>
-            axis.sketchId === revolveAxisSelection.sketchId &&
-            axis.entityId === revolveAxisSelection.entityId,
-        )?.label
-      : undefined
+  const selectedAxisLabel = revolveAxisSelection
+    ? revolveAxisCandidates.find(({ axis }) => revolveAxisIntentsMatch(axis, revolveAxisSelection))
+        ?.label
+    : undefined
   return (
     <TaskPanel
       activeSketchId={props.activeSketchId}
@@ -1501,12 +1536,46 @@ function EditorTaskPanel({
   )
 }
 
+function revolveAxisIntentsMatch(left: RevolveAxis, right: RevolveAxis) {
+  if (left.kind !== right.kind) return false
+  if (left.kind === "origin-axis") return right.kind === "origin-axis" && left.axis === right.axis
+  if (left.kind === "sketch-line") {
+    return right.kind === "sketch-line" && sketchLineAxesMatch(left, right)
+  }
+  return right.kind === "model-edge" && modelEdgeAxesMatch(left, right)
+}
+
+function sketchLineAxesMatch(
+  left: Extract<RevolveAxis, { kind: "sketch-line" }>,
+  right: Extract<RevolveAxis, { kind: "sketch-line" }>,
+) {
+  return left.sketchId === right.sketchId && left.entityId === right.entityId
+}
+
+function modelEdgeAxesMatch(
+  left: Extract<RevolveAxis, { kind: "model-edge" }>,
+  right: Extract<RevolveAxis, { kind: "model-edge" }>,
+) {
+  if (left.reference.featureId !== right.reference.featureId) return false
+  if (left.reference.semanticRole && right.reference.semanticRole) {
+    return left.reference.semanticRole === right.reference.semanticRole
+  }
+  if (left.reference.lineageToken && right.reference.lineageToken) {
+    return left.reference.lineageToken === right.reference.lineageToken
+  }
+  return canonicalJson(left.reference.signature) === canonicalJson(right.reference.signature)
+}
+
 export function EditorWorkspace(props: EditorWorkspaceProps) {
   const { featurePreview, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
-  const revolveAxisCandidates = useRevolveAxisCandidates(props.controller, props.activeTool)
+  const revolveAxisCandidates = useRevolveAxisCandidates(
+    props.controller,
+    props.activeTool,
+    props.hiddenFeatureIds,
+  )
   const revolveAxisSelection = useRevolveAxisSelection(
     props.activeTool,
     props.controller.report?.snapshot,

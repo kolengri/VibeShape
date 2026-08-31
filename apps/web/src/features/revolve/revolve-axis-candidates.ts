@@ -2,6 +2,7 @@ import { type SupportFrameGeometryRecord, sketchFrame } from "@vibeshape/applica
 import type { DocumentSnapshot, FeatureRecord, SketchRecord } from "@vibeshape/domain"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import type { ViewerSketchLineCandidate, ViewerVector3 } from "@vibeshape/viewer/three-viewport"
+import type { ExternalModelLineCandidate } from "../sketch/external-model-geometry"
 
 const MIN_AXIS_LENGTH = 1e-9
 
@@ -13,6 +14,41 @@ export type RevolveSketchLineAxisCandidate = ViewerSketchLineCandidate &
       entityId: Extract<SketchRecord["entities"][number], { type: "line" }>["id"]
     }>
   }>
+
+export type RevolveModelEdgeAxisCandidate = Readonly<{
+  axis: Readonly<{
+    kind: "model-edge"
+    reference: ExternalModelLineCandidate["reference"]
+  }>
+  candidateId: string
+  end: ViewerVector3
+  featureId: ExternalModelLineCandidate["featureId"]
+  kind: "model-line"
+  label: string
+  start: ViewerVector3
+}>
+
+export type RevolveAxisCandidate = RevolveSketchLineAxisCandidate | RevolveModelEdgeAxisCandidate
+
+export function revolveModelEdgeAxisCandidates(
+  candidates: readonly ExternalModelLineCandidate[],
+): readonly RevolveModelEdgeAxisCandidate[] {
+  return candidates.flatMap((candidate) =>
+    candidate.coplanar
+      ? [
+          {
+            axis: { kind: "model-edge" as const, reference: candidate.reference },
+            candidateId: candidate.candidateId,
+            end: candidate.end.world,
+            featureId: candidate.featureId,
+            kind: "model-line" as const,
+            label: candidate.label,
+            start: candidate.start.world,
+          },
+        ]
+      : [],
+  )
+}
 
 function worldPoint(
   frame: NonNullable<ReturnType<typeof sketchFrame>>,

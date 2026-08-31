@@ -1,3 +1,4 @@
+import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
 import {
   createAngleQuantity,
   createLengthQuantity,
@@ -442,6 +443,101 @@ describe("document extrusion content preparation", () => {
     await expect(prepare({ document, feature })).resolves.toMatchObject({
       ok: false,
       diagnostic: { values: { reason: "revolve-axis-line-unavailable" } },
+    })
+  })
+
+  it("resolves a stable model-edge axis after evaluation-local candidate IDs change", async () => {
+    const source = fixture()
+    const sourceFeatureId = source.feature.id
+    const signature = {
+      kind: "edge" as const,
+      geometryClass: "LINE",
+      measure: 5,
+      centroid: [2.5, 0, 0] as const,
+      bounds: { min: [0, 0, 0] as const, max: [5, 0, 0] as const },
+      direction: [1, 0, 0] as const,
+      directionMode: "axis" as const,
+      boundaryCount: 2,
+      adjacentGeometryClasses: ["PLANE", "PLANE"],
+    }
+    const reference = {
+      schemaVersion: 0 as const,
+      featureId: sourceFeatureId,
+      kind: "edge" as const,
+      semanticRole: "test.axis.edge",
+      signature,
+    }
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003313",
+      type: revolveFeatureType.type,
+      parameters: {
+        profile: source.feature.parameters.profile,
+        axis: { kind: "model-edge", reference },
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+      dependencies: [sourceFeatureId],
+    })
+    const document = documentSnapshotSchema.parse({
+      ...source.document,
+      features: [source.feature, feature],
+    })
+    const geometry = [
+      {
+        featureId: sourceFeatureId,
+        geometry: {
+          topologyCandidates: [
+            {
+              candidateId: "edge:rebuilt-42",
+              kind: "edge",
+              semanticRole: "test.axis.edge",
+              lineageTokens: [],
+              signature,
+              referenceGeometry: {
+                kind: "line-edge",
+                start: [0, 0, 0],
+                end: [5, 0, 0],
+              },
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+
+    await expect(prepare({ document, feature, geometry })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        axis: { kind: "model-edge", reference },
+        axisOrigin: [0, 0, 0],
+        axisDirection: [1, 0, 0],
+      },
+    })
+
+    const noncoplanar = [
+      {
+        ...geometry[0],
+        geometry: {
+          topologyCandidates: [
+            {
+              ...geometry[0]?.geometry.topologyCandidates[0],
+              referenceGeometry: {
+                kind: "line-edge" as const,
+                start: [0, 2, 0] as const,
+                end: [5, 2, 0] as const,
+              },
+            },
+          ],
+        },
+      },
+    ] as unknown as readonly FeatureGeometryRecord[]
+    await expect(prepare({ document, feature, geometry: noncoplanar })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { values: { reason: "revolve-axis-model-edge-noncoplanar" } },
     })
   })
 

@@ -40,7 +40,7 @@ test.describe("selector-backed revolve", () => {
     const form = page.getByRole("form", { name: "Revolve profile" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(form.getByRole("combobox", { name: "Angle" })).toHaveValue("360 deg")
-    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "4")
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "8")
     await viewport
       .getByRole("combobox", { name: "Select a Revolve axis with the keyboard" })
       .selectOption({ label: "Sketch 1 · Line 1" })
@@ -52,7 +52,7 @@ test.describe("selector-backed revolve", () => {
     const reopenedCreateForm = page.getByRole("form", { name: "Revolve profile" })
     await expect(
       reopenedCreateForm.getByText(
-        "Click a highlighted sketch line in the 3D viewport, or use X/Y above.",
+        "Click a highlighted sketch line or straight model edge in the 3D viewport, or use X/Y above.",
       ),
     ).toBeVisible()
     await expect(
@@ -104,5 +104,54 @@ test.describe("selector-backed revolve", () => {
     await expect(
       reopenedForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
     ).toHaveText("Box 1")
+  })
+
+  test("persists a stable straight model-edge axis selected from the viewport", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawProfileAwayFromBothOriginAxes(page)
+    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    const picker = viewport.getByRole("combobox", {
+      name: "Select a Revolve axis with the keyboard",
+    })
+    const modelEdgeOption = picker
+      .locator("option")
+      .filter({ hasText: /^Box 1 · Edge \d+$/ })
+      .first()
+    await expect(modelEdgeOption).toBeAttached()
+    const optionValue = await modelEdgeOption.getAttribute("value")
+    if (!optionValue) throw new Error("The model-edge axis option has no value.")
+    const selectedLabel = await modelEdgeOption.textContent()
+    if (!selectedLabel) throw new Error("The model-edge axis option has no readable label.")
+    await picker.selectOption(optionValue)
+    await expect(form.getByText(selectedLabel, { exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await form.getByRole("button", { name: "Create revolve" }).click()
+
+    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    await expect(
+      page.getByRole("form", { name: "Edit revolve" }).getByText(selectedLabel, { exact: true }),
+    ).toBeVisible()
   })
 })
