@@ -7,33 +7,46 @@ import {
   type FeatureRecord,
   featureIdSchema,
   featureRecordSchema,
+  readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
   revolveFeatureType,
   type SketchProfileSelector,
   type TopoRef,
   type VariableDefinition,
 } from "@vibeshape/domain"
+import { Button } from "@vibeshape/ui/components/button"
+import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
 import { submitFeatureMutation } from "../part-design/primitive-form"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
 
 const EMPTY_TARGET_OPTIONS = [] as const
+const IGNORE_PREVIEW = () => undefined
 
-type Values = Readonly<{ axis: string; angle: string; operation: string; targetFeatureId: string }>
+type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
+type Values = Readonly<{
+  axis: RevolveAxis
+  angle: string
+  operation: string
+  targetFeatureId: string
+}>
 export type RevolveFormCopy = RevolveParameterPanelCopy &
   Readonly<{
     axis: string
     axisX: string
     axisY: string
+    axisSelectHint: string
     angle: string
     expressionDescription: string
     invalidExpression: string
@@ -63,7 +76,8 @@ export type RevolveFormMode =
   | Readonly<{ kind: "edit"; feature: FeatureRecord }>
 
 function valuesFromFeature(feature: FeatureRecord): Values {
-  const p = revolveFeatureParametersSchema.parse(feature.parameters)
+  const p = readRevolveFeatureParameters(feature)
+  if (!p) throw new Error("Revolve parameters are unavailable.")
   return {
     axis: p.axis,
     angle: p.angle.source.expression ?? `${p.angle.source.value} ${p.angle.source.unit}`,
@@ -72,9 +86,36 @@ function valuesFromFeature(feature: FeatureRecord): Values {
   }
 }
 function profileForMode(mode: RevolveFormMode) {
-  return mode.kind === "create"
-    ? mode.profile
-    : revolveFeatureParametersSchema.parse(mode.feature.parameters).profile
+  if (mode.kind === "create") return mode.profile
+  const parameters = readRevolveFeatureParameters(mode.feature)
+  if (!parameters) throw new Error("Revolve parameters are unavailable.")
+  return parameters.profile
+}
+
+function featureIdForMode(mode: RevolveFormMode) {
+  return mode.kind === "edit" ? mode.feature.id : mode.createFeatureId()
+}
+
+function defaultValuesForMode(
+  mode: RevolveFormMode,
+  angleUnit: "rad" | "deg",
+  targetOptions: readonly { id: FeatureId; label: string }[],
+): Values {
+  if (mode.kind === "edit") return valuesFromFeature(mode.feature)
+  return {
+    axis: { kind: "origin-axis", axis: "x" },
+    angle: defaultAngleExpression(Math.PI * 2, angleUnit),
+    operation: "new",
+    targetFeatureId: targetOptions[0]?.id ?? "",
+  }
+}
+
+function invalidFieldName(issues: Readonly<Record<string, string>>) {
+  return "angle" in issues ? "angle" : "targetFeatureId"
+}
+
+function previewHandler(onPreviewChange?: (feature: FeatureRecord | null) => void) {
+  return onPreviewChange ?? IGNORE_PREVIEW
 }
 function record(
   mode: RevolveFormMode,
@@ -180,30 +221,93 @@ function RevolvePreviewSync({
   values: Values
   variables: readonly VariableDefinition[]
 }) {
-  const inputRef = useRef({ copy, displayUnit, mode, options, profile, variables })
-  inputRef.current = { copy, displayUnit, mode, options, profile, variables }
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const input = inputRef.current
+  useDebouncedFeaturePreview({
+    input: { copy, displayUnit, mode, options, profile, variables },
+    onPreviewChange,
+    values,
+    resolve: (currentValues, input) => {
       const parsed = parseValues(
-        values,
+        currentValues,
         input.profile,
         input.variables,
         input.displayUnit,
         input.copy,
         input.options,
       )
-      onPreviewChange(
-        parsed.ok ? record(input.mode, featureId, parsed.parameters, parsed.targetFeatureId) : null,
-      )
-    }, 180)
-    return () => window.clearTimeout(timeout)
-  }, [featureId, onPreviewChange, values])
-  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+      return parsed.ok
+        ? record(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
+        : null
+    },
+  })
+  return null
+}
+
+function RevolveAxisField({
+  axisLineLabel,
+  copy,
+  disabled,
+  onChange,
+  value,
+}: Readonly<{
+  axisLineLabel?: string | undefined
+  copy: Pick<RevolveFormCopy, "axis" | "axisSelectHint" | "axisX" | "axisY">
+  disabled: boolean
+  onChange: (axis: RevolveAxis) => void
+  value: RevolveAxis
+}>) {
+  return (
+    <fieldset className="grid gap-2" disabled={disabled}>
+      <legend className="text-sm font-medium">{copy.axis}</legend>
+      <div className="flex gap-2">
+        {(["x", "y"] as const).map((axis) => {
+          const selected = value.kind === "origin-axis" && value.axis === axis
+          const label = axis === "x" ? copy.axisX : copy.axisY
+          return (
+            <Tooltip key={axis}>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  className="min-w-0 flex-1"
+                  size="sm"
+                  variant={selected ? "secondary" : "outline"}
+                  aria-label={label}
+                  aria-pressed={selected}
+                  onClick={() => onChange({ kind: "origin-axis", axis })}
+                >
+                  {axis.toUpperCase()}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{label}</TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </div>
+      <output className="flex min-h-9 items-center gap-2 rounded-md border border-dashed bg-panel-muted px-3 py-2 text-sm">
+        <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className={axisLineLabel ? undefined : "text-muted-foreground"}>
+          {axisLineLabel ?? copy.axisSelectHint}
+        </span>
+      </output>
+    </fieldset>
+  )
+}
+
+function RevolveAxisSelectionSync({
+  axisSelection,
+  onChange,
+}: Readonly<{
+  axisSelection?: RevolveAxis | undefined
+  onChange: (axis: RevolveAxis) => void
+}>) {
+  useEffect(() => {
+    if (axisSelection) onChange(axisSelection)
+  }, [axisSelection, onChange])
   return null
 }
 
 export function RevolveForm({
+  axisLineLabel,
+  axisSelection,
   baseRevision,
   copy,
   disabled = false,
@@ -212,10 +316,13 @@ export function RevolveForm({
   onSave,
   onSaved,
   onPreviewChange,
+  onAxisChange,
   options,
   profileLabel,
   variables,
 }: {
+  axisLineLabel?: string | undefined
+  axisSelection?: RevolveAxis | undefined
   baseRevision: number
   copy: RevolveFormCopy
   disabled?: boolean
@@ -224,11 +331,13 @@ export function RevolveForm({
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
   onPreviewChange?: (feature: FeatureRecord | null) => void
+  onAxisChange?: ((axis: RevolveAxis) => void) | undefined
   options?: readonly { id: FeatureId; label: string }[]
   profileLabel: string
   variables: readonly VariableDefinition[]
 }) {
   const targetOptions = options ?? EMPTY_TARGET_OPTIONS
+  const updatePreview = previewHandler(onPreviewChange)
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -240,26 +349,16 @@ export function RevolveForm({
     suggestions,
   } = useParameterFormState(variables)
   const profile = profileForMode(mode)
-  const [featureId] = useState(() =>
-    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
-  )
+  const [featureId] = useState(() => featureIdForMode(mode))
   const form = useAppForm({
-    defaultValues:
-      mode.kind === "edit"
-        ? valuesFromFeature(mode.feature)
-        : {
-            axis: "x",
-            angle: defaultAngleExpression(Math.PI * 2, displayUnits.angle),
-            operation: "new",
-            targetFeatureId: targetOptions[0]?.id ?? "",
-          },
+    defaultValues: defaultValuesForMode(mode, displayUnits.angle, targetOptions),
     onSubmit: async ({ value }) => {
       const parsed = parseValues(value, profile, variables, displayUnits.angle, copy, targetOptions)
       if (!parsed.ok) {
         setIssues(parsed.issues)
         setMessage(copy.validationSummary)
-        const invalidFieldName = "angle" in parsed.issues ? "angle" : "targetFeatureId"
-        formElementRef.current?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)?.focus()
+        const fieldName = invalidFieldName(parsed.issues)
+        formElementRef.current?.querySelector<HTMLElement>(`[name="${fieldName}"]`)?.focus()
         return
       }
       setIssues({})
@@ -274,25 +373,28 @@ export function RevolveForm({
       })
     },
   })
+  const applyAxisSelection = useCallback(
+    (axis: RevolveAxis) => form.setFieldValue("axis", axis),
+    [form],
+  )
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
-      {onPreviewChange ? (
-        <form.Subscribe selector={(state) => state.values}>
-          {(values) => (
-            <RevolvePreviewSync
-              copy={copy}
-              displayUnit={displayUnits.angle}
-              featureId={featureId}
-              mode={mode}
-              onPreviewChange={onPreviewChange}
-              options={targetOptions}
-              profile={profile}
-              values={values}
-              variables={variables}
-            />
-          )}
-        </form.Subscribe>
-      ) : null}
+      <RevolveAxisSelectionSync axisSelection={axisSelection} onChange={applyAxisSelection} />
+      <form.Subscribe selector={(state) => state.values}>
+        {(values) => (
+          <RevolvePreviewSync
+            copy={copy}
+            displayUnit={displayUnits.angle}
+            featureId={featureId}
+            mode={mode}
+            onPreviewChange={updatePreview}
+            options={targetOptions}
+            profile={profile}
+            values={values}
+            variables={variables}
+          />
+        )}
+      </form.Subscribe>
       <RevolveParameterPanel
         copy={copy}
         disabled={disabled}
@@ -357,19 +459,17 @@ export function RevolveForm({
         axisField={
           <form.Field name="axis">
             {(field) => (
-              <NativeSelectField
-                name={field.name}
-                value={field.state.value}
-                label={copy.axis}
+              <RevolveAxisField
+                axisLineLabel={axisLineLabel}
+                copy={copy}
                 disabled={disabled}
-                onChange={(event) => {
+                value={field.state.value}
+                onChange={(axis) => {
                   clearSubmissionErrors()
-                  field.handleChange(event.currentTarget.value)
+                  field.handleChange(axis)
+                  onAxisChange?.(axis)
                 }}
-              >
-                <option value="x">{copy.axisX}</option>
-                <option value="y">{copy.axisY}</option>
-              </NativeSelectField>
+              />
             )}
           </form.Field>
         }

@@ -63,7 +63,7 @@ export type GeometryViewportSketchContext = Readonly<{
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
-    purpose?: "pierce" | "use"
+    purpose?: "pierce" | "revolve-axis" | "use"
   }>
   faceIntersectionSelection?: Readonly<{
     onSelect: (selection: ViewerSelection) => void
@@ -1621,14 +1621,30 @@ function ModelViewportChrome({
   )
 }
 
-function SketchReferenceSelectionStatus({ purpose }: Readonly<{ purpose: "pierce" | "use" }>) {
+type SketchReferencePurpose = "pierce" | "revolve-axis" | "use"
+
+function referenceSelectionMessageKey(purpose: SketchReferencePurpose) {
+  if (purpose === "pierce") return "sketchPierceSelection" as const
+  if (purpose === "revolve-axis") return "revolveAxisSelection" as const
+  return "sketchReferenceSelection" as const
+}
+
+function referenceCandidateMessageKey(purpose: SketchReferencePurpose) {
+  if (purpose === "pierce") return "sketchPierceCandidate" as const
+  if (purpose === "revolve-axis") return "revolveAxisCandidate" as const
+  return "sketchReferenceCandidate" as const
+}
+
+function SketchReferenceSelectionStatus({
+  purpose,
+}: Readonly<{ purpose: SketchReferencePurpose }>) {
   const t = useTranslations("app.shell.viewport")
   return (
     <div
       className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
       role="status"
     >
-      {t(purpose === "pierce" ? "sketchPierceSelection" : "sketchReferenceSelection")}
+      {t(referenceSelectionMessageKey(purpose))}
     </div>
   )
 }
@@ -1638,7 +1654,7 @@ function SketchReferencePreselectionStatus({
   purpose,
 }: Readonly<{
   preselection: ViewerSketchReferenceCandidate
-  purpose: "pierce" | "use"
+  purpose: SketchReferencePurpose
 }>) {
   const t = useTranslations("app.shell.viewport")
   return (
@@ -1646,7 +1662,7 @@ function SketchReferencePreselectionStatus({
       className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
       role="status"
     >
-      {t(purpose === "pierce" ? "sketchPierceCandidate" : "sketchReferenceCandidate", {
+      {t(referenceCandidateMessageKey(purpose), {
         label: preselection.label,
       })}
     </div>
@@ -1660,15 +1676,26 @@ function SketchReferenceKeyboardPicker({
 }>) {
   const t = useTranslations("app.shell.viewport")
   const pierce = selection.purpose === "pierce"
+  const revolveAxis = selection.purpose === "revolve-axis"
   if (selection.candidates.length === 0) return null
   return (
     <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
       <span className="text-xs font-medium">
-        {t(pierce ? "sketchPierceKeyboardSelection" : "sketchReferenceKeyboardSelection")}
+        {t(
+          pierce
+            ? "sketchPierceKeyboardSelection"
+            : revolveAxis
+              ? "revolveAxisKeyboardSelection"
+              : "sketchReferenceKeyboardSelection",
+        )}
       </span>
       <NativeSelect
         aria-label={t(
-          pierce ? "sketchPierceKeyboardSelection" : "sketchReferenceKeyboardSelection",
+          pierce
+            ? "sketchPierceKeyboardSelection"
+            : revolveAxis
+              ? "revolveAxisKeyboardSelection"
+              : "sketchReferenceKeyboardSelection",
         )}
         className="h-8 max-w-72 text-xs"
         defaultValue=""
@@ -1679,7 +1706,13 @@ function SketchReferenceKeyboardPicker({
         }}
       >
         <option value="">
-          {t(pierce ? "sketchPierceKeyboardPlaceholder" : "sketchReferenceKeyboardPlaceholder")}
+          {t(
+            pierce
+              ? "sketchPierceKeyboardPlaceholder"
+              : revolveAxis
+                ? "revolveAxisKeyboardPlaceholder"
+                : "sketchReferenceKeyboardPlaceholder",
+          )}
         </option>
         {selection.candidates.map((candidate, index) => (
           <option key={`${candidate.kind}:${candidate.label}:${index}`} value={index}>
@@ -1703,7 +1736,7 @@ function SketchContextChrome({
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null
   const referenceSelection = context.referenceSelection
-  const referencePurpose = referenceSelection?.purpose === "pierce" ? "pierce" : "use"
+  const referencePurpose = referenceSelection?.purpose ?? "use"
   return (
     <>
       <WorldAxesLegend />

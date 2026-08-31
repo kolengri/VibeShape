@@ -1,7 +1,8 @@
 import {
   extrusionFeatureParametersSchema,
   type FeatureRecord,
-  revolveFeatureParametersSchema,
+  readRevolveFeatureParameters,
+  type revolveFeatureParametersSchema,
   type SketchConstraintId,
   type SketchEntityId,
   type SketchExternalReferenceId,
@@ -89,6 +90,9 @@ type TaskPanelProps = Readonly<{
   onCreateSubtract: () => void
   onEditSketch: (sketchId: SketchId) => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
+  onRevolveAxisChange?:
+    | ((axis: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]) => void)
+    | undefined
   onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onSketchPlaneSelect: (plane: SketchRecord["plane"]) => void
   onSketchReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
@@ -110,6 +114,8 @@ type TaskPanelProps = Readonly<{
   sketchSelectedConstraintId: SketchConstraintId | null
   sketchSelectedEntityIds: readonly SketchEntityId[]
   sketchSelectedProfile: SketchProfileSelector | null
+  revolveAxisLineLabel?: string | undefined
+  revolveAxisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"] | undefined
   workspace: EditorWorkspaceName
 }>
 
@@ -364,6 +370,7 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
     axis: t("axis"),
     axisX: t("axisX"),
     axisY: t("axisY"),
+    axisSelectHint: t("axisSelectHint"),
     angle: t("angle"),
     expressionDescription: t("expressionDescription"),
     invalidExpression: t("invalidExpression"),
@@ -637,13 +644,21 @@ function ExtrusionTaskPanel({
 }
 
 function RevolveTaskPanel({
+  axisLineLabel,
+  axisSelection,
   mode,
+  onAxisChange,
   onCloseTool,
   onPreviewChange,
   options,
   report,
 }: {
+  axisLineLabel?: string | undefined
+  axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"] | undefined
   mode: RevolveFormMode
+  onAxisChange?:
+    | ((axis: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]) => void)
+    | undefined
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly { id: FeatureRecord["id"]; label: string }[]
@@ -653,16 +668,16 @@ function RevolveTaskPanel({
   const snapshot = report.snapshot
   const t = useTranslations("app.shell.taskPanel.revolve")
   const profile =
-    mode.kind === "create"
-      ? mode.profile
-      : revolveFeatureParametersSchema.parse(mode.feature.parameters).profile
+    mode.kind === "create" ? mode.profile : readRevolveFeatureParameters(mode.feature)?.profile
   const profileLabel =
-    snapshot.sketches.find(({ id }) => id === profile.sketchId)?.label ?? t("missingProfile")
+    snapshot.sketches.find(({ id }) => id === profile?.sketchId)?.label ?? t("missingProfile")
   const task = featureTaskContext(mode, snapshot.revision)
   const panelT = useTranslations("app.shell.taskPanel")
   return (
     <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <RevolveForm
+        axisLineLabel={axisLineLabel}
+        axisSelection={axisSelection}
         key={task.key}
         baseRevision={snapshot.revision}
         copy={copy}
@@ -672,6 +687,7 @@ function RevolveTaskPanel({
         profileLabel={profileLabel}
         variables={snapshot.variables}
         onCancel={onCloseTool}
+        onAxisChange={onAxisChange}
         onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
@@ -1230,7 +1246,10 @@ type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
   onCloseTool: () => void
   onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
   report: NonNullable<DocumentControllerState["report"]>
+  revolveAxisLineLabel?: string | undefined
+  revolveAxisSelection?: TaskPanelProps["revolveAxisSelection"] | undefined
 }>
 
 function BoxToolTaskPanel({ activeTool, onCloseTool, report }: ActiveTaskPanelProps) {
@@ -1284,7 +1303,10 @@ function RevolveToolTaskPanel({
   activeTool,
   onCloseTool,
   onFeaturePreviewChange,
+  onRevolveAxisChange,
   report,
+  revolveAxisLineLabel,
+  revolveAxisSelection,
 }: ActiveTaskPanelProps) {
   if (activeTool.kind !== "create-revolve" && activeTool.kind !== "edit-revolve") return null
   const t = useTranslations("app.shell.taskPanel.revolve")
@@ -1300,7 +1322,10 @@ function RevolveToolTaskPanel({
     : []
   return mode ? (
     <RevolveTaskPanel
+      axisLineLabel={revolveAxisLineLabel}
+      axisSelection={revolveAxisSelection}
       mode={mode}
+      onAxisChange={onRevolveAxisChange}
       onCloseTool={onCloseTool}
       onPreviewChange={onFeaturePreviewChange}
       options={options}
@@ -1360,6 +1385,9 @@ function ModelTaskPanel({
   onCreateSketch,
   onCreateSubtract,
   onFeaturePreviewChange,
+  onRevolveAxisChange,
+  revolveAxisLineLabel,
+  revolveAxisSelection,
   sketchSelectedProfile,
 }: TaskPanelProps) {
   const report = controller.report
@@ -1370,6 +1398,9 @@ function ModelTaskPanel({
       report={report}
       onCloseTool={onCloseTool}
       onFeaturePreviewChange={onFeaturePreviewChange}
+      onRevolveAxisChange={onRevolveAxisChange}
+      revolveAxisLineLabel={revolveAxisLineLabel}
+      revolveAxisSelection={revolveAxisSelection}
     />
   ) : (
     <StartTaskPanel

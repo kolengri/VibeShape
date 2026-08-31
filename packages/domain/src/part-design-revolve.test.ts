@@ -10,7 +10,9 @@ import {
 } from "./modules"
 import {
   legacyRevolveFeatureType,
+  legacyRevolveFeatureTypeV2,
   partDesignFeatureTypeHandlers,
+  readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
   revolveFeatureType,
 } from "./part-design"
@@ -26,7 +28,7 @@ const profile = {
 
 const parameters = {
   profile,
-  axis: "x" as const,
+  axis: { kind: "origin-axis" as const, axis: "x" as const },
   angle: createAngleQuantity(90, "deg", "#quarterTurn"),
   operation: "new" as const,
 }
@@ -105,8 +107,43 @@ describe("selector-backed revolve feature", () => {
       registry().validateFeature({
         ...revolve(),
         type: legacyRevolveFeatureType.type,
+        parameters: { ...parameters, axis: "x", operation: "new" },
       }),
     ).toMatchObject({ ok: true })
+  })
+
+  it("normalizes schema-version-2 origin-axis intent without widening its stored contract", () => {
+    const feature = featureRecordSchema.parse({
+      ...revolve("remove"),
+      type: legacyRevolveFeatureTypeV2.type,
+      parameters: { ...parameters, axis: "y", operation: "remove" },
+    })
+
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readRevolveFeatureParameters(feature)?.axis).toEqual({
+      kind: "origin-axis",
+      axis: "y",
+    })
+  })
+
+  it("requires a selected line axis to belong to the profile sketch", () => {
+    const feature = revolve()
+    expect(
+      registry().validateFeature({
+        ...feature,
+        parameters: {
+          ...parameters,
+          axis: {
+            kind: "sketch-line",
+            sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+            entityId: profile.outerBoundaryEntityIds[0],
+          },
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { issues: [{ path: "parameters.axis.sketchId" }] },
+    })
   })
 
   it("resolves an angle expression and emits transient authored content", () => {
@@ -139,7 +176,7 @@ describe("selector-backed revolve feature", () => {
       parameters: { angle: { value: Math.PI / 4 } },
     })
     expect(handler.contentParameters(parameters)).toMatchObject({
-      axis: "x",
+      axis: { kind: "origin-axis", axis: "x" },
       angle: Math.PI / 2,
       operation: "new",
     })

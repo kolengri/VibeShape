@@ -4,16 +4,18 @@ import {
   type SupportFrameGeometryRecord,
   sketchFrame,
 } from "@vibeshape/application/support-frame"
-import type {
-  DocumentSnapshot,
-  FeatureId,
-  FeatureRecord,
-  SketchConstraintId,
-  SketchEntityId,
-  SketchExternalReferenceId,
-  SketchId,
-  SketchProfileSelector,
-  SketchRecord,
+import {
+  type DocumentSnapshot,
+  type FeatureId,
+  type FeatureRecord,
+  readRevolveFeatureParameters,
+  type revolveFeatureParametersSchema,
+  type SketchConstraintId,
+  type SketchEntityId,
+  type SketchExternalReferenceId,
+  type SketchId,
+  type SketchProfileSelector,
+  type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
@@ -42,6 +44,10 @@ import {
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
+import {
+  type RevolveSketchLineAxisCandidate,
+  revolveSketchLineAxisCandidates,
+} from "../features/revolve/revolve-axis-candidates"
 import {
   applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
@@ -91,6 +97,7 @@ import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
 const EMPTY_GEOMETRY = [] as const
+type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
 
 function committedGeometry(controller: DocumentControllerState) {
   const rebuild = controller.report?.rebuild
@@ -120,6 +127,7 @@ function featurePreviewCandidate(
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
+    onRevolveAxisChange: (axis: RevolveAxis) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
     onSketchEditorToolChange: (tool: SketchEditorTool) => void
     onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
@@ -146,6 +154,8 @@ type WorkspaceContentProps = Readonly<{
     selectedOriginPlane: ViewerOriginPlane | null
     selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
+    revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+    revolveAxisSelectionActive: boolean
   }>
   sketch: Readonly<{
     activeTool: ActiveSketchTool | null
@@ -1078,6 +1088,33 @@ function useWorkspaceReferenceSelection({
   )
 }
 
+function useRevolveAxisReferenceSelection(props: WorkspaceContentProps) {
+  return useMemo<GeometryViewportSketchContext | undefined>(() => {
+    if (!props.model.revolveAxisSelectionActive) return undefined
+    return {
+      frame: null,
+      mode: "orbit",
+      referenceSelection: {
+        candidates: props.model.revolveAxisCandidates,
+        onSelect: (candidate) => {
+          if (candidate.kind !== "line") return
+          const match = props.model.revolveAxisCandidates.find(
+            ({ sourceSketchId, sourceLineId }) =>
+              sourceSketchId === candidate.sourceSketchId &&
+              sourceLineId === candidate.sourceLineId,
+          )
+          if (match) props.actions.onRevolveAxisChange(match.axis)
+        },
+        purpose: "revolve-axis",
+      },
+    }
+  }, [
+    props.actions.onRevolveAxisChange,
+    props.model.revolveAxisCandidates,
+    props.model.revolveAxisSelectionActive,
+  ])
+}
+
 function WorkspaceContent(props: WorkspaceContentProps) {
   const [activeSketchDisplay, setActiveSketchDisplay] = useState<SketchDisplayRecord | null>(null)
   const sketchGeometry = useWorkspaceSketchGeometry(props)
@@ -1096,7 +1133,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     sketchGeometry.pierceCandidates,
     props.sketch.draft,
   )
-  const sketchContext = useWorkspaceReferenceSelection({
+  const sketchReferenceContext = useWorkspaceReferenceSelection({
     externalModelCandidates: modelGeometry.externalModelCandidates,
     externalPointCandidates,
     pierceCandidates,
@@ -1104,6 +1141,8 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     props,
     sketchActive: sketchGeometry.sketchActive,
   })
+  const revolveAxisContext = useRevolveAxisReferenceSelection(props)
+  const sketchContext = sketchReferenceContext ?? revolveAxisContext
   return (
     <WorkspaceContentView
       activeSketchDisplay={activeSketchDisplay}
@@ -1207,6 +1246,91 @@ function useEditorFeaturePreview(
   return { featurePreview, setPreviewFeature }
 }
 
+function revolveProfileSketchId(
+  activeTool: ActivePartDesignTool | null,
+  snapshot: DocumentSnapshot | undefined,
+) {
+  if (activeTool?.kind === "create-revolve") return activeTool.profile.sketchId
+  if (activeTool?.kind !== "edit-revolve") return null
+  const feature = snapshot?.features.find(({ id }) => id === activeTool.featureId)
+  return feature ? (readRevolveFeatureParameters(feature)?.profile.sketchId ?? null) : null
+}
+
+function useRevolveAxisCandidates(
+  controller: DocumentControllerState,
+  activeTool: ActivePartDesignTool | null,
+) {
+  const t = useTranslations("app.shell.viewport")
+  const snapshot = controller.report?.snapshot
+  const sketchId = revolveProfileSketchId(activeTool, snapshot)
+  const [candidates, setCandidates] = useState<readonly RevolveSketchLineAxisCandidate[]>([])
+  useEffect(() => {
+    const sketch = snapshot?.sketches.find(({ id }) => id === sketchId)
+    const rebuild = controller.report?.rebuild
+    if (!snapshot || !sketch || !rebuild?.ok) {
+      setCandidates([])
+      return
+    }
+    let active = true
+    void solveActiveSketch(snapshot.revision, sketch.id).then((result) => {
+      if (!active) return
+      if (!result.ok) {
+        setCandidates([])
+        return
+      }
+      setCandidates(
+        revolveSketchLineAxisCandidates(
+          snapshot,
+          sketch,
+          result.response.solution,
+          resolveDocumentFeatureParameters(snapshot),
+          rebuild.response.geometry,
+          (sketchLabel, ordinal) => t("revolveAxisLineCandidate", { sketch: sketchLabel, ordinal }),
+        ),
+      )
+    })
+    return () => {
+      active = false
+    }
+  }, [controller.report?.rebuild, sketchId, snapshot, t])
+  return candidates
+}
+
+function defaultRevolveAxis(
+  activeTool: ActivePartDesignTool | null,
+  snapshot: DocumentSnapshot | undefined,
+): RevolveAxis | null {
+  if (activeTool?.kind === "create-revolve") return { kind: "origin-axis", axis: "x" }
+  if (activeTool?.kind !== "edit-revolve") return null
+  const feature = snapshot?.features.find(({ id }) => id === activeTool.featureId)
+  return feature ? (readRevolveFeatureParameters(feature)?.axis ?? null) : null
+}
+
+function revolveToolKey(activeTool: ActivePartDesignTool | null) {
+  if (activeTool?.kind === "create-revolve") return `create:${activeTool.profile.sketchId}`
+  if (activeTool?.kind === "edit-revolve") return `edit:${activeTool.featureId}`
+  return "inactive"
+}
+
+function useRevolveAxisSelection(
+  activeTool: ActivePartDesignTool | null,
+  snapshot: DocumentSnapshot | undefined,
+) {
+  const key = revolveToolKey(activeTool)
+  const fallback = defaultRevolveAxis(activeTool, snapshot)
+  const [state, setState] = useState<Readonly<{ key: string; value: RevolveAxis | null }>>(() => ({
+    key,
+    value: fallback,
+  }))
+  useEffect(() => {
+    if (key !== "inactive") return
+    setState((current) => (current.key === "inactive" ? current : { key: "inactive", value: null }))
+  }, [key])
+  const value = state.key === key ? state.value : fallback
+  const setValue = useCallback((axis: RevolveAxis) => setState({ key, value: axis }), [key])
+  return { value, setValue }
+}
+
 function editedSketchId(activeTool: ActiveSketchTool | null) {
   if (activeTool?.kind === "edit-sketch") return activeTool.sketchId
   if (
@@ -1251,9 +1375,15 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
 
 function EditorContent({
   featurePreview,
+  revolveAxisCandidates,
+  revolveAxisSelection,
+  onRevolveAxisChange,
   props,
 }: {
   featurePreview: ReturnType<typeof useFeaturePreview>
+  revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+  revolveAxisSelection: RevolveAxis | null
+  onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
 }) {
   const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
@@ -1263,6 +1393,7 @@ function EditorContent({
     <WorkspaceContent
       actions={{
         onSelectionChange: actions.select,
+        onRevolveAxisChange,
         onSketchDraftChange: actions.setSketchDraft,
         onSketchEditorToolChange: actions.setSketchEditorTool,
         onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
@@ -1289,6 +1420,8 @@ function EditorContent({
         selectedOriginPlane: props.selectedOriginPlane,
         selectedFeatureId: activeFeatureId(props.activeTool),
         selection,
+        revolveAxisCandidates,
+        revolveAxisSelectionActive: revolveAxisSelection !== null,
       }}
       workspace={workspace}
       sketch={{
@@ -1310,12 +1443,26 @@ function EditorContent({
 
 function EditorTaskPanel({
   onFeaturePreviewChange,
+  onRevolveAxisChange,
   props,
+  revolveAxisCandidates,
+  revolveAxisSelection,
 }: {
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
+  onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
+  revolveAxisCandidates: readonly RevolveSketchLineAxisCandidate[]
+  revolveAxisSelection: RevolveAxis | null
 }) {
   const { actions } = props
+  const selectedAxisLabel =
+    revolveAxisSelection?.kind === "sketch-line"
+      ? revolveAxisCandidates.find(
+          ({ axis }) =>
+            axis.sketchId === revolveAxisSelection.sketchId &&
+            axis.entityId === revolveAxisSelection.entityId,
+        )?.label
+      : undefined
   return (
     <TaskPanel
       activeSketchId={props.activeSketchId}
@@ -1332,6 +1479,9 @@ function EditorTaskPanel({
       onCreateSubtract={actions.createSubtract}
       onEditSketch={actions.editSketch}
       onFeaturePreviewChange={onFeaturePreviewChange}
+      onRevolveAxisChange={onRevolveAxisChange}
+      revolveAxisLineLabel={selectedAxisLabel}
+      revolveAxisSelection={revolveAxisSelection ?? undefined}
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
@@ -1356,12 +1506,29 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     props.controller,
     props.activeTool,
   )
+  const revolveAxisCandidates = useRevolveAxisCandidates(props.controller, props.activeTool)
+  const revolveAxisSelection = useRevolveAxisSelection(
+    props.activeTool,
+    props.controller.report?.snapshot,
+  )
   return (
     <SketchProjectionProvider>
       <div className="cad-workspace-grid min-h-0">
         <EditorModelTree props={props} />
-        <EditorContent featurePreview={featurePreview} props={props} />
-        <EditorTaskPanel onFeaturePreviewChange={setPreviewFeature} props={props} />
+        <EditorContent
+          featurePreview={featurePreview}
+          onRevolveAxisChange={revolveAxisSelection.setValue}
+          props={props}
+          revolveAxisCandidates={revolveAxisCandidates}
+          revolveAxisSelection={revolveAxisSelection.value}
+        />
+        <EditorTaskPanel
+          onFeaturePreviewChange={setPreviewFeature}
+          onRevolveAxisChange={revolveAxisSelection.setValue}
+          props={props}
+          revolveAxisCandidates={revolveAxisCandidates}
+          revolveAxisSelection={revolveAxisSelection.value}
+        />
       </div>
     </SketchProjectionProvider>
   )

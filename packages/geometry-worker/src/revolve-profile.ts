@@ -1,6 +1,12 @@
 import type { revolveFeatureContentParametersSchema } from "@vibeshape/protocol"
 
-type RevolveParameters = ReturnType<typeof revolveFeatureContentParametersSchema.parse>
+type RevolveParameters = {
+  axis: "x" | "y" | ReturnType<typeof revolveFeatureContentParametersSchema.parse>["axis"]
+  axisDirection?: ReturnType<typeof revolveFeatureContentParametersSchema.parse>["axisDirection"]
+  axisOrigin?: ReturnType<typeof revolveFeatureContentParametersSchema.parse>["axisOrigin"]
+  frame?: ReturnType<typeof revolveFeatureContentParametersSchema.parse>["frame"]
+  outer: ReturnType<typeof revolveFeatureContentParametersSchema.parse>["outer"]
+}
 type Segment = RevolveParameters["outer"]["segments"][number]
 type Bounds = Readonly<{ min: number; max: number }>
 
@@ -73,10 +79,21 @@ function circleThroughThreePoints(
   return { center, radius: Math.hypot(start[0] - center[0], start[1] - center[1]) }
 }
 
-function arcBounds(segment: Extract<Segment, { type: "arc" }>, coordinate: 0 | 1): Bounds {
+type Projection = Readonly<{ normal: readonly [number, number]; offset: number }>
+
+function projectedPoint(point: readonly [number, number], normal: readonly [number, number]) {
+  return point[0] * normal[0] + point[1] * normal[1]
+}
+
+function arcBounds(
+  segment: Extract<Segment, { type: "arc" }>,
+  normal: readonly [number, number],
+): Bounds {
   const circle = circleThroughThreePoints(segment.start, segment.middle, segment.end)
   if (!circle) {
-    const values = [segment.start[coordinate], segment.middle[coordinate], segment.end[coordinate]]
+    const values = [segment.start, segment.middle, segment.end].map((point) =>
+      projectedPoint(point, normal),
+    )
     return { min: Math.min(...values), max: Math.max(...values) }
   }
   const angleAt = (point: readonly [number, number]) =>
@@ -89,9 +106,9 @@ function arcBounds(segment: Extract<Segment, { type: "arc" }>, coordinate: 0 | 1
     ? forwardSweep
     : forwardSweep - TWO_PI
   return parametricBounds(
-    circle.center[coordinate],
-    coordinate === 0 ? circle.radius : 0,
-    coordinate === 1 ? circle.radius : 0,
+    projectedPoint(circle.center, normal),
+    circle.radius * normal[0],
+    circle.radius * normal[1],
     start,
     sweep,
   )
@@ -99,12 +116,14 @@ function arcBounds(segment: Extract<Segment, { type: "arc" }>, coordinate: 0 | 1
 
 function ellipseCoefficients(
   segment: Extract<Segment, { type: "ellipse" | "elliptical-arc" }>,
-  coordinate: 0 | 1,
+  normal: readonly [number, number],
 ) {
   return {
-    center: segment.center[coordinate],
-    primary: segment.primaryAxisPoint[coordinate] - segment.center[coordinate],
-    secondary: segment.secondaryAxisPoint[coordinate] - segment.center[coordinate],
+    center: projectedPoint(segment.center, normal),
+    primary:
+      projectedPoint(segment.primaryAxisPoint, normal) - projectedPoint(segment.center, normal),
+    secondary:
+      projectedPoint(segment.secondaryAxisPoint, normal) - projectedPoint(segment.center, normal),
   }
 }
 
@@ -123,21 +142,22 @@ function ellipticalArcParameter(
   return Math.atan2(sine, cosine)
 }
 
-function segmentBounds(segment: Segment, coordinate: 0 | 1): Bounds {
+function segmentBounds(segment: Segment, normal: readonly [number, number]): Bounds {
   if (segment.type === "line") {
     return {
-      min: Math.min(segment.start[coordinate], segment.end[coordinate]),
-      max: Math.max(segment.start[coordinate], segment.end[coordinate]),
+      min: Math.min(projectedPoint(segment.start, normal), projectedPoint(segment.end, normal)),
+      max: Math.max(projectedPoint(segment.start, normal), projectedPoint(segment.end, normal)),
     }
   }
-  if (segment.type === "arc") return arcBounds(segment, coordinate)
+  if (segment.type === "arc") return arcBounds(segment, normal)
   if (segment.type === "circle") {
+    const center = projectedPoint(segment.center, normal)
     return {
-      min: segment.center[coordinate] - segment.radius,
-      max: segment.center[coordinate] + segment.radius,
+      min: center - segment.radius,
+      max: center + segment.radius,
     }
   }
-  const coefficients = ellipseCoefficients(segment, coordinate)
+  const coefficients = ellipseCoefficients(segment, normal)
   if (segment.type === "ellipse") {
     return parametricBounds(coefficients.center, coefficients.primary, coefficients.secondary)
   }
@@ -152,14 +172,56 @@ function segmentBounds(segment: Segment, coordinate: 0 | 1): Bounds {
   )
 }
 
-export function revolveProfileCrossesAxis(parameters: Pick<RevolveParameters, "axis" | "outer">) {
-  const coordinate = parameters.axis === "x" ? 1 : 0
+function selectedAxisProjection(parameters: RevolveParameters): Projection | null {
+  const originAxis =
+    typeof parameters.axis === "string"
+      ? parameters.axis
+      : parameters.axis.kind === "origin-axis"
+        ? parameters.axis.axis
+        : null
+  if (originAxis) {
+    return originAxis === "x" ? { normal: [0, 1], offset: 0 } : { normal: [-1, 0], offset: 0 }
+  }
+  if (!parameters.axisDirection || !parameters.axisOrigin || !parameters.frame) return null
+  const { axisDirection, axisOrigin, frame } = parameters
+  const localDirection = [
+    axisDirection[0] * frame.xAxis[0] +
+      axisDirection[1] * frame.xAxis[1] +
+      axisDirection[2] * frame.xAxis[2],
+    axisDirection[0] * frame.yAxis[0] +
+      axisDirection[1] * frame.yAxis[1] +
+      axisDirection[2] * frame.yAxis[2],
+  ] as const
+  const length = Math.hypot(...localDirection)
+  if (!(length > Number.EPSILON)) return null
+  const normal = [-localDirection[1] / length, localDirection[0] / length] as const
+  const relativeOrigin = [
+    axisOrigin[0] - frame.origin[0],
+    axisOrigin[1] - frame.origin[1],
+    axisOrigin[2] - frame.origin[2],
+  ] as const
+  const localOrigin = [
+    relativeOrigin[0] * frame.xAxis[0] +
+      relativeOrigin[1] * frame.xAxis[1] +
+      relativeOrigin[2] * frame.xAxis[2],
+    relativeOrigin[0] * frame.yAxis[0] +
+      relativeOrigin[1] * frame.yAxis[1] +
+      relativeOrigin[2] * frame.yAxis[2],
+  ] as const
+  return { normal, offset: projectedPoint(localOrigin, normal) }
+}
+
+export function revolveProfileCrossesAxis(parameters: RevolveParameters) {
+  const projection = selectedAxisProjection(parameters)
+  if (!projection) return false
   let minimum = Number.POSITIVE_INFINITY
   let maximum = Number.NEGATIVE_INFINITY
   for (const segment of parameters.outer.segments) {
-    const bounds = segmentBounds(segment, coordinate)
+    const bounds = segmentBounds(segment, projection.normal)
     minimum = Math.min(minimum, bounds.min)
     maximum = Math.max(maximum, bounds.max)
   }
-  return minimum < -AXIS_TOLERANCE && maximum > AXIS_TOLERANCE
+  return (
+    minimum < projection.offset - AXIS_TOLERANCE && maximum > projection.offset + AXIS_TOLERANCE
+  )
 }

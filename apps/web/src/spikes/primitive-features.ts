@@ -333,7 +333,7 @@ const revolveContentParameters = revolveFeatureContentParametersSchema.parse({
     ],
   },
   holes: [],
-  axis: "y",
+  axis: { kind: "origin-axis", axis: "y" },
   axisOrigin: [0, 0, 0],
   axisDirection: [0, 1, 0],
   angleRadians: Math.PI * 2,

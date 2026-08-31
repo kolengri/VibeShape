@@ -55,6 +55,66 @@ function fixture() {
   return extrusionFixture(sketch)
 }
 
+function constructionAxisFixture() {
+  const source = fixture()
+  const sketch = source.document.sketches[0]
+  if (!sketch) throw new Error("Expected a profile sketch.")
+  const startPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003420")
+  const endPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003421")
+  const axisEntityId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000003422")
+  const axisSketch = sketchRecordSchema.parse({
+    ...sketch,
+    entities: [
+      ...sketch.entities,
+      {
+        schemaVersion: 0,
+        id: startPointId,
+        type: "point",
+        x: -4,
+        y: 2,
+        construction: true,
+      },
+      {
+        schemaVersion: 0,
+        id: endPointId,
+        type: "point",
+        x: 6,
+        y: 7,
+        construction: true,
+      },
+      {
+        schemaVersion: 0,
+        id: axisEntityId,
+        type: "line",
+        startPointId,
+        endPointId,
+        construction: true,
+      },
+    ],
+  })
+  const document = documentSnapshotSchema.parse({
+    ...source.document,
+    sketches: [axisSketch],
+  })
+  const solution = {
+    ...source.solution,
+    points: [
+      ...source.solution.points,
+      { entityId: startPointId, x: -4, y: 2 },
+      { entityId: endPointId, x: 6, y: 7 },
+    ],
+  }
+  return {
+    ...source,
+    document,
+    solution,
+    sketch: axisSketch,
+    startPointId,
+    endPointId,
+    axisEntityId,
+  }
+}
+
 function extrusionFixture(sketch: SketchRecord) {
   const points = sketch.entities.flatMap((entity) =>
     entity.type === "point" ? [{ entityId: entity.id, x: entity.x, y: entity.y }] : [],
@@ -296,7 +356,7 @@ describe("document extrusion content preparation", () => {
       type: revolveFeatureType.type,
       parameters: {
         profile: source.feature.parameters.profile,
-        axis: "y",
+        axis: { kind: "origin-axis", axis: "y" },
         angle: createAngleQuantity(180, "deg"),
         operation: "new",
       },
@@ -311,12 +371,120 @@ describe("document extrusion content preparation", () => {
       ok: true,
       parameters: {
         sketchId,
-        axis: "y",
+        axis: { kind: "origin-axis", axis: "y" },
         axisOrigin: [0, 0, 0],
         axisDirection: [0, 0, 1],
         angleRadians: Math.PI,
         operation: "new",
       },
+    })
+  })
+
+  it("resolves a selected stable sketch line into an exact support-frame world axis", async () => {
+    const source = fixture()
+    const sketch = source.document.sketches[0]
+    const line = sketch?.entities.find((entity) => entity.type === "line")
+    if (!sketch || !line) throw new Error("Expected a profile line.")
+    const start = source.solution.points.find(({ entityId }) => entityId === line.startPointId)
+    const end = source.solution.points.find(({ entityId }) => entityId === line.endPointId)
+    if (!start || !end) throw new Error("Expected solved line endpoints.")
+    const length = Math.hypot(end.x - start.x, end.y - start.y)
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003311",
+      type: revolveFeatureType.type,
+      parameters: {
+        profile: source.feature.parameters.profile,
+        axis: { kind: "sketch-line", sketchId: sketch.id, entityId: line.id },
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: true,
+      parameters: {
+        axis: { kind: "sketch-line", sketchId: sketch.id, entityId: line.id },
+        axisOrigin: [start.x, 0, start.y],
+        axisDirection: [(end.x - start.x) / length, 0, (end.y - start.y) / length],
+      },
+    })
+  })
+
+  it("fails closed when a selected sketch-line axis no longer exists", async () => {
+    const source = fixture()
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003312",
+      type: revolveFeatureType.type,
+      parameters: {
+        profile: source.feature.parameters.profile,
+        axis: {
+          kind: "sketch-line",
+          sketchId,
+          entityId: "0195b5ac-b220-7a2c-8c33-000000003399",
+        },
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+    })
+    const document = documentSnapshotSchema.parse({ ...source.document, features: [feature] })
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: source.solution,
+    }))
+
+    await expect(prepare({ document, feature })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { values: { reason: "revolve-axis-line-unavailable" } },
+    })
+  })
+
+  it.each([
+    ["wrong entity type", "unavailable", "revolve-axis-line-unavailable"],
+    ["missing solved endpoint", "unsolved", "revolve-axis-line-unsolved"],
+    ["coincident solved endpoints", "degenerate", "revolve-axis-line-degenerate"],
+  ] as const)("fails closed for a %s selected axis", async (_label, variant, reason) => {
+    const source = constructionAxisFixture()
+    const wrongTypeEntity = source.sketch.entities.find(({ type }) => type === "point")
+    if (!wrongTypeEntity) throw new Error("Expected a point entity.")
+    const entityId = variant === "unavailable" ? wrongTypeEntity.id : source.axisEntityId
+    const feature = featureRecordSchema.parse({
+      ...source.feature,
+      id: "0195b5ac-b220-7a2c-8c33-000000003423",
+      type: revolveFeatureType.type,
+      parameters: {
+        profile: source.feature.parameters.profile,
+        axis: { kind: "sketch-line", sketchId: source.sketch.id, entityId },
+        angle: createAngleQuantity(180, "deg"),
+        operation: "new",
+      },
+    })
+    const start = source.solution.points.find(
+      ({ entityId: pointEntityId }) => pointEntityId === source.startPointId,
+    )
+    if (!start) throw new Error("Expected the solved construction-axis start point.")
+    const points =
+      variant === "unsolved"
+        ? source.solution.points.filter(({ entityId }) => entityId !== source.endPointId)
+        : variant === "degenerate"
+          ? source.solution.points.map((point) =>
+              point.entityId === source.endPointId ? { ...point, x: start.x, y: start.y } : point,
+            )
+          : source.solution.points
+    const prepare = createDocumentFeatureContentPreparer(() => ({
+      ok: true,
+      solution: { ...source.solution, points },
+    }))
+
+    await expect(prepare({ document: source.document, feature })).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { values: { reason } },
     })
   })
 
@@ -330,7 +498,7 @@ describe("document extrusion content preparation", () => {
         type: revolveFeatureType.type,
         parameters: {
           profile: source.feature.parameters.profile,
-          axis: "y",
+          axis: { kind: "origin-axis", axis: "y" },
           angle: createAngleQuantity(180, "deg"),
           operation,
         },

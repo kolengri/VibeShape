@@ -186,6 +186,8 @@ const REVOLVE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
 const REVOLVE_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#2"
+const REVOLVE_FEATURE_TYPE_V3_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#3"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -1063,6 +1065,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 

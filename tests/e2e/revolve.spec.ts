@@ -14,7 +14,9 @@ async function drawProfileAwayFromBothOriginAxes(page: Page) {
 }
 
 test.describe("selector-backed revolve", () => {
-  test("creates, previews, edits, and reopens an origin-axis solid", async ({ page }) => {
+  test("creates, previews, edits, and reopens a graphical sketch-line-axis solid", async ({
+    page,
+  }) => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -38,13 +40,34 @@ test.describe("selector-backed revolve", () => {
     const form = page.getByRole("form", { name: "Revolve profile" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(form.getByRole("combobox", { name: "Angle" })).toHaveValue("360 deg")
-    await form.getByRole("combobox", { name: "Revolve axis" }).selectOption("y")
-    await form.getByRole("combobox", { name: "Angle" }).fill("180 deg")
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "4")
+    await viewport
+      .getByRole("combobox", { name: "Select a Revolve axis with the keyboard" })
+      .selectOption({ label: "Sketch 1 · Line 1" })
+    await expect(form.getByText("Sketch 1 · Line 1")).toBeVisible()
+
+    await form.getByRole("button", { name: "Cancel" }).click()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+    const reopenedCreateForm = page.getByRole("form", { name: "Revolve profile" })
+    await expect(
+      reopenedCreateForm.getByText(
+        "Click a highlighted sketch line in the 3D viewport, or use X/Y above.",
+      ),
+    ).toBeVisible()
+    await expect(
+      reopenedCreateForm.getByRole("button", { name: "Horizontal sketch axis (X)" }),
+    ).toHaveAttribute("aria-pressed", "true")
+    await viewport
+      .getByRole("combobox", { name: "Select a Revolve axis with the keyboard" })
+      .selectOption({ label: "Sketch 1 · Line 1" })
+    await expect(reopenedCreateForm.getByText("Sketch 1 · Line 1")).toBeVisible()
+    await reopenedCreateForm.getByRole("combobox", { name: "Angle" }).fill("180 deg")
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
       timeout: 120_000,
     })
     await expect(viewport).toHaveAttribute("data-preview-feature-count", "1")
-    await form.getByRole("button", { name: "Create revolve" }).dblclick()
+    await reopenedCreateForm.getByRole("button", { name: "Create revolve" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
@@ -54,7 +77,7 @@ test.describe("selector-backed revolve", () => {
 
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
-    await expect(editForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
+    await expect(editForm.getByText("Sketch 1 · Line 1")).toBeVisible()
     await expect(editForm.getByRole("combobox", { name: "Angle" })).toHaveValue("180 deg")
     await editForm.getByRole("combobox", { name: "Angle" }).fill("270 deg")
     await editForm.getByRole("combobox", { name: "Result operation" }).selectOption("remove")
@@ -74,7 +97,7 @@ test.describe("selector-backed revolve", () => {
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     const reopenedForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(reopenedForm.getByRole("combobox", { name: "Angle" })).toHaveValue("270 deg")
-    await expect(reopenedForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
+    await expect(reopenedForm.getByText("Sketch 1 · Line 1")).toBeVisible()
     await expect(reopenedForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
       "remove",
     )

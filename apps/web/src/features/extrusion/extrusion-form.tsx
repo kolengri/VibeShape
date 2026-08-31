@@ -12,7 +12,7 @@ import {
 } from "@vibeshape/domain"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
@@ -25,6 +25,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import {
   ExtrusionParameterPanel,
@@ -163,29 +164,24 @@ function ExtrusionPreviewSync({
   values: ExtrusionFormValues
   variables: readonly VariableDefinition[]
 }) {
-  const inputRef = useRef({ copy, displayUnit, mode, options, profile, variables })
-  inputRef.current = { copy, displayUnit, mode, options, profile, variables }
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const input = inputRef.current
+  useDebouncedFeaturePreview({
+    input: { copy, displayUnit, mode, options, profile, variables },
+    onPreviewChange,
+    values,
+    resolve: (currentValues, input) => {
       const parsed = parseValues(
-        values,
+        currentValues,
         input.profile,
         input.variables,
         input.options,
         input.copy,
         input.displayUnit,
       )
-      onPreviewChange(
-        parsed.ok
-          ? extrusionRecord(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
-          : null,
-      )
-    }, 180)
-    return () => window.clearTimeout(timeout)
-  }, [featureId, onPreviewChange, values])
-
-  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+      return parsed.ok
+        ? extrusionRecord(input.mode, featureId, parsed.parameters, parsed.targetFeatureId)
+        : null
+    },
+  })
   return null
 }
 

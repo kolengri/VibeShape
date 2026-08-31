@@ -7,6 +7,7 @@ import {
   datumPlaneFrame,
   type SupportFrame,
   sketchFrame,
+  supportPointToWorld,
 } from "@vibeshape/application/support-frame"
 import {
   type DocumentSnapshot,
@@ -271,7 +272,8 @@ function prepareRevolve(
 ) {
   const profile = materializeSelectedProfile(sketch, solution, parameters.profile)
   if (!profile.ok) return profile
-  const axisDirection = parameters.axis === "x" ? frame.xAxis : frame.yAxis
+  const resolvedAxis = resolveRevolveAxis(sketch, solution, parameters.axis, frame)
+  if (!resolvedAxis.ok) return resolvedAxis
   const prepared = revolveFeatureContentParametersSchema.safeParse({
     sketchId: sketch.id,
     ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
@@ -279,14 +281,68 @@ function prepareRevolve(
     outer: profile.outer,
     holes: profile.holes,
     axis: parameters.axis,
-    axisOrigin: frame.origin,
-    axisDirection,
+    axisOrigin: resolvedAxis.origin,
+    axisDirection: resolvedAxis.direction,
     angleRadians: parameters.angle.value,
     operation: parameters.operation,
   })
   return prepared.success
     ? ({ ok: true, parameters: prepared.data } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile")
+}
+
+function resolveRevolveAxis(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  axis: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>["axis"],
+  frame: SupportFrame,
+) {
+  if (axis.kind === "origin-axis") {
+    return {
+      ok: true as const,
+      origin: frame.origin,
+      direction: axis.axis === "x" ? frame.xAxis : frame.yAxis,
+    }
+  }
+  return resolveSketchLineRevolveAxis(sketch, solution, axis, frame)
+}
+
+function resolveSketchLineRevolveAxis(
+  sketch: SketchRecord,
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  axis: Extract<
+    NonNullable<ReturnType<typeof readRevolveFeatureParameters>>["axis"],
+    { kind: "sketch-line" }
+  >,
+  frame: SupportFrame,
+) {
+  if (axis.sketchId !== sketch.id) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "revolve-axis-sketch-mismatch")
+  }
+  const entity = sketch.entities.find(({ id }) => id === axis.entityId)
+  if (entity?.type !== "line") {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "revolve-axis-line-unavailable")
+  }
+  const solvedPoints = new Map(
+    solution.points.map(({ entityId, x, y }) => [entityId, { x, y }] as const),
+  )
+  const start = solvedPoint(solvedPoints, entity.startPointId)
+  const end = solvedPoint(solvedPoints, entity.endPointId)
+  if (!start || !end) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "revolve-axis-line-unsolved")
+  }
+  const origin = supportPointToWorld(frame, start)
+  const worldEnd = supportPointToWorld(frame, end)
+  const delta = [worldEnd[0] - origin[0], worldEnd[1] - origin[1], worldEnd[2] - origin[2]] as const
+  const length = Math.hypot(...delta)
+  if (!(length > Number.EPSILON) || !Number.isFinite(length)) {
+    return failure("org.vibeshape.feature.sketch-profile-invalid", "revolve-axis-line-degenerate")
+  }
+  return {
+    ok: true as const,
+    origin,
+    direction: [delta[0] / length, delta[1] / length, delta[2] / length] as const,
+  }
 }
 
 export function solveSketchOnce(
