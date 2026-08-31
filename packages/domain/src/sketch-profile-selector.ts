@@ -3,6 +3,8 @@ import { sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
 
 export const MAX_PROFILE_SELECTOR_BOUNDARY_ENTITIES = 2_000
 export const MAX_PROFILE_SELECTOR_HOLES = 2_000
+export const MAX_SKETCH_PROFILE_SET_PROFILES = 64
+export const MAX_SKETCH_PROFILE_SET_BOUNDARY_ENTITIES = 2_000
 
 function isCanonicalEntityIdList(entityIds: readonly string[]) {
   return entityIds.every(
@@ -62,3 +64,57 @@ export const sketchProfileSelectorSchema = z
   })
 
 export type SketchProfileSelector = Readonly<z.infer<typeof sketchProfileSelectorSchema>>
+
+export function sketchProfileSelectorKey(selector: SketchProfileSelector) {
+  return JSON.stringify([
+    selector.sketchId,
+    selector.outerBoundaryEntityIds,
+    selector.holeBoundaryEntityIds,
+  ])
+}
+
+function profileSetUsesCanonicalOrder(profiles: readonly SketchProfileSelector[]) {
+  const keys = profiles.map(sketchProfileSelectorKey)
+  return keys.every((key, index) => index === 0 || (keys[index - 1] ?? "") < key)
+}
+
+function profileSetStaysWithinBoundaryBudget(profiles: readonly SketchProfileSelector[]) {
+  return (
+    profiles.reduce(
+      (total, profile) =>
+        total +
+        profile.outerBoundaryEntityIds.length +
+        profile.holeBoundaryEntityIds.reduce(
+          (profileTotal, boundary) => profileTotal + boundary.length,
+          0,
+        ),
+      0,
+    ) <= MAX_SKETCH_PROFILE_SET_BOUNDARY_ENTITIES
+  )
+}
+
+export const sketchProfileSetSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    profiles: z.array(sketchProfileSelectorSchema).min(1).max(MAX_SKETCH_PROFILE_SET_PROFILES),
+  })
+  .strict()
+  .refine(({ profiles }) => profileSetUsesCanonicalOrder(profiles), {
+    message: "Sketch profile sets must contain unique selectors in canonical order.",
+  })
+  .refine(({ profiles }) => profileSetStaysWithinBoundaryBudget(profiles), {
+    message: "A sketch profile set exceeds the aggregate boundary entity budget.",
+  })
+
+export type SketchProfileSet = Readonly<z.infer<typeof sketchProfileSetSchema>>
+
+export function createSketchProfileSet(profiles: readonly SketchProfileSelector[]) {
+  return sketchProfileSetSchema.parse({
+    schemaVersion: 0,
+    profiles: [...profiles].sort((left, right) => {
+      const leftKey = sketchProfileSelectorKey(left)
+      const rightKey = sketchProfileSelectorKey(right)
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0
+    }),
+  })
+}
