@@ -1,4 +1,5 @@
 import {
+  boxFeatureType,
   createLengthQuantity,
   datumPlaneFeatureType,
   documentIdSchema,
@@ -7,7 +8,11 @@ import {
   featureRecordSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
-import { createFeaturePreviewDocument, createFeaturePreviewMeshes } from "./use-feature-preview"
+import {
+  createFeaturePreviewDocument,
+  createFeaturePreviewMeshes,
+  featurePreviewKind,
+} from "./use-feature-preview"
 
 const documentId = documentIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f2101")
 const previewDocumentId = documentIdSchema.parse("0195b5ac-b213-7f2c-9c33-67a36a7f2102")
@@ -54,6 +59,30 @@ const mesh = {
 }
 
 describe("feature preview composition", () => {
+  it("classifies structurally parsed primitive feature types as primitive previews", () => {
+    const candidate = featureRecordSchema.parse({
+      schemaVersion: 0,
+      id: candidateId,
+      type: { ...boxFeatureType.type },
+      parameters: {
+        width: createLengthQuantity(20),
+        depth: createLengthQuantity(20),
+        height: createLengthQuantity(20),
+        centered: false,
+        origin: {
+          x: createLengthQuantity(0),
+          y: createLengthQuantity(0),
+          z: createLengthQuantity(0),
+        },
+      },
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    })
+
+    expect(featurePreviewKind(candidate)).toBe("primitive")
+  })
+
   it("creates a disposable document without mutating the committed snapshot", () => {
     const candidate = feature(candidateId, [baseId])
     const preview = createFeaturePreviewDocument(snapshot, candidate, previewDocumentId)

@@ -80,6 +80,14 @@ function renderForm(
     createFeatureId: () => featureId,
     featureLabel: "Cylinder 1",
   },
+  options: Readonly<{
+    onPreviewChange?: (feature: ReturnType<typeof featureRecordSchema.parse> | null) => void
+    placementRequest?: Readonly<{
+      featureId: typeof featureId
+      position: readonly [number, number, number]
+      sequence: number
+    }>
+  }> = {},
 ) {
   const formCopy =
     mode.kind === "edit"
@@ -100,6 +108,8 @@ function renderForm(
         onCancel={vi.fn()}
         onSave={onSave}
         onSaved={onSaved}
+        {...(options.onPreviewChange ? { onPreviewChange: options.onPreviewChange } : {})}
+        {...(options.placementRequest ? { placementRequest: options.placementRequest } : {})}
       />
     </I18nProvider>,
   )
@@ -109,6 +119,40 @@ function renderForm(
 afterEach(cleanup)
 
 describe("CylinderForm", () => {
+  it("keeps a stable preview identity and applies graphical placement to exact fields", async () => {
+    const onPreviewChange = vi.fn()
+    const { onSave } = renderForm(undefined, undefined, undefined, {
+      onPreviewChange,
+      placementRequest: { featureId, position: [-4, 9.25, 16], sequence: 1 },
+    })
+
+    expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
+      "-4 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originY }) as HTMLInputElement).value).toBe(
+      "9.25 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originZ }) as HTMLInputElement).value).toBe(
+      "16 mm",
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: featureId,
+          parameters: expect.objectContaining({
+            radius: expect.objectContaining({ value: 10 }),
+            origin: {
+              x: expect.objectContaining({ value: -4 }),
+              y: expect.objectContaining({ value: 9.25 }),
+              z: expect.objectContaining({ value: 16 }),
+            },
+          }),
+        }),
+      ),
+    )
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
   it("resolves a document variable and guards asynchronous double submission", async () => {
     const user = userEvent.setup()
     const submission = deferred()

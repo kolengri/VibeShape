@@ -7,6 +7,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -28,6 +29,8 @@ import {
   PrimitiveParameterPanel,
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
+import type { PrimitivePlacementRequest } from "../part-design/primitive-placement"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
 type DimensionField = "radius" | "height"
@@ -95,6 +98,7 @@ function cylinderFormValuesFromFeature(feature: FeatureRecord): CylinderFormValu
 
 function cylinderFeatureRecord(
   mode: CylinderFormMode,
+  featureId: FeatureId,
   parameters: ReturnType<typeof cylinderFeatureParametersSchema.parse>,
 ) {
   if (mode.kind === "edit") {
@@ -102,7 +106,7 @@ function cylinderFeatureRecord(
   }
   return featureRecordSchema.parse({
     schemaVersion: 0,
-    id: mode.createFeatureId(),
+    id: featureId,
     type: cylinderFeatureType.type,
     parameters,
     dependencies: [],
@@ -148,16 +152,58 @@ function parseCylinderValues(
   }
 }
 
+type CylinderFormProps = FeatureParameterFormProps<CylinderFormMode, CylinderFormCopy> &
+  Readonly<{
+    onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+    placementRequest?: PrimitivePlacementRequest | null | undefined
+  }>
+
+function CylinderPreviewSync({
+  copy,
+  displayUnit,
+  featureId,
+  mode,
+  onPreviewChange,
+  values,
+  variables,
+}: Readonly<{
+  copy: CylinderFormCopy
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  featureId: FeatureId
+  mode: CylinderFormMode
+  onPreviewChange: (feature: FeatureRecord | null) => void
+  values: CylinderFormValues
+  variables: readonly VariableDefinition[]
+}>) {
+  useDebouncedFeaturePreview({
+    input: { copy, displayUnit, mode, variables },
+    onPreviewChange,
+    values,
+    resolve: (currentValues, input) => {
+      const parsed = parseCylinderValues(
+        currentValues,
+        input.variables,
+        input.copy,
+        input.displayUnit,
+      )
+      return parsed.ok ? cylinderFeatureRecord(input.mode, featureId, parsed.parameters) : null
+    },
+  })
+  return null
+}
+
 export function CylinderForm({
   baseRevision,
   copy,
   disabled = false,
   mode,
   onCancel,
+  onPreviewChange,
   onSave,
   onSaved,
+  placementRequest,
   variables,
-}: FeatureParameterFormProps<CylinderFormMode, CylinderFormCopy>) {
+}: CylinderFormProps) {
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -172,6 +218,9 @@ export function CylinderForm({
     mode.kind === "edit"
       ? cylinderFormValuesFromFeature(mode.feature)
       : defaultCylinderValues(displayUnits.length)
+  const [featureId] = useState(() =>
+    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
+  )
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value }) => {
@@ -192,13 +241,22 @@ export function CylinderForm({
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: cylinderFeatureRecord(mode, parsed.parameters),
+        feature: cylinderFeatureRecord(mode, featureId, parsed.parameters),
         onSave,
         onSaved,
         setMessage,
       })
     },
   })
+
+  useEffect(() => {
+    if (disabled || !placementRequest || placementRequest.featureId !== featureId) return
+    const [x, y, z] = placementRequest.position
+    clearSubmissionErrors()
+    form.setFieldValue("originX", defaultLengthExpression(x, displayUnits.length))
+    form.setFieldValue("originY", defaultLengthExpression(y, displayUnits.length))
+    form.setFieldValue("originZ", defaultLengthExpression(z, displayUnits.length))
+  }, [clearSubmissionErrors, disabled, displayUnits.length, featureId, form, placementRequest])
 
   const dimensionField = (fieldName: DimensionField, label: string) => (
     <form.Field name={fieldName}>
@@ -244,6 +302,21 @@ export function CylinderForm({
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onPreviewChange ? (
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <CylinderPreviewSync
+              copy={copy}
+              displayUnit={displayUnits.length}
+              featureId={featureId}
+              mode={mode}
+              onPreviewChange={onPreviewChange}
+              values={values}
+              variables={variables}
+            />
+          )}
+        </form.Subscribe>
+      ) : null}
       <PrimitiveParameterPanel
         copy={copy}
         disabled={disabled}

@@ -260,6 +260,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         editFeature,
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
+        setPrimitivePlacement: sessionActions.setPrimitivePlacement,
         select,
         selectSavedSketchProfile: sessionActions.selectSavedSketchProfile,
         selectOriginPlane: sessionActions.setSelectedOriginPlane,
@@ -305,6 +306,7 @@ type EditorApplicationSession = Pick<
   | "hiddenSketchIds"
   | "originPlaneVisibility"
   | "preselectedFeatureId"
+  | "primitivePlacementRequest"
   | "selectedOriginPlane"
   | "selection"
   | "sketch"
@@ -320,6 +322,7 @@ function useEditorApplicationSession() {
       hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
+      primitivePlacementRequest: state.primitivePlacementRequest,
       selectedOriginPlane: state.selectedOriginPlane,
       selection: state.selection,
       sketch: state.sketch,
@@ -409,6 +412,7 @@ function EditorWorkspaceComposition({
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
+      primitivePlacementRequest={session.primitivePlacementRequest}
       selectedOriginPlane={session.selectedOriginPlane}
       workspace={session.workspace}
       selection={session.selection}

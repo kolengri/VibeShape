@@ -7,6 +7,7 @@ import {
   type VariableDefinition,
 } from "@vibeshape/domain"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { useEffect, useState } from "react"
 import {
   defaultLengthExpression,
   type useDocumentDisplayUnits,
@@ -28,6 +29,8 @@ import {
   PrimitiveParameterPanel,
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
+import type { PrimitivePlacementRequest } from "../part-design/primitive-placement"
+import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
 type DimensionField = "width" | "depth" | "height"
@@ -100,6 +103,7 @@ function boxFormValuesFromFeature(feature: FeatureRecord): BoxFormValues {
 
 function boxFeatureRecord(
   mode: BoxFormMode,
+  featureId: FeatureId,
   parameters: ReturnType<typeof boxFeatureParametersSchema.parse>,
 ) {
   if (mode.kind === "edit") {
@@ -107,7 +111,7 @@ function boxFeatureRecord(
   }
   return featureRecordSchema.parse({
     schemaVersion: 0,
-    id: mode.createFeatureId(),
+    id: featureId,
     type: boxFeatureType.type,
     parameters,
     dependencies: [],
@@ -167,16 +171,53 @@ function parseBoxValues(
   }
 }
 
+type BoxFormProps = FeatureParameterFormProps<BoxFormMode, BoxFormCopy> &
+  Readonly<{
+    onPreviewChange?: ((feature: FeatureRecord | null) => void) | undefined
+    placementRequest?: PrimitivePlacementRequest | null | undefined
+  }>
+
+function BoxPreviewSync({
+  copy,
+  displayUnit,
+  featureId,
+  mode,
+  onPreviewChange,
+  values,
+  variables,
+}: Readonly<{
+  copy: BoxFormCopy
+  displayUnit: ReturnType<typeof useDocumentDisplayUnits>["length"]
+  featureId: FeatureId
+  mode: BoxFormMode
+  onPreviewChange: (feature: FeatureRecord | null) => void
+  values: BoxFormValues
+  variables: readonly VariableDefinition[]
+}>) {
+  useDebouncedFeaturePreview({
+    input: { copy, displayUnit, mode, variables },
+    onPreviewChange,
+    values,
+    resolve: (currentValues, input) => {
+      const parsed = parseBoxValues(currentValues, input.variables, input.copy, input.displayUnit)
+      return parsed.ok ? boxFeatureRecord(input.mode, featureId, parsed.parameters) : null
+    },
+  })
+  return null
+}
+
 export function BoxForm({
   baseRevision,
   copy,
   disabled = false,
   mode,
   onCancel,
+  onPreviewChange,
   onSave,
   onSaved,
+  placementRequest,
   variables,
-}: FeatureParameterFormProps<BoxFormMode, BoxFormCopy>) {
+}: BoxFormProps) {
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -191,6 +232,9 @@ export function BoxForm({
     mode.kind === "edit"
       ? boxFormValuesFromFeature(mode.feature)
       : defaultBoxValues(displayUnits.length)
+  const [featureId] = useState(() =>
+    mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
+  )
   const form = useAppForm({
     defaultValues,
     onSubmit: async ({ value }) => {
@@ -211,13 +255,22 @@ export function BoxForm({
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: boxFeatureRecord(mode, parsed.parameters),
+        feature: boxFeatureRecord(mode, featureId, parsed.parameters),
         onSave,
         onSaved,
         setMessage,
       })
     },
   })
+
+  useEffect(() => {
+    if (disabled || !placementRequest || placementRequest.featureId !== featureId) return
+    const [x, y, z] = placementRequest.position
+    clearSubmissionErrors()
+    form.setFieldValue("originX", defaultLengthExpression(x, displayUnits.length))
+    form.setFieldValue("originY", defaultLengthExpression(y, displayUnits.length))
+    form.setFieldValue("originZ", defaultLengthExpression(z, displayUnits.length))
+  }, [clearSubmissionErrors, disabled, displayUnits.length, featureId, form, placementRequest])
 
   const dimensionField = (fieldName: DimensionField, label: string) => (
     <form.Field name={fieldName}>
@@ -263,6 +316,21 @@ export function BoxForm({
 
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
+      {onPreviewChange ? (
+        <form.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <BoxPreviewSync
+              copy={copy}
+              displayUnit={displayUnits.length}
+              featureId={featureId}
+              mode={mode}
+              onPreviewChange={onPreviewChange}
+              values={values}
+              variables={variables}
+            />
+          )}
+        </form.Subscribe>
+      ) : null}
       <PrimitiveParameterPanel
         copy={copy}
         disabled={disabled}

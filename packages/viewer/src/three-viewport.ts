@@ -16,6 +16,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   MOUSE,
+  Object3D,
   OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
@@ -30,6 +31,7 @@ import {
   WebGLRenderer,
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
+import { TransformControls } from "three/addons/controls/TransformControls.js"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -52,6 +54,38 @@ const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
 const ORIENTATION_INSET_MARGIN = 8
 const ORIENTATION_INSET_SIZE = 80
+
+function isFiniteViewerVector3(position: ViewerVector3): boolean {
+  return position.length === 3 && position.every((value) => Number.isFinite(value))
+}
+
+export function createLatestFramePublisher<Value>(
+  publish: (value: Value) => void,
+  schedule: (callback: FrameRequestCallback) => number = requestAnimationFrame,
+  cancelScheduled: (handle: number) => void = cancelAnimationFrame,
+) {
+  let frame: number | null = null
+  let pending: Readonly<{ value: Value }> | null = null
+  const flush = () => {
+    if (frame !== null) cancelScheduled(frame)
+    frame = null
+    const sample = pending
+    pending = null
+    if (sample) publish(sample.value)
+  }
+  return {
+    cancel: () => {
+      if (frame !== null) cancelScheduled(frame)
+      frame = null
+      pending = null
+    },
+    flush,
+    push: (value: Value) => {
+      pending = { value }
+      if (frame === null) frame = schedule(flush)
+    },
+  }
+}
 
 export type ViewerMesh = Readonly<{
   appearance?: "datum" | "model" | "preview"
@@ -204,6 +238,8 @@ export type GeometryViewport = Readonly<{
   setSelectionCandidateStackPreserved: (preserved: boolean) => void
   setSelectionPreselection: (selection: ViewerSelection | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
+  showTranslationGizmo: (position: ViewerVector3) => void
+  hideTranslationGizmo: () => void
   fit: () => void
   clearSelection: () => void
   dispose: () => void
@@ -290,6 +326,7 @@ export type GeometryViewportOptions = Readonly<{
     profile: ViewerSketchProfile | null,
     intent: ViewerSketchProfileSelectionIntent,
   ) => void
+  onTranslationGizmoPositionChange?: (position: ViewerVector3) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -772,6 +809,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #orientationCamera = new PerspectiveCamera(35, 1, 0.1, 10)
   readonly #orientationAxes = new AxesHelper(1.05)
   readonly #controls: OrbitControls
+  readonly #translationControls: TransformControls
+  readonly #translationObject = new Object3D()
+  readonly #translationHelper: Object3D
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #sketchProfileGroup = new Group()
@@ -968,6 +1008,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     profile: ViewerSketchProfile | null,
     intent: ViewerSketchProfileSelectionIntent,
   ) => void
+  readonly #onTranslationGizmoPositionChange: ((position: ViewerVector3) => void) | undefined
+  readonly #translationPositionPublisher: ReturnType<
+    typeof createLatestFramePublisher<ViewerVector3>
+  >
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
@@ -1000,6 +1044,9 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchPointPreselection: ViewerSketchReferenceCandidate | null = null
   #interactionMode: ViewerInteractionMode = "select"
   #sketchProjection: Readonly<{ bounds: ViewerSketchProjectionBounds }> | null = null
+  #translationGizmoInteracting = false
+  #skipTranslationGizmoPointerUp = false
+  #orbitControlsEnabledBeforeTranslation = true
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
@@ -1027,6 +1074,10 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#onSketchProfileCandidateStackCommit = sketchProfileCallbacks.candidateStackCommit
     this.#onSketchProfilePreselectionChange = sketchProfileCallbacks.preselection
     this.#onSketchProfileSelectionChange = sketchProfileCallbacks.selection
+    this.#onTranslationGizmoPositionChange = options.onTranslationGizmoPositionChange
+    this.#translationPositionPublisher = createLatestFramePublisher((position: ViewerVector3) =>
+      this.#onTranslationGizmoPositionChange?.(position),
+    )
     const context = canvas.getContext("webgl2", {
       alpha: true,
       antialias: true,
@@ -1051,6 +1102,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#featureSelectionGroup)
     this.#scene.add(this.#preselectionGroup)
     this.#scene.add(this.#selectionGroup)
+    this.#scene.add(this.#translationObject)
     this.#orientationAxes.setColors(
       new Color("#e15b64"),
       new Color("#35a66f"),
@@ -1076,12 +1128,26 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.target.set(0, 0, 0)
     this.#controls.addEventListener("change", this.#onControlsChange)
     this.#controls.update()
+    this.#translationControls = new TransformControls(this.#camera, canvas)
+    this.#translationControls.setMode("translate")
+    this.#translationControls.setSpace("world")
+    this.#translationHelper = this.#translationControls.getHelper()
+    this.#translationHelper.visible = false
+    this.#scene.add(this.#translationHelper)
+    this.#translationControls.addEventListener("change", this.#onTranslationControlsChange)
+    this.#translationControls.addEventListener("objectChange", this.#onTranslationObjectChange)
+    this.#translationControls.addEventListener("mouseDown", this.#onTranslationControlsMouseDown)
+    this.#translationControls.addEventListener("mouseUp", this.#onTranslationControlsMouseUp)
     this.#raycaster.params.Points.threshold = 2
     this.#raycaster.params.Line.threshold = 2
     canvas.addEventListener("pointerdown", this.#onPointerDown)
     canvas.addEventListener("pointermove", this.#onPointerMove)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
+    canvas.addEventListener("pointercancel", this.#onTranslationGestureCancel)
+    canvas.addEventListener("lostpointercapture", this.#onTranslationCaptureLost)
+    document.addEventListener("keydown", this.#onTranslationGestureKeyDown, true)
+    window.addEventListener("blur", this.#cancelTranslationGesture)
 
     this.#resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0]
@@ -1303,6 +1369,27 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  showTranslationGizmo(position: ViewerVector3) {
+    if (this.#disposed || !isFiniteViewerVector3(position)) return
+    this.#translationObject.position.set(...position)
+    this.#translationObject.updateMatrixWorld()
+    this.#translationHelper.visible = true
+    this.#translationControls.attach(this.#translationObject)
+    this.#render()
+  }
+
+  hideTranslationGizmo() {
+    if (this.#disposed) return
+    this.#translationControls.detach()
+    this.#translationHelper.visible = false
+    this.#translationGizmoInteracting = false
+    this.#skipTranslationGizmoPointerUp = false
+    this.#pointerDown = null
+    this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    this.#translationControls.enabled = true
+    this.#render()
+  }
+
   orientToFrame(frame: ViewerFrame) {
     if (this.#disposed) return false
     this.#clearSketchReferencePicking()
@@ -1421,9 +1508,21 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
+    this.#canvas.removeEventListener("pointercancel", this.#onTranslationGestureCancel)
+    this.#canvas.removeEventListener("lostpointercapture", this.#onTranslationCaptureLost)
+    document.removeEventListener("keydown", this.#onTranslationGestureKeyDown, true)
+    window.removeEventListener("blur", this.#cancelTranslationGesture)
+    this.#translationPositionPublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
     this.#controls.dispose()
+    this.#translationControls.removeEventListener("change", this.#onTranslationControlsChange)
+    this.#translationControls.removeEventListener("objectChange", this.#onTranslationObjectChange)
+    this.#translationControls.removeEventListener("mouseDown", this.#onTranslationControlsMouseDown)
+    this.#translationControls.removeEventListener("mouseUp", this.#onTranslationControlsMouseUp)
+    this.#translationControls.detach()
+    this.#scene.remove(this.#translationHelper)
+    this.#translationControls.dispose()
     disposeModelGroup(this.#modelGroup)
     disposeModelGroup(this.#sketchGroup)
     disposeModelGroup(this.#sketchPointCandidateGroup)
@@ -1438,6 +1537,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#featureSelectionGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
+    this.#scene.remove(this.#translationObject)
     this.#previewSurfaceMaterial.dispose()
     this.#previewEdgeMaterial.dispose()
     this.#datumSurfaceMaterial.dispose()
@@ -1751,6 +1851,51 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  #onTranslationControlsChange = () => {
+    this.#render()
+  }
+
+  #onTranslationObjectChange = () => {
+    const position = this.#translationObject.getWorldPosition(new Vector3())
+    if (!position.toArray().every((value) => Number.isFinite(value))) return
+    this.#translationPositionPublisher.push([position.x, position.y, position.z])
+  }
+
+  #onTranslationControlsMouseDown = () => {
+    this.#translationGizmoInteracting = true
+    this.#skipTranslationGizmoPointerUp = true
+    this.#orbitControlsEnabledBeforeTranslation = this.#controls.enabled
+    this.#controls.enabled = false
+  }
+
+  #onTranslationControlsMouseUp = () => {
+    this.#translationPositionPublisher.flush()
+    this.#translationGizmoInteracting = false
+    this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+  }
+
+  #cancelTranslationGesture = () => {
+    if (this.#disposed || !this.#translationGizmoInteracting) return
+    this.#translationControls.reset()
+    this.#translationControls.pointerUp(null)
+  }
+
+  #onTranslationGestureCancel = () => {
+    this.#cancelTranslationGesture()
+  }
+
+  #onTranslationCaptureLost = () => {
+    // A normal pointer-up releases capture before TransformControls publishes mouseUp.
+    queueMicrotask(this.#cancelTranslationGesture)
+  }
+
+  #onTranslationGestureKeyDown = (event: KeyboardEvent) => {
+    if (!this.#translationGizmoInteracting || event.key !== "Escape") return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.#cancelTranslationGesture()
+  }
+
   #createOriginPlanes() {
     for (const plane of viewerOriginPlanes) {
       const material = new MeshBasicMaterial({
@@ -1910,6 +2055,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerDown = (event: PointerEvent) => {
+    if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
       this.#pointerDown = { x: event.clientX, y: event.clientY }
     }
@@ -1917,6 +2063,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
+    if (this.#translationGizmoInteracting) return
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") {
       this.#updateSketchReferencePicking(event)
@@ -1937,6 +2084,11 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerUp = (event: PointerEvent) => {
+    if (this.#skipTranslationGizmoPointerUp) {
+      this.#skipTranslationGizmoPointerUp = false
+      this.#pointerDown = null
+      return
+    }
     const start = this.#pointerDown
     this.#pointerDown = null
     if (!event.isPrimary || event.button !== 0 || !start) return

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { viewerSketchReferenceCandidateKey } from "./sketch-reference-identity"
 import {
   createFaceHighlightGeometry,
+  createLatestFramePublisher,
   createViewerGeometry,
   createViewerSketchGeometry,
   createViewerSketchProfileGeometry,
@@ -33,6 +34,32 @@ describe("Three viewport geometry", () => {
     sketchId,
     outerBoundaryEntityIds: [boundary],
     holeBoundaryEntityIds: [],
+  })
+
+  it("publishes only the latest translation sample per frame and flushes release synchronously", () => {
+    const callbacks = new Map<number, FrameRequestCallback>()
+    const publish = vi.fn()
+    let nextHandle = 0
+    const publisher = createLatestFramePublisher(
+      publish,
+      (callback) => {
+        nextHandle += 1
+        callbacks.set(nextHandle, callback)
+        return nextHandle
+      },
+      (handle) => callbacks.delete(handle),
+    )
+
+    publisher.push([1, 0, 0])
+    publisher.push([2, 0, 0])
+    publisher.push([3, 0, 0])
+    expect(callbacks.size).toBe(1)
+    expect(publish).not.toHaveBeenCalled()
+
+    publisher.flush()
+    expect(callbacks.size).toBe(0)
+    expect(publish).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenLastCalledWith([3, 0, 0])
   })
 
   it("orders and deduplicates saved profiles by stable selector identity", () => {

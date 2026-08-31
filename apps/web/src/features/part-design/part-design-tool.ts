@@ -32,6 +32,24 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "create-datum-plane"; support?: SketchFeatureFaceSupport }>
   | Readonly<{ kind: "edit-datum-plane"; featureId: FeatureId }>
 
+export type ActivePrimitivePartDesignTool = Extract<
+  ActivePartDesignTool,
+  { kind: "create-box" | "create-cylinder" | "edit-box" | "edit-cylinder" }
+>
+
+const primitivePartDesignToolKinds = new Set<ActivePartDesignTool["kind"]>([
+  "create-box",
+  "edit-box",
+  "create-cylinder",
+  "edit-cylinder",
+])
+
+export function isPrimitivePartDesignTool(
+  tool: ActivePartDesignTool | null,
+): tool is ActivePrimitivePartDesignTool {
+  return tool !== null && primitivePartDesignToolKinds.has(tool.kind)
+}
+
 function hasFeatureType(feature: FeatureRecord, expected: FeatureRecord["type"]) {
   return (
     feature.type.moduleId === expected.moduleId &&

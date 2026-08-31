@@ -5,7 +5,9 @@ import {
   sketchFrame,
 } from "@vibeshape/application/support-frame"
 import {
+  boxFeatureParametersSchema,
   canonicalJson,
+  cylinderFeatureParametersSchema,
   type DocumentSnapshot,
   type FeatureId,
   type FeatureRecord,
@@ -44,7 +46,12 @@ import type { SketchCameraMode } from "../editor-session/editor-session-store"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
+  isPrimitivePartDesignTool,
 } from "../features/part-design/part-design-tool"
+import type {
+  PrimitivePlacement,
+  PrimitivePlacementRequest,
+} from "../features/part-design/primitive-placement"
 import {
   ineligibleProfileSketchIds,
   isProfileFeatureTool,
@@ -127,6 +134,10 @@ const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = 
   "edit-datum-plane",
   "create-revolve",
   "edit-revolve",
+  "create-box",
+  "edit-box",
+  "create-cylinder",
+  "edit-cylinder",
 ])
 
 function isPreviewedFeatureToolActive(activeTool: ActivePartDesignTool | null) {
@@ -140,6 +151,47 @@ function featurePreviewCandidate(
   return isPreviewedFeatureToolActive(activeTool) ? candidate : null
 }
 
+type PrimitiveManipulator = Readonly<{
+  featureId: FeatureId
+  position: PrimitivePlacement
+}>
+
+function primitiveManipulator(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+  placementRequest: PrimitivePlacementRequest | null,
+  readOnly: boolean,
+): PrimitiveManipulator | null {
+  if (!isPrimitivePartDesignTool(activeTool) || !candidate || readOnly) return null
+  const schema = activeTool.kind.endsWith("box")
+    ? boxFeatureParametersSchema
+    : cylinderFeatureParametersSchema
+  const parameters = schema.safeParse(candidate.parameters)
+  if (!parameters.success) return null
+  const { origin } = parameters.data
+  return {
+    featureId: candidate.id,
+    position:
+      placementRequest?.featureId === candidate.id
+        ? placementRequest.position
+        : [origin.x.value, origin.y.value, origin.z.value],
+  }
+}
+
+function primitiveTranslationGizmoProps(
+  manipulator: PrimitiveManipulator | null,
+  onPositionChange: (featureId: FeatureId, position: PrimitivePlacement) => void,
+) {
+  if (!manipulator) return {}
+  return {
+    translationGizmo: {
+      ...manipulator,
+      onPositionChange: (position: PrimitivePlacement) =>
+        onPositionChange(manipulator.featureId, position),
+    },
+  }
+}
+
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
@@ -149,6 +201,7 @@ type WorkspaceContentProps = Readonly<{
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
     onRevolveAxisChange: (axis: RevolveAxis) => void
+    onPrimitivePlacementChange: (featureId: FeatureId, position: PrimitivePlacement) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
     onSketchEditorToolChange: (tool: SketchEditorTool) => void
     onSketchFailedConstraintsChange: (constraintIds: readonly SketchConstraintId[]) => void
@@ -167,6 +220,7 @@ type WorkspaceContentProps = Readonly<{
   controller: DocumentControllerState
   model: Readonly<{
     featurePreview: ReturnType<typeof useFeaturePreview>
+    primitiveManipulator: PrimitiveManipulator | null
     hiddenFeatureIds: readonly FeatureId[]
     hiddenSketchIds: readonly SketchId[]
     idleOriginPlaneSelectionAvailable: boolean
@@ -310,6 +364,10 @@ function ModelingWorkspaceContent({
     <GeometryViewport
       controller={controller}
       featurePreview={model.featurePreview}
+      {...primitiveTranslationGizmoProps(
+        model.primitiveManipulator,
+        actions.onPrimitivePlacementChange,
+      )}
       contextualHiddenFeatureIds={editVisibility.featureIds}
       hiddenFeatureIds={model.hiddenFeatureIds}
       hiddenSketchIds={hiddenSketchIds}
@@ -1319,6 +1377,7 @@ export type EditorWorkspaceActions = Readonly<{
   redoSketchDraft: () => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
+  setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: () => void
   setSketchConstruction: (construction: boolean) => void
@@ -1353,6 +1412,7 @@ type EditorWorkspaceProps = Readonly<{
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onSketchFinalContextChange: (visible: boolean) => void
   preselectedFeatureId: FeatureId | null
+  primitivePlacementRequest: PrimitivePlacementRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
@@ -1380,7 +1440,7 @@ function useEditorFeaturePreview(
     featurePreviewCandidate(activeTool, previewFeature),
     committedGeometry(controller),
   )
-  return { featurePreview, setPreviewFeature }
+  return { featurePreview, previewFeature, setPreviewFeature }
 }
 
 function useRevolveAxisCandidates(
@@ -1590,6 +1650,7 @@ function EditorContent({
   featureProfileSelections,
   featureProfileHiddenSketchIds,
   featurePreview,
+  previewFeature,
   onFeatureProfileChange,
   revolveAxisCandidates,
   revolveAxisSelection,
@@ -1600,6 +1661,7 @@ function EditorContent({
   featureProfileSelections: readonly SketchProfileSelector[]
   featureProfileHiddenSketchIds: readonly SketchId[]
   featurePreview: ReturnType<typeof useFeaturePreview>
+  previewFeature: FeatureRecord | null
   onFeatureProfileChange: (
     profile: SketchProfileSelector,
     intent: ViewerSketchProfileSelectionIntent,
@@ -1629,6 +1691,7 @@ function EditorContent({
           actions.setSketchSelectedProfile(null)
         },
         onRevolveAxisChange,
+        onPrimitivePlacementChange: actions.setPrimitivePlacement,
         onSketchDraftChange: actions.setSketchDraft,
         onSketchEditorToolChange: actions.setSketchEditorTool,
         onSketchFailedConstraintsChange: actions.setSketchFailedConstraintIds,
@@ -1647,6 +1710,12 @@ function EditorContent({
       controller={controller}
       model={{
         featurePreview,
+        primitiveManipulator: primitiveManipulator(
+          props.activeTool,
+          previewFeature,
+          props.primitivePlacementRequest,
+          props.controller.report?.mode === "read-only",
+        ),
         hiddenFeatureIds: props.hiddenFeatureIds,
         hiddenSketchIds: [...props.hiddenSketchIds, ...featureProfileHiddenSketchIds],
         idleOriginPlaneSelectionAvailable: props.activeTool === null,
@@ -1731,6 +1800,7 @@ function EditorTaskPanel({
       onCreateSubtract={actions.createSubtract}
       onEditSketch={actions.editSketch}
       onFeaturePreviewChange={onFeaturePreviewChange}
+      primitivePlacementRequest={props.primitivePlacementRequest}
       onRevolveAxisChange={onRevolveAxisChange}
       onRevolveAxisSelectionRequest={() => onRevolveSelectionPurposeChange("axis")}
       onRevolveProfileSelectionRequest={() => onRevolveSelectionPurposeChange("profile")}
@@ -1787,7 +1857,7 @@ function modelEdgeAxesMatch(
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
-  const { featurePreview, setPreviewFeature } = useEditorFeaturePreview(
+  const { featurePreview, previewFeature, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
   )
@@ -1847,6 +1917,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
           featureProfileSelections={featureProfileSelection.value}
           featurePreview={featurePreview}
+          previewFeature={previewFeature}
           onFeatureProfileChange={selectFeatureProfile}
           onRevolveAxisChange={revolveAxisSelection.setValue}
           props={props}

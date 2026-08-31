@@ -91,6 +91,15 @@ function renderForm(
     featureLabel: "Box 1",
   },
   displayUnits: DocumentDisplayUnits = { length: "mm", angle: "deg" },
+  options: Readonly<{
+    disabled?: boolean
+    onPreviewChange?: (feature: ReturnType<typeof featureRecordSchema.parse> | null) => void
+    placementRequest?: Readonly<{
+      featureId: typeof featureId
+      position: readonly [number, number, number]
+      sequence: number
+    }>
+  }> = {},
 ) {
   const formCopy =
     mode.kind === "edit"
@@ -107,6 +116,9 @@ function renderForm(
           onCancel={vi.fn()}
           onSave={onSave}
           onSaved={onSaved}
+          {...(options.disabled === undefined ? {} : { disabled: options.disabled })}
+          {...(options.onPreviewChange ? { onPreviewChange: options.onPreviewChange } : {})}
+          {...(options.placementRequest ? { placementRequest: options.placementRequest } : {})}
         />
       </DocumentDisplayUnitsProvider>
     </I18nProvider>,
@@ -118,6 +130,51 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("BoxForm", () => {
+  it("keeps a stable preview identity and applies graphical placement to exact fields", async () => {
+    const onPreviewChange = vi.fn()
+    const { onSave } = renderForm(undefined, undefined, undefined, undefined, {
+      onPreviewChange,
+      placementRequest: { featureId, position: [12.5, -8, 3], sequence: 1 },
+    })
+
+    expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
+      "12.5 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originY }) as HTMLInputElement).value).toBe(
+      "-8 mm",
+    )
+    expect((screen.getByRole("combobox", { name: copy.originZ }) as HTMLInputElement).value).toBe(
+      "3 mm",
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: featureId,
+          parameters: expect.objectContaining({
+            width: expect.objectContaining({ value: 20 }),
+            origin: {
+              x: expect.objectContaining({ value: 12.5 }),
+              y: expect.objectContaining({ value: -8 }),
+              z: expect.objectContaining({ value: 3 }),
+            },
+          }),
+        }),
+      ),
+    )
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("ignores graphical placement while the document is read-only", () => {
+    renderForm(undefined, undefined, undefined, undefined, {
+      disabled: true,
+      placementRequest: { featureId, position: [12.5, -8, 3], sequence: 1 },
+    })
+
+    expect((screen.getByRole("combobox", { name: copy.originX }) as HTMLInputElement).value).toBe(
+      "0 mm",
+    )
+  })
+
   it("resolves a document variable and guards asynchronous double submission", async () => {
     const user = userEvent.setup()
     const submission = deferred()
