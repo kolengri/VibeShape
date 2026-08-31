@@ -36,7 +36,7 @@ test.describe("selector-backed revolve", () => {
     await confirmSketchPlane(page, "xy")
     await drawProfileAwayFromBothOriginAxes(page)
 
-    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     const form = page.getByRole("form", { name: "Revolve profile" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(form.getByRole("combobox", { name: "Angle" })).toHaveValue("360 deg")
@@ -48,7 +48,8 @@ test.describe("selector-backed revolve", () => {
 
     await form.getByRole("button", { name: "Cancel" }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
-    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     const reopenedCreateForm = page.getByRole("form", { name: "Revolve profile" })
     await expect(
       reopenedCreateForm.getByText(
@@ -125,7 +126,7 @@ test.describe("selector-backed revolve", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     await drawProfileAwayFromBothOriginAxes(page)
-    await page.getByRole("button", { name: "Revolve selected profile" }).click()
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
 
     const form = page.getByRole("form", { name: "Revolve profile" })
     const viewport = page.getByRole("region", { name: "3D viewport" })

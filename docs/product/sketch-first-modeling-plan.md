@@ -50,7 +50,8 @@ Status: implemented in the product shell.
 - Make Create sketch the primary empty-document action.
 - Present Sketch and eligible Extrude before direct-solid commands.
 - Treat model-tree sketch activation as selection, not immediate editing.
-- After Finish sketch, keep the saved profile selected and make Extrude selected profile the primary next action.
+- Keep Extrude and Revolve available as registered icon commands while a sketch is open; the task footer contains only Cancel and Finish sketch.
+- After Finish sketch, retain the stable selected profile so the same feature commands remain eligible without a second selection.
 - Keep Box and Cylinder in an explicitly secondary advanced path for compatibility and fast blocking.
 - Cover the selection boundary, command eligibility, async Finish, extrusion commit, rebuild, edit, and reopen in component and cross-browser tests.
 

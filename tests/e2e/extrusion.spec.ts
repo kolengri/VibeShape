@@ -37,7 +37,10 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Show Sketch 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
     await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+      .click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("combobox", { name: "Distance" }).fill("#depth")
@@ -178,7 +181,10 @@ test.describe("selector-backed extrusion", () => {
     await expect(page.getByRole("combobox", { name: "Support plane" })).toBeDisabled()
 
     await drawRectangle(page)
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+      .click()
     const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(extrusionForm).toBeVisible()
     await extrusionForm.getByRole("button", { name: "Create extrusion" }).click()

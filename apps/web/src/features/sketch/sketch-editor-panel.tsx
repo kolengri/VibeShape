@@ -70,8 +70,6 @@ type SketchEditorPanelCopy = Readonly<{
   noExternalReferences: string
   editConstraint: string
   equal: string
-  extrude: string
-  revolve: string
   finish: string
   fixed: string
   horizontal: string
@@ -747,23 +745,17 @@ function SketchProfilesSection({
 }
 
 function SketchEditorFooter({
-  canCreateFeature,
   copy,
   disabled,
   message,
   onCancel,
-  onExtrude,
   onFinish,
-  onRevolve,
 }: {
-  canCreateFeature: boolean
   copy: SketchEditorPanelCopy
   disabled: boolean
   message: string | null
   onCancel: () => void
-  onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
-  onRevolve: () => Promise<boolean>
 }) {
   return (
     <div className="mt-auto grid gap-2 border-t pt-3">
@@ -771,25 +763,9 @@ function SketchEditorFooter({
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {copy.cancel}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={canCreateFeature ? "outline" : "default"}
-          disabled={disabled}
-          onClick={onFinish}
-        >
+        <Button type="button" size="sm" disabled={disabled} onClick={onFinish}>
           {copy.finish}
         </Button>
-        {canCreateFeature ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" size="sm" disabled={disabled} onClick={onExtrude}>
-              {copy.extrude}
-            </Button>
-            <Button type="button" size="sm" disabled={disabled} onClick={onRevolve}>
-              {copy.revolve}
-            </Button>
-          </div>
-        ) : null}
       </div>
       {message ? (
         <p className="text-xs leading-4 text-destructive" role="alert">
@@ -932,7 +908,6 @@ type SketchEditorPanelState = Readonly<{
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   externalReferenceLabels: ReadonlyMap<string, string>
   missingExternalReferenceIds: ReadonlySet<SketchExternalReferenceId>
-  extrusionAvailable: boolean
   failedConstraintIds: readonly string[]
   message: string | null
   profiles: readonly SketchProfileSelector[]
@@ -949,9 +924,7 @@ type SketchEditorPanelState = Readonly<{
 type SketchEditorPanelActions = Readonly<{
   onCancel: () => void
   onDraftChange: (draft: SketchRecord) => void
-  onExtrude: () => Promise<boolean>
   onFinish: () => Promise<void>
-  onRevolve: () => Promise<boolean>
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
@@ -973,7 +946,6 @@ export function SketchEditorPanel({
     externalPointCandidates,
     externalReferenceLabels,
     missingExternalReferenceIds,
-    extrusionAvailable,
     failedConstraintIds,
     message,
     profiles,
@@ -989,9 +961,7 @@ export function SketchEditorPanel({
   const {
     onCancel,
     onDraftChange,
-    onExtrude,
     onFinish,
-    onRevolve,
     onReferenceRepairChange,
     onSupportReplace,
     onSelectedConstraintChange,
@@ -1057,14 +1027,11 @@ export function SketchEditorPanel({
         />
       </div>
       <SketchEditorFooter
-        canCreateFeature={extrusionAvailable}
         copy={copy}
         disabled={disabled}
         message={message}
         onCancel={onCancel}
-        onExtrude={onExtrude}
         onFinish={onFinish}
-        onRevolve={onRevolve}
       />
     </div>
   )

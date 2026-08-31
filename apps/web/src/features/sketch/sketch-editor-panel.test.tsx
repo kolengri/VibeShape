@@ -57,8 +57,6 @@ const copy = {
   attachSelectedPoint: "Attach",
   editConstraint: "Edit dimension",
   equal: "Equal",
-  extrude: "Extrude selected profile",
-  revolve: "Revolve selected profile",
   finish: "Finish sketch",
   fixed: "Fix point",
   geometry: "Geometry tools",
@@ -164,9 +162,7 @@ function renderPanel(
   selectedConstraintId: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["selectedConstraintId"] = null,
-  extrusion?: Readonly<{
-    onExtrude: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onExtrude"]
-    onRevolve?: React.ComponentProps<typeof SketchEditorPanel>["actions"]["onRevolve"]
+  profileSelection?: Readonly<{
     profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
   }>,
   externalReferenceLabels: React.ComponentProps<
@@ -202,15 +198,14 @@ function renderPanel(
               externalPointCandidates: [],
               externalReferenceLabels,
               missingExternalReferenceIds,
-              extrusionAvailable: extrusion !== undefined,
               failedConstraintIds,
               message: null,
-              profiles: extrusion?.profile ? [extrusion.profile] : [],
+              profiles: profileSelection?.profile ? [profileSelection.profile] : [],
               referenceDimensionLabels,
               repairReferenceId,
               selectedConstraintId,
               selectedEntityIds,
-              selectedProfile: extrusion?.profile ?? null,
+              selectedProfile: profileSelection?.profile ?? null,
               supportLabel,
               supportProblem,
               variables,
@@ -218,9 +213,7 @@ function renderPanel(
             actions={{
               onCancel: vi.fn(),
               onDraftChange,
-              onExtrude: extrusion?.onExtrude ?? vi.fn(async () => true),
               onFinish: vi.fn(async () => undefined),
-              onRevolve: extrusion?.onRevolve ?? vi.fn(async () => true),
               onReferenceRepairChange,
               onSupportReplace,
               onSelectedConstraintChange: vi.fn(),
@@ -502,12 +495,10 @@ describe("SketchEditorPanel", () => {
     expect(onReferenceRepairChange).toHaveBeenCalledWith(referenceId)
   })
 
-  it("offers a single-flight Extrude action for a selected closed profile", async () => {
-    const user = userEvent.setup()
+  it("keeps feature commands out of the sketch footer when a profile is selected", () => {
     const sketch = lineSketch()
     const boundary = sketch.entities.find((entity) => entity.type === "line")
     if (!boundary) throw new Error("The fixture must contain a profile boundary.")
-    const onExtrude = vi.fn(() => new Promise<boolean>(() => undefined))
     const profile = {
       holeBoundaryEntityIds: [],
       outerBoundaryEntityIds: [boundary.id],
@@ -515,37 +506,12 @@ describe("SketchEditorPanel", () => {
       sketchId: sketch.id,
     } satisfies SketchProfileSelector
 
-    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, { onExtrude, profile })
+    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, { profile })
 
-    const button = screen.getByRole("button", { name: "Extrude selected profile" })
-    await user.dblClick(button)
-    expect(onExtrude).toHaveBeenCalledOnce()
-    expect(button.getAttribute("aria-busy")).toBe("true")
-  })
-
-  it("offers a single-flight Revolve action for a selected closed profile", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const boundary = sketch.entities.find((entity) => entity.type === "line")
-    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
-    const onRevolve = vi.fn(() => new Promise<boolean>(() => undefined))
-    const profile = {
-      holeBoundaryEntityIds: [],
-      outerBoundaryEntityIds: [boundary.id],
-      schemaVersion: 0,
-      sketchId: sketch.id,
-    } satisfies SketchProfileSelector
-
-    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, {
-      onExtrude: vi.fn(async () => true),
-      onRevolve,
-      profile,
-    })
-
-    const button = screen.getByRole("button", { name: "Revolve selected profile" })
-    await user.dblClick(button)
-    expect(onRevolve).toHaveBeenCalledOnce()
-    expect(button.getAttribute("aria-busy")).toBe("true")
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Finish sketch" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Extrude selected profile" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Revolve selected profile" })).toBeNull()
   })
 
   it("adds an applicable geometric constraint from the current selection", async () => {

@@ -72,7 +72,10 @@ test.describe("datum plane reference geometry", () => {
       .click()
     await expect(page.getByRole("combobox", { name: "Support plane" })).toHaveValue("feature-face")
     await drawRectangle(page)
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+      .click()
     await page
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
