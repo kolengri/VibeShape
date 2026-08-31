@@ -581,6 +581,16 @@ const externalModelLineReferenceWireSchema = z
   .strict()
   .refine((reference) => reference.projectedStartPointId !== reference.projectedEndPointId)
 
+const externalModelPiercePointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-pierce-point"),
+    reference: edgeTopoRefWireSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
 const externalModelCurveReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(0),
@@ -675,6 +685,18 @@ const orphanedExternalModelLineReferenceWireSchema = z
       })
   })
 
+const orphanedExternalModelPiercePointReferenceWireSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-pierce-point"),
+    reference: edgeTopoRefWireSchema,
+    projectedPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceWireSchema,
+  })
+  .strict()
+  .superRefine(validateOrphanedModelReference)
+
 const orphanedExternalModelCurveReferenceWireSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -731,10 +753,12 @@ const externalReferenceWireSchema = z.union([
   externalCurveReferenceWireSchema,
   externalModelPointReferenceWireSchema,
   externalModelLineReferenceWireSchema,
+  externalModelPiercePointReferenceWireSchema,
   externalModelCurveReferenceWireSchema,
   externalModelIntersectionReferenceWireSchema,
   orphanedExternalModelPointReferenceWireSchema,
   orphanedExternalModelLineReferenceWireSchema,
+  orphanedExternalModelPiercePointReferenceWireSchema,
   orphanedExternalModelCurveReferenceWireSchema,
   orphanedExternalModelIntersectionReferenceWireSchema,
 ])

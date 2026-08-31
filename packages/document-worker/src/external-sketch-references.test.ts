@@ -596,6 +596,99 @@ describe("external sketch reference resolution", () => {
     ])
   })
 
+  it("recomputes a stable model-edge Pierce point and fails closed when the edge stops crossing", async () => {
+    const featureId = id("4610")
+    const referenceId = id("4611")
+    const projectedPointId = id("4612")
+    const feature = {
+      schemaVersion: 0 as const,
+      id: featureId,
+      type: {
+        moduleId: "org.vibeshape.test",
+        moduleVersion: "0.1.0",
+        typeId: "org.vibeshape.test.fixture",
+        schemaVersion: 1,
+      },
+      parameters: {},
+      dependencies: [],
+      references: [],
+      suppressed: false,
+    }
+    const edgeSignature = {
+      kind: "edge" as const,
+      geometryClass: "LINE",
+      measure: 10,
+      centroid: [0, 3, 0] as [number, number, number],
+      bounds: {
+        min: [-2, 3, -5] as [number, number, number],
+        max: [2, 3, 5] as [number, number, number],
+      },
+      boundaryCount: 2,
+      adjacentGeometryClasses: [],
+    }
+    const target = sketchRecordSchema.parse({
+      ...pointSketch(6, 0),
+      entities: [],
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: referenceId,
+          kind: "model-pierce-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "edge.crossing",
+            signature: edgeSignature,
+          },
+          projectedPointId,
+        },
+      ],
+    })
+    const document = documentSnapshotSchema.parse({
+      schemaVersion: 0,
+      id: id("4613"),
+      revision: 1,
+      name: "Model Pierce",
+      displayUnits: { length: "mm", angle: "deg" },
+      variables: [],
+      sketches: [target],
+      features: [feature],
+      createdAt: "2026-08-31T00:00:00.000Z",
+      updatedAt: "2026-08-31T00:00:00.000Z",
+    })
+    const geometry = (start: readonly number[], end: readonly number[]) =>
+      [
+        {
+          featureId,
+          geometry: {
+            topologyCandidates: [
+              {
+                candidateId: id("4614"),
+                kind: "edge" as const,
+                semanticRole: "edge.crossing",
+                lineageTokens: [],
+                signature: edgeSignature,
+                referenceGeometry: { kind: "line-edge" as const, start, end },
+              },
+            ],
+          },
+        },
+      ] as unknown as readonly FeatureGeometryRecord[]
+    const resolve = (records: readonly FeatureGeometryRecord[]) =>
+      resolveExternalSketchGeometry(document, target, vi.fn(solved), [], new Map(), records)
+
+    await expect(resolve(geometry([-2, 3, -1], [2, 3, 1]))).resolves.toMatchObject({
+      externalPoints: [{ id: projectedPointId, x: 0, y: 3 }],
+    })
+    await expect(resolve(geometry([-2, 5, -1], [2, 5, 1]))).resolves.toMatchObject({
+      externalPoints: [{ id: projectedPointId, x: 0, y: 5 }],
+    })
+    await expect(resolve(geometry([-2, 3, 2], [2, 3, 2]))).rejects.toThrow(
+      `External model line ${referenceId} does not pierce the target support.`,
+    )
+  })
+
   it("resolves one intermediate external-geometry source once per request", async () => {
     const featureId = id("4720")
     const sourceProjectedPointId = sketchEntityIdSchema.parse(id("4721"))

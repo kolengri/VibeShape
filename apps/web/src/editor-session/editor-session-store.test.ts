@@ -115,6 +115,7 @@ describe("editor session store", () => {
       line: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3302"),
       curve: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3303"),
       intersection: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3304"),
+      modelPierce: sketchExternalReferenceIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3314"),
     }
     const draft = sketchRecordSchema.parse({
       ...createSketch(),
@@ -173,6 +174,29 @@ describe("editor session store", () => {
           projectedStartPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3312"),
           projectedEndPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3313"),
         },
+        {
+          schemaVersion: 0,
+          id: referenceIds.modelPierce,
+          kind: "model-pierce-point",
+          reference: {
+            schemaVersion: 0,
+            featureId,
+            kind: "edge",
+            semanticRole: "primitive.box.edge.crossing",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 10,
+              centroid: [0, 0, 0],
+              bounds: { min: [-5, 0, -5], max: [5, 0, 5] },
+              direction: [Math.SQRT1_2, 0, Math.SQRT1_2],
+              directionMode: "axis",
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3315"),
+        },
       ],
     })
     store.getState().actions.beginSketchEdit(draft)
@@ -185,8 +209,16 @@ describe("editor session store", () => {
       })
     }
 
+    store.getState().actions.setSketchReferenceRepair(referenceIds.modelPierce)
+    expect(store.getState().sketch).toMatchObject({
+      cameraMode: "orbit",
+      editorTool: "pierce",
+      repairReferenceId: referenceIds.modelPierce,
+      showFinalContext: false,
+    })
+
     store.getState().actions.setSketchReferenceRepair(referenceIds.intersection)
-    expect(store.getState().sketch.repairReferenceId).toBe(referenceIds.curve)
+    expect(store.getState().sketch.repairReferenceId).toBe(referenceIds.modelPierce)
   })
 
   it("creates isolated editor sessions and preserves unrelated selector references", () => {

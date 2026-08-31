@@ -760,9 +760,12 @@ test.describe("full sketch editor", () => {
     const viewport = page.getByRole("region", { name: "3D viewport" })
     await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "1")
     await expect(
-      page.getByText("Pierce · Select an earlier-sketch line that crosses the active plane", {
-        exact: true,
-      }),
+      page.getByText(
+        "Pierce · Select an earlier-sketch line or model edge that crosses the active plane",
+        {
+          exact: true,
+        },
+      ),
     ).toBeVisible()
     const canvasBounds = await viewport.locator("canvas").boundingBox()
     if (!canvasBounds) throw new Error("The 3D Pierce-selection canvas is not visible.")
@@ -798,6 +801,54 @@ test.describe("full sketch editor", () => {
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
     await expect(sketchPanel.getByText("Pierce · Sketch 1 · Line 1", { exact: true })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
+  })
+
+  test("pierces a stable linear model edge and reopens the associative point", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    await page
+      .getByRole("form", { name: "Create box" })
+      .getByRole("button", { name: "Create box" })
+      .click()
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+
+    await toolbar.getByRole("button", { name: "Create sketch", exact: true }).click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The model Pierce sketch canvas is not visible.")
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.mouse.click(bounds.x + bounds.width * 0.42, bounds.y + bounds.height * 0.54)
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    await clickSketchEntity(page, drawing.locator('[data-sketch-entity-type="point"]').first())
+
+    await page.getByRole("button", { name: "Pierce to external line", exact: true }).click()
+    await expect(viewport).toHaveAttribute("data-sketch-reference-candidate-count", "4")
+    const keyboardPicker = page.getByRole("combobox", {
+      name: "Select a Pierce source with the keyboard",
+    })
+    const edgeLabel = await keyboardPicker.locator("option").nth(1).textContent()
+    if (!edgeLabel) throw new Error("A stable model-edge Pierce candidate is required.")
+    expect(edgeLabel).toMatch(/^Box 1 · Edge \d+$/)
+    await keyboardPicker.selectOption({ index: 1 })
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(sketchPanel.getByText(`Pierce · ${edgeLabel}`, { exact: true })).toBeVisible()
+    await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
+    await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
+    await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
+
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(sketchPanel.getByText(`Pierce · ${edgeLabel}`, { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
   })
 

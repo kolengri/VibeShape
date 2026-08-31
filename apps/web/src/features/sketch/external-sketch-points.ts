@@ -274,8 +274,14 @@ export function availableExternalSketchGeometryCandidates(
 export function availableExternalSketchPierceCandidates(
   candidates: readonly ExternalSketchPierceCandidate[],
   draft: SketchRecord | null,
+  repairReferenceId: SketchExternalReferenceId | null,
 ) {
-  return draft ? candidates : []
+  if (!draft) return []
+  if (!repairReferenceId) return candidates
+  const reference = draft.externalReferences?.find(({ id }) => id === repairReferenceId)
+  return reference?.kind === "pierce-point" && !isSketchExternalModelReference(reference)
+    ? candidates
+    : []
 }
 
 export function externalReferenceMatchesCandidate(

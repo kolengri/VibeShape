@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { isReferenceSketchDimension, sketchRecordSchema } from "./sketch"
+import {
+  isOrphanedModelReference,
+  isReferenceSketchDimension,
+  isSketchExternalModelReference,
+  sketchRecordSchema,
+} from "./sketch"
 import { createAngleQuantity, createLengthQuantity } from "./units"
 
 const sketchId = "018f0000-0000-7000-8000-000000000001"
@@ -481,6 +486,63 @@ describe("sketchRecordSchema", () => {
     })
 
     expect(parsed.success).toBe(true)
+  })
+
+  test("treats live and orphaned model Pierce points as model-owned point geometry", () => {
+    const featureId = "018f0000-0000-7000-8000-000000000417"
+    const projectedPointId = "018f0000-0000-7000-8000-000000000418"
+    const live = {
+      schemaVersion: 0,
+      id: "018f0000-0000-7000-8000-000000000419",
+      kind: "model-pierce-point",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "edge",
+        semanticRole: "primitive.box.edge.crossing",
+        signature: {
+          kind: "edge",
+          geometryClass: "LINE",
+          measure: 10,
+          centroid: [0, 0, 0],
+          bounds: { min: [-5, 0, -5], max: [5, 0, 5] },
+          direction: [Math.SQRT1_2, 0, Math.SQRT1_2],
+          directionMode: "axis",
+          boundaryCount: 2,
+          adjacentGeometryClasses: [],
+        },
+      },
+      projectedPointId,
+    } as const
+    const parsed = sketchRecordSchema.parse({
+      ...validSketch(),
+      externalReferences: [live],
+      constraints: [
+        {
+          schemaVersion: 0,
+          id: constraintId(208),
+          type: "coincident",
+          firstPointId: pointA,
+          secondPointId: projectedPointId,
+        },
+      ],
+    })
+    const reference = parsed.externalReferences?.[0]
+    expect(reference && isSketchExternalModelReference(reference)).toBe(true)
+    expect(reference && isOrphanedModelReference(reference)).toBe(false)
+
+    const orphaned = sketchRecordSchema.parse({
+      ...validSketch(),
+      externalReferences: [
+        {
+          ...live,
+          schemaVersion: 1,
+          orphanedSource: { kind: "deleted-feature", featureId },
+        },
+      ],
+    }).externalReferences?.[0]
+    expect(orphaned && isSketchExternalModelReference(orphaned)).toBe(true)
+    expect(orphaned && isOrphanedModelReference(orphaned)).toBe(true)
   })
 
   test("accepts elliptical model curves and rejects topology-class drift", () => {

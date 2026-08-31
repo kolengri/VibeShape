@@ -1811,6 +1811,7 @@ function externalReferenceSourceKey(
   if (
     reference.kind === "model-point" ||
     reference.kind === "model-line" ||
+    reference.kind === "model-pierce-point" ||
     reference.kind === "model-curve" ||
     reference.kind === "model-intersection"
   ) {

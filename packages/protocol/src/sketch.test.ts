@@ -258,6 +258,59 @@ describe("sketch alignment wire constraints", () => {
     expect(constraintOverflow.success).toBe(false)
   })
 
+  test("round-trips live and orphaned model Pierce point references", () => {
+    const featureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3250"
+    const reference = {
+      schemaVersion: 0,
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f3251",
+      kind: "model-pierce-point",
+      reference: {
+        schemaVersion: 0,
+        featureId,
+        kind: "edge",
+        semanticRole: "primitive.box.edge.crossing",
+        signature: {
+          kind: "edge",
+          geometryClass: "LINE",
+          measure: 10,
+          centroid: [0, 0, 0],
+          bounds: { min: [-5, 0, -5], max: [5, 0, 5] },
+          direction: [Math.SQRT1_2, 0, Math.SQRT1_2],
+          directionMode: "axis",
+          boundaryCount: 2,
+          adjacentGeometryClasses: [],
+        },
+      },
+      projectedPointId: "0195b5ac-b220-7a2c-8c33-67a36a7f3252",
+    } as const
+    const live = sketchWireRecordSchema.safeParse({
+      ...record([
+        {
+          schemaVersion: 0,
+          id: constraintId(6_003),
+          type: "coincident",
+          firstPointId: pointA,
+          secondPointId: reference.projectedPointId,
+        },
+      ]),
+      externalReferences: [reference],
+    })
+    expect(live.success).toBe(true)
+    if (live.success) expect(live.data.externalReferences).toEqual([reference])
+
+    const orphaned = sketchWireRecordSchema.safeParse({
+      ...record([]),
+      externalReferences: [
+        {
+          ...reference,
+          schemaVersion: 1,
+          orphanedSource: { kind: "deleted-feature", featureId },
+        },
+      ],
+    })
+    expect(orphaned.success).toBe(true)
+  })
+
   test("round-trips point-on-elliptical-arc and rejects full ellipse or round targets", () => {
     const constraint = {
       schemaVersion: 0,

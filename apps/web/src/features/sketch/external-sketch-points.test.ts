@@ -12,6 +12,7 @@ import {
   applyExternalSketchCandidateSelection,
   applyExternalSketchPierceCandidate,
   availableExternalSketchGeometryCandidates,
+  availableExternalSketchPierceCandidates,
   earlierSketchesForDraft,
   externalSketchContextGeometry,
   externalSketchGeometryCandidates,
@@ -39,6 +40,73 @@ const labels = {
 }
 
 describe("external sketch point candidates", () => {
+  it("keeps Pierce repair candidates within the persisted source kind", () => {
+    const sketchPierceReferenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004080",
+    )
+    const modelPierceReferenceId = sketchExternalReferenceIdSchema.parse(
+      "0195b5ac-b220-7a2c-8c33-000000004081",
+    )
+    const candidate = {
+      construction: false,
+      kind: "line" as const,
+      label: "Path · Line 1",
+      piercePoint: { world: [0, 0, 0] as const, x: 0, y: 0 },
+      sourceEndPointId,
+      sourceLineId,
+      sourceSketchId,
+      sourceStartPointId: sourcePointId,
+      start: { world: [0, 0, -1] as const, x: 0, y: -1 },
+      end: { world: [0, 0, 1] as const, x: 0, y: 1 },
+    }
+    const sketchRepair = sketchRecordSchema.parse({
+      ...createSketchForExternalTest(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: sketchPierceReferenceId,
+          kind: "pierce-point",
+          sourceSketchId,
+          sourceLineId,
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-000000004082",
+        },
+      ],
+    })
+    const modelRepair = sketchRecordSchema.parse({
+      ...createSketchForExternalTest(),
+      externalReferences: [
+        {
+          schemaVersion: 0,
+          id: modelPierceReferenceId,
+          kind: "model-pierce-point",
+          reference: {
+            schemaVersion: 0,
+            featureId: "0195b5ac-b220-7a2c-8c33-000000004083",
+            kind: "edge",
+            semanticRole: "primitive.box.edge.vertical",
+            signature: {
+              kind: "edge",
+              geometryClass: "LINE",
+              measure: 10,
+              centroid: [0, 0, 0],
+              bounds: { min: [0, 0, -5], max: [0, 0, 5] },
+              boundaryCount: 2,
+              adjacentGeometryClasses: [],
+            },
+          },
+          projectedPointId: "0195b5ac-b220-7a2c-8c33-000000004084",
+        },
+      ],
+    })
+
+    expect(
+      availableExternalSketchPierceCandidates([candidate], sketchRepair, sketchPierceReferenceId),
+    ).toEqual([candidate])
+    expect(
+      availableExternalSketchPierceCandidates([candidate], modelRepair, modelPierceReferenceId),
+    ).toEqual([])
+  })
+
   it("materializes an exact Pierce point from a transverse earlier-sketch line", () => {
     const localPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-000000004030")
     const source = sketchRecordSchema.parse({

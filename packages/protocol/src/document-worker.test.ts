@@ -155,6 +155,16 @@ function envelope(revision = 1) {
 }
 
 describe("document worker protocol", () => {
+  it("rejects requests from the previous document protocol version", () => {
+    expect(
+      documentWorkerRequestSchema.safeParse({
+        ...envelope(),
+        protocolVersion: 16,
+        type: "healthCheck",
+      }).success,
+    ).toBe(false)
+  })
+
   it("accepts bounded selector-backed saved profile displays and rejects identity drift", () => {
     const profile = {
       selector: {
