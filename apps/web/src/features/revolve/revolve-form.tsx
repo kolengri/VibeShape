@@ -35,6 +35,7 @@ import {
   profileSelectorsEqual,
   topologyReferencesEqual,
 } from "../part-design/profile-feature-selection"
+import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { VariableExpressionField } from "../variables/variable-expression-field"
@@ -691,6 +692,15 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
       />
       <RevolvePreviewField controller={controller} />
       <RevolveParameterPanel
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={controller.copy.submit}
+            ariaLabel={controller.copy.title}
+            cancelLabel={controller.copy.cancel}
+            disabled={controller.disabled}
+            onCancel={controller.onCancel}
+          />
+        }
         copy={controller.copy}
         disabled={controller.disabled}
         message={controller.message}
@@ -701,14 +711,8 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
         onProfileSelectionRequest={controller.onProfileSelectionRequest}
         operationField={<RevolveOperationField controller={controller} />}
         targetField={<RevolveTargetField controller={controller} />}
-        onCancel={controller.onCancel}
         axisField={<RevolveAxisFormField controller={controller} />}
         angleField={<RevolveAngleField controller={controller} />}
-        footerAction={
-          <form.SubmitButton disabled={controller.disabled} requireDirty={false} size="sm">
-            {controller.copy.submit}
-          </form.SubmitButton>
-        }
       />
     </Form>
   )

@@ -15,6 +15,11 @@ describe("ExtrusionParameterPanel", () => {
     const onCancel = vi.fn()
     render(
       <ExtrusionParameterPanel
+        actions={
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        }
         copy={{
           title: "Extrude profile",
           description: "Create a new solid.",
@@ -33,8 +38,6 @@ describe("ExtrusionParameterPanel", () => {
             Symmetric
           </label>
         }
-        footerAction={<button type="button">Create extrusion</button>}
-        onCancel={onCancel}
       />,
     )
 
@@ -58,6 +61,7 @@ describe("ExtrusionParameterPanel", () => {
     render(
       <TooltipProvider>
         <ExtrusionParameterPanel
+          actions={<button type="button">Cancel</button>}
           copy={{
             title: "Extrude profile",
             description: "Inspect an existing solid.",
@@ -72,8 +76,6 @@ describe("ExtrusionParameterPanel", () => {
           operationField={<span>Operation</span>}
           distanceField={<span>Distance</span>}
           symmetricField={<span>Symmetric</span>}
-          footerAction={<button type="button">Update extrusion</button>}
-          onCancel={vi.fn()}
           onProfileRemove={onProfileRemove}
           onProfilesClear={onProfilesClear}
         />

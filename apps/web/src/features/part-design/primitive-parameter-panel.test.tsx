@@ -28,6 +28,11 @@ describe("PrimitiveParameterPanel", () => {
 
     render(
       <PrimitiveParameterPanel
+        actions={
+          <button type="button" onClick={onCancel}>
+            {copy.cancel}
+          </button>
+        }
         copy={copy}
         fields={
           <>
@@ -42,8 +47,6 @@ describe("PrimitiveParameterPanel", () => {
           </label>
         }
         placementFields={<TextField label="Origin X" defaultValue="0 mm" />}
-        footerAction={<button type="button">Create primitive</button>}
-        onCancel={onCancel}
       />,
     )
 

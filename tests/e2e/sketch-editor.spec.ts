@@ -1628,7 +1628,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
   })
 
-  test("keeps sketch completion actions anchored to the task panel bottom", async ({ page }) => {
+  test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page
@@ -1649,14 +1649,16 @@ test.describe("full sketch editor", () => {
       throw new Error("Sketch task-panel actions are not visible.")
     }
 
-    expect(cancelBounds.y + cancelBounds.height).toBeLessThanOrEqual(finishBounds.y)
+    expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(2)
+    expect(cancelBounds.width).toBeLessThanOrEqual(36)
+    expect(finishBounds.width).toBeLessThanOrEqual(36)
     expect(cancelBounds.x).toBeGreaterThanOrEqual(panelBounds.x)
     expect(finishBounds.x + finishBounds.width).toBeLessThanOrEqual(
       panelBounds.x + panelBounds.width,
     )
-    expect(
-      panelBounds.y + panelBounds.height - (finishBounds.y + finishBounds.height),
-    ).toBeLessThanOrEqual(20)
+    expect(finishBounds.y - panelBounds.y).toBeLessThanOrEqual(32)
+    await expect(taskPanel.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
+    await expect(taskPanel.getByRole("button", { name: "Revolve selected profile" })).toHaveCount(0)
   })
 
   test("adds and edits a driving dimension from a selected line", async ({ page }) => {

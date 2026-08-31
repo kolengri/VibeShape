@@ -20,6 +20,7 @@ import {
   quantityExpression,
   submitFeatureMutation,
 } from "../part-design/primitive-form"
+import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
@@ -260,16 +261,19 @@ export function DatumPlaneForm({
         </form.Subscribe>
       ) : null}
       <ParameterPanel
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={copy.submit}
+            ariaLabel={copy.title}
+            cancelLabel={copy.cancel}
+            disabled={disabled}
+            onCancel={onCancel}
+          />
+        }
         copy={copy}
         disabled={disabled}
-        footerAction={
-          <form.SubmitButton disabled={disabled} requireDirty={false} size="sm">
-            {copy.submit}
-          </form.SubmitButton>
-        }
         legend={copy.parameters}
         message={message}
-        onCancel={onCancel}
       >
         <form.AppField name="originPlane">
           {(field) => (

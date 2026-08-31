@@ -22,6 +22,11 @@ describe("BooleanParameterPanel", () => {
 
     render(
       <BooleanParameterPanel
+        actions={
+          <button type="button" onClick={onCancel}>
+            {copy.cancel}
+          </button>
+        }
         copy={copy}
         fields={
           <>
@@ -35,8 +40,6 @@ describe("BooleanParameterPanel", () => {
             </NativeSelectField>
           </>
         }
-        footerAction={<button type="button">Subtract</button>}
-        onCancel={onCancel}
       />,
     )
 

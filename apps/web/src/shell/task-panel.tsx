@@ -11,6 +11,7 @@ import type {
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { type ReactNode, useMemo, useState } from "react"
+import { TaskPanelLifecycleActions } from "../components/task-panel-lifecycle-actions"
 import {
   addFeature,
   addSketch,
@@ -77,7 +78,6 @@ import {
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
-import { TaskPanelLifecycleActions } from "./task-panel-lifecycle-actions"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
