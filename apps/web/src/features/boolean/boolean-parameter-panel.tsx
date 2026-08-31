@@ -7,28 +7,25 @@ export type BooleanParameterPanelCopy = ParameterPanelCopy &
   }>
 
 export function BooleanParameterPanel({
+  actions,
   copy,
   disabled = false,
   fields,
-  footerAction,
   message,
-  onCancel,
 }: {
+  actions: ReactNode
   copy: BooleanParameterPanelCopy
   disabled?: boolean
   fields: ReactNode
-  footerAction: ReactNode
   message?: ReactNode
-  onCancel: () => void
 }) {
   return (
     <ParameterPanel
+      actions={actions}
       copy={copy}
       disabled={disabled}
-      footerAction={footerAction}
       legend={copy.inputs}
       message={message}
-      onCancel={onCancel}
     >
       {fields}
     </ParameterPanel>

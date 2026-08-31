@@ -17,6 +17,7 @@ describe("RevolveParameterPanel", () => {
     render(
       <TooltipProvider>
         <RevolveParameterPanel
+          actions={<button type="button">Cancel</button>}
           copy={{
             title: "Revolve profile",
             description: "Inspect an existing solid.",
@@ -34,8 +35,6 @@ describe("RevolveParameterPanel", () => {
           targetField={<span>Target</span>}
           axisField={<span>Axis</span>}
           angleField={<span>Angle</span>}
-          footerAction={<button type="button">Update revolve</button>}
-          onCancel={vi.fn()}
           onProfileRemove={onProfileRemove}
           onProfilesClear={onProfilesClear}
           onProfileSelectionRequest={onProfileSelectionRequest}

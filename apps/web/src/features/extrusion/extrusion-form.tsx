@@ -33,6 +33,7 @@ import {
   profileSelectorsEqual,
   topologyReferencesEqual,
 } from "../part-design/profile-feature-selection"
+import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import {
@@ -550,6 +551,15 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
       />
       <ExtrusionPreviewField controller={controller} />
       <ExtrusionParameterPanel
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={controller.copy.submit}
+            ariaLabel={controller.copy.title}
+            cancelLabel={controller.copy.cancel}
+            disabled={controller.disabled}
+            onCancel={controller.onCancel}
+          />
+        }
         copy={controller.copy}
         disabled={controller.disabled}
         message={controller.message}
@@ -560,12 +570,6 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
         targetField={<ExtrusionTargetField controller={controller} />}
         distanceField={<ExtrusionDistanceField controller={controller} />}
         symmetricField={<ExtrusionSymmetricField controller={controller} />}
-        footerAction={
-          <form.SubmitButton disabled={controller.disabled} requireDirty={false} size="sm">
-            {controller.copy.submit}
-          </form.SubmitButton>
-        }
-        onCancel={controller.onCancel}
       />
     </Form>
   )

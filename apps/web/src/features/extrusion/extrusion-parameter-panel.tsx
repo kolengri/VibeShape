@@ -13,12 +13,11 @@ export type ExtrusionParameterPanelCopy = ParameterPanelCopy &
   }>
 
 export function ExtrusionParameterPanel({
+  actions,
   copy,
   disabled = false,
   distanceField,
-  footerAction,
   message,
-  onCancel,
   profileLabels,
   onProfileRemove,
   onProfilesClear,
@@ -26,12 +25,11 @@ export function ExtrusionParameterPanel({
   symmetricField,
   targetField,
 }: {
+  actions: ReactNode
   copy: ExtrusionParameterPanelCopy
   disabled?: boolean
   distanceField: ReactNode
-  footerAction: ReactNode
   message?: ReactNode
-  onCancel: () => void
   profileLabels: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
@@ -41,12 +39,11 @@ export function ExtrusionParameterPanel({
 }) {
   return (
     <ParameterPanel
+      actions={actions}
       copy={copy}
       disabled={disabled}
-      footerAction={footerAction}
       legend={copy.parameters}
       message={message}
-      onCancel={onCancel}
     >
       <div className="grid gap-1 rounded-md border bg-panel-muted px-3 py-2">
         <div className="flex items-center justify-between gap-2">

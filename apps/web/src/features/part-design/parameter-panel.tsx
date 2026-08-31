@@ -1,4 +1,3 @@
-import { Button } from "@vibeshape/ui/components/button"
 import type { ReactNode } from "react"
 
 export type ParameterPanelCopy = Readonly<{
@@ -8,27 +7,28 @@ export type ParameterPanelCopy = Readonly<{
 }>
 
 export function ParameterPanel({
+  actions,
   children,
   copy,
   disabled = false,
-  footerAction,
   legend,
   message,
-  onCancel,
 }: {
+  actions: ReactNode
   children: ReactNode
   copy: ParameterPanelCopy
   disabled?: boolean
-  footerAction: ReactNode
   legend: string
   message?: ReactNode
-  onCancel: () => void
 }) {
   return (
     <div className="grid gap-4">
-      <div>
-        <h2 className="text-sm font-medium">{copy.title}</h2>
-        <p className="mt-1 text-xs leading-4 text-muted-foreground">{copy.description}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-medium">{copy.title}</h2>
+          <p className="mt-1 text-xs leading-4 text-muted-foreground">{copy.description}</p>
+        </div>
+        {actions}
       </div>
       {message ? (
         <p
@@ -42,12 +42,6 @@ export function ParameterPanel({
         <legend className="mb-2 text-xs font-medium text-muted-foreground">{legend}</legend>
         {children}
       </fieldset>
-      <div className="flex items-center justify-end gap-2 border-t pt-3">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          {copy.cancel}
-        </Button>
-        {footerAction}
-      </div>
     </div>
   )
 }

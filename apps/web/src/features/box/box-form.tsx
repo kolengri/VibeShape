@@ -30,6 +30,7 @@ import {
   type PrimitiveParameterPanelCopy,
 } from "../part-design/primitive-parameter-panel"
 import type { PrimitivePlacementRequest } from "../part-design/primitive-placement"
+import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 
@@ -332,6 +333,15 @@ export function BoxForm({
         </form.Subscribe>
       ) : null}
       <PrimitiveParameterPanel
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={copy.submit}
+            ariaLabel={copy.title}
+            cancelLabel={copy.cancel}
+            disabled={disabled}
+            onCancel={onCancel}
+          />
+        }
         copy={copy}
         disabled={disabled}
         message={message}
@@ -360,12 +370,6 @@ export function BoxForm({
             {originField("originZ", copy.originZ)}
           </>
         }
-        footerAction={
-          <form.SubmitButton disabled={disabled} requireDirty={false} size="sm">
-            {copy.submit}
-          </form.SubmitButton>
-        }
-        onCancel={onCancel}
       />
     </Form>
   )

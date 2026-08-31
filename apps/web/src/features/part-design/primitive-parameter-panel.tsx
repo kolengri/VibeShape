@@ -10,32 +10,29 @@ export type PrimitiveParameterPanelCopy = ParameterPanelCopy &
   }>
 
 export function PrimitiveParameterPanel({
+  actions,
   centeredField,
   copy,
   disabled = false,
   fields,
-  footerAction,
   message,
-  onCancel,
   placementFields,
 }: {
+  actions: ReactNode
   centeredField: ReactNode
   copy: PrimitiveParameterPanelCopy
   disabled?: boolean
   fields: ReactNode
-  footerAction: ReactNode
   message?: ReactNode
-  onCancel: () => void
   placementFields: ReactNode
 }) {
   return (
     <ParameterPanel
+      actions={actions}
       copy={copy}
       disabled={disabled}
-      footerAction={footerAction}
       legend={copy.parameters}
       message={message}
-      onCancel={onCancel}
     >
       <fieldset className="grid gap-3">
         <legend className="text-xs font-medium text-muted-foreground">{copy.dimensions}</legend>

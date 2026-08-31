@@ -10,6 +10,7 @@ import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import { featureSubmissionMessage } from "../part-design/primitive-form"
+import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { BooleanParameterPanel, type BooleanParameterPanelCopy } from "./boolean-parameter-panel"
 
 type InputField = "targetFeatureId" | "toolFeatureId"
@@ -189,6 +190,15 @@ export function BooleanForm({
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
       <BooleanParameterPanel
+        actions={
+          <TaskPanelFormActions
+            acceptLabel={copy.submit}
+            ariaLabel={copy.title}
+            cancelLabel={copy.cancel}
+            disabled={disabled || options.length < 2}
+            onCancel={onCancel}
+          />
+        }
         copy={copy}
         disabled={disabled}
         message={message}
@@ -198,16 +208,6 @@ export function BooleanForm({
             {inputField("toolFeatureId", copy.tool, copy.toolDescription)}
           </>
         }
-        footerAction={
-          <form.SubmitButton
-            disabled={disabled || options.length < 2}
-            requireDirty={false}
-            size="sm"
-          >
-            {copy.submit}
-          </form.SubmitButton>
-        }
-        onCancel={onCancel}
       />
     </Form>
   )

@@ -15,30 +15,28 @@ export type RevolveParameterPanelCopy = ParameterPanelCopy &
   }>
 
 export function RevolveParameterPanel({
+  actions,
   copy,
   disabled = false,
   axisField,
   angleField,
   operationField,
   targetField,
-  footerAction,
   message,
-  onCancel,
   onProfileSelectionRequest,
   profileLabels,
   onProfileRemove,
   onProfilesClear,
   profileSelectionActive = false,
 }: {
+  actions: ReactNode
   copy: RevolveParameterPanelCopy
   disabled?: boolean
   axisField: ReactNode
   angleField: ReactNode
   operationField: ReactNode
   targetField?: ReactNode
-  footerAction: ReactNode
   message?: ReactNode
-  onCancel: () => void
   onProfileSelectionRequest?: (() => void) | undefined
   profileLabels: readonly string[]
   onProfileRemove?: ((index: number) => void) | undefined
@@ -47,12 +45,11 @@ export function RevolveParameterPanel({
 }) {
   return (
     <ParameterPanel
+      actions={actions}
       copy={copy}
       disabled={disabled}
-      footerAction={footerAction}
       legend={copy.parameters}
       message={message}
-      onCancel={onCancel}
     >
       <div className="grid gap-1 rounded-md border bg-panel-muted px-3 py-2">
         <div className="flex items-center justify-between gap-2">
