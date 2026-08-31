@@ -12,6 +12,8 @@ import {
   orderedUniqueViewerSketchProfiles,
   orthographicFrustum,
   type ViewerMesh,
+  viewerAxialGizmoDistance,
+  viewerAxialGizmoHandlePosition,
   viewerCameraPoseForFrame,
   viewerCameraPoseForStandardView,
   viewerFaceOrdinal,
@@ -61,6 +63,28 @@ describe("Three viewport geometry", () => {
     expect(callbacks.size).toBe(0)
     expect(publish).toHaveBeenCalledOnce()
     expect(publish).toHaveBeenLastCalledWith([3, 0, 0])
+  })
+
+  it("maps a normalized axial distance to and from its world-space handle", () => {
+    const gizmo = {
+      direction: [0, 3, 4] as const,
+      distance: 10,
+      origin: [2, 5, 7] as const,
+    }
+    const position = viewerAxialGizmoHandlePosition(gizmo)
+
+    expect(position).toEqual([2, 11, 15])
+    expect(position && viewerAxialGizmoDistance(gizmo, position)).toBeCloseTo(10)
+    expect(viewerAxialGizmoDistance(gizmo, [2, 8, 11])).toBeCloseTo(5)
+  })
+
+  it("fails closed for invalid axial manipulator frames", () => {
+    expect(
+      viewerAxialGizmoHandlePosition({ direction: [0, 0, 0], distance: 10, origin: [0, 0, 0] }),
+    ).toBeNull()
+    expect(
+      viewerAxialGizmoDistance({ direction: [0, 0, 0], origin: [0, 0, 0] }, [0, 0, 1]),
+    ).toBeNull()
   })
 
   it("orders and deduplicates saved profiles by stable selector identity", () => {

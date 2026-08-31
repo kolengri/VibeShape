@@ -30,6 +30,62 @@ async function drawTwoSeparatedProfiles(page: Page) {
 }
 
 test.describe("selector-backed extrusion", () => {
+  test("keeps the 3D depth handle synchronized with exact and symmetric distances", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawRectangle(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
+      timeout: 120_000,
+    })
+    await viewport
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await extrudeCommand(page).click()
+
+    const form = page.getByRole("form", { name: "Extrude profile" })
+    const distance = form.getByRole("combobox", { name: "Distance" })
+    await expect(viewport).toHaveAttribute("data-axial-gizmo-feature", /.+/, {
+      timeout: 120_000,
+    })
+    await expect(viewport).toHaveAttribute("data-axial-gizmo-distance", "10")
+
+    const canvas = viewport.locator("canvas")
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
+    const handle = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2 - 175,
+    }
+    await page.mouse.move(handle.x, handle.y)
+    await page.mouse.down()
+    await page.mouse.move(handle.x, handle.y - 80, { steps: 10 })
+    await page.mouse.up()
+    await expect(distance).not.toHaveValue("10 mm")
+    await expect(distance).toHaveValue(/^[1-9]\d*(?:\.\d)? mm$/)
+
+    await distance.fill("28 mm")
+    await expect(viewport).toHaveAttribute("data-axial-gizmo-distance", "28")
+    await form.getByRole("checkbox", { name: "Extrude symmetrically" }).check()
+    await expect(viewport).toHaveAttribute("data-axial-gizmo-distance", "14")
+
+    await form.getByRole("button", { name: "Cancel" }).click()
+    await expect(viewport).not.toHaveAttribute("data-axial-gizmo-feature")
+  })
+
   test("creates and reopens a new result from two profiles", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

@@ -248,6 +248,13 @@ function renderViewport(
     position: readonly [number, number, number]
     onPositionChange: (position: readonly [number, number, number]) => void
   }>,
+  axialGizmo?: Readonly<{
+    direction: readonly [number, number, number]
+    distance: number
+    featureId: string
+    onDistanceChange: (distance: number) => void
+    origin: readonly [number, number, number]
+  }>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -268,6 +275,7 @@ function renderViewport(
     setOriginPlaneSelection: vi.fn(),
     setOriginPlaneVisibility: vi.fn(),
     showTranslationGizmo: vi.fn(),
+    showAxialTranslationGizmo: vi.fn(),
     hideTranslationGizmo: vi.fn(),
     setStandardView: vi.fn(),
     fit: vi.fn(),
@@ -294,6 +302,7 @@ function renderViewport(
           {...(idleOriginPlaneSelection ? { idleOriginPlaneSelection } : {})}
           {...(sketchProfileSelection ? { sketchProfileSelection } : {})}
           {...(translationGizmo ? { translationGizmo } : {})}
+          {...(axialGizmo ? { axialGizmo } : {})}
         />
       </TooltipProvider>
     </I18nProvider>
@@ -346,6 +355,38 @@ describe("GeometryViewport", () => {
     const options = createViewport.mock.calls[0]?.[1]
     act(() => options?.onTranslationGizmoPositionChange?.([4, 5, 6]))
     expect(onPositionChange).toHaveBeenCalledWith([4, 5, 6])
+  })
+
+  it("shows an axial feature gizmo and forwards scalar distance changes", async () => {
+    const onDistanceChange = vi.fn()
+    const axialGizmo = {
+      direction: [0, 0, 1] as const,
+      distance: 12,
+      featureId: boxId,
+      onDistanceChange,
+      origin: [2, 3, 4] as const,
+    }
+    const { createViewport, port } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      axialGizmo,
+    )
+
+    await waitFor(() => expect(port.showAxialTranslationGizmo).toHaveBeenCalledWith(axialGizmo))
+    expect(
+      screen.getByRole("region", { name: "3D viewport" }).getAttribute("data-axial-gizmo-distance"),
+    ).toBe("12")
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onAxialGizmoDistanceChange?.(18))
+    expect(onDistanceChange).toHaveBeenCalledWith(18)
   })
 
   it("adapts bounded saved profile loops to one stable viewer region", () => {

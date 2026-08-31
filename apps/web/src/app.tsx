@@ -248,6 +248,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
   return useMemo(
     () =>
       ({
+        acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         closeTool: sessionActions.closeActiveTool,
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
@@ -270,6 +271,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         setSketchDraft: sessionActions.setSketchDraft,
         setSketchEditorTool: sessionActions.setSketchEditorTool,
         setFeatureVisibility: sessionActions.setFeatureVisibility,
+        setExtrusionDistance: sessionActions.setExtrusionDistance,
         setOriginPlaneVisibility: sessionActions.setOriginPlaneVisibility,
         setSketchVisibility: sessionActions.setSketchVisibility,
         setSketchFailedConstraintIds: sessionActions.setSketchFailedConstraintIds,
@@ -302,6 +304,7 @@ type EditorApplicationSession = Pick<
   EditorSessionState,
   | "activePartDesignTool"
   | "commandPaletteOpen"
+  | "extrusionDistanceRequest"
   | "hiddenFeatureIds"
   | "hiddenSketchIds"
   | "originPlaneVisibility"
@@ -318,6 +321,7 @@ function useEditorApplicationSession() {
     useShallow((state) => ({
       activePartDesignTool: state.activePartDesignTool,
       commandPaletteOpen: state.commandPaletteOpen,
+      extrusionDistanceRequest: state.extrusionDistanceRequest,
       hiddenFeatureIds: state.hiddenFeatureIds,
       hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
@@ -407,6 +411,7 @@ function EditorWorkspaceComposition({
       activeSketchTool={session.sketch.activeSketchTool}
       activeTool={session.activePartDesignTool}
       controller={controller}
+      extrusionDistanceRequest={session.extrusionDistanceRequest}
       hiddenFeatureIds={session.hiddenFeatureIds}
       hiddenSketchIds={session.hiddenSketchIds}
       originPlaneVisibility={session.originPlaneVisibility}

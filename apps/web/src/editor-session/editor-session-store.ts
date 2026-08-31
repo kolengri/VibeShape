@@ -18,7 +18,12 @@ import type { Draft } from "immer"
 import { immer } from "zustand/middleware/immer"
 import { createStore } from "zustand/vanilla"
 import {
+  type ExtrusionDistanceRequest,
+  finiteExtrusionDistance,
+} from "../features/extrusion/extrusion-distance-manipulator"
+import {
   type ActivePartDesignTool,
+  isExtrusionPartDesignTool,
   isPrimitivePartDesignTool,
 } from "../features/part-design/part-design-tool"
 import {
@@ -61,6 +66,7 @@ export type SketchCameraMode = "normal" | "orbit"
 export type EditorSessionState = Readonly<{
   activePartDesignTool: ActivePartDesignTool | null
   commandPaletteOpen: boolean
+  extrusionDistanceRequest: ExtrusionDistanceRequest | null
   hiddenFeatureIds: readonly FeatureId[]
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
@@ -73,6 +79,7 @@ export type EditorSessionState = Readonly<{
 }>
 
 export type EditorSessionActions = Readonly<{
+  acknowledgeExtrusionDistance: (featureId: FeatureId) => void
   beginSketchCreate: (sketch: SketchRecord) => void
   beginSketchEdit: (sketch: SketchRecord) => void
   beginSketchSupportReplacement: () => void
@@ -96,6 +103,7 @@ export type EditorSessionActions = Readonly<{
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setSelectedOriginPlane: (plane: ViewerOriginPlane | null) => void
   setFeaturePreselection: (featureId: FeatureId | null) => void
+  setExtrusionDistance: (featureId: FeatureId, distance: number) => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
@@ -146,6 +154,7 @@ function createEditorSessionState(): EditorSessionState {
   return {
     activePartDesignTool: null,
     commandPaletteOpen: false,
+    extrusionDistanceRequest: null,
     hiddenFeatureIds: [],
     hiddenSketchIds: [],
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
@@ -219,10 +228,18 @@ export function createEditorSessionStore() {
     immer((set, get) => ({
       ...createEditorSessionState(),
       actions: {
+        acknowledgeExtrusionDistance: (featureId) =>
+          set((state) => {
+            if (state.extrusionDistanceRequest?.featureId === featureId) {
+              state.extrusionDistanceRequest = null
+            }
+          }),
         beginSketchCreate: (sketch) =>
           set((state) => {
             state.workspace = "model"
             state.activePartDesignTool = null
+            state.extrusionDistanceRequest = null
+            state.primitivePlacementRequest = null
             state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
@@ -234,6 +251,8 @@ export function createEditorSessionStore() {
           set((state) => {
             state.workspace = "sketch"
             state.activePartDesignTool = null
+            state.extrusionDistanceRequest = null
+            state.primitivePlacementRequest = null
             state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
@@ -262,6 +281,7 @@ export function createEditorSessionStore() {
         closeActiveTool: () =>
           set((state) => {
             state.activePartDesignTool = null
+            state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
             const activeSketchTool = state.sketch.activeSketchTool
             if (activeSketchTool?.kind === "select-sketch-plane" && activeSketchTool.returnTo) {
@@ -311,6 +331,8 @@ export function createEditorSessionStore() {
             if (!matchingProfile) return
             state.workspace = "model"
             state.activePartDesignTool = null
+            state.extrusionDistanceRequest = null
+            state.primitivePlacementRequest = null
             state.preselectedFeatureId = null
             state.selectedOriginPlane = null
             state.selection = null
@@ -388,6 +410,16 @@ export function createEditorSessionStore() {
         setFeaturePreselection: (featureId) =>
           set((state) => {
             state.preselectedFeatureId = featureId
+          }),
+        setExtrusionDistance: (featureId, distance) =>
+          set((state) => {
+            if (!finiteExtrusionDistance(distance)) return
+            if (!isExtrusionPartDesignTool(state.activePartDesignTool)) return
+            state.extrusionDistanceRequest = {
+              distance,
+              featureId,
+              sequence: (state.extrusionDistanceRequest?.sequence ?? 0) + 1,
+            }
           }),
         setPrimitivePlacement: (featureId, position) =>
           set((state) => {
@@ -549,6 +581,7 @@ export function createEditorSessionStore() {
             state.workspace = "model"
             closeSketch(state.sketch)
             state.selectedOriginPlane = null
+            state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
             state.activePartDesignTool = tool
           }),
@@ -557,6 +590,7 @@ export function createEditorSessionStore() {
             state.workspace = workspace
             if (workspace !== "model") {
               state.activePartDesignTool = null
+              state.extrusionDistanceRequest = null
               state.primitivePlacementRequest = null
               state.selectedOriginPlane = null
               state.selection = null

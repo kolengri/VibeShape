@@ -13,6 +13,15 @@ type FormatNumber = (value: number) => string
 
 const DocumentDisplayUnitsContext = createContext<DocumentDisplayUnits>(defaultDocumentDisplayUnits)
 
+const directManipulationLengthStep: Readonly<Record<DocumentDisplayUnits["length"], number>> = {
+  um: 1,
+  mm: 0.1,
+  cm: 0.01,
+  m: 0.0001,
+  in: 0.001,
+  ft: 0.0001,
+}
+
 export function DocumentDisplayUnitsProvider({
   children,
   displayUnits,
@@ -45,6 +54,16 @@ function stableExpressionNumber(value: number) {
 
 export function defaultLengthExpression(millimeters: number, unit: DocumentDisplayUnits["length"]) {
   return `${stableExpressionNumber(millimetersToLength(millimeters, unit))} ${unit}`
+}
+
+export function positiveDirectManipulationLengthExpression(
+  millimeters: number,
+  unit: DocumentDisplayUnits["length"],
+) {
+  const step = directManipulationLengthStep[unit]
+  const value = millimetersToLength(millimeters, unit)
+  const snapped = Math.max(step, Math.round(value / step) * step)
+  return `${stableExpressionNumber(snapped)} ${unit}`
 }
 
 export function defaultAngleExpression(radians: number, unit: DocumentDisplayUnits["angle"]) {

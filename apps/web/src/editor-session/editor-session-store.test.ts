@@ -86,6 +86,38 @@ describe("editor session store", () => {
     expect(store.getState().primitivePlacementRequest).toBeNull()
   })
 
+  it("keeps graphical extrusion depth transient and scoped to the active extrusion tool", () => {
+    const store = createEditorSessionStore()
+
+    store.getState().actions.setExtrusionDistance(featureId, 12)
+    expect(store.getState().extrusionDistanceRequest).toBeNull()
+
+    store
+      .getState()
+      .actions.startPartDesignTool({ kind: "create-extrusion", profile: createProfile() })
+    store.getState().actions.setExtrusionDistance(featureId, 12)
+    expect(store.getState().extrusionDistanceRequest).toEqual({
+      distance: 12,
+      featureId,
+      sequence: 1,
+    })
+
+    store.getState().actions.setExtrusionDistance(featureId, 24)
+    expect(store.getState().extrusionDistanceRequest).toEqual({
+      distance: 24,
+      featureId,
+      sequence: 2,
+    })
+
+    store.getState().actions.acknowledgeExtrusionDistance(featureId)
+    expect(store.getState().extrusionDistanceRequest).toBeNull()
+
+    store.getState().actions.setExtrusionDistance(featureId, 30)
+
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().extrusionDistanceRequest).toBeNull()
+  })
+
   it("owns one external-reference repair mode and clears it with ordinary tool changes", () => {
     const store = createEditorSessionStore()
     const sketch = sketchRecordSchema.parse({

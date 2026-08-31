@@ -23,6 +23,7 @@ import { viewerSketchReferenceCandidateKey } from "@vibeshape/viewer/sketch-refe
 import type {
   GeometryViewportOptions,
   GeometryViewport as GeometryViewportPort,
+  ViewerAxialGizmo,
   ViewerFrame,
   ViewerMesh,
   ViewerSelection,
@@ -288,6 +289,7 @@ async function initializeViewport(
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
   latestSketchContextRef: RefObject<GeometryViewportSketchContext | null>,
   latestSketchProfileSelectionRef: RefObject<GeometryViewportProps["sketchProfileSelection"]>,
+  latestAxialGizmoRef: RefObject<GeometryViewportProps["axialGizmo"]>,
   latestTranslationGizmoRef: RefObject<GeometryViewportProps["translationGizmo"]>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
@@ -309,6 +311,8 @@ async function initializeViewport(
       onSketchProfileSelectionChange,
       onTranslationGizmoPositionChange: (position) =>
         latestTranslationGizmoRef.current?.onPositionChange(position),
+      onAxialGizmoDistanceChange: (distance) =>
+        latestAxialGizmoRef.current?.onDistanceChange(distance),
     })
     if (mount.cancelled) {
       viewport.dispose()
@@ -332,8 +336,10 @@ async function initializeViewport(
     )
     viewport.setFeatureSelection(latestFeatureSelectionRef.current)
     viewport.setFeaturePreselection(latestFeaturePreselectionRef.current)
+    const axialGizmo = latestAxialGizmoRef.current
     const translationGizmo = latestTranslationGizmoRef.current
-    if (translationGizmo) viewport.showTranslationGizmo(translationGizmo.position)
+    if (axialGizmo) viewport.showAxialTranslationGizmo(axialGizmo)
+    else if (translationGizmo) viewport.showTranslationGizmo(translationGizmo.position)
     viewport.fit()
     synchronizeViewportSketchContext(viewport, latestSketchContextRef.current)
     setRendererFailed(false)
@@ -408,6 +414,7 @@ function useLatestViewportInputs({
   sketchContext,
   sketches,
   sketchProfileSelection,
+  axialGizmo,
   translationGizmo,
 }: Readonly<{
   controller: DocumentControllerState
@@ -421,6 +428,7 @@ function useLatestViewportInputs({
   sketchContext: GeometryViewportSketchContext | null
   sketches: readonly ViewerSketch[]
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"]
+  axialGizmo: GeometryViewportProps["axialGizmo"]
   translationGizmo: GeometryViewportProps["translationGizmo"]
 }>) {
   const controllerRef = useRef(controller)
@@ -434,6 +442,7 @@ function useLatestViewportInputs({
   const sketchContextRef = useRef(sketchContext)
   const sketchesRef = useRef(sketches)
   const sketchProfileSelectionRef = useRef(sketchProfileSelection)
+  const axialGizmoRef = useRef(axialGizmo)
   const translationGizmoRef = useRef(translationGizmo)
   controllerRef.current = controller
   featurePreselectionRef.current = featurePreselection
@@ -446,6 +455,7 @@ function useLatestViewportInputs({
   sketchContextRef.current = sketchContext
   sketchesRef.current = sketches
   sketchProfileSelectionRef.current = sketchProfileSelection
+  axialGizmoRef.current = axialGizmo
   translationGizmoRef.current = translationGizmo
   return {
     controllerRef,
@@ -459,6 +469,7 @@ function useLatestViewportInputs({
     sketchContextRef,
     sketchesRef,
     sketchProfileSelectionRef,
+    axialGizmoRef,
     translationGizmoRef,
   }
 }
@@ -487,19 +498,24 @@ function useViewportSketchReferenceInteractionState() {
   return { candidateStack, preselection, setCandidateStack, setPreselection }
 }
 
-function useTranslationGizmoSynchronization(
+function useViewportGizmoSynchronization(
   viewportRef: RefObject<GeometryViewportPort | null>,
+  axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
 ) {
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
+    if (axialGizmo) {
+      viewport.showAxialTranslationGizmo(axialGizmo)
+      return
+    }
     if (translationGizmo) {
       viewport.showTranslationGizmo(translationGizmo.position)
       return
     }
     viewport.hideTranslationGizmo()
-  }, [translationGizmo, viewportRef])
+  }, [axialGizmo, translationGizmo, viewportRef])
 }
 
 function useViewportRenderer(
@@ -518,6 +534,7 @@ function useViewportRenderer(
   featureSelection: ViewerMesh | null,
   sketchContext: GeometryViewportSketchContext | null,
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"],
+  axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -534,6 +551,7 @@ function useViewportRenderer(
     sketchContext,
     sketches,
     sketchProfileSelection,
+    axialGizmo,
     translationGizmo,
   })
   const [rendererFailed, setRendererFailed] = useState(false)
@@ -601,6 +619,7 @@ function useViewportRenderer(
       latest.featureSelectionRef,
       latest.sketchContextRef,
       latest.sketchProfileSelectionRef,
+      latest.axialGizmoRef,
       latest.translationGizmoRef,
       setRendererFailed,
     )
@@ -994,6 +1013,11 @@ type GeometryViewportProps = Readonly<{
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
   }>
+  axialGizmo?: ViewerAxialGizmo &
+    Readonly<{
+      featureId: string
+      onDistanceChange: (distance: number) => void
+    }>
   translationGizmo?: Readonly<{
     featureId: string
     onPositionChange: (position: PrimitivePlacement) => void
@@ -1277,9 +1301,10 @@ function useGeometryViewportInteraction(
     scene.featureSelection,
     sketchContext ?? null,
     sketchProfileSelection,
+    props.axialGizmo,
     props.translationGizmo,
   )
-  useTranslationGizmoSynchronization(viewportRef, props.translationGizmo)
+  useViewportGizmoSynchronization(viewportRef, props.axialGizmo, props.translationGizmo)
   const supportFaceSelection = useSupportFaceSelection(
     selectionCandidateStack,
     selectionCandidateCommit,
@@ -2507,6 +2532,8 @@ export function GeometryViewport(props: GeometryViewportProps) {
       {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
       {...viewportRenderData(passive, featurePreview, model)}
       {...viewportSketchContextData(sketchContext)}
+      data-axial-gizmo-distance={props.axialGizmo?.distance}
+      data-axial-gizmo-feature={props.axialGizmo?.featureId}
       data-translation-gizmo-feature={props.translationGizmo?.featureId}
       data-translation-gizmo-position={props.translationGizmo?.position.join(",")}
       onKeyDown={referenceInteraction.onKeyDown}
