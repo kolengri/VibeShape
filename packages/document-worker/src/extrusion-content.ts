@@ -11,13 +11,16 @@ import {
 } from "@vibeshape/application/support-frame"
 import {
   type DocumentSnapshot,
+  type EdgeTopoRef,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
+  resolveTopologyReference,
   type SketchEntity,
   type SketchRecord,
 } from "@vibeshape/domain"
+import type { TopologyCandidate as ProtocolTopologyCandidate } from "@vibeshape/protocol"
 import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
@@ -269,10 +272,11 @@ function prepareRevolve(
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
   parameters: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>,
   frame: SupportFrame,
+  geometry: readonly FeatureGeometryRecord[],
 ) {
   const profile = materializeSelectedProfile(sketch, solution, parameters.profile)
   if (!profile.ok) return profile
-  const resolvedAxis = resolveRevolveAxis(sketch, solution, parameters.axis, frame)
+  const resolvedAxis = resolveRevolveAxis(sketch, solution, parameters.axis, frame, geometry)
   if (!resolvedAxis.ok) return resolvedAxis
   const prepared = revolveFeatureContentParametersSchema.safeParse({
     sketchId: sketch.id,
@@ -296,6 +300,7 @@ function resolveRevolveAxis(
   solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
   axis: NonNullable<ReturnType<typeof readRevolveFeatureParameters>>["axis"],
   frame: SupportFrame,
+  geometry: readonly FeatureGeometryRecord[],
 ) {
   if (axis.kind === "origin-axis") {
     return {
@@ -304,7 +309,103 @@ function resolveRevolveAxis(
       direction: axis.axis === "x" ? frame.xAxis : frame.yAxis,
     }
   }
+  if (axis.kind === "model-edge") {
+    return resolveModelEdgeRevolveAxis(axis.reference, frame, geometry)
+  }
   return resolveSketchLineRevolveAxis(sketch, solution, axis, frame)
+}
+
+function domainTopologyCandidate(candidate: ProtocolTopologyCandidate) {
+  const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
+  return domainCandidate
+}
+
+function resolveModelEdgeRevolveAxis(
+  reference: EdgeTopoRef,
+  frame: SupportFrame,
+  geometry: readonly FeatureGeometryRecord[],
+) {
+  const resolved = resolveModelEdgeCandidate(reference, geometry)
+  if (!resolved.ok) return resolved
+  return lineCandidateAxis(resolved.candidate, frame)
+}
+
+function resolveModelEdgeCandidate(
+  reference: EdgeTopoRef,
+  geometry: readonly FeatureGeometryRecord[],
+) {
+  const record = geometry.find(({ featureId }) => featureId === reference.featureId)
+  if (!record) {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "revolve-axis-model-edge-unavailable",
+    )
+  }
+  const resolution = resolveTopologyReference(
+    reference,
+    record.geometry.topologyCandidates.map(domainTopologyCandidate),
+  )
+  if (resolution.status !== "resolved") {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      `revolve-axis-model-edge-${resolution.status}`,
+    )
+  }
+  const candidate = record.geometry.topologyCandidates.find(
+    ({ candidateId }) => candidateId === resolution.candidateId,
+  )
+  if (
+    candidate?.kind !== "edge" ||
+    candidate.signature.geometryClass !== "LINE" ||
+    candidate.referenceGeometry?.kind !== "line-edge"
+  ) {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "revolve-axis-model-edge-wrong-type",
+    )
+  }
+  return { ok: true as const, candidate }
+}
+
+function lineCandidateAxis(candidate: ProtocolTopologyCandidate, frame: SupportFrame) {
+  if (candidate.referenceGeometry?.kind !== "line-edge") {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "revolve-axis-model-edge-wrong-type",
+    )
+  }
+  const { start: origin, end } = candidate.referenceGeometry
+  const delta = [end[0] - origin[0], end[1] - origin[1], end[2] - origin[2]] as const
+  const length = Math.hypot(...delta)
+  if (!(length > Number.EPSILON) || !Number.isFinite(length)) {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "revolve-axis-model-edge-degenerate",
+    )
+  }
+  const direction = [delta[0] / length, delta[1] / length, delta[2] / length] as const
+  if (!axisLiesInFrame(origin, direction, frame)) {
+    return failure(
+      "org.vibeshape.feature.sketch-profile-invalid",
+      "revolve-axis-model-edge-noncoplanar",
+    )
+  }
+  return { ok: true as const, origin, direction }
+}
+
+function axisLiesInFrame(
+  origin: readonly [number, number, number],
+  direction: readonly [number, number, number],
+  frame: SupportFrame,
+) {
+  const relative = [
+    origin[0] - frame.origin[0],
+    origin[1] - frame.origin[1],
+    origin[2] - frame.origin[2],
+  ] as const
+  const dot = (vector: readonly [number, number, number]) =>
+    vector[0] * frame.normal[0] + vector[1] * frame.normal[1] + vector[2] * frame.normal[2]
+  return Math.abs(dot(relative)) <= 1e-6 && Math.abs(dot(direction)) <= 1e-6
 }
 
 function resolveSketchLineRevolveAxis(
@@ -508,7 +609,7 @@ async function prepareProfileFeatureContent({
   if (!result.ok) return result
   return feature.kind === "extrusion"
     ? prepareExtrusion(sketch, result.solution, feature.parameters, frame)
-    : prepareRevolve(sketch, result.solution, feature.parameters, frame)
+    : prepareRevolve(sketch, result.solution, feature.parameters, frame, geometry)
 }
 
 export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {

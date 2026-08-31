@@ -10,6 +10,7 @@ import {
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
+  legacyRevolveFeatureTypeV3,
   revolveFeatureType,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
@@ -60,6 +61,7 @@ export function isExtrusionFeature(feature: FeatureRecord) {
 export function isRevolveFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, revolveFeatureType.type) ||
+    hasFeatureType(feature, legacyRevolveFeatureTypeV3.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV2.type) ||
     hasFeatureType(feature, legacyRevolveFeatureType.type)
   )

@@ -122,6 +122,7 @@ describe("module registry", () => {
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
+        "org.vibeshape.feature.part-design.revolve",
       ])
     }
   })

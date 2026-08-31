@@ -571,6 +571,39 @@ describe("geometry worker protocol", () => {
         axisDirection: [Math.SQRT1_2, 0, Math.SQRT1_2],
       }).success,
     ).toBe(false)
+    const modelEdgeAxis = {
+      ...content,
+      axis: {
+        kind: "model-edge" as const,
+        reference: {
+          schemaVersion: 0 as const,
+          featureId: "0195b5ac-b220-7a2c-8c33-67a36a7f3302",
+          kind: "edge" as const,
+          semanticRole: "primitive.box.edge.x.y-min.z-min",
+          signature: {
+            kind: "edge" as const,
+            geometryClass: "LINE",
+            measure: 10,
+            centroid: [5, 0, 0] as [number, number, number],
+            bounds: {
+              min: [0, 0, 0] as [number, number, number],
+              max: [10, 0, 0] as [number, number, number],
+            },
+            direction: [1, 0, 0] as [number, number, number],
+            directionMode: "axis" as const,
+            boundaryCount: 2,
+            adjacentGeometryClasses: ["PLANE", "PLANE"],
+          },
+        },
+      },
+    }
+    expect(revolveFeatureContentParametersSchema.safeParse(modelEdgeAxis).success).toBe(true)
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({
+        ...modelEdgeAxis,
+        axisOrigin: [0, 0, 1],
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts exact ellipse extrusion geometry and rejects invalid axes", () => {

@@ -188,6 +188,8 @@ const REVOLVE_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#2"
 const REVOLVE_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#3"
+const REVOLVE_FEATURE_TYPE_V4_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#4"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -714,7 +716,9 @@ type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParameter
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
-type RevolveContentParameters = ReturnType<typeof revolveFeatureContentParametersSchema.parse>
+export type RevolveContentParameters = ReturnType<
+  typeof revolveFeatureContentParametersSchema.parse
+>
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
@@ -996,8 +1000,8 @@ function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult 
   if (!revolveInputCardinalityIsValid(input, parameters.data)) {
     return invalidInputCardinality(
       parameters.data.operation === "new"
-        ? "A new-body revolve may depend only on its sketch support."
-        : `A ${parameters.data.operation} revolve requires one target and may also depend on its sketch support.`,
+        ? "A new-body revolve may depend only on its sketch support and model-edge axis source."
+        : `A ${parameters.data.operation} revolve requires one target and may also depend on its sketch support and model-edge axis source.`,
     )
   }
   if (!supportReferencesAreValid(input, parameters.data.supportFeatureId)) {
@@ -1027,11 +1031,24 @@ function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseR
   return parseRevolveFeature(input)
 }
 
-function revolveInputCardinalityIsValid(
+export function revolveInputCardinalityIsValid(
   input: FeatureEvaluationInput,
   parameters: RevolveContentParameters,
 ) {
-  return extrusionInputCardinalityIsValid(input, parameters)
+  const dependencies = input.dependencies
+  if (input.content.feature.inputs.length !== dependencies.length) return false
+  const targetFeatureId = parameters.operation === "new" ? undefined : dependencies[0]?.featureId
+  if (parameters.operation !== "new" && !targetFeatureId) return false
+  const axisSourceFeatureId =
+    parameters.axis.kind === "model-edge" ? parameters.axis.reference.featureId : undefined
+  const expected = [targetFeatureId, parameters.supportFeatureId, axisSourceFeatureId].flatMap(
+    (featureId, index, featureIds) =>
+      featureId && featureIds.indexOf(featureId) === index ? [featureId] : [],
+  )
+  return (
+    dependencies.length === expected.length &&
+    dependencies.every(({ featureId }, index) => featureId === expected[index])
+  )
 }
 
 function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -1066,6 +1083,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V4_KEY, parseRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 

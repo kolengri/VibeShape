@@ -159,6 +159,40 @@ const modifyingRevolve = (
   ),
 })
 
+const modelEdgeRevolve = (value: string, profileSketchId: string, sourceFeatureId: string) => ({
+  ...revolve(value, profileSketchId),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 4,
+  },
+  parameters: {
+    ...revolve(value, profileSketchId).parameters,
+    axis: {
+      kind: "model-edge" as const,
+      reference: {
+        schemaVersion: 0 as const,
+        featureId: id(sourceFeatureId),
+        kind: "edge" as const,
+        semanticRole: "test.axis.edge",
+        signature: {
+          kind: "edge" as const,
+          geometryClass: "LINE",
+          measure: 10,
+          centroid: [5, 0, 0] as const,
+          bounds: { min: [0, 0, 0] as const, max: [10, 0, 0] as const },
+          direction: [1, 0, 0] as const,
+          directionMode: "axis" as const,
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["PLANE", "PLANE"],
+        },
+      },
+    },
+  },
+  dependencies: [id(sourceFeatureId)],
+})
+
 describe("createDocumentDependencyGraph", () => {
   it("derives sketch, extrusion, and supported-sketch history from a v0 snapshot", () => {
     const result = deriveLegacyHistory({
@@ -805,6 +839,36 @@ describe("createDocumentDependencyGraph", () => {
         code: "invalid-feature",
         issues: [{ path: "features.1.dependencies" }],
       },
+    })
+  })
+
+  it("requires the stable model-edge axis source in canonical dependency order", () => {
+    const valid = modelEdgeRevolve("2", "1", "3")
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [sketch("1")],
+        features: [feature("3"), valid],
+        history: [
+          { kind: "feature", id: id("3") },
+          { kind: "sketch", id: id("1") },
+          { kind: "feature", id: id("2") },
+        ],
+      }),
+    ).toMatchObject({ ok: true })
+
+    expect(
+      createDocumentDependencyGraph({
+        sketches: [sketch("1")],
+        features: [feature("3"), { ...valid, dependencies: [] }],
+        history: [
+          { kind: "feature", id: id("3") },
+          { kind: "sketch", id: id("1") },
+          { kind: "feature", id: id("2") },
+        ],
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature", issues: [{ path: "features.1.dependencies" }] },
     })
   })
 

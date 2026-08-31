@@ -9,6 +9,7 @@ import {
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
+  legacyRevolveFeatureTypeV3,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
@@ -36,6 +37,7 @@ const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
   featureTypeKey(legacyRevolveFeatureType.type),
   featureTypeKey(legacyRevolveFeatureTypeV2.type),
+  featureTypeKey(legacyRevolveFeatureTypeV3.type),
 ])
 
 export function projectFirstPartyFeatureSemanticInputs(
@@ -60,7 +62,16 @@ export function projectFirstPartyFeatureSemanticInputs(
   if (!revolveTypeKeys.has(typeKey)) return { recognized: false }
   const parameters = readRevolveFeatureParameters(feature as FeatureRecord)
   return parameters
-    ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.profile.sketchId }] }
+    ? {
+        recognized: true,
+        ok: true,
+        inputs: [
+          { kind: "sketch", id: parameters.profile.sketchId },
+          ...(parameters.axis.kind === "model-edge"
+            ? [{ kind: "feature" as const, id: parameters.axis.reference.featureId }]
+            : []),
+        ],
+      }
     : {
         recognized: true,
         ok: false,

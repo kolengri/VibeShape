@@ -2,6 +2,7 @@ import {
   createAngleQuantity,
   evaluateExpression,
   evaluateVariableDefinitions,
+  expectedRevolveDependencyIds,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
@@ -129,8 +130,10 @@ function record(
         ? [mode.supportReference]
         : []
       : mode.feature.references
-  const dependencies = [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
-    (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
+  const dependencies = expectedRevolveDependencyIds(
+    parameters,
+    targetFeatureId,
+    references.map(({ featureId }) => featureId),
   )
   return featureRecordSchema.parse(
     mode.kind === "edit"

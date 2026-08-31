@@ -309,6 +309,81 @@ export const extrusionFeatureContentParametersSchema = z
     "Extrusion profiles are limited to 2,000 total segments.",
   )
 
+type RevolveAxisValidationInput = Readonly<{
+  axis:
+    | Readonly<{ kind: "origin-axis"; axis: "x" | "y" }>
+    | Readonly<{ kind: "sketch-line"; sketchId: string }>
+    | Readonly<{ kind: "model-edge" }>
+  axisDirection: readonly [number, number, number]
+  axisOrigin: readonly [number, number, number]
+  frame: z.infer<typeof extrusionFrameSchema>
+  sketchId: string
+}>
+
+function axisIsInFrame(input: RevolveAxisValidationInput) {
+  const relative = [
+    input.axisOrigin[0] - input.frame.origin[0],
+    input.axisOrigin[1] - input.frame.origin[1],
+    input.axisOrigin[2] - input.frame.origin[2],
+  ] as const
+  return (
+    Math.abs(vectorDot(relative, input.frame.normal)) <= 1e-6 &&
+    Math.abs(vectorDot(input.axisDirection, input.frame.normal)) <= 1e-6
+  )
+}
+
+function validateOriginRevolveAxis(input: RevolveAxisValidationInput, context: z.RefinementCtx) {
+  if (!vectorsMatch(input.axisOrigin, input.frame.origin)) {
+    context.addIssue({
+      code: "custom",
+      message: "Revolve axis origin must match the sketch frame origin.",
+      path: ["axisOrigin"],
+    })
+  }
+  if (input.axis.kind !== "origin-axis") return
+  const expectedDirection = input.axis.axis === "x" ? input.frame.xAxis : input.frame.yAxis
+  if (!vectorsMatch(input.axisDirection, expectedDirection)) {
+    context.addIssue({
+      code: "custom",
+      message: "Revolve axis direction must match its sketch-local axis intent.",
+      path: ["axisDirection"],
+    })
+  }
+}
+
+function validateSketchLineRevolveAxis(
+  input: RevolveAxisValidationInput,
+  context: z.RefinementCtx,
+) {
+  if (input.axis.kind !== "sketch-line") return
+  if (input.axis.sketchId !== input.sketchId) {
+    context.addIssue({
+      code: "custom",
+      message: "Revolve sketch-line axis must belong to the prepared profile sketch.",
+      path: ["axis", "sketchId"],
+    })
+  }
+  if (!axisIsInFrame(input)) {
+    context.addIssue({
+      code: "custom",
+      message: "Revolve sketch-line axes must lie in the prepared profile plane.",
+      path: ["axis"],
+    })
+  }
+}
+
+function validateRevolveAxisContent(input: RevolveAxisValidationInput, context: z.RefinementCtx) {
+  if (input.axis.kind === "origin-axis") return validateOriginRevolveAxis(input, context)
+  if (input.axis.kind === "sketch-line") return validateSketchLineRevolveAxis(input, context)
+  if (!axisIsInFrame(input)) {
+    context.addIssue({
+      code: "custom",
+      message: "Revolve model-edge axes must lie in the prepared profile plane.",
+      path: ["axis"],
+    })
+  }
+}
+
 export const revolveFeatureContentParametersSchema = z
   .object({
     sketchId: sketchIdSchema,
@@ -325,6 +400,24 @@ export const revolveFeatureContentParametersSchema = z
           entityId: sketchEntityIdSchema,
         })
         .strict(),
+      z
+        .object({
+          kind: z.literal("model-edge"),
+          reference: z.lazy(() =>
+            z
+              .object({
+                schemaVersion: z.literal(0),
+                featureId: featureIdSchema,
+                kind: z.literal("edge"),
+                semanticRole: z.string().min(1).max(256).optional(),
+                lineageToken: z.string().min(1).max(256).optional(),
+                signature: topologySignatureSchema.safeExtend({ kind: z.literal("edge") }),
+                intent: topologyIntentSchema.optional(),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
     ]),
     axisOrigin: vector3Schema,
     axisDirection: topologyVector3Schema,
@@ -336,52 +429,7 @@ export const revolveFeatureContentParametersSchema = z
     message: "Revolve axis direction must be normalized.",
     path: ["axisDirection"],
   })
-  .superRefine(({ axis, axisDirection, axisOrigin, frame, sketchId }, context) => {
-    if (axis.kind === "origin-axis" && !vectorsMatch(axisOrigin, frame.origin)) {
-      context.addIssue({
-        code: "custom",
-        message: "Revolve axis origin must match the sketch frame origin.",
-        path: ["axisOrigin"],
-      })
-    }
-    if (axis.kind === "origin-axis") {
-      const expectedDirection = axis.axis === "x" ? frame.xAxis : frame.yAxis
-      if (!vectorsMatch(axisDirection, expectedDirection)) {
-        context.addIssue({
-          code: "custom",
-          message: "Revolve axis direction must match its sketch-local axis intent.",
-          path: ["axisDirection"],
-        })
-      }
-    } else {
-      if (axis.sketchId !== sketchId) {
-        context.addIssue({
-          code: "custom",
-          message: "Revolve sketch-line axis must belong to the prepared profile sketch.",
-          path: ["axis", "sketchId"],
-        })
-      }
-      const relative = [
-        axisOrigin[0] - frame.origin[0],
-        axisOrigin[1] - frame.origin[1],
-        axisOrigin[2] - frame.origin[2],
-      ] as const
-      if (Math.abs(vectorDot(relative, frame.normal)) > 1e-6) {
-        context.addIssue({
-          code: "custom",
-          message: "Revolve sketch-line axis origin must lie in the sketch plane.",
-          path: ["axisOrigin"],
-        })
-      }
-      if (Math.abs(vectorDot(axisDirection, frame.normal)) > 1e-6) {
-        context.addIssue({
-          code: "custom",
-          message: "Revolve sketch-line axis direction must lie in the sketch plane.",
-          path: ["axisDirection"],
-        })
-      }
-    }
-  })
+  .superRefine(validateRevolveAxisContent)
   .refine(
     ({ outer, holes }) =>
       outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=

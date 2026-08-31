@@ -33,6 +33,7 @@
 | [0029](0029-exact-bounded-elliptical-arc-locus.md) | Accepted | Exact positive-sweep Point on elliptical arc intent behind the reviewed solver ABI |
 | [0030](0030-explicit-target-revolve-operations.md) | Accepted | New/add/remove/intersect Revolve with an explicit terminal-feature target dependency |
 | [0031](0031-stable-sketch-line-revolve-axis.md) | Accepted | Stable graphical same-sketch line axes for exact Revolve replay |
+| [0032](0032-stable-linear-model-edge-revolve-axis.md) | Accepted | Stable straight model-edge axes for exact Revolve replay |
 
 Statuses:
 
