@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import {
   boxFeatureType,
@@ -17,7 +18,7 @@ import type {
   GeometryViewport as GeometryViewportPort,
   ViewerSelection,
 } from "@vibeshape/viewer"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { createSketchProjectionStore } from "../features/sketch/sketch-projection-store"
@@ -39,6 +40,14 @@ vi.mock("../document/document-controller", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../document/document-controller")>()
   return { ...actual, saveActiveProjectThumbnail: saveActiveProjectThumbnailMock }
 })
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+beforeAll(() => vi.stubGlobal("ResizeObserver", ResizeObserverMock))
 
 const boxId = "0195b5ac-b220-7a2c-8c33-67a36a7f2602"
 const booleanId = "0195b5ac-b220-7a2c-8c33-67a36a7f2603"
@@ -260,6 +269,7 @@ function renderViewport(
     setOriginPlaneVisibility: vi.fn(),
     showTranslationGizmo: vi.fn(),
     hideTranslationGizmo: vi.fn(),
+    setStandardView: vi.fn(),
     fit: vi.fn(),
     clearSelection: vi.fn(),
     dispose: vi.fn(),
@@ -624,6 +634,9 @@ describe("GeometryViewport", () => {
     rerenderSketchContext({ frame, mode: "orbit" })
     const orbitViewport = container.querySelector<HTMLElement>("[data-sketch-context-mode='orbit']")
     expect(orbitViewport?.className).not.toContain("pointer-events-none")
+    expect(screen.getByRole("button", { name: "Standard views" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Fit view" })).toBeTruthy()
+    expect(screen.getByRole("img", { name: "World axes" })).toBeTruthy()
     expect(port.setInteractionMode).toHaveBeenLastCalledWith("camera-only")
     expect(port.orientToFrame).toHaveBeenCalledOnce()
 
@@ -908,6 +921,7 @@ describe("GeometryViewport", () => {
   })
 
   it("owns the imperative viewer lifecycle and exposes fit for rebuilt terminal geometry", async () => {
+    const user = userEvent.setup()
     const controller = readyController(
       [{ id: boxId, dependencies: [] }],
       [{ featureId: boxId, geometry: { mesh } }],
@@ -939,6 +953,9 @@ describe("GeometryViewport", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fit view" }))
     expect(port.fit).toHaveBeenCalledTimes(2)
+    await user.click(screen.getByRole("button", { name: "Standard views" }))
+    await user.click(screen.getByRole("menuitem", { name: "Front" }))
+    expect(port.setStandardView).toHaveBeenCalledWith("front")
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }))
     expect(port.clearSelection).toHaveBeenCalledOnce()
 

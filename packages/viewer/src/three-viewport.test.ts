@@ -13,6 +13,7 @@ import {
   orthographicFrustum,
   type ViewerMesh,
   viewerCameraPoseForFrame,
+  viewerCameraPoseForStandardView,
   viewerFaceOrdinal,
   viewerSketchProfileKey,
   viewerSketchProjectionTarget,
@@ -265,6 +266,24 @@ describe("Three viewport geometry", () => {
       top: 50,
       bottom: -50,
     })
+  })
+
+  it("derives Z-up standard views without moving the orbit target or changing distance", () => {
+    expect(viewerCameraPoseForStandardView("front", [10, 20, 30], 50)).toEqual({
+      position: [10, -30, 30],
+      target: [10, 20, 30],
+      up: [0, 0, 1],
+    })
+    expect(viewerCameraPoseForStandardView("top", [10, 20, 30], 50)).toEqual({
+      position: [10, 20, 80],
+      target: [10, 20, 30],
+      up: [0, 1, 0],
+    })
+    const isometric = viewerCameraPoseForStandardView("isometric", [0, 0, 0], 25)
+    expect(isometric?.target).toEqual([0, 0, 0])
+    expect(Math.hypot(...(isometric?.position ?? []))).toBeCloseTo(25)
+    expect(viewerCameraPoseForStandardView("right", [0, Number.NaN, 0], 25)).toBeNull()
+    expect(viewerCameraPoseForStandardView("right", [0, 0, 0], 0)).toBeNull()
   })
 
   it("matches SVG meet scaling for sketch projection bounds", () => {

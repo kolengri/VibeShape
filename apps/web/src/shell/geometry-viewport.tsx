@@ -2,7 +2,15 @@ import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import { readDatumPlaneFeatureParameters, type SketchProfileSelector } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@vibeshape/ui/components/dropdown-menu"
+import { Cuboid, Scan, X } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import {
   defaultViewerOriginPlaneVisibility,
@@ -22,6 +30,7 @@ import type {
   ViewerSketchProfile,
   ViewerSketchProfileSelectionIntent,
   ViewerSketchReferenceCandidate,
+  ViewerStandardView,
 } from "@vibeshape/viewer/three-viewport"
 import { viewerSketchProfileKey } from "@vibeshape/viewer/three-viewport"
 import {
@@ -779,26 +788,70 @@ function ViewportControls({
   selection: ViewerSelection | null
   viewportRef: RefObject<GeometryViewportPort | null>
 }) {
+  const t = useTranslations("app.shell.viewport")
+  const standardViews = [
+    ["isometric", t("viewIsometric")],
+    ["front", t("viewFront")],
+    ["back", t("viewBack")],
+    ["left", t("viewLeft")],
+    ["right", t("viewRight")],
+    ["top", t("viewTop")],
+    ["bottom", t("viewBottom")],
+  ] as const satisfies readonly (readonly [ViewerStandardView, string])[]
   return (
-    <div className="absolute right-3 top-3 flex items-center gap-1">
+    <div className="absolute right-3 top-3 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
       {selection ? (
-        <Button
-          type="button"
-          size="xs"
-          variant="secondary"
-          onClick={() => viewportRef.current?.clearSelection()}
-        >
-          {clearLabel}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={clearLabel}
+              onClick={() => viewportRef.current?.clearSelection()}
+              size="icon-xs"
+              type="button"
+              variant="ghost"
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{clearLabel}</TooltipContent>
+        </Tooltip>
       ) : null}
-      <Button
-        type="button"
-        size="xs"
-        variant="secondary"
-        onClick={() => viewportRef.current?.fit()}
-      >
-        {fitLabel}
-      </Button>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label={t("standardViews")} size="icon-xs" type="button" variant="ghost">
+                <Cuboid aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{t("standardViews")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          {standardViews.map(([view, label]) => (
+            <DropdownMenuItem
+              key={view}
+              onSelect={() => viewportRef.current?.setStandardView(view)}
+            >
+              {label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label={fitLabel}
+            onClick={() => viewportRef.current?.fit()}
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          >
+            <Scan aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{fitLabel}</TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -2214,10 +2267,12 @@ function SketchContextChrome({
   context,
   preselection,
   selectOther,
+  viewportRef,
 }: Readonly<{
   context: GeometryViewportSketchContext
   preselection: ViewerSketchReferenceCandidate | null
   selectOther: SketchReferenceSelectOtherState
+  viewportRef: RefObject<GeometryViewportPort | null>
 }>) {
   const t = useTranslations("app.shell.viewport")
   if (context.mode !== "orbit") return null
@@ -2226,6 +2281,12 @@ function SketchContextChrome({
   return (
     <>
       <WorldAxesLegend />
+      <ViewportControls
+        clearLabel={t("clearSelection")}
+        fitLabel={t("fit")}
+        selection={null}
+        viewportRef={viewportRef}
+      />
       <SketchReferenceSelectOtherOverlay selection={selectOther} />
       {referenceSelection ? <SketchReferenceSelectionStatus purpose={referencePurpose} /> : null}
       {context.faceIntersectionSelection ? (
@@ -2284,6 +2345,7 @@ function GeometryViewportContextChrome({
         context={sketchContext}
         preselection={model.sketchPointPreselection}
         selectOther={selectOther}
+        viewportRef={model.viewportRef}
       />
     )
   }
