@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   createAngleQuantity,
+  type FeatureId,
   featureIdSchema,
   featureRecordSchema,
   revolveFeatureType,
@@ -48,6 +49,14 @@ const copy = {
   validationSummary: "Fix the highlighted angle.",
   staleRevision: "The document changed.",
   saveFailed: "The revolve could not be created.",
+  operation: "Result operation",
+  operationNew: "New body",
+  operationAdd: "Add to body",
+  operationRemove: "Remove from body",
+  operationIntersect: "Intersect with body",
+  target: "Target body",
+  targetDescription: "Choose a target body.",
+  missingTarget: "Choose a target.",
 } as const
 
 const existingFeature = featureRecordSchema.parse({
@@ -65,6 +74,8 @@ const existingFeature = featureRecordSchema.parse({
   suppressed: false,
   label: "Revolve 1",
 })
+
+const targetFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3702")
 
 function deferred() {
   let resolve: () => void = () => undefined
@@ -84,6 +95,7 @@ function renderForm(
     profile,
   },
   onPreviewChange = vi.fn(),
+  options: readonly { id: FeatureId; label: string }[] = [],
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update revolve" } : copy
   render(
@@ -92,6 +104,7 @@ function renderForm(
         baseRevision={4}
         copy={formCopy}
         mode={mode}
+        options={options}
         profileLabel="Sketch 1"
         variables={variables}
         onCancel={vi.fn()}
@@ -202,6 +215,61 @@ describe("RevolveForm", () => {
           }),
         }),
       }),
+    )
+  })
+
+  it("publishes the selected modifying operation and target first in dependencies", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm(
+      vi.fn(async () => ({ ok: true as const })),
+      undefined,
+      undefined,
+      vi.fn(),
+      [{ id: targetFeatureId, label: "Box 1" }],
+    )
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "add")
+    expect(screen.getByRole("combobox", { name: copy.target })).toBeTruthy()
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.target }), targetFeatureId)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        dependencies: [targetFeatureId],
+        parameters: expect.objectContaining({ operation: "add" }),
+      }),
+    )
+  })
+
+  it("blocks a modifying operation until a target is available", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm()
+
+    await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), "remove")
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+
+    const target = screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement
+    expect(screen.getByText(copy.missingTarget)).toBeTruthy()
+    expect(target.required).toBe(true)
+    expect(target.checkValidity()).toBe(false)
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it("restores a modifying operation and target while editing", () => {
+    const modifyingFeature = featureRecordSchema.parse({
+      ...existingFeature,
+      parameters: { ...existingFeature.parameters, operation: "intersect" },
+      dependencies: [targetFeatureId],
+    })
+
+    renderForm(undefined, undefined, { kind: "edit", feature: modifyingFeature }, undefined, [
+      { id: targetFeatureId, label: "Box 1" },
+    ])
+
+    expect(
+      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).value,
+    ).toBe("intersect")
+    expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
+      targetFeatureId,
     )
   })
 })

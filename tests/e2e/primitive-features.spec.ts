@@ -22,9 +22,14 @@ interface FeatureEvaluationHarnessState {
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
+  revolve: FeatureResponse | null
+  revolveAdd: FeatureResponse | null
+  revolveIntersect: FeatureResponse | null
+  revolveRemove: FeatureResponse | null
   boolean: FeatureResponse | null
   cachedBoolean: FeatureResponse | null
   invalidBooleanDiagnostic: string | null
+  legacyRevolveOperationDiagnostic: string | null
   missingDependencyDiagnostic: string | null
   health: HealthResponse | null
   disposal: DisposalResponse | null
@@ -259,6 +264,10 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   const extrusionAdd = requireResult(state.extrusionAdd)
   const extrusionIntersect = requireResult(state.extrusionIntersect)
   const extrusionRemove = requireResult(state.extrusionRemove)
+  const revolve = requireResult(state.revolve)
+  const revolveAdd = requireResult(state.revolveAdd)
+  const revolveIntersect = requireResult(state.revolveIntersect)
+  const revolveRemove = requireResult(state.revolveRemove)
   const boolean = requireResult(state.boolean)
   const cachedBoolean = requireResult(state.cachedBoolean)
 
@@ -418,6 +427,19 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expectBounds(extrusionIntersect.shape.bounds, { min: [0, -9, 0], max: [10, 9, 10] })
   expectMesh(extrusionIntersect)
 
+  expect(revolve.shape.volume).toBeCloseTo(Math.PI * 10 ** 2 * 10, 5)
+  expectBounds(revolve.shape.bounds, { min: [-10, 0, -10], max: [10, 10, 10] })
+  expectMesh(revolve)
+  expect(revolveAdd.shape.volume).toBeCloseTo(20 * 30 * 25.4 + Math.PI * 10 ** 2 * 5, 5)
+  expectBounds(revolveAdd.shape.bounds, { min: [-10, -15, -10], max: [10, 15, 25.4] })
+  expectMesh(revolveAdd)
+  expect(revolveRemove.shape.volume).toBeCloseTo(20 * 30 * 25.4 - Math.PI * 10 ** 2 * 5, 5)
+  expectBounds(revolveRemove.shape.bounds, { min: [-10, -15, 0], max: [10, 15, 25.4] })
+  expectMesh(revolveRemove)
+  expect(revolveIntersect.shape.volume).toBeCloseTo(Math.PI * 10 ** 2 * 5, 5)
+  expectBounds(revolveIntersect.shape.bounds, { min: [-10, 0, 0], max: [10, 10, 10] })
+  expectMesh(revolveIntersect)
+
   expect(boolean.cache.brepHit).toBe(false)
   expect(cachedBoolean.cache.brepHit).toBe(true)
   expect(cachedBoolean.contentHash).toBe(boolean.contentHash)
@@ -428,10 +450,11 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
   expect(boolean.topologyCandidates.length).toBeGreaterThan(0)
   expectMesh(boolean)
   expect(state.invalidBooleanDiagnostic).toBe("invalid-feature-geometry")
+  expect(state.legacyRevolveOperationDiagnostic).toBe("invalid-feature-parameters")
   expect(state.missingDependencyDiagnostic).toBe("missing-feature-dependency")
 
   expect(state.progress).toEqual([
-    ...Array.from({ length: 16 }).flatMap(() => [
+    ...Array.from({ length: 20 }).flatMap(() => [
       "feature-validation",
       "feature-evaluation",
       "feature-tessellation",
@@ -445,6 +468,6 @@ test("evaluates and caches canonical primitive and Boolean features in the geome
     "complete",
     "feature-validation",
   ])
-  expect(state.health).toMatchObject({ ownedShapeCount: 15, activeDocuments: 1 })
+  expect(state.health).toMatchObject({ ownedShapeCount: 19, activeDocuments: 1 })
   expect(state.disposal).toMatchObject({ ownedShapeCount: 0 })
 })

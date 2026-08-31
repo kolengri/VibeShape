@@ -2,8 +2,10 @@ import {
   createAngleQuantity,
   evaluateExpression,
   evaluateVariableDefinitions,
+  extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
+  featureIdSchema,
   featureRecordSchema,
   revolveFeatureParametersSchema,
   revolveFeatureType,
@@ -13,7 +15,7 @@ import {
 } from "@vibeshape/domain"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
@@ -24,7 +26,9 @@ import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
 
-type Values = Readonly<{ axis: string; angle: string }>
+const EMPTY_TARGET_OPTIONS = [] as const
+
+type Values = Readonly<{ axis: string; angle: string; operation: string; targetFeatureId: string }>
 export type RevolveFormCopy = RevolveParameterPanelCopy &
   Readonly<{
     axis: string
@@ -35,10 +39,18 @@ export type RevolveFormCopy = RevolveParameterPanelCopy &
     invalidExpression: string
     invalidDimension: string
     invalidRange: string
+    missingTarget: string
+    operation: string
+    operationAdd: string
+    operationIntersect: string
+    operationNew: string
+    operationRemove: string
     saveFailed: string
     staleRevision: string
     validationSummary: string
     submit: string
+    target: string
+    targetDescription: string
   }>
 export type RevolveFormMode =
   | Readonly<{
@@ -55,6 +67,8 @@ function valuesFromFeature(feature: FeatureRecord): Values {
   return {
     axis: p.axis,
     angle: p.angle.source.expression ?? `${p.angle.source.value} ${p.angle.source.unit}`,
+    operation: p.operation,
+    targetFeatureId: feature.dependencies[0] ?? "",
   }
 }
 function profileForMode(mode: RevolveFormMode) {
@@ -66,6 +80,7 @@ function record(
   mode: RevolveFormMode,
   id: FeatureId,
   parameters: ReturnType<typeof revolveFeatureParametersSchema.parse>,
+  targetFeatureId: FeatureId | null,
 ) {
   const references =
     mode.kind === "create"
@@ -73,7 +88,9 @@ function record(
         ? [mode.supportReference]
         : []
       : mode.feature.references
-  const dependencies = [...new Set(references.map(({ featureId }) => featureId))]
+  const dependencies = [targetFeatureId, ...references.map(({ featureId }) => featureId)].flatMap(
+    (item, index, values) => (item && values.indexOf(item) === index ? [item] : []),
+  )
   return featureRecordSchema.parse(
     mode.kind === "edit"
       ? { ...mode.feature, type: revolveFeatureType.type, parameters, references, dependencies }
@@ -95,24 +112,95 @@ function parseValues(
   variables: readonly VariableDefinition[],
   unit: "rad" | "deg",
   copy: RevolveFormCopy,
+  options: readonly { id: FeatureId; label: string }[],
 ) {
-  const evaluated = evaluateVariableDefinitions(variables)
-  if (!evaluated.ok) return { ok: false as const, message: copy.invalidExpression }
-  const expression = normalizeExpressionWithDisplayUnit(values.angle, unit)
-  const result = evaluateExpression(expression, evaluated.valuesByName)
-  if (!result.ok) return { ok: false as const, message: copy.invalidExpression }
-  if (result.value.dimension !== "angle")
-    return { ok: false as const, message: copy.invalidDimension }
-  const angle = createAngleQuantity(result.value.value, "rad", expression)
+  const angle = parseAngle(values.angle, variables, unit, copy)
+  if (!angle.ok) return angle
+  const operation = extrusionOperationSchema.parse(values.operation)
+  const target = parseTarget(values.targetFeatureId, operation, options, copy)
+  if (!target.ok) return target
   const parsed = revolveFeatureParametersSchema.safeParse({
     profile,
     axis: values.axis,
-    angle,
-    operation: "new",
+    angle: angle.quantity,
+    operation,
   })
-  return parsed.success
-    ? { ok: true as const, parameters: parsed.data }
-    : { ok: false as const, message: copy.invalidRange }
+  if (!parsed.success) return { ok: false as const, issues: { angle: copy.invalidRange } }
+  return { ok: true as const, parameters: parsed.data, targetFeatureId: target.featureId }
+}
+
+function parseAngle(
+  rawExpression: string,
+  variables: readonly VariableDefinition[],
+  unit: "rad" | "deg",
+  copy: RevolveFormCopy,
+) {
+  const evaluated = evaluateVariableDefinitions(variables)
+  if (!evaluated.ok) return { ok: false as const, issues: { angle: copy.invalidExpression } }
+  const expression = normalizeExpressionWithDisplayUnit(rawExpression, unit)
+  const result = evaluateExpression(expression, evaluated.valuesByName)
+  if (!result.ok) return { ok: false as const, issues: { angle: copy.invalidExpression } }
+  if (result.value.dimension !== "angle")
+    return { ok: false as const, issues: { angle: copy.invalidDimension } }
+  return { ok: true as const, quantity: createAngleQuantity(result.value.value, "rad", expression) }
+}
+
+function parseTarget(
+  rawTargetFeatureId: string,
+  operation: ReturnType<typeof extrusionOperationSchema.parse>,
+  options: readonly { id: FeatureId; label: string }[],
+  copy: RevolveFormCopy,
+) {
+  if (operation === "new") return { ok: true as const, featureId: null }
+  const availableTargetIds = new Set(options.map(({ id }) => id))
+  const target = featureIdSchema.safeParse(rawTargetFeatureId)
+  return target.success && availableTargetIds.has(target.data)
+    ? { ok: true as const, featureId: target.data }
+    : { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
+}
+
+function RevolvePreviewSync({
+  copy,
+  displayUnit,
+  featureId,
+  mode,
+  onPreviewChange,
+  options,
+  profile,
+  values,
+  variables,
+}: {
+  copy: RevolveFormCopy
+  displayUnit: "rad" | "deg"
+  featureId: FeatureId
+  mode: RevolveFormMode
+  onPreviewChange: (feature: FeatureRecord | null) => void
+  options: readonly { id: FeatureId; label: string }[]
+  profile: SketchProfileSelector
+  values: Values
+  variables: readonly VariableDefinition[]
+}) {
+  const inputRef = useRef({ copy, displayUnit, mode, options, profile, variables })
+  inputRef.current = { copy, displayUnit, mode, options, profile, variables }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const input = inputRef.current
+      const parsed = parseValues(
+        values,
+        input.profile,
+        input.variables,
+        input.displayUnit,
+        input.copy,
+        input.options,
+      )
+      onPreviewChange(
+        parsed.ok ? record(input.mode, featureId, parsed.parameters, parsed.targetFeatureId) : null,
+      )
+    }, 180)
+    return () => window.clearTimeout(timeout)
+  }, [featureId, onPreviewChange, values])
+  useEffect(() => () => onPreviewChange(null), [onPreviewChange])
+  return null
 }
 
 export function RevolveForm({
@@ -124,6 +212,7 @@ export function RevolveForm({
   onSave,
   onSaved,
   onPreviewChange,
+  options,
   profileLabel,
   variables,
 }: {
@@ -135,9 +224,11 @@ export function RevolveForm({
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
   onPreviewChange?: (feature: FeatureRecord | null) => void
+  options?: readonly { id: FeatureId; label: string }[]
   profileLabel: string
   variables: readonly VariableDefinition[]
 }) {
+  const targetOptions = options ?? EMPTY_TARGET_OPTIONS
   const {
     clearSubmissionErrors,
     displayUnits,
@@ -152,19 +243,23 @@ export function RevolveForm({
   const [featureId] = useState(() =>
     mode.kind === "edit" ? mode.feature.id : mode.createFeatureId(),
   )
-  const inputRef = useRef({ mode, profile, variables, copy, displayUnits: displayUnits.angle })
-  inputRef.current = { mode, profile, variables, copy, displayUnits: displayUnits.angle }
   const form = useAppForm({
     defaultValues:
       mode.kind === "edit"
         ? valuesFromFeature(mode.feature)
-        : { axis: "x", angle: defaultAngleExpression(Math.PI * 2, displayUnits.angle) },
+        : {
+            axis: "x",
+            angle: defaultAngleExpression(Math.PI * 2, displayUnits.angle),
+            operation: "new",
+            targetFeatureId: targetOptions[0]?.id ?? "",
+          },
     onSubmit: async ({ value }) => {
-      const parsed = parseValues(value, profile, variables, displayUnits.angle, copy)
+      const parsed = parseValues(value, profile, variables, displayUnits.angle, copy, targetOptions)
       if (!parsed.ok) {
-        setIssues({ angle: parsed.message })
+        setIssues(parsed.issues)
         setMessage(copy.validationSummary)
-        formElementRef.current?.querySelector<HTMLElement>('[name="angle"]')?.focus()
+        const invalidFieldName = "angle" in parsed.issues ? "angle" : "targetFeatureId"
+        formElementRef.current?.querySelector<HTMLElement>(`[name="${invalidFieldName}"]`)?.focus()
         return
       }
       setIssues({})
@@ -172,35 +267,30 @@ export function RevolveForm({
       await submitFeatureMutation({
         baseRevision,
         copy,
-        feature: record(mode, featureId, parsed.parameters),
+        feature: record(mode, featureId, parsed.parameters, parsed.targetFeatureId),
         onSave,
         onSaved,
         setMessage,
       })
     },
   })
-  const preview = useCallback(
-    (values: Values) => {
-      if (!onPreviewChange) return null
-      const input = inputRef.current
-      const parsed = parseValues(
-        values,
-        input.profile,
-        input.variables,
-        input.displayUnits,
-        input.copy,
-      )
-      onPreviewChange(parsed.ok ? record(input.mode, featureId, parsed.parameters) : null)
-      return null
-    },
-    [featureId, onPreviewChange],
-  )
-  useEffect(() => () => onPreviewChange?.(null), [onPreviewChange])
   return (
     <Form ref={formElementRef} form={form} aria-label={copy.title} className="gap-0">
       {onPreviewChange ? (
         <form.Subscribe selector={(state) => state.values}>
-          {(values) => <PreviewSync values={values} onPreview={preview} />}
+          {(values) => (
+            <RevolvePreviewSync
+              copy={copy}
+              displayUnit={displayUnits.angle}
+              featureId={featureId}
+              mode={mode}
+              onPreviewChange={onPreviewChange}
+              options={targetOptions}
+              profile={profile}
+              values={values}
+              variables={variables}
+            />
+          )}
         </form.Subscribe>
       ) : null}
       <RevolveParameterPanel
@@ -208,6 +298,61 @@ export function RevolveForm({
         disabled={disabled}
         message={message}
         profileLabel={profileLabel}
+        operationField={
+          <form.Field name="operation">
+            {(field) => (
+              <NativeSelectField
+                name={field.name}
+                value={field.state.value}
+                label={copy.operation}
+                disabled={disabled}
+                onChange={(event) => {
+                  clearSubmissionErrors()
+                  field.handleChange(event.currentTarget.value)
+                }}
+              >
+                <option value="new">{copy.operationNew}</option>
+                <option value="add">{copy.operationAdd}</option>
+                <option value="remove">{copy.operationRemove}</option>
+                <option value="intersect">{copy.operationIntersect}</option>
+              </NativeSelectField>
+            )}
+          </form.Field>
+        }
+        targetField={
+          <form.Subscribe selector={(state) => state.values.operation}>
+            {(operation) =>
+              operation === "new" ? null : (
+                <form.Field name="targetFeatureId">
+                  {(field) => (
+                    <NativeSelectField
+                      name={field.name}
+                      value={field.state.value}
+                      label={copy.target}
+                      description={copy.targetDescription}
+                      error={issues.targetFeatureId}
+                      disabled={disabled}
+                      required
+                      onChange={(event) => {
+                        clearSubmissionErrors()
+                        field.handleChange(event.currentTarget.value)
+                      }}
+                    >
+                      {targetOptions.length === 0 ? (
+                        <option value="">{copy.missingTarget}</option>
+                      ) : null}
+                      {targetOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  )}
+                </form.Field>
+              )
+            }
+          </form.Subscribe>
+        }
         onCancel={onCancel}
         axisField={
           <form.Field name="axis">
@@ -257,18 +402,4 @@ export function RevolveForm({
       />
     </Form>
   )
-}
-
-function PreviewSync({
-  values,
-  onPreview,
-}: {
-  values: Values
-  onPreview: (values: Values) => null
-}) {
-  useEffect(() => {
-    const timeout = window.setTimeout(() => onPreview(values), 180)
-    return () => window.clearTimeout(timeout)
-  }, [onPreview, values])
-  return null
 }

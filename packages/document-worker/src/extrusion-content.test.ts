@@ -320,6 +320,38 @@ describe("document extrusion content preparation", () => {
     })
   })
 
+  it.each(["add", "remove", "intersect"] as const)(
+    "preserves the %s revolve operation in prepared geometry content",
+    async (operation) => {
+      const source = fixture()
+      const feature = featureRecordSchema.parse({
+        ...source.feature,
+        id: "0195b5ac-b220-7a2c-8c33-000000003319",
+        type: revolveFeatureType.type,
+        parameters: {
+          profile: source.feature.parameters.profile,
+          axis: "y",
+          angle: createAngleQuantity(180, "deg"),
+          operation,
+        },
+        dependencies: [source.feature.id],
+      })
+      const document = documentSnapshotSchema.parse({
+        ...source.document,
+        features: [source.feature, feature],
+      })
+      const prepare = createDocumentFeatureContentPreparer(() => ({
+        ok: true,
+        solution: source.solution,
+      }))
+
+      await expect(prepare({ document, feature })).resolves.toMatchObject({
+        ok: true,
+        parameters: { operation },
+      })
+    },
+  )
+
   it("materializes an exact solved ellipse for the geometry worker", async () => {
     const { document, feature, solution } = ellipseFixture()
     const prepare = createDocumentFeatureContentPreparer(() => ({ ok: true, solution }))

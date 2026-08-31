@@ -1,12 +1,15 @@
 import {
   booleanFeatureType,
   boxFeatureType,
+  createAngleQuantity,
   createLengthQuantity,
   cylinderFeatureType,
   datumPlaneFeatureType,
   extrusionFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  legacyRevolveFeatureType,
+  revolveFeatureType,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import {
@@ -14,12 +17,13 @@ import {
   activePartDesignCommand,
   booleanInputFeatures,
   editPartDesignTool,
-  extrusionTargetFeatures,
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
   isDatumPlaneFeature,
   isExtrusionFeature,
+  isRevolveFeature,
+  modifyingSolidTargetFeatures,
 } from "./part-design-tool"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2701")
@@ -79,6 +83,19 @@ const extrusion = featureRecordSchema.parse({
   label: "Extrusion 1",
 })
 
+const revolve = featureRecordSchema.parse({
+  ...box,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2707"),
+  type: revolveFeatureType.type,
+  parameters: {
+    profile: extrusion.parameters.profile,
+    axis: "y",
+    angle: createAngleQuantity(180, "deg"),
+    operation: "new",
+  },
+  label: "Revolve 1",
+})
+
 const dependentBoolean = featureRecordSchema.parse({
   ...boolean,
   id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2704"),
@@ -106,6 +123,7 @@ describe("part-design tool routing", () => {
     expect(isCylinderFeature(cylinder)).toBe(true)
     expect(isBooleanFeature(boolean)).toBe(true)
     expect(isExtrusionFeature(extrusion)).toBe(true)
+    expect(isRevolveFeature(revolve)).toBe(true)
     expect(isDatumPlaneFeature(datumPlane)).toBe(true)
   })
 
@@ -143,14 +161,49 @@ describe("part-design tool routing", () => {
   })
 
   it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
-    expect(extrusionTargetFeatures([box, cylinder, extrusion, boolean])).toEqual([
+    expect(modifyingSolidTargetFeatures([box, cylinder, extrusion, boolean])).toEqual([
       extrusion,
       boolean,
     ])
-    expect(extrusionTargetFeatures([box, cylinder, extrusion, boolean], boolean.id)).toEqual([
+    expect(modifyingSolidTargetFeatures([box, cylinder, extrusion, boolean], boolean.id)).toEqual([
       box,
       cylinder,
       extrusion,
     ])
+  })
+
+  it("keeps schema-version-1 revolve records editable and target-eligible", () => {
+    const legacyRevolve = featureRecordSchema.parse({
+      ...revolve,
+      type: legacyRevolveFeatureType.type,
+    })
+
+    expect(isRevolveFeature(legacyRevolve)).toBe(true)
+    expect(editPartDesignTool(legacyRevolve)).toEqual({
+      kind: "edit-revolve",
+      featureId: legacyRevolve.id,
+    })
+    expect(modifyingSolidTargetFeatures([legacyRevolve])).toEqual([legacyRevolve])
+  })
+
+  it("keeps support-only dependencies independent from body terminality", () => {
+    const supportedNewBody = featureRecordSchema.parse({
+      ...revolve,
+      dependencies: [box.id],
+    })
+    const modifyingRevolve = featureRecordSchema.parse({
+      ...revolve,
+      parameters: { ...revolve.parameters, operation: "add" },
+      dependencies: [cylinder.id, box.id],
+    })
+
+    expect(modifyingSolidTargetFeatures([box, supportedNewBody])).toEqual([box, supportedNewBody])
+    expect(modifyingSolidTargetFeatures([box, cylinder, modifyingRevolve])).toEqual([
+      box,
+      modifyingRevolve,
+    ])
+    expect(
+      modifyingSolidTargetFeatures([box, cylinder, modifyingRevolve], modifyingRevolve.id),
+    ).toEqual([box, cylinder])
   })
 })

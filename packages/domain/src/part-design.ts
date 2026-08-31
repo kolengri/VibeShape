@@ -131,12 +131,21 @@ const revolveAngleSchema = angleQuantitySchema.refine(
   "Revolve angles must be greater than zero and at most 360 degrees.",
 )
 
-export const revolveFeatureParametersSchema = z
+const legacyRevolveFeatureParametersSchema = z
   .object({
     profile: sketchProfileSelectorSchema,
     axis: z.enum(["x", "y"]),
     angle: revolveAngleSchema,
     operation: z.literal("new"),
+  })
+  .strict()
+
+export const revolveFeatureParametersSchema = z
+  .object({
+    profile: sketchProfileSelectorSchema,
+    axis: z.enum(["x", "y"]),
+    angle: revolveAngleSchema,
+    operation: extrusionOperationSchema,
   })
   .strict()
 
@@ -317,6 +326,19 @@ export const revolveFeatureType = featureTypeDescriptorSchema.parse({
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 2,
+  },
+  classification: "solid",
+  dependencies: { min: 0, max: 2 },
+  references: { min: 0, max: 1 },
+})
+
+export const legacyRevolveFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
     schemaVersion: 1,
   },
   classification: "solid",
@@ -344,22 +366,27 @@ export function readExtrusionFeatureParameters(feature: FeatureRecord) {
 
 function isRevolveType(feature: FeatureRecord) {
   const type = feature.type
-  return (
-    type.moduleId === revolveFeatureType.type.moduleId &&
-    type.moduleVersion === revolveFeatureType.type.moduleVersion &&
-    type.typeId === revolveFeatureType.type.typeId &&
-    type.schemaVersion === revolveFeatureType.type.schemaVersion
+  return [legacyRevolveFeatureType.type, revolveFeatureType.type].some(
+    (expected) =>
+      type.moduleId === expected.moduleId &&
+      type.moduleVersion === expected.moduleVersion &&
+      type.typeId === expected.typeId &&
+      type.schemaVersion === expected.schemaVersion,
   )
 }
 
 export function readRevolveFeatureParameters(feature: FeatureRecord) {
   if (!isRevolveType(feature)) return null
-  const parsed = revolveFeatureParametersSchema.safeParse(feature.parameters)
+  const parsed = z
+    .union([legacyRevolveFeatureParametersSchema, revolveFeatureParametersSchema])
+    .safeParse(feature.parameters)
   return parsed.success ? parsed.data : null
 }
 
 function resolveRevolveParameters(parameters: unknown, variables: VariableValues) {
-  const parsed = revolveFeatureParametersSchema.safeParse(parameters)
+  const parsed = z
+    .union([legacyRevolveFeatureParametersSchema, revolveFeatureParametersSchema])
+    .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
   const angle = resolveQuantityExpression(parsed.data.angle, variables)
   if (!angle.ok) return expressionFailure("angle", angle.diagnostic.message, angle.diagnostic.code)
@@ -374,17 +401,22 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
 }
 
 function revolveFeatureInvariant(feature: FeatureRecord) {
-  if (!readRevolveFeatureParameters(feature)) return []
-  const supportFeatureIds = new Set(feature.references.map(({ featureId }) => featureId))
-  const dependenciesMatchReferences =
-    feature.dependencies.length === supportFeatureIds.size &&
-    feature.dependencies.every((featureId) => supportFeatureIds.has(featureId))
-  return dependenciesMatchReferences
+  const parameters = readRevolveFeatureParameters(feature)
+  if (!parameters) return []
+  const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
+  const minimumDependencyCount = parameters.operation === "new" ? supportDependencyCount : 1
+  const maximumDependencyCount =
+    parameters.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
+  return feature.dependencies.length >= minimumDependencyCount &&
+    feature.dependencies.length <= maximumDependencyCount
     ? []
     : [
         {
           path: "dependencies",
-          message: "New-body revolve dependencies must match its sketch-support references.",
+          message:
+            parameters.operation === "new"
+              ? "New-body revolve dependencies must match its sketch-support references."
+              : `${parameters.operation} revolve requires one target plus any distinct sketch-support dependency.`,
         },
       ]
 }
@@ -474,6 +506,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
         symmetric: extrusion.symmetric,
         operation: extrusion.operation,
       })
+    },
+  },
+  {
+    type: legacyRevolveFeatureType.type,
+    parametersSchema: legacyRevolveFeatureParametersSchema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = legacyRevolveFeatureParametersSchema.parse(parameters)
+      return {
+        profile: revolve.profile,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: "new" as const,
+      }
     },
   },
   {

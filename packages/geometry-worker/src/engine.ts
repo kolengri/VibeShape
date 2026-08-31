@@ -184,6 +184,8 @@ const EXTRUSION_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
 const REVOLVE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
+const REVOLVE_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#2"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -915,17 +917,35 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
 
 function extrusionInputCardinalityIsValid(
   input: FeatureEvaluationInput,
-  parameters: ExtrusionContentParameters,
+  parameters: Pick<ExtrusionContentParameters, "operation" | "supportFeatureId">,
 ) {
   const dependencies = input.dependencies
   if (input.content.feature.inputs.length !== dependencies.length) return false
-  const supportFeatureId = parameters.supportFeatureId
-  if (parameters.operation === "new") {
-    if (!supportFeatureId) return dependencies.length === 0
-    return dependencies.length === 1 && dependencies[0]?.featureId === supportFeatureId
-  }
-  if (dependencies.length < 1 || dependencies.length > 2) return false
-  return !supportFeatureId || dependencies.some(({ featureId }) => featureId === supportFeatureId)
+  return parameters.operation === "new"
+    ? newBodyInputCardinalityIsValid(dependencies, parameters.supportFeatureId)
+    : modifyingInputCardinalityIsValid(dependencies, parameters.supportFeatureId)
+}
+
+function newBodyInputCardinalityIsValid(
+  dependencies: FeatureEvaluationInput["dependencies"],
+  supportFeatureId: string | undefined,
+) {
+  return supportFeatureId
+    ? dependencies.length === 1 && dependencies[0]?.featureId === supportFeatureId
+    : dependencies.length === 0
+}
+
+function modifyingInputCardinalityIsValid(
+  dependencies: FeatureEvaluationInput["dependencies"],
+  supportFeatureId: string | undefined,
+) {
+  if (!supportFeatureId) return dependencies.length === 1
+  if (dependencies.length === 1) return dependencies[0]?.featureId === supportFeatureId
+  return (
+    dependencies.length === 2 &&
+    dependencies[0]?.featureId !== supportFeatureId &&
+    dependencies[1]?.featureId === supportFeatureId
+  )
 }
 
 function supportReferencesAreValid(
@@ -971,8 +991,12 @@ function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult 
   if (!parameters.success) {
     return featureFailure("invalid-feature-parameters", "Revolve content parameters are invalid.")
   }
-  if (!revolveInputCardinalityIsValid(input, parameters.data.supportFeatureId)) {
-    return invalidInputCardinality("A new-body revolve may depend only on its sketch support.")
+  if (!revolveInputCardinalityIsValid(input, parameters.data)) {
+    return invalidInputCardinality(
+      parameters.data.operation === "new"
+        ? "A new-body revolve may depend only on its sketch support."
+        : `A ${parameters.data.operation} revolve requires one target and may also depend on its sketch support.`,
+    )
   }
   if (!supportReferencesAreValid(input, parameters.data.supportFeatureId)) {
     return invalidInputCardinality(
@@ -988,16 +1012,24 @@ function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult 
   return { ok: true, feature: { kind: "revolve", parameters: parameters.data } }
 }
 
+function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const parameters = revolveFeatureContentParametersSchema.safeParse(
+    input.content.feature.parameters,
+  )
+  if (!parameters.success || parameters.data.operation !== "new") {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Schema-version-1 Revolve content only supports new-body operation intent.",
+    )
+  }
+  return parseRevolveFeature(input)
+}
+
 function revolveInputCardinalityIsValid(
   input: FeatureEvaluationInput,
-  supportFeatureId: string | undefined,
+  parameters: RevolveContentParameters,
 ) {
-  const dependenciesMatchSupport = supportFeatureId
-    ? input.dependencies.length === 1 && input.dependencies[0]?.featureId === supportFeatureId
-    : input.dependencies.length === 0
-  return (
-    input.content.feature.inputs.length === input.dependencies.length && dependenciesMatchSupport
-  )
+  return extrusionInputCardinalityIsValid(input, parameters)
 }
 
 function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResult {
@@ -1029,7 +1061,8 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
-  [REVOLVE_FEATURE_TYPE_KEY, parseRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 
@@ -1142,7 +1175,7 @@ function createFeatureShape(
   }
 
   if (feature.kind === "revolve") {
-    return createRevolveShape(opencascade, feature.parameters)
+    return createRevolveFeatureShape(opencascade, feature.parameters, dependencyShapes)
   }
 
   if (feature.kind === "datum-plane") {
@@ -1610,6 +1643,32 @@ function createRevolveShape(
     }
   } finally {
     outer.delete()
+  }
+}
+
+function createRevolveFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: RevolveContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const tool = createRevolveShape(opencascade, parameters)
+  if (parameters.operation === "new") return tool
+  const target = dependencyShapes[0]
+  if (!target) {
+    tool.delete()
+    throw new Error("Revolve target dependency shape is unavailable.")
+  }
+  try {
+    switch (parameters.operation) {
+      case "add":
+        return fuseOcctShapes(opencascade, target, tool)
+      case "remove":
+        return cutOcctShapes(opencascade, target, tool)
+      case "intersect":
+        return intersectOcctShapes(opencascade, target, tool)
+    }
+  } finally {
+    tool.delete()
   }
 }
 

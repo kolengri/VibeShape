@@ -6,7 +6,9 @@ import {
   extrusionFeatureType,
   type FeatureId,
   type FeatureRecord,
+  featureBodyDependencyIds,
   legacyExtrusionFeatureType,
+  legacyRevolveFeatureType,
   revolveFeatureType,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
@@ -55,7 +57,10 @@ export function isExtrusionFeature(feature: FeatureRecord) {
 }
 
 export function isRevolveFeature(feature: FeatureRecord) {
-  return hasFeatureType(feature, revolveFeatureType.type)
+  return (
+    hasFeatureType(feature, revolveFeatureType.type) ||
+    hasFeatureType(feature, legacyRevolveFeatureType.type)
+  )
 }
 
 export function isDatumPlaneFeature(feature: FeatureRecord) {
@@ -106,7 +111,7 @@ export function booleanInputFeatures(
   )
 }
 
-export function extrusionTargetFeatures(
+export function modifyingSolidTargetFeatures(
   features: readonly FeatureRecord[],
   editingFeatureId?: FeatureId,
 ) {
@@ -117,10 +122,9 @@ export function extrusionTargetFeatures(
     (feature) =>
       !feature.suppressed && !excludedIds.has(feature.id) && isPartDesignSolidFeature(feature),
   )
-  const dependedOnIds = new Set(available.flatMap(({ dependencies }) => dependencies))
-  const currentTargetIds = new Set(
-    features.find(({ id }) => id === editingFeatureId)?.dependencies ?? [],
-  )
+  const dependedOnIds = new Set(available.flatMap(featureBodyDependencyIds))
+  const editingFeature = features.find(({ id }) => id === editingFeatureId)
+  const currentTargetIds = new Set(editingFeature ? featureBodyDependencyIds(editingFeature) : [])
   return available.filter(({ id }) => !dependedOnIds.has(id) || currentTargetIds.has(id))
 }
 

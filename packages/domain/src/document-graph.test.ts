@@ -128,6 +128,26 @@ const revolve = (value: string, profileSketchId: string, references: unknown[] =
   suppressed: false,
 })
 
+const modifyingRevolve = (
+  value: string,
+  profileSketchId: string,
+  operation: "add" | "remove" | "intersect",
+  targetFeatureId: string,
+  references: unknown[] = [],
+) => ({
+  ...revolve(value, profileSketchId, references),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 2,
+  },
+  parameters: { ...revolve(value, profileSketchId).parameters, operation },
+  dependencies: [id(targetFeatureId), ...references.map(() => id("3"))].filter(
+    (dependency, index, dependencies) => dependencies.indexOf(dependency) === index,
+  ),
+})
+
 describe("createDocumentDependencyGraph", () => {
   it("derives sketch, extrusion, and supported-sketch history from a v0 snapshot", () => {
     const result = deriveLegacyHistory({
@@ -746,6 +766,105 @@ describe("createDocumentDependencyGraph", () => {
       diagnostic: {
         code: "invalid-feature",
         issues: [{ path: "features.1.dependencies" }],
+      },
+    })
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "accepts a target-first %s revolve dependency",
+    (operation) => {
+      const result = createDocumentDependencyGraph({
+        sketches: [sketch("1")],
+        features: [feature("3"), modifyingRevolve("2", "1", operation, "3")],
+        history: [
+          { kind: "feature", id: id("3") },
+          { kind: "sketch", id: id("1") },
+          { kind: "feature", id: id("2") },
+        ],
+      })
+
+      expect(result).toMatchObject({ ok: true })
+    },
+  )
+
+  it("rejects a modifying revolve without an explicit target", () => {
+    const invalidRevolve = {
+      ...modifyingRevolve("2", "1", "add", "3"),
+      dependencies: [],
+    }
+    const result = createDocumentDependencyGraph({
+      sketches: [sketch("1")],
+      features: [feature("3"), invalidRevolve],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.1.dependencies" }],
+      },
+    })
+  })
+
+  it("deduplicates a revolve target that also owns the sketch support", () => {
+    const result = createDocumentDependencyGraph({
+      sketches: [supportedSketch("1", "3")],
+      features: [feature("3"), modifyingRevolve("2", "1", "remove", "3", [faceReference("3")])],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({ ok: true })
+  })
+
+  it("accepts a distinct target before the sketch support dependency", () => {
+    const result = createDocumentDependencyGraph({
+      sketches: [supportedSketch("1", "3")],
+      features: [
+        feature("3"),
+        feature("4"),
+        modifyingRevolve("2", "1", "add", "4", [faceReference("3")]),
+      ],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "feature", id: id("4") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({ ok: true })
+  })
+
+  it("rejects a revolve support dependency placed before its distinct target", () => {
+    const invalidRevolve = {
+      ...modifyingRevolve("2", "1", "add", "4", [faceReference("3")]),
+      dependencies: [id("3"), id("4")],
+    }
+    const result = createDocumentDependencyGraph({
+      sketches: [supportedSketch("1", "3")],
+      features: [feature("3"), feature("4"), invalidRevolve],
+      history: [
+        { kind: "feature", id: id("3") },
+        { kind: "feature", id: id("4") },
+        { kind: "sketch", id: id("1") },
+        { kind: "feature", id: id("2") },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.2.dependencies" }],
       },
     })
   })
