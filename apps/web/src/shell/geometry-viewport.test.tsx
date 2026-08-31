@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { boxFeatureType, createLengthQuantity, datumPlaneFeatureType } from "@vibeshape/domain"
+import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
+import {
+  boxFeatureType,
+  createLengthQuantity,
+  datumPlaneFeatureType,
+  type SketchProfileSelector,
+  sketchEntityIdSchema,
+  sketchIdSchema,
+} from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import type {
@@ -18,6 +26,7 @@ import {
   GeometryViewport,
   type GeometryViewportSketchContext,
   viewerMeshes,
+  viewerSketchDisplay,
   viewerSketches,
   withActiveSketchDisplay,
 } from "./geometry-viewport"
@@ -40,12 +49,98 @@ const mesh = {
   indices: new Uint32Array([0, 1, 2]),
   triangleFaceIds: new Uint32Array([1]),
 }
-const sketchDisplay = {
+const sketchDisplay: SketchDisplayRecord = {
   sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f2605",
+  frame: {
+    origin: [0, 0, 0] as const,
+    xAxis: [1, 0, 0] as const,
+    yAxis: [0, 1, 0] as const,
+    normal: [0, 0, 1] as const,
+  },
+  profiles: [],
   curvePositions: new Float32Array([0, 0, 0, 20, 0, 0]),
   constructionCurvePositions: new Float32Array(),
   pointPositions: new Float32Array([0, 0, 0, 20, 0, 0]),
   constructionPointPositions: new Float32Array(),
+}
+
+const firstProfileBoundaryId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2611")
+const secondProfileBoundaryId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2612")
+const thirdProfileBoundaryId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2613")
+const fourthProfileBoundaryId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2614")
+const profileBoundaryIds = [
+  firstProfileBoundaryId,
+  secondProfileBoundaryId,
+  thirdProfileBoundaryId,
+  fourthProfileBoundaryId,
+]
+const profileSelector: SketchProfileSelector = {
+  schemaVersion: 0,
+  sketchId: sketchIdSchema.parse(sketchDisplay.sketchId),
+  outerBoundaryEntityIds: profileBoundaryIds,
+  holeBoundaryEntityIds: [],
+}
+const profileSketchDisplay: SketchDisplayRecord = {
+  ...sketchDisplay,
+  profiles: [
+    {
+      selector: profileSelector,
+      outerLoop: {
+        segments: [
+          {
+            entityId: firstProfileBoundaryId,
+            type: "line",
+            reversed: false,
+            samples: [
+              [0, 0],
+              [10, 0],
+            ],
+          },
+          {
+            entityId: secondProfileBoundaryId,
+            type: "line",
+            reversed: false,
+            samples: [
+              [10, 0],
+              [10, 10],
+            ],
+          },
+          {
+            entityId: thirdProfileBoundaryId,
+            type: "line",
+            reversed: false,
+            samples: [
+              [10, 10],
+              [0, 10],
+            ],
+          },
+          {
+            entityId: fourthProfileBoundaryId,
+            type: "line",
+            reversed: false,
+            samples: [
+              [0, 10],
+              [0, 0],
+            ],
+          },
+        ],
+      },
+      holeLoops: [],
+    },
+  ],
+}
+const secondProfileSketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2620")
+const secondProfileSelector: SketchProfileSelector = {
+  ...profileSelector,
+  sketchId: secondProfileSketchId,
+}
+const secondProfileSketchDisplay: SketchDisplayRecord = {
+  ...profileSketchDisplay,
+  sketchId: secondProfileSketchId,
+  profiles: profileSketchDisplay.profiles.map((profile) => ({
+    ...profile,
+    selector: secondProfileSelector,
+  })),
 }
 
 function planarFaceCandidate(
@@ -84,7 +179,7 @@ function readyController(
       topologyCandidates?: readonly ReturnType<typeof planarFaceCandidate>[]
     }
   }[],
-  sketches: readonly (typeof sketchDisplay)[] = [],
+  sketches: readonly SketchDisplayRecord[] = [],
 ) {
   return {
     status: "ready",
@@ -98,6 +193,10 @@ function readyController(
           references: [],
           suppressed: false,
           ...feature,
+        })),
+        sketches: sketches.map(({ sketchId }, index) => ({
+          id: sketchId,
+          label: `Sketch ${index + 1}`,
         })),
       },
       rebuild: { ok: true, response: { geometry, sketches } },
@@ -127,6 +226,13 @@ function renderViewport(
     selectedPlane: "xy" | "xz" | "yz" | null
     onSelect: (plane: "xy" | "xz" | "yz" | null) => void
   }>,
+  sketchProfileSelection?: Readonly<{
+    selectedProfile: SketchProfileSelector | null
+    onSelect: (
+      profile: SketchProfileSelector | null,
+      profiles: readonly SketchProfileSelector[],
+    ) => void
+  }>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -138,6 +244,8 @@ function renderViewport(
     setMeshes: vi.fn(),
     setSketchReferenceCandidates: vi.fn(),
     setSketchReferencePreselection: vi.fn(),
+    setSketchProfilePreselection: vi.fn(),
+    setSketchProfileSelection: vi.fn(),
     setSelectionCandidateStackPreserved: vi.fn(),
     setSelectionPreselection: vi.fn(),
     setSketches: vi.fn(),
@@ -165,6 +273,7 @@ function renderViewport(
           {...(originPlaneSelection ? { originPlaneSelection } : {})}
           {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
           {...(idleOriginPlaneSelection ? { idleOriginPlaneSelection } : {})}
+          {...(sketchProfileSelection ? { sketchProfileSelection } : {})}
         />
       </TooltipProvider>
     </I18nProvider>
@@ -193,19 +302,199 @@ beforeEach(() => {
 })
 
 describe("GeometryViewport", () => {
+  it("adapts bounded saved profile loops to one stable viewer region", () => {
+    const [sketch] = viewerSketches(readyController([], [], [profileSketchDisplay]))
+
+    expect(Array.from(sketch?.profiles?.[0]?.outerPositions ?? [])).toEqual([
+      0, 0, 10, 0, 10, 10, 0, 10,
+    ])
+    expect(sketch?.profiles?.[0]?.selector).toEqual(profileSelector)
+  })
+
+  it("reports saved profile hover and selection through semantic selectors", async () => {
+    const onSelect = vi.fn()
+    const controller = readyController([], [], [profileSketchDisplay])
+    const { createViewport, port } = renderViewport(
+      controller,
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: profileSelector, onSelect },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const renderedSketches = vi.mocked(port.setSketches).mock.calls.at(-1)?.[0] ?? []
+    const profile = renderedSketches[0]?.profiles?.[0]
+    expect(profile).toBeDefined()
+    expect(port.setSketchProfileSelection).toHaveBeenCalledWith(profile)
+
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onSketchProfilePreselectionChange?.(profile ?? null))
+    expect(screen.getByRole("status").textContent).toContain("Select profile: Sketch 1 · Profile 1")
+
+    act(() => options?.onSketchProfileSelectionChange?.(profile ?? null))
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector])
+  })
+
+  it("offers a focusable model-mode control for every saved profile", async () => {
+    const onSelect = vi.fn()
+    renderViewport(
+      readyController([], [], [profileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: null, onSelect },
+    )
+
+    const profilePicker = await screen.findByRole("combobox", {
+      name: "Select saved profile",
+    })
+    const profileOption = screen.getByRole("option", { name: "Sketch 1 · Profile 1" })
+    profilePicker.focus()
+    expect(document.activeElement).toBe(profilePicker)
+    fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector])
+  })
+
+  it("keeps the maximum supported profile set in one compact native picker", async () => {
+    const baseProfile = profileSketchDisplay.profiles[0]
+    if (!baseProfile) throw new Error("The saved-profile fixture must contain one profile.")
+    const profiles = Array.from({ length: 2_000 }, (_, index) => ({
+      ...baseProfile,
+      selector: {
+        ...profileSelector,
+        outerBoundaryEntityIds: [
+          sketchEntityIdSchema.parse(
+            `0195b5ac-b220-7a2c-8c33-${String(index + 3_000).padStart(12, "0")}`,
+          ),
+        ],
+      },
+    }))
+    renderViewport(
+      readyController([], [], [{ ...profileSketchDisplay, profiles }]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: null, onSelect: vi.fn() },
+    )
+
+    expect(await screen.findAllByRole("combobox", { name: "Select saved profile" })).toHaveLength(1)
+    expect(screen.getAllByRole("option")).toHaveLength(2_001)
+  })
+
+  it("requires an explicit choice when saved profiles overlap", async () => {
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: null, onSelect },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const profiles =
+      vi
+        .mocked(port.setSketches)
+        .mock.calls.at(-1)?.[0]
+        .flatMap((sketch) => sketch.profiles ?? []) ?? []
+    expect(profiles).toHaveLength(2)
+
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onSketchProfileCandidateStackCommit?.(profiles))
+    const chooser = await screen.findByRole("listbox", { name: "Select profile" })
+    expect(chooser.querySelectorAll('[role="option"]')).toHaveLength(2)
+    fireEvent.keyDown(chooser, { key: "ArrowDown" })
+    fireEvent.keyDown(chooser, { key: "Enter" })
+
+    expect(onSelect).toHaveBeenCalledWith(secondProfileSelector, [secondProfileSelector])
+    expect(port.setSketchProfileSelection).toHaveBeenCalledWith(profiles[1])
+  })
+
+  it("dismisses an overlapping-profile chooser when rendered sketches change", async () => {
+    const { createViewport, port, rerenderController } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: null, onSelect: vi.fn() },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const profiles =
+      vi
+        .mocked(port.setSketches)
+        .mock.calls.at(-1)?.[0]
+        .flatMap((sketch) => sketch.profiles ?? []) ?? []
+    act(() => createViewport.mock.calls[0]?.[1].onSketchProfileCandidateStackCommit?.(profiles))
+    await screen.findByRole("listbox", { name: "Select profile" })
+
+    rerenderController(readyController([], [], [profileSketchDisplay]))
+    await waitFor(() =>
+      expect(screen.queryByRole("listbox", { name: "Select profile" })).toBeNull(),
+    )
+  })
+
+  it("dismisses an overlapping-profile chooser after another canvas selection", async () => {
+    const { createViewport, port } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfile: null, onSelect: vi.fn() },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const profiles =
+      vi
+        .mocked(port.setSketches)
+        .mock.calls.at(-1)?.[0]
+        .flatMap((sketch) => sketch.profiles ?? []) ?? []
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onSketchProfileCandidateStackCommit?.(profiles))
+    await screen.findByRole("listbox", { name: "Select profile" })
+
+    act(() => options?.onSketchProfileSelectionChange?.(profiles[0] ?? null))
+    await waitFor(() =>
+      expect(screen.queryByRole("listbox", { name: "Select profile" })).toBeNull(),
+    )
+  })
+
   it("replaces the committed sketch display with the active unsaved display", () => {
+    const committedDisplay = viewerSketchDisplay(sketchDisplay)
     const activeDisplay = {
-      ...sketchDisplay,
+      ...committedDisplay,
       curvePositions: new Float32Array([5, 0, 0, 25, 0, 0]),
     }
 
-    expect(withActiveSketchDisplay([sketchDisplay], activeDisplay)).toEqual([activeDisplay])
-    expect(withActiveSketchDisplay([sketchDisplay], null)).toEqual([sketchDisplay])
+    expect(withActiveSketchDisplay([committedDisplay], activeDisplay)).toEqual([activeDisplay])
+    expect(withActiveSketchDisplay([committedDisplay], null)).toEqual([committedDisplay])
   })
 
   it("keeps the active 3D sketch display out of the normal 2D editor", () => {
+    const committedDisplay = viewerSketchDisplay(sketchDisplay)
     const activeDisplay = {
-      ...sketchDisplay,
+      ...committedDisplay,
       curvePositions: new Float32Array([5, 0, 0, 25, 0, 0]),
     }
 

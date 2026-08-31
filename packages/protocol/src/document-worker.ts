@@ -1,5 +1,6 @@
 import { z } from "zod"
 import {
+  extrusionFrameSchema,
   featureEvaluationEngineResultSchema,
   featureMeshPolicySchema,
   geometryExportFormatSchema,
@@ -14,11 +15,16 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 15 as const
+export const DOCUMENT_PROTOCOL_VERSION = 16 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
 const MAX_SKETCH_DISPLAY_FLOATS = 2_000_000
+const MAX_SKETCH_DISPLAY_PROFILES = 2_000
+const MAX_SKETCH_DISPLAY_LOOP_SEGMENTS = 2_000
+const MAX_SKETCH_DISPLAY_SAMPLE_POINTS = 100_000
+const MAX_DOCUMENT_DISPLAY_PROFILES = 2_000
+const MAX_DOCUMENT_DISPLAY_SAMPLE_POINTS = 100_000
 const MAX_MODEL_REFERENCE_EVIDENCE = 1_000_000
 const MAX_VARIABLES = 4_096
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -236,6 +242,151 @@ const sketchDisplayPointPositionsSchema = z
     message: "Sketch display point positions exceed the transfer budget.",
   })
 
+const sketchDisplaySampleSchema = z.tuple([
+  z.number().finite().min(-1_000_000).max(1_000_000),
+  z.number().finite().min(-1_000_000).max(1_000_000),
+])
+const sketchProfileBoundaryWireSchema = z
+  .array(sketchWireIdSchema)
+  .min(1)
+  .max(MAX_SKETCH_DISPLAY_LOOP_SEGMENTS)
+  .refine((ids) => ids.every((id, index) => index === 0 || (ids[index - 1] ?? "") < id))
+const sketchProfileSelectorWireSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    sketchId: sketchWireIdSchema,
+    outerBoundaryEntityIds: sketchProfileBoundaryWireSchema,
+    holeBoundaryEntityIds: z
+      .array(sketchProfileBoundaryWireSchema)
+      .max(MAX_SKETCH_DISPLAY_LOOP_SEGMENTS),
+  })
+  .strict()
+  .refine(
+    (selector) => {
+      const ids = [selector.outerBoundaryEntityIds, ...selector.holeBoundaryEntityIds].flat()
+      return new Set(ids).size === ids.length
+    },
+    { message: "Profile selector boundaries must be disjoint." },
+  )
+  .refine(
+    (selector) => {
+      const keys = selector.holeBoundaryEntityIds.map((ids) => ids.join(":"))
+      return keys.every((key, index) => index === 0 || (keys[index - 1] ?? "") < key)
+    },
+    { message: "Profile selector holes must be canonically ordered." },
+  )
+  .refine(
+    (selector) =>
+      selector.outerBoundaryEntityIds.length +
+        selector.holeBoundaryEntityIds.reduce((total, ids) => total + ids.length, 0) <=
+      MAX_SKETCH_DISPLAY_LOOP_SEGMENTS,
+    { message: "Profile selector boundaries exceed the entity budget." },
+  )
+const sketchDisplayProfileSegmentSchema = z
+  .object({
+    entityId: sketchWireIdSchema,
+    type: z.enum(["line", "arc", "circle", "ellipse", "elliptical-arc"]),
+    reversed: z.boolean(),
+    samples: z.array(sketchDisplaySampleSchema).min(2).max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS),
+  })
+  .strict()
+const sketchDisplayProfileLoopSchema = z
+  .object({
+    segments: z
+      .array(sketchDisplayProfileSegmentSchema)
+      .min(1)
+      .max(MAX_SKETCH_DISPLAY_LOOP_SEGMENTS),
+  })
+  .strict()
+function sketchDisplayProfileBoundariesMatch(
+  profile: Readonly<{
+    selector: z.infer<typeof sketchProfileSelectorWireSchema>
+    outerLoop: z.infer<typeof sketchDisplayProfileLoopSchema>
+    holeLoops: readonly z.infer<typeof sketchDisplayProfileLoopSchema>[]
+  }>,
+) {
+  const boundaryIds = (loop: z.infer<typeof sketchDisplayProfileLoopSchema>) =>
+    [...new Set(loop.segments.map(({ entityId }) => entityId))].sort()
+  const outer = boundaryIds(profile.outerLoop)
+  if (
+    outer.length !== profile.outerLoop.segments.length ||
+    outer.join(":") !== profile.selector.outerBoundaryEntityIds.join(":") ||
+    profile.holeLoops.length !== profile.selector.holeBoundaryEntityIds.length
+  ) {
+    return false
+  }
+  return profile.holeLoops.every((loop, index) => {
+    const ids = boundaryIds(loop)
+    return (
+      ids.length === loop.segments.length &&
+      ids.join(":") === profile.selector.holeBoundaryEntityIds[index]?.join(":")
+    )
+  })
+}
+const sketchDisplayProfileSchema = z
+  .object({
+    selector: sketchProfileSelectorWireSchema,
+    outerLoop: sketchDisplayProfileLoopSchema,
+    holeLoops: z.array(sketchDisplayProfileLoopSchema).max(2_000),
+  })
+  .strict()
+  .refine(sketchDisplayProfileBoundariesMatch, {
+    message: "Sketch display loop entities must match the stable profile selector boundaries.",
+  })
+  .refine(
+    (profile) =>
+      [profile.outerLoop, ...profile.holeLoops].reduce(
+        (total, loop) =>
+          total + loop.segments.reduce((count, segment) => count + segment.samples.length, 0),
+        0,
+      ) <= MAX_SKETCH_DISPLAY_SAMPLE_POINTS,
+    { message: "Sketch display profile samples exceed the transfer budget." },
+  )
+
+function sketchDisplayProfileSampleCount(
+  profiles: readonly z.infer<typeof sketchDisplayProfileSchema>[],
+) {
+  return profiles.reduce(
+    (profileTotal, profile) =>
+      profileTotal +
+      [profile.outerLoop, ...profile.holeLoops].reduce(
+        (loopTotal, loop) =>
+          loopTotal +
+          loop.segments.reduce((segmentTotal, segment) => segmentTotal + segment.samples.length, 0),
+        0,
+      ),
+    0,
+  )
+}
+
+function documentSketchDisplayProfileCount(sketches: readonly SketchDisplay[]) {
+  return sketches.reduce((total, sketch) => total + sketch.profiles.length, 0)
+}
+
+function documentSketchDisplaySampleCount(sketches: readonly SketchDisplay[]) {
+  return sketches.reduce(
+    (total, sketch) => total + sketchDisplayProfileSampleCount(sketch.profiles),
+    0,
+  )
+}
+
+function sketchDisplayProfilesMatchSketch(
+  sketchId: string,
+  profiles: readonly z.infer<typeof sketchDisplayProfileSchema>[],
+) {
+  const keys = profiles.map(({ selector }) =>
+    [
+      selector.sketchId,
+      selector.outerBoundaryEntityIds.join(":"),
+      ...selector.holeBoundaryEntityIds.map((ids) => ids.join(":")),
+    ].join("|"),
+  )
+  return (
+    profiles.every(({ selector }) => selector.sketchId === sketchId) &&
+    new Set(keys).size === keys.length
+  )
+}
+
 export const documentSketchDisplaySchema = z
   .object({
     sketchId: sketchWireIdSchema,
@@ -243,8 +394,18 @@ export const documentSketchDisplaySchema = z
     constructionCurvePositions: sketchDisplayLinePositionsSchema,
     pointPositions: sketchDisplayPointPositionsSchema,
     constructionPointPositions: sketchDisplayPointPositionsSchema,
+    frame: extrusionFrameSchema,
+    profiles: z.array(sketchDisplayProfileSchema).max(MAX_SKETCH_DISPLAY_PROFILES),
   })
   .strict()
+  .refine(
+    (sketch) =>
+      sketchDisplayProfileSampleCount(sketch.profiles) <= MAX_SKETCH_DISPLAY_SAMPLE_POINTS,
+    { message: "Aggregate sketch display profile samples exceed the transfer budget." },
+  )
+  .refine((sketch) => sketchDisplayProfilesMatchSketch(sketch.sketchId, sketch.profiles), {
+    message: "Sketch display profiles must have unique selectors owned by the display sketch.",
+  })
 
 const responseEnvelopeSchema = requestEnvelopeSchema
 
@@ -381,6 +542,20 @@ const documentRebuiltResponseSchema = responseEnvelopeSchema
     validateSuccessfulGeometry(successfulHashes, geometryIds, context)
     validateSketchDisplayIds(response.sketches, context)
     validateModelReferenceEvidenceKeys(response.modelReferenceEvidence, context)
+    if (documentSketchDisplayProfileCount(response.sketches) > MAX_DOCUMENT_DISPLAY_PROFILES) {
+      context.addIssue({
+        code: "custom",
+        path: ["sketches"],
+        message: "Aggregate sketch display profiles exceed the transfer budget.",
+      })
+    }
+    if (documentSketchDisplaySampleCount(response.sketches) > MAX_DOCUMENT_DISPLAY_SAMPLE_POINTS) {
+      context.addIssue({
+        code: "custom",
+        path: ["sketches"],
+        message: "Aggregate sketch display profile samples exceed the transfer budget.",
+      })
+    }
   })
 
 const documentDisposedResponseSchema = responseEnvelopeSchema.extend({

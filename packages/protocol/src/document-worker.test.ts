@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   DOCUMENT_PROTOCOL_VERSION,
   documentRebuildSnapshotSchema,
+  documentSketchDisplaySchema,
   documentWorkerRequestSchema,
   documentWorkerResponseSchema,
 } from "./document-worker"
@@ -23,6 +24,7 @@ const externalReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3211"
 const sourceCurveId = "0195b5ac-b220-7a2c-8c33-67a36a7f3212"
 const projectedCurveId = "0195b5ac-b220-7a2c-8c33-67a36a7f3213"
 const projectedCurvePointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3214"
+const secondSketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3215"
 
 function sketch() {
   return {
@@ -153,6 +155,134 @@ function envelope(revision = 1) {
 }
 
 describe("document worker protocol", () => {
+  it("accepts bounded selector-backed saved profile displays and rejects identity drift", () => {
+    const profile = {
+      selector: {
+        schemaVersion: 0,
+        sketchId,
+        outerBoundaryEntityIds: [sourceLineId],
+        holeBoundaryEntityIds: [],
+      },
+      outerLoop: {
+        segments: [
+          {
+            entityId: sourceLineId,
+            type: "line",
+            reversed: false,
+            samples: [
+              [0, 0],
+              [10, 0],
+              [0, 0],
+            ],
+          },
+        ],
+      },
+      holeLoops: [],
+    } as const
+    const display = {
+      sketchId,
+      curvePositions: new Float32Array(),
+      constructionCurvePositions: new Float32Array(),
+      pointPositions: new Float32Array(),
+      constructionPointPositions: new Float32Array(),
+      frame: {
+        origin: [0, 0, 0],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+      },
+      profiles: [profile],
+    }
+
+    expect(documentSketchDisplaySchema.safeParse(display).success).toBe(true)
+    expect(
+      documentSketchDisplaySchema.safeParse({
+        ...display,
+        profiles: [
+          {
+            ...profile,
+            selector: { ...profile.selector, outerBoundaryEntityIds: [offsetLineId] },
+          },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentSketchDisplaySchema.safeParse({ ...display, profiles: [profile, profile] }).success,
+    ).toBe(false)
+  })
+
+  it("rejects rebuilt responses that exceed display budgets across sketches", () => {
+    const profile = (ownerSketchId: string, boundaryId: string, sampleCount: number) => ({
+      selector: {
+        schemaVersion: 0,
+        sketchId: ownerSketchId,
+        outerBoundaryEntityIds: [boundaryId],
+        holeBoundaryEntityIds: [],
+      },
+      outerLoop: {
+        segments: [
+          {
+            entityId: boundaryId,
+            type: "line" as const,
+            reversed: false,
+            samples: Array.from({ length: sampleCount }, () => [0, 0] as [number, number]),
+          },
+        ],
+      },
+      holeLoops: [],
+    })
+    const display = (ownerSketchId: string, profiles: readonly unknown[]) => ({
+      sketchId: ownerSketchId,
+      curvePositions: new Float32Array(),
+      constructionCurvePositions: new Float32Array(),
+      pointPositions: new Float32Array(),
+      constructionPointPositions: new Float32Array(),
+      frame: {
+        origin: [0, 0, 0],
+        xAxis: [1, 0, 0],
+        yAxis: [0, 1, 0],
+        normal: [0, 0, 1],
+      },
+      profiles,
+    })
+    const response = {
+      ...envelope(),
+      type: "documentRebuilt" as const,
+      evaluation: {
+        records: [],
+        dirtyFeatureIds: [],
+        evaluatedFeatureIds: [],
+        reusedFeatureIds: [],
+      },
+      geometry: [],
+      sketches: [
+        display(sketchId, [profile(sketchId, sourceLineId, 50_001)]),
+        display(secondSketchId, [profile(secondSketchId, offsetLineId, 50_001)]),
+      ],
+      modelReferenceEvidence: [],
+    }
+
+    expect(documentWorkerResponseSchema.safeParse(response).success).toBe(false)
+
+    const manyProfiles = (ownerSketchId: string) =>
+      Array.from({ length: 1_001 }, (_, index) =>
+        profile(
+          ownerSketchId,
+          `0195b5ac-b220-7a2c-8c33-${(0x4000 + index).toString(16).padStart(12, "0")}`,
+          2,
+        ),
+      )
+    expect(
+      documentWorkerResponseSchema.safeParse({
+        ...response,
+        sketches: [
+          display(sketchId, manyProfiles(sketchId)),
+          display(secondSketchId, manyProfiles(secondSketchId)),
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   it("preserves a stable Pierce point reference on the worker wire", () => {
     const reference = {
       schemaVersion: 0,
@@ -746,6 +876,13 @@ describe("document worker protocol", () => {
           constructionCurvePositions: new Float32Array(),
           pointPositions: new Float32Array([0, 0, 0]),
           constructionPointPositions: new Float32Array(),
+          frame: {
+            origin: [0, 0, 0],
+            xAxis: [1, 0, 0],
+            yAxis: [0, 1, 0],
+            normal: [0, 0, 1],
+          },
+          profiles: [],
         },
       ],
       modelReferenceEvidence: [],

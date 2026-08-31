@@ -1,4 +1,5 @@
-import { readDatumPlaneFeatureParameters } from "@vibeshape/domain"
+import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
+import { readDatumPlaneFeatureParameters, type SketchProfileSelector } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
@@ -18,11 +19,14 @@ import type {
   ViewerMesh,
   ViewerSelection,
   ViewerSketch,
+  ViewerSketchProfile,
   ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
+import { viewerSketchProfileKey } from "@vibeshape/viewer/three-viewport"
 import {
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   type SetStateAction,
@@ -115,14 +119,72 @@ export function viewerSketches(
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
   const hiddenIds = new Set(hiddenSketchIds)
-  return (rebuild.response.sketches ?? []).filter(
-    (sketch) =>
-      !hiddenIds.has(sketch.sketchId) &&
-      (sketch.curvePositions.length > 0 ||
-        sketch.constructionCurvePositions.length > 0 ||
-        sketch.pointPositions.length > 0 ||
-        sketch.constructionPointPositions.length > 0),
-  )
+  return (rebuild.response.sketches ?? [])
+    .filter(
+      (sketch) =>
+        !hiddenIds.has(sketch.sketchId) &&
+        (sketch.curvePositions.length > 0 ||
+          sketch.constructionCurvePositions.length > 0 ||
+          sketch.pointPositions.length > 0 ||
+          sketch.constructionPointPositions.length > 0 ||
+          sketch.profiles.length > 0),
+    )
+    .map(viewerSketchDisplay)
+}
+
+type SketchDisplayProfileLoop = SketchDisplayRecord["profiles"][number]["outerLoop"]
+
+function sameProfileSample(
+  left: readonly [number, number] | undefined,
+  right: readonly [number, number] | undefined,
+) {
+  return Boolean(left && right && left[0] === right[0] && left[1] === right[1])
+}
+
+function viewerProfileLoopPositions(loop: SketchDisplayProfileLoop) {
+  const points: [number, number][] = []
+  for (const segment of loop.segments) {
+    for (const sample of segment.samples) {
+      if (sameProfileSample(points.at(-1), sample)) continue
+      points.push([sample[0], sample[1]])
+    }
+  }
+  if (points.length > 1 && sameProfileSample(points[0], points.at(-1))) points.pop()
+  return new Float32Array(points.flat())
+}
+
+export function viewerSketchDisplay(sketch: SketchDisplayRecord): ViewerSketch {
+  return {
+    ...sketch,
+    profiles: sketch.profiles.flatMap((profile) => {
+      const outerPositions = viewerProfileLoopPositions(profile.outerLoop)
+      const holePositions = profile.holeLoops.map(viewerProfileLoopPositions)
+      return outerPositions.length >= 6 && holePositions.every((positions) => positions.length >= 6)
+        ? [
+            {
+              selector: profile.selector,
+              outerPositions,
+              holePositions,
+            } satisfies ViewerSketchProfile,
+          ]
+        : []
+    }),
+  }
+}
+
+function selectedViewerSketchProfile(
+  sketches: readonly ViewerSketch[],
+  selected: SketchProfileSelector | null,
+) {
+  if (!selected) return null
+  const expectedKey = viewerSketchProfileKey(selected)
+  for (const sketch of sketches) {
+    const profile = sketch.profiles?.find(
+      ({ selector }) => viewerSketchProfileKey(selector) === expectedKey,
+    )
+    if (profile) return profile
+  }
+  return null
 }
 
 export function withActiveSketchDisplay(
@@ -185,6 +247,10 @@ async function initializeViewport(
     candidates: readonly ViewerSketchReferenceCandidate[],
   ) => void,
   onSketchReferenceSelectionChange: (candidate: ViewerSketchReferenceCandidate) => void,
+  onSketchProfileCandidateStackChange: (candidates: readonly ViewerSketchProfile[]) => void,
+  onSketchProfileCandidateStackCommit: (candidates: readonly ViewerSketchProfile[]) => void,
+  onSketchProfilePreselectionChange: (profile: ViewerSketchProfile | null) => void,
+  onSketchProfileSelectionChange: (profile: ViewerSketchProfile | null) => void,
   mount: ViewportMount,
   viewportRef: RefObject<GeometryViewportPort | null>,
   latestMeshesRef: RefObject<readonly ViewerMesh[]>,
@@ -197,6 +263,7 @@ async function initializeViewport(
   latestFeaturePreselectionRef: RefObject<ViewerMesh | null>,
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
   latestSketchContextRef: RefObject<GeometryViewportSketchContext | null>,
+  latestSketchProfileSelectionRef: RefObject<GeometryViewportProps["sketchProfileSelection"]>,
   setRendererFailed: Dispatch<SetStateAction<boolean>>,
 ) {
   try {
@@ -211,6 +278,10 @@ async function initializeViewport(
       onSketchReferenceCandidateStackChange,
       onSketchReferencePreselectionChange,
       onSketchReferenceSelectionChange,
+      onSketchProfileCandidateStackChange,
+      onSketchProfileCandidateStackCommit,
+      onSketchProfilePreselectionChange,
+      onSketchProfileSelectionChange,
     })
     if (mount.cancelled) {
       viewport.dispose()
@@ -220,6 +291,12 @@ async function initializeViewport(
     viewportRef.current = viewport
     viewport.setMeshes(latestMeshesRef.current)
     viewport.setSketches(latestSketchesRef.current)
+    viewport.setSketchProfileSelection(
+      selectedViewerSketchProfile(
+        latestSketchesRef.current,
+        latestSketchProfileSelectionRef.current?.selectedProfile ?? null,
+      ),
+    )
     viewport.setOriginPlaneVisibility(latestOriginPlaneVisibilityRef.current)
     viewport.setOriginPlaneSelection(
       latestOriginPlaneRef.current,
@@ -301,6 +378,7 @@ function useLatestViewportInputs({
   originPlaneVisibility,
   sketchContext,
   sketches,
+  sketchProfileSelection,
 }: Readonly<{
   controller: DocumentControllerState
   featurePreselection: ViewerMesh | null
@@ -312,6 +390,7 @@ function useLatestViewportInputs({
   originPlaneVisibility: ViewerOriginPlaneVisibility
   sketchContext: GeometryViewportSketchContext | null
   sketches: readonly ViewerSketch[]
+  sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"]
 }>) {
   const controllerRef = useRef(controller)
   const featurePreselectionRef = useRef(featurePreselection)
@@ -323,6 +402,7 @@ function useLatestViewportInputs({
   const originPlaneVisibilityRef = useRef(originPlaneVisibility)
   const sketchContextRef = useRef(sketchContext)
   const sketchesRef = useRef(sketches)
+  const sketchProfileSelectionRef = useRef(sketchProfileSelection)
   controllerRef.current = controller
   featurePreselectionRef.current = featurePreselection
   featureSelectionRef.current = featureSelection
@@ -333,6 +413,7 @@ function useLatestViewportInputs({
   originPlaneVisibilityRef.current = originPlaneVisibility
   sketchContextRef.current = sketchContext
   sketchesRef.current = sketches
+  sketchProfileSelectionRef.current = sketchProfileSelection
   return {
     controllerRef,
     featurePreselectionRef,
@@ -344,7 +425,32 @@ function useLatestViewportInputs({
     originPlaneVisibilityRef,
     sketchContextRef,
     sketchesRef,
+    sketchProfileSelectionRef,
   }
+}
+
+function useViewportProfileInteractionState() {
+  const [preselection, setPreselection] = useState<ViewerSketchProfile | null>(null)
+  const [candidateStack, setCandidateStack] = useState<readonly ViewerSketchProfile[]>([])
+  const [selectionRequest, setSelectionRequest] = useState<readonly ViewerSketchProfile[]>([])
+  const dismissSelectionRequest = useCallback(() => setSelectionRequest([]), [])
+  return {
+    candidateStack,
+    dismissSelectionRequest,
+    preselection,
+    selectionRequest,
+    setCandidateStack,
+    setPreselection,
+    setSelectionRequest,
+  }
+}
+
+function useViewportSketchReferenceInteractionState() {
+  const [preselection, setPreselection] = useState<ViewerSketchReferenceCandidate | null>(null)
+  const [candidateStack, setCandidateStack] = useState<readonly ViewerSketchReferenceCandidate[]>(
+    [],
+  )
+  return { candidateStack, preselection, setCandidateStack, setPreselection }
 }
 
 function useViewportRenderer(
@@ -362,6 +468,7 @@ function useViewportRenderer(
   featurePreselection: ViewerMesh | null,
   featureSelection: ViewerMesh | null,
   sketchContext: GeometryViewportSketchContext | null,
+  sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"],
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<GeometryViewportPort | null>(null)
@@ -376,13 +483,11 @@ function useViewportRenderer(
     originPlaneVisibility,
     sketchContext,
     sketches,
+    sketchProfileSelection,
   })
   const [rendererFailed, setRendererFailed] = useState(false)
-  const [sketchPointPreselection, setSketchPointPreselection] =
-    useState<ViewerSketchReferenceCandidate | null>(null)
-  const [sketchReferenceCandidateStack, setSketchReferenceCandidateStack] = useState<
-    readonly ViewerSketchReferenceCandidate[]
-  >([])
+  const sketchReferenceInteraction = useViewportSketchReferenceInteractionState()
+  const profileInteraction = useViewportProfileInteractionState()
   const selectionCandidates = useSelectionCandidateEvents(originPlaneSelectionActive)
   const shouldInitialize = true
 
@@ -394,8 +499,12 @@ function useViewportRenderer(
       canvas,
       createViewport,
       onOriginPlanePreselectionChange,
-      onOriginPlaneSelectionChange,
+      (plane) => {
+        profileInteraction.dismissSelectionRequest()
+        onOriginPlaneSelectionChange(plane)
+      },
       (selection) => {
+        profileInteraction.dismissSelectionRequest()
         const faceSelection = orbitFaceIntersectionSelection(latest.sketchContextRef.current)
         if (selection && faceSelection) {
           faceSelection.onSelect(selection)
@@ -405,9 +514,28 @@ function useViewportRenderer(
       },
       selectionCandidates.onChange,
       selectionCandidates.onCommit,
-      setSketchPointPreselection,
-      setSketchReferenceCandidateStack,
+      sketchReferenceInteraction.setPreselection,
+      sketchReferenceInteraction.setCandidateStack,
       (candidate) => latest.sketchContextRef.current?.referenceSelection?.onSelect(candidate),
+      profileInteraction.setCandidateStack,
+      profileInteraction.setSelectionRequest,
+      profileInteraction.setPreselection,
+      (profile) => {
+        profileInteraction.dismissSelectionRequest()
+        const selection = latest.sketchProfileSelectionRef.current
+        if (!selection) return
+        if (!profile) {
+          selection.onSelect(null, [])
+          return
+        }
+        const source = latest.sketchesRef.current.find(
+          ({ sketchId }) => sketchId === profile.selector.sketchId,
+        )
+        selection.onSelect(
+          profile.selector as SketchProfileSelector,
+          source?.profiles?.map(({ selector }) => selector as SketchProfileSelector) ?? [],
+        )
+      },
       mount,
       viewportRef,
       latest.meshesRef,
@@ -420,6 +548,7 @@ function useViewportRenderer(
       latest.featurePreselectionRef,
       latest.featureSelectionRef,
       latest.sketchContextRef,
+      latest.sketchProfileSelectionRef,
       setRendererFailed,
     )
     return () => {
@@ -432,6 +561,7 @@ function useViewportRenderer(
     onOriginPlanePreselectionChange,
     onOriginPlaneSelectionChange,
     onSelectionChange,
+    profileInteraction.dismissSelectionRequest,
     selectionCandidates.onChange,
     selectionCandidates.onCommit,
     shouldInitialize,
@@ -442,8 +572,15 @@ function useViewportRenderer(
   }, [meshes])
 
   useEffect(() => {
+    profileInteraction.dismissSelectionRequest()
     viewportRef.current?.setSketches(sketches)
-  }, [sketches])
+  }, [profileInteraction.dismissSelectionRequest, sketches])
+
+  useEffect(() => {
+    viewportRef.current?.setSketchProfileSelection(
+      selectedViewerSketchProfile(sketches, sketchProfileSelection?.selectedProfile ?? null),
+    )
+  }, [sketchProfileSelection?.selectedProfile, sketches])
 
   useEffect(() => {
     viewportRef.current?.setOriginPlaneSelection(
@@ -473,8 +610,12 @@ function useViewportRenderer(
     rendererFailed,
     selectionCandidateCommit: selectionCandidates.commit,
     selectionCandidateStack: selectionCandidates.stack,
-    sketchPointPreselection,
-    sketchReferenceCandidateStack,
+    sketchPointPreselection: sketchReferenceInteraction.preselection,
+    sketchProfileCandidateStack: profileInteraction.candidateStack,
+    sketchProfilePreselection: profileInteraction.preselection,
+    sketchProfileSelectionRequest: profileInteraction.selectionRequest,
+    dismissSketchProfileSelectionRequest: profileInteraction.dismissSelectionRequest,
+    sketchReferenceCandidateStack: sketchReferenceInteraction.candidateStack,
     viewportRef,
   }
 }
@@ -740,6 +881,13 @@ type GeometryViewportProps = Readonly<{
   onSelectionChange: (selection: ViewerSelection | null) => void
   selection: ViewerSelection | null
   sketchContext?: GeometryViewportSketchContext
+  sketchProfileSelection?: Readonly<{
+    selectedProfile: SketchProfileSelector | null
+    onSelect: (
+      profile: SketchProfileSelector | null,
+      profiles: readonly SketchProfileSelector[],
+    ) => void
+  }>
 }>
 
 function viewerFeatureMesh(
@@ -943,6 +1091,10 @@ function useViewportSketchPresentation({
   }, [activeSketchDisplay, controller, hiddenIds, sketchContext?.mode])
 }
 
+function selectedSketchProfileKey(selection: GeometryViewportProps["sketchProfileSelection"]) {
+  return selection?.selectedProfile ? viewerSketchProfileKey(selection.selectedProfile) : null
+}
+
 function useGeometryViewportModel(props: GeometryViewportProps) {
   const {
     controller,
@@ -956,6 +1108,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     selectedFeatureId,
     selection,
     sketchContext,
+    sketchProfileSelection,
   } = props
   const t = useTranslations("app.shell.viewport")
   const { allCommittedMeshes, allHiddenFeatureIds, meshes } = useViewportMeshPresentation(props)
@@ -984,7 +1137,11 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     rendererFailed,
     selectionCandidateCommit,
     selectionCandidateStack,
+    dismissSketchProfileSelectionRequest,
     sketchPointPreselection,
+    sketchProfileCandidateStack,
+    sketchProfilePreselection,
+    sketchProfileSelectionRequest,
     sketchReferenceCandidateStack,
     viewportRef,
   } = useViewportRenderer(
@@ -1002,6 +1159,7 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     featurePreselection,
     featureSelection,
     sketchContext ?? null,
+    sketchProfileSelection,
   )
   const supportFaceSelection = useSupportFaceSelection(
     selectionCandidateStack,
@@ -1030,12 +1188,17 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     originPlanePreselection,
     supportFaceCandidates: supportFaceSelection.candidates,
     supportFaceSelectionRequest: supportFaceSelection.request,
+    dismissSketchProfileSelectionRequest,
     sketchPointPreselection,
+    sketchProfileCandidateStack,
+    sketchProfilePreselection,
+    sketchProfileSelectionRequest,
     sketchReferenceCandidateStack,
     originPlaneVisibility: visibleOriginPlanes(originPlaneVisibility),
     onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(originPlaneVisibility),
     viewportRef,
     selectedFeatureId: featureSelection?.featureId ?? null,
+    selectedSketchProfileKey: selectedSketchProfileKey(sketchProfileSelection),
   }
 }
 
@@ -1377,6 +1540,101 @@ function useSupportFaceSelectOther({
 
 type SupportFaceSelectOtherState = ReturnType<typeof useSupportFaceSelectOther>
 
+function savedProfileNavigationReverse(event: ReactKeyboardEvent<HTMLElement>) {
+  if (event.key === "ArrowUp") return true
+  if (event.key === "ArrowDown") return false
+  return event.code === "Backquote" ? event.shiftKey : null
+}
+
+function useSavedProfileSelectOther({
+  candidates,
+  controller,
+  dismiss,
+  focusRef,
+  selection,
+  sketches,
+  viewportRef,
+}: Readonly<{
+  candidates: readonly ViewerSketchProfile[]
+  controller: DocumentControllerState
+  dismiss: () => void
+  focusRef: RefObject<HTMLElement | null>
+  selection: GeometryViewportProps["sketchProfileSelection"]
+  sketches: readonly ViewerSketch[]
+  viewportRef: RefObject<GeometryViewportPort | null>
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  useEffect(() => {
+    if (candidates.length < 2) {
+      setActiveIndex(null)
+      return
+    }
+    setActiveIndex(0)
+    viewportRef.current?.setSketchProfilePreselection(candidates[0] ?? null)
+  }, [candidates, viewportRef])
+  const options = candidates.map((profile) => ({
+    key: viewerSketchProfileKey(profile.selector),
+    label:
+      viewerSketchProfileLabel(controller, sketches, profile, (sketch, number) =>
+        t("savedProfileLabel", { number, sketch }),
+      ) ?? t("savedProfileUnknown"),
+    profile,
+  }))
+  const close = () => {
+    setActiveIndex(null)
+    dismiss()
+    viewportRef.current?.setSketchProfilePreselection(null)
+    focusRef.current?.focus({ preventScroll: true })
+  }
+  const preview = (index: number) => {
+    const option = options[index]
+    if (!option) return
+    setActiveIndex(index)
+    viewportRef.current?.setSketchProfilePreselection(option.profile)
+  }
+  const choose = (profile: ViewerSketchProfile) => {
+    const source = sketches.find(({ sketchId }) => sketchId === profile.selector.sketchId)
+    const profiles =
+      source?.profiles?.map(({ selector }) => selector as SketchProfileSelector) ?? []
+    selection?.onSelect(profile.selector as SketchProfileSelector, profiles)
+    viewportRef.current?.setSketchProfileSelection(profile)
+    setActiveIndex(null)
+    dismiss()
+    focusRef.current?.focus({ preventScroll: true })
+  }
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (activeIndex === null || options.length < 2) return
+    const reverse = savedProfileNavigationReverse(event)
+    if (reverse !== null) {
+      consumeSelectOtherKey(event)
+      preview(nextSelectOtherIndex(activeIndex, options.length, 0, reverse))
+      return
+    }
+    if (event.key === "Escape") {
+      consumeSelectOtherKey(event)
+      close()
+      return
+    }
+    if (event.key !== "Enter" || event.target !== event.currentTarget) return
+    const option = options[activeIndex]
+    if (!option) return
+    consumeSelectOtherKey(event)
+    choose(option.profile)
+  }
+  return { activeIndex, choose, close, onKeyDown, options, preview }
+}
+
+type SavedProfileSelectOtherState = ReturnType<typeof useSavedProfileSelectOther>
+
+function useActiveListboxFocus(activeIndex: number | null) {
+  const listboxRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (activeIndex !== null) listboxRef.current?.focus({ preventScroll: true })
+  }, [activeIndex])
+  return listboxRef
+}
+
 function sketchReferenceInteraction(
   active: boolean,
   selection: SketchReferenceSelectOtherState,
@@ -1442,10 +1700,7 @@ function SketchReferenceSelectOtherOverlay({
   selection: SketchReferenceSelectOtherState
 }>) {
   const t = useTranslations("app.shell.viewport")
-  const listboxRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (selection.activeIndex !== null) listboxRef.current?.focus({ preventScroll: true })
-  }, [selection.activeIndex])
+  const listboxRef = useActiveListboxFocus(selection.activeIndex)
   if (selection.activeIndex === null || selection.candidates.length < 2) return null
   const activeOptionId = `sketch-reference-select-other-${selection.activeIndex}`
   return (
@@ -1506,10 +1761,7 @@ function SupportFaceSelectOtherOverlay({
   selection: SupportFaceSelectOtherState
 }>) {
   const t = useTranslations("app.shell.viewport")
-  const listboxRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (selection.activeIndex !== null) listboxRef.current?.focus({ preventScroll: true })
-  }, [selection.activeIndex])
+  const listboxRef = useActiveListboxFocus(selection.activeIndex)
   if (selection.activeIndex === null || selection.activeCandidates.length < 2) return null
   const activeOptionId = `support-face-select-other-${selection.activeIndex}`
   return (
@@ -1564,6 +1816,43 @@ function SupportFaceSelectOtherOverlay({
   )
 }
 
+function SavedProfileViewportChrome({
+  controller,
+  profilePreselectionLabel,
+  profileSelectOther,
+  profileSelection,
+  selectedSketchProfileKey,
+  sketches,
+}: Readonly<{
+  controller: DocumentControllerState
+  profilePreselectionLabel: string | null
+  profileSelectOther: SavedProfileSelectOtherState
+  profileSelection: GeometryViewportProps["sketchProfileSelection"]
+  selectedSketchProfileKey: string | null
+  sketches: readonly ViewerSketch[]
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  return (
+    <>
+      <SavedProfileSelectOtherOverlay selection={profileSelectOther} />
+      <SavedProfileKeyboardPicker
+        controller={controller}
+        selectedKey={selectedSketchProfileKey}
+        selection={profileSelection}
+        sketches={sketches}
+      />
+      {profilePreselectionLabel ? (
+        <div
+          className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          {t("savedProfileCandidate", { label: profilePreselectionLabel })}
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 function ModelViewportChrome({
   displayUnit,
   featurePreview,
@@ -1573,6 +1862,7 @@ function ModelViewportChrome({
   originPlanePreselection,
   originPlaneSelection,
   originPlaneVisibility,
+  profileChrome,
   selection,
   supportFacePreselectionLabel,
   supportFaceSelectOther,
@@ -1587,6 +1877,7 @@ function ModelViewportChrome({
   originPlanePreselection: ViewerOriginPlane | null
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
   originPlaneVisibility: ViewerOriginPlaneVisibility
+  profileChrome: ReactNode
   selection: ViewerSelection | null
   supportFacePreselectionLabel: string | null
   supportFaceSelectOther: SupportFaceSelectOtherState
@@ -1613,11 +1904,119 @@ function ModelViewportChrome({
         selection={originPlaneSelection}
       />
       <SupportFaceSelectOtherOverlay selection={supportFaceSelectOther} />
+      {profileChrome}
       <WorldAxesLegend />
       <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
         {t("orientation", { plane: "XYZ", unit: displayUnit })}
       </div>
     </>
+  )
+}
+
+function SavedProfileSelectOtherOverlay({
+  selection,
+}: Readonly<{ selection: SavedProfileSelectOtherState }>) {
+  const t = useTranslations("app.shell.viewport")
+  const listboxRef = useActiveListboxFocus(selection.activeIndex)
+  if (selection.activeIndex === null || selection.options.length < 2) return null
+  return (
+    <div
+      aria-activedescendant={`saved-profile-select-other-${selection.activeIndex}`}
+      aria-label={t("selectOtherProfile")}
+      className="pointer-events-auto absolute bottom-12 left-1/2 z-20 w-80 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+      data-saved-profile-select-other
+      onKeyDown={selection.onKeyDown}
+      ref={listboxRef}
+      role="listbox"
+      tabIndex={-1}
+    >
+      <div className="px-2 pb-1 text-xs font-semibold">{t("selectOtherProfile")}</div>
+      <div className="grid gap-0.5">
+        {selection.options.map((option, index) => (
+          <Button
+            aria-label={t("selectOtherReferenceOption", {
+              count: selection.options.length,
+              label: option.label,
+              position: index + 1,
+            })}
+            aria-selected={selection.activeIndex === index}
+            className="h-auto min-h-8 justify-start gap-2 px-2 py-1 text-left text-xs"
+            id={`saved-profile-select-other-${index}`}
+            key={option.key}
+            onClick={() => selection.choose(option.profile)}
+            onPointerEnter={() => selection.preview(index)}
+            role="option"
+            size="sm"
+            tabIndex={-1}
+            type="button"
+            variant={selection.activeIndex === index ? "secondary" : "ghost"}
+          >
+            <span className="w-10 shrink-0 font-mono text-muted-foreground">
+              {t("selectOtherReferencePosition", {
+                count: selection.options.length,
+                position: index + 1,
+              })}
+            </span>
+            <span className="truncate">{option.label}</span>
+          </Button>
+        ))}
+      </div>
+      <div className="px-2 pt-1 text-[11px] text-muted-foreground">
+        {t("selectOtherProfileHint")}
+      </div>
+    </div>
+  )
+}
+
+function SavedProfileKeyboardPicker({
+  controller,
+  selectedKey,
+  selection,
+  sketches,
+}: Readonly<{
+  controller: DocumentControllerState
+  selectedKey: string | null
+  selection: GeometryViewportProps["sketchProfileSelection"]
+  sketches: readonly ViewerSketch[]
+}>) {
+  const t = useTranslations("app.shell.viewport")
+  if (!selection) return null
+  const sketchLabels = new Map<string, string>(
+    (controller.report?.snapshot.sketches ?? []).map(({ id, label }) => [id, label]),
+  )
+  const options = sketches.flatMap((sketch) => {
+    const label = sketchLabels.get(sketch.sketchId)
+    const profiles = sketch.profiles ?? []
+    if (!label) return []
+    const selectors = profiles.map(({ selector }) => selector as SketchProfileSelector)
+    return profiles.map((profile, index) => ({
+      key: viewerSketchProfileKey(profile.selector),
+      label: t("savedProfileLabel", { number: index + 1, sketch: label }),
+      profile: profile.selector as SketchProfileSelector,
+      selectors,
+    }))
+  })
+  if (options.length === 0) return null
+  return (
+    <fieldset className="pointer-events-auto absolute left-3 top-3 z-10 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+      <legend className="sr-only">{t("savedProfiles")}</legend>
+      <NativeSelect
+        aria-label={t("selectSavedProfile")}
+        className="h-8 max-w-72 text-xs"
+        onChange={(event) => {
+          const option = options.find(({ key }) => key === event.currentTarget.value)
+          if (option) selection.onSelect(option.profile, option.selectors)
+        }}
+        value={selectedKey ?? ""}
+      >
+        <option value="">{t("chooseSavedProfile")}</option>
+        {options.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </fieldset>
   )
 }
 
@@ -1758,19 +2157,39 @@ function SketchContextChrome({
   )
 }
 
+function viewerSketchProfileLabel(
+  controller: DocumentControllerState,
+  sketches: readonly ViewerSketch[],
+  profile: ViewerSketchProfile | null,
+  format: (sketch: string, number: number) => string,
+) {
+  if (!profile) return null
+  const sketch = sketches.find(({ sketchId }) => sketchId === profile.selector.sketchId)
+  const index = sketch?.profiles?.findIndex(
+    ({ selector }) => viewerSketchProfileKey(selector) === viewerSketchProfileKey(profile.selector),
+  )
+  const label = controller.report?.snapshot.sketches.find(
+    ({ id }) => id === profile.selector.sketchId,
+  )?.label
+  return label && index !== undefined && index >= 0 ? format(label, index + 1) : null
+}
+
 function GeometryViewportContextChrome({
   displayUnit,
   model,
+  profileSelectOther,
   props,
   selectOther,
   supportFaceSelectOther,
 }: Readonly<{
   displayUnit: string
   model: ReturnType<typeof useGeometryViewportModel>
+  profileSelectOther: SavedProfileSelectOtherState
   props: GeometryViewportProps
   selectOther: SketchReferenceSelectOtherState
   supportFaceSelectOther: SupportFaceSelectOtherState
 }>) {
+  const t = useTranslations("app.shell.viewport")
   const { featurePreview, originPlaneSelection, selection, sketchContext } = props
   if (sketchContext && !originPlaneSelection) {
     return (
@@ -1791,6 +2210,21 @@ function GeometryViewportContextChrome({
       originPlanePreselection={model.originPlanePreselection}
       originPlaneSelection={originPlaneSelection}
       originPlaneVisibility={model.originPlaneVisibility}
+      profileChrome={
+        <SavedProfileViewportChrome
+          controller={props.controller}
+          profilePreselectionLabel={viewerSketchProfileLabel(
+            props.controller,
+            model.sketches,
+            model.sketchProfilePreselection,
+            (sketch, number) => t("savedProfileLabel", { number, sketch }),
+          )}
+          profileSelectOther={profileSelectOther}
+          profileSelection={props.sketchProfileSelection}
+          selectedSketchProfileKey={model.selectedSketchProfileKey}
+          sketches={model.sketches}
+        />
+      }
       selection={selection}
       sketches={model.sketches}
       supportFacePreselectionLabel={
@@ -1834,7 +2268,16 @@ function viewportRenderData(
     "data-preview-status": featurePreview?.status ?? "idle",
     "data-rendered-feature-count": model.meshes.length,
     "data-rendered-sketch-count": model.sketches.length,
+    "data-rendered-sketch-profile-count": model.sketches.reduce(
+      (total, sketch) => total + (sketch.profiles?.length ?? 0),
+      0,
+    ),
+    "data-sketch-profile-candidate-count": model.sketchProfileCandidateStack.length,
     "data-selected-feature": model.selectedFeatureId ?? undefined,
+    "data-preselected-sketch-profile": model.sketchProfilePreselection
+      ? viewerSketchProfileKey(model.sketchProfilePreselection.selector)
+      : undefined,
+    "data-selected-sketch-profile": model.selectedSketchProfileKey ?? undefined,
   }
 }
 
@@ -1889,6 +2332,15 @@ export function GeometryViewport(props: GeometryViewportProps) {
     selectionActive: originPlaneSelection !== undefined,
     viewportRef,
   })
+  const profileSelectOther = useSavedProfileSelectOther({
+    candidates: model.sketchProfileSelectionRequest,
+    controller: props.controller,
+    dismiss: model.dismissSketchProfileSelectionRequest,
+    focusRef: sketchReferenceRegionRef,
+    selection: props.sketchProfileSelection,
+    sketches: model.sketches,
+    viewportRef,
+  })
   const referenceInteraction = viewportRegionInteraction(
     originPlaneSelection,
     sketchContext,
@@ -1909,12 +2361,13 @@ export function GeometryViewport(props: GeometryViewportProps) {
       onPointerDown={referenceInteraction.onPointerDown}
       onPointerEnter={referenceInteraction.onPointerEnter}
       onPointerLeave={referenceInteraction.onPointerLeave}
-      tabIndex={referenceInteraction.tabIndex}
+      tabIndex={referenceInteraction.tabIndex ?? -1}
     >
       <canvas ref={canvasRef} className={regionClassNames.canvas} />
       <GeometryViewportContextChrome
         displayUnit={displayUnits.length}
         model={model}
+        profileSelectOther={profileSelectOther}
         props={props}
         selectOther={selectOther}
         supportFaceSelectOther={supportFaceSelectOther}

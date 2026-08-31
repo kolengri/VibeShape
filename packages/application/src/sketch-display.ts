@@ -14,6 +14,7 @@ import {
   sketchEllipseGeometry,
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
+  sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
 import type { DocumentWorkerResponse, SolvedSketchWire } from "@vibeshape/protocol"
 
@@ -22,9 +23,17 @@ export type SketchDisplayRecord = Extract<
   { type: "documentRebuilt" }
 >["sketches"][number]
 type PointLookup = ReadonlyMap<string, SketchPoint2>
+type DeepReadonly<T> = T extends readonly (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T
+type SketchProfileResult = DeepReadonly<SolvedSketchWire["profileResult"]>
+type SketchProfileLoop = SketchProfileResult["loops"][number]
 export type SketchDisplaySolution = Readonly<{
   points: readonly SolvedSketchWire["points"][number][]
   circles: readonly SolvedSketchWire["circles"][number][]
+  profileResult?: SketchProfileResult
 }>
 
 const CURVE_SEGMENTS = 64
@@ -216,6 +225,76 @@ type SketchDisplayBuffers = Readonly<{
   constructionPointPositions: number[]
 }>
 
+function displayLoop(
+  loop: SketchProfileLoop,
+  entities: ReadonlyMap<string, SketchEntity>,
+  points: PointLookup,
+  radii: ReadonlyMap<string, number>,
+) {
+  const segments = loop.segments.map((segment) => {
+    const entity = entities.get(segment.entityId)
+    if (!entity || entity.type !== segment.type) return null
+    const samples = curveSamples(entity as CurveEntity, points, radii)
+    if (samples.length < 2) return null
+    const ordered = segment.reversed ? [...samples].reverse() : samples
+    return {
+      entityId: segment.entityId,
+      type: segment.type,
+      reversed: segment.reversed,
+      samples: ordered.map(({ x, y }) => [x, y] as [number, number]),
+    }
+  })
+  return segments.every((segment) => segment !== null)
+    ? { segments: segments.flatMap((segment) => (segment ? [segment] : [])) }
+    : null
+}
+
+function displayProfiles(
+  sketch: SketchRecord,
+  solution: SketchDisplaySolution | null,
+  entities: readonly SketchEntity[],
+  points: PointLookup,
+  radii: ReadonlyMap<string, number>,
+) {
+  if (!solution?.profileResult) return []
+  const entityMap = new Map(entities.map((entity) => [entity.id, entity]))
+  return solution.profileResult.profiles.flatMap((profile) => {
+    const holePairs = profile.holeLoopIndices.flatMap((index) => {
+      const loop = solution.profileResult?.loops.find(({ loopIndex }) => loopIndex === index)
+      return loop ? [{ loop, boundaryIds: [...loop.sourceEntityIds].sort() }] : []
+    })
+    holePairs.sort((left, right) =>
+      left.boundaryIds.join(":").localeCompare(right.boundaryIds.join(":")),
+    )
+    const selector = sketchProfileSelectorSchema.safeParse({
+      schemaVersion: 0,
+      sketchId: sketch.id,
+      outerBoundaryEntityIds: [
+        ...(solution.profileResult?.loops.find(
+          ({ loopIndex }) => loopIndex === profile.outerLoopIndex,
+        )?.sourceEntityIds ?? []),
+      ].sort(),
+      holeBoundaryEntityIds: holePairs.map(({ boundaryIds }) => boundaryIds),
+    })
+    const outer = solution.profileResult?.loops.find(
+      ({ loopIndex }) => loopIndex === profile.outerLoopIndex,
+    )
+    if (!selector.success || !outer || holePairs.length !== profile.holeLoopIndices.length)
+      return []
+    const outerLoop = displayLoop(outer, entityMap, points, radii)
+    const holeLoops = holePairs.map(({ loop }) => displayLoop(loop, entityMap, points, radii))
+    return outerLoop && holeLoops.every((loop) => loop !== null)
+      ? [
+          {
+            selector: selector.data,
+            outerLoop,
+            holeLoops: holeLoops.flatMap((loop) => (loop ? [loop] : [])),
+          },
+        ]
+      : []
+  })
+}
+
 function appendDisplayEntity(
   entity: SketchEntity,
   buffers: SketchDisplayBuffers,
@@ -280,5 +359,7 @@ export function materializeSketchDisplay(
     constructionCurvePositions: new Float32Array(buffers.constructionCurvePositions),
     pointPositions: new Float32Array(buffers.pointPositions),
     constructionPointPositions: new Float32Array(buffers.constructionPointPositions),
+    frame,
+    profiles: displayProfiles(sketch, solution, entities, points, radii),
   }
 }

@@ -4,13 +4,16 @@ import {
   createFaceHighlightGeometry,
   createViewerGeometry,
   createViewerSketchGeometry,
+  createViewerSketchProfileGeometry,
   isValidViewerFrame,
   orderedEligibleViewerSelections,
   orderedUniqueViewerSelections,
+  orderedUniqueViewerSketchProfiles,
   orthographicFrustum,
   type ViewerMesh,
   viewerCameraPoseForFrame,
   viewerFaceOrdinal,
+  viewerSketchProfileKey,
   viewerSketchProjectionTarget,
   viewerSketchProjectionViewHeight,
 } from "./three-viewport"
@@ -25,6 +28,64 @@ const mesh: ViewerMesh = {
 }
 
 describe("Three viewport geometry", () => {
+  const profileSelector = (sketchId: string, boundary: string) => ({
+    schemaVersion: 0 as const,
+    sketchId,
+    outerBoundaryEntityIds: [boundary],
+    holeBoundaryEntityIds: [],
+  })
+
+  it("orders and deduplicates saved profiles by stable selector identity", () => {
+    const first = {
+      selector: profileSelector("sketch", "outer-a"),
+      outerPositions: new Float32Array([0, 0, 2, 0, 0, 2]),
+      holePositions: [],
+    }
+    const duplicate = { ...first, outerPositions: new Float32Array(first.outerPositions) }
+    const second = { ...first, selector: profileSelector("sketch", "outer-b") }
+    expect(
+      orderedUniqueViewerSketchProfiles([
+        { profile: second, distance: 1 },
+        { profile: duplicate, distance: 0.5 },
+        { profile: first, distance: 0.5 },
+      ]),
+    ).toEqual([first, second])
+    expect(viewerSketchProfileKey(first.selector)).toBe(viewerSketchProfileKey(duplicate.selector))
+  })
+
+  it("caps saved profile candidates after nearest-first deterministic dedupe", () => {
+    const profiles = Array.from({ length: 10 }, (_, index) => ({
+      selector: profileSelector("sketch", `outer-${index}`),
+      outerPositions: new Float32Array([0, 0, 2, 0, 0, 2]),
+      holePositions: [],
+    }))
+    expect(
+      orderedUniqueViewerSketchProfiles(
+        [...profiles].reverse().map((profile, index) => ({
+          profile,
+          distance: index < 2 ? 1 : index + 1,
+        })),
+      ),
+    ).toEqual([profiles[8], profiles[9], ...profiles.slice(2, 8).reverse()])
+  })
+
+  it("triangulates profile holes and maps local coordinates through its frame", () => {
+    const geometry = createViewerSketchProfileGeometry(
+      {
+        selector: profileSelector("sketch", "outer"),
+        outerPositions: new Float32Array([0, 0, 10, 0, 10, 10, 0, 10]),
+        holePositions: [new Float32Array([2, 2, 2, 8, 8, 8, 8, 2])],
+      },
+      { origin: [5, 6, 7], xAxis: [1, 0, 0], yAxis: [0, 1, 0], normal: [0, 0, 1] },
+    )
+    expect(geometry).not.toBeNull()
+    expect(geometry?.getAttribute("position").count).toBe(8)
+    expect(geometry?.index?.count).toBeGreaterThan(0)
+    expect(geometry?.getAttribute("position").array.slice(0, 3)).toEqual(
+      new Float32Array([5, 6, 7]),
+    )
+    geometry?.dispose()
+  })
   it("orders, deduplicates, and caps support face candidates deterministically", () => {
     const selections = orderedUniqueViewerSelections([
       { distance: 3, selection: { featureId: "feature-b", faceId: 4, faceOrdinal: 1 } },

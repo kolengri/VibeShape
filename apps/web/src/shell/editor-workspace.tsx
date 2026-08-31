@@ -93,6 +93,7 @@ import {
   GeometryViewport,
   type GeometryViewportSketchContext,
   viewerMeshes,
+  viewerSketchDisplay,
 } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
 import { TaskPanel } from "./task-panel"
@@ -129,6 +130,10 @@ function featurePreviewCandidate(
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
+    onSavedSketchProfileSelect: (
+      profile: SketchProfileSelector | null,
+      profiles: readonly SketchProfileSelector[],
+    ) => void
     onRevolveAxisChange: (axis: RevolveAxis) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
     onSketchEditorToolChange: (tool: SketchEditorTool) => void
@@ -300,7 +305,13 @@ function ModelingWorkspaceContent({
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
       onSelectionChange={actions.onSelectionChange}
-      {...(activeSketchDisplay ? { activeSketchDisplay } : {})}
+      sketchProfileSelection={{
+        selectedProfile: sketch.activeTool ? null : sketch.selectedProfile,
+        onSelect: actions.onSavedSketchProfileSelect,
+      }}
+      {...(activeSketchDisplay
+        ? { activeSketchDisplay: viewerSketchDisplay(activeSketchDisplay) }
+        : {})}
       {...(sketchContext ? { sketchContext } : {})}
       {...(sketch.activeTool?.kind === "select-sketch-plane" && sketch.draft
         ? {
@@ -1182,6 +1193,10 @@ export type EditorWorkspaceActions = Readonly<{
   editSketch: (sketchId: SketchId) => void
   preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
+  selectSavedSketchProfile: (
+    profile: SketchProfileSelector,
+    profiles: readonly SketchProfileSelector[],
+  ) => void
   selectOriginPlane: (plane: ViewerOriginPlane | null) => void
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   redoSketchDraft: () => void
@@ -1432,6 +1447,13 @@ function EditorContent({
     <WorkspaceContent
       actions={{
         onSelectionChange: actions.select,
+        onSavedSketchProfileSelect: (profile, profiles) => {
+          if (profile) {
+            actions.selectSavedSketchProfile(profile, profiles)
+            return
+          }
+          actions.setSketchSelectedProfile(null)
+        },
         onRevolveAxisChange,
         onSketchDraftChange: actions.setSketchDraft,
         onSketchEditorToolChange: actions.setSketchEditorTool,
