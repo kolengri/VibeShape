@@ -57,7 +57,6 @@ const copy = {
   attachSelectedPoint: "Attach",
   editConstraint: "Edit dimension",
   equal: "Equal",
-  finish: "Finish sketch",
   fixed: "Fix point",
   geometry: "Geometry tools",
   horizontal: "Horizontal",
@@ -211,9 +210,7 @@ function renderPanel(
               variables,
             }}
             actions={{
-              onCancel: vi.fn(),
               onDraftChange,
-              onFinish: vi.fn(async () => undefined),
               onReferenceRepairChange,
               onSupportReplace,
               onSelectedConstraintChange: vi.fn(),
@@ -495,7 +492,7 @@ describe("SketchEditorPanel", () => {
     expect(onReferenceRepairChange).toHaveBeenCalledWith(referenceId)
   })
 
-  it("keeps feature commands out of the sketch footer when a profile is selected", () => {
+  it("keeps lifecycle and feature commands out of the sketch properties panel", () => {
     const sketch = lineSketch()
     const boundary = sketch.entities.find((entity) => entity.type === "line")
     if (!boundary) throw new Error("The fixture must contain a profile boundary.")
@@ -508,8 +505,8 @@ describe("SketchEditorPanel", () => {
 
     renderPanel(sketch, [], vi.fn(), [], undefined, [], null, { profile })
 
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Finish sketch" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Finish sketch" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Extrude selected profile" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Revolve selected profile" })).toBeNull()
   })

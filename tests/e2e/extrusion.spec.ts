@@ -1,5 +1,12 @@
+import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
 import { confirmSketchPlane, drawRectangle } from "./sketch-helpers"
+
+function extrudeCommand(page: Page) {
+  return page
+    .getByRole("toolbar", { name: "Model commands" })
+    .getByRole("button", { name: "Extrude", exact: true })
+}
 
 test.describe("selector-backed extrusion", () => {
   test("selects a saved profile through the compact picker after reload", async ({ page }) => {
@@ -83,7 +90,7 @@ test.describe("selector-backed extrusion", () => {
 
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile", /.+/)
     await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
+    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
     await expect(extrudeCommand).toBeEnabled()
     await extrudeCommand.click()
     await expect(page.getByRole("form", { name: "Extrude profile" })).toBeVisible()
@@ -123,11 +130,12 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "0")
     await page.getByRole("button", { name: "Show Sketch 1" }).click()
     await expect(viewport).toHaveAttribute("data-rendered-sketch-count", "1")
-    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toBeEnabled()
     await page
-      .getByRole("toolbar", { name: "Model commands" })
-      .getByRole("button", { name: "Extrude", exact: true })
-      .click()
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await expect(page.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
+    await expect(extrudeCommand(page)).toBeEnabled()
+    await extrudeCommand(page).click()
     const createForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(createForm.getByText("Sketch 1", { exact: true })).toBeVisible()
     await createForm.getByRole("combobox", { name: "Distance" }).fill("#depth")
@@ -330,7 +338,7 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
@@ -375,7 +383,7 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
@@ -407,7 +415,7 @@ test.describe("selector-backed extrusion", () => {
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await page.getByRole("button", { name: "Finish sketch" }).click()
 
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })
@@ -447,7 +455,7 @@ test.describe("selector-backed extrusion", () => {
     await confirmSketchPlane(page, "xy")
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
-    await page.getByRole("button", { name: "Extrude selected profile" }).click()
+    await extrudeCommand(page).click()
     await page
       .getByRole("form", { name: "Extrude profile" })
       .getByRole("button", { name: "Create extrusion" })

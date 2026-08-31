@@ -150,6 +150,12 @@ const groupedSketchToolIds: ReadonlySet<EditorCommandId> = new Set<EditorCommand
   sketchToolFamilies.flatMap(({ commandIds }) => commandIds),
 )
 
+const profileFeatureCommandIds = [
+  editorCommandIds.createExtrusion,
+  editorCommandIds.createRevolve,
+] as const satisfies readonly EditorCommandId[]
+const profileFeatureCommandIdSet: ReadonlySet<EditorCommandId> = new Set(profileFeatureCommandIds)
+
 function familyCommands(
   commands: readonly ResolvedEditorCommand[],
   commandIds: readonly EditorCommandId[],
@@ -161,7 +167,7 @@ function familyCommands(
   })
 }
 
-function SketchToolFamilyAction({
+function ToolbarCommandFamilyAction({
   commands,
   disabledReason,
   familyLabel,
@@ -288,7 +294,10 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
   const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState(defaultFamilyCommandIds)
+  const [lastUsedProfileFeatureCommand, setLastUsedProfileFeatureCommand] =
+    useState<EditorCommandId>(editorCommandIds.createExtrusion)
   const activeSketchToolId = sketchToolCommands.find(({ active }) => active)?.descriptor.id
+  const profileFeatureCommands = familyCommands(modelPrimaryCommands, profileFeatureCommandIds)
 
   useEffect(() => {
     if (!activeSketchToolId) return
@@ -327,8 +336,21 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         <ToolbarSeparator />
         {sketchMode ? (
           <>
+            <ToolbarCommandFamilyAction
+              commands={profileFeatureCommands}
+              disabledReason={getDisabledReason}
+              familyLabel={t("profileFeaturesLabel")}
+              label={getLabel}
+              lastUsedCommandId={lastUsedProfileFeatureCommand}
+              onCommandSelect={(command) => {
+                setLastUsedProfileFeatureCommand(command.descriptor.id)
+                command.invoke()
+              }}
+            />
             <ToolbarCommandGroup
-              commands={modelPrimaryCommands}
+              commands={modelPrimaryCommands.filter(
+                ({ descriptor }) => !profileFeatureCommandIdSet.has(descriptor.id),
+              )}
               getDisabledReason={getDisabledReason}
               getLabel={getLabel}
               label={t("modelPrimaryLabel")}
@@ -343,7 +365,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               label={t("sketchToolsLabel")}
             />
             {sketchToolFamilies.map((family) => (
-              <SketchToolFamilyAction
+              <ToolbarCommandFamilyAction
                 key={family.id}
                 commands={familyCommands(sketchToolCommands, family.commandIds)}
                 disabledReason={getDisabledReason}
