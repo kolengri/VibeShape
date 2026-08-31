@@ -1,9 +1,10 @@
 import {
   canonicalJson,
   createDocumentDependencyGraphFromSnapshot,
+  createSketchProfileSet,
   type DocumentSnapshot,
-  extrusionFeatureParametersSchema,
-  readRevolveFeatureParameters,
+  readExtrusionProfileSet,
+  readRevolveProfileSet,
   type revolveFeatureParametersSchema,
   type SketchId,
   type SketchProfileSelector,
@@ -61,6 +62,22 @@ export function profileSelectorsEqual(
   )
 }
 
+export function nextProfileFeatureSelection(
+  current: readonly SketchProfileSelector[],
+  profile: SketchProfileSelector,
+  intent: "replace" | "toggle",
+): readonly SketchProfileSelector[] {
+  if (intent === "replace" || current.some(({ sketchId }) => sketchId !== profile.sketchId)) {
+    return [profile]
+  }
+  const matchingIndex = current.findIndex((candidate) => profileSelectorsEqual(candidate, profile))
+  const profiles =
+    matchingIndex < 0
+      ? [...current, profile]
+      : current.filter((_, index) => index !== matchingIndex)
+  return profiles.length > 0 ? createSketchProfileSet(profiles).profiles : []
+}
+
 export function topologyReferencesEqual(left: TopoRef | null, right: TopoRef | null) {
   return canonicalJson(left) === canonicalJson(right)
 }
@@ -77,15 +94,22 @@ export function profileForFeatureTool(
   tool: ActivePartDesignTool | null,
   snapshot: DocumentSnapshot | undefined,
 ): SketchProfileSelector | null {
-  if (!isProfileFeatureTool(tool)) return null
-  if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") return tool.profile
+  return profilesForFeatureTool(tool, snapshot)[0] ?? null
+}
+
+export function profilesForFeatureTool(
+  tool: ActivePartDesignTool | null,
+  snapshot: DocumentSnapshot | undefined,
+): readonly SketchProfileSelector[] {
+  if (!isProfileFeatureTool(tool)) return []
+  if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") return [tool.profile]
   const feature = snapshot?.features.find(({ id }) => id === tool.featureId)
-  if (!feature) return null
-  if (tool.kind === "edit-extrusion") {
-    const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
-    return parsed.success ? parsed.data.profile : null
-  }
-  return readRevolveFeatureParameters(feature)?.profile ?? null
+  if (!feature) return []
+  const profileSet =
+    tool.kind === "edit-extrusion"
+      ? readExtrusionProfileSet(feature)
+      : readRevolveProfileSet(feature)
+  return profileSet?.profiles ?? []
 }
 
 export function profileSupportReference(

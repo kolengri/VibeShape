@@ -286,6 +286,16 @@ export const extrusionProfileLoopSchema = z
     }
   })
 
+function profileSegmentCount({
+  holes,
+  outer,
+}: Readonly<{
+  holes: readonly { segments: readonly unknown[] }[]
+  outer: { segments: readonly unknown[] }
+}>) {
+  return outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0)
+}
+
 export const extrusionFeatureContentParametersSchema = z
   .object({
     sketchId: sketchIdSchema,
@@ -303,11 +313,89 @@ export const extrusionFeatureContentParametersSchema = z
     message: "Extrusion content must declare exactly one sketch placement.",
   })
   .refine(
-    ({ outer, holes }) =>
-      outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
-      2_000,
+    (profile) => profileSegmentCount(profile) <= 2_000,
     "Extrusion profiles are limited to 2,000 total segments.",
   )
+
+const multiProfileSchema = z
+  .object({
+    outer: extrusionProfileLoopSchema,
+    holes: z.array(extrusionProfileLoopSchema).max(2_000),
+  })
+  .strict()
+  .refine(
+    (profile) => profileSegmentCount(profile) <= 2_000,
+    "A profile is limited to 2,000 total segments.",
+  )
+
+const multiProfileListSchema = z
+  .array(multiProfileSchema)
+  .min(1)
+  .max(64)
+  .refine(
+    (profiles) =>
+      profiles.reduce((total, profile) => total + profileSegmentCount(profile), 0) <= 2_000,
+    "Multi-profile content is limited to 2,000 aggregate segments.",
+  )
+
+export const extrusionMultiProfileFeatureContentParametersSchema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    profiles: multiProfileListSchema,
+    distance: cadLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.literal("new"),
+  })
+  .strict()
+
+export const revolveMultiProfileFeatureContentParametersSchema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    profiles: multiProfileListSchema,
+    axis: z.union([
+      z.object({ kind: z.literal("origin-axis"), axis: z.enum(["x", "y"]) }).strict(),
+      z
+        .object({
+          kind: z.literal("sketch-line"),
+          sketchId: sketchIdSchema,
+          entityId: sketchEntityIdSchema,
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("model-edge"),
+          reference: z
+            .object({
+              schemaVersion: z.literal(0),
+              featureId: featureIdSchema,
+              kind: z.literal("edge"),
+              semanticRole: z.string().min(1).max(256).optional(),
+              lineageToken: z.string().min(1).max(256).optional(),
+              signature: z.lazy(() => topologySignatureSchema.extend({ kind: z.literal("edge") })),
+              intent: z.lazy(() => topologyIntentSchema).optional(),
+            })
+            .strict()
+            .refine((reference) => reference.signature.kind === "edge", {
+              message: "Revolve axis reference signature must describe an edge.",
+              path: ["signature", "kind"],
+            }),
+        })
+        .strict(),
+    ]),
+    axisOrigin: vector3Schema,
+    axisDirection: topologyVector3Schema,
+    angleRadians: finiteNumberSchema.min(Number.EPSILON).max(Math.PI * 2),
+    operation: z.literal("new"),
+  })
+  .strict()
+  .refine(({ axisDirection }) => isNormalized(axisDirection), {
+    message: "Revolve axis direction must be normalized.",
+    path: ["axisDirection"],
+  })
 
 type RevolveAxisValidationInput = Readonly<{
   axis:
@@ -431,9 +519,7 @@ export const revolveFeatureContentParametersSchema = z
   })
   .superRefine(validateRevolveAxisContent)
   .refine(
-    ({ outer, holes }) =>
-      outer.segments.length + holes.reduce((total, hole) => total + hole.segments.length, 0) <=
-      2_000,
+    (profile) => profileSegmentCount(profile) <= 2_000,
     "Revolve profiles are limited to 2,000 total segments.",
   )
 
@@ -1422,6 +1508,12 @@ export type FeatureMeshPolicy = z.infer<typeof featureMeshPolicySchema>
 export type GeometryExportFormat = z.infer<typeof geometryExportFormatSchema>
 export type FeatureContentEnvironment = z.infer<typeof featureContentEnvironmentSchema>
 export type FeatureContentIdentity = z.infer<typeof featureContentIdentitySchema>
+export type ExtrusionMultiProfileContentParameters = z.infer<
+  typeof extrusionMultiProfileFeatureContentParametersSchema
+>
+export type RevolveMultiProfileContentParameters = z.infer<
+  typeof revolveMultiProfileFeatureContentParametersSchema
+>
 export type FeatureEvaluationDependency = z.infer<typeof featureEvaluationDependencySchema>
 export type GeometryWorkerRequest = z.infer<typeof geometryWorkerRequestSchema>
 export type GeometryWorkerResponse = z.infer<typeof geometryWorkerResponseSchema>

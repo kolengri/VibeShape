@@ -75,6 +75,33 @@ export async function selectIdleOriginPlaneInViewport(page: Page, plane: "xy" | 
   throw new Error(`The ${plane.toUpperCase()} origin plane was not pickable while idle.`)
 }
 
+export async function clickSavedProfileInViewport(page: Page, label: string, additive = false) {
+  const viewport = page.getByRole("region", { name: "3D viewport" })
+  const canvas = viewport.locator("canvas")
+  const bounds = await canvas.boundingBox()
+  if (!bounds) throw new Error("The 3D viewport canvas is not visible.")
+  const status = viewport.getByText(`Select profile: ${label}`, { exact: true })
+  for (let row = 1; row < 12; row += 1) {
+    for (let column = 1; column < 12; column += 1) {
+      const position = {
+        x: bounds.x + (bounds.width * column) / 12,
+        y: bounds.y + (bounds.height * row) / 12,
+      }
+      await page.mouse.move(position.x, position.y)
+      await page.evaluate("new Promise((resolve) => requestAnimationFrame(() => resolve()))")
+      if (!(await status.isVisible())) continue
+      if (additive) await page.keyboard.down("Shift")
+      try {
+        await page.mouse.click(position.x, position.y)
+      } finally {
+        if (additive) await page.keyboard.up("Shift")
+      }
+      return
+    }
+  }
+  throw new Error(`${label} was not pickable in the 3D viewport.`)
+}
+
 export async function selectModelEdgeInViewport(page: Page, featureLabel: string) {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   const canvasBounds = await viewport.locator("canvas").boundingBox()

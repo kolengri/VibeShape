@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { applyDocumentCommand, reduceDocumentEvent } from "./commands"
 import { featureRecordSchema } from "./feature-graph"
 import { featureIdSchema, sketchIdSchema } from "./identifiers"
-import { extrusionFeatureType } from "./part-design"
+import { extrusionFeatureType, multiProfileExtrusionFeatureType } from "./part-design"
 import { createEmptySketch } from "./sketch-edit"
 import { createLengthQuantity } from "./units"
 
@@ -10,6 +10,9 @@ const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f4100"
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4101")
 const sketchId = sketchIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4102")
 const boundaryId = "0195b5ac-b220-7a2c-8c33-67a36a7f4103"
+const multiProfileFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4104")
+const modifyingFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f4105")
+const secondBoundaryId = "0195b5ac-b220-7a2c-8c33-67a36a7f4106"
 const actor = { type: "user", userId: null } as const
 
 function commandId(index: number) {
@@ -44,17 +47,42 @@ function genericFeature() {
   })
 }
 
+function profileSelector(profileSketchId = sketchId, outerBoundaryEntityId = boundaryId) {
+  return {
+    schemaVersion: 0 as const,
+    sketchId: profileSketchId,
+    outerBoundaryEntityIds: [outerBoundaryEntityId],
+    holeBoundaryEntityIds: [],
+  }
+}
+
 function extrusion(profileSketchId = sketchId) {
   return featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureId,
     type: extrusionFeatureType.type,
     parameters: {
-      profile: {
+      profile: profileSelector(profileSketchId),
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      operation: "new",
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  })
+}
+
+function multiProfileExtrusion() {
+  const firstProfile = profileSelector()
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: multiProfileFeatureId,
+    type: multiProfileExtrusionFeatureType.type,
+    parameters: {
+      profiles: {
         schemaVersion: 0,
-        sketchId: profileSketchId,
-        outerBoundaryEntityIds: [boundaryId],
-        holeBoundaryEntityIds: [],
+        profiles: [firstProfile, { ...firstProfile, outerBoundaryEntityIds: [secondBoundaryId] }],
       },
       distance: createLengthQuantity(10),
       symmetric: false,
@@ -63,6 +91,20 @@ function extrusion(profileSketchId = sketchId) {
     dependencies: [],
     references: [],
     suppressed: false,
+  })
+}
+
+function modifyingExtrusion() {
+  return featureRecordSchema.parse({
+    ...extrusion(),
+    id: modifyingFeatureId,
+    parameters: {
+      profile: profileSelector(),
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      operation: "add",
+    },
+    dependencies: [multiProfileFeatureId],
   })
 }
 
@@ -77,6 +119,36 @@ function createDocument() {
 }
 
 describe("document command graph authority", () => {
+  it("rejects a command that uses a multi-profile result as a modifying target", () => {
+    const created = createDocument()
+    const addedSketch = applyDocumentCommand(created.snapshot, {
+      ...commandEnvelope(1, 7),
+      kind: "org.vibeshape.sketch.add",
+      payload: {
+        sketch: createEmptySketch({ id: sketchId, label: "Profile sketch", plane: "xy" }),
+      },
+    })
+    if (!addedSketch.ok) throw new Error(addedSketch.diagnostic.message)
+    const addedMultiProfile = applyDocumentCommand(addedSketch.snapshot, {
+      ...commandEnvelope(2, 8),
+      kind: "org.vibeshape.feature.add",
+      payload: { feature: multiProfileExtrusion() },
+    })
+    if (!addedMultiProfile.ok) throw new Error(addedMultiProfile.diagnostic.message)
+
+    const result = applyDocumentCommand(addedMultiProfile.snapshot, {
+      ...commandEnvelope(3, 9),
+      kind: "org.vibeshape.feature.add",
+      payload: { feature: modifyingExtrusion() },
+    })
+
+    expect(result).toMatchObject({ ok: false, diagnostic: { code: "invalid-command" } })
+    if (result.ok) return
+    expect(result.diagnostic.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "invalid-feature" })]),
+    )
+  })
+
   it("rejects a feature whose cross-kind source is missing", () => {
     const created = createDocument()
 

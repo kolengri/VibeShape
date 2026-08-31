@@ -1,5 +1,5 @@
 import { Button } from "@vibeshape/ui/components/button"
-import { Scan } from "@vibeshape/ui/components/icons"
+import { Scan, Trash2, X } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
@@ -10,6 +10,8 @@ export type RevolveParameterPanelCopy = ParameterPanelCopy &
     profile: string
     profileSelectAriaLabel: string
     profileSelectHint: string
+    clearProfiles: string
+    removeProfile: (profile: string) => string
   }>
 
 export function RevolveParameterPanel({
@@ -23,7 +25,9 @@ export function RevolveParameterPanel({
   message,
   onCancel,
   onProfileSelectionRequest,
-  profileLabel,
+  profileLabels,
+  onProfileRemove,
+  onProfilesClear,
   profileSelectionActive = false,
 }: {
   copy: RevolveParameterPanelCopy
@@ -36,7 +40,9 @@ export function RevolveParameterPanel({
   message?: ReactNode
   onCancel: () => void
   onProfileSelectionRequest?: (() => void) | undefined
-  profileLabel: string
+  profileLabels: readonly string[]
+  onProfileRemove?: ((index: number) => void) | undefined
+  onProfilesClear?: (() => void) | undefined
   profileSelectionActive?: boolean
 }) {
   return (
@@ -49,7 +55,26 @@ export function RevolveParameterPanel({
       onCancel={onCancel}
     >
       <div className="grid gap-1 rounded-md border bg-panel-muted px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
+          {onProfilesClear ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={copy.clearProfiles}
+                  disabled={disabled}
+                  onClick={onProfilesClear}
+                >
+                  <Trash2 className="size-3.5" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{copy.clearProfiles}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -62,11 +87,33 @@ export function RevolveParameterPanel({
               {...(onProfileSelectionRequest ? { onClick: onProfileSelectionRequest } : {})}
             >
               <Scan className="size-4 shrink-0" aria-hidden="true" />
-              <span>{profileLabel}</span>
+              <span>{profileLabels.join(", ")}</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>{copy.profileSelectHint}</TooltipContent>
         </Tooltip>
+        {profileLabels.map((label, index) =>
+          onProfileRemove ? (
+            <div key={label} className="flex items-center justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate">{label}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={copy.removeProfile(label)}
+                    disabled={disabled}
+                    onClick={() => onProfileRemove(index)}
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{copy.removeProfile(label)}</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : null,
+        )}
       </div>
       {operationField}
       {targetField}

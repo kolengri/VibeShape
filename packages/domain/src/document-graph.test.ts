@@ -101,6 +101,51 @@ const extrusion = (value: string, profileSketchId: string, references: unknown[]
   suppressed: false,
 })
 
+const multiProfileExtrusion = (value: string, profileSketchId: string) => ({
+  ...extrusion(value, profileSketchId),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.extrusion",
+    schemaVersion: 3,
+  },
+  parameters: {
+    profiles: {
+      schemaVersion: 0 as const,
+      profiles: [
+        {
+          ...extrusion(value, profileSketchId).parameters.profile,
+          outerBoundaryEntityIds: [id("8")],
+        },
+        extrusion(value, profileSketchId).parameters.profile,
+      ],
+    },
+    distance: createLengthQuantity(10),
+    symmetric: false,
+    operation: "new" as const,
+  },
+})
+
+const modifyingExtrusion = (value: string, profileSketchId: string, targetFeatureId: string) => ({
+  ...extrusion(value, profileSketchId),
+  parameters: {
+    ...extrusion(value, profileSketchId).parameters,
+    operation: "add" as const,
+  },
+  dependencies: [id(targetFeatureId)],
+})
+
+const booleanSubtract = (value: string, targetFeatureId: string, toolFeatureId: string) => ({
+  ...feature(value, [targetFeatureId, toolFeatureId]),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.boolean",
+    schemaVersion: 1,
+  },
+  parameters: { operation: "subtract" as const },
+})
+
 const revolve = (value: string, profileSketchId: string, references: unknown[] = []) => ({
   schemaVersion: 0 as const,
   id: id(value),
@@ -126,6 +171,31 @@ const revolve = (value: string, profileSketchId: string, references: unknown[] =
   ),
   references,
   suppressed: false,
+})
+
+const multiProfileRevolve = (value: string, profileSketchId: string) => ({
+  ...revolve(value, profileSketchId),
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 5,
+  },
+  parameters: {
+    profiles: {
+      schemaVersion: 0 as const,
+      profiles: [
+        revolve(value, profileSketchId).parameters.profile,
+        {
+          ...revolve(value, profileSketchId).parameters.profile,
+          outerBoundaryEntityIds: [id("9")],
+        },
+      ],
+    },
+    axis: { kind: "origin-axis" as const, axis: "x" as const },
+    angle: createAngleQuantity(360, "deg"),
+    operation: "new" as const,
+  },
 })
 
 const legacyRevolveV2 = (value: string, profileSketchId: string) => ({
@@ -194,6 +264,39 @@ const modelEdgeRevolve = (value: string, profileSketchId: string, sourceFeatureI
 })
 
 describe("createDocumentDependencyGraph", () => {
+  it("rejects multi-profile results as modifying and Boolean inputs", () => {
+    const source = multiProfileExtrusion("2", "1")
+    const tool = feature("3")
+    const modifying = modifyingExtrusion("4", "1", "2")
+    const revolveSource = multiProfileRevolve("6", "1")
+    const boolean = booleanSubtract("7", "6", "3")
+
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [source, modifying],
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.1.dependencies.0" }],
+      },
+    })
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [revolveSource, tool, boolean],
+      }),
+    ).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: "invalid-feature",
+        issues: [{ path: "features.2.dependencies.0" }],
+      },
+    })
+  })
+
   it("derives sketch, extrusion, and supported-sketch history from a v0 snapshot", () => {
     const result = deriveLegacyHistory({
       sketches: [supportedSketch("2", "3"), sketch("1")],

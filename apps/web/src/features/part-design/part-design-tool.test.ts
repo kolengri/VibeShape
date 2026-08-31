@@ -3,13 +3,17 @@ import {
   boxFeatureType,
   createAngleQuantity,
   createLengthQuantity,
+  createSketchProfileSet,
   cylinderFeatureType,
   datumPlaneFeatureType,
   extrusionFeatureType,
   featureIdSchema,
   featureRecordSchema,
   legacyRevolveFeatureType,
+  multiProfileExtrusionFeatureType,
+  multiProfileRevolveFeatureType,
   revolveFeatureType,
+  sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
 import {
@@ -65,17 +69,19 @@ const boolean = featureRecordSchema.parse({
   label: "Subtract 1",
 })
 
+const profile = sketchProfileSelectorSchema.parse({
+  schemaVersion: 0,
+  sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f2801",
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f2802"],
+  holeBoundaryEntityIds: [],
+})
+
 const extrusion = featureRecordSchema.parse({
   ...box,
   id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2705"),
   type: extrusionFeatureType.type,
   parameters: {
-    profile: {
-      schemaVersion: 0,
-      sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f2801",
-      outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f2802"],
-      holeBoundaryEntityIds: [],
-    },
+    profile,
     distance: createLengthQuantity(12),
     symmetric: false,
     operation: "new",
@@ -88,12 +94,39 @@ const revolve = featureRecordSchema.parse({
   id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2707"),
   type: revolveFeatureType.type,
   parameters: {
-    profile: extrusion.parameters.profile,
+    profile,
     axis: { kind: "origin-axis", axis: "y" },
     angle: createAngleQuantity(180, "deg"),
     operation: "new",
   },
   label: "Revolve 1",
+})
+
+const secondProfile = sketchProfileSelectorSchema.parse({
+  ...profile,
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f2803"],
+})
+
+const multiProfileExtrusion = featureRecordSchema.parse({
+  ...extrusion,
+  type: multiProfileExtrusionFeatureType.type,
+  parameters: {
+    profiles: createSketchProfileSet([profile, secondProfile]),
+    distance: createLengthQuantity(12),
+    symmetric: false,
+    operation: "new",
+  },
+})
+
+const multiProfileRevolve = featureRecordSchema.parse({
+  ...revolve,
+  type: multiProfileRevolveFeatureType.type,
+  parameters: {
+    profiles: createSketchProfileSet([profile, secondProfile]),
+    axis: { kind: "origin-axis", axis: "y" },
+    angle: createAngleQuantity(180, "deg"),
+    operation: "new",
+  },
 })
 
 const dependentBoolean = featureRecordSchema.parse({
@@ -123,7 +156,9 @@ describe("part-design tool routing", () => {
     expect(isCylinderFeature(cylinder)).toBe(true)
     expect(isBooleanFeature(boolean)).toBe(true)
     expect(isExtrusionFeature(extrusion)).toBe(true)
+    expect(isExtrusionFeature(multiProfileExtrusion)).toBe(true)
     expect(isRevolveFeature(revolve)).toBe(true)
+    expect(isRevolveFeature(multiProfileRevolve)).toBe(true)
     expect(isDatumPlaneFeature(datumPlane)).toBe(true)
   })
 
@@ -144,6 +179,14 @@ describe("part-design tool routing", () => {
       kind: "edit-extrusion",
       featureId: extrusion.id,
     })
+    expect(editPartDesignTool(multiProfileExtrusion)).toEqual({
+      kind: "edit-extrusion",
+      featureId: multiProfileExtrusion.id,
+    })
+    expect(editPartDesignTool(multiProfileRevolve)).toEqual({
+      kind: "edit-revolve",
+      featureId: multiProfileRevolve.id,
+    })
     expect(editPartDesignTool(datumPlane)).toEqual({
       kind: "edit-datum-plane",
       featureId: datumPlane.id,
@@ -158,6 +201,7 @@ describe("part-design tool routing", () => {
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean], boolean.id),
     ).toEqual([box, cylinder, extrusion])
+    expect(booleanInputFeatures([multiProfileExtrusion, multiProfileRevolve])).toEqual([])
   })
 
   it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
@@ -170,6 +214,7 @@ describe("part-design tool routing", () => {
       cylinder,
       extrusion,
     ])
+    expect(modifyingSolidTargetFeatures([multiProfileExtrusion, multiProfileRevolve])).toEqual([])
   })
 
   it("keeps schema-version-1 revolve records editable and target-eligible", () => {

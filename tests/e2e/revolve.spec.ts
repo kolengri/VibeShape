@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
+import { clickSavedProfileInViewport, confirmSketchPlane, selectSketchTool } from "./sketch-helpers"
 
 async function drawProfileAwayFromBothOriginAxes(page: Page) {
   await selectSketchTool(page, "Rectangle tools", "Rectangle G")
@@ -30,6 +30,53 @@ async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
 }
 
 test.describe("selector-backed revolve", () => {
+  test("creates and reopens a new result from two profiles", async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawTwoProfilesAwayFromOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
+      timeout: 120_000,
+    })
+    await viewport
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    await form
+      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+      .click()
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
+    await expect(form.getByRole("combobox", { name: "Result operation" })).toBeDisabled()
+    await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+    await form.getByRole("button", { name: "Create revolve" }).click()
+
+    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+      timeout: 120_000,
+    })
+    await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+    const editForm = page.getByRole("form", { name: "Edit revolve" })
+    await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
+  })
+
   test("reselects a profile without closing create or edit", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

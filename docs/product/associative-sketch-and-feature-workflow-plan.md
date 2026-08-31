@@ -553,7 +553,7 @@ reference and a bounded repair action.
 
 ### Slice 7 — richer Extrude inputs and end conditions
 
-- Add multi-profile selection and merge scope.
+- Same-sketch multi-profile New selection is implemented for Extrude and Revolve; add explicit per-solid merge scope for modifying operations.
 - Add Through all, Up to next/face/part/vertex, start offset, direction reference, and second direction.
 - Use the shared viewport selection broker and stable selector diagnostics.
 - Preserve one preview/Apply command path for UI, extensions, and future MCP proposals.

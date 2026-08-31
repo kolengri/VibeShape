@@ -6,6 +6,7 @@ import {
   boxFeatureType,
   cylinderFeatureType,
   extrusionFeatureType,
+  extrusionFeatureTypeV3,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -13,6 +14,7 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
+  revolveFeatureTypeV5,
 } from "./part-design"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
@@ -32,12 +34,14 @@ const emptySemanticInputTypeKeys = new Set(
 const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureType.type),
   featureTypeKey(legacyExtrusionFeatureType.type),
+  featureTypeKey(extrusionFeatureTypeV3.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),
   featureTypeKey(legacyRevolveFeatureType.type),
   featureTypeKey(legacyRevolveFeatureTypeV2.type),
   featureTypeKey(legacyRevolveFeatureTypeV3.type),
+  featureTypeKey(revolveFeatureTypeV5.type),
 ])
 
 export function projectFirstPartyFeatureSemanticInputs(
@@ -66,7 +70,7 @@ export function projectFirstPartyFeatureSemanticInputs(
         recognized: true,
         ok: true,
         inputs: [
-          { kind: "sketch", id: parameters.profile.sketchId },
+          { kind: "sketch" as const, id: parameters.profile.sketchId },
           ...(parameters.axis.kind === "model-edge"
             ? [{ kind: "feature" as const, id: parameters.axis.reference.featureId }]
             : []),

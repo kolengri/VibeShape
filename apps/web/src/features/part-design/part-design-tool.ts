@@ -11,6 +11,8 @@ import {
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
+  multiProfileExtrusionFeatureType,
+  multiProfileRevolveFeatureType,
   revolveFeatureType,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
@@ -54,6 +56,7 @@ export function isBooleanFeature(feature: FeatureRecord) {
 export function isExtrusionFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, extrusionFeatureType.type) ||
+    hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
     hasFeatureType(feature, legacyExtrusionFeatureType.type)
   )
 }
@@ -61,6 +64,7 @@ export function isExtrusionFeature(feature: FeatureRecord) {
 export function isRevolveFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, revolveFeatureType.type) ||
+    hasFeatureType(feature, multiProfileRevolveFeatureType.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV3.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV2.type) ||
     hasFeatureType(feature, legacyRevolveFeatureType.type)
@@ -78,6 +82,14 @@ function isPartDesignSolidFeature(feature: FeatureRecord) {
     isExtrusionFeature(feature) ||
     isRevolveFeature(feature) ||
     isBooleanFeature(feature)
+  )
+}
+
+function isModifyingInputFeature(feature: FeatureRecord) {
+  return (
+    isPartDesignSolidFeature(feature) &&
+    !hasFeatureType(feature, multiProfileExtrusionFeatureType.type) &&
+    !hasFeatureType(feature, multiProfileRevolveFeatureType.type)
   )
 }
 
@@ -111,7 +123,7 @@ export function booleanInputFeatures(
     : new Set<FeatureId>()
   return features.filter(
     (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isPartDesignSolidFeature(feature),
+      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
   )
 }
 
@@ -124,7 +136,7 @@ export function modifyingSolidTargetFeatures(
     : new Set<FeatureId>()
   const available = features.filter(
     (feature) =>
-      !feature.suppressed && !excludedIds.has(feature.id) && isPartDesignSolidFeature(feature),
+      !feature.suppressed && !excludedIds.has(feature.id) && isModifyingInputFeature(feature),
   )
   const dependedOnIds = new Set(available.flatMap(featureBodyDependencyIds))
   const editingFeature = features.find(({ id }) => id === editingFeatureId)

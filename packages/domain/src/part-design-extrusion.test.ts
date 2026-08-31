@@ -11,7 +11,10 @@ import {
   extrusionFeatureParametersSchema,
   extrusionFeatureType,
   legacyExtrusionFeatureType,
+  multiProfileExtrusionFeatureParametersSchema,
+  multiProfileExtrusionFeatureType,
   partDesignFeatureTypeHandlers,
+  readExtrusionProfileSet,
 } from "./part-design"
 import { createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
@@ -26,6 +29,10 @@ const profile = {
     "0195b5ac-b220-7a2c-8c33-67a36a7f3214",
   ],
   holeBoundaryEntityIds: [],
+} as const
+const secondProfile = {
+  ...profile,
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3221"],
 } as const
 
 function registry() {
@@ -92,6 +99,40 @@ describe("selector-backed extrusion feature", () => {
         type: legacyExtrusionFeatureType.type,
       }),
     ).toMatchObject({ ok: true })
+  })
+
+  it("registers a same-sketch multi-profile new-body version without changing legacy reads", () => {
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: multiProfileExtrusionFeatureType.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+        distance: createLengthQuantity(12, "mm"),
+        symmetric: false,
+        operation: "new",
+      },
+    })
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(readExtrusionProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
+    expect(readExtrusionProfileSet(extrusion())?.profiles).toEqual([profile])
+    expect(
+      multiProfileExtrusionFeatureParametersSchema.safeParse({
+        ...feature.parameters,
+        operation: "add",
+      }).success,
+    ).toBe(false)
+    expect(
+      multiProfileExtrusionFeatureParametersSchema.safeParse({
+        ...feature.parameters,
+        profiles: {
+          schemaVersion: 0,
+          profiles: [
+            profile,
+            { ...secondProfile, sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299" },
+          ],
+        },
+      }).success,
+    ).toBe(false)
   })
 
   it("accepts one stable face-support dependency for a new-body extrusion", () => {

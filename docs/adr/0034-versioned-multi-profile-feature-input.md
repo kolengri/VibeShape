@@ -12,10 +12,10 @@ workflows also need one feature to consume several explicitly selected regions, 
 that share an analytical boundary.
 
 Changing the existing Extrude or Revolve parameter schema in place would alter persisted semantics for
-already accepted feature type versions. The geometry protocol also prepares one outer loop with holes, and
-the geometry worker accepts only one valid positive-volume solid per feature. Disjoint new-body regions
-therefore cannot be represented honestly until the document body model supports multiple results from one
-feature.
+already accepted feature type versions. The geometry protocol also prepares one outer loop with holes,
+while ordinary feature evaluation requires exactly one valid positive-volume solid. Applying that invariant
+unchanged would make multi-profile New nearly unusable: distinct same-plane regions normally produce
+distinct solids, while touching regions are usually recognized as one region before feature creation.
 
 ## Decision
 
@@ -37,8 +37,9 @@ explicit update that preserves feature identity and converts its single selector
 The first executable delivery accepts multiple profiles from one sketch support frame. The document worker
 solves that sketch once, materializes every selector independently, and sends a bounded ordered array of
 analytical profiles. The geometry worker builds one disposable tool per profile and combines them in
-canonical order. A successful tool and final feature result must still be exactly one connected,
-positive-volume solid.
+canonical order. A successful multi-profile New result contains between one and the selected profile count
+of valid positive-volume solids. The solids remain one bounded feature result and one tessellated
+presentation mesh; no transient kernel or per-solid identity is persisted.
 
 Primary click replaces the task-local profile set. `Shift` plus primary click toggles one region. The task
 panel reports the count and provides removal and clear actions, while the viewport remains the spatial
@@ -48,21 +49,26 @@ task-local set.
 The following cases fail closed in the first delivery:
 
 - selectors from different sketches or non-coplanar support frames;
-- disjoint new-body results that would require multiple bodies from one feature;
 - invalid, missing, ambiguous, duplicate, or over-budget selectors;
 - multi-profile modifying operations until combined-tool Add, Remove, and Intersect invariants are proven;
+- using a multi-profile result as a Boolean or modifying-feature target until stable per-result selection and
+  merge scope are proven;
 - Revolve inputs that cross the selected axis or cannot use one exact axis for every profile.
 
-Later slices may admit same-plane cross-sketch sets, explicit-target modifying operations, and multi-result
-new-body features only through separately tested protocol and body-model changes. They MUST NOT infer a
-target, silently discard a selected region, or collapse several semantic selectors into a sampled outline.
+Later slices may admit same-plane cross-sketch sets, explicit-target modifying operations, and stable
+individually addressable part results only through separately tested protocol and body-model changes. They
+MUST NOT infer a target, silently discard a selected region, or collapse several semantic selectors into a
+sampled outline.
 
 ## Consequences
 
 - Selection order cannot alter persisted identity, rebuild hashes, or worker execution order.
-- Adjacent regions can eventually produce one connected feature without losing their distinct authored
-  selection intent.
-- The existing one-solid invariant remains a deliberate safety boundary rather than an accidental error.
+- Connected regions may reduce to one solid; disjoint regions remain multiple solids without changing their
+  canonical authored selection intent.
+- Ordinary features retain the one-solid invariant. Only bounded multi-profile New feature versions admit
+  up to one positive-volume solid per selected profile.
+- The current model tree treats the output collection as one feature result. Stable per-solid names, colors,
+  selection, and downstream merge scope remain explicit follow-up work.
 - Native project files need no document migration because old feature records remain valid and new feature
   versions are preserved through the ordinary strict snapshot contract.
 - Automation and future MCP surfaces use the same bounded selector set and feature command; no renderer or
@@ -76,7 +82,8 @@ target, silently discard a selected region, or collapse several semantic selecto
   intent.
 - **Reject every shared boundary:** adjacent selectable regions legitimately share analytical curves and are
   required for connected multi-profile results.
-- **Return an OCCT compound as one body:** this would bypass the current solid and body ownership invariants.
+- **Persist kernel compound or subshape identity:** transient OCCT ownership cannot define durable parts;
+  persisted per-solid identity requires a separate stable body-result contract.
 - **Infer a target or active body:** editor presentation state is not deterministic document intent.
 
 ## References

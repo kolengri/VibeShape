@@ -227,10 +227,11 @@ function renderViewport(
     onSelect: (plane: "xy" | "xz" | "yz" | null) => void
   }>,
   sketchProfileSelection?: Readonly<{
-    selectedProfile: SketchProfileSelector | null
+    selectedProfiles: readonly SketchProfileSelector[]
     onSelect: (
       profile: SketchProfileSelector | null,
       profiles: readonly SketchProfileSelector[],
+      intent: "replace" | "toggle",
     ) => void
   }>,
 ) {
@@ -246,6 +247,7 @@ function renderViewport(
     setSketchReferencePreselection: vi.fn(),
     setSketchProfilePreselection: vi.fn(),
     setSketchProfileSelection: vi.fn(),
+    setSketchProfileSelections: vi.fn(),
     setSelectionCandidateStackPreserved: vi.fn(),
     setSelectionPreselection: vi.fn(),
     setSketches: vi.fn(),
@@ -323,20 +325,49 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: profileSelector, onSelect },
+      { selectedProfiles: [profileSelector], onSelect },
     )
     await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
     const renderedSketches = vi.mocked(port.setSketches).mock.calls.at(-1)?.[0] ?? []
     const profile = renderedSketches[0]?.profiles?.[0]
     expect(profile).toBeDefined()
-    expect(port.setSketchProfileSelection).toHaveBeenCalledWith(profile)
+    expect(port.setSketchProfileSelections).toHaveBeenCalledWith([profile])
 
     const options = createViewport.mock.calls[0]?.[1]
     act(() => options?.onSketchProfilePreselectionChange?.(profile ?? null))
     expect(screen.getByRole("status").textContent).toContain("Select profile: Sketch 1 · Profile 1")
 
-    act(() => options?.onSketchProfileSelectionChange?.(profile ?? null))
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector])
+    act(() => options?.onSketchProfileSelectionChange?.(profile ?? null, "replace"))
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
+  })
+
+  it("renders every selected profile and forwards additive selection intent", async () => {
+    const onSelect = vi.fn()
+    const { createViewport, port } = renderViewport(
+      readyController([], [], [profileSketchDisplay, secondProfileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfiles: [profileSelector, secondProfileSelector], onSelect },
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const renderedProfiles =
+      vi
+        .mocked(port.setSketches)
+        .mock.calls.at(-1)?.[0]
+        .flatMap((sketch) => sketch.profiles ?? []) ?? []
+    expect(port.setSketchProfileSelections).toHaveBeenCalledWith(renderedProfiles)
+    act(() =>
+      createViewport.mock.calls[0]?.[1].onSketchProfileSelectionChange?.(
+        renderedProfiles[1] ?? null,
+        "toggle",
+      ),
+    )
+    expect(onSelect).toHaveBeenCalledWith(secondProfileSelector, [secondProfileSelector], "toggle")
   })
 
   it("offers a focusable model-mode control for every saved profile", async () => {
@@ -350,7 +381,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: null, onSelect },
+      { selectedProfiles: [], onSelect },
     )
 
     const profilePicker = await screen.findByRole("combobox", {
@@ -360,7 +391,7 @@ describe("GeometryViewport", () => {
     profilePicker.focus()
     expect(document.activeElement).toBe(profilePicker)
     fireEvent.change(profilePicker, { target: { value: profileOption.getAttribute("value") } })
-    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector])
+    expect(onSelect).toHaveBeenCalledWith(profileSelector, [profileSelector], "replace")
   })
 
   it("keeps the maximum supported profile set in one compact native picker", async () => {
@@ -386,7 +417,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: null, onSelect: vi.fn() },
+      { selectedProfiles: [], onSelect: vi.fn() },
     )
 
     expect(await screen.findAllByRole("combobox", { name: "Select saved profile" })).toHaveLength(1)
@@ -404,7 +435,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: null, onSelect },
+      { selectedProfiles: [], onSelect },
     )
     await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
     const profiles =
@@ -421,8 +452,8 @@ describe("GeometryViewport", () => {
     fireEvent.keyDown(chooser, { key: "ArrowDown" })
     fireEvent.keyDown(chooser, { key: "Enter" })
 
-    expect(onSelect).toHaveBeenCalledWith(secondProfileSelector, [secondProfileSelector])
-    expect(port.setSketchProfileSelection).toHaveBeenCalledWith(profiles[1])
+    expect(onSelect).toHaveBeenCalledWith(secondProfileSelector, [secondProfileSelector], "replace")
+    expect(port.setSketchProfileSelections).toHaveBeenCalledWith([profiles[1]])
   })
 
   it("dismisses an overlapping-profile chooser when rendered sketches change", async () => {
@@ -435,7 +466,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: null, onSelect: vi.fn() },
+      { selectedProfiles: [], onSelect: vi.fn() },
     )
     await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
     const profiles =
@@ -462,7 +493,7 @@ describe("GeometryViewport", () => {
       undefined,
       undefined,
       undefined,
-      { selectedProfile: null, onSelect: vi.fn() },
+      { selectedProfiles: [], onSelect: vi.fn() },
     )
     await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
     const profiles =
@@ -474,7 +505,7 @@ describe("GeometryViewport", () => {
     act(() => options?.onSketchProfileCandidateStackCommit?.(profiles))
     await screen.findByRole("listbox", { name: "Select profile" })
 
-    act(() => options?.onSketchProfileSelectionChange?.(profiles[0] ?? null))
+    act(() => options?.onSketchProfileSelectionChange?.(profiles[0] ?? null, "replace"))
     await waitFor(() =>
       expect(screen.queryByRole("listbox", { name: "Select profile" })).toBeNull(),
     )

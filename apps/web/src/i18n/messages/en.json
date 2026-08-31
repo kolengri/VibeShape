@@ -642,6 +642,8 @@
           "editDescription": "Update the distance while preserving the feature identity and selected profile intent.",
           "parameters": "Extrusion parameters",
           "profile": "Selected profile",
+          "clearProfiles": "Clear selected profiles",
+          "removeProfile": "Remove {profile}",
           "operation": "Result operation",
           "operationNew": "New body",
           "operationAdd": "Add to body",
@@ -658,6 +660,7 @@
           "cancel": "Cancel",
           "featureLabel": "Extrusion {number}",
           "missingProfile": "Missing sketch profile",
+          "profileSelectionRequired": "Select one or more closed sketch profiles in the 3D viewport. Shift-click to add or remove a profile.",
           "invalidExpression": "Enter a valid expression using supported units and existing variables.",
           "invalidDimension": "This expression must resolve to a length.",
           "invalidRange": "Enter a length greater than zero and no more than 1,000,000 mm.",
@@ -674,6 +677,8 @@
           "editTitle": "Edit revolve",
           "parameters": "Revolve parameters",
           "profile": "Selected profile",
+          "clearProfiles": "Clear selected profiles",
+          "removeProfile": "Remove {profile}",
           "profileSelectAriaLabel": "Select a profile in the 3D viewport: {profile}",
           "profileSelectHint": "Select a profile in the 3D viewport",
           "operation": "Result operation",
@@ -701,7 +706,8 @@
           "staleRevision": "The document changed while this revolve was being edited. Review the current model and try again.",
           "createFailed": "The revolve could not be created. Your parameter value is preserved.",
           "updateFailed": "The revolve could not be updated. Your parameter value is preserved.",
-          "missingProfile": "Missing sketch profile"
+          "missingProfile": "Missing sketch profile",
+          "profileSelectionRequired": "Select one or more closed sketch profiles in the 3D viewport. Shift-click to add or remove a profile."
         },
         "sketch": {
           "taskAriaLabel": "Sketch task panel",

@@ -7,6 +7,7 @@ import {
   type FeatureId,
   featureIdSchema,
   featureRecordSchema,
+  multiProfileRevolveFeatureType,
   type revolveFeatureParametersSchema,
   revolveFeatureType,
   sketchEntityIdSchema,
@@ -51,6 +52,10 @@ const replacementProfile = sketchProfileSelectorSchema.parse({
   outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3212"],
   holeBoundaryEntityIds: [],
 })
+const secondProfile = sketchProfileSelectorSchema.parse({
+  ...profile,
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3213"],
+})
 const variables = [
   {
     schemaVersion: 0 as const,
@@ -64,6 +69,8 @@ const copy = {
   description: "Create a new solid.",
   parameters: "Revolve parameters",
   profile: "Selected profile",
+  clearProfiles: "Clear selected profiles",
+  removeProfile: (label: string) => `Remove ${label}`,
   profileSelectAriaLabel: "Select a profile in the 3D viewport: Sketch 1",
   profileSelectHint: "Select a profile in the 3D viewport",
   axis: "Revolve axis",
@@ -123,7 +130,7 @@ function renderForm(
     kind: "create",
     createFeatureId: () => featureId,
     featureLabel: "Revolve 1",
-    profile,
+    profiles: [profile],
   },
   onPreviewChange = vi.fn(),
   options: readonly { id: FeatureId; label: string }[] = [],
@@ -248,7 +255,7 @@ describe("RevolveForm", () => {
 
   it("restores the source expression and updates the existing identity", async () => {
     const user = userEvent.setup()
-    const mode = { kind: "edit", feature: existingFeature, profile } as const
+    const mode = { kind: "edit", feature: existingFeature, profiles: [profile] } as const
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
     const angle = screen.getByRole("combobox", { name: copy.angle })
     expect((angle as HTMLInputElement).value).toBe("#sweep")
@@ -298,6 +305,30 @@ describe("RevolveForm", () => {
     )
   })
 
+  it("persists a canonical multi-profile new-body revolve", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm(undefined, undefined, {
+      kind: "create",
+      createFeatureId: () => featureId,
+      featureLabel: "Revolve 1",
+      profiles: [secondProfile, profile],
+    })
+    expect(
+      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
+    ).toBe(true)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: multiProfileRevolveFeatureType.type,
+        parameters: expect.objectContaining({
+          operation: "new",
+          profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
+        }),
+      }),
+    )
+  })
+
   it("blocks a modifying operation until a target is available", async () => {
     const user = userEvent.setup()
     const { onSave } = renderForm()
@@ -322,7 +353,7 @@ describe("RevolveForm", () => {
     renderForm(
       undefined,
       undefined,
-      { kind: "edit", feature: modifyingFeature, profile },
+      { kind: "edit", feature: modifyingFeature, profiles: [profile] },
       undefined,
       [{ id: targetFeatureId, label: "Box 1" }],
     )
@@ -341,7 +372,7 @@ describe("RevolveForm", () => {
     const mode: RevolveFormMode = {
       kind: "edit",
       feature: existingFeature,
-      profile: replacementProfile,
+      profiles: [replacementProfile],
       supportReference,
     }
     const { onSave } = renderForm(undefined, undefined, mode, onPreviewChange)

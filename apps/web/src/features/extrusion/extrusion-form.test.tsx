@@ -7,6 +7,7 @@ import {
   extrusionFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  multiProfileExtrusionFeatureType,
   sketchProfileSelectorSchema,
   topoRefSchema,
   variableIdSchema,
@@ -47,6 +48,10 @@ const replacementProfile = sketchProfileSelectorSchema.parse({
   outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3212"],
   holeBoundaryEntityIds: [],
 })
+const secondProfile = sketchProfileSelectorSchema.parse({
+  ...profile,
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3213"],
+})
 const variables = [
   {
     schemaVersion: 0 as const,
@@ -60,6 +65,8 @@ const copy = {
   description: "Create a new solid.",
   parameters: "Extrusion parameters",
   profile: "Selected profile",
+  clearProfiles: "Clear selected profiles",
+  removeProfile: (label: string) => `Remove ${label}`,
   operation: "Result operation",
   operationNew: "New body",
   operationAdd: "Add to body",
@@ -67,6 +74,7 @@ const copy = {
   operationIntersect: "Intersect with body",
   target: "Target body",
   targetDescription: "Choose a terminal body.",
+  missingProfile: "Select a sketch profile.",
   missingTarget: "Select a target body.",
   distance: "Distance",
   symmetric: "Extrude symmetrically",
@@ -112,7 +120,7 @@ function renderForm(
     kind: "create",
     createFeatureId: () => featureId,
     featureLabel: "Extrusion 1",
-    profile,
+    profiles: [profile],
   },
   onPreviewChange = vi.fn(),
 ) {
@@ -219,7 +227,7 @@ describe("ExtrusionForm", () => {
 
   it("restores the source expression and updates the existing identity", async () => {
     const user = userEvent.setup()
-    const mode = { kind: "edit", feature: existingFeature, profile } as const
+    const mode = { kind: "edit", feature: existingFeature, profiles: [profile] } as const
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
     const distance = screen.getByRole("combobox", { name: copy.distance })
     expect((distance as HTMLInputElement).value).toBe("#depth")
@@ -264,13 +272,37 @@ describe("ExtrusionForm", () => {
     )
   })
 
+  it("persists a canonical multi-profile new-body extrusion", async () => {
+    const user = userEvent.setup()
+    const { onSave } = renderForm(undefined, undefined, {
+      kind: "create",
+      createFeatureId: () => featureId,
+      featureLabel: "Extrusion 1",
+      profiles: [secondProfile, profile],
+    })
+    expect(
+      (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
+    ).toBe(true)
+    await user.click(screen.getByRole("button", { name: copy.submit }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        type: multiProfileExtrusionFeatureType.type,
+        parameters: expect.objectContaining({
+          operation: "new",
+          profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
+        }),
+      }),
+    )
+  })
+
   it("persists a stable support reference and dependency for a face-supported sketch", async () => {
     const user = userEvent.setup()
     const mode: ExtrusionFormMode = {
       kind: "create",
       createFeatureId: () => featureId,
       featureLabel: "Extrusion 1",
-      profile,
+      profiles: [profile],
       supportReference,
     }
     const { onSave } = renderForm(undefined, undefined, mode)
@@ -292,7 +324,7 @@ describe("ExtrusionForm", () => {
     const mode: ExtrusionFormMode = {
       kind: "edit",
       feature: existingFeature,
-      profile: replacementProfile,
+      profiles: [replacementProfile],
       supportReference,
     }
     const { onSave } = renderForm(undefined, undefined, mode, onPreviewChange)

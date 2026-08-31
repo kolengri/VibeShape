@@ -35,7 +35,7 @@
 | [0031](0031-stable-sketch-line-revolve-axis.md) | Accepted | Stable graphical same-sketch line axes for exact Revolve replay |
 | [0032](0032-stable-linear-model-edge-revolve-axis.md) | Accepted | Stable straight model-edge axes for exact Revolve replay |
 | [0033](0033-selector-backed-saved-profile-picking.md) | Accepted | Stable saved-sketch profile picking through disposable 3D render regions |
-| [0034](0034-versioned-multi-profile-feature-input.md) | Accepted | Canonical multi-profile feature intent with a one-solid first delivery gate |
+| [0034](0034-versioned-multi-profile-feature-input.md) | Accepted | Canonical multi-profile New intent with a bounded multi-solid result |
 
 Statuses:
 
