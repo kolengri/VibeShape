@@ -41,6 +41,12 @@ const profile = sketchProfileSelectorSchema.parse({
   outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
   holeBoundaryEntityIds: [],
 })
+const replacementProfile = sketchProfileSelectorSchema.parse({
+  schemaVersion: 0,
+  sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3202",
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3212"],
+  holeBoundaryEntityIds: [],
+})
 const variables = [
   {
     schemaVersion: 0 as const,
@@ -213,7 +219,7 @@ describe("ExtrusionForm", () => {
 
   it("restores the source expression and updates the existing identity", async () => {
     const user = userEvent.setup()
-    const mode = { kind: "edit", feature: existingFeature } as const
+    const mode = { kind: "edit", feature: existingFeature, profile } as const
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
     const distance = screen.getByRole("combobox", { name: copy.distance })
     expect((distance as HTMLInputElement).value).toBe("#depth")
@@ -274,6 +280,36 @@ describe("ExtrusionForm", () => {
     expect(onSave).toHaveBeenCalledWith(
       4,
       expect.objectContaining({
+        dependencies: [supportFeatureId],
+        references: [supportReference],
+      }),
+    )
+  })
+
+  it("previews and saves the graphically replacement profile and its support", async () => {
+    const user = userEvent.setup()
+    const onPreviewChange = vi.fn()
+    const mode: ExtrusionFormMode = {
+      kind: "edit",
+      feature: existingFeature,
+      profile: replacementProfile,
+      supportReference,
+    }
+    const { onSave } = renderForm(undefined, undefined, mode, onPreviewChange)
+
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({ profile: replacementProfile }),
+          references: [supportReference],
+        }),
+      ),
+    )
+    await user.click(screen.getByRole("button", { name: "Update extrusion" }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({ profile: replacementProfile }),
         dependencies: [supportFeatureId],
         references: [supportReference],
       }),

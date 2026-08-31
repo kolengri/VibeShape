@@ -82,7 +82,7 @@ Exit criterion: the reference flange and bracket profiles can be created, fully 
 
 ### Slice 4 — profile-region selection and extrusion preview
 
-Status: stable single-profile selection and saved-profile 3D picking implemented; multi-profile feature input remains open.
+Status: stable single-profile selection, saved-profile 3D picking, and in-task graphical profile reselection for Extrude and Revolve create/edit are implemented; multi-profile feature input remains open.
 
 - Render solver-produced closed regions as selectable areas behind entity strokes in the sketch editor and as hoverable, clickable regions on their exact support frames after Finish or reload.
 - Persist only canonical stable boundary-entity selectors.

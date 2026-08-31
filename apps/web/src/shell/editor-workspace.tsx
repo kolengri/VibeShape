@@ -44,6 +44,13 @@ import {
   type ActivePartDesignTool,
   activeFeatureId,
 } from "../features/part-design/part-design-tool"
+import {
+  ineligibleProfileSketchIds,
+  isProfileFeatureTool,
+  profileFeatureToolKey,
+  profileForFeatureTool,
+  revolveAxisAfterProfileSelection,
+} from "../features/part-design/profile-feature-selection"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
 import {
   type RevolveAxisCandidate,
@@ -104,6 +111,7 @@ import type { EditorWorkspaceName } from "./workspace"
 
 const EMPTY_GEOMETRY = [] as const
 type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
+type RevolveSelectionPurpose = "axis" | "profile"
 
 function committedGeometry(controller: DocumentControllerState) {
   const rebuild = controller.report?.rebuild
@@ -1371,24 +1379,19 @@ function useEditorFeaturePreview(
   return { featurePreview, setPreviewFeature }
 }
 
-function revolveProfileSketchId(
-  activeTool: ActivePartDesignTool | null,
-  snapshot: DocumentSnapshot | undefined,
-) {
-  if (activeTool?.kind === "create-revolve") return activeTool.profile.sketchId
-  if (activeTool?.kind !== "edit-revolve") return null
-  const feature = snapshot?.features.find(({ id }) => id === activeTool.featureId)
-  return feature ? (readRevolveFeatureParameters(feature)?.profile.sketchId ?? null) : null
-}
-
 function useRevolveAxisCandidates(
   controller: DocumentControllerState,
   activeTool: ActivePartDesignTool | null,
+  profile: SketchProfileSelector | null,
   hiddenFeatureIds: readonly FeatureId[],
+  selectedAxis: RevolveAxis | null,
 ) {
   const t = useTranslations("app.shell.viewport")
   const snapshot = controller.report?.snapshot
-  const sketchId = revolveProfileSketchId(activeTool, snapshot)
+  const sketchId =
+    activeTool?.kind === "create-revolve" || activeTool?.kind === "edit-revolve"
+      ? profile?.sketchId
+      : null
   const [candidates, setCandidates] = useState<readonly RevolveAxisCandidate[]>([])
   useEffect(() => {
     const sketch = snapshot?.sketches.find(({ id }) => id === sketchId)
@@ -1411,7 +1414,6 @@ function useRevolveAxisCandidates(
           ? snapshot.features.findIndex(({ id }) => id === activeTool.featureId)
           : snapshot.features.length
       const earlierFeatures = snapshot.features.slice(0, Math.max(0, editedFeatureIndex))
-      const selectedAxis = defaultRevolveAxis(activeTool, snapshot)
       const selectedSourceId =
         selectedAxis?.kind === "model-edge" ? selectedAxis.reference.featureId : null
       const hidden = new Set(hiddenFeatureIds)
@@ -1451,7 +1453,15 @@ function useRevolveAxisCandidates(
     return () => {
       active = false
     }
-  }, [activeTool, controller.report?.rebuild, hiddenFeatureIds, sketchId, snapshot, t])
+  }, [
+    activeTool,
+    controller.report?.rebuild,
+    hiddenFeatureIds,
+    selectedAxis,
+    sketchId,
+    snapshot,
+    t,
+  ])
   return candidates
 }
 
@@ -1487,6 +1497,46 @@ function useRevolveAxisSelection(
   }, [key])
   const value = state.key === key ? state.value : fallback
   const setValue = useCallback((axis: RevolveAxis) => setState({ key, value: axis }), [key])
+  return { value, setValue }
+}
+
+function useRevolveSelectionPurpose(activeTool: ActivePartDesignTool | null) {
+  const key = revolveToolKey(activeTool)
+  const [state, setState] = useState<Readonly<{ key: string; value: RevolveSelectionPurpose }>>(
+    () => ({ key, value: "axis" }),
+  )
+  useEffect(() => {
+    if (key !== "inactive") return
+    setState((current) =>
+      current.key === "inactive" ? current : { key: "inactive", value: "axis" },
+    )
+  }, [key])
+  const value = state.key === key ? state.value : "axis"
+  const setValue = useCallback(
+    (purpose: RevolveSelectionPurpose) => setState({ key, value: purpose }),
+    [key],
+  )
+  return { value, setValue }
+}
+
+function useProfileFeatureSelection(
+  activeTool: ActivePartDesignTool | null,
+  snapshot: DocumentSnapshot | undefined,
+) {
+  const key = profileFeatureToolKey(activeTool)
+  const fallback = profileForFeatureTool(activeTool, snapshot)
+  const [state, setState] = useState<
+    Readonly<{ key: string; value: SketchProfileSelector | null }>
+  >(() => ({ key, value: fallback }))
+  useEffect(() => {
+    if (key !== "inactive") return
+    setState((current) => (current.key === "inactive" ? current : { key: "inactive", value: null }))
+  }, [key])
+  const value = state.key === key ? state.value : fallback
+  const setValue = useCallback(
+    (profile: SketchProfileSelector) => setState({ key, value: profile }),
+    [key],
+  )
   return { value, setValue }
 }
 
@@ -1533,15 +1583,23 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
 }
 
 function EditorContent({
+  featureProfileSelection,
+  featureProfileHiddenSketchIds,
   featurePreview,
+  onFeatureProfileChange,
   revolveAxisCandidates,
   revolveAxisSelection,
+  revolveSelectionPurpose,
   onRevolveAxisChange,
   props,
 }: {
+  featureProfileSelection: SketchProfileSelector | null
+  featureProfileHiddenSketchIds: readonly SketchId[]
   featurePreview: ReturnType<typeof useFeaturePreview>
+  onFeatureProfileChange: (profile: SketchProfileSelector) => void
   revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
+  revolveSelectionPurpose: RevolveSelectionPurpose
   onRevolveAxisChange: (axis: RevolveAxis) => void
   props: EditorWorkspaceProps
 }) {
@@ -1553,6 +1611,10 @@ function EditorContent({
       actions={{
         onSelectionChange: actions.select,
         onSavedSketchProfileSelect: (profile, profiles) => {
+          if (isProfileFeatureTool(props.activeTool)) {
+            if (profile) onFeatureProfileChange(profile)
+            return
+          }
           if (profile) {
             actions.selectSavedSketchProfile(profile, profiles)
             return
@@ -1579,7 +1641,7 @@ function EditorContent({
       model={{
         featurePreview,
         hiddenFeatureIds: props.hiddenFeatureIds,
-        hiddenSketchIds: props.hiddenSketchIds,
+        hiddenSketchIds: [...props.hiddenSketchIds, ...featureProfileHiddenSketchIds],
         idleOriginPlaneSelectionAvailable: props.activeTool === null,
         originPlaneVisibility: props.originPlaneVisibility,
         preselectedFeatureId: props.preselectedFeatureId,
@@ -1587,7 +1649,8 @@ function EditorContent({
         selectedFeatureId: activeFeatureId(props.activeTool),
         selection,
         revolveAxisCandidates,
-        revolveAxisSelectionActive: revolveAxisSelection !== null,
+        revolveAxisSelectionActive:
+          revolveAxisSelection !== null && revolveSelectionPurpose === "axis",
       }}
       workspace={workspace}
       sketch={{
@@ -1599,7 +1662,9 @@ function EditorContent({
         repairReferenceId: props.sketchRepairReferenceId,
         selectedConstraintId: props.sketchSelectedConstraintId,
         selectedEntityIds: props.sketchSelectedEntityIds,
-        selectedProfile: props.sketchSelectedProfile,
+        selectedProfile: isProfileFeatureTool(props.activeTool)
+          ? featureProfileSelection
+          : props.sketchSelectedProfile,
         selectedSketch,
         showFinalContext: props.sketchFinalContext,
       }}
@@ -1608,17 +1673,23 @@ function EditorContent({
 }
 
 function EditorTaskPanel({
+  featureProfileSelection,
   onFeaturePreviewChange,
   onRevolveAxisChange,
+  onRevolveSelectionPurposeChange,
   props,
   revolveAxisCandidates,
   revolveAxisSelection,
+  revolveSelectionPurpose,
 }: {
+  featureProfileSelection: SketchProfileSelector | null
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   onRevolveAxisChange: (axis: RevolveAxis) => void
+  onRevolveSelectionPurposeChange: (purpose: RevolveSelectionPurpose) => void
   props: EditorWorkspaceProps
   revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
+  revolveSelectionPurpose: RevolveSelectionPurpose
 }) {
   const { actions } = props
   const selectedAxisLabel = revolveAxisSelection
@@ -1631,6 +1702,7 @@ function EditorTaskPanel({
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
       controller={props.controller}
+      featureProfileSelection={featureProfileSelection ?? undefined}
       workspace={props.workspace}
       onCloseTool={actions.closeTool}
       onCreateBox={actions.createBox}
@@ -1642,8 +1714,11 @@ function EditorTaskPanel({
       onEditSketch={actions.editSketch}
       onFeaturePreviewChange={onFeaturePreviewChange}
       onRevolveAxisChange={onRevolveAxisChange}
+      onRevolveAxisSelectionRequest={() => onRevolveSelectionPurposeChange("axis")}
+      onRevolveProfileSelectionRequest={() => onRevolveSelectionPurposeChange("profile")}
       revolveAxisLineLabel={selectedAxisLabel}
       revolveAxisSelection={revolveAxisSelection ?? undefined}
+      revolveProfileSelectionActive={revolveSelectionPurpose === "profile"}
       sketchDraft={props.sketchDraft}
       sketchFailedConstraintIds={props.sketchFailedConstraintIds}
       sketchProfiles={props.sketchProfiles}
@@ -1698,32 +1773,61 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
     props.controller,
     props.activeTool,
   )
+  const snapshot = props.controller.report?.snapshot
+  const featureProfileSelection = useProfileFeatureSelection(props.activeTool, snapshot)
+  const revolveAxisSelection = useRevolveAxisSelection(props.activeTool, snapshot)
+  const revolveSelectionPurpose = useRevolveSelectionPurpose(props.activeTool)
   const revolveAxisCandidates = useRevolveAxisCandidates(
     props.controller,
     props.activeTool,
+    featureProfileSelection.value,
     props.hiddenFeatureIds,
+    revolveAxisSelection.value,
   )
-  const revolveAxisSelection = useRevolveAxisSelection(
-    props.activeTool,
-    props.controller.report?.snapshot,
+  const featureProfileHiddenSketchIds = useMemo(
+    () => (snapshot ? ineligibleProfileSketchIds(snapshot, props.activeTool) : []),
+    [props.activeTool, snapshot],
+  )
+  const selectFeatureProfile = useCallback(
+    (profile: SketchProfileSelector) => {
+      const previousProfile = featureProfileSelection.value
+      featureProfileSelection.setValue(profile)
+      if (props.activeTool?.kind !== "create-revolve" && props.activeTool?.kind !== "edit-revolve")
+        return
+      const nextAxis = revolveAxisAfterProfileSelection(
+        revolveAxisSelection.value,
+        previousProfile,
+        profile,
+      )
+      if (nextAxis) revolveAxisSelection.setValue(nextAxis)
+      revolveSelectionPurpose.setValue("axis")
+    },
+    [featureProfileSelection, props.activeTool, revolveAxisSelection, revolveSelectionPurpose],
   )
   return (
     <SketchProjectionProvider>
       <div className="cad-workspace-grid min-h-0">
         <EditorModelTree props={props} />
         <EditorContent
+          featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
+          featureProfileSelection={featureProfileSelection.value}
           featurePreview={featurePreview}
+          onFeatureProfileChange={selectFeatureProfile}
           onRevolveAxisChange={revolveAxisSelection.setValue}
           props={props}
           revolveAxisCandidates={revolveAxisCandidates}
           revolveAxisSelection={revolveAxisSelection.value}
+          revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
         <EditorTaskPanel
+          featureProfileSelection={featureProfileSelection.value}
           onFeaturePreviewChange={setPreviewFeature}
           onRevolveAxisChange={revolveAxisSelection.setValue}
+          onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
           props={props}
           revolveAxisCandidates={revolveAxisCandidates}
           revolveAxisSelection={revolveAxisSelection.value}
+          revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
       </div>
     </SketchProjectionProvider>

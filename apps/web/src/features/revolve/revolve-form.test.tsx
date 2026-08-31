@@ -11,6 +11,7 @@ import {
   revolveFeatureType,
   sketchEntityIdSchema,
   sketchProfileSelectorSchema,
+  topoRefSchema,
   variableIdSchema,
 } from "@vibeshape/domain"
 import { I18nProvider } from "@vibeshape/i18n/provider"
@@ -20,10 +21,34 @@ import { i18n } from "../../i18n"
 import { RevolveForm, type RevolveFormMode } from "./revolve-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3701")
+const supportFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3703")
+const supportReference = topoRefSchema.parse({
+  schemaVersion: 0,
+  featureId: supportFeatureId,
+  kind: "face",
+  semanticRole: "extrusion.cap.end",
+  signature: {
+    kind: "face",
+    geometryClass: "PLANE",
+    measure: 400,
+    centroid: [0, 0, 10],
+    bounds: { min: [-10, -10, 10], max: [10, 10, 10] },
+    direction: [0, 0, 1],
+    directionMode: "oriented",
+    boundaryCount: 4,
+    adjacentGeometryClasses: ["PLANE"],
+  },
+})
 const profile = sketchProfileSelectorSchema.parse({
   schemaVersion: 0,
   sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3201",
   outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3211"],
+  holeBoundaryEntityIds: [],
+})
+const replacementProfile = sketchProfileSelectorSchema.parse({
+  schemaVersion: 0,
+  sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3202",
+  outerBoundaryEntityIds: ["0195b5ac-b220-7a2c-8c33-67a36a7f3212"],
   holeBoundaryEntityIds: [],
 })
 const variables = [
@@ -39,6 +64,8 @@ const copy = {
   description: "Create a new solid.",
   parameters: "Revolve parameters",
   profile: "Selected profile",
+  profileSelectAriaLabel: "Select a profile in the 3D viewport: Sketch 1",
+  profileSelectHint: "Select a profile in the 3D viewport",
   axis: "Revolve axis",
   axisX: "Horizontal sketch axis (X)",
   axisY: "Vertical sketch axis (Y)",
@@ -221,7 +248,7 @@ describe("RevolveForm", () => {
 
   it("restores the source expression and updates the existing identity", async () => {
     const user = userEvent.setup()
-    const mode = { kind: "edit", feature: existingFeature } as const
+    const mode = { kind: "edit", feature: existingFeature, profile } as const
     const { formCopy, onSave } = renderForm(undefined, undefined, mode)
     const angle = screen.getByRole("combobox", { name: copy.angle })
     expect((angle as HTMLInputElement).value).toBe("#sweep")
@@ -292,15 +319,48 @@ describe("RevolveForm", () => {
       dependencies: [targetFeatureId],
     })
 
-    renderForm(undefined, undefined, { kind: "edit", feature: modifyingFeature }, undefined, [
-      { id: targetFeatureId, label: "Box 1" },
-    ])
+    renderForm(
+      undefined,
+      undefined,
+      { kind: "edit", feature: modifyingFeature, profile },
+      undefined,
+      [{ id: targetFeatureId, label: "Box 1" }],
+    )
 
     expect(
       (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).value,
     ).toBe("intersect")
     expect((screen.getByRole("combobox", { name: copy.target }) as HTMLSelectElement).value).toBe(
       targetFeatureId,
+    )
+  })
+
+  it("previews and saves a graphically replacement profile", async () => {
+    const user = userEvent.setup()
+    const onPreviewChange = vi.fn()
+    const mode: RevolveFormMode = {
+      kind: "edit",
+      feature: existingFeature,
+      profile: replacementProfile,
+      supportReference,
+    }
+    const { onSave } = renderForm(undefined, undefined, mode, onPreviewChange)
+
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({ profile: replacementProfile }),
+        }),
+      ),
+    )
+    await user.click(screen.getByRole("button", { name: "Update revolve" }))
+    expect(onSave).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({
+        parameters: expect.objectContaining({ profile: replacementProfile }),
+        dependencies: [supportFeatureId],
+        references: [supportReference],
+      }),
     )
   })
 })
