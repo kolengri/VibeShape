@@ -30,6 +30,7 @@ import {
 } from "../features/boolean/boolean-form"
 import { BoxForm, type BoxFormMode } from "../features/box/box-form"
 import { CylinderForm, type CylinderFormMode } from "../features/cylinder/cylinder-form"
+import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
   ExtrusionForm,
   type ExtrusionFormMode,
@@ -85,6 +86,7 @@ type TaskPanelProps = Readonly<{
   activeSketchTool: ActiveSketchTool | null
   activeTool: ActivePartDesignTool | null
   controller: DocumentControllerState
+  extrusionDistanceRequest: ExtrusionDistanceRequest | null
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
@@ -614,6 +616,7 @@ function EditFeatureDeleteAction({
 }
 
 function ExtrusionTaskPanel({
+  distanceRequest,
   mode,
   onCloseTool,
   onProfileRemove,
@@ -622,6 +625,7 @@ function ExtrusionTaskPanel({
   options,
   report,
 }: {
+  distanceRequest: ExtrusionDistanceRequest | null
   mode: ExtrusionFormMode
   onCloseTool: () => void
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
@@ -647,6 +651,7 @@ function ExtrusionTaskPanel({
         baseRevision={snapshot.revision}
         copy={copy}
         disabled={report.mode === "read-only"}
+        distanceRequest={distanceRequest}
         mode={mode}
         options={options}
         profileLabel={profileLabel}
@@ -1305,6 +1310,7 @@ function EmptyProfileFeatureTaskPanel({
 
 function ActiveExtrusionTaskPanel({
   activeTool,
+  distanceRequest,
   featureProfileSelections,
   onCloseTool,
   onProfileRemove,
@@ -1313,6 +1319,7 @@ function ActiveExtrusionTaskPanel({
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
+  distanceRequest: ExtrusionDistanceRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onCloseTool: () => void
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
@@ -1345,6 +1352,7 @@ function ActiveExtrusionTaskPanel({
   )
   return (
     <ExtrusionTaskPanel
+      distanceRequest={distanceRequest}
       report={report}
       mode={mode}
       options={options}
@@ -1386,6 +1394,7 @@ function ActiveSubtractTaskPanel({
 
 type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
+  extrusionDistanceRequest: ExtrusionDistanceRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: TaskPanelProps["onFeatureProfileRemove"] | undefined
   onFeatureProfilesClear?: TaskPanelProps["onFeatureProfilesClear"] | undefined
@@ -1459,6 +1468,7 @@ function DatumPlaneToolTaskPanel({
 
 function ExtrusionToolTaskPanel({
   activeTool,
+  extrusionDistanceRequest,
   featureProfileSelections,
   onCloseTool,
   onFeatureProfileRemove,
@@ -1470,6 +1480,7 @@ function ExtrusionToolTaskPanel({
   return (
     <ActiveExtrusionTaskPanel
       activeTool={activeTool}
+      distanceRequest={extrusionDistanceRequest}
       featureProfileSelections={featureProfileSelections}
       onCloseTool={onCloseTool}
       onProfileRemove={onFeatureProfileRemove}
@@ -1571,6 +1582,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
     return (
       <ActiveTaskPanel
         activeTool={props.activeTool}
+        extrusionDistanceRequest={props.extrusionDistanceRequest}
         featureProfileSelections={props.featureProfileSelections}
         onFeatureProfileRemove={props.onFeatureProfileRemove}
         onFeatureProfilesClear={props.onFeatureProfilesClear}

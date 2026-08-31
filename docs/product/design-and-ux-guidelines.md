@@ -280,7 +280,8 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 Every modeling command follows `Idle -> Preview -> Validating -> Committed` or returns to `Preview` with an actionable error. The canonical state machine is defined in [UX and core flows](ux-flows.md#command-states).
 
 - Starting a command moves focus to its first incomplete requirement or parameter.
-- The task panel names the command, describes the next required selection, and shows Apply and Cancel in a stable footer.
+- The task panel names the command, describes the next required selection, and shows compact tooltip-labeled Cancel and Apply actions in a stable command header. The scrollable parameter area does not duplicate lifecycle actions in a footer.
+- A supported feature parameter that has a clear spatial meaning SHOULD expose direct viewport manipulation synchronized with its exact task-panel field. Extrude depth uses one support-normal handle; symmetric depth displays half the authored total on each side. The manipulator is disposable preview state, preserves the camera during preview rebuilds, replaces a changed expression with a literal in the active project unit, and never commits a revision until Apply.
 - Preview geometry is visually distinct from committed geometry.
 - Apply is disabled only when the UI can state why; the reason is available next to the action, not only in a tooltip.
 - Apply creates exactly one domain command and one undo entry.

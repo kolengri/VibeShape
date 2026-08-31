@@ -11,6 +11,7 @@ import {
   type DocumentSnapshot,
   type FeatureId,
   type FeatureRecord,
+  readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   type revolveFeatureParametersSchema,
   type SketchConstraintId,
@@ -43,9 +44,11 @@ import {
   updateSketch,
 } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
+import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
+  isExtrusionPartDesignTool,
   isPrimitivePartDesignTool,
 } from "../features/part-design/part-design-tool"
 import type {
@@ -156,6 +159,58 @@ type PrimitiveManipulator = Readonly<{
   position: PrimitivePlacement
 }>
 
+type ExtrusionManipulator = Readonly<{
+  direction: PrimitivePlacement
+  distance: number
+  distanceScale: number
+  featureId: FeatureId
+  origin: PrimitivePlacement
+}>
+
+function extrusionManipulatorParameters(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+  readOnly: boolean,
+) {
+  if (readOnly || !candidate || !isExtrusionPartDesignTool(activeTool)) return null
+  return readExtrusionFeatureParameters(candidate)
+}
+
+function extrusionManipulatorDistance(
+  featureId: FeatureId,
+  parameterDistance: number,
+  distanceRequest: ExtrusionDistanceRequest | null,
+) {
+  return distanceRequest?.featureId === featureId ? distanceRequest.distance : parameterDistance
+}
+
+function extrusionManipulator(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+  distanceRequest: ExtrusionDistanceRequest | null,
+  sketches: readonly SketchDisplayRecord[],
+  readOnly: boolean,
+): ExtrusionManipulator | null {
+  const parameters = extrusionManipulatorParameters(activeTool, candidate, readOnly)
+  if (!parameters || !candidate) return null
+  const sketch = sketches.find(({ sketchId }) => sketchId === parameters.profile.sketchId)
+  if (!sketch) return null
+  const distance = extrusionManipulatorDistance(
+    candidate.id,
+    parameters.distance.value,
+    distanceRequest,
+  )
+  if (!Number.isFinite(distance) || distance <= 0) return null
+  const distanceScale = parameters.symmetric ? 2 : 1
+  return {
+    direction: sketch.frame.normal,
+    distance: distance / distanceScale,
+    distanceScale,
+    featureId: candidate.id,
+    origin: sketch.frame.origin,
+  }
+}
+
 function primitiveManipulator(
   activeTool: ActivePartDesignTool | null,
   candidate: FeatureRecord | null,
@@ -192,6 +247,23 @@ function primitiveTranslationGizmoProps(
   }
 }
 
+function extrusionAxialGizmoProps(
+  manipulator: ExtrusionManipulator | null,
+  onDistanceChange: (featureId: FeatureId, distance: number) => void,
+) {
+  if (!manipulator) return {}
+  return {
+    axialGizmo: {
+      direction: manipulator.direction,
+      distance: manipulator.distance,
+      featureId: manipulator.featureId,
+      onDistanceChange: (distance: number) =>
+        onDistanceChange(manipulator.featureId, distance * manipulator.distanceScale),
+      origin: manipulator.origin,
+    },
+  }
+}
+
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
@@ -200,6 +272,7 @@ type WorkspaceContentProps = Readonly<{
       profiles: readonly SketchProfileSelector[],
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
+    onExtrusionDistanceChange: (featureId: FeatureId, distance: number) => void
     onRevolveAxisChange: (axis: RevolveAxis) => void
     onPrimitivePlacementChange: (featureId: FeatureId, position: PrimitivePlacement) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -219,6 +292,7 @@ type WorkspaceContentProps = Readonly<{
   }>
   controller: DocumentControllerState
   model: Readonly<{
+    extrusionManipulator: ExtrusionManipulator | null
     featurePreview: ReturnType<typeof useFeaturePreview>
     primitiveManipulator: PrimitiveManipulator | null
     hiddenFeatureIds: readonly FeatureId[]
@@ -364,6 +438,7 @@ function ModelingWorkspaceContent({
     <GeometryViewport
       controller={controller}
       featurePreview={model.featurePreview}
+      {...extrusionAxialGizmoProps(model.extrusionManipulator, actions.onExtrusionDistanceChange)}
       {...primitiveTranslationGizmoProps(
         model.primitiveManipulator,
         actions.onPrimitivePlacementChange,
@@ -1355,6 +1430,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
 }
 
 export type EditorWorkspaceActions = Readonly<{
+  acknowledgeExtrusionDistance: (featureId: FeatureId) => void
   beginSketchSupportReplacement: () => void
   closeTool: () => void
   createBox: () => void
@@ -1376,6 +1452,7 @@ export type EditorWorkspaceActions = Readonly<{
   selectSketchPlane: (plane: SketchRecord["plane"]) => void
   redoSketchDraft: () => void
   setFeatureVisibility: (featureId: FeatureId, visible: boolean) => void
+  setExtrusionDistance: (featureId: FeatureId, distance: number) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
@@ -1412,6 +1489,7 @@ type EditorWorkspaceProps = Readonly<{
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onSketchFinalContextChange: (visible: boolean) => void
   preselectedFeatureId: FeatureId | null
+  extrusionDistanceRequest: ExtrusionDistanceRequest | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
@@ -1646,6 +1724,46 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
   )
 }
 
+function savedProfileSelectionAction(
+  props: EditorWorkspaceProps,
+  onFeatureProfileChange: (
+    profile: SketchProfileSelector,
+    intent: ViewerSketchProfileSelectionIntent,
+  ) => void,
+) {
+  return (
+    profile: SketchProfileSelector | null,
+    profiles: readonly SketchProfileSelector[],
+    intent: ViewerSketchProfileSelectionIntent,
+  ) => {
+    if (isProfileFeatureTool(props.activeTool)) {
+      if (profile) onFeatureProfileChange(profile, intent)
+      return
+    }
+    if (profile) props.actions.selectSavedSketchProfile(profile, profiles)
+    else props.actions.setSketchSelectedProfile(null)
+  }
+}
+
+function editorSketchProfileSelection(
+  activeTool: ActivePartDesignTool | null,
+  featureProfiles: readonly SketchProfileSelector[],
+  selectedProfile: SketchProfileSelector | null,
+) {
+  if (isProfileFeatureTool(activeTool)) {
+    return { selectedProfile: featureProfiles[0] ?? null, selectedProfiles: featureProfiles }
+  }
+  return {
+    selectedProfile,
+    selectedProfiles: selectedProfile ? [selectedProfile] : [],
+  }
+}
+
+function rebuiltSketchDisplays(controller: DocumentControllerState) {
+  const rebuild = controller.report?.rebuild
+  return rebuild?.ok ? rebuild.response.sketches : []
+}
+
 function EditorContent({
   featureProfileSelections,
   featureProfileHiddenSketchIds,
@@ -1675,21 +1793,17 @@ function EditorContent({
   const { actions, activeSketchId, activeSketchTool, controller, selection, workspace } = props
   const selectedSketch =
     controller.report?.snapshot.sketches.find(({ id }) => id === activeSketchId) ?? null
+  const profileSelection = editorSketchProfileSelection(
+    props.activeTool,
+    featureProfileSelections,
+    props.sketchSelectedProfile,
+  )
   return (
     <WorkspaceContent
       actions={{
+        onExtrusionDistanceChange: actions.setExtrusionDistance,
         onSelectionChange: actions.select,
-        onSavedSketchProfileSelect: (profile, profiles, intent) => {
-          if (isProfileFeatureTool(props.activeTool)) {
-            if (profile) onFeatureProfileChange(profile, intent)
-            return
-          }
-          if (profile) {
-            actions.selectSavedSketchProfile(profile, profiles)
-            return
-          }
-          actions.setSketchSelectedProfile(null)
-        },
+        onSavedSketchProfileSelect: savedProfileSelectionAction(props, onFeatureProfileChange),
         onRevolveAxisChange,
         onPrimitivePlacementChange: actions.setPrimitivePlacement,
         onSketchDraftChange: actions.setSketchDraft,
@@ -1709,6 +1823,13 @@ function EditorContent({
       }}
       controller={controller}
       model={{
+        extrusionManipulator: extrusionManipulator(
+          props.activeTool,
+          previewFeature,
+          props.extrusionDistanceRequest,
+          rebuiltSketchDisplays(props.controller),
+          props.controller.report?.mode === "read-only",
+        ),
         featurePreview,
         primitiveManipulator: primitiveManipulator(
           props.activeTool,
@@ -1738,14 +1859,8 @@ function EditorContent({
         repairReferenceId: props.sketchRepairReferenceId,
         selectedConstraintId: props.sketchSelectedConstraintId,
         selectedEntityIds: props.sketchSelectedEntityIds,
-        selectedProfile: isProfileFeatureTool(props.activeTool)
-          ? (featureProfileSelections[0] ?? null)
-          : props.sketchSelectedProfile,
-        selectedProfiles: isProfileFeatureTool(props.activeTool)
-          ? featureProfileSelections
-          : props.sketchSelectedProfile
-            ? [props.sketchSelectedProfile]
-            : [],
+        selectedProfile: profileSelection.selectedProfile,
+        selectedProfiles: profileSelection.selectedProfiles,
         selectedSketch,
         showFinalContext: props.sketchFinalContext,
       }}
@@ -1799,6 +1914,7 @@ function EditorTaskPanel({
       onCreateSketch={actions.createSketch}
       onCreateSubtract={actions.createSubtract}
       onEditSketch={actions.editSketch}
+      extrusionDistanceRequest={props.extrusionDistanceRequest}
       onFeaturePreviewChange={onFeaturePreviewChange}
       primitivePlacementRequest={props.primitivePlacementRequest}
       onRevolveAxisChange={onRevolveAxisChange}
@@ -1863,6 +1979,13 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
   const snapshot = props.controller.report?.snapshot
   const featureProfileSelection = useProfileFeatureSelection(props.activeTool, snapshot)
+  const onFeaturePreviewChange = useCallback(
+    (feature: FeatureRecord | null) => {
+      setPreviewFeature(feature)
+      if (feature) props.actions.acknowledgeExtrusionDistance(feature.id)
+    },
+    [props.actions, setPreviewFeature],
+  )
   const revolveAxisSelection = useRevolveAxisSelection(props.activeTool, snapshot)
   const revolveSelectionPurpose = useRevolveSelectionPurpose(props.activeTool)
   const revolveAxisCandidates = useRevolveAxisCandidates(
@@ -1929,7 +2052,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           featureProfileSelections={featureProfileSelection.value}
           onFeatureProfileRemove={removeFeatureProfile}
           onFeatureProfilesClear={clearFeatureProfiles}
-          onFeaturePreviewChange={setPreviewFeature}
+          onFeaturePreviewChange={onFeaturePreviewChange}
           onRevolveAxisChange={revolveAxisSelection.setValue}
           onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
           props={props}

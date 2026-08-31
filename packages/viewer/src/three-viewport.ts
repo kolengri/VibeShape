@@ -22,6 +22,7 @@ import {
   PlaneGeometry,
   Points,
   PointsMaterial,
+  Quaternion,
   Raycaster,
   Scene,
   ShapeUtils,
@@ -52,6 +53,7 @@ const DEFAULT_VIEW_HEIGHT = 100
 const FIT_PADDING = 1.35
 const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
+const MIN_AXIAL_GIZMO_DISTANCE = 0.01
 const ORIENTATION_INSET_MARGIN = 8
 const ORIENTATION_INSET_SIZE = 80
 
@@ -184,6 +186,39 @@ export type ViewerSketchReferenceCandidate =
 
 export type ViewerVector3 = readonly [number, number, number]
 
+export type ViewerAxialGizmo = Readonly<{
+  direction: ViewerVector3
+  distance: number
+  origin: ViewerVector3
+}>
+
+function normalizedViewerDirection(direction: ViewerVector3): Vector3 | null {
+  if (!isFiniteViewerVector3(direction)) return null
+  const result = new Vector3(...direction)
+  return result.lengthSq() > 0 ? result.normalize() : null
+}
+
+export function viewerAxialGizmoHandlePosition(gizmo: ViewerAxialGizmo): ViewerVector3 | null {
+  const direction = normalizedViewerDirection(gizmo.direction)
+  if (!direction || !isFiniteViewerVector3(gizmo.origin) || !Number.isFinite(gizmo.distance)) {
+    return null
+  }
+  const position = direction.multiplyScalar(gizmo.distance).add(new Vector3(...gizmo.origin))
+  return [position.x, position.y, position.z]
+}
+
+export function viewerAxialGizmoDistance(
+  gizmo: Pick<ViewerAxialGizmo, "direction" | "origin">,
+  position: ViewerVector3,
+): number | null {
+  const direction = normalizedViewerDirection(gizmo.direction)
+  if (!direction || !isFiniteViewerVector3(gizmo.origin) || !isFiniteViewerVector3(position)) {
+    return null
+  }
+  const distance = new Vector3(...position).sub(new Vector3(...gizmo.origin)).dot(direction)
+  return Number.isFinite(distance) ? distance : null
+}
+
 /** A finite, orthonormal, right-handed sketch coordinate frame. */
 export type ViewerFrame = Readonly<{
   origin: ViewerVector3
@@ -248,6 +283,7 @@ export type GeometryViewport = Readonly<{
   setSelectionPreselection: (selection: ViewerSelection | null) => void
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   showTranslationGizmo: (position: ViewerVector3) => void
+  showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
   hideTranslationGizmo: () => void
   setStandardView: (view: ViewerStandardView) => void
   fit: () => void
@@ -337,6 +373,7 @@ export type GeometryViewportOptions = Readonly<{
     intent: ViewerSketchProfileSelectionIntent,
   ) => void
   onTranslationGizmoPositionChange?: (position: ViewerVector3) => void
+  onAxialGizmoDistanceChange?: (distance: number) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -1052,9 +1089,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     intent: ViewerSketchProfileSelectionIntent,
   ) => void
   readonly #onTranslationGizmoPositionChange: ((position: ViewerVector3) => void) | undefined
+  readonly #onAxialGizmoDistanceChange: ((distance: number) => void) | undefined
   readonly #translationPositionPublisher: ReturnType<
     typeof createLatestFramePublisher<ViewerVector3>
   >
+  readonly #axialDistancePublisher: ReturnType<typeof createLatestFramePublisher<number>>
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
@@ -1088,6 +1127,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #interactionMode: ViewerInteractionMode = "select"
   #sketchProjection: Readonly<{ bounds: ViewerSketchProjectionBounds }> | null = null
   #translationGizmoInteracting = false
+  #axialGizmo: ViewerAxialGizmo | null = null
   #skipTranslationGizmoPointerUp = false
   #orbitControlsEnabledBeforeTranslation = true
 
@@ -1118,8 +1158,12 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#onSketchProfilePreselectionChange = sketchProfileCallbacks.preselection
     this.#onSketchProfileSelectionChange = sketchProfileCallbacks.selection
     this.#onTranslationGizmoPositionChange = options.onTranslationGizmoPositionChange
+    this.#onAxialGizmoDistanceChange = options.onAxialGizmoDistanceChange
     this.#translationPositionPublisher = createLatestFramePublisher((position: ViewerVector3) =>
       this.#onTranslationGizmoPositionChange?.(position),
+    )
+    this.#axialDistancePublisher = createLatestFramePublisher((distance: number) =>
+      this.#onAxialGizmoDistanceChange?.(distance),
     )
     const context = canvas.getContext("webgl2", {
       alpha: true,
@@ -1414,7 +1458,34 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   showTranslationGizmo(position: ViewerVector3) {
     if (this.#disposed || !isFiniteViewerVector3(position)) return
+    this.#axialDistancePublisher.cancel()
+    this.#axialGizmo = null
+    this.#translationControls.setSpace("world")
+    this.#translationControls.showX = true
+    this.#translationControls.showY = true
+    this.#translationControls.showZ = true
     this.#translationObject.position.set(...position)
+    this.#translationObject.quaternion.identity()
+    this.#translationObject.updateMatrixWorld()
+    this.#translationHelper.visible = true
+    this.#translationControls.attach(this.#translationObject)
+    this.#render()
+  }
+
+  showAxialTranslationGizmo(gizmo: ViewerAxialGizmo) {
+    const position = viewerAxialGizmoHandlePosition(gizmo)
+    const direction = normalizedViewerDirection(gizmo.direction)
+    if (this.#disposed || !position || !direction) return
+    this.#translationPositionPublisher.cancel()
+    this.#axialGizmo = { ...gizmo, direction: [direction.x, direction.y, direction.z] }
+    this.#translationControls.setSpace("local")
+    this.#translationControls.showX = false
+    this.#translationControls.showY = false
+    this.#translationControls.showZ = true
+    this.#translationObject.position.set(...position)
+    this.#translationObject.quaternion.copy(
+      new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), direction),
+    )
     this.#translationObject.updateMatrixWorld()
     this.#translationHelper.visible = true
     this.#translationControls.attach(this.#translationObject)
@@ -1430,6 +1501,9 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#pointerDown = null
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
     this.#translationControls.enabled = true
+    this.#axialGizmo = null
+    this.#translationPositionPublisher.cancel()
+    this.#axialDistancePublisher.cancel()
     this.#render()
   }
 
@@ -1571,6 +1645,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     document.removeEventListener("keydown", this.#onTranslationGestureKeyDown, true)
     window.removeEventListener("blur", this.#cancelTranslationGesture)
     this.#translationPositionPublisher.cancel()
+    this.#axialDistancePublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
     this.#controls.dispose()
@@ -1916,6 +1991,27 @@ class ThreeGeometryViewport implements GeometryViewport {
   #onTranslationObjectChange = () => {
     const position = this.#translationObject.getWorldPosition(new Vector3())
     if (!position.toArray().every((value) => Number.isFinite(value))) return
+    if (this.#axialGizmo) {
+      const rawDistance = viewerAxialGizmoDistance(this.#axialGizmo, [
+        position.x,
+        position.y,
+        position.z,
+      ])
+      if (rawDistance === null) return
+      const distance = Math.max(MIN_AXIAL_GIZMO_DISTANCE, rawDistance)
+      if (distance !== rawDistance) {
+        const clampedPosition = viewerAxialGizmoHandlePosition({
+          ...this.#axialGizmo,
+          distance,
+        })
+        if (clampedPosition) {
+          this.#translationObject.position.set(...clampedPosition)
+          this.#translationObject.updateMatrixWorld()
+        }
+      }
+      this.#axialDistancePublisher.push(distance)
+      return
+    }
     this.#translationPositionPublisher.push([position.x, position.y, position.z])
   }
 
@@ -1928,6 +2024,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   #onTranslationControlsMouseUp = () => {
     this.#translationPositionPublisher.flush()
+    this.#axialDistancePublisher.flush()
     this.#translationGizmoInteracting = false
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
   }

@@ -6,6 +6,7 @@ import {
   formatDisplayArea,
   formatDisplayLength,
   normalizeExpressionWithDisplayUnit,
+  positiveDirectManipulationLengthExpression,
 } from "./document-display-units"
 
 const number = (value: number) => String(Number(value.toFixed(6)))
@@ -25,5 +26,11 @@ describe("document display units", () => {
     expect(formatDisplayLength(25.4, "in", number)).toBe("1 in")
     expect(formatDisplayArea(645.16, "in", number)).toBe("1 in²")
     expect(formatDisplayAngle(Math.PI / 2, "deg", number)).toBe("90 deg")
+  })
+
+  it("snaps positive direct manipulation to a readable project-unit step", () => {
+    expect(positiveDirectManipulationLengthExpression(20.6881479756, "mm")).toBe("20.7 mm")
+    expect(positiveDirectManipulationLengthExpression(20.6881479756, "in")).toBe("0.814 in")
+    expect(positiveDirectManipulationLengthExpression(0.001, "mm")).toBe("0.1 mm")
   })
 })

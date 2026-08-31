@@ -16,10 +16,11 @@ import {
 } from "@vibeshape/domain"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
-import { useCallback, useLayoutEffect, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultLengthExpression,
+  positiveDirectManipulationLengthExpression,
   type useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import { TanStackBooleanParameterField } from "../part-design/boolean-parameter-field"
@@ -36,6 +37,7 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import {
   ExtrusionParameterPanel,
   type ExtrusionParameterPanelCopy,
@@ -289,6 +291,7 @@ export type ExtrusionFormProps = Readonly<{
   baseRevision: number
   copy: ExtrusionFormCopy
   disabled?: boolean | undefined
+  distanceRequest?: ExtrusionDistanceRequest | null | undefined
   mode: ExtrusionFormMode
   onCancel: () => void
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
@@ -370,6 +373,26 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
       })
     },
   })
+  useEffect(() => {
+    if (props.disabled || !props.distanceRequest || props.distanceRequest.featureId !== featureId) {
+      return
+    }
+    clearSubmissionErrors()
+    form.setFieldValue(
+      "distance",
+      positiveDirectManipulationLengthExpression(
+        props.distanceRequest.distance,
+        displayUnits.length,
+      ),
+    )
+  }, [
+    clearSubmissionErrors,
+    displayUnits.length,
+    featureId,
+    form,
+    props.disabled,
+    props.distanceRequest,
+  ])
   const applyProfileSelection = useCallback(
     (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => {
       const nextProfiles = createSketchProfileSet(profiles)

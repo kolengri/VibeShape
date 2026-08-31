@@ -15,6 +15,7 @@ import {
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n"
+import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import { ExtrusionForm, type ExtrusionFormMode } from "./extrusion-form"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3601")
@@ -123,6 +124,7 @@ function renderForm(
     profiles: [profile],
   },
   onPreviewChange = vi.fn(),
+  distanceRequest?: ExtrusionDistanceRequest,
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update extrusion" } : copy
   render(
@@ -130,6 +132,7 @@ function renderForm(
       <ExtrusionForm
         baseRevision={4}
         copy={formCopy}
+        distanceRequest={distanceRequest}
         mode={mode}
         options={[
           {
@@ -152,6 +155,28 @@ function renderForm(
 afterEach(cleanup)
 
 describe("ExtrusionForm", () => {
+  it("synchronizes graphical depth into the exact distance field and preview", async () => {
+    const onPreviewChange = vi.fn()
+    renderForm(undefined, undefined, undefined, onPreviewChange, {
+      distance: 42.5,
+      featureId,
+      sequence: 1,
+    })
+
+    expect((screen.getByRole("combobox", { name: copy.distance }) as HTMLInputElement).value).toBe(
+      "42.5 mm",
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({
+            distance: expect.objectContaining({ value: 42.5 }),
+          }),
+        }),
+      ),
+    )
+  })
+
   it("publishes a debounced schema-valid draft without committing it", async () => {
     const user = userEvent.setup()
     const { onPreviewChange, onSave } = renderForm()
