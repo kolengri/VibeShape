@@ -164,8 +164,6 @@ function useSketchEditorCopy() {
     noExternalReferences: t("noExternalReferences"),
     editConstraint: t("editConstraint"),
     equal: t("equal"),
-    extrude: t("extrude"),
-    revolve: t("revolve"),
     finish: t("finish"),
     fixed: t("fixed"),
     horizontal: t("horizontal"),
@@ -1430,8 +1428,6 @@ type ActiveSketchTaskPanelState = Readonly<{
 
 type ActiveSketchTaskPanelActions = Readonly<{
   onCloseTool: () => void
-  onCreateExtrusion: () => Promise<boolean>
-  onCreateRevolve: () => Promise<boolean>
   onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
@@ -1477,8 +1473,6 @@ function ActiveSketchTaskPanel({
   } = state
   const {
     onCloseTool,
-    onCreateExtrusion,
-    onCreateRevolve,
     onDraftChange,
     onReferenceRepairChange,
     onSupportReplace,
@@ -1599,22 +1593,6 @@ function ActiveSketchTaskPanel({
     }
     onSketchSaved(draft, { profiles, selectedProfile })
   }
-  const extrude = async () => {
-    setMessage(null)
-    const succeeded = await onCreateExtrusion()
-    if (!succeeded) {
-      setMessage(activeSketchTool.kind === "edit-sketch" ? t("updateFailed") : t("createFailed"))
-    }
-    return succeeded
-  }
-  const revolve = async () => {
-    setMessage(null)
-    const succeeded = await onCreateRevolve()
-    if (!succeeded) {
-      setMessage(activeSketchTool.kind === "edit-sketch" ? t("updateFailed") : t("createFailed"))
-    }
-    return succeeded
-  }
   return (
     <aside
       aria-label={t("taskAriaLabel")}
@@ -1634,7 +1612,6 @@ function ActiveSketchTaskPanel({
             externalPointCandidates: referenceCandidates,
             externalReferenceLabels,
             missingExternalReferenceIds: sketchReferenceResolution.missingReferenceIds,
-            extrusionAvailable: selectedProfile !== null && profiles.length > 0,
             failedConstraintIds,
             message,
             profiles,
@@ -1650,9 +1627,7 @@ function ActiveSketchTaskPanel({
           actions={{
             onCancel: onCloseTool,
             onDraftChange,
-            onExtrude: extrude,
             onFinish: finish,
-            onRevolve: revolve,
             onReferenceRepairChange,
             onSupportReplace,
             onSelectedConstraintChange,
@@ -1880,8 +1855,6 @@ function SketchTaskPanel(props: TaskPanelProps) {
         }}
         actions={{
           onCloseTool: props.onCloseTool,
-          onCreateExtrusion: props.onCreateExtrusion,
-          onCreateRevolve: props.onCreateRevolve ?? (async () => false),
           onDraftChange: props.onSketchDraftChange,
           onReferenceRepairChange: props.onSketchReferenceRepairChange,
           onSupportReplace: props.onSketchSupportReplace,

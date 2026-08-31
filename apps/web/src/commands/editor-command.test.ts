@@ -49,6 +49,7 @@ function commandContext(
       createCylinder: vi.fn(),
       createDatumPlane: vi.fn(),
       createExtrusion: vi.fn(),
+      createRevolve: vi.fn(),
       createSketch: vi.fn(),
       createSubtract: vi.fn(),
       redoSketch: vi.fn(),
@@ -169,6 +170,22 @@ describe("editor command registry", () => {
     expect(extrude?.toolbarVisible).toBe(true)
     extrude?.invoke()
     expect(context.actions.createExtrusion).toHaveBeenCalledOnce()
+  })
+
+  it("offers Revolve inside an active sketch when a closed profile is selected", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      revolveAvailable: true,
+      workspace: "sketch",
+    })
+    const revolve = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.createRevolve,
+    )
+
+    expect(revolve?.eligibility).toEqual({ enabled: true })
+    expect(revolve?.toolbarVisible).toBe(true)
+    revolve?.invoke()
+    expect(context.actions.createRevolve).toHaveBeenCalledOnce()
   })
 
   it("routes the center rectangle shortcut descriptor to the trusted sketch tool handler", () => {

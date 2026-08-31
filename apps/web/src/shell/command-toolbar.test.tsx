@@ -27,6 +27,7 @@ const actions = {
   createCylinder: vi.fn(),
   createDatumPlane: vi.fn(),
   createExtrusion: vi.fn(),
+  createRevolve: vi.fn(),
   createSketch: vi.fn(),
   createSubtract: vi.fn(),
   redoSketch: vi.fn(),
@@ -54,6 +55,7 @@ function commands(overrides: Partial<BuiltInEditorCommandContext["state"]> = {})
       controller,
       extrusionAvailable: false,
       hasSavedSketches: false,
+      revolveAvailable: false,
       sketchConstruction: false,
       sketchCameraMode: "normal",
       sketchFinalContext: false,
@@ -233,5 +235,24 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+  })
+
+  it("keeps profile feature commands in the sketch toolbar", async () => {
+    const user = userEvent.setup()
+    actions.createExtrusion.mockImplementation(() => new Promise<boolean>(() => undefined))
+    renderToolbar(
+      commands({
+        activeSketchTool: { kind: "create-sketch" },
+        extrusionAvailable: true,
+        revolveAvailable: true,
+        workspace: "sketch",
+      }),
+    )
+
+    const extrude = screen.getByRole("button", { name: "Extrude" })
+    await user.dblClick(extrude)
+    expect(actions.createExtrusion).toHaveBeenCalledOnce()
+    expect(extrude.getAttribute("aria-busy")).toBe("true")
+    expect(screen.getByRole("button", { name: "Revolve" })).toBeTruthy()
   })
 })

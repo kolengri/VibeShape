@@ -460,6 +460,21 @@ function canCreateFeature(context: BuiltInEditorCommandContext) {
   return editorCommandEnabled()
 }
 
+function canCreateProfileFeature(context: BuiltInEditorCommandContext, available: boolean) {
+  const { activeSketchTool, controller } = context.state
+  if (isActiveSketchEditorTool(activeSketchTool)) {
+    if (controller.status !== "ready" || !controller.report) {
+      return editorCommandDisabled("documentUnavailable")
+    }
+    if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
+    if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
+    return available ? editorCommandEnabled() : editorCommandDisabled("selectProfile")
+  }
+  const eligibility = canCreateFeature(context)
+  if (!eligibility.enabled) return eligibility
+  return available ? editorCommandEnabled() : editorCommandDisabled("selectProfile")
+}
+
 function requiresSketch(context: BuiltInEditorCommandContext) {
   return isActiveSketchEditorTool(context.state.activeSketchTool)
     ? editorCommandEnabled()
@@ -563,24 +578,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   },
   {
     execute: ({ actions }) => actions.createExtrusion(),
-    getEligibility: (context) => {
-      const { activeSketchTool, controller } = context.state
-      if (isActiveSketchEditorTool(activeSketchTool)) {
-        if (controller.status !== "ready" || !controller.report) {
-          return editorCommandDisabled("documentUnavailable")
-        }
-        if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
-        if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
-        return context.state.extrusionAvailable
-          ? editorCommandEnabled()
-          : editorCommandDisabled("selectProfile")
-      }
-      const eligibility = canCreateFeature(context)
-      if (!eligibility.enabled) return eligibility
-      return context.state.extrusionAvailable
-        ? editorCommandEnabled()
-        : editorCommandDisabled("selectProfile")
-    },
+    getEligibility: (context) => canCreateProfileFeature(context, context.state.extrusionAvailable),
     id: editorCommandIds.createExtrusion,
     isActive: ({ state }) => state.activePartDesignCommand === "extrusion",
     isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
@@ -588,13 +586,8 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   },
   {
     execute: ({ actions }) => actions.createRevolve?.(),
-    getEligibility: (context) => {
-      const eligibility = canCreateFeature(context)
-      if (!eligibility.enabled) return eligibility
-      return context.state.revolveAvailable
-        ? editorCommandEnabled()
-        : editorCommandDisabled("selectProfile")
-    },
+    getEligibility: (context) =>
+      canCreateProfileFeature(context, context.state.revolveAvailable ?? false),
     id: editorCommandIds.createRevolve,
     isActive: ({ state }) => state.activePartDesignCommand === "revolve",
     isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",

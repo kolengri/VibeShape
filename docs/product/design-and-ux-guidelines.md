@@ -225,7 +225,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 | Undo / redo | Operates on the active sketch draft through buttons and `Ctrl/Cmd+Z`; it does not rewrite committed document history |
 | Pan / zoom | Middle or secondary drag pans; wheel or trackpad zoom targets the pointer and never changes sketch units |
 | Finish sketch | Performs one asynchronous, single-flight semantic add or update; double activation cannot create a second revision |
-| Extrude selected profile | Saves the active sketch through the same single-flight revision-checked add or update, then opens Extrude only after persistence succeeds; failure preserves the complete draft and reports the save error |
+| Extrude or Revolve from the Sketch toolbar | Uses the selected closed profile, saves the active sketch through the same single-flight revision-checked add or update, and opens the feature only after persistence succeeds; failure preserves the complete draft and reports the save error |
 | Cancel | Discards the complete draft and leaves the committed sketch unchanged |
 
 - Geometry tools MUST call shared pure domain editing operations. React components do not assemble unvalidated entity or constraint records ad hoc.
@@ -255,6 +255,7 @@ The sketch editor is a transient command surface over one analytical `SketchReco
 - Solver status, degrees of freedom, and profile measurements remain visible without covering the geometry being edited. An over-constrained result preserves the draft and names or marks every failed constraint the solver can identify.
 - Closed regions render behind entity strokes. Region activation stores a stable boundary-entity selector; transient profile indices are display-only.
 - The accessible task panel exposes every geometry tool, constraint, dimension, profile, undo, redo, Finish, and Cancel action. Pointer-free coordinate entry and canvas placement remain documented alpha accessibility limitations.
+- The sketch task footer contains only Cancel and Finish sketch. Extrude and Revolve are registered icon commands in the Sketch toolbar and command palette; they do not appear as duplicate full-width task-panel actions. When a closed profile exists, launching either command from an open sketch persists the draft first and carries its stable selector into the feature task. Finishing the sketch first remains an equivalent path.
 - Related geometry variants use one split family action. The primary icon invokes the active or last-used variant; the adjacent Radix menu exposes every variant through keyboard navigation and a localized accessible name.
 - The application shell occupies exactly the visible viewport. Model-tree and task-panel overflow scroll inside their own grid areas; adding entities or constraints never changes the sketch canvas height.
 - **Use** enables only point and edge reference picking. **Intersection** explicitly enables planar-face hover and one committed face pick, rejects parallel support before mutation, then returns the sketch tool to Select without resetting the orbit camera.

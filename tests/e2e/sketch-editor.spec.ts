@@ -29,7 +29,10 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.35)
     await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
 
-    await page.getByRole("button", { name: "Extrude selected profile", exact: true }).click()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+      .click()
     const extrusionForm = page.getByRole("form", { name: "Extrude profile" })
     await expect(extrusionForm).toBeVisible()
     await extrusionForm.getByRole("button", { name: "Create extrusion", exact: true }).click()
@@ -3030,7 +3033,10 @@ test.describe("full sketch editor", () => {
 
     await expect(page.getByText("Fully constrained", { exact: true })).toBeVisible()
     await expect(page.getByText("Profile: 960 mm² · 136 mm perimeter")).toBeVisible()
-    await page.getByRole("button", { name: "Extrude selected profile" }).dblclick()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Extrude", exact: true })
+      .dblclick()
     await expect(page.getByRole("form", { name: "Extrude profile" })).toBeVisible()
     await page.getByRole("button", { name: "Cancel" }).click()
 
