@@ -53,8 +53,11 @@ import {
 import {
   applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
+  applyExternalModelPierceCandidate,
   availableExternalModelGeometryCandidates,
+  availableExternalModelPierceCandidates,
   type ExternalModelGeometryCandidate,
+  type ExternalModelGeometryRecord,
   externalModelCurveLabelKind,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
@@ -191,11 +194,13 @@ function SketchWorkspaceContent({
   externalModelCandidates,
   externalPointCandidates,
   pierceCandidates,
+  modelPierceCandidateCount,
   frame,
 }: Pick<WorkspaceContentProps, "actions" | "controller" | "model" | "sketch"> & {
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   pierceCandidates: readonly ExternalSketchPierceCandidate[]
+  modelPierceCandidateCount: number
   externalContextGeometry: readonly ExternalSketchContextGeometry[]
   onDisplayChange: (display: SketchDisplayRecord | null) => void
   supportFeatures: readonly FeatureRecord[]
@@ -211,7 +216,7 @@ function SketchWorkspaceContent({
         externalContextGeometry,
         externalModelCandidates,
         externalPointCandidates,
-        pierceCandidateCount: pierceCandidates.length,
+        pierceCandidateCount: pierceCandidates.length + modelPierceCandidateCount,
         originPlaneVisibility: model.originPlaneVisibility,
         repairReferenceId: sketch.repairReferenceId,
         selectedConstraintId: sketch.selectedConstraintId,
@@ -722,8 +727,47 @@ function useSelectExternalGeometry(
   )
 }
 
+function selectedModelPierceDraft(
+  modelCandidates: readonly ExternalModelGeometryCandidate[],
+  modelGeometryRecords: readonly ExternalModelGeometryRecord[],
+  draft: SketchRecord,
+  hit: Extract<ViewerSketchReferenceCandidate, { kind: "model-line" }>,
+  selectedEntityIds: readonly SketchEntityId[],
+  repairReferenceId: SketchExternalReferenceId | null,
+) {
+  const candidate = modelCandidates.find(
+    (value): value is Extract<ExternalModelGeometryCandidate, { kind: "model-line" }> =>
+      value.kind === "model-line" &&
+      value.candidateId === hit.candidateId &&
+      value.featureId === hit.featureId,
+  )
+  if (!candidate?.piercePoint) return draft
+  return repairReferenceId
+    ? applyExternalModelCandidateSelection(draft, candidate, selectedEntityIds, repairReferenceId)
+    : applyExternalModelPierceCandidate(draft, candidate, selectedEntityIds, modelGeometryRecords)
+}
+
+function selectedSketchPierceDraft(
+  candidates: readonly ExternalSketchPierceCandidate[],
+  draft: SketchRecord,
+  hit: Extract<ViewerSketchReferenceCandidate, { kind: "line" }>,
+  selectedEntityIds: readonly SketchEntityId[],
+  repairReferenceId: SketchExternalReferenceId | null,
+) {
+  const candidate = candidates.find(
+    (value) =>
+      value.sourceSketchId === hit.sourceSketchId && value.sourceLineId === hit.sourceLineId,
+  )
+  if (!candidate) return draft
+  return repairReferenceId
+    ? applyExternalSketchCandidateSelection(draft, candidate, selectedEntityIds, repairReferenceId)
+    : applyExternalSketchPierceCandidate(draft, candidate, selectedEntityIds)
+}
+
 function useSelectPierce(
   candidates: readonly ExternalSketchPierceCandidate[],
+  modelCandidates: readonly ExternalModelGeometryCandidate[],
+  modelGeometryRecords: readonly ExternalModelGeometryRecord[],
   draft: SketchRecord | null,
   selectedEntityIds: readonly SketchEntityId[],
   onDraftChange: (draft: SketchRecord) => void,
@@ -732,25 +776,40 @@ function useSelectPierce(
 ) {
   return useCallback(
     (hit: ViewerSketchReferenceCandidate) => {
-      if (!draft || hit.kind !== "line") return
-      const candidate = candidates.find(
-        (value) =>
-          value.sourceSketchId === hit.sourceSketchId && value.sourceLineId === hit.sourceLineId,
-      )
-      if (!candidate) return
-      const next = repairReferenceId
-        ? applyExternalSketchCandidateSelection(
-            draft,
-            candidate,
-            selectedEntityIds,
-            repairReferenceId,
-          )
-        : applyExternalSketchPierceCandidate(draft, candidate, selectedEntityIds)
+      if (!draft) return
+      const next =
+        hit.kind === "model-line"
+          ? selectedModelPierceDraft(
+              modelCandidates,
+              modelGeometryRecords,
+              draft,
+              hit,
+              selectedEntityIds,
+              repairReferenceId,
+            )
+          : hit.kind === "line"
+            ? selectedSketchPierceDraft(
+                candidates,
+                draft,
+                hit,
+                selectedEntityIds,
+                repairReferenceId,
+              )
+            : draft
       if (next === draft) return
       onDraftChange(next)
       onEditorToolChange("select")
     },
-    [candidates, draft, onDraftChange, onEditorToolChange, repairReferenceId, selectedEntityIds],
+    [
+      candidates,
+      draft,
+      modelCandidates,
+      modelGeometryRecords,
+      onDraftChange,
+      onEditorToolChange,
+      repairReferenceId,
+      selectedEntityIds,
+    ],
   )
 }
 
@@ -806,6 +865,7 @@ function WorkspaceContentView({
   externalModelCandidates,
   externalPointCandidates,
   pierceCandidates,
+  modelPierceCandidateCount,
   frame,
   props,
   sketchActive,
@@ -821,6 +881,7 @@ function WorkspaceContentView({
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   pierceCandidates: readonly ExternalSketchPierceCandidate[]
+  modelPierceCandidateCount: number
   props: WorkspaceContentProps
   sketchActive: boolean
   sketchContext: GeometryViewportSketchContext | undefined
@@ -860,6 +921,7 @@ function WorkspaceContentView({
           externalModelCandidates={externalModelCandidates}
           externalPointCandidates={externalPointCandidates}
           pierceCandidates={pierceCandidates}
+          modelPierceCandidateCount={modelPierceCandidateCount}
         />
       }
       sketchActive={sketchActive}
@@ -1020,6 +1082,21 @@ function useWorkspaceModelGeometry({
     frame,
     visibleModelFeatureIds,
   )
+  const modelGeometryRecords = props.controller.report?.rebuild.ok
+    ? props.controller.report.rebuild.response.geometry
+    : []
+  const modelPierceCandidates = useMemo(
+    () =>
+      frame && props.sketch.draft
+        ? availableExternalModelPierceCandidates(
+            projectedCandidates,
+            props.sketch.draft,
+            props.sketch.repairReferenceId,
+            frame,
+          )
+        : [],
+    [frame, projectedCandidates, props.sketch.draft, props.sketch.repairReferenceId],
+  )
   return {
     externalModelCandidates: useAvailableWorkspaceModelCandidates(
       props.controller,
@@ -1027,6 +1104,8 @@ function useWorkspaceModelGeometry({
       projectedCandidates,
       props.sketch.repairReferenceId,
     ),
+    modelGeometryRecords,
+    modelPierceCandidates,
     offerFinalContext: shouldOfferSketchFinalContext({
       finalModelAvailable,
       rollbackFeatureCount: rollbackVisibility.featureIds.length,
@@ -1038,6 +1117,8 @@ function useWorkspaceModelGeometry({
 
 function useWorkspaceReferenceSelection({
   externalModelCandidates,
+  modelGeometryRecords,
+  modelPierceCandidates,
   externalPointCandidates,
   pierceCandidates,
   frame,
@@ -1045,27 +1126,39 @@ function useWorkspaceReferenceSelection({
   sketchActive,
 }: Readonly<{
   externalModelCandidates: readonly ExternalModelGeometryCandidate[]
+  modelGeometryRecords: readonly ExternalModelGeometryRecord[]
+  modelPierceCandidates: readonly ExternalModelGeometryCandidate[]
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
   pierceCandidates: readonly ExternalSketchPierceCandidate[]
   frame: SupportFrame | null
   props: WorkspaceContentProps
   sketchActive: boolean
 }>) {
+  const modelUseCandidates = useMemo(
+    () =>
+      externalModelCandidates.filter(
+        (candidate) => candidate.kind !== "model-line" || candidate.projectable !== false,
+      ),
+    [externalModelCandidates],
+  )
   const projectionStore = useSketchProjectionStoreApi()
   const viewerPointCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
     () => [
       ...externalPointCandidates.map(viewerReferenceCandidate),
-      ...externalModelCandidates.map(viewerModelReferenceCandidate),
+      ...modelUseCandidates.map(viewerModelReferenceCandidate),
     ],
-    [externalModelCandidates, externalPointCandidates],
+    [externalPointCandidates, modelUseCandidates],
   )
   const viewerPierceCandidates = useMemo<readonly ViewerSketchReferenceCandidate[]>(
-    () => pierceCandidates.map(viewerReferenceCandidate),
-    [pierceCandidates],
+    () => [
+      ...pierceCandidates.map(viewerReferenceCandidate),
+      ...modelPierceCandidates.map(viewerModelReferenceCandidate),
+    ],
+    [modelPierceCandidates, pierceCandidates],
   )
   const selectExternalPoint = useSelectExternalGeometry(
     externalPointCandidates,
-    externalModelCandidates,
+    modelUseCandidates,
     props.sketch.draft,
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
@@ -1081,6 +1174,8 @@ function useWorkspaceReferenceSelection({
   )
   const selectPierce = useSelectPierce(
     pierceCandidates,
+    modelPierceCandidates,
+    modelGeometryRecords,
     props.sketch.draft,
     props.sketch.selectedEntityIds,
     props.actions.onSketchDraftChange,
@@ -1148,9 +1243,18 @@ function WorkspaceContent(props: WorkspaceContentProps) {
   const pierceCandidates = availableExternalSketchPierceCandidates(
     sketchGeometry.pierceCandidates,
     props.sketch.draft,
+    props.sketch.repairReferenceId,
   )
+  const externalModelUseCandidates = modelGeometry.externalModelCandidates.filter(
+    (candidate) => candidate.kind !== "model-line" || candidate.projectable !== false,
+  )
+  const modelPierceCandidateCount = sketchGeometry.frame
+    ? modelGeometry.modelPierceCandidates.length
+    : 0
   const sketchReferenceContext = useWorkspaceReferenceSelection({
     externalModelCandidates: modelGeometry.externalModelCandidates,
+    modelGeometryRecords: modelGeometry.modelGeometryRecords,
+    modelPierceCandidates: modelGeometry.modelPierceCandidates,
     externalPointCandidates,
     pierceCandidates,
     frame: sketchGeometry.frame,
@@ -1164,9 +1268,10 @@ function WorkspaceContent(props: WorkspaceContentProps) {
       activeSketchDisplay={activeSketchDisplay}
       editVisibility={sketchGeometry.displayVisibility}
       externalContextGeometry={sketchGeometry.externalContextGeometry}
-      externalModelCandidates={modelGeometry.externalModelCandidates}
+      externalModelCandidates={externalModelUseCandidates}
       externalPointCandidates={externalPointCandidates}
       pierceCandidates={pierceCandidates}
+      modelPierceCandidateCount={modelPierceCandidateCount}
       props={props}
       sketchActive={sketchGeometry.sketchActive}
       sketchContext={sketchContext}

@@ -21,6 +21,7 @@ import type {
   SketchExternalModelCurveReference,
   SketchExternalModelIntersectionReference,
   SketchExternalModelLineReference,
+  SketchExternalModelPiercePointReference,
   SketchExternalModelPointReference,
   SketchExternalModelReference,
   SketchExternalPiercePointReference,
@@ -259,6 +260,7 @@ function resolvedModelCandidateWithRecord(
   reference:
     | SketchExternalModelPointReference
     | SketchExternalModelLineReference
+    | SketchExternalModelPiercePointReference
     | SketchExternalModelCurveReference
     | SketchExternalModelIntersectionReference,
   lookup: FeatureGeometryLookup | undefined,
@@ -290,6 +292,7 @@ function resolvedModelCandidate(
   reference:
     | SketchExternalModelPointReference
     | SketchExternalModelLineReference
+    | SketchExternalModelPiercePointReference
     | SketchExternalModelCurveReference,
   lookup: FeatureGeometryLookup | undefined,
 ) {
@@ -348,6 +351,35 @@ function resolveExternalModelLine(
       startPointId: reference.projectedStartPointId,
       endPointId: reference.projectedEndPointId,
     },
+  }
+}
+
+function resolveExternalModelPiercePoint(
+  reference: SketchExternalModelPiercePointReference,
+  targetFrame: SupportFrame,
+  lookup: FeatureGeometryLookup | undefined,
+): NonNullable<SketchCompilationInput["externalPoints"]>[number] {
+  const candidate = resolvedModelCandidate(reference, lookup)
+  if (
+    candidate.kind !== "edge" ||
+    candidate.signature.geometryClass !== "LINE" ||
+    candidate.referenceGeometry?.kind !== "line-edge"
+  ) {
+    throw new Error(`External model Pierce ${reference.id} has mismatched geometry.`)
+  }
+  const point = intersectBoundedLineWithSupportPlane(
+    candidate.referenceGeometry.start,
+    candidate.referenceGeometry.end,
+    targetFrame,
+  )
+  if (!point)
+    throw new Error(`External model line ${reference.id} does not pierce the target support.`)
+  return {
+    schemaVersion: 0,
+    id: reference.projectedPointId,
+    type: "point",
+    construction: true,
+    ...point,
   }
 }
 
@@ -643,6 +675,7 @@ type ExternalReference = NonNullable<SketchRecord["externalReferences"]>[number]
 type ExternalLiveModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
+  | SketchExternalModelPiercePointReference
   | SketchExternalModelCurveReference
   | SketchExternalModelIntersectionReference
 type ExternalModelReference = SketchExternalModelReference
@@ -808,6 +841,12 @@ async function resolveExternalModelReference(
   }
   if (reference.kind === "model-line") {
     return { kind: "line", value: resolveExternalModelLine(reference, targetFrame, geometryLookup) }
+  }
+  if (reference.kind === "model-pierce-point") {
+    return {
+      kind: "point",
+      value: resolveExternalModelPiercePoint(reference, targetFrame, geometryLookup),
+    }
   }
   if (reference.kind === "model-curve") {
     return {

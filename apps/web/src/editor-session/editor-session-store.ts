@@ -498,9 +498,11 @@ export function createEditorSessionStore() {
               ({ id }) => id === referenceId,
             )
             if (!reference || reference.kind === "model-intersection") return
-            state.sketch.editorTool = reference.kind === "pierce-point" ? "pierce" : "use"
+            const pierce =
+              reference.kind === "pierce-point" || reference.kind === "model-pierce-point"
+            state.sketch.editorTool = pierce ? "pierce" : "use"
             state.sketch.repairReferenceId = referenceId
-            if (reference.kind === "pierce-point") {
+            if (pierce) {
               state.sketch.cameraMode = "orbit"
               state.sketch.showFinalContext = false
             }

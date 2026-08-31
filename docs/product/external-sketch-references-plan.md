@@ -87,12 +87,13 @@ perimeter; parallel-offset, tilted,
 and ambiguous candidates remain available only to explicit compatible workflows or fail closed. The exact
 center of an eligible model circle or arc is also a passive point candidate; acceptance materializes the
 curve reference and relates the local point to the curve's stable projected center identity. An explicit
-selection-first **Pierce** tool accepts exactly one authored point and one visible earlier-sketch line whose
-finite world-space segment crosses the active support transversely. It persists the source sketch and line
-identities plus one projected point identity, attaches Coincident, and recomputes the exact crossing from
-the current solved source on every authoritative solve. Parallel, coplanar, degenerate, non-finite, and
-outside-segment inputs fail closed. Repair keeps the projected identity and reuses the graphical 3D line
-picker. General surfaces, multi-curve results, curved or model-edge Pierce, non-coplanar model-curve wake-up,
+selection-first **Pierce** tool accepts exactly one authored point and one visible earlier-sketch line or stable
+linear model edge whose finite world-space segment crosses the active support transversely. It persists the
+source sketch and line identities or stable model `EdgeTopoRef` plus one projected point identity, attaches
+Coincident, and recomputes the exact crossing from the current solved source or resolved model edge on every
+authoritative solve. Parallel, coplanar, degenerate, non-finite, and outside-segment inputs fail closed. Repair
+keeps the projected identity and reuses the graphical 3D line picker. General surfaces, multi-curve results,
+curved Pierce, non-coplanar model-curve wake-up,
 spline and other non-analytical model edges, and sketch-source repair UI are not
 implemented. Normal-view Select and Use
 provide the same bounded labeled chooser when candidates overlap, while orbit selection provides bounded
@@ -113,8 +114,9 @@ The product exposes three explicit tools in the active sketch:
 - **Direct Select / Use external geometry**: select one eligible visible source sketch entity or projected
   feature edge directly in Select, or keep Use active for repeated projection and repair, and project it to
   the active sketch frame through the same stable candidate broker.
-- **Pierce to external line**: preselect one authored point, then choose one visible earlier-sketch line in
-  the orbitable 3D context to constrain that point to the exact bounded line/active-support crossing.
+- **Pierce to external line**: preselect one authored point, then choose one visible earlier-sketch line or
+  stable linear model edge in the orbitable 3D context to constrain that point to the exact bounded
+  line/active-support crossing.
 - **Intersect geometry**: select one supported feature face or surface and create its intersection with
   the active sketch plane.
 - **External inference**: while placing or dragging authored geometry, show an external candidate and
@@ -196,9 +198,10 @@ cannot alter evaluation order.
    model-reference schemas, progressive rebuild, fail-closed worker resolution, and graphical normal/orbit
    candidate selection plus a normal-view overlap chooser are implemented. Add non-circular curved edges, 3D overlap disambiguation, grave-accent cycling, source filters, and
    repair diagnostics.
-5. **Intersection and Pierce**: one planar face to one bounded linear section and one earlier-sketch line to
-   one exact transverse Pierce point are implemented with graphical 3D selection. Add analytical curved and
-   multi-segment face/surface results plus curved and model-edge Pierce without approximating display meshes.
+5. **Intersection and Pierce**: one planar face to one bounded linear section plus earlier-sketch lines and
+   stable linear model edges to one exact transverse Pierce point are implemented with graphical 3D selection.
+   Add analytical curved and multi-segment face/surface results plus curved Pierce without approximating display
+   meshes.
 6. **Derived/master-model links**: address separate Part Studios, external documents, version/workspace
    locking, update policy, and permissions as a later architectural slice.
 

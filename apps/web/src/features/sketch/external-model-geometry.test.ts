@@ -13,8 +13,11 @@ import {
   applyExternalModelCandidate,
   applyExternalModelCandidateSelection,
   applyExternalModelIntersection,
+  applyExternalModelPierceCandidate,
   availableExternalModelGeometryCandidates,
+  availableExternalModelPierceCandidates,
   externalModelGeometryCandidates,
+  externalModelPierceCandidates,
   externalModelReferenceLabels,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
@@ -704,6 +707,191 @@ describe("external model reference labels", () => {
 })
 
 describe("apply external model candidate", () => {
+  it("offers only exact bounded model-edge crossings for Pierce, including normal edges", () => {
+    const candidates = projectExternalModelGeometryCandidates(
+      [
+        geometryRecord(featureId, [
+          lineCandidate("normal-crossing", [2, 3, -5], [2, 3, 5]),
+          lineCandidate("parallel", [-5, 0, 2], [5, 0, 2]),
+          lineCandidate("coplanar", [-5, 0, 0], [5, 0, 0]),
+          lineCandidate("outside-segment", [0, 0, 2], [0, 0, 5]),
+        ]),
+      ],
+      features as never,
+      [featureId],
+      targetFrame,
+      labels,
+    )
+    const normal = candidates.find(
+      (candidate) => candidate.kind === "model-line" && candidate.candidateId === "normal-crossing",
+    )
+    expect(normal).toMatchObject({ kind: "model-line", projectable: false })
+    expect(externalModelPierceCandidates(candidates, targetFrame)).toEqual([
+      expect.objectContaining({
+        candidateId: "normal-crossing",
+        piercePoint: { world: [2, 3, 0], x: 2, y: 3 },
+      }),
+    ])
+  })
+
+  it("persists one stable model Pierce source per edge and attaches the selected point", () => {
+    const candidates = externalModelPierceCandidates(
+      projectExternalModelGeometryCandidates(
+        [
+          geometryRecord(featureId, [
+            lineCandidate("edge-a", [-2, 0, -1], [2, 0, 1]),
+            lineCandidate("edge-b", [-2, 4, -1], [2, 4, 1]),
+          ]),
+        ],
+        features as never,
+        [featureId],
+        targetFrame,
+        labels,
+      ),
+      targetFrame,
+    )
+    const first = candidates[0]
+    const second = candidates[1]
+    if (!first || !second) throw new Error("Two exact model Pierce candidates are required.")
+
+    const records = [
+      geometryRecord(featureId, [
+        lineCandidate("edge-a", [-2, 0, -1], [2, 0, 1]),
+        lineCandidate("edge-b", [-2, 4, -1], [2, 4, 1]),
+      ]),
+    ]
+    const once = applyExternalModelPierceCandidate(draft(), first, [selectedPointId], records)
+    const repeated = applyExternalModelPierceCandidate(once, first, [selectedPointId], records)
+    const twice = sketchRecordSchema.parse(
+      applyExternalModelPierceCandidate(repeated, second, [selectedPointId], records),
+    )
+    const references = twice.externalReferences?.filter(
+      (reference) => reference.kind === "model-pierce-point",
+    )
+
+    expect(repeated.externalReferences).toHaveLength(1)
+    expect(references).toHaveLength(2)
+    expect(references?.map(({ reference }) => reference.semanticRole)).toEqual([
+      "edge:edge-a",
+      "edge:edge-b",
+    ])
+    expect(JSON.stringify(references)).not.toContain("candidateId")
+    expect(JSON.stringify(references)).not.toContain("piercePoint")
+    expect(twice.constraints).toContainEqual(
+      expect.objectContaining({
+        type: "coincident",
+        firstPointId: selectedPointId,
+        secondPointId: references?.[0]?.projectedPointId,
+      }),
+    )
+  })
+
+  it("keeps a used edge available for Pierce and Pierce repair", () => {
+    const source = lineCandidate("shared-edge", [-2, 0, -1], [2, 0, 1])
+    const records = [geometryRecord(featureId, [source])]
+    const projected = projectExternalModelGeometryCandidates(
+      records,
+      features as never,
+      [featureId],
+      targetFrame,
+      labels,
+    )
+    const line = projected[0]
+    if (line?.kind !== "model-line") throw new Error("A model line candidate is required.")
+    const used = applyExternalModelCandidate(draft(), line, [])
+
+    expect(availableExternalModelGeometryCandidates(projected, records, used)).toEqual([])
+    expect(availableExternalModelPierceCandidates(projected, used, null, targetFrame)).toHaveLength(
+      1,
+    )
+
+    const pierce = externalModelPierceCandidates(projected, targetFrame)[0]
+    if (!pierce) throw new Error("A model Pierce candidate is required.")
+    const pierced = applyExternalModelPierceCandidate(used, pierce, [selectedPointId], records)
+    const pierceReference = pierced.externalReferences?.find(
+      (reference) => reference.kind === "model-pierce-point",
+    )
+    expect(
+      availableExternalModelPierceCandidates(
+        projected,
+        pierced,
+        pierceReference?.id ?? null,
+        targetFrame,
+      ),
+    ).toHaveLength(1)
+  })
+
+  it("reuses a uniquely resolved signature-only Pierce reference", () => {
+    const source = lineCandidate("signature-edge", [-2, 0, -1], [2, 0, 1])
+    delete source.semanticRole
+    const records = [geometryRecord(featureId, [source])]
+    const candidate = externalModelPierceCandidates(
+      projectExternalModelGeometryCandidates(
+        records,
+        features as never,
+        [featureId],
+        targetFrame,
+        labels,
+      ),
+      targetFrame,
+    )[0]
+    if (!candidate) throw new Error("A signature-resolved Pierce candidate is required.")
+
+    const once = applyExternalModelPierceCandidate(draft(), candidate, [selectedPointId], records)
+    const repeated = applyExternalModelPierceCandidate(once, candidate, [selectedPointId], records)
+
+    expect(repeated.externalReferences).toHaveLength(1)
+    expect(repeated.constraints).toHaveLength(1)
+  })
+
+  it("repairs a model Pierce reference with a compatible line while preserving its point ID", () => {
+    const original = lineCandidate("original-pierce", [-2, 0, -1], [2, 0, 1])
+    const replacement = lineCandidate("replacement-pierce", [-2, 4, -1], [2, 4, 1])
+    const referenceId = "0195b5ac-b220-7a2c-8c33-000000005060"
+    const projectedPointId = "0195b5ac-b220-7a2c-8c33-000000005061"
+    const sketch = draft([
+      {
+        schemaVersion: 0,
+        id: referenceId,
+        kind: "model-pierce-point",
+        reference: {
+          schemaVersion: 0,
+          featureId,
+          kind: "edge",
+          semanticRole: original.semanticRole,
+          signature: original.signature,
+        },
+        projectedPointId,
+      },
+    ])
+    const candidates = projectExternalModelGeometryCandidates(
+      [geometryRecord(featureId, [replacement])],
+      features as never,
+      [featureId],
+      targetFrame,
+      labels,
+    )
+    const compatible = repairExternalModelGeometryCandidates(
+      candidates,
+      sketch,
+      referenceId as never,
+    )
+    expect(compatible).toHaveLength(1)
+    const candidate = compatible[0]
+    if (!candidate) throw new Error("A model Pierce repair candidate is required.")
+    const repaired = applyExternalModelCandidateSelection(
+      sketch,
+      candidate,
+      [selectedPointId],
+      referenceId as never,
+    )
+    expect(repaired.externalReferences?.[0]).toMatchObject({
+      kind: "model-pierce-point",
+      projectedPointId,
+      reference: candidate.reference,
+    })
+  })
+
   it("limits repair to compatible geometry from the same feature and preserves projected IDs", () => {
     const original = lineCandidate("original", [0, 0, 0], [10, 0, 0])
     const replacement = lineCandidate("replacement", [0, 5, 0], [10, 5, 0])

@@ -48,6 +48,8 @@ function modelReplacement(reference: SketchExternalModelReference) {
     return { kind: reference.kind, reference: reference.reference } as const
   if (reference.kind === "model-line")
     return { kind: reference.kind, reference: reference.reference } as const
+  if (reference.kind === "model-pierce-point")
+    return { kind: reference.kind, reference: reference.reference } as const
   if (reference.kind === "model-intersection")
     return { kind: reference.kind, reference: reference.reference } as const
   return {

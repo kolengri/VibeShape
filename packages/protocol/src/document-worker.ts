@@ -15,7 +15,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 16 as const
+export const DOCUMENT_PROTOCOL_VERSION = 17 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256

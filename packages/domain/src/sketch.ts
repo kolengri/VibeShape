@@ -215,6 +215,17 @@ export const sketchExternalModelIntersectionReferenceSchema = z
     message: "A projected model intersection requires distinct endpoint IDs.",
   })
 
+/** A read-only point where one stable linear model edge crosses the sketch support plane. */
+export const sketchExternalModelPiercePointReferenceSchema = z
+  .object({
+    schemaVersion: z.literal(0),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-pierce-point"),
+    reference: edgeTopoRefSchema,
+    projectedPointId: sketchEntityIdSchema,
+  })
+  .strict()
+
 const deletedFeatureSourceSchema = z
   .object({ kind: z.literal("deleted-feature"), featureId: featureIdSchema })
   .strict()
@@ -297,6 +308,20 @@ const sketchExternalModelIntersectionOrphanSchema = z
     message: "An orphaned model reference must retain its source feature identity.",
   })
 
+const sketchExternalModelPiercePointOrphanSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    id: sketchExternalReferenceIdSchema,
+    kind: z.literal("model-pierce-point"),
+    reference: edgeTopoRefSchema,
+    projectedPointId: sketchEntityIdSchema,
+    orphanedSource: deletedFeatureSourceSchema,
+  })
+  .strict()
+  .refine((reference) => reference.orphanedSource.featureId === reference.reference.featureId, {
+    message: "An orphaned model reference must retain its source feature identity.",
+  })
+
 const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalPointReferenceSchema,
   sketchExternalLineReferenceSchema,
@@ -306,6 +331,7 @@ const sketchExternalReferenceSchemaV0 = z.union([
   sketchExternalModelLineReferenceSchema,
   sketchExternalModelCurveReferenceSchema,
   sketchExternalModelIntersectionReferenceSchema,
+  sketchExternalModelPiercePointReferenceSchema,
 ])
 
 export const sketchExternalReferenceSchema = z.union([
@@ -314,6 +340,7 @@ export const sketchExternalReferenceSchema = z.union([
   sketchExternalModelLineOrphanSchema,
   sketchExternalModelCurveOrphanSchema,
   sketchExternalModelIntersectionOrphanSchema,
+  sketchExternalModelPiercePointOrphanSchema,
 ])
 
 export type SketchExternalPointReference = Readonly<
@@ -340,6 +367,9 @@ export type SketchExternalModelCurveReference = Readonly<
 export type SketchExternalModelIntersectionReference = Readonly<
   z.infer<typeof sketchExternalModelIntersectionReferenceSchema>
 >
+export type SketchExternalModelPiercePointReference = Readonly<
+  z.infer<typeof sketchExternalModelPiercePointReferenceSchema>
+>
 export type SketchExternalModelPointOrphanReference = Readonly<
   z.infer<typeof sketchExternalModelPointOrphanSchema>
 >
@@ -352,17 +382,22 @@ export type SketchExternalModelCurveOrphanReference = Readonly<
 export type SketchExternalModelIntersectionOrphanReference = Readonly<
   z.infer<typeof sketchExternalModelIntersectionOrphanSchema>
 >
+export type SketchExternalModelPiercePointOrphanReference = Readonly<
+  z.infer<typeof sketchExternalModelPiercePointOrphanSchema>
+>
 export type SketchExternalReference = Readonly<z.infer<typeof sketchExternalReferenceSchema>>
 export type SketchExternalOrphanedModelReference =
   | SketchExternalModelPointOrphanReference
   | SketchExternalModelLineOrphanReference
   | SketchExternalModelCurveOrphanReference
   | SketchExternalModelIntersectionOrphanReference
+  | SketchExternalModelPiercePointOrphanReference
 export type SketchExternalModelReference =
   | SketchExternalModelPointReference
   | SketchExternalModelLineReference
   | SketchExternalModelCurveReference
   | SketchExternalModelIntersectionReference
+  | SketchExternalModelPiercePointReference
   | SketchExternalOrphanedModelReference
 
 export function isSketchExternalModelReference(
@@ -371,6 +406,7 @@ export function isSketchExternalModelReference(
   return (
     reference.kind === "model-point" ||
     reference.kind === "model-line" ||
+    reference.kind === "model-pierce-point" ||
     reference.kind === "model-curve" ||
     reference.kind === "model-intersection"
   )
@@ -821,6 +857,9 @@ export function projectedExternalSketchEntities(
         ...reference.projectedPointIds.map(projectedExternalPoint),
         projectedExternalCurve(reference),
       ]
+    }
+    if (reference.kind === "model-pierce-point") {
+      return [projectedExternalPoint(reference.projectedPointId)]
     }
     if (
       reference.kind !== "line" &&

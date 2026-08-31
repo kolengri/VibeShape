@@ -16,6 +16,7 @@ import {
   type SketchExternalModelCurveReference,
   type SketchExternalModelIntersectionReference,
   type SketchExternalModelLineReference,
+  type SketchExternalModelPiercePointReference,
   type SketchExternalModelPointReference,
   type SketchExternalModelReference,
   type SketchExternalPiercePointReference,
@@ -54,6 +55,7 @@ export type SketchExternalReferenceReplacement =
       Pick<SketchExternalModelCurveReference, "kind" | "projectedType" | "reference" | "sourceType">
     >
   | Readonly<Pick<SketchExternalModelIntersectionReference, "kind" | "reference">>
+  | Readonly<Pick<SketchExternalModelPiercePointReference, "kind" | "reference">>
 
 export type SketchPointTarget =
   | Readonly<{ kind: "existing"; pointId: SketchEntityId }>
@@ -2682,7 +2684,7 @@ function replaceSketchBackedExternalReference(
 
 function modelReferenceGeometryClass(reference: SketchExternalModelReference) {
   if (reference.kind === "model-point") return "POINT"
-  if (reference.kind === "model-line") return "LINE"
+  if (reference.kind === "model-line" || reference.kind === "model-pierce-point") return "LINE"
   if (reference.kind === "model-curve") {
     return reference.sourceType === "circle" || reference.sourceType === "arc"
       ? "CIRCLE"
@@ -2727,6 +2729,21 @@ function modelLineReferenceWithReplacement(
     projectedLineId: reference.projectedLineId,
     projectedStartPointId: reference.projectedStartPointId,
     projectedEndPointId: reference.projectedEndPointId,
+  }
+}
+
+function modelPiercePointReferenceWithReplacement(
+  reference: Extract<SketchExternalModelReference, { kind: "model-pierce-point" }>,
+  replacement: SketchExternalReferenceReplacement,
+): SketchExternalModelPiercePointReference {
+  if (replacement.kind !== "model-pierce-point")
+    return modelReferenceKindMismatch(reference, replacement)
+  return {
+    schemaVersion: 0,
+    id: reference.id,
+    kind: reference.kind,
+    reference: replacement.reference,
+    projectedPointId: reference.projectedPointId,
   }
 }
 
@@ -2782,6 +2799,8 @@ function modelReferenceWithReplacement(
     return modelPointReferenceWithReplacement(reference, replacement)
   if (reference.kind === "model-line")
     return modelLineReferenceWithReplacement(reference, replacement)
+  if (reference.kind === "model-pierce-point")
+    return modelPiercePointReferenceWithReplacement(reference, replacement)
   if (reference.kind === "model-intersection")
     return modelIntersectionReferenceWithReplacement(reference, replacement)
   return modelCurveReferenceWithReplacement(reference, replacement)

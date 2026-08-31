@@ -1,4 +1,5 @@
 import type { FeatureGeometryRecord } from "@vibeshape/application/feature-rebuild"
+import { intersectBoundedLineWithSupportPlane } from "@vibeshape/application/pierce-point"
 import {
   type ProjectedSketchCurve,
   projectWorldCircularEdgeToSupport,
@@ -8,7 +9,11 @@ import {
   type WorldCircularEdgeGeometry,
   type WorldEllipticalEdgeGeometry,
 } from "@vibeshape/application/sketch-curve-projection"
-import { projectWorldPointToSupport, type SupportFrame } from "@vibeshape/application/support-frame"
+import {
+  projectWorldPointToSupport,
+  type SupportFrame,
+  supportPointToWorld,
+} from "@vibeshape/application/support-frame"
 import type {
   TopologyCandidate as DomainTopologyCandidate,
   EdgeTopoRef,
@@ -62,6 +67,8 @@ export type ExternalModelLineCandidate = Readonly<{
   reference: EdgeTopoRef
   start: ProjectedModelPoint
   coplanar?: boolean
+  projectable?: boolean
+  piercePoint?: ProjectedModelPoint
 }>
 
 export type ExternalModelCurveCandidate = Readonly<{
@@ -106,7 +113,7 @@ export type ExternalModelReferenceLabels = ExternalModelGeometryLabels &
     unknownFeature: string
   }>
 
-type ExternalModelGeometryRecord = Readonly<{
+export type ExternalModelGeometryRecord = Readonly<{
   featureId: string
   geometry: FeatureGeometryRecord["geometry"]
 }>
@@ -345,9 +352,8 @@ function createExternalModelLineCandidate(
   }
   const projectedStart = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.start)
   const projectedEnd = projectWorldPointToSupport(targetFrame, candidate.referenceGeometry.end)
-  if (Math.hypot(projectedEnd.x - projectedStart.x, projectedEnd.y - projectedStart.y) <= 1e-9) {
-    return null
-  }
+  const projectable =
+    Math.hypot(projectedEnd.x - projectedStart.x, projectedEnd.y - projectedStart.y) > 1e-9
   return {
     candidateId: candidate.candidateId,
     end: { ...projectedEnd, world: candidate.referenceGeometry.end },
@@ -356,6 +362,7 @@ function createExternalModelLineCandidate(
     label: labels.line(featureLabel, ordinal),
     reference: stableEdgeReference(featureId, candidate),
     start: { ...projectedStart, world: candidate.referenceGeometry.start },
+    projectable,
     coplanar:
       pointIsOnSupport(targetFrame, candidate.referenceGeometry.start) &&
       pointIsOnSupport(targetFrame, candidate.referenceGeometry.end),
@@ -620,6 +627,43 @@ export function projectExternalModelGeometryCandidates(
   })
 }
 
+export function externalModelPierceCandidates(
+  candidates: readonly ExternalModelGeometryCandidate[],
+  targetFrame: SupportFrame,
+): readonly ExternalModelLineCandidate[] {
+  return candidates.flatMap((candidate) => {
+    if (candidate.kind !== "model-line") return []
+    const point = intersectBoundedLineWithSupportPlane(
+      candidate.start.world,
+      candidate.end.world,
+      targetFrame,
+    )
+    return point
+      ? [
+          {
+            ...candidate,
+            piercePoint: { world: supportPointToWorld(targetFrame, point), ...point },
+          },
+        ]
+      : []
+  })
+}
+
+export function availableExternalModelPierceCandidates(
+  candidates: readonly ExternalModelGeometryCandidate[],
+  draft: SketchRecord,
+  referenceId: SketchExternalReferenceId | null,
+  targetFrame: SupportFrame,
+): readonly ExternalModelLineCandidate[] {
+  if (!referenceId) return externalModelPierceCandidates(candidates, targetFrame)
+  const reference = draft.externalReferences?.find(({ id }) => id === referenceId)
+  if (reference?.kind !== "model-pierce-point") return []
+  return externalModelPierceCandidates(
+    repairExternalModelGeometryCandidates(candidates, draft, referenceId),
+    targetFrame,
+  )
+}
+
 export function availableExternalModelGeometryCandidates(
   candidates: readonly ExternalModelGeometryCandidate[],
   records: readonly ExternalModelGeometryRecord[],
@@ -653,7 +697,8 @@ export function repairExternalModelGeometryCandidates(
       return false
     }
     if (reference.kind === "model-point") return candidate.kind === "model-point"
-    if (reference.kind === "model-line") return candidate.kind === "model-line"
+    if (reference.kind === "model-line" || reference.kind === "model-pierce-point")
+      return candidate.kind === "model-line"
     if (reference.kind !== "model-curve" || candidate.kind !== "model-curve") return false
     return (
       candidate.sourceType === reference.sourceType &&
@@ -688,6 +733,7 @@ export function applyExternalModelCandidate(
   candidate: ExternalModelGeometryCandidate,
   selectedEntityIds: readonly SketchEntityId[],
 ): SketchRecord {
+  if (candidate.kind === "model-line" && candidate.projectable === false) return draft
   const materialized = materializeExternalModelCandidate(draft, candidate)
   if (candidate.kind === "model-point") {
     if (materialized.kind !== "model-point") return materialized.sketch
@@ -698,6 +744,60 @@ export function applyExternalModelCandidate(
     )
   }
   return materialized.sketch
+}
+
+export function applyExternalModelPierceCandidate(
+  draft: SketchRecord,
+  candidate: ExternalModelLineCandidate,
+  selectedEntityIds: readonly SketchEntityId[],
+  records: readonly ExternalModelGeometryRecord[],
+): SketchRecord {
+  if (
+    selectedEntityIds.length !== 1 ||
+    draft.entities.find(({ id }) => id === selectedEntityIds[0])?.type !== "point"
+  )
+    return draft
+  const existing = (draft.externalReferences ?? []).find(
+    (reference) =>
+      reference.kind === "model-pierce-point" &&
+      modelTopologyReferenceResolvesToCandidate(records, reference, candidate),
+  )
+  const projectedPointId =
+    existing?.kind === "model-pierce-point"
+      ? existing.projectedPointId
+      : createBrowserSketchEntityId()
+  const next = existing
+    ? draft
+    : {
+        ...draft,
+        externalReferences: [
+          ...(draft.externalReferences ?? []),
+          {
+            schemaVersion: 0 as const,
+            id: createBrowserSketchExternalReferenceId(),
+            kind: "model-pierce-point" as const,
+            reference: candidate.reference,
+            projectedPointId,
+          },
+        ],
+      }
+  return attachExternalProjectedPoint(next, projectedPointId, selectedEntityIds)
+}
+
+function modelTopologyReferenceResolvesToCandidate(
+  records: readonly ExternalModelGeometryRecord[],
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+  candidate: ExternalModelGeometryCandidate,
+) {
+  if (!("reference" in reference)) return false
+  if (reference.reference.featureId !== candidate.featureId) return false
+  const record = records.find(({ featureId }) => featureId === candidate.featureId)
+  if (!record) return false
+  const resolve = createTopologyReferenceResolver(
+    record.geometry.topologyCandidates.map(domainTopologyCandidate),
+  )
+  const resolution = resolve(reference.reference)
+  return resolution.status === "resolved" && resolution.candidateId === candidate.candidateId
 }
 
 export type MaterializedExternalModelCandidate =
@@ -716,12 +816,12 @@ export type MaterializedExternalModelCandidate =
       sketch: SketchRecord
     }>
 
-function externalModelReferenceMatchesCandidate(
+function modelTopologyReferenceMatchesCandidate(
   reference: NonNullable<SketchRecord["externalReferences"]>[number],
   candidate: ExternalModelGeometryCandidate,
 ) {
   return (
-    reference.kind === candidate.kind &&
+    "reference" in reference &&
     reference.reference.featureId === candidate.reference.featureId &&
     reference.reference.kind === candidate.reference.kind &&
     (candidate.reference.semanticRole
@@ -729,6 +829,16 @@ function externalModelReferenceMatchesCandidate(
       : candidate.reference.lineageToken
         ? reference.reference.lineageToken === candidate.reference.lineageToken
         : false)
+  )
+}
+
+function externalModelReferenceMatchesCandidate(
+  reference: NonNullable<SketchRecord["externalReferences"]>[number],
+  candidate: ExternalModelGeometryCandidate,
+) {
+  return (
+    reference.kind === candidate.kind &&
+    modelTopologyReferenceMatchesCandidate(reference, candidate)
   )
 }
 
@@ -861,6 +971,15 @@ export function applyExternalModelCandidateSelection(
   selectedEntityIds: readonly SketchEntityId[],
   repairReferenceId: SketchExternalReferenceId | null,
 ) {
+  if (repairReferenceId) {
+    const reference = draft.externalReferences?.find(({ id }) => id === repairReferenceId)
+    if (reference?.kind === "model-pierce-point" && candidate.kind === "model-line") {
+      return replaceSketchExternalReference(draft, repairReferenceId, {
+        kind: "model-pierce-point",
+        reference: candidate.reference,
+      })
+    }
+  }
   return repairReferenceId
     ? replaceSketchExternalReference(draft, repairReferenceId, candidate)
     : applyExternalModelCandidate(draft, candidate, selectedEntityIds)
