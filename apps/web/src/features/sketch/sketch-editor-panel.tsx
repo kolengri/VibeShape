@@ -70,7 +70,6 @@ type SketchEditorPanelCopy = Readonly<{
   noExternalReferences: string
   editConstraint: string
   equal: string
-  finish: string
   fixed: string
   horizontal: string
   horizontalDistance: string
@@ -744,38 +743,6 @@ function SketchProfilesSection({
   )
 }
 
-function SketchEditorFooter({
-  copy,
-  disabled,
-  message,
-  onCancel,
-  onFinish,
-}: {
-  copy: SketchEditorPanelCopy
-  disabled: boolean
-  message: string | null
-  onCancel: () => void
-  onFinish: () => Promise<void>
-}) {
-  return (
-    <div className="mt-auto grid gap-2 border-t pt-3">
-      <div className="grid gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          {copy.cancel}
-        </Button>
-        <Button type="button" size="sm" disabled={disabled} onClick={onFinish}>
-          {copy.finish}
-        </Button>
-      </div>
-      {message ? (
-        <p className="text-xs leading-4 text-destructive" role="alert">
-          {message}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
 function ExternalReferencesSection({
   candidates,
   copy,
@@ -924,9 +891,7 @@ type SketchEditorPanelState = Readonly<{
 }>
 
 type SketchEditorPanelActions = Readonly<{
-  onCancel: () => void
   onDraftChange: (draft: SketchRecord) => void
-  onFinish: () => Promise<void>
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
@@ -961,9 +926,7 @@ export function SketchEditorPanel({
     variables,
   } = state
   const {
-    onCancel,
     onDraftChange,
-    onFinish,
     onReferenceRepairChange,
     onSupportReplace,
     onSelectedConstraintChange,
@@ -1028,13 +991,11 @@ export function SketchEditorPanel({
           onSelectedProfileChange={onSelectedProfileChange}
         />
       </div>
-      <SketchEditorFooter
-        copy={copy}
-        disabled={disabled}
-        message={message}
-        onCancel={onCancel}
-        onFinish={onFinish}
-      />
+      {message ? (
+        <p className="mt-auto border-t pt-3 text-xs leading-4 text-destructive" role="alert">
+          {message}
+        </p>
+      ) : null}
     </div>
   )
 }

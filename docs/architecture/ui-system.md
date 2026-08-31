@@ -144,6 +144,7 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 - Follow [Internationalization](internationalization.md) for all product copy, accessible names, validation, status, and diagnostic messages.
 - Build the native or state-agnostic primitive before its TanStack Form adapter; the adapter imports the primitive, never the reverse.
 - Buttons that start Promise-like work become single-flight, expose an accessible pending state, and suppress accidental double activation. Error reporting remains owned by the command or form.
+- Task panels compose the shared compact lifecycle action group in their non-scrolling command header. The group owns only Cancel and Accept presentation; the task owns persistence, diagnostics, and disabled eligibility. Modeling commands remain registered shell commands rather than task-panel footer buttons.
 - Use `AlertDialog`, not `Dialog`, for destructive confirmation.
 - Provide one tooltip provider at the application root.
 - Toolbar actions use button variants without losing native focus and keyboard behavior.

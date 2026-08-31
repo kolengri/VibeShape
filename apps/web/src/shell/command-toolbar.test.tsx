@@ -253,6 +253,11 @@ describe("CommandToolbar", () => {
     await user.dblClick(extrude)
     expect(actions.createExtrusion).toHaveBeenCalledOnce()
     expect(extrude.getAttribute("aria-busy")).toBe("true")
+    expect(screen.queryByRole("button", { name: "Revolve" })).toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "Profile features" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Revolve" }))
+    expect(actions.createRevolve).toHaveBeenCalledOnce()
     expect(screen.getByRole("button", { name: "Revolve" })).toBeTruthy()
   })
 })

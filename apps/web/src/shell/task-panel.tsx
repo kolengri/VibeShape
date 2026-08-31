@@ -74,6 +74,7 @@ import {
   isActiveSketchEditorTool,
   type SketchDraftChangeMode,
 } from "../features/sketch/sketch-tool"
+import { TaskPanelLifecycleActions } from "./task-panel-lifecycle-actions"
 import type { EditorWorkspaceName } from "./workspace"
 
 type TaskPanelProps = Readonly<{
@@ -164,7 +165,6 @@ function useSketchEditorCopy() {
     noExternalReferences: t("noExternalReferences"),
     editConstraint: t("editConstraint"),
     equal: t("equal"),
-    finish: t("finish"),
     fixed: t("fixed"),
     horizontal: t("horizontal"),
     horizontalDistance: t("horizontalDistance"),
@@ -968,22 +968,14 @@ function revolveOptions(
 function StartModelingAction({
   canCreate,
   canExtrude,
-  onCreateExtrusion,
   onCreateSketch,
 }: {
   canCreate: boolean
   canExtrude: boolean
-  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
 }) {
   const t = useTranslations("app.shell.taskPanel")
-  if (canExtrude) {
-    return (
-      <Button type="button" className="mt-4 w-full" onClick={onCreateExtrusion}>
-        {t("createExtrusion")}
-      </Button>
-    )
-  }
+  if (canExtrude) return null
   return (
     <Button type="button" className="mt-4 w-full" disabled={!canCreate} onClick={onCreateSketch}>
       {t("createSketch")}
@@ -1069,7 +1061,6 @@ function StartTaskPanel({
   canSubtract,
   onCreateBox,
   onCreateCylinder,
-  onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
 }: {
@@ -1078,7 +1069,6 @@ function StartTaskPanel({
   canSubtract: boolean
   onCreateBox: () => void
   onCreateCylinder: () => void
-  onCreateExtrusion: () => Promise<boolean>
   onCreateSketch: () => void
   onCreateSubtract: () => void
 }) {
@@ -1095,7 +1085,6 @@ function StartTaskPanel({
       <StartModelingAction
         canCreate={canCreate}
         canExtrude={canExtrude}
-        onCreateExtrusion={onCreateExtrusion}
         onCreateSketch={onCreateSketch}
       />
       <SketchFirstWorkflow />
@@ -1379,7 +1368,6 @@ function ModelTaskPanel({
   onCloseTool,
   onCreateBox,
   onCreateCylinder,
-  onCreateExtrusion,
   onCreateSketch,
   onCreateSubtract,
   onFeaturePreviewChange,
@@ -1407,7 +1395,6 @@ function ModelTaskPanel({
       canSubtract={canCreateSubtract(controller)}
       onCreateBox={onCreateBox}
       onCreateCylinder={onCreateCylinder}
-      onCreateExtrusion={onCreateExtrusion}
       onCreateSketch={onCreateSketch}
       onCreateSubtract={onCreateSubtract}
     />
@@ -1598,10 +1585,20 @@ function ActiveSketchTaskPanel({
       aria-label={t("taskAriaLabel")}
       className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
     >
-      <header className="border-b px-4 py-3">
-        <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
-        <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
-        <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
+          <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
+          <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
+        </div>
+        <TaskPanelLifecycleActions
+          acceptDisabled={report.mode === "read-only"}
+          acceptLabel={t("finish")}
+          ariaLabel={t("lifecycleActions")}
+          cancelLabel={t("cancel")}
+          onAccept={finish}
+          onCancel={onCloseTool}
+        />
       </header>
       <div className="min-h-0 overflow-auto p-4">
         <SketchEditorPanel
@@ -1625,9 +1622,7 @@ function ActiveSketchTaskPanel({
             variables: report.snapshot.variables,
           }}
           actions={{
-            onCancel: onCloseTool,
             onDraftChange,
-            onFinish: finish,
             onReferenceRepairChange,
             onSupportReplace,
             onSelectedConstraintChange,
@@ -1704,10 +1699,6 @@ function EmptySketchTaskPanel({
 
 function SelectedSketchTaskPanel({
   canCreate,
-  canExtrude,
-  onCreateExtrusion,
-  onCreateRevolve,
-  onCreateSketch,
   onEditSketch,
   onSelectedProfileChange,
   profiles,
@@ -1715,10 +1706,6 @@ function SelectedSketchTaskPanel({
   sketch,
 }: {
   canCreate: boolean
-  canExtrude: boolean
-  onCreateExtrusion: () => Promise<boolean>
-  onCreateRevolve: () => Promise<boolean>
-  onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
   profiles: readonly SketchProfileSelector[]
@@ -1749,25 +1736,9 @@ function SelectedSketchTaskPanel({
           ))}
         </fieldset>
       ) : null}
-      <Button
-        type="button"
-        size="sm"
-        className="mt-4 w-full"
-        disabled={!canExtrude}
-        onClick={onCreateExtrusion}
-      >
-        {t("extrude")}
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="mt-2 w-full"
-        disabled={!canExtrude}
-        onClick={onCreateRevolve}
-      >
-        {t("revolve")}
-      </Button>
+      <p className="mt-3 text-xs leading-4 text-muted-foreground">
+        {t(selectedProfile ? "profileFeatureReady" : "profileFeatureHint")}
+      </p>
       <Button
         type="button"
         size="sm"
@@ -1778,16 +1749,6 @@ function SelectedSketchTaskPanel({
       >
         {t("edit")}
       </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="mt-2 w-full"
-        disabled={!canCreate}
-        onClick={onCreateSketch}
-      >
-        {t("create")}
-      </Button>
     </aside>
   )
 }
@@ -1795,9 +1756,6 @@ function SelectedSketchTaskPanel({
 function SketchStartTaskPanel({
   activeSketchId,
   canCreate,
-  canExtrude,
-  onCreateExtrusion,
-  onCreateRevolve,
   onCreateSketch,
   onEditSketch,
   onSelectedProfileChange,
@@ -1807,9 +1765,6 @@ function SketchStartTaskPanel({
 }: {
   activeSketchId: SketchId | null
   canCreate: boolean
-  canExtrude: boolean
-  onCreateExtrusion: () => Promise<boolean>
-  onCreateRevolve: () => Promise<boolean>
   onCreateSketch: () => void
   onEditSketch: (sketchId: SketchId) => void
   onSelectedProfileChange: (profile: SketchProfileSelector) => void
@@ -1821,13 +1776,9 @@ function SketchStartTaskPanel({
   return sketch ? (
     <SelectedSketchTaskPanel
       canCreate={canCreate}
-      canExtrude={canExtrude}
       profiles={profiles}
       selectedProfile={selectedProfile}
       sketch={sketch}
-      onCreateExtrusion={onCreateExtrusion}
-      onCreateRevolve={onCreateRevolve}
-      onCreateSketch={onCreateSketch}
       onEditSketch={onEditSketch}
       onSelectedProfileChange={onSelectedProfileChange}
     />
@@ -1869,14 +1820,7 @@ function SketchTaskPanel(props: TaskPanelProps) {
     <SketchStartTaskPanel
       activeSketchId={props.activeSketchId}
       canCreate={canCreateFeature(props.controller)}
-      canExtrude={canExtrudeSelectedSketch(
-        props.controller,
-        props.activeSketchId,
-        props.sketchSelectedProfile,
-      )}
       profiles={props.sketchProfiles}
-      onCreateExtrusion={props.onCreateExtrusion}
-      onCreateRevolve={props.onCreateRevolve ?? (async () => false)}
       report={report}
       onCreateSketch={props.onCreateSketch}
       onEditSketch={props.onEditSketch}
