@@ -19,6 +19,14 @@ test.describe("selector-backed revolve", () => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
 
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    for (const dimension of ["Width", "Depth", "Height"] as const) {
+      await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
+    }
+    await boxForm.getByRole("button", { name: "Create box" }).click()
+
     await page
       .getByRole("complementary", { name: "Task panel" })
       .getByRole("button", { name: "Create sketch" })
@@ -39,7 +47,7 @@ test.describe("selector-backed revolve", () => {
     await form.getByRole("button", { name: "Create revolve" }).dblclick()
 
     await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
-    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+    await expect(viewport).toHaveAttribute("data-rendered-feature-count", "2", {
       timeout: 120_000,
     })
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -49,6 +57,8 @@ test.describe("selector-backed revolve", () => {
     await expect(editForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
     await expect(editForm.getByRole("combobox", { name: "Angle" })).toHaveValue("180 deg")
     await editForm.getByRole("combobox", { name: "Angle" }).fill("270 deg")
+    await editForm.getByRole("combobox", { name: "Result operation" }).selectOption("remove")
+    await editForm.getByRole("combobox", { name: "Target body" }).selectOption({ label: "Box 1" })
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", {
       timeout: 120_000,
     })
@@ -65,5 +75,11 @@ test.describe("selector-backed revolve", () => {
     const reopenedForm = page.getByRole("form", { name: "Edit revolve" })
     await expect(reopenedForm.getByRole("combobox", { name: "Angle" })).toHaveValue("270 deg")
     await expect(reopenedForm.getByRole("combobox", { name: "Revolve axis" })).toHaveValue("y")
+    await expect(reopenedForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
+      "remove",
+    )
+    await expect(
+      reopenedForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
+    ).toHaveText("Box 1")
   })
 })

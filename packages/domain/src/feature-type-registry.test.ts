@@ -101,7 +101,7 @@ describe("feature type registry", () => {
         origin: [5, -3, 10],
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
-      expect(result.registry.descriptors).toHaveLength(6)
+      expect(result.registry.descriptors).toHaveLength(7)
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === extrusionFeatureType.type.typeId)

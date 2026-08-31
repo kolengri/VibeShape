@@ -2,6 +2,7 @@ import {
   booleanFeatureType,
   boxFeatureType,
   computeFeatureContentHash,
+  createAngleQuantity,
   createFeatureTypeRegistry,
   createLengthQuantity,
   createModuleRegistry,
@@ -11,8 +12,11 @@ import {
   type FeatureId,
   featureCoreModule,
   featureIdSchema,
+  legacyRevolveFeatureType,
   partDesignFeatureTypeHandlers,
   partDesignModule,
+  revolveFeatureType,
+  serializeFeatureContentIdentity,
 } from "@vibeshape/domain"
 import {
   createGeometryRequestEnvelope,
@@ -23,6 +27,7 @@ import {
 import {
   extrusionFeatureContentParametersSchema,
   featureContentIdentitySchema,
+  revolveFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import { isError } from "is-what"
 
@@ -47,9 +52,14 @@ interface FeatureEvaluationHarnessState {
   extrusionAdd: FeatureResponse | null
   extrusionIntersect: FeatureResponse | null
   extrusionRemove: FeatureResponse | null
+  revolve: FeatureResponse | null
+  revolveAdd: FeatureResponse | null
+  revolveIntersect: FeatureResponse | null
+  revolveRemove: FeatureResponse | null
   boolean: FeatureResponse | null
   cachedBoolean: FeatureResponse | null
   invalidBooleanDiagnostic: string | null
+  legacyRevolveOperationDiagnostic: string | null
   missingDependencyDiagnostic: string | null
   health: HealthResponse | null
   disposal: DisposalResponse | null
@@ -82,6 +92,11 @@ const ellipticalArcReflectedFeatureId = featureIdSchema.parse(
   "0195b5ac-b220-7a2c-8c33-67a36a7f3116",
 )
 const circularArcExtrusionFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3113")
+const revolveFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3117")
+const revolveAddFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3118")
+const revolveRemoveFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3119")
+const revolveIntersectFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3120")
+const legacyRevolveAddFeatureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3121")
 const sketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f3201"
 const profileEntityIds = [
   "0195b5ac-b220-7a2c-8c33-67a36a7f3301",
@@ -153,9 +168,14 @@ const state: FeatureEvaluationHarnessState = {
   extrusionAdd: null,
   extrusionIntersect: null,
   extrusionRemove: null,
+  revolve: null,
+  revolveAdd: null,
+  revolveIntersect: null,
+  revolveRemove: null,
   boolean: null,
   cachedBoolean: null,
   invalidBooleanDiagnostic: null,
+  legacyRevolveOperationDiagnostic: null,
   missingDependencyDiagnostic: null,
   health: null,
   disposal: null,
@@ -184,6 +204,35 @@ function extrusionFeature(
       },
       distance: createLengthQuantity(contentParameters.distance),
       symmetric: contentParameters.symmetric,
+      operation,
+    },
+    dependencies,
+    references: [],
+    suppressed: false,
+  }
+}
+
+function revolveFeature(
+  featureId: FeatureId,
+  operation: "add" | "intersect" | "new" | "remove",
+  dependencies: readonly FeatureId[],
+  contentParameters: ReturnType<typeof revolveFeatureContentParametersSchema.parse>,
+) {
+  return {
+    schemaVersion: 0,
+    id: featureId,
+    type: revolveFeatureType.type,
+    parameters: {
+      profile: {
+        schemaVersion: 0,
+        sketchId,
+        outerBoundaryEntityIds: contentParameters.outer.sourceEntityIds,
+        holeBoundaryEntityIds: contentParameters.holes.map(
+          ({ sourceEntityIds }) => sourceEntityIds,
+        ),
+      },
+      axis: contentParameters.axis,
+      angle: createAngleQuantity(contentParameters.angleRadians),
       operation,
     },
     dependencies,
@@ -235,6 +284,59 @@ const extrusionContentParameters = extrusionFeatureContentParametersSchema.parse
   holes: [],
   distance: 18,
   symmetric: true,
+  operation: "new",
+})
+
+const revolveContentParameters = revolveFeatureContentParametersSchema.parse({
+  sketchId,
+  frame: {
+    origin: [0, 0, 0],
+    xAxis: [1, 0, 0],
+    yAxis: [0, 1, 0],
+    normal: [0, 0, 1],
+  },
+  outer: {
+    sourceEntityIds: profileEntityIds,
+    segments: [
+      {
+        entityId: profileEntityIds[0],
+        type: "line",
+        startPointId: profilePointIds[0],
+        endPointId: profilePointIds[1],
+        start: [0, 0],
+        end: [10, 0],
+      },
+      {
+        entityId: profileEntityIds[1],
+        type: "line",
+        startPointId: profilePointIds[1],
+        endPointId: profilePointIds[2],
+        start: [10, 0],
+        end: [10, 10],
+      },
+      {
+        entityId: profileEntityIds[2],
+        type: "line",
+        startPointId: profilePointIds[2],
+        endPointId: profilePointIds[3],
+        start: [10, 10],
+        end: [0, 10],
+      },
+      {
+        entityId: profileEntityIds[3],
+        type: "line",
+        startPointId: profilePointIds[3],
+        endPointId: profilePointIds[0],
+        start: [0, 10],
+        end: [0, 0],
+      },
+    ],
+  },
+  holes: [],
+  axis: "y",
+  axisOrigin: [0, 0, 0],
+  axisDirection: [0, 1, 0],
+  angleRadians: Math.PI * 2,
   operation: "new",
 })
 
@@ -553,6 +655,95 @@ async function evaluateExtrusion(
   )
 }
 
+async function evaluateRevolve(
+  client: GeometryWorkerClient,
+  environment: unknown,
+  featureId: FeatureId,
+  operation: "add" | "intersect" | "new" | "remove",
+  dependencies: readonly { featureId: FeatureId; contentHash: string }[],
+) {
+  const contentParameters = { ...revolveContentParameters, operation }
+  const content = await computeFeatureContentHash(
+    featureRegistry(),
+    {
+      feature: revolveFeature(
+        featureId,
+        operation,
+        dependencies.map(({ featureId: dependencyId }) => dependencyId),
+        contentParameters,
+      ),
+      dependencies,
+      environment,
+      contentParameters,
+    },
+    sha256,
+  )
+  if (!content.ok) throw new Error(content.diagnostic.message)
+  return expectResponse(
+    await client.request(
+      {
+        ...createGeometryRequestEnvelope(documentId, generation, 1),
+        type: "evaluateFeature",
+        featureId,
+        content: featureContentIdentitySchema.parse(content.identity),
+        contentHash: content.contentHash,
+        dependencies: [...dependencies],
+        mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      },
+      {
+        onProgress(stage) {
+          state.progress.push(stage)
+        },
+      },
+    ),
+    "featureEvaluated",
+  )
+}
+
+async function evaluateLegacyModifyingRevolve(
+  client: GeometryWorkerClient,
+  environment: unknown,
+  dependencies: readonly { featureId: FeatureId; contentHash: string }[],
+) {
+  const operation = "add" as const
+  const contentParameters = { ...revolveContentParameters, operation }
+  const content = await computeFeatureContentHash(
+    featureRegistry(),
+    {
+      feature: revolveFeature(
+        legacyRevolveAddFeatureId,
+        operation,
+        dependencies.map(({ featureId }) => featureId),
+        contentParameters,
+      ),
+      dependencies,
+      environment,
+      contentParameters,
+    },
+    sha256,
+  )
+  if (!content.ok) throw new Error(content.diagnostic.message)
+  const legacyIdentity = featureContentIdentitySchema.parse({
+    ...content.identity,
+    feature: {
+      ...content.identity.feature,
+      type: legacyRevolveFeatureType.type,
+    },
+  })
+  return expectResponse(
+    await client.request({
+      ...createGeometryRequestEnvelope(documentId, generation, 1),
+      type: "evaluateFeature",
+      featureId: legacyRevolveAddFeatureId,
+      content: legacyIdentity,
+      contentHash: await sha256(serializeFeatureContentIdentity(legacyIdentity)),
+      dependencies: [...dependencies],
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+    }),
+    "featureEvaluated",
+  )
+}
+
 function featureFailureResponse(error: unknown) {
   if (!(error instanceof GeometryWorkerRequestError)) return null
   const response = error.response
@@ -670,6 +861,28 @@ async function run() {
       "intersect",
       extrusionTarget,
     )
+    state.revolve = await evaluateRevolve(client, environment, revolveFeatureId, "new", [])
+    state.revolveAdd = await evaluateRevolve(
+      client,
+      environment,
+      revolveAddFeatureId,
+      "add",
+      extrusionTarget,
+    )
+    state.revolveRemove = await evaluateRevolve(
+      client,
+      environment,
+      revolveRemoveFeatureId,
+      "remove",
+      extrusionTarget,
+    )
+    state.revolveIntersect = await evaluateRevolve(
+      client,
+      environment,
+      revolveIntersectFeatureId,
+      "intersect",
+      extrusionTarget,
+    )
     const booleanDependencies = [
       { featureId: boxFeatureId, contentHash: box.contentHash },
       { featureId: cylinderFeatureId, contentHash: cylinder.contentHash },
@@ -704,6 +917,10 @@ async function run() {
           { featureId: cylinderFeatureId, contentHash: "e".repeat(64) },
         ]),
       "Boolean evaluation unexpectedly accepted unavailable dependency shapes.",
+    )
+    state.legacyRevolveOperationDiagnostic = await expectedEvaluationFailure(
+      () => evaluateLegacyModifyingRevolve(client, environment, extrusionTarget),
+      "Schema-version-1 Revolve unexpectedly accepted a modifying operation.",
     )
     state.health = expectResponse(
       await client.request({

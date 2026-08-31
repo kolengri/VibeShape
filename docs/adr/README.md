@@ -31,6 +31,7 @@
 | [0027](0027-typed-orphan-model-reference-intent.md) | Accepted | Typed orphan intent for model-backed sketch references after feature deletion |
 | [0028](0028-selector-backed-origin-axis-revolve.md) | Accepted | Selector-backed new-body Revolve around a sketch-local origin axis |
 | [0029](0029-exact-bounded-elliptical-arc-locus.md) | Accepted | Exact positive-sweep Point on elliptical arc intent behind the reviewed solver ABI |
+| [0030](0030-explicit-target-revolve-operations.md) | Accepted | New/add/remove/intersect Revolve with an explicit terminal-feature target dependency |
 
 Statuses:
 

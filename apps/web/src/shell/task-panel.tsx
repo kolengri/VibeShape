@@ -43,13 +43,13 @@ import {
 import {
   type ActivePartDesignTool,
   booleanInputFeatures,
-  extrusionTargetFeatures,
   isBooleanFeature,
   isBoxFeature,
   isCylinderFeature,
   isDatumPlaneFeature,
   isExtrusionFeature,
   isRevolveFeature,
+  modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
 import {
   DatumPlaneForm,
@@ -369,8 +369,16 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
     invalidExpression: t("invalidExpression"),
     invalidDimension: t("invalidDimension"),
     invalidRange: t("invalidRange"),
+    missingTarget: t("missingTarget"),
+    operation: t("operation"),
+    operationAdd: t("operationAdd"),
+    operationIntersect: t("operationIntersect"),
+    operationNew: t("operationNew"),
+    operationRemove: t("operationRemove"),
     staleRevision: t("staleRevision"),
     cancel: t("cancel"),
+    target: t("target"),
+    targetDescription: t("targetDescription"),
   }
 }
 
@@ -632,11 +640,13 @@ function RevolveTaskPanel({
   mode,
   onCloseTool,
   onPreviewChange,
+  options,
   report,
 }: {
   mode: RevolveFormMode
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  options: readonly { id: FeatureRecord["id"]; label: string }[]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const copy = useRevolveFormCopy(mode.kind)
@@ -658,6 +668,7 @@ function RevolveTaskPanel({
         copy={copy}
         disabled={report.mode === "read-only"}
         mode={mode}
+        options={options}
         profileLabel={profileLabel}
         variables={snapshot.variables}
         onCancel={onCloseTool}
@@ -919,10 +930,25 @@ function extrusionOptions(
   editingFeatureId: Extract<ExtrusionFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
   unnamedFeature: string,
 ) {
-  return extrusionTargetFeatures(report.snapshot.features, editingFeatureId).map((feature) => ({
-    id: feature.id,
-    label: feature.label ?? unnamedFeature,
-  }))
+  return modifyingSolidTargetFeatures(report.snapshot.features, editingFeatureId).map(
+    (feature) => ({
+      id: feature.id,
+      label: feature.label ?? unnamedFeature,
+    }),
+  )
+}
+
+function revolveOptions(
+  report: NonNullable<DocumentControllerState["report"]>,
+  editingFeatureId: Extract<RevolveFormMode, { kind: "edit" }>["feature"]["id"] | undefined,
+  unnamedFeature: string,
+) {
+  return modifyingSolidTargetFeatures(report.snapshot.features, editingFeatureId).map(
+    (feature) => ({
+      id: feature.id,
+      label: feature.label ?? unnamedFeature,
+    }),
+  )
 }
 
 function StartModelingAction({
@@ -1264,11 +1290,20 @@ function RevolveToolTaskPanel({
   const t = useTranslations("app.shell.taskPanel.revolve")
   const count = report.snapshot.features.filter(isRevolveFeature).length
   const mode = revolveFormMode(activeTool, report, t("featureLabel", { number: count + 1 }))
+  const modelTreeT = useTranslations("app.shell.modelTree")
+  const options = mode
+    ? revolveOptions(
+        report,
+        mode.kind === "edit" ? mode.feature.id : undefined,
+        modelTreeT("unnamedFeature"),
+      )
+    : []
   return mode ? (
     <RevolveTaskPanel
       mode={mode}
       onCloseTool={onCloseTool}
       onPreviewChange={onFeaturePreviewChange}
+      options={options}
       report={report}
     />
   ) : null

@@ -320,7 +320,7 @@ export const revolveFeatureContentParametersSchema = z
     axisOrigin: vector3Schema,
     axisDirection: topologyVector3Schema,
     angleRadians: finiteNumberSchema.min(Number.EPSILON).max(Math.PI * 2),
-    operation: z.literal("new"),
+    operation: z.enum(["new", "add", "remove", "intersect"]),
   })
   .strict()
   .refine(({ axisDirection }) => isNormalized(axisDirection), {

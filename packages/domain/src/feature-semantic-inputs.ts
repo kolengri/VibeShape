@@ -7,6 +7,7 @@ import {
   cylinderFeatureType,
   extrusionFeatureType,
   legacyExtrusionFeatureType,
+  legacyRevolveFeatureType,
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
   revolveFeatureType,
@@ -30,7 +31,10 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureType.type),
   featureTypeKey(legacyExtrusionFeatureType.type),
 ])
-const revolveTypeKey = featureTypeKey(revolveFeatureType.type)
+const revolveTypeKeys = new Set([
+  featureTypeKey(revolveFeatureType.type),
+  featureTypeKey(legacyRevolveFeatureType.type),
+])
 
 export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
@@ -51,7 +55,7 @@ export function projectFirstPartyFeatureSemanticInputs(
           message: "A first-party extrusion must contain a valid profile selector.",
         }
   }
-  if (typeKey !== revolveTypeKey) return { recognized: false }
+  if (!revolveTypeKeys.has(typeKey)) return { recognized: false }
   const parameters = readRevolveFeatureParameters(feature as FeatureRecord)
   return parameters
     ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.profile.sketchId }] }

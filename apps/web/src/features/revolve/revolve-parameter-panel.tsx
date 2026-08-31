@@ -12,6 +12,8 @@ export function RevolveParameterPanel({
   disabled = false,
   axisField,
   angleField,
+  operationField,
+  targetField,
   footerAction,
   message,
   onCancel,
@@ -21,6 +23,8 @@ export function RevolveParameterPanel({
   disabled?: boolean
   axisField: ReactNode
   angleField: ReactNode
+  operationField: ReactNode
+  targetField?: ReactNode
   footerAction: ReactNode
   message?: ReactNode
   onCancel: () => void
@@ -39,6 +43,8 @@ export function RevolveParameterPanel({
         <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
         <output className="text-sm">{profileLabel}</output>
       </div>
+      {operationField}
+      {targetField}
       {axisField}
       {angleField}
     </ParameterPanel>

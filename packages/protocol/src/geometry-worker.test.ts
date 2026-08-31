@@ -510,6 +510,14 @@ describe("geometry worker protocol", () => {
       operation: "new" as const,
     }
     expect(revolveFeatureContentParametersSchema.safeParse(content).success).toBe(true)
+    for (const operation of ["add", "remove", "intersect"] as const) {
+      expect(
+        revolveFeatureContentParametersSchema.safeParse({ ...content, operation }).success,
+      ).toBe(true)
+    }
+    expect(
+      revolveFeatureContentParametersSchema.safeParse({ ...content, operation: "join" }).success,
+    ).toBe(false)
     expect(
       revolveFeatureContentParametersSchema.safeParse({ ...content, angleRadians: 0 }).success,
     ).toBe(false)
