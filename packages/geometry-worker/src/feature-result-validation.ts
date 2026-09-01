@@ -8,6 +8,7 @@ export type GeometryFeatureKind =
   | "multi-extrusion-modifying"
   | "revolve"
   | "multi-revolve"
+  | "multi-revolve-modifying"
 
 type FeatureResultMetrics = Readonly<{
   valid: boolean

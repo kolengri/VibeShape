@@ -29,6 +29,22 @@ async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
   await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
 }
 
+async function drawOverlappingSweepProfilesForModifyingRevolve(page: Page) {
+  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+  const bounds = await drawing.boundingBox()
+  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  const rectangles = [
+    [0.6, 0.42, 0.74, 0.3],
+    [0.6, 0.68, 0.74, 0.8],
+  ] as const
+  for (const [startX, startY, endX, endY] of rectangles) {
+    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
+    await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
+    await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
+  }
+  await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+}
+
 test.describe("selector-backed revolve", () => {
   test("keeps the curved angle handle synchronized with the exact field", async ({ page }) => {
     test.setTimeout(180_000)
@@ -120,7 +136,7 @@ test.describe("selector-backed revolve", () => {
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
-    await expect(form.getByRole("combobox", { name: "Result operation" })).toBeDisabled()
+    await expect(form.getByRole("combobox", { name: "Result operation" })).toBeEnabled()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
@@ -134,6 +150,91 @@ test.describe("selector-backed revolve", () => {
     await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
   })
+
+  for (const operation of ["add", "remove", "intersect"] as const) {
+    test(`applies multi-profile revolve ${operation} to one explicit target and reopens the intent`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000)
+      await page.setViewportSize({ width: 1440, height: 1000 })
+      await page.goto("/")
+      await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+        timeout: 120_000,
+      })
+      const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+      await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+      const boxForm = page.getByRole("form", { name: "Create box" })
+      for (const dimension of ["Width", "Depth", "Height"] as const) {
+        await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
+      }
+      await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
+
+      await page
+        .getByRole("complementary", { name: "Task panel" })
+        .getByRole("button", { name: "Create sketch" })
+        .click()
+      await confirmSketchPlane(page, "xy")
+      await drawOverlappingSweepProfilesForModifyingRevolve(page)
+      await page.getByRole("button", { name: "Finish sketch" }).click()
+
+      const viewport = page.getByRole("region", { name: "3D viewport" })
+      await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
+        timeout: 120_000,
+      })
+      await viewport
+        .getByRole("combobox", { name: "Select saved profile" })
+        .selectOption({ label: "Sketch 1 · Profile 1" })
+      await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+      const form = page.getByRole("form", { name: "Revolve profile" })
+      await form
+        .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+        .click()
+      await page.getByRole("button", { name: "Hide Box 1" }).click()
+      await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await page.getByRole("button", { name: "Show Box 1" }).click()
+      await form.getByRole("combobox", { name: "Result operation" }).selectOption(operation)
+      await expect(
+        form.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
+      ).toHaveText("Box 1")
+      await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
+      await form.getByRole("button", { name: "Create revolve" }).click()
+
+      await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toBeVisible()
+      await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
+        timeout: 120_000,
+      })
+      await page.getByRole("treeitem", { name: "Revolve 1" }).click()
+      const editForm = page.getByRole("form", { name: "Edit revolve" })
+      await expect(editForm.getByRole("combobox", { name: "Result operation" })).toHaveValue(
+        operation,
+      )
+      await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+      await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+      await expect(
+        editForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
+      ).toHaveText("Box 1")
+
+      await editForm.getByRole("button", { name: "Cancel" }).click()
+      await viewport
+        .getByRole("combobox", { name: "Select saved profile" })
+        .selectOption({ label: "Sketch 1 · Profile 1" })
+      await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+      const downstreamForm = page.getByRole("form", { name: "Revolve profile" })
+      await downstreamForm
+        .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+        .click()
+      await page.getByRole("button", { name: "Hide Box 1" }).click()
+      await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+      await page.getByRole("button", { name: "Show Box 1" }).click()
+      await downstreamForm
+        .getByRole("combobox", { name: "Result operation" })
+        .selectOption(operation)
+      await expect(
+        downstreamForm.getByRole("combobox", { name: "Target body" }).locator("option:checked"),
+      ).toHaveText("Revolve 1")
+      await downstreamForm.getByRole("button", { name: "Cancel" }).click()
+    })
+  }
 
   test("reselects a profile without closing create or edit", async ({ page }) => {
     test.setTimeout(120_000)

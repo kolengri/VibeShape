@@ -19,6 +19,7 @@ import {
   legacyRevolveFeatureTypeV3,
   revolveFeatureType,
   revolveFeatureTypeV5,
+  revolveFeatureTypeV6,
 } from "./part-design"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
@@ -378,6 +379,7 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
     legacyRevolveFeatureTypeV3,
     revolveFeatureType,
     revolveFeatureTypeV5,
+    revolveFeatureTypeV6,
   ],
 })
 

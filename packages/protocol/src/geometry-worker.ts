@@ -363,7 +363,7 @@ export const extrusionMultiProfileModifyingFeatureContentParametersSchema = z
   })
   .strict()
 
-export const revolveMultiProfileFeatureContentParametersSchema = z
+const revolveMultiProfileFeatureContentBaseSchema = z
   .object({
     sketchId: sketchIdSchema,
     supportFeatureId: featureIdSchema.optional(),
@@ -402,13 +402,25 @@ export const revolveMultiProfileFeatureContentParametersSchema = z
     axisOrigin: vector3Schema,
     axisDirection: topologyVector3Schema,
     angleRadians: finiteNumberSchema.min(Number.EPSILON).max(Math.PI * 2),
-    operation: z.literal("new"),
   })
   .strict()
-  .refine(({ axisDirection }) => isNormalized(axisDirection), {
-    message: "Revolve axis direction must be normalized.",
-    path: ["axisDirection"],
-  })
+
+export const revolveMultiProfileFeatureContentParametersSchema =
+  revolveMultiProfileFeatureContentBaseSchema
+    .extend({ operation: z.literal("new") })
+    .refine(({ axisDirection }) => isNormalized(axisDirection), {
+      message: "Revolve axis direction must be normalized.",
+      path: ["axisDirection"],
+    })
+
+/** Multi-profile modifying revolve content; schema-version 6 only. */
+export const revolveMultiProfileModifyingFeatureContentParametersSchema =
+  revolveMultiProfileFeatureContentBaseSchema
+    .extend({ operation: z.enum(["add", "remove", "intersect"]) })
+    .refine(({ axisDirection }) => isNormalized(axisDirection), {
+      message: "Revolve axis direction must be normalized.",
+      path: ["axisDirection"],
+    })
 
 type RevolveAxisValidationInput = Readonly<{
   axis:

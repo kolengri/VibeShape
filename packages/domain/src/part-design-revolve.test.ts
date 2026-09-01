@@ -18,7 +18,9 @@ import {
   readRevolveFeatureParameters,
   readRevolveProfileSet,
   revolveFeatureParametersSchema,
+  revolveFeatureParametersV6Schema,
   revolveFeatureType,
+  revolveFeatureTypeV6,
 } from "./part-design"
 import { createAngleQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
@@ -157,6 +159,81 @@ describe("selector-backed revolve feature", () => {
         operation: "remove",
       }).success,
     ).toBe(false)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "registers a distinct multi-profile %s version with a target-first dependency",
+    (operation) => {
+      const feature = featureRecordSchema.parse({
+        ...revolve(),
+        type: revolveFeatureTypeV6.type,
+        parameters: revolveFeatureParametersV6Schema.parse({
+          profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+          axis: parameters.axis,
+          angle: parameters.angle,
+          operation,
+        }),
+        dependencies: [targetFeatureId],
+      })
+
+      expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+      expect(readRevolveProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
+      expect(featureBodyDependencyIds(feature)).toEqual([targetFeatureId])
+      expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-dependency-count" },
+      })
+    },
+  )
+
+  it("rejects multi-profile payloads that do not match the declared revolve version", () => {
+    const versionFiveParameters = {
+      profiles: { schemaVersion: 0 as const, profiles: [profile, secondProfile] },
+      axis: parameters.axis,
+      angle: parameters.angle,
+      operation: "new" as const,
+    }
+    const mismatchedVersionSix = featureRecordSchema.parse({
+      ...revolve(),
+      type: revolveFeatureTypeV6.type,
+      parameters: versionFiveParameters,
+      dependencies: [targetFeatureId],
+    })
+    expect(readRevolveFeatureParameters(mismatchedVersionSix)).toBeNull()
+    expect(registry().validateFeature(mismatchedVersionSix)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-parameters" },
+    })
+
+    const mismatchedVersionFive = featureRecordSchema.parse({
+      ...mismatchedVersionSix,
+      type: multiProfileRevolveFeatureType.type,
+      parameters: { ...versionFiveParameters, operation: "remove" },
+    })
+    expect(readRevolveFeatureParameters(mismatchedVersionFive)).toBeNull()
+    expect(registry().validateFeature(mismatchedVersionFive)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-parameters" },
+    })
+  })
+
+  it("deduplicates a modifying multi-profile target that also owns its model-edge axis", () => {
+    const feature = featureRecordSchema.parse({
+      ...revolve(),
+      type: revolveFeatureTypeV6.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+        axis: { kind: "model-edge", reference: modelEdgeReference },
+        angle: parameters.angle,
+        operation: "remove",
+      },
+      dependencies: [targetFeatureId],
+    })
+
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(
+      registry().validateFeature({ ...feature, dependencies: [targetFeatureId, targetFeatureId] }),
+    ).toMatchObject({ ok: false })
   })
 
   it("normalizes schema-version-2 origin-axis intent without widening its stored contract", () => {

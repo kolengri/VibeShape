@@ -12,6 +12,7 @@ import {
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
   revolveFeatureType,
+  revolveFeatureTypeV6,
   type SketchRecord,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
@@ -495,6 +496,55 @@ describe("document extrusion content preparation", () => {
         ok: true,
         parameters: {
           profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
+          operation,
+        },
+      })
+      expect(solve).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "preserves the multi-profile revolve %s operation after one sketch solve",
+    async (operation) => {
+      const source = multiCircleFixture()
+      const sourceParameters = multiProfileExtrusionFeatureParametersSchema.parse(
+        source.feature.parameters,
+      )
+      const targetFeatureId = "0195b5ac-b220-7a2c-8c33-000000003456"
+      const target = featureRecordSchema.parse({
+        ...source.feature,
+        id: targetFeatureId,
+        type: extrusionFeatureType.type,
+        parameters: {
+          profile: sourceParameters.profiles.profiles[0],
+          distance: createLengthQuantity(20),
+          symmetric: false,
+          operation: "new",
+        },
+      })
+      const feature = featureRecordSchema.parse({
+        ...source.feature,
+        type: revolveFeatureTypeV6.type,
+        parameters: {
+          profiles: sourceParameters.profiles,
+          axis: { kind: "origin-axis", axis: "y" },
+          angle: createAngleQuantity(180, "deg"),
+          operation,
+        },
+        dependencies: [targetFeatureId],
+      })
+      const document = documentSnapshotSchema.parse({
+        ...source.document,
+        features: [target, feature],
+      })
+      const solve = vi.fn((): SolveSketchRecordResult => ({ ok: true, solution: source.solution }))
+      const prepare = createDocumentFeatureContentPreparer(solve)
+
+      await expect(prepare({ document, feature })).resolves.toMatchObject({
+        ok: true,
+        parameters: {
+          profiles: [{ outer: expect.any(Object) }, { outer: expect.any(Object) }],
+          axis: { kind: "origin-axis", axis: "y" },
           operation,
         },
       })

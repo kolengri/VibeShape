@@ -16,6 +16,7 @@ import {
   readRevolveFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV5,
+  revolveFeatureTypeV6,
 } from "./part-design"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
@@ -44,6 +45,7 @@ const revolveTypeKeys = new Set([
   featureTypeKey(legacyRevolveFeatureTypeV2.type),
   featureTypeKey(legacyRevolveFeatureTypeV3.type),
   featureTypeKey(revolveFeatureTypeV5.type),
+  featureTypeKey(revolveFeatureTypeV6.type),
 ])
 
 export function projectFirstPartyFeatureSemanticInputs(

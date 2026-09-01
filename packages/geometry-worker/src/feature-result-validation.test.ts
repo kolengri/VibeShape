@@ -12,6 +12,7 @@ describe("feature result validation", () => {
     expect(featureSolidCountLimit("multi-extrusion-modifying", 2)).toBe(1)
     expect(featureSolidCountLimit("multi-extrusion", 2)).toBe(2)
     expect(featureSolidCountLimit("multi-revolve", 2)).toBe(2)
+    expect(featureSolidCountLimit("multi-revolve-modifying", 2)).toBe(1)
   })
 
   it.each([

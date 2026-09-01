@@ -13,7 +13,9 @@ import {
   multiProfileRevolveFeatureType,
   readRevolveFeatureParameters,
   revolveFeatureParametersSchema,
+  revolveFeatureParametersV6Schema,
   revolveFeatureType,
+  revolveFeatureTypeV6,
   type SketchProfileSelector,
   type SketchProfileSet,
   type TopoRef,
@@ -188,7 +190,8 @@ function record(
   id: FeatureId,
   parameters:
     | ReturnType<typeof revolveFeatureParametersSchema.parse>
-    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>,
+    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
+    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
@@ -206,10 +209,7 @@ function record(
     mode.kind === "edit"
       ? {
           ...mode.feature,
-          type:
-            "profiles" in parameters
-              ? multiProfileRevolveFeatureType.type
-              : revolveFeatureType.type,
+          type: revolveType(parameters),
           parameters,
           references,
           dependencies,
@@ -217,10 +217,7 @@ function record(
       : {
           schemaVersion: 0,
           id,
-          type:
-            "profiles" in parameters
-              ? multiProfileRevolveFeatureType.type
-              : revolveFeatureType.type,
+          type: revolveType(parameters),
           parameters,
           references,
           dependencies,
@@ -229,6 +226,19 @@ function record(
         },
   )
 }
+
+function revolveType(
+  parameters:
+    | ReturnType<typeof revolveFeatureParametersSchema.parse>
+    | ReturnType<typeof multiProfileRevolveFeatureParametersSchema.parse>
+    | ReturnType<typeof revolveFeatureParametersV6Schema.parse>,
+) {
+  if (!("profiles" in parameters)) return revolveFeatureType.type
+  return parameters.operation === "new"
+    ? multiProfileRevolveFeatureType.type
+    : revolveFeatureTypeV6.type
+}
+
 function parseValues(
   values: Values,
   variables: readonly VariableDefinition[],
@@ -239,19 +249,23 @@ function parseValues(
   const angle = parseAngle(values.angle, variables, unit, copy)
   if (!angle.ok) return angle
   const operation = extrusionOperationSchema.parse(values.operation)
-  if (values.profiles.profiles.length > 1 && operation !== "new") {
-    return { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
-  }
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
   const parsed =
     values.profiles.profiles.length > 1
-      ? multiProfileRevolveFeatureParametersSchema.safeParse({
-          profiles: values.profiles,
-          axis: values.axis,
-          angle: angle.quantity,
-          operation,
-        })
+      ? operation === "new"
+        ? multiProfileRevolveFeatureParametersSchema.safeParse({
+            profiles: values.profiles,
+            axis: values.axis,
+            angle: angle.quantity,
+            operation,
+          })
+        : revolveFeatureParametersV6Schema.safeParse({
+            profiles: values.profiles,
+            axis: values.axis,
+            angle: angle.quantity,
+            operation,
+          })
       : revolveFeatureParametersSchema.safeParse({
           profile: values.profiles.profiles[0],
           axis: values.axis,
@@ -534,7 +548,6 @@ function useRevolveFormController(props: RevolveFormProps) {
         )
       if (!matches) {
         form.setFieldValue("profiles", nextProfiles)
-        if (nextProfiles.profiles.length > 1) form.setFieldValue("operation", "new")
       }
       if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
         form.setFieldValue("supportReference", supportReference)
@@ -587,29 +600,25 @@ function RevolvePreviewField({ controller }: { controller: RevolveFormController
 function RevolveOperationField({ controller }: { controller: RevolveFormController }) {
   const { form } = controller
   return (
-    <form.Subscribe selector={(state) => state.values.profiles.profiles.length}>
-      {(profileCount) => (
-        <form.Field name="operation">
-          {(field) => (
-            <NativeSelectField
-              name={field.name}
-              value={field.state.value}
-              label={controller.copy.operation}
-              disabled={controller.disabled || profileCount > 1}
-              onChange={(event) => {
-                controller.clearSubmissionErrors()
-                field.handleChange(event.currentTarget.value)
-              }}
-            >
-              <option value="new">{controller.copy.operationNew}</option>
-              <option value="add">{controller.copy.operationAdd}</option>
-              <option value="remove">{controller.copy.operationRemove}</option>
-              <option value="intersect">{controller.copy.operationIntersect}</option>
-            </NativeSelectField>
-          )}
-        </form.Field>
+    <form.Field name="operation">
+      {(field) => (
+        <NativeSelectField
+          name={field.name}
+          value={field.state.value}
+          label={controller.copy.operation}
+          disabled={controller.disabled}
+          onChange={(event) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(event.currentTarget.value)
+          }}
+        >
+          <option value="new">{controller.copy.operationNew}</option>
+          <option value="add">{controller.copy.operationAdd}</option>
+          <option value="remove">{controller.copy.operationRemove}</option>
+          <option value="intersect">{controller.copy.operationIntersect}</option>
+        </NativeSelectField>
       )}
-    </form.Subscribe>
+    </form.Field>
   )
 }
 

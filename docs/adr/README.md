@@ -38,6 +38,7 @@
 | [0034](0034-versioned-multi-profile-feature-input.md) | Accepted | Canonical multi-profile New intent with a bounded multi-solid result |
 | [0035](0035-versioned-portable-history.md) | Accepted | Replay-proven complete and explicitly evidenced checkpoint history in `.vshape` v2 |
 | [0036](0036-multi-profile-modifying-extrusion.md) | Accepted | Target-first Add, Remove, and Intersect with a canonical multi-profile Extrude tool |
+| [0037](0037-multi-profile-modifying-revolve.md) | Accepted | Target-first Add, Remove, and Intersect with one canonical multi-profile Revolve tool and axis |
 
 Statuses:
 

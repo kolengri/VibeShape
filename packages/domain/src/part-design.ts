@@ -240,11 +240,45 @@ export const revolveFeatureParametersV5Schema = z
   .strict()
 export const multiProfileRevolveFeatureParametersSchema = revolveFeatureParametersV5Schema
 
+export const revolveFeatureParametersV6Schema = z
+  .object({
+    profiles: multiProfileSetSchema,
+    axis: revolveAxisSchema,
+    angle: revolveAngleSchema,
+    operation: z.enum(["add", "remove", "intersect"]),
+  })
+  .strict()
+
 type NormalizedExtrusionParameters = z.infer<typeof extrusionFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
 }
 type NormalizedRevolveParameters = z.infer<typeof revolveFeatureParametersSchema> & {
   profiles?: z.infer<typeof sketchProfileSetSchema>
+}
+
+function parseRevolveParameters<T>(schema: z.ZodType<T>, parameters: unknown): T | null {
+  const parsed = schema.safeParse(parameters)
+  return parsed.success ? parsed.data : null
+}
+
+function normalizeLegacyOriginAxisRevolveParameters(
+  parameters:
+    | z.infer<typeof legacyRevolveFeatureParametersSchema>
+    | z.infer<typeof legacyRevolveFeatureParametersV2Schema>
+    | null,
+): NormalizedRevolveParameters | null {
+  return parameters ? { ...parameters, axis: { kind: "origin-axis", axis: parameters.axis } } : null
+}
+
+function normalizeMultiProfileRevolveParameters(
+  parameters:
+    | z.infer<typeof revolveFeatureParametersV5Schema>
+    | z.infer<typeof revolveFeatureParametersV6Schema>
+    | null,
+): NormalizedRevolveParameters | null {
+  if (!parameters) return null
+  const profile = parameters.profiles.profiles[0]
+  return profile ? { ...parameters, profile } : null
 }
 
 type VariableValues = ReadonlyMap<string, ExpressionValue | EvaluatedVariable>
@@ -483,6 +517,19 @@ export const revolveFeatureTypeV5 = featureTypeDescriptorSchema.parse({
 })
 export const multiProfileRevolveFeatureType = revolveFeatureTypeV5
 
+export const revolveFeatureTypeV6 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.revolve",
+    schemaVersion: 6,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 3 },
+  references: { min: 0, max: 1 },
+})
+
 export const legacyRevolveFeatureTypeV3 = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -584,6 +631,7 @@ export function isRevolveType(feature: FeatureRecord) {
     legacyRevolveFeatureTypeV3.type,
     revolveFeatureType.type,
     revolveFeatureTypeV5.type,
+    revolveFeatureTypeV6.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -597,23 +645,30 @@ export function readRevolveFeatureParameters(
   feature: FeatureRecord,
 ): NormalizedRevolveParameters | null {
   if (!isRevolveType(feature)) return null
-  const parsed = z
-    .union([
-      legacyRevolveFeatureParametersSchema,
-      legacyRevolveFeatureParametersV2Schema,
-      legacyRevolveFeatureParametersV3Schema,
-      revolveFeatureParametersSchema,
-      revolveFeatureParametersV5Schema,
-    ])
-    .safeParse(feature.parameters)
-  if (!parsed.success) return null
-  const normalized =
-    typeof parsed.data.axis === "string"
-      ? { ...parsed.data, axis: { kind: "origin-axis" as const, axis: parsed.data.axis } }
-      : parsed.data
-  if ("profile" in normalized) return normalized
-  const profile = normalized.profiles.profiles[0]
-  return profile ? ({ ...normalized, profile } as NormalizedRevolveParameters) : null
+  switch (feature.type.schemaVersion) {
+    case 1:
+      return normalizeLegacyOriginAxisRevolveParameters(
+        parseRevolveParameters(legacyRevolveFeatureParametersSchema, feature.parameters),
+      )
+    case 2:
+      return normalizeLegacyOriginAxisRevolveParameters(
+        parseRevolveParameters(legacyRevolveFeatureParametersV2Schema, feature.parameters),
+      )
+    case 3:
+      return parseRevolveParameters(legacyRevolveFeatureParametersV3Schema, feature.parameters)
+    case 4:
+      return parseRevolveParameters(revolveFeatureParametersSchema, feature.parameters)
+    case 5:
+      return normalizeMultiProfileRevolveParameters(
+        parseRevolveParameters(revolveFeatureParametersV5Schema, feature.parameters),
+      )
+    case 6:
+      return normalizeMultiProfileRevolveParameters(
+        parseRevolveParameters(revolveFeatureParametersV6Schema, feature.parameters),
+      )
+    default:
+      return null
+  }
 }
 
 export function readRevolveProfileSet(feature: FeatureRecord) {
@@ -651,6 +706,7 @@ function resolveRevolveParameters(parameters: unknown, variables: VariableValues
       legacyRevolveFeatureParametersV3Schema,
       revolveFeatureParametersSchema,
       revolveFeatureParametersV5Schema,
+      revolveFeatureParametersV6Schema,
     ])
     .safeParse(parameters)
   if (!parsed.success) return { ok: true as const, parameters }
@@ -964,6 +1020,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     resolveParameters: resolveRevolveParameters,
     contentParameters(parameters) {
       const revolve = revolveFeatureParametersV5Schema.parse(parameters)
+      return {
+        profiles: revolve.profiles,
+        axis: revolve.axis,
+        angle: revolve.angle.value,
+        operation: revolve.operation,
+      }
+    },
+  },
+  {
+    type: revolveFeatureTypeV6.type,
+    parametersSchema: revolveFeatureParametersV6Schema,
+    validateFeature: revolveFeatureInvariant,
+    resolveParameters: resolveRevolveParameters,
+    contentParameters(parameters) {
+      const revolve = revolveFeatureParametersV6Schema.parse(parameters)
       return {
         profiles: revolve.profiles,
         axis: revolve.axis,

@@ -18,6 +18,7 @@ import {
   type KernelSpikeParameters,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
+  revolveMultiProfileModifyingFeatureContentParametersSchema,
   type TopologyCandidate,
   type TopologySpikeEngineResult,
   type TopologySpikeParameters,
@@ -204,6 +205,8 @@ const REVOLVE_FEATURE_TYPE_V4_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#4"
 const REVOLVE_FEATURE_TYPE_V5_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#5"
+const REVOLVE_FEATURE_TYPE_V6_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#6"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
 
@@ -742,6 +745,9 @@ export type RevolveContentParameters = ReturnType<
 type RevolveMultiProfileContentParameters = ReturnType<
   typeof revolveMultiProfileFeatureContentParametersSchema.parse
 >
+type RevolveMultiProfileModifyingContentParameters = ReturnType<
+  typeof revolveMultiProfileModifyingFeatureContentParametersSchema.parse
+>
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
@@ -879,6 +885,10 @@ type ParsedFeature =
     }
   | { kind: "revolve"; parameters: RevolveContentParameters }
   | { kind: "multi-revolve"; parameters: RevolveMultiProfileContentParameters }
+  | {
+      kind: "multi-revolve-modifying"
+      parameters: RevolveMultiProfileModifyingContentParameters
+    }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -1132,6 +1142,39 @@ function parseMultiRevolveFeature(input: FeatureEvaluationInput): FeatureParseRe
   return { ok: true, feature: { kind: "multi-revolve", parameters: parameters.data } }
 }
 
+function parseMultiRevolveModifyingFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = revolveMultiProfileModifyingFeatureContentParametersSchema.safeParse(
+    feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Multi-profile modifying revolve content parameters are invalid.",
+    )
+  }
+  if (
+    !revolveInputCardinalityIsValid(input, parameters.data) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId)
+  ) {
+    return invalidInputCardinality(
+      "A multi-profile modifying revolve requires one target and may also depend on its sketch support and model-edge axis source.",
+    )
+  }
+  for (const profile of parameters.data.profiles) {
+    if (revolveProfileCrossesAxis({ ...parameters.data, ...profile })) {
+      return featureFailure(
+        "invalid-feature-parameters",
+        "Revolve profiles must not cross the selected axis.",
+      )
+    }
+  }
+  return {
+    ok: true,
+    feature: { kind: "multi-revolve-modifying", parameters: parameters.data },
+  }
+}
+
 function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const parameters = revolveFeatureContentParametersSchema.safeParse(
     input.content.feature.parameters,
@@ -1147,7 +1190,7 @@ function parseLegacyRevolveFeature(input: FeatureEvaluationInput): FeatureParseR
 
 export function revolveInputCardinalityIsValid(
   input: FeatureEvaluationInput,
-  parameters: RevolveContentParameters,
+  parameters: Pick<RevolveContentParameters, "axis" | "operation" | "supportFeatureId">,
 ) {
   const dependencies = input.dependencies
   if (input.content.feature.inputs.length !== dependencies.length) return false
@@ -1201,6 +1244,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V4_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V5_KEY, parseMultiRevolveFeature],
+  [REVOLVE_FEATURE_TYPE_V6_KEY, parseMultiRevolveModifyingFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
 ])
 
@@ -1300,6 +1344,7 @@ function createProfileFeatureShape(
         | "multi-extrusion-modifying"
         | "revolve"
         | "multi-revolve"
+        | "multi-revolve-modifying"
     }
   >,
   dependencyShapes: readonly Shape3D[],
@@ -1319,6 +1364,12 @@ function createProfileFeatureShape(
       return createRevolveFeatureShape(opencascade, feature.parameters, dependencyShapes)
     case "multi-revolve":
       return createMultiRevolveFeatureShape(opencascade, feature.parameters)
+    case "multi-revolve-modifying":
+      return createMultiRevolveModifyingFeatureShape(
+        opencascade,
+        feature.parameters,
+        dependencyShapes,
+      )
   }
 }
 
@@ -1838,16 +1889,27 @@ function createRevolveFeatureShape(
     throw new Error("Revolve target dependency shape is unavailable.")
   }
   try {
-    switch (parameters.operation) {
-      case "add":
-        return fuseOcctShapes(opencascade, target, tool)
-      case "remove":
-        return cutOcctShapes(opencascade, target, tool)
-      case "intersect":
-        return intersectOcctShapes(opencascade, target, tool)
-    }
+    return applyRevolveOperation(opencascade, parameters, target, tool)
   } finally {
     tool.delete()
+  }
+}
+
+function applyRevolveOperation(
+  opencascade: OpenCascadeInstance,
+  parameters: Pick<RevolveContentParameters, "operation">,
+  target: Shape3D,
+  tool: Shape3D,
+) {
+  switch (parameters.operation) {
+    case "add":
+      return fuseOcctShapes(opencascade, target, tool)
+    case "remove":
+      return cutOcctShapes(opencascade, target, tool)
+    case "intersect":
+      return intersectOcctShapes(opencascade, target, tool)
+    case "new":
+      throw new Error("A new-body revolve cannot modify a target shape.")
   }
 }
 
@@ -1920,6 +1982,23 @@ function createMultiRevolveFeatureShape(
   return combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
     createRevolveShape(opencascade, { ...parameters, ...profile }),
   )
+}
+
+function createMultiRevolveModifyingFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: RevolveMultiProfileModifyingContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const target = dependencyShapes[0]
+  if (!target) throw new Error("Multi-profile revolve target dependency shape is unavailable.")
+  const tool = combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
+    createRevolveShape(opencascade, { ...parameters, ...profile }),
+  )
+  try {
+    return applyRevolveOperation(opencascade, parameters, target, tool)
+  } finally {
+    tool.delete()
+  }
 }
 
 function multiExtrusionRoleParameters(
