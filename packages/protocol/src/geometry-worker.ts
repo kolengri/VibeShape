@@ -350,6 +350,19 @@ export const extrusionMultiProfileFeatureContentParametersSchema = z
   })
   .strict()
 
+/** Multi-profile modifying extrusion content; schema-version 4 only. */
+export const extrusionMultiProfileModifyingFeatureContentParametersSchema = z
+  .object({
+    sketchId: sketchIdSchema,
+    supportFeatureId: featureIdSchema.optional(),
+    frame: extrusionFrameSchema,
+    profiles: multiProfileListSchema,
+    distance: cadLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.enum(["add", "remove", "intersect"]),
+  })
+  .strict()
+
 export const revolveMultiProfileFeatureContentParametersSchema = z
   .object({
     sketchId: sketchIdSchema,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   extrusionMultiProfileFeatureContentParametersSchema,
+  extrusionMultiProfileModifyingFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
 } from "./geometry-worker"
 
@@ -87,5 +88,33 @@ describe("multi-profile geometry content", () => {
       operation: "new",
     })
     expect(result.success).toBe(true)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "accepts %s multi-profile modifying extrusion content",
+    (operation) => {
+      const result = extrusionMultiProfileModifyingFeatureContentParametersSchema.safeParse({
+        sketchId,
+        frame,
+        profiles: [profile()],
+        distance: 5,
+        symmetric: false,
+        operation,
+      })
+      expect(result.success).toBe(true)
+    },
+  )
+
+  it("keeps the modifying content version distinct from multi-profile New", () => {
+    expect(
+      extrusionMultiProfileModifyingFeatureContentParametersSchema.safeParse({
+        sketchId,
+        frame,
+        profiles: [profile()],
+        distance: 5,
+        symmetric: false,
+        operation: "new",
+      }).success,
+    ).toBe(false)
   })
 })

@@ -151,12 +151,30 @@ export const extrusionFeatureParametersV3Schema = z
   .strict()
 export const multiProfileExtrusionFeatureParametersSchema = extrusionFeatureParametersV3Schema
 
+export const extrusionFeatureParametersV4Schema = z
+  .object({
+    profiles: multiProfileSetSchema,
+    distance: primitiveLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.enum(["add", "remove", "intersect"]),
+  })
+  .strict()
+
 export const extrusionFeatureAuthoredContentParametersV3Schema = z
   .object({
     profiles: sketchProfileSetSchema,
     distance: primitiveContentLengthSchema,
     symmetric: z.boolean(),
     operation: z.literal("new"),
+  })
+  .strict()
+
+export const extrusionFeatureAuthoredContentParametersV4Schema = z
+  .object({
+    profiles: sketchProfileSetSchema,
+    distance: primitiveContentLengthSchema,
+    symmetric: z.boolean(),
+    operation: z.enum(["add", "remove", "intersect"]),
   })
   .strict()
 
@@ -317,7 +335,9 @@ function resolveCylinderParameters(parameters: unknown, variables: VariableValue
 }
 
 function resolveExtrusionParameters(parameters: unknown, variables: VariableValues) {
-  const multiProfile = extrusionFeatureParametersV3Schema.safeParse(parameters)
+  const multiProfile = z
+    .union([extrusionFeatureParametersV3Schema, extrusionFeatureParametersV4Schema])
+    .safeParse(parameters)
   if (multiProfile.success) {
     const distance = resolveLengthParameter("distance", multiProfile.data.distance, variables)
     if (!distance.ok) return distance
@@ -423,6 +443,19 @@ export const extrusionFeatureTypeV3 = featureTypeDescriptorSchema.parse({
 })
 export const multiProfileExtrusionFeatureType = extrusionFeatureTypeV3
 
+export const extrusionFeatureTypeV4 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.extrusion",
+    schemaVersion: 4,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 2 },
+  references: { min: 0, max: 1 },
+})
+
 export const revolveFeatureType = featureTypeDescriptorSchema.parse({
   schemaVersion: 0,
   type: {
@@ -496,6 +529,7 @@ function isExtrusionType(feature: FeatureRecord) {
     legacyExtrusionFeatureType.type,
     extrusionFeatureType.type,
     extrusionFeatureTypeV3.type,
+    extrusionFeatureTypeV4.type,
   ].some(
     (expected) =>
       type.moduleId === expected.moduleId &&
@@ -509,13 +543,30 @@ export function readExtrusionFeatureParameters(
   feature: FeatureRecord,
 ): NormalizedExtrusionParameters | null {
   if (!isExtrusionType(feature)) return null
-  const parsed = z
-    .union([extrusionFeatureParametersSchema, extrusionFeatureParametersV3Schema])
-    .safeParse(feature.parameters)
-  if (!parsed.success) return null
-  if ("profile" in parsed.data) return parsed.data
-  const profile = parsed.data.profiles.profiles[0]
-  return profile ? ({ ...parsed.data, profile } as NormalizedExtrusionParameters) : null
+  switch (feature.type.schemaVersion) {
+    case 1: {
+      const parsed = legacyExtrusionFeatureParametersSchema.safeParse(feature.parameters)
+      return parsed.success ? parsed.data : null
+    }
+    case 2: {
+      const parsed = extrusionFeatureParametersSchema.safeParse(feature.parameters)
+      return parsed.success ? parsed.data : null
+    }
+    case 3: {
+      const parsed = extrusionFeatureParametersV3Schema.safeParse(feature.parameters)
+      if (!parsed.success) return null
+      const profile = parsed.data.profiles.profiles[0]
+      return profile ? { ...parsed.data, profile } : null
+    }
+    case 4: {
+      const parsed = extrusionFeatureParametersV4Schema.safeParse(feature.parameters)
+      if (!parsed.success) return null
+      const profile = parsed.data.profiles.profiles[0]
+      return profile ? { ...parsed.data, profile } : null
+    }
+    default:
+      return null
+  }
 }
 
 export function readExtrusionProfileSet(feature: FeatureRecord) {
@@ -665,8 +716,67 @@ function revolveDependencyIssue(
   return null
 }
 
+function modifyingMultiProfileExtrusionDependencyIssue(
+  feature: FeatureRecord,
+  operation: "add" | "remove" | "intersect",
+) {
+  const targetFeatureId = feature.dependencies[0]
+  if (!targetFeatureId) {
+    return {
+      path: "dependencies",
+      message: `${operation} multi-profile extrusion requires one explicit target dependency.`,
+    }
+  }
+  const expectedDependencies = [
+    targetFeatureId,
+    ...feature.references.flatMap(({ featureId }) =>
+      featureId === targetFeatureId ? [] : [featureId],
+    ),
+  ]
+  const valid =
+    feature.dependencies.length === expectedDependencies.length &&
+    feature.dependencies.every(
+      (dependencyId, index) => dependencyId === expectedDependencies[index],
+    )
+  return valid
+    ? null
+    : {
+        path: "dependencies",
+        message: `${operation} multi-profile extrusion requires its target first, followed by any distinct sketch-support dependency.`,
+      }
+}
+
+function singleProfileExtrusionDependencyIssue(
+  feature: FeatureRecord,
+  supportDependencyCount: number,
+  operation: "new" | "add" | "remove" | "intersect",
+) {
+  const minimumDependencyCount = operation === "new" ? supportDependencyCount : 1
+  const maximumDependencyCount =
+    operation === "new" ? supportDependencyCount : supportDependencyCount + 1
+  const valid =
+    feature.dependencies.length >= minimumDependencyCount &&
+    feature.dependencies.length <= maximumDependencyCount
+  return valid
+    ? null
+    : {
+        path: "dependencies",
+        message:
+          operation === "new"
+            ? "New-body extrusion dependencies must match its sketch-support references."
+            : `${operation} extrusion requires one target plus any distinct sketch-support dependency.`,
+      }
+}
+
 function extrusionDependencyIssue(feature: FeatureRecord) {
   const supportDependencyCount = new Set(feature.references.map(({ featureId }) => featureId)).size
+  const modifyingMultiProfile = extrusionFeatureParametersV4Schema.safeParse(feature.parameters)
+  if (modifyingMultiProfile.success) {
+    return modifyingMultiProfileExtrusionDependencyIssue(
+      feature,
+      modifyingMultiProfile.data.operation,
+    )
+  }
   const multiProfile = extrusionFeatureParametersV3Schema.safeParse(feature.parameters)
   if (multiProfile.success) {
     return feature.dependencies.length === supportDependencyCount
@@ -679,21 +789,11 @@ function extrusionDependencyIssue(feature: FeatureRecord) {
   }
   const parameters = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   if (!parameters.success) return null
-  const minimumDependencyCount = parameters.data.operation === "new" ? supportDependencyCount : 1
-  const maximumDependencyCount =
-    parameters.data.operation === "new" ? supportDependencyCount : supportDependencyCount + 1
-  const valid =
-    feature.dependencies.length >= minimumDependencyCount &&
-    feature.dependencies.length <= maximumDependencyCount
-  return valid
-    ? null
-    : {
-        path: "dependencies",
-        message:
-          parameters.data.operation === "new"
-            ? "New-body extrusion dependencies must match its sketch-support references."
-            : `${parameters.data.operation} extrusion requires one target plus any distinct sketch-support dependency.`,
-      }
+  return singleProfileExtrusionDependencyIssue(
+    feature,
+    supportDependencyCount,
+    parameters.data.operation,
+  )
 }
 
 function extrusionFeatureInvariant(feature: FeatureRecord) {
@@ -775,6 +875,21 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     contentParameters(parameters) {
       const extrusion = extrusionFeatureParametersV3Schema.parse(parameters)
       return extrusionFeatureAuthoredContentParametersV3Schema.parse({
+        profiles: extrusion.profiles,
+        distance: extrusion.distance.value,
+        symmetric: extrusion.symmetric,
+        operation: extrusion.operation,
+      })
+    },
+  },
+  {
+    type: extrusionFeatureTypeV4.type,
+    parametersSchema: extrusionFeatureParametersV4Schema,
+    validateFeature: extrusionFeatureInvariant,
+    resolveParameters: resolveExtrusionParameters,
+    contentParameters(parameters) {
+      const extrusion = extrusionFeatureParametersV4Schema.parse(parameters)
+      return extrusionFeatureAuthoredContentParametersV4Schema.parse({
         profiles: extrusion.profiles,
         distance: extrusion.distance.value,
         symmetric: extrusion.symmetric,

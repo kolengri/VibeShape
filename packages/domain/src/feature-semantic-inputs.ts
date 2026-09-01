@@ -7,6 +7,7 @@ import {
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
+  extrusionFeatureTypeV4,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -35,6 +36,7 @@ const extrusionTypeKeys = new Set([
   featureTypeKey(extrusionFeatureType.type),
   featureTypeKey(legacyExtrusionFeatureType.type),
   featureTypeKey(extrusionFeatureTypeV3.type),
+  featureTypeKey(extrusionFeatureTypeV4.type),
 ])
 const revolveTypeKeys = new Set([
   featureTypeKey(revolveFeatureType.type),

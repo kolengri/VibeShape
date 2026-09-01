@@ -9,11 +9,14 @@ import {
 } from "./modules"
 import {
   extrusionFeatureParametersSchema,
+  extrusionFeatureParametersV4Schema,
   extrusionFeatureType,
+  extrusionFeatureTypeV4,
   legacyExtrusionFeatureType,
   multiProfileExtrusionFeatureParametersSchema,
   multiProfileExtrusionFeatureType,
   partDesignFeatureTypeHandlers,
+  readExtrusionFeatureParameters,
   readExtrusionProfileSet,
 } from "./part-design"
 import { createLengthQuantity } from "./units"
@@ -133,6 +136,120 @@ describe("selector-backed extrusion feature", () => {
         },
       }).success,
     ).toBe(false)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "registers a distinct multi-profile %s version with a target-first dependency",
+    (operation) => {
+      const targetFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
+      const parameters = extrusionFeatureParametersV4Schema.parse({
+        profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+        distance: createLengthQuantity(12, "mm"),
+        symmetric: false,
+        operation,
+      })
+      const feature = featureRecordSchema.parse({
+        ...extrusion(),
+        type: extrusionFeatureTypeV4.type,
+        parameters,
+        dependencies: [targetFeatureId],
+      })
+
+      expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+      expect(readExtrusionProfileSet(feature)?.profiles).toEqual([profile, secondProfile])
+      expect(
+        registry().validateFeature({
+          ...feature,
+          dependencies: [],
+        }),
+      ).toMatchObject({
+        ok: false,
+        diagnostic: {
+          code: "invalid-feature-dependency-count",
+        },
+      })
+    },
+  )
+
+  it("rejects multi-profile payloads that do not match the declared extrusion version", () => {
+    const versionThreeParameters = {
+      profiles: { schemaVersion: 0 as const, profiles: [profile, secondProfile] },
+      distance: createLengthQuantity(12, "mm"),
+      symmetric: false,
+      operation: "new" as const,
+    }
+    const mismatchedVersionFour = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV4.type,
+      parameters: versionThreeParameters,
+      dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3302"],
+    })
+
+    expect(readExtrusionFeatureParameters(mismatchedVersionFour)).toBeNull()
+    expect(registry().validateFeature(mismatchedVersionFour)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-parameters" },
+    })
+
+    const mismatchedVersionThree = featureRecordSchema.parse({
+      ...mismatchedVersionFour,
+      type: multiProfileExtrusionFeatureType.type,
+      parameters: { ...versionThreeParameters, operation: "remove" },
+    })
+    expect(readExtrusionFeatureParameters(mismatchedVersionThree)).toBeNull()
+    expect(registry().validateFeature(mismatchedVersionThree)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-feature-parameters" },
+    })
+  })
+
+  it("keeps multi-profile support after the target and deduplicates the same source", () => {
+    const targetFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
+    const supportFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f3303"
+    const reference = {
+      schemaVersion: 0 as const,
+      featureId: supportFeatureId,
+      kind: "face" as const,
+      semanticRole: "extrusion.cap.end",
+      signature: {
+        kind: "face" as const,
+        geometryClass: "PLANE",
+        measure: 400,
+        centroid: [0, 0, 10] as [number, number, number],
+        bounds: {
+          min: [-10, -10, 10] as [number, number, number],
+          max: [10, 10, 10] as [number, number, number],
+        },
+        direction: [0, 0, 1] as [number, number, number],
+        directionMode: "oriented" as const,
+        boundaryCount: 4,
+        adjacentGeometryClasses: ["PLANE"],
+      },
+    }
+    const feature = featureRecordSchema.parse({
+      ...extrusion(),
+      type: extrusionFeatureTypeV4.type,
+      parameters: {
+        profiles: { schemaVersion: 0, profiles: [profile, secondProfile] },
+        distance: createLengthQuantity(12, "mm"),
+        symmetric: false,
+        operation: "remove",
+      },
+      dependencies: [targetFeatureId, supportFeatureId],
+      references: [reference],
+    })
+
+    expect(registry().validateFeature(feature)).toMatchObject({ ok: true })
+    expect(
+      registry().validateFeature({ ...feature, dependencies: [supportFeatureId, targetFeatureId] }),
+    ).toMatchObject({ ok: false })
+    expect(
+      registry().validateFeature({
+        ...feature,
+        dependencies: [supportFeatureId],
+        references: [{ ...reference, featureId: supportFeatureId }],
+      }),
+    ).toMatchObject({ ok: true })
   })
 
   it("accepts one stable face-support dependency for a new-body extrusion", () => {

@@ -7,6 +7,7 @@ import {
   cylinderFeatureType,
   datumPlaneFeatureType,
   extrusionFeatureType,
+  extrusionFeatureTypeV4,
   featureIdSchema,
   featureRecordSchema,
   legacyRevolveFeatureType,
@@ -118,6 +119,17 @@ const multiProfileExtrusion = featureRecordSchema.parse({
   },
 })
 
+const modifyingMultiProfileExtrusion = featureRecordSchema.parse({
+  ...multiProfileExtrusion,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2708"),
+  type: extrusionFeatureTypeV4.type,
+  parameters: {
+    ...multiProfileExtrusion.parameters,
+    operation: "remove",
+  },
+  dependencies: [box.id],
+})
+
 const multiProfileRevolve = featureRecordSchema.parse({
   ...revolve,
   type: multiProfileRevolveFeatureType.type,
@@ -157,6 +169,7 @@ describe("part-design tool routing", () => {
     expect(isBooleanFeature(boolean)).toBe(true)
     expect(isExtrusionFeature(extrusion)).toBe(true)
     expect(isExtrusionFeature(multiProfileExtrusion)).toBe(true)
+    expect(isExtrusionFeature(modifyingMultiProfileExtrusion)).toBe(true)
     expect(isRevolveFeature(revolve)).toBe(true)
     expect(isRevolveFeature(multiProfileRevolve)).toBe(true)
     expect(isDatumPlaneFeature(datumPlane)).toBe(true)
@@ -201,7 +214,13 @@ describe("part-design tool routing", () => {
     expect(
       booleanInputFeatures([box, cylinder, extrusion, boolean, dependentBoolean], boolean.id),
     ).toEqual([box, cylinder, extrusion])
-    expect(booleanInputFeatures([multiProfileExtrusion, multiProfileRevolve])).toEqual([])
+    expect(
+      booleanInputFeatures([
+        multiProfileExtrusion,
+        modifyingMultiProfileExtrusion,
+        multiProfileRevolve,
+      ]),
+    ).toEqual([modifyingMultiProfileExtrusion])
   })
 
   it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
@@ -214,7 +233,13 @@ describe("part-design tool routing", () => {
       cylinder,
       extrusion,
     ])
-    expect(modifyingSolidTargetFeatures([multiProfileExtrusion, multiProfileRevolve])).toEqual([])
+    expect(
+      modifyingSolidTargetFeatures([
+        multiProfileExtrusion,
+        modifyingMultiProfileExtrusion,
+        multiProfileRevolve,
+      ]),
+    ).toEqual([modifyingMultiProfileExtrusion])
   })
 
   it("keeps schema-version-1 revolve records editable and target-eligible", () => {

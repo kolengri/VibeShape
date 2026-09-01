@@ -126,6 +126,23 @@ const multiProfileExtrusion = (value: string, profileSketchId: string) => ({
   },
 })
 
+const modifyingMultiProfileExtrusion = (
+  value: string,
+  profileSketchId: string,
+  targetFeatureId: string,
+) => ({
+  ...multiProfileExtrusion(value, profileSketchId),
+  type: {
+    ...multiProfileExtrusion(value, profileSketchId).type,
+    schemaVersion: 4,
+  },
+  parameters: {
+    ...multiProfileExtrusion(value, profileSketchId).parameters,
+    operation: "remove" as const,
+  },
+  dependencies: [id(targetFeatureId)],
+})
+
 const modifyingExtrusion = (value: string, profileSketchId: string, targetFeatureId: string) => ({
   ...extrusion(value, profileSketchId),
   parameters: {
@@ -264,6 +281,31 @@ const modelEdgeRevolve = (value: string, profileSketchId: string, sourceFeatureI
 })
 
 describe("createDocumentDependencyGraph", () => {
+  it("flags a multi-profile extrusion payload that does not match its declared version", () => {
+    const mismatched = multiProfileExtrusion("2", "1")
+    const result = createDocumentDependencyGraphFromSnapshot({
+      sketches: [sketch("1")],
+      features: [
+        {
+          ...mismatched,
+          type: { ...mismatched.type, schemaVersion: 4 },
+        },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      graph: {
+        dependencyModelIssues: [
+          {
+            featureId: mismatched.id,
+            ownerPath: "features.0.type",
+          },
+        ],
+      },
+    })
+  })
+
   it("rejects multi-profile results as modifying and Boolean inputs", () => {
     const source = multiProfileExtrusion("2", "1")
     const tool = feature("3")
@@ -283,6 +325,15 @@ describe("createDocumentDependencyGraph", () => {
         issues: [{ path: "features.1.dependencies.0" }],
       },
     })
+    const ordinaryTarget = extrusion("3", "1")
+    const modifyingMultiProfile = modifyingMultiProfileExtrusion("4", "1", "3")
+    const downstream = modifyingExtrusion("5", "1", "4")
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [ordinaryTarget, modifyingMultiProfile, downstream],
+      }),
+    ).toMatchObject({ ok: true })
     expect(
       createDocumentDependencyGraphFromSnapshot({
         sketches: [sketch("1")],

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event"
 import {
   createLengthQuantity,
   extrusionFeatureType,
+  extrusionFeatureTypeV4,
   featureIdSchema,
   featureRecordSchema,
   multiProfileExtrusionFeatureType,
@@ -307,7 +308,7 @@ describe("ExtrusionForm", () => {
     })
     expect(
       (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
-    ).toBe(true)
+    ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
       4,
@@ -320,6 +321,34 @@ describe("ExtrusionForm", () => {
       }),
     )
   })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "persists a canonical multi-profile %s extrusion with an explicit target",
+    async (operation) => {
+      const user = userEvent.setup()
+      const { onSave } = renderForm(undefined, undefined, {
+        kind: "create",
+        createFeatureId: () => featureId,
+        featureLabel: "Extrusion 1",
+        profiles: [secondProfile, profile],
+      })
+
+      await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), operation)
+      await user.click(screen.getByRole("button", { name: copy.submit }))
+
+      expect(onSave).toHaveBeenCalledWith(
+        4,
+        expect.objectContaining({
+          type: extrusionFeatureTypeV4.type,
+          parameters: expect.objectContaining({
+            operation,
+            profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
+          }),
+          dependencies: ["0195b5ac-b220-7a2c-8c33-67a36a7f3602"],
+        }),
+      )
+    },
+  )
 
   it("persists a stable support reference and dependency for a face-supported sketch", async () => {
     const user = userEvent.setup()
