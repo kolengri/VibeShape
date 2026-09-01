@@ -409,15 +409,17 @@ part of the rebuild integration work.
 
 ### Slice 0C — versioned History migration
 
-Status: pure domain schema/migration, opt-in read-only persistence recovery, and strict parallel `.vshape` v1
-codecs implemented; version-1 persistence writes, revisioned History commands, and application adoption remain
-open.
+Status: pure domain schema/migration, opt-in read-only persistence recovery, strict parallel `.vshape` v1 codecs,
+and the first version-1-only anchored sketch-insertion command/event are implemented. Version-1 persistence
+writes, mixed-journal application adoption, History reorder, and the user-visible cursor remain open.
 
 - Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
 - Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a
   complete verified journal prefix is unavailable, corrupt, or inconsistent.
 - Add old-format, corrupt-prefix, late-snapshot recovery, archive round-trip, and exact-replay fixtures.
-- Add revisioned History insertion and reorder commands only after the migration matrix passes.
+- Add revisioned History insertion and reorder commands only after the migration matrix passes. The first
+  insertion boundary now adds a sketch after a stable `HistoryItemRef`, with `null` representing the beginning;
+  reorder remains open.
 
 **Exit:** every schema-version-1 document has one validated interleaved History order, while recoverable legacy
 documents remain openable without changing geometry or overwriting their source records prematurely.
@@ -438,6 +440,13 @@ The format layer can now deterministically write and read a version-1 snapshot w
 journal, and an explicit dispatcher distinguishes v0 from v1 archives. Migration-aware replay equality rejects a
 tampered or merely schema-valid History even when archive checksums are recomputed. Existing product backup APIs
 remain v0-only until the application session can consume version-1 commands and snapshots.
+
+The additive History command boundary accepts only a validated version-1 seed and records stable insertion intent
+in both the command and event. Command application and suffix replay reject missing anchors, duplicate sketch
+identities, non-contiguous revisions, forward dependencies, and newly authored orphaned model-reference intent.
+Sketch storage order remains an implementation detail in version 1; cross-sketch reference ordering follows the
+persisted History sequence. The existing version-0 command union is unchanged until persistence and application
+can migrate and commit the full transaction atomically.
 
 ### Slice 1 — understandable History and editing context
 
