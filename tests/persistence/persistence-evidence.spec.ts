@@ -57,6 +57,19 @@ const reportSchema = z
         corruptHeadBarrier: z.literal("corrupt-history"),
         transactionRolledBack: z.literal(true),
         cleanStatus: z.literal("clean"),
+        lifecycle: z
+          .object({
+            authoritativeRevision: z.literal(3),
+            authoritativeName: z.literal("Bracket History v1"),
+            thumbnailRevision: z.literal(3),
+            lastExternalBackupAt: z.literal("2026-08-08T00:00:03Z"),
+            legacyThumbnailWriteBarrier: z.literal("stale-revision"),
+            copiedPreviewRevision: z.literal(1),
+            deletedCopyRecords: z
+              .object({ events: z.literal(1), snapshots: z.literal(1), thumbnails: z.literal(1) })
+              .strict(),
+          })
+          .strict(),
         records: z
           .object({ projects: z.literal(1), snapshots: z.literal(2), events: z.literal(1) })
           .strict(),

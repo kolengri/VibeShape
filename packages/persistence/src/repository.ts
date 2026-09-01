@@ -21,12 +21,12 @@ import {
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
+import { MAX_LOCAL_PROJECTS, summarizeProjects } from "./project-catalog"
 import {
   type EventRecord,
   eventRecordSchema,
   type LeaseRecord,
   type LocalProjectSummary,
-  localProjectSummarySchema,
   type PersistenceDiagnostic,
   type ProjectRecord,
   persistenceCommitInputSchema,
@@ -103,8 +103,6 @@ export interface ProjectDeleteReport {
   deletedThumbnailCount: number
 }
 
-const MAX_LOCAL_PROJECTS = 4_096
-const MAX_LOCAL_PROJECT_THUMBNAIL_BYTES = 16 * 1024 * 1024
 const MAX_LEGACY_HISTORY_EVENTS = 100_000
 
 export interface ProjectThumbnailWriteReport {
@@ -608,34 +606,6 @@ function portableProjectWriteReport(
   }
 }
 
-async function currentProjectThumbnails(
-  database: VibeShapeDatabase,
-  projects: readonly ProjectRecord[],
-) {
-  try {
-    const records = await database.projectThumbnails.limit(MAX_LOCAL_PROJECTS + 1).toArray()
-    if (records.length > MAX_LOCAL_PROJECTS) return new Map<string, null>()
-    const projectsById = new Map(projects.map((project) => [project.documentId, project]))
-    const thumbnails = new Map<string, z.output<typeof projectThumbnailRecordSchema>>()
-    let totalBytes = 0
-
-    for (const record of records) {
-      const thumbnail = projectThumbnailRecordSchema.safeParse(record)
-      if (!thumbnail.success) return new Map<string, null>()
-      const project = projectsById.get(thumbnail.data.documentId)
-      if (!project || thumbnail.data.revision !== project.headRevision) continue
-      totalBytes += thumbnail.data.bytes.byteLength
-      if (totalBytes > MAX_LOCAL_PROJECT_THUMBNAIL_BYTES) return new Map<string, null>()
-      thumbnails.set(thumbnail.data.documentId, thumbnail.data)
-    }
-
-    return thumbnails
-  } catch {
-    // Derived previews fail open so semantic project access remains available.
-    return new Map<string, null>()
-  }
-}
-
 export class LocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
@@ -658,32 +628,7 @@ export class LocalDocumentRepository {
         }
         return project.data
       })
-      const thumbnails = await currentProjectThumbnails(this.database, projects)
-      const summaries = projects.map((project) => {
-        const thumbnail = thumbnails.get(project.documentId)
-        return localProjectSummarySchema.parse({
-          documentId: project.documentId,
-          name: project.name,
-          headRevision: project.headRevision,
-          createdAt: project.createdAt,
-          updatedAt: project.updatedAt,
-          lastExternalBackupAt: project.lastExternalBackupAt,
-          thumbnail: thumbnail
-            ? {
-                revision: thumbnail.revision,
-                mediaType: thumbnail.mediaType,
-                bytes: thumbnail.bytes,
-                generatedAt: thumbnail.generatedAt,
-              }
-            : null,
-        })
-      })
-      summaries.sort(
-        (left, right) =>
-          right.updatedAt.localeCompare(left.updatedAt) ||
-          left.documentId.localeCompare(right.documentId),
-      )
-      return { ok: true, value: summaries }
+      return { ok: true, value: await summarizeProjects(this.database, projects) }
     } catch (error) {
       return { ok: false, diagnostic: classifyPersistenceError(error) }
     }
@@ -954,8 +899,10 @@ export class LocalDocumentRepository {
       await this.database.transaction(
         "rw",
         this.database.projects,
+        this.database.projectsV1,
         this.database.projectThumbnails,
         async () => {
+          await requireLegacyWriteAuthority(this.database, input.data.documentId)
           const project = await requireStoredProject(this.database, input.data.documentId)
           if (project.headRevision !== input.data.revision) {
             throw persistenceInvariantError(
@@ -995,8 +942,11 @@ export class LocalDocumentRepository {
       await this.database.transaction(
         "rw",
         this.database.projects,
+        this.database.projectsV1,
         this.database.projectThumbnails,
         async () => {
+          await requireLegacyWriteAuthority(this.database, input.data.sourceDocumentId)
+          await requireLegacyWriteAuthority(this.database, input.data.targetDocumentId)
           const source = await requireStoredProject(this.database, input.data.sourceDocumentId)
           const target = await requireStoredProject(this.database, input.data.targetDocumentId)
           if (

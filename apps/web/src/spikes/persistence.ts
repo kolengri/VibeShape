@@ -45,6 +45,8 @@ const staleCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21af"
 const lostLeaseCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b3"
 const versionedRenameCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b4"
 const legacyAfterPromotionCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b5"
+const lifecycleCopyDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b6"
+const lifecycleCopyCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b7"
 const ownerA = "0195b5ac-b220-7a2c-8c33-67a36a7f21b0"
 const ownerB = "0195b5ac-b220-7a2c-8c33-67a36a7f21b1"
 const operationId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b2"
@@ -455,6 +457,8 @@ async function promoteVersionedPersistence(
   legacyRepository: LocalDocumentRepository,
 ) {
   const repository = new VersionedLocalDocumentRepository(database)
+  const legacyBackupAt = "2026-08-08T00:00:03Z"
+  await database.projects.update(documentId, { lastExternalBackupAt: legacyBackupAt })
   const migrated = requirePersistenceValue(await legacyRepository.recoverMigrated(documentId))
   const legacyBefore = await semanticStorageIdentity(database)
   const stale = requireVersionedDomainResult(
@@ -525,10 +529,12 @@ async function promoteVersionedPersistence(
     }),
   )
   const promoted = requirePersistenceValue(await repository.recover(documentId))
+  const promotedProject = await database.projectsV1.get(documentId)
   requireCondition(
     [
       promotion.migrationProvenance === "journal-derived",
       promoted.migration.migrationProvenance === "journal-derived",
+      promotedProject?.lastExternalBackupAt === legacyBackupAt,
       (await semanticStorageIdentity(database)) === legacyBefore,
     ].every(Boolean),
     "Versioned promotion did not preserve its migration provenance and legacy source records.",
@@ -670,6 +676,144 @@ async function verifyVersionedRollback(database: VibeShapeDatabase) {
   )
 }
 
+function requireVersionedCatalogProject(
+  projects: readonly {
+    documentId: string
+    name: string
+    headRevision: number
+    thumbnail: { revision: number } | null
+    lastExternalBackupAt: string | null
+  }[],
+  expected: Readonly<{ documentId: string; name: string; revision: number }>,
+) {
+  const project = projects.find((candidate) => candidate.documentId === expected.documentId)
+  if (!project) throw new Error("The unified project catalog omitted the versioned project.")
+  const thumbnail = project.thumbnail
+  if (!thumbnail)
+    throw new Error("The unified project catalog omitted the versioned project preview.")
+  requireCondition(
+    canonicalJson({
+      name: project.name,
+      revision: project.headRevision,
+      thumbnail: thumbnail.revision,
+    }) ===
+      canonicalJson({
+        name: expected.name,
+        revision: expected.revision,
+        thumbnail: expected.revision,
+      }),
+    "The unified project catalog did not prefer the exact versioned project head and preview.",
+  )
+  return { project, thumbnail }
+}
+
+async function createVersionedLifecycleCopy(repository: VersionedLocalDocumentRepository) {
+  const created = requireVersionedDomainResult(
+    applyVersionedDocumentCommand(null, {
+      schemaVersion: 1,
+      kind: "org.vibeshape.document.create",
+      commandId: lifecycleCopyCommandId,
+      documentId: lifecycleCopyDocumentId,
+      baseRevision: 0,
+      issuedAt: "2026-08-08T00:00:07Z",
+      actor: { type: "user", userId: null },
+      payload: { name: "Bracket History copy" },
+    }),
+  )
+  requirePersistenceValue(
+    await repository.commit({
+      sessionId: ownerB,
+      lease: null,
+      storedAt: "2026-08-08T00:00:07Z",
+      baseSnapshot: null,
+      event: created.event,
+      snapshot: created.snapshot,
+    }),
+  )
+  return created.snapshot
+}
+
+async function verifyVersionedProjectLifecycle(
+  repository: VersionedLocalDocumentRepository,
+  legacyRepository: LocalDocumentRepository,
+  revision: number,
+) {
+  const generatedAt = "2026-08-08T00:00:06Z"
+  const bytes = new TextEncoder().encode(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" role="img"><g stroke="#263746" stroke-width="0.75" stroke-linejoin="round"><polygon points="12.00,148.00 228.00,148.00 120.00,12.00" fill="rgb(120 140 160)"/></g></svg>',
+  )
+  requirePersistenceValue(
+    await repository.writeProjectThumbnail({
+      documentId,
+      revision,
+      mediaType: "image/svg+xml",
+      bytes,
+      generatedAt,
+    }),
+  )
+  const { project, thumbnail } = requireVersionedCatalogProject(
+    requirePersistenceValue(await repository.listProjects()),
+    { documentId, name: "Bracket History v1", revision },
+  )
+  requirePersistenceFailure(
+    await legacyRepository.writeProjectThumbnail({
+      documentId,
+      revision: revision - 1,
+      mediaType: "image/svg+xml",
+      bytes,
+      generatedAt,
+    }),
+    "stale-revision",
+    "Legacy persistence replaced a versioned project thumbnail.",
+  )
+  requireVersionedCatalogProject(requirePersistenceValue(await repository.listProjects()), {
+    documentId,
+    name: "Bracket History v1",
+    revision,
+  })
+  const copy = await createVersionedLifecycleCopy(repository)
+  requirePersistenceValue(
+    await repository.copyProjectThumbnail({
+      sourceDocumentId: documentId,
+      sourceRevision: revision,
+      targetDocumentId: copy.id,
+      targetRevision: copy.revision,
+      generatedAt: "2026-08-08T00:00:08Z",
+    }),
+  )
+  requireVersionedCatalogProject(requirePersistenceValue(await repository.listProjects()), {
+    documentId: copy.id,
+    name: copy.name,
+    revision: copy.revision,
+  })
+  const deleted = requirePersistenceValue(
+    await repository.deleteProject({
+      documentId: copy.id,
+      expectedHeadRevision: copy.revision,
+      nowMs: 2_500,
+    }),
+  )
+  requireCondition(
+    !requirePersistenceValue(await repository.listProjects()).some(
+      (candidate) => candidate.documentId === copy.id,
+    ),
+    "The unified project lifecycle retained a deleted versioned project.",
+  )
+  return {
+    authoritativeRevision: project.headRevision,
+    authoritativeName: project.name,
+    thumbnailRevision: thumbnail.revision,
+    lastExternalBackupAt: project.lastExternalBackupAt,
+    legacyThumbnailWriteBarrier: "stale-revision" as const,
+    copiedPreviewRevision: copy.revision,
+    deletedCopyRecords: {
+      events: deleted.deletedEventCount,
+      snapshots: deleted.deletedSnapshotCount,
+      thumbnails: deleted.deletedThumbnailCount,
+    },
+  }
+}
+
 async function closeVersionedPersistence(
   database: VibeShapeDatabase,
   repository: VersionedLocalDocumentRepository,
@@ -707,6 +851,11 @@ async function verifyVersionedPersistence(
     legacyRepository,
     promoted.snapshot,
   )
+  const lifecycle = await verifyVersionedProjectLifecycle(
+    repository,
+    legacyRepository,
+    renamed.snapshot.revision,
+  )
   const { boundedLoss, replayed } = await verifyVersionedRecovery(database, repository)
   await verifyVersionedRollback(database)
   const clean = await closeVersionedPersistence(
@@ -728,6 +877,7 @@ async function verifyVersionedPersistence(
     corruptHeadBarrier: "corrupt-history" as const,
     transactionRolledBack: true,
     cleanStatus: clean.status,
+    lifecycle,
     records: {
       projects: await database.projectsV1.count(),
       snapshots: await database.snapshotsV1.count(),

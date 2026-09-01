@@ -18,16 +18,24 @@ import {
   persistenceInvariantError,
 } from "./diagnostics"
 import {
+  authoritativeProjectCatalog,
+  requireAuthoritativeProject,
+  summarizeProjects,
+} from "./project-catalog"
+import {
   type CommitReport,
   type DraftCommitReport,
   LocalDocumentRepository,
   type MigratedRecoveryReport,
   type PersistenceResult,
   type ProjectDeleteReport,
+  type ProjectThumbnailCopyReport,
+  type ProjectThumbnailWriteReport,
 } from "./repository"
 import {
   type EventRecordV1,
   eventRecordV1Schema,
+  type LocalProjectSummary,
   type ProjectRecord,
   type ProjectRecordV1,
   persistencePromotionInputSchema,
@@ -36,6 +44,9 @@ import {
   projectDeleteInputSchema,
   projectRecordSchema,
   projectRecordV1Schema,
+  projectThumbnailCopyInputSchema,
+  projectThumbnailRecordSchema,
+  projectThumbnailWriteInputSchema,
   type RecoveryRecordV1,
   recoveryRecordV1Schema,
   type SnapshotRecordV1,
@@ -421,8 +432,39 @@ async function recoveryMarkerPresent(
   return true
 }
 
+async function deleteProjectSemanticRecords(database: VibeShapeDatabase, documentId: DocumentId) {
+  const deletedEventCount =
+    (await database.events.where("documentId").equals(documentId).delete()) +
+    (await database.eventsV1.where("documentId").equals(documentId).delete())
+  const deletedSnapshotCount =
+    (await database.snapshots.where("documentId").equals(documentId).delete()) +
+    (await database.snapshotsV1.where("documentId").equals(documentId).delete())
+  const thumbnail = await database.projectThumbnails.get(documentId)
+  await database.projectThumbnails.delete(documentId)
+  await database.recovery.delete(documentId)
+  await database.recoveryV1.delete(documentId)
+  await database.leases.delete(documentId)
+  await database.projects.delete(documentId)
+  await database.projectsV1.delete(documentId)
+  return {
+    deletedEventCount,
+    deletedSnapshotCount,
+    deletedThumbnailCount: thumbnail ? 1 : 0,
+  }
+}
+
 export class VersionedLocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
+
+  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
+  async listProjects(): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
+    try {
+      const projects = await authoritativeProjectCatalog(this.database)
+      return { ok: true, value: await summarizeProjects(this.database, projects) }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
 
   // fallow-ignore-next-line unused-class-member -- Consumed through the workspace package export.
   async promote(inputValue: unknown): Promise<PersistenceResult<PromotionReport>> {
@@ -468,9 +510,15 @@ export class VersionedLocalDocumentRepository {
           )
         const lease = await this.database.leases.get(input.data.snapshot.id)
         requireWriterLease(true, lease, input.data)
+        const publishedProject = projectRecordV1Schema.parse({
+          ...project,
+          lastExternalBackupAt: legacy.data.lastExternalBackupAt,
+        })
         await this.database.snapshotsV1.add(snapshot)
-        await this.database.projectsV1.add(project)
-        await this.database.recoveryV1.add(recoveryForCommit(input.data, undefined, project))
+        await this.database.projectsV1.add(publishedProject)
+        await this.database.recoveryV1.add(
+          recoveryForCommit(input.data, undefined, publishedProject),
+        )
       })
       return {
         ok: true,
@@ -664,6 +712,104 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
+  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
+  async writeProjectThumbnail(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<ProjectThumbnailWriteReport>> {
+    const input = projectThumbnailWriteInputSchema.safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The project thumbnail write is invalid.",
+        ),
+      }
+    try {
+      await this.database.transaction(
+        "rw",
+        this.database.projects,
+        this.database.projectsV1,
+        this.database.projectThumbnails,
+        async () => {
+          const project = await requireAuthoritativeProject(this.database, input.data.documentId)
+          if (project.headRevision !== input.data.revision)
+            throw persistenceInvariantError(
+              "stale-revision",
+              "The project changed before its thumbnail could be stored.",
+            )
+          await this.database.projectThumbnails.put(
+            projectThumbnailRecordSchema.parse({ schemaVersion: 0, ...input.data }),
+          )
+        },
+      )
+      return {
+        ok: true,
+        value: { documentId: input.data.documentId, revision: input.data.revision },
+      }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
+  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
+  async copyProjectThumbnail(
+    inputValue: unknown,
+  ): Promise<PersistenceResult<ProjectThumbnailCopyReport>> {
+    const input = projectThumbnailCopyInputSchema.safeParse(inputValue)
+    if (!input.success)
+      return {
+        ok: false,
+        diagnostic: createPersistenceDiagnostic(
+          "invalid-input",
+          "The project thumbnail copy is invalid.",
+        ),
+      }
+    try {
+      let status: ProjectThumbnailCopyReport["status"] = "unavailable"
+      await this.database.transaction(
+        "rw",
+        this.database.projects,
+        this.database.projectsV1,
+        this.database.projectThumbnails,
+        async () => {
+          const source = await requireAuthoritativeProject(
+            this.database,
+            input.data.sourceDocumentId,
+          )
+          const target = await requireAuthoritativeProject(
+            this.database,
+            input.data.targetDocumentId,
+          )
+          if (
+            source.headRevision !== input.data.sourceRevision ||
+            target.headRevision !== input.data.targetRevision
+          )
+            throw persistenceInvariantError(
+              "stale-revision",
+              "A project changed before its thumbnail could be copied.",
+            )
+          const sourceThumbnail = projectThumbnailRecordSchema.safeParse(
+            await this.database.projectThumbnails.get(input.data.sourceDocumentId),
+          )
+          if (!sourceThumbnail.success || sourceThumbnail.data.revision !== source.headRevision)
+            return
+          await this.database.projectThumbnails.put({
+            ...sourceThumbnail.data,
+            documentId: target.documentId,
+            revision: target.headRevision,
+            generatedAt: input.data.generatedAt,
+            bytes: Uint8Array.from(sourceThumbnail.data.bytes),
+          })
+          status = "copied"
+        },
+      )
+      return { ok: true, value: { status } }
+    } catch (error) {
+      return { ok: false, diagnostic: classifyPersistenceError(error) }
+    }
+  }
+
   // fallow-ignore-next-line unused-class-member -- Reserved by the application project lifecycle.
   async deleteProject(inputValue: unknown): Promise<PersistenceResult<ProjectDeleteReport>> {
     const input = projectDeleteInputSchema.safeParse(inputValue)
@@ -676,9 +822,11 @@ export class VersionedLocalDocumentRepository {
         ),
       }
     try {
-      let deletedEventCount = 0
-      let deletedSnapshotCount = 0
-      let deletedThumbnailCount = 0
+      let deletedCounts = {
+        deletedEventCount: 0,
+        deletedSnapshotCount: 0,
+        deletedThumbnailCount: 0,
+      }
       await this.database.transaction(
         "rw",
         [
@@ -694,13 +842,7 @@ export class VersionedLocalDocumentRepository {
           this.database.projectThumbnails,
         ],
         async () => {
-          const record = await this.database.projectsV1.get(input.data.documentId)
-          if (!record)
-            throw persistenceInvariantError(
-              "document-not-found",
-              "The versioned document does not exist.",
-            )
-          const project = projectRecordV1Schema.parse(record)
+          const project = await requireAuthoritativeProject(this.database, input.data.documentId)
           if (project.headRevision !== input.data.expectedHeadRevision)
             throw persistenceInvariantError(
               "stale-revision",
@@ -712,41 +854,14 @@ export class VersionedLocalDocumentRepository {
               "lease-held",
               "The project is open for writing in another browser tab.",
             )
-          deletedEventCount =
-            (await this.database.events
-              .where("documentId")
-              .equals(input.data.documentId)
-              .delete()) +
-            (await this.database.eventsV1
-              .where("documentId")
-              .equals(input.data.documentId)
-              .delete())
-          deletedSnapshotCount =
-            (await this.database.snapshots
-              .where("documentId")
-              .equals(input.data.documentId)
-              .delete()) +
-            (await this.database.snapshotsV1
-              .where("documentId")
-              .equals(input.data.documentId)
-              .delete())
-          const thumbnail = await this.database.projectThumbnails.get(input.data.documentId)
-          await this.database.projectThumbnails.delete(input.data.documentId)
-          deletedThumbnailCount = thumbnail ? 1 : 0
-          await this.database.recovery.delete(input.data.documentId)
-          await this.database.recoveryV1.delete(input.data.documentId)
-          await this.database.leases.delete(input.data.documentId)
-          await this.database.projects.delete(input.data.documentId)
-          await this.database.projectsV1.delete(input.data.documentId)
+          deletedCounts = await deleteProjectSemanticRecords(this.database, input.data.documentId)
         },
       )
       return {
         ok: true,
         value: {
           documentId: input.data.documentId,
-          deletedEventCount,
-          deletedSnapshotCount,
-          deletedThumbnailCount,
+          ...deletedCounts,
         },
       }
     } catch (error) {
