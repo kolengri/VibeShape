@@ -159,13 +159,21 @@ event journal and prove the enclosed History by replaying that journal, migratin
 requiring canonical equality with the enclosed version-1 snapshot. The current product import remains version 0
 until persistence and application can adopt version 1 atomically.
 
-The domain now also exposes an additive version-1-only command/event boundary for inserting a new sketch after a
-stable `HistoryItemRef`; `null` means the start of History. The reducer validates the complete resulting version-1
-snapshot after every command and replayed event, including exact History coverage, dependency order, revision
-continuity, duplicate identity, and orphaned-reference intent. Version-1 sketch-reference ordering is derived from
-History rather than storage-array position. This boundary intentionally replays only a suffix whose seed is already
-a validated version-1 snapshot. Persistence writes, mixed version-0 journal adoption, History reorder, and the
-user-visible cursor remain pending integration slices.
+The domain now exposes a version-1 command/event boundary for the complete current command set. New sketch and
+feature insertions use dedicated events with a stable `HistoryItemRef` anchor; `null` means the start of History.
+Legacy add commands and events are rejected at this boundary because they do not carry explicit insertion intent.
+All other compatible version-0 commands are reduced through a validated History-ordered projection and lifted back
+to version 1. First-party feature semantic inputs are recomputed canonically, while unavailable extension
+declarations are preserved only for operations that do not require interpreting their dependency model.
+Sketch and feature removal use the version-1 graph directly so complete extension declarations remain authoritative;
+the shared preserve-intent transition atomically converts matching model references to typed orphans.
+
+The reducer validates the complete resulting version-1 snapshot after every command and replayed event, including
+exact History coverage, dependency order, revision continuity, duplicate identity, and orphaned-reference intent.
+Replay supports both a complete journal from document creation and a suffix whose seed is already a validated
+version-1 snapshot. Version-1 sketch-reference ordering is derived from History rather than storage-array position.
+Persistence writes, application adoption, mixed-version journal storage, History reorder, and the user-visible
+cursor remain pending integration slices.
 
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
