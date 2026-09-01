@@ -102,7 +102,7 @@ describe("feature type registry", () => {
         origin: [5, -3, 10],
       })
       expect(result.registry.getDescriptor(boxFeatureType.type)).toEqual(boxFeatureType)
-      expect(result.registry.descriptors).toHaveLength(12)
+      expect(result.registry.descriptors).toHaveLength(13)
       expect(
         result.registry.descriptors
           .filter(({ type }) => type.typeId === extrusionFeatureType.type.typeId)
@@ -112,7 +112,7 @@ describe("feature type registry", () => {
         result.registry.descriptors
           .filter(({ type }) => type.typeId === revolveFeatureType.type.typeId)
           .map(({ type }) => type.schemaVersion),
-      ).toEqual([1, 2, 3, 4, 5])
+      ).toEqual([1, 2, 3, 4, 5, 6])
     }
   })
 

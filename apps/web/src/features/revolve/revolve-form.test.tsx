@@ -10,6 +10,7 @@ import {
   multiProfileRevolveFeatureType,
   type revolveFeatureParametersSchema,
   revolveFeatureType,
+  revolveFeatureTypeV6,
   sketchEntityIdSchema,
   sketchProfileSelectorSchema,
   topoRefSchema,
@@ -339,7 +340,7 @@ describe("RevolveForm", () => {
     })
     expect(
       (screen.getByRole("combobox", { name: copy.operation }) as HTMLSelectElement).disabled,
-    ).toBe(true)
+    ).toBe(false)
     await user.click(screen.getByRole("button", { name: copy.submit }))
     expect(onSave).toHaveBeenCalledWith(
       4,
@@ -352,6 +353,40 @@ describe("RevolveForm", () => {
       }),
     )
   })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "persists a canonical multi-profile %s revolve with an explicit target",
+    async (operation) => {
+      const user = userEvent.setup()
+      const { onSave } = renderForm(
+        undefined,
+        undefined,
+        {
+          kind: "create",
+          createFeatureId: () => featureId,
+          featureLabel: "Revolve 1",
+          profiles: [secondProfile, profile],
+        },
+        undefined,
+        [{ id: targetFeatureId, label: "Box 1" }],
+      )
+
+      await user.selectOptions(screen.getByRole("combobox", { name: copy.operation }), operation)
+      await user.click(screen.getByRole("button", { name: copy.submit }))
+
+      expect(onSave).toHaveBeenCalledWith(
+        4,
+        expect.objectContaining({
+          type: revolveFeatureTypeV6.type,
+          parameters: expect.objectContaining({
+            operation,
+            profiles: expect.objectContaining({ profiles: [profile, secondProfile] }),
+          }),
+          dependencies: [targetFeatureId],
+        }),
+      )
+    },
+  )
 
   it("blocks a modifying operation until a target is available", async () => {
     const user = userEvent.setup()

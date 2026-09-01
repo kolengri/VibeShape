@@ -14,6 +14,7 @@ import {
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
   revolveFeatureType,
+  revolveFeatureTypeV6,
   sketchProfileSelectorSchema,
 } from "@vibeshape/domain"
 import { describe, expect, it } from "vitest"
@@ -141,6 +142,14 @@ const multiProfileRevolve = featureRecordSchema.parse({
   },
 })
 
+const modifyingMultiProfileRevolve = featureRecordSchema.parse({
+  ...multiProfileRevolve,
+  id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2709"),
+  type: revolveFeatureTypeV6.type,
+  parameters: { ...multiProfileRevolve.parameters, operation: "remove" },
+  dependencies: [box.id],
+})
+
 const dependentBoolean = featureRecordSchema.parse({
   ...boolean,
   id: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2704"),
@@ -172,6 +181,7 @@ describe("part-design tool routing", () => {
     expect(isExtrusionFeature(modifyingMultiProfileExtrusion)).toBe(true)
     expect(isRevolveFeature(revolve)).toBe(true)
     expect(isRevolveFeature(multiProfileRevolve)).toBe(true)
+    expect(isRevolveFeature(modifyingMultiProfileRevolve)).toBe(true)
     expect(isDatumPlaneFeature(datumPlane)).toBe(true)
   })
 
@@ -219,8 +229,9 @@ describe("part-design tool routing", () => {
         multiProfileExtrusion,
         modifyingMultiProfileExtrusion,
         multiProfileRevolve,
+        modifyingMultiProfileRevolve,
       ]),
-    ).toEqual([modifyingMultiProfileExtrusion])
+    ).toEqual([modifyingMultiProfileExtrusion, modifyingMultiProfileRevolve])
   })
 
   it("offers only terminal solids as extrusion targets while retaining the edited target", () => {
@@ -238,8 +249,9 @@ describe("part-design tool routing", () => {
         multiProfileExtrusion,
         modifyingMultiProfileExtrusion,
         multiProfileRevolve,
+        modifyingMultiProfileRevolve,
       ]),
-    ).toEqual([modifyingMultiProfileExtrusion])
+    ).toEqual([modifyingMultiProfileExtrusion, modifyingMultiProfileRevolve])
   })
 
   it("keeps schema-version-1 revolve records editable and target-eligible", () => {

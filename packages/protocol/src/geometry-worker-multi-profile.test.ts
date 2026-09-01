@@ -3,6 +3,7 @@ import {
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
+  revolveMultiProfileModifyingFeatureContentParametersSchema,
 } from "./geometry-worker"
 
 const sketchId = "018f2f4a-7b6c-7def-8abc-1234567890ab"
@@ -113,6 +114,39 @@ describe("multi-profile geometry content", () => {
         profiles: [profile()],
         distance: 5,
         symmetric: false,
+        operation: "new",
+      }).success,
+    ).toBe(false)
+  })
+
+  it.each(["add", "remove", "intersect"] as const)(
+    "accepts %s multi-profile modifying revolve content",
+    (operation) => {
+      expect(
+        revolveMultiProfileModifyingFeatureContentParametersSchema.safeParse({
+          sketchId,
+          frame,
+          profiles: [profile(), profile(20)],
+          axis: { kind: "origin-axis", axis: "x" },
+          axisOrigin: [0, 0, 0],
+          axisDirection: [1, 0, 0],
+          angleRadians: Math.PI,
+          operation,
+        }).success,
+      ).toBe(true)
+    },
+  )
+
+  it("rejects New in the modifying multi-profile revolve contract", () => {
+    expect(
+      revolveMultiProfileModifyingFeatureContentParametersSchema.safeParse({
+        sketchId,
+        frame,
+        profiles: [profile()],
+        axis: { kind: "origin-axis", axis: "x" },
+        axisOrigin: [0, 0, 0],
+        axisDirection: [1, 0, 0],
+        angleRadians: Math.PI,
         operation: "new",
       }).success,
     ).toBe(false)

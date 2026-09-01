@@ -15,6 +15,7 @@ import {
   multiProfileExtrusionFeatureType,
   multiProfileRevolveFeatureType,
   revolveFeatureType,
+  revolveFeatureTypeV6,
   type SketchFeatureFaceSupport,
   type SketchProfileSelector,
 } from "@vibeshape/domain"
@@ -117,6 +118,7 @@ export function isRevolveFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, revolveFeatureType.type) ||
     hasFeatureType(feature, multiProfileRevolveFeatureType.type) ||
+    hasFeatureType(feature, revolveFeatureTypeV6.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV3.type) ||
     hasFeatureType(feature, legacyRevolveFeatureTypeV2.type) ||
     hasFeatureType(feature, legacyRevolveFeatureType.type)

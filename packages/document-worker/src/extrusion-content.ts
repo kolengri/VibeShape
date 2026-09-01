@@ -30,6 +30,7 @@ import {
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
+  revolveMultiProfileModifyingFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
 import {
   resolveSketchProfileSelector,
@@ -374,12 +375,6 @@ function prepareMultiRevolve(
   frame: SupportFrame,
   geometry: readonly FeatureGeometryRecord[],
 ) {
-  if (parameters.operation !== "new") {
-    return failure(
-      "org.vibeshape.feature.sketch-profile-invalid",
-      "multi-profile-operation-unsupported",
-    )
-  }
   if (!parameters.angle || !parameters.axis) {
     return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
   }
@@ -387,7 +382,7 @@ function prepareMultiRevolve(
   if (!profiles.ok) return profiles
   const resolvedAxis = resolveRevolveAxis(sketch, solution, parameters.axis, frame, geometry)
   if (!resolvedAxis.ok) return resolvedAxis
-  const prepared = revolveMultiProfileFeatureContentParametersSchema.safeParse({
+  const content = {
     sketchId: sketch.id,
     ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
     frame,
@@ -396,10 +391,14 @@ function prepareMultiRevolve(
     axisOrigin: resolvedAxis.origin,
     axisDirection: resolvedAxis.direction,
     angleRadians: parameters.angle.value,
-    operation: "new",
-  })
+    operation: parameters.operation,
+  }
+  const prepared =
+    parameters.operation === "new"
+      ? revolveMultiProfileFeatureContentParametersSchema.safeParse(content)
+      : revolveMultiProfileModifyingFeatureContentParametersSchema.safeParse(content)
   return prepared.success
-    ? ({ ok: true, parameters: prepared.data } as const)
+    ? ({ ok: true, parameters: prepared.data as never } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set")
 }
 
@@ -622,7 +621,7 @@ function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null
     ? {
         kind: "revolve",
         parameters: revolve,
-        multiProfile: feature.type.schemaVersion === 5,
+        multiProfile: feature.type.schemaVersion === 5 || feature.type.schemaVersion === 6,
       }
     : null
 }

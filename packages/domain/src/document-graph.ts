@@ -26,6 +26,7 @@ import {
   readRevolveFeatureParameters,
   revolveFeatureType,
   revolveFeatureTypeV5,
+  revolveFeatureTypeV6,
 } from "./part-design"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
@@ -155,6 +156,7 @@ const revolveTypeKeys = new Set(
   [
     revolveFeatureType,
     revolveFeatureTypeV5,
+    revolveFeatureTypeV6,
     legacyRevolveFeatureType,
     legacyRevolveFeatureTypeV2,
     legacyRevolveFeatureTypeV3,

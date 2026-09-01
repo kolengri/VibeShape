@@ -170,7 +170,7 @@ const revolve = (value: string, profileSketchId: string, references: unknown[] =
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.revolve",
-    schemaVersion: 1,
+    schemaVersion: 4,
   },
   parameters: {
     profile: {
@@ -215,6 +215,20 @@ const multiProfileRevolve = (value: string, profileSketchId: string) => ({
   },
 })
 
+const modifyingMultiProfileRevolve = (
+  value: string,
+  profileSketchId: string,
+  targetFeatureId: string,
+) => ({
+  ...multiProfileRevolve(value, profileSketchId),
+  type: { ...multiProfileRevolve(value, profileSketchId).type, schemaVersion: 6 },
+  parameters: {
+    ...multiProfileRevolve(value, profileSketchId).parameters,
+    operation: "remove" as const,
+  },
+  dependencies: [id(targetFeatureId)],
+})
+
 const legacyRevolveV2 = (value: string, profileSketchId: string) => ({
   ...revolve(value, profileSketchId),
   type: {
@@ -238,7 +252,7 @@ const modifyingRevolve = (
     moduleId: "org.vibeshape.core.part-design",
     moduleVersion: "0.1.0",
     typeId: "org.vibeshape.feature.part-design.revolve",
-    schemaVersion: 2,
+    schemaVersion: 4,
   },
   parameters: { ...revolve(value, profileSketchId).parameters, operation },
   dependencies: [id(targetFeatureId), ...references.map(() => id("3"))].filter(
@@ -306,6 +320,26 @@ describe("createDocumentDependencyGraph", () => {
     })
   })
 
+  it("flags a multi-profile revolve payload that does not match its declared version", () => {
+    const mismatched = multiProfileRevolve("2", "1")
+    const result = createDocumentDependencyGraphFromSnapshot({
+      sketches: [sketch("1")],
+      features: [{ ...mismatched, type: { ...mismatched.type, schemaVersion: 6 } }],
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      graph: {
+        dependencyModelIssues: [
+          {
+            featureId: mismatched.id,
+            ownerPath: "features.0.type",
+          },
+        ],
+      },
+    })
+  })
+
   it("rejects multi-profile results as modifying and Boolean inputs", () => {
     const source = multiProfileExtrusion("2", "1")
     const tool = feature("3")
@@ -332,6 +366,15 @@ describe("createDocumentDependencyGraph", () => {
       createDocumentDependencyGraphFromSnapshot({
         sketches: [sketch("1")],
         features: [ordinaryTarget, modifyingMultiProfile, downstream],
+      }),
+    ).toMatchObject({ ok: true })
+    const ordinaryRevolveTarget = revolve("8", "1")
+    const modifyingMultiRevolve = modifyingMultiProfileRevolve("9", "1", "8")
+    const downstreamRevolve = modifyingRevolve("0", "1", "remove", "9")
+    expect(
+      createDocumentDependencyGraphFromSnapshot({
+        sketches: [sketch("1")],
+        features: [ordinaryRevolveTarget, modifyingMultiRevolve, downstreamRevolve],
       }),
     ).toMatchObject({ ok: true })
     expect(
