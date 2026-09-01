@@ -146,12 +146,24 @@ pure migration with verified full-journal replay and an explicit snapshot-derive
 portable-format, and application adoption remain separate transactions so an unsuccessful integration cannot
 overwrite legacy data.
 
-Persistence now exposes an opt-in, read-only migrated recovery path. It first performs the existing bounded
-semantic recovery, then independently loads the complete checksummed event prefix through the actually recovered
-revision. A complete prefix may produce `journal-derived` History; a missing or corrupt prefix produces explicit
-`snapshot-derived` provenance and unavailable-record evidence. Existing recovery callers still receive the strict
-version-0 snapshot, and migrated recovery never rewrites snapshots, events, project heads, or recovery markers.
-Atomic version-1 writes and application adoption remain pending.
+Persistence now exposes both an opt-in migrated recovery path and an explicit schema-version-1 repository. Migrated
+recovery first performs the existing bounded semantic recovery, then independently loads the complete checksummed
+event prefix through the actually recovered revision. A complete prefix may produce `journal-derived` History; a
+missing or corrupt prefix produces explicit `snapshot-derived` provenance and unavailable-record evidence. Existing
+version-0 callers remain unchanged.
+
+IndexedDB schema version 3 adds parallel `projectsV1`, `snapshotsV1`, `eventsV1`, and `recoveryV1` stores. Promotion
+first reconstructs the authoritative migrated snapshot and provenance from the current checksummed legacy source,
+then atomically publishes that exact result, project head, recovery marker, diagnostic, and unavailable-record
+evidence while leaving every version-0 semantic record intact as a rollback source. Promotion rejects bounded-loss
+recovery instead of silently making an older recovered revision the new authoritative head. The first
+successful version-1 commit changes provenance to `current`. All later version-1 commits atomically validate the
+writer lease and revision, append the event or transaction-tagged event sequence, publish the snapshot and head, and
+update recovery metadata. Every mutation and lease acquisition parses the stored v1 head and fails closed on
+corruption. Version-1 recovery starts from the newest valid checksummed snapshot and replays only its
+contiguous valid suffix, reporting bounded loss when the head cannot be reconstructed. Once a version-1 project head
+exists, legacy semantic writes fail with `stale-revision`; they cannot create a divergent journal. Application and
+portable-format adoption remain separate gates.
 
 The native-format package now provides parallel strict version-1 writer, reader, and explicit version-dispatch
 APIs while leaving the product-facing version-0 codec unchanged. Version-1 archives retain the original legacy
@@ -172,8 +184,8 @@ The reducer validates the complete resulting version-1 snapshot after every comm
 exact History coverage, dependency order, revision continuity, duplicate identity, and orphaned-reference intent.
 Replay supports both a complete journal from document creation and a suffix whose seed is already a validated
 version-1 snapshot. Version-1 sketch-reference ordering is derived from History rather than storage-array position.
-Persistence writes, application adoption, mixed-version journal storage, History reorder, and the user-visible
-cursor remain pending integration slices.
+Application adoption, product-facing portable-format switching, History reorder, and the user-visible cursor remain
+pending integration slices.
 
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.

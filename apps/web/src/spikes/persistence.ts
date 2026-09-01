@@ -1,4 +1,10 @@
-import { applyDocumentCommand, canonicalJson, type DocumentSnapshot } from "@vibeshape/domain"
+import {
+  applyDocumentCommand,
+  applyVersionedDocumentCommand,
+  canonicalJson,
+  type DocumentSnapshot,
+  type DocumentSnapshotV1,
+} from "@vibeshape/domain"
 import {
   acquireDocumentLease,
   classifyPersistenceError,
@@ -12,6 +18,7 @@ import {
   releaseDocumentLease,
   selectSaveAsMethod,
   shouldRequestPersistentStorage,
+  VersionedLocalDocumentRepository,
   VibeShapeDatabase,
   writeDerivedCache,
 } from "@vibeshape/persistence"
@@ -36,6 +43,8 @@ const createCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad"
 const renameCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ae"
 const staleCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21af"
 const lostLeaseCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b3"
+const versionedRenameCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b4"
+const legacyAfterPromotionCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b5"
 const ownerA = "0195b5ac-b220-7a2c-8c33-67a36a7f21b0"
 const ownerB = "0195b5ac-b220-7a2c-8c33-67a36a7f21b1"
 const operationId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b2"
@@ -60,6 +69,11 @@ function requirePersistenceValue<Value>(result: PersistenceResult<Value>) {
 }
 
 function requireDomainResult(result: ReturnType<typeof applyDocumentCommand>) {
+  if (!result.ok) throw new Error(`${result.diagnostic.code}: ${result.diagnostic.message}`)
+  return result
+}
+
+function requireVersionedDomainResult(result: ReturnType<typeof applyVersionedDocumentCommand>) {
   if (!result.ok) throw new Error(`${result.diagnostic.code}: ${result.diagnostic.message}`)
   return result
 }
@@ -421,6 +435,307 @@ async function verifyQuotaRollback(database: VibeShapeDatabase) {
   return { diagnostic, rolledBack: true }
 }
 
+async function versionedStorageIdentity(database: VibeShapeDatabase) {
+  const snapshots = (
+    await database.snapshotsV1.where("documentId").equals(documentId).toArray()
+  ).sort((left, right) => left.revision - right.revision)
+  const events = (await database.eventsV1.where("documentId").equals(documentId).toArray()).sort(
+    (left, right) => left.revision - right.revision,
+  )
+  return canonicalJson({
+    project: (await database.projectsV1.get(documentId)) ?? null,
+    snapshots,
+    events,
+    recovery: (await database.recoveryV1.get(documentId)) ?? null,
+  })
+}
+
+async function promoteVersionedPersistence(
+  database: VibeShapeDatabase,
+  legacyRepository: LocalDocumentRepository,
+) {
+  const repository = new VersionedLocalDocumentRepository(database)
+  const migrated = requirePersistenceValue(await legacyRepository.recoverMigrated(documentId))
+  const legacyBefore = await semanticStorageIdentity(database)
+  const stale = requireVersionedDomainResult(
+    applyVersionedDocumentCommand(
+      null,
+      documentCommand({
+        commandId: createCommandId,
+        baseRevision: 0,
+        issuedAt: createdAt,
+        kind: "org.vibeshape.document.create",
+        name: "Bracket",
+      }),
+    ),
+  )
+  requirePersistenceFailure(
+    await repository.promote({
+      sessionId: ownerB,
+      lease: { epoch: 2, nowMs: 2_500 },
+      storedAt: "2026-08-08T00:00:04Z",
+      sourceHeadRevision: migrated.headRevision,
+      snapshot: stale.snapshot,
+      migrationProvenance: migrated.migration.provenance,
+      migrationDiagnostic: migrated.migration.diagnostic,
+      unavailableRecords: migrated.migration.unavailableRecords,
+    }),
+    "stale-revision",
+    "Versioned promotion accepted a stale migrated snapshot.",
+  )
+  requireCondition(
+    (await database.projectsV1.get(documentId)) === undefined,
+    "Rejected versioned promotion left a project head.",
+  )
+  const legacySnapshot = await database.snapshots.get([documentId, 2])
+  const legacyEvent = await database.events.get([documentId, 2])
+  if (!legacySnapshot || !legacyEvent) throw new Error("The legacy head fixture is incomplete.")
+  await database.snapshots.update([documentId, 2], { checksum: "0".repeat(64) })
+  await database.events.update([documentId, 2], { checksum: "0".repeat(64) })
+  requirePersistenceFailure(
+    await repository.promote({
+      sessionId: ownerB,
+      lease: { epoch: 2, nowMs: 2_500 },
+      storedAt: "2026-08-08T00:00:04Z",
+      sourceHeadRevision: migrated.headRevision,
+      snapshot: migrated.snapshot,
+      migrationProvenance: migrated.migration.provenance,
+      migrationDiagnostic: migrated.migration.diagnostic,
+      unavailableRecords: migrated.migration.unavailableRecords,
+    }),
+    "corrupt-history",
+    "Versioned promotion discarded bounded legacy recovery loss.",
+  )
+  requireCondition(
+    (await database.projectsV1.get(documentId)) === undefined,
+    "Rejected lossy promotion left a project head.",
+  )
+  await database.snapshots.update([documentId, 2], { checksum: legacySnapshot.checksum })
+  await database.events.update([documentId, 2], { checksum: legacyEvent.checksum })
+  const promotion = requirePersistenceValue(
+    await repository.promote({
+      sessionId: ownerB,
+      lease: { epoch: 2, nowMs: 2_500 },
+      storedAt: "2026-08-08T00:00:04Z",
+      sourceHeadRevision: migrated.headRevision,
+      snapshot: migrated.snapshot,
+      migrationProvenance: migrated.migration.provenance,
+      migrationDiagnostic: migrated.migration.diagnostic,
+      unavailableRecords: migrated.migration.unavailableRecords,
+    }),
+  )
+  const promoted = requirePersistenceValue(await repository.recover(documentId))
+  requireCondition(
+    [
+      promotion.migrationProvenance === "journal-derived",
+      promoted.migration.migrationProvenance === "journal-derived",
+      (await semanticStorageIdentity(database)) === legacyBefore,
+    ].every(Boolean),
+    "Versioned promotion did not preserve its migration provenance and legacy source records.",
+  )
+  return { legacyBefore, promoted, promotion, repository }
+}
+
+async function commitVersionedRename(
+  database: VibeShapeDatabase,
+  repository: VersionedLocalDocumentRepository,
+  legacyRepository: LocalDocumentRepository,
+  snapshot: DocumentSnapshotV1,
+) {
+  const renamed = requireVersionedDomainResult(
+    applyVersionedDocumentCommand(
+      snapshot,
+      documentCommand({
+        commandId: versionedRenameCommandId,
+        baseRevision: snapshot.revision,
+        issuedAt: "2026-08-08T00:00:05Z",
+        kind: "org.vibeshape.document.rename",
+        name: "Bracket History v1",
+      }),
+    ),
+  )
+  const commitInput = {
+    sessionId: ownerB,
+    lease: { epoch: 2, nowMs: 2_500 },
+    storedAt: "2026-08-08T00:00:05Z",
+    baseSnapshot: snapshot,
+    event: renamed.event,
+    snapshot: renamed.snapshot,
+  }
+  const project = await database.projectsV1.get(documentId)
+  if (!project) throw new Error("The promoted v1 project is missing.")
+  await database.projectsV1.update(documentId, {
+    migrationDiagnostic: { code: "", message: "" },
+  })
+  requirePersistenceFailure(
+    await acquireDocumentLease(database, {
+      documentId,
+      ownerId: ownerB,
+      nowMs: 2_500,
+      durationMs: 1_000,
+    }),
+    "corrupt-history",
+    "Lease acquisition accepted a corrupt v1 project head.",
+  )
+  requirePersistenceFailure(
+    await repository.commit(commitInput),
+    "corrupt-history",
+    "A single commit replaced a corrupt v1 project head.",
+  )
+  requirePersistenceFailure(
+    await repository.commitDraft({
+      sessionId: commitInput.sessionId,
+      lease: commitInput.lease,
+      storedAt: commitInput.storedAt,
+      baseSnapshot: commitInput.baseSnapshot,
+      transactionId: operationId,
+      events: [{ ...renamed.event, transactionId: operationId }],
+      snapshot: commitInput.snapshot,
+    }),
+    "corrupt-history",
+    "A draft commit replaced a corrupt v1 project head.",
+  )
+  await database.projectsV1.put(project)
+  const commit = requirePersistenceValue(await repository.commit(commitInput))
+  const legacySnapshot = requirePersistenceValue(
+    await legacyRepository.recover(documentId),
+  ).snapshot
+  const legacyAttempt = requireDomainResult(
+    applyDocumentCommand(
+      legacySnapshot,
+      documentCommand({
+        commandId: legacyAfterPromotionCommandId,
+        baseRevision: legacySnapshot.revision,
+        issuedAt: "2026-08-08T00:00:06Z",
+        kind: "org.vibeshape.document.rename",
+        name: "Forbidden legacy write",
+      }),
+    ),
+  )
+  requirePersistenceFailure(
+    await legacyRepository.commit({
+      sessionId: ownerB,
+      lease: { epoch: 2, nowMs: 2_500 },
+      storedAt: "2026-08-08T00:00:06Z",
+      baseSnapshot: legacySnapshot,
+      event: legacyAttempt.event,
+      snapshot: legacyAttempt.snapshot,
+    }),
+    "stale-revision",
+    "Legacy persistence accepted a write after versioned adoption.",
+  )
+  return { commit, renamed }
+}
+
+async function verifyVersionedRecovery(
+  database: VibeShapeDatabase,
+  repository: VersionedLocalDocumentRepository,
+) {
+  const snapshotRecord = await database.snapshotsV1.get([documentId, 3])
+  const eventRecord = await database.eventsV1.get([documentId, 3])
+  if (!snapshotRecord || !eventRecord) throw new Error("The v1 commit is incomplete.")
+  await database.snapshotsV1.update([documentId, 3], { checksum: "0".repeat(64) })
+  const replayed = requirePersistenceValue(await repository.recover(documentId))
+  requireCondition(
+    replayed.recoveredRevision === 3 && replayed.corruptRecords.includes("snapshot-v1:3"),
+    "Versioned recovery did not replay a valid suffix after snapshot corruption.",
+  )
+  await database.eventsV1.update([documentId, 3], { checksum: "0".repeat(64) })
+  const boundedLoss = requirePersistenceValue(await repository.recover(documentId))
+  requireCondition(
+    [boundedLoss.recoveredRevision === 2, boundedLoss.lostRevisionCount === 1].every(Boolean),
+    "Versioned recovery did not bound loss after snapshot and event corruption.",
+  )
+  await database.snapshotsV1.update([documentId, 3], { checksum: snapshotRecord.checksum })
+  await database.eventsV1.update([documentId, 3], { checksum: eventRecord.checksum })
+  return { boundedLoss, replayed }
+}
+
+async function verifyVersionedRollback(database: VibeShapeDatabase) {
+  const beforeRollback = await versionedStorageIdentity(database)
+  try {
+    await database.transaction("rw", database.eventsV1, database.projectsV1, async () => {
+      await database.eventsV1.update([documentId, 3], { checksum: "1".repeat(64) })
+      throw new DOMException("Synthetic versioned quota boundary.", "QuotaExceededError")
+    })
+  } catch (error) {
+    requireCondition(
+      classifyPersistenceError(error).code === "quota-exceeded",
+      "The versioned quota failure was misclassified.",
+    )
+  }
+  requireCondition(
+    (await versionedStorageIdentity(database)) === beforeRollback,
+    "The failed versioned transaction left partial state.",
+  )
+}
+
+async function closeVersionedPersistence(
+  database: VibeShapeDatabase,
+  repository: VersionedLocalDocumentRepository,
+  revision: number,
+  legacyBefore: string,
+) {
+  requirePersistenceValue(
+    await repository.closeCleanly({
+      documentId,
+      revision,
+      sessionId: ownerB,
+      lease: { epoch: 2, nowMs: 2_500 },
+    }),
+  )
+  const clean = requirePersistenceValue(await repository.recover(documentId))
+  requireCondition(clean.status === "clean", "The versioned clean close retained recovery state.")
+  requireCondition(
+    (await semanticStorageIdentity(database)) === legacyBefore,
+    "Versioned writes modified the legacy rollback source.",
+  )
+  return clean
+}
+
+async function verifyVersionedPersistence(
+  database: VibeShapeDatabase,
+  legacyRepository: LocalDocumentRepository,
+) {
+  const { legacyBefore, promoted, promotion, repository } = await promoteVersionedPersistence(
+    database,
+    legacyRepository,
+  )
+  const { commit, renamed } = await commitVersionedRename(
+    database,
+    repository,
+    legacyRepository,
+    promoted.snapshot,
+  )
+  const { boundedLoss, replayed } = await verifyVersionedRecovery(database, repository)
+  await verifyVersionedRollback(database)
+  const clean = await closeVersionedPersistence(
+    database,
+    repository,
+    renamed.snapshot.revision,
+    legacyBefore,
+  )
+  return {
+    stalePromotionBarrier: "stale-revision" as const,
+    lossyPromotionBarrier: "corrupt-history" as const,
+    promotionProvenance: promotion.migrationProvenance,
+    committedRevision: commit.revision,
+    recoveredRevision: replayed.recoveredRevision,
+    boundedLossRevision: boundedLoss.recoveredRevision,
+    lostRevisionCount: boundedLoss.lostRevisionCount,
+    corruptRecords: replayed.corruptRecords,
+    legacyWriteBarrier: "stale-revision" as const,
+    corruptHeadBarrier: "corrupt-history" as const,
+    transactionRolledBack: true,
+    cleanStatus: clean.status,
+    records: {
+      projects: await database.projectsV1.count(),
+      snapshots: await database.snapshotsV1.count(),
+      events: await database.eventsV1.count(),
+    },
+  }
+}
+
 async function simulateQuotaFailure(database: VibeShapeDatabase, key: [string, number]) {
   try {
     await database.transaction("rw", database.events, async () => {
@@ -512,6 +827,9 @@ async function runFullSpike() {
   const clean = await runStage("clean-reopen", async () =>
     requirePersistenceValue(await repository.recover(documentId)),
   )
+  const versioned = await runStage("versioned-persistence", () =>
+    verifyVersionedPersistence(database, repository),
+  )
   const capabilities = await runStage("capabilities", () => inspectStorageCapabilities(window))
   database.close()
 
@@ -530,6 +848,7 @@ async function runFullSpike() {
       migration: recovery.migration,
     },
     leases,
+    versioned,
     rejectedCleanClose,
     cache: {
       status: cache.status,

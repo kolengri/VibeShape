@@ -41,15 +41,22 @@ corrupt, and inconsistent journal prefixes, migration idempotence, interrupted p
 The pure domain portion of that matrix now covers complete replay-equivalent journals, remove-and-readd authored
 order, dependency-safe stabilization, missing/corrupt/inconsistent journal fallback, built-in semantic-input
 projection, unavailable extension declarations, strict version-0 compatibility, exact version-1 History coverage,
-and byte-idempotent remigration. Persistence recovery, interrupted writes, document copy, and `.vshape` round trips
-remain required before schema version 1 becomes a storage or application default.
+and byte-idempotent remigration. Application adoption, product-facing document copy, and `.vshape` switching remain
+required before schema version 1 becomes the product default.
 
 The local SPK-005 browser evidence additionally verifies the opt-in migrated recovery seam: a complete checksummed
 prefix returns a schema-version-1 `journal-derived` snapshot, a corrupt earlier prefix returns successful explicit
 `snapshot-derived` recovery with the owning event record, and both paths leave the stored version-0 payload
 unchanged. A corrupt suffix separately proves that migration uses the actually recovered revision rather than the
 project head. Canonical before/after checks cover the project record, every snapshot, every event, and the recovery
-marker. This remains read-only evidence; atomic version-1 persistence is still an open gate.
+marker.
+
+The same Chromium, Firefox, and WebKit corpus now promotes that recovered snapshot into the side-by-side v1 stores,
+rejects a stale but schema-valid promotion candidate, refuses to adopt a legacy recovery with bounded loss, commits and replays a v1 rename, rejects a legacy write after
+adoption, rejects lease, single-commit, and draft-commit mutation against a corrupt v1 head, recovers through a corrupt latest v1
+snapshot, bounds loss after corrupting the matching suffix event, proves transaction rollback under a synthetic
+quota failure, and verifies clean-close recovery. It also proves that all v1 activity leaves the complete v0
+rollback source byte-canonical.
 
 Native-format tests separately require deterministic `.vshape` v1 bytes, a strict version-1 manifest, exact
 three-entry/resource enforcement, explicit v0/v1 dispatch, and replay-to-migration canonical equality. They also
@@ -259,6 +266,7 @@ SPK-004 implements the 3MF writer baseline with strict Zod input and report sche
 - Capability invocation rather than method-presence detection, including a cache-disabled OPFS state.
 - Service-worker cached-shell reopen while its network fetch boundary is forced offline.
 - Dirty-document update deferral, user-gesture persistent-storage policy, and Save As fallback selection.
+- Atomic v0-to-v1 promotion, provenance retention, v1 suffix replay, bounded v1 loss, the legacy write barrier, and preservation of the v0 rollback source.
 
 SPK-005 implements this boundary through `bun run persistence:evidence`. The runner and `playwright.persistence.config.ts` reject truthy `CI`, exercise Chromium, Firefox, and WebKit serially, and write reports only under `.artifacts/persistence-spike`. The recorded WebKit runtime keeps semantic IndexedDB recovery operational while reporting OPFS unavailable. No GitHub Actions workflow invokes the persistence evidence command. See [SPK-005 evidence](spikes/spk-005-local-first.md).
 

@@ -14,14 +14,13 @@ import {
   reduceDocumentEvent,
   sessionIdSchema,
 } from "@vibeshape/domain"
-import { type ZodType, z } from "zod"
+import { z } from "zod"
 import type { VibeShapeDatabase } from "./database"
 import {
   classifyPersistenceError,
   createPersistenceDiagnostic,
   persistenceInvariantError,
 } from "./diagnostics"
-import { sha256Text } from "./hash"
 import {
   type EventRecord,
   eventRecordSchema,
@@ -46,6 +45,8 @@ import {
   type WriterLeaseClaim,
   writerLeaseClaimSchema,
 } from "./schemas"
+import { parseStoredRecordPayload, serializeStoredRecord } from "./stored-record-codec"
+import { hasValidWriterLease, requireWriterLease } from "./writer-lease-authority"
 
 export type PersistenceResult<Value> =
   | { ok: true; value: Value }
@@ -113,23 +114,6 @@ export interface ProjectThumbnailWriteReport {
 
 export interface ProjectThumbnailCopyReport {
   status: "copied" | "unavailable"
-}
-
-async function serializeRecord(value: unknown) {
-  const payload = canonicalJson(value)
-  return { payload, checksum: await sha256Text(payload) }
-}
-
-async function parseStoredPayload<Output>(
-  record: { payload: string; checksum: string },
-  schema: ZodType<Output>,
-) {
-  if ((await sha256Text(record.payload)) !== record.checksum) return null
-  try {
-    return schema.parse(JSON.parse(record.payload))
-  } catch {
-    return null
-  }
 }
 
 function validateCommitRelationship(
@@ -265,19 +249,6 @@ function requireExistingRevision(current: ProjectRecord | undefined, baseRevisio
   }
 }
 
-function hasValidWriterLease(
-  lease: LeaseRecord | undefined,
-  sessionId: string,
-  claim: WriterLeaseClaim | null,
-) {
-  if (!lease || !claim) return false
-  return [
-    lease.ownerId === sessionId,
-    lease.epoch === claim.epoch,
-    lease.expiresAt > claim.nowMs,
-  ].every(Boolean)
-}
-
 function requireCommitLease(
   current: ProjectRecord | undefined,
   lease: LeaseRecord | undefined,
@@ -286,18 +257,7 @@ function requireCommitLease(
     lease: WriterLeaseClaim | null
   },
 ) {
-  if (!current) {
-    if (input.lease !== null) {
-      throw persistenceInvariantError(
-        "invalid-input",
-        "A new document cannot reference an existing writer lease.",
-      )
-    }
-    return
-  }
-  if (!hasValidWriterLease(lease, input.sessionId, input.lease)) {
-    throw persistenceInvariantError("lease-lost", "The document writer lease is no longer valid.")
-  }
+  requireWriterLease(current !== undefined, lease, input)
 }
 
 function recoveryForCommit(
@@ -319,8 +279,8 @@ function recoveryForCommit(
 }
 
 async function storedRecords(input: z.output<typeof persistenceCommitInputSchema>) {
-  const event = await serializeRecord(input.event)
-  const snapshot = await serializeRecord(input.snapshot)
+  const event = await serializeStoredRecord(input.event)
+  const snapshot = await serializeStoredRecord(input.snapshot)
   return {
     event: eventRecordSchema.parse({
       schemaVersion: 0,
@@ -343,7 +303,7 @@ async function storedRecords(input: z.output<typeof persistenceCommitInputSchema
 async function storedDraftRecords(input: z.output<typeof persistenceDraftCommitInputSchema>) {
   const events = await Promise.all(
     input.events.map(async (event) => {
-      const serialized = await serializeRecord(event)
+      const serialized = await serializeStoredRecord(event)
       return eventRecordSchema.parse({
         schemaVersion: 0,
         documentId: event.documentId,
@@ -354,7 +314,7 @@ async function storedDraftRecords(input: z.output<typeof persistenceDraftCommitI
       })
     }),
   )
-  const serializedSnapshot = await serializeRecord(input.snapshot)
+  const serializedSnapshot = await serializeStoredRecord(input.snapshot)
   const snapshot = snapshotRecordSchema.parse({
     schemaVersion: 0,
     documentId: input.snapshot.id,
@@ -372,7 +332,7 @@ async function storedPortableRecords(input: {
 }) {
   const events = await Promise.all(
     input.events.map(async (event) => {
-      const serialized = await serializeRecord(event)
+      const serialized = await serializeStoredRecord(event)
       return eventRecordSchema.parse({
         schemaVersion: 0,
         documentId: event.documentId,
@@ -383,7 +343,7 @@ async function storedPortableRecords(input: {
       })
     }),
   )
-  const serializedSnapshot = await serializeRecord(input.snapshot)
+  const serializedSnapshot = await serializeStoredRecord(input.snapshot)
   const snapshot = snapshotRecordSchema.parse({
     schemaVersion: 0,
     documentId: input.snapshot.id,
@@ -460,7 +420,7 @@ async function latestValidSnapshot(records: readonly SnapshotRecord[]) {
 async function validStoredSnapshot(record: SnapshotRecord) {
   const parsedRecord = snapshotRecordSchema.safeParse(record)
   if (!parsedRecord.success) return null
-  const snapshot = await parseStoredPayload(parsedRecord.data, documentSnapshotSchema)
+  const snapshot = await parseStoredRecordPayload(parsedRecord.data, documentSnapshotSchema)
   if (!snapshot) return null
   return snapshotMetadataMatches(parsedRecord.data, snapshot) ? snapshot : null
 }
@@ -480,7 +440,7 @@ function eventMetadataMatches(record: EventRecord, event: DocumentEvent) {
 async function validStoredEvent(record: EventRecord) {
   const parsedRecord = eventRecordSchema.safeParse(record)
   if (!parsedRecord.success) return null
-  const event = await parseStoredPayload(parsedRecord.data, documentEventSchema)
+  const event = await parseStoredRecordPayload(parsedRecord.data, documentEventSchema)
   if (!event) return null
   return eventMetadataMatches(parsedRecord.data, event) ? event : null
 }
@@ -599,13 +559,24 @@ async function migrateRecoveredSnapshot(database: VibeShapeDatabase, snapshot: D
 function semanticWriteTransaction(database: VibeShapeDatabase, operation: () => Promise<void>) {
   return database.transaction(
     "rw",
-    database.projects,
-    database.events,
-    database.snapshots,
-    database.recovery,
-    database.leases,
+    [
+      database.projects,
+      database.projectsV1,
+      database.events,
+      database.snapshots,
+      database.recovery,
+      database.leases,
+    ],
     operation,
   )
+}
+
+async function requireLegacyWriteAuthority(database: VibeShapeDatabase, documentId: DocumentId) {
+  if (await database.projectsV1.get(documentId))
+    throw persistenceInvariantError(
+      "stale-revision",
+      "The document has adopted the versioned persistence format.",
+    )
 }
 
 async function publishPortableProject(
@@ -614,6 +585,7 @@ async function publishPortableProject(
   records: Awaited<ReturnType<typeof storedPortableRecords>>,
 ) {
   await semanticWriteTransaction(database, async () => {
+    await requireLegacyWriteAuthority(database, project.documentId)
     const current = await database.projects.get(project.documentId)
     requireNewDocument(current)
     await database.events.bulkAdd(records.events)
@@ -732,6 +704,7 @@ export class LocalDocumentRepository {
       validateCommitRelationship(parsed.data.baseSnapshot, parsed.data.event, parsed.data.snapshot)
       const records = await storedRecords(parsed.data)
       await semanticWriteTransaction(this.database, async () => {
+        await requireLegacyWriteAuthority(this.database, parsed.data.snapshot.id)
         const current = await this.database.projects.get(parsed.data.snapshot.id)
         const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
         const lease = await this.database.leases.get(parsed.data.snapshot.id)
@@ -773,6 +746,7 @@ export class LocalDocumentRepository {
       validateDraftCommitRelationship(parsed.data)
       const records = await storedDraftRecords(parsed.data)
       await semanticWriteTransaction(this.database, async () => {
+        await requireLegacyWriteAuthority(this.database, parsed.data.snapshot.id)
         const current = await this.database.projects.get(parsed.data.snapshot.id)
         const currentRecovery = await this.database.recovery.get(parsed.data.snapshot.id)
         const lease = await this.database.leases.get(parsed.data.snapshot.id)
@@ -1075,6 +1049,7 @@ export class LocalDocumentRepository {
         "rw",
         [
           this.database.projects,
+          this.database.projectsV1,
           this.database.events,
           this.database.snapshots,
           this.database.recovery,
@@ -1082,6 +1057,7 @@ export class LocalDocumentRepository {
           this.database.projectThumbnails,
         ],
         async () => {
+          await requireLegacyWriteAuthority(this.database, input.data.documentId)
           const project = await requireStoredProject(this.database, input.data.documentId)
           if (project.headRevision !== input.data.expectedHeadRevision) {
             throw persistenceInvariantError(
@@ -1149,9 +1125,11 @@ export class LocalDocumentRepository {
       await this.database.transaction(
         "rw",
         this.database.projects,
+        this.database.projectsV1,
         this.database.recovery,
         this.database.leases,
         async () => {
+          await requireLegacyWriteAuthority(this.database, input.data.documentId)
           const project = await requireStoredProject(this.database, input.data.documentId)
           if (project.headRevision !== input.data.revision) {
             throw persistenceInvariantError("stale-revision", "The clean-close revision is stale.")

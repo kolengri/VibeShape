@@ -3,11 +3,13 @@ import {
   documentEventSchema,
   documentIdSchema,
   documentSnapshotSchema,
+  documentSnapshotV1Schema,
   draftIdSchema,
   revisionSchema,
   sessionIdSchema,
   technicalIdentifierSchema,
   timestampSchema,
+  versionedDocumentEventSchema,
 } from "@vibeshape/domain"
 import { z } from "zod"
 
@@ -161,6 +163,141 @@ export const persistenceDraftCommitInputSchema = z
   })
   .strict()
 
+// Version 1 records are stored beside (rather than in place of) the legacy
+// records so a failed promotion cannot damage the recoverable v0 journal.
+export const migrationProvenanceSchema = z.enum(["current", "journal-derived", "snapshot-derived"])
+
+export const documentMigrationDiagnosticSchema = z
+  .object({ code: z.string().min(1).max(128), message: z.string().min(1).max(512) })
+  .strict()
+
+export const unavailableRecordsSchema = z.array(z.string().min(1).max(256)).max(256)
+
+const v1MigrationMetadataSchema = z
+  .object({
+    migrationProvenance: migrationProvenanceSchema,
+    migrationDiagnostic: documentMigrationDiagnosticSchema.nullable(),
+    unavailableRecords: unavailableRecordsSchema,
+  })
+  .strict()
+
+export const projectRecordV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    name: z.string().min(1).max(120),
+    headRevision: revisionSchema,
+    latestSnapshotRevision: revisionSchema,
+    cleanCloseRevision: revisionSchema.nullable(),
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+    lastExternalBackupAt: timestampSchema.nullable(),
+    ...v1MigrationMetadataSchema.shape,
+  })
+  .strict()
+  .superRefine((project, context) => {
+    if (project.latestSnapshotRevision > project.headRevision)
+      context.addIssue({
+        code: "custom",
+        path: ["latestSnapshotRevision"],
+        message: "The latest snapshot cannot be newer than the project head.",
+      })
+    if (project.cleanCloseRevision !== null && project.cleanCloseRevision > project.headRevision)
+      context.addIssue({
+        code: "custom",
+        path: ["cleanCloseRevision"],
+        message: "The clean-close revision cannot be newer than the project head.",
+      })
+  })
+
+export const snapshotRecordV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    storedAt: timestampSchema,
+    payload: z.string().min(2),
+    checksum: sha256Schema,
+  })
+  .strict()
+
+export const eventRecordV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    revision: revisionSchema,
+    commandId: commandIdSchema,
+    storedAt: timestampSchema,
+    payload: z.string().min(2),
+    checksum: sha256Schema,
+  })
+  .strict()
+
+export const recoveryRecordV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    documentId: documentIdSchema,
+    sessionId: sessionIdSchema,
+    openedAt: timestampSchema,
+    updatedAt: timestampSchema,
+    lastConfirmedRevision: revisionSchema,
+    ...v1MigrationMetadataSchema.shape,
+  })
+  .strict()
+
+export const persistenceV1CommitInputSchema = z
+  .object({
+    sessionId: sessionIdSchema,
+    lease: writerLeaseClaimSchema.nullable(),
+    storedAt: timestampSchema,
+    baseSnapshot: documentSnapshotV1Schema.nullable(),
+    event: versionedDocumentEventSchema,
+    snapshot: documentSnapshotV1Schema,
+  })
+  .strict()
+
+export const persistenceV1DraftCommitInputSchema = z
+  .object({
+    sessionId: sessionIdSchema,
+    lease: writerLeaseClaimSchema,
+    storedAt: timestampSchema,
+    transactionId: draftIdSchema,
+    baseSnapshot: documentSnapshotV1Schema,
+    events: z.array(versionedDocumentEventSchema).min(1).max(256),
+    snapshot: documentSnapshotV1Schema,
+  })
+  .strict()
+
+export const persistencePromotionInputSchema = z
+  .object({
+    sessionId: sessionIdSchema,
+    lease: writerLeaseClaimSchema,
+    storedAt: timestampSchema,
+    sourceHeadRevision: revisionSchema,
+    snapshot: documentSnapshotV1Schema,
+    migrationProvenance: z.enum(["journal-derived", "snapshot-derived"]),
+    migrationDiagnostic: documentMigrationDiagnosticSchema.nullable(),
+    unavailableRecords: unavailableRecordsSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.snapshot.revision > input.sourceHeadRevision)
+      context.addIssue({
+        code: "custom",
+        path: ["sourceHeadRevision"],
+        message: "The source head cannot precede the recovered snapshot.",
+      })
+    if (
+      input.migrationProvenance === "snapshot-derived" &&
+      (input.migrationDiagnostic === null || input.unavailableRecords.length === 0)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["migrationProvenance"],
+        message: "Snapshot-derived promotion requires degraded-recovery evidence.",
+      })
+  })
+
 const portableProjectPayloadSchema = z
   .object({
     snapshot: documentSnapshotSchema,
@@ -226,15 +363,22 @@ export const persistenceDiagnosticSchema = z
   .strict()
 
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
+export type ProjectRecordV1 = z.infer<typeof projectRecordV1Schema>
 export type ProjectThumbnailRecord = z.infer<typeof projectThumbnailRecordSchema>
 export type LocalProjectSummary = z.infer<typeof localProjectSummarySchema>
 export type SnapshotRecord = z.infer<typeof snapshotRecordSchema>
+export type SnapshotRecordV1 = z.infer<typeof snapshotRecordV1Schema>
 export type EventRecord = z.infer<typeof eventRecordSchema>
+export type EventRecordV1 = z.infer<typeof eventRecordV1Schema>
 export type RecoveryRecord = z.infer<typeof recoveryRecordSchema>
+export type RecoveryRecordV1 = z.infer<typeof recoveryRecordV1Schema>
 export type LeaseRecord = z.infer<typeof leaseRecordSchema>
 export type CacheIndexRecord = z.infer<typeof cacheIndexRecordSchema>
 export type PersistenceCommitInput = z.input<typeof persistenceCommitInputSchema>
 export type PersistenceDraftCommitInput = z.input<typeof persistenceDraftCommitInputSchema>
+export type PersistenceV1CommitInput = z.input<typeof persistenceV1CommitInputSchema>
+export type PersistenceV1DraftCommitInput = z.input<typeof persistenceV1DraftCommitInputSchema>
+export type PersistencePromotionInput = z.input<typeof persistencePromotionInputSchema>
 export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
 export type PortableProjectCopy = z.input<typeof portableProjectCopySchema>
 export type ProjectThumbnailWriteInput = z.input<typeof projectThumbnailWriteInputSchema>
@@ -242,3 +386,5 @@ export type ProjectThumbnailCopyInput = z.input<typeof projectThumbnailCopyInput
 export type ProjectDeleteInput = z.input<typeof projectDeleteInputSchema>
 export type WriterLeaseClaim = z.infer<typeof writerLeaseClaimSchema>
 export type PersistenceDiagnostic = z.infer<typeof persistenceDiagnosticSchema>
+export type MigrationProvenance = z.infer<typeof migrationProvenanceSchema>
+export type DocumentMigrationDiagnostic = z.infer<typeof documentMigrationDiagnosticSchema>
