@@ -118,6 +118,34 @@ describe("editor session store", () => {
     expect(store.getState().extrusionDistanceRequest).toBeNull()
   })
 
+  it("keeps graphical revolve angle transient and scoped to the active revolve tool", () => {
+    const store = createEditorSessionStore()
+
+    store.getState().actions.setRevolveAngle(featureId, Math.PI)
+    expect(store.getState().revolveAngleRequest).toBeNull()
+
+    store
+      .getState()
+      .actions.startPartDesignTool({ kind: "create-revolve", profile: createProfile() })
+    store.getState().actions.setRevolveAngle(featureId, Math.PI)
+    expect(store.getState().revolveAngleRequest).toEqual({
+      angle: Math.PI,
+      featureId,
+      sequence: 1,
+    })
+
+    store.getState().actions.setRevolveAngle(featureId, Math.PI / 2)
+    expect(store.getState().revolveAngleRequest?.sequence).toBe(2)
+    store.getState().actions.acknowledgeRevolveAngle(featureId)
+    expect(store.getState().revolveAngleRequest).toBeNull()
+
+    store.getState().actions.setRevolveAngle(featureId, Number.POSITIVE_INFINITY)
+    expect(store.getState().revolveAngleRequest).toBeNull()
+    store.getState().actions.setRevolveAngle(featureId, Math.PI)
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().revolveAngleRequest).toBeNull()
+  })
+
   it("owns one external-reference repair mode and clears it with ordinary tool changes", () => {
     const store = createEditorSessionStore()
     const sketch = sketchRecordSchema.parse({

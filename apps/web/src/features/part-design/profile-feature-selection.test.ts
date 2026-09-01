@@ -17,6 +17,7 @@ import {
   nextProfileFeatureSelection,
   profileForFeatureTool,
   profileSelectorsEqual,
+  revolveAxesEqual,
   revolveAxisAfterProfileSelection,
   topologyReferencesEqual,
 } from "./profile-feature-selection"
@@ -118,6 +119,15 @@ describe("profile feature selection", () => {
   it("compares topology references by semantic content instead of object identity", () => {
     expect(topologyReferencesEqual(supportReference, { ...supportReference })).toBe(true)
     expect(topologyReferencesEqual(supportReference, null)).toBe(false)
+  })
+
+  it("compares revolve axes by semantic content instead of object identity", () => {
+    expect(
+      revolveAxesEqual({ kind: "origin-axis", axis: "x" }, { kind: "origin-axis", axis: "x" }),
+    ).toBe(true)
+    expect(
+      revolveAxesEqual({ kind: "origin-axis", axis: "x" }, { kind: "origin-axis", axis: "y" }),
+    ).toBe(false)
   })
 
   it("hides sketches after an edited profile feature", () => {

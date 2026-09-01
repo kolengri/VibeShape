@@ -82,6 +82,10 @@ export function topologyReferencesEqual(left: TopoRef | null, right: TopoRef | n
   return canonicalJson(left) === canonicalJson(right)
 }
 
+export function revolveAxesEqual(left: RevolveAxis, right: RevolveAxis) {
+  return canonicalJson(left) === canonicalJson(right)
+}
+
 export function profileFeatureToolKey(tool: ActivePartDesignTool | null) {
   if (!isProfileFeatureTool(tool)) return "inactive"
   if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") {

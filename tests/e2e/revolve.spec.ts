@@ -30,6 +30,64 @@ async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
 }
 
 test.describe("selector-backed revolve", () => {
+  test("keeps the curved angle handle synchronized with the exact field", async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    for (const dimension of ["Width", "Depth", "Height"] as const) {
+      await boxForm.getByRole("combobox", { name: dimension }).fill("500 mm")
+    }
+    await boxForm.getByRole("button", { name: "Create box" }).click()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawProfileAwayFromBothOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "1", {
+      timeout: 120_000,
+    })
+    await viewport
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    const angle = form.getByRole("combobox", { name: "Angle" })
+    const canvas = viewport.locator("canvas")
+    await angle.fill("270 deg")
+    await expect(viewport).toHaveAttribute("data-angular-gizmo-angle", (Math.PI * 1.5).toString(), {
+      timeout: 120_000,
+    })
+    await expect(canvas).toHaveAttribute("data-angular-gizmo-handle", /.+/)
+    const bounds = await canvas.boundingBox()
+    const handleAttribute = await canvas.getAttribute("data-angular-gizmo-handle")
+    if (!bounds || !handleAttribute) throw new Error("The angular handle is not measurable.")
+    const [localX = Number.NaN, localY = Number.NaN] = handleAttribute.split(",").map(Number)
+    if (!Number.isFinite(localX) || !Number.isFinite(localY)) {
+      throw new Error("The angular handle position is invalid.")
+    }
+    const handle = { x: bounds.x + localX, y: bounds.y + localY }
+    await page.mouse.move(handle.x, handle.y)
+    await page.mouse.down()
+    await page.mouse.move(handle.x - 70, handle.y + 70, { steps: 10 })
+    await page.mouse.up()
+
+    await expect(angle).not.toHaveValue("270 deg")
+    await expect(angle).toHaveValue(/^\d+(?:\.\d+)? deg$/)
+    await form.getByRole("button", { name: "Cancel" }).click()
+    await expect(viewport).not.toHaveAttribute("data-angular-gizmo-feature")
+  })
+
   test("creates and reopens a new result from two profiles", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

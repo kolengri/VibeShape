@@ -6,6 +6,7 @@ import {
   formatDisplayArea,
   formatDisplayLength,
   normalizeExpressionWithDisplayUnit,
+  positiveDirectManipulationAngleExpression,
   positiveDirectManipulationLengthExpression,
 } from "./document-display-units"
 
@@ -32,5 +33,12 @@ describe("document display units", () => {
     expect(positiveDirectManipulationLengthExpression(20.6881479756, "mm")).toBe("20.7 mm")
     expect(positiveDirectManipulationLengthExpression(20.6881479756, "in")).toBe("0.814 in")
     expect(positiveDirectManipulationLengthExpression(0.001, "mm")).toBe("0.1 mm")
+  })
+
+  it("snaps angular direct manipulation without losing an exact full revolution", () => {
+    expect(positiveDirectManipulationAngleExpression(Math.PI / 3 + 0.004, "deg")).toBe("60 deg")
+    expect(positiveDirectManipulationAngleExpression(1.234, "rad")).toBe("1.23 rad")
+    expect(positiveDirectManipulationAngleExpression(Math.PI * 2, "deg")).toBe("360 deg")
+    expect(positiveDirectManipulationAngleExpression(Math.PI * 2, "rad")).toBe("6.28318530718 rad")
   })
 })

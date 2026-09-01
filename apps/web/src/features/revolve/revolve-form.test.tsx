@@ -135,6 +135,7 @@ function renderForm(
   onPreviewChange = vi.fn(),
   options: readonly { id: FeatureId; label: string }[] = [],
   axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"],
+  angleRequest?: Readonly<{ angle: number; featureId: FeatureId; sequence: number }>,
 ) {
   const formCopy = mode.kind === "edit" ? { ...copy, submit: "Update revolve" } : copy
   render(
@@ -142,6 +143,7 @@ function renderForm(
       <TooltipProvider>
         <RevolveForm
           {...(axisSelection ? { axisLineLabel: "Sketch 1 · Line 1", axisSelection } : {})}
+          {...(angleRequest ? { angleRequest } : {})}
           baseRevision={4}
           copy={formCopy}
           mode={mode}
@@ -162,6 +164,28 @@ function renderForm(
 afterEach(cleanup)
 
 describe("RevolveForm", () => {
+  it("synchronizes graphical angle into the exact angle field and preview", async () => {
+    const onPreviewChange = vi.fn()
+    renderForm(undefined, undefined, undefined, onPreviewChange, [], undefined, {
+      angle: Math.PI / 2,
+      featureId,
+      sequence: 1,
+    })
+
+    expect((screen.getByRole("combobox", { name: copy.angle }) as HTMLInputElement).value).toBe(
+      "90 deg",
+    )
+    await waitFor(() =>
+      expect(onPreviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({
+            angle: expect.objectContaining({ value: Math.PI / 2 }),
+          }),
+        }),
+      ),
+    )
+  })
+
   it("publishes a 360 degree preview by default and follows axis changes", async () => {
     const user = userEvent.setup()
     const { onPreviewChange, onSave } = renderForm()

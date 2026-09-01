@@ -19,6 +19,7 @@ import {
   Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  Plane,
   PlaneGeometry,
   Points,
   PointsMaterial,
@@ -192,6 +193,22 @@ export type ViewerAxialGizmo = Readonly<{
   origin: ViewerVector3
 }>
 
+export type ViewerAngularGizmo = Readonly<{
+  angle: number
+  axisDirection: ViewerVector3
+  axisOrigin: ViewerVector3
+  maxAngle?: number
+  minAngle?: number
+  rotationOrigin: ViewerVector3
+}>
+
+type ViewerAngularGizmoFrame = Readonly<{
+  axis: Vector3
+  origin: Vector3
+  radial: Vector3
+  radius: number
+}>
+
 function normalizedViewerDirection(direction: ViewerVector3): Vector3 | null {
   if (!isFiniteViewerVector3(direction)) return null
   const result = new Vector3(...direction)
@@ -217,6 +234,105 @@ export function viewerAxialGizmoDistance(
   }
   const distance = new Vector3(...position).sub(new Vector3(...gizmo.origin)).dot(direction)
   return Number.isFinite(distance) ? distance : null
+}
+
+function viewerAngularGizmoFrame(gizmo: ViewerAngularGizmo): ViewerAngularGizmoFrame | null {
+  const axis = normalizedViewerDirection(gizmo.axisDirection)
+  if (
+    !axis ||
+    !isFiniteViewerVector3(gizmo.axisOrigin) ||
+    !isFiniteViewerVector3(gizmo.rotationOrigin)
+  ) {
+    return null
+  }
+  const origin = new Vector3(...gizmo.axisOrigin)
+  const radial = new Vector3(...gizmo.rotationOrigin).sub(origin)
+  radial.addScaledVector(axis, -radial.dot(axis))
+  const radius = radial.length()
+  return Number.isFinite(radius) && radius > Number.EPSILON
+    ? { axis, origin, radial: radial.normalize(), radius }
+    : null
+}
+
+export function viewerAngularGizmoPoint(
+  gizmo: ViewerAngularGizmo,
+  angle = gizmo.angle,
+): ViewerVector3 | null {
+  const frame = viewerAngularGizmoFrame(gizmo)
+  if (!frame || !Number.isFinite(angle)) return null
+  const tangent = new Vector3().crossVectors(frame.axis, frame.radial)
+  const point = frame.origin
+    .clone()
+    .addScaledVector(frame.radial, Math.cos(angle) * frame.radius)
+    .addScaledVector(tangent, Math.sin(angle) * frame.radius)
+  return [point.x, point.y, point.z]
+}
+
+export function viewerAngularGizmoAngle(
+  gizmo: ViewerAngularGizmo,
+  point: ViewerVector3,
+  nearAngle = gizmo.angle,
+): number | null {
+  const frame = viewerAngularGizmoFrame(gizmo)
+  if (!frame || !isFiniteViewerVector3(point) || !Number.isFinite(nearAngle)) return null
+  const radial = new Vector3(...point).sub(frame.origin)
+  radial.addScaledVector(frame.axis, -radial.dot(frame.axis))
+  if (radial.lengthSq() <= Number.EPSILON) return null
+  radial.normalize()
+  const wrapped = Math.atan2(
+    frame.axis.dot(new Vector3().crossVectors(frame.radial, radial)),
+    frame.radial.dot(radial),
+  )
+  const positive = wrapped < 0 ? wrapped + Math.PI * 2 : wrapped
+  const turns = Math.round((nearAngle - positive) / (Math.PI * 2))
+  const unwrapped = positive + turns * Math.PI * 2
+  const minAngle = gizmo.minAngle ?? Math.PI / 180
+  const maxAngle = gizmo.maxAngle ?? Math.PI * 2
+  return Math.min(maxAngle, Math.max(minAngle, unwrapped))
+}
+
+function viewerAngularGizmoLinePositions(gizmo: ViewerAngularGizmo): Float32Array | null {
+  const frame = viewerAngularGizmoFrame(gizmo)
+  const end = viewerAngularGizmoPoint(gizmo)
+  if (!frame || !end || !Number.isFinite(gizmo.angle)) return null
+  const positions: number[] = []
+  const appendSegment = (start: Vector3, finish: Vector3) => {
+    positions.push(start.x, start.y, start.z, finish.x, finish.y, finish.z)
+  }
+  const start = frame.origin.clone().addScaledVector(frame.radial, frame.radius)
+  const endPoint = new Vector3(...end)
+  appendSegment(frame.origin, start)
+  appendSegment(frame.origin, endPoint)
+  const segments = Math.max(12, Math.ceil((64 * gizmo.angle) / (Math.PI * 2)))
+  let previous = start
+  for (let index = 1; index <= segments; index += 1) {
+    const point = viewerAngularGizmoPoint(gizmo, gizmo.angle * (index / segments))
+    if (!point) return null
+    const current = new Vector3(...point)
+    appendSegment(previous, current)
+    previous = current
+  }
+  const endRadial = endPoint.clone().sub(frame.origin).normalize()
+  const tangent = new Vector3().crossVectors(frame.axis, endRadial).normalize()
+  const arrowLength = frame.radius * 0.12
+  const arrowBase = endPoint.clone().addScaledVector(tangent, -arrowLength)
+  appendSegment(endPoint, arrowBase.clone().addScaledVector(endRadial, arrowLength * 0.45))
+  appendSegment(endPoint, arrowBase.clone().addScaledVector(endRadial, -arrowLength * 0.45))
+  return new Float32Array(positions)
+}
+
+function normalizedViewerAngularGizmo(gizmo: ViewerAngularGizmo): ViewerAngularGizmo | null {
+  const frame = viewerAngularGizmoFrame(gizmo)
+  const minAngle = gizmo.minAngle ?? Math.PI / 180
+  const maxAngle = gizmo.maxAngle ?? Math.PI * 2
+  const validRange =
+    Number.isFinite(minAngle) && Number.isFinite(maxAngle) && minAngle >= 0 && maxAngle > minAngle
+  if (!frame || !Number.isFinite(gizmo.angle) || !validRange) return null
+  return {
+    ...gizmo,
+    angle: Math.min(maxAngle, Math.max(minAngle, gizmo.angle)),
+    axisDirection: [frame.axis.x, frame.axis.y, frame.axis.z],
+  }
 }
 
 /** A finite, orthonormal, right-handed sketch coordinate frame. */
@@ -284,7 +400,9 @@ export type GeometryViewport = Readonly<{
   setOriginPlaneVisibility: (visibility: ViewerOriginPlaneVisibility) => void
   showTranslationGizmo: (position: ViewerVector3) => void
   showAxialTranslationGizmo: (gizmo: ViewerAxialGizmo) => void
+  showAngularGizmo: (gizmo: ViewerAngularGizmo) => void
   hideTranslationGizmo: () => void
+  hideAngularGizmo: () => void
   setStandardView: (view: ViewerStandardView) => void
   fit: () => void
   clearSelection: () => void
@@ -374,6 +492,7 @@ export type GeometryViewportOptions = Readonly<{
   ) => void
   onTranslationGizmoPositionChange?: (position: ViewerVector3) => void
   onAxialGizmoDistanceChange?: (distance: number) => void
+  onAngularGizmoAngleChange?: (angle: number) => void
 }>
 
 function viewerSelectionStackCallback(
@@ -892,6 +1011,19 @@ class ThreeGeometryViewport implements GeometryViewport {
   readonly #translationControls: TransformControls
   readonly #translationObject = new Object3D()
   readonly #translationHelper: Object3D
+  readonly #angularGizmoGroup = new Group()
+  readonly #angularGizmoLineMaterial = new LineBasicMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    depthWrite: false,
+  })
+  readonly #angularGizmoHandleMaterial = new PointsMaterial({
+    color: new Color("#f59e0b"),
+    depthTest: false,
+    depthWrite: false,
+    size: 10,
+    sizeAttenuation: false,
+  })
   readonly #modelGroup = new Group()
   readonly #sketchGroup = new Group()
   readonly #sketchProfileGroup = new Group()
@@ -1090,10 +1222,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   ) => void
   readonly #onTranslationGizmoPositionChange: ((position: ViewerVector3) => void) | undefined
   readonly #onAxialGizmoDistanceChange: ((distance: number) => void) | undefined
+  readonly #onAngularGizmoAngleChange: ((angle: number) => void) | undefined
   readonly #translationPositionPublisher: ReturnType<
     typeof createLatestFramePublisher<ViewerVector3>
   >
   readonly #axialDistancePublisher: ReturnType<typeof createLatestFramePublisher<number>>
+  readonly #angularAnglePublisher: ReturnType<typeof createLatestFramePublisher<number>>
   readonly #isSelectionCandidateEligible: (selection: ViewerSelection) => boolean
   #viewHeight = DEFAULT_VIEW_HEIGHT
   #disposed = false
@@ -1128,6 +1262,11 @@ class ThreeGeometryViewport implements GeometryViewport {
   #sketchProjection: Readonly<{ bounds: ViewerSketchProjectionBounds }> | null = null
   #translationGizmoInteracting = false
   #axialGizmo: ViewerAxialGizmo | null = null
+  #angularGizmo: ViewerAngularGizmo | null = null
+  #angularGizmoHandle: Points | null = null
+  #angularGizmoInteracting = false
+  #angularGizmoStartAngle = 0
+  #angularGizmoPointerId: number | null = null
   #skipTranslationGizmoPointerUp = false
   #orbitControlsEnabledBeforeTranslation = true
 
@@ -1159,11 +1298,15 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#onSketchProfileSelectionChange = sketchProfileCallbacks.selection
     this.#onTranslationGizmoPositionChange = options.onTranslationGizmoPositionChange
     this.#onAxialGizmoDistanceChange = options.onAxialGizmoDistanceChange
+    this.#onAngularGizmoAngleChange = options.onAngularGizmoAngleChange
     this.#translationPositionPublisher = createLatestFramePublisher((position: ViewerVector3) =>
       this.#onTranslationGizmoPositionChange?.(position),
     )
     this.#axialDistancePublisher = createLatestFramePublisher((distance: number) =>
       this.#onAxialGizmoDistanceChange?.(distance),
+    )
+    this.#angularAnglePublisher = createLatestFramePublisher((angle: number) =>
+      this.#onAngularGizmoAngleChange?.(angle),
     )
     const context = canvas.getContext("webgl2", {
       alpha: true,
@@ -1190,6 +1333,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#scene.add(this.#preselectionGroup)
     this.#scene.add(this.#selectionGroup)
     this.#scene.add(this.#translationObject)
+    this.#scene.add(this.#angularGizmoGroup)
     this.#orientationAxes.setColors(
       new Color("#e15b64"),
       new Color("#35a66f"),
@@ -1227,7 +1371,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationControls.addEventListener("mouseUp", this.#onTranslationControlsMouseUp)
     this.#raycaster.params.Points.threshold = 2
     this.#raycaster.params.Line.threshold = 2
-    canvas.addEventListener("pointerdown", this.#onPointerDown)
+    canvas.addEventListener("pointerdown", this.#onPointerDown, true)
     canvas.addEventListener("pointermove", this.#onPointerMove)
     canvas.addEventListener("pointerup", this.#onPointerUp)
     canvas.addEventListener("pointerleave", this.#onPointerLeave)
@@ -1458,6 +1602,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   showTranslationGizmo(position: ViewerVector3) {
     if (this.#disposed || !isFiniteViewerVector3(position)) return
+    this.hideAngularGizmo()
     this.#axialDistancePublisher.cancel()
     this.#axialGizmo = null
     this.#translationControls.setSpace("world")
@@ -1476,6 +1621,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     const position = viewerAxialGizmoHandlePosition(gizmo)
     const direction = normalizedViewerDirection(gizmo.direction)
     if (this.#disposed || !position || !direction) return
+    this.hideAngularGizmo()
     this.#translationPositionPublisher.cancel()
     this.#axialGizmo = { ...gizmo, direction: [direction.x, direction.y, direction.z] }
     this.#translationControls.setSpace("local")
@@ -1499,11 +1645,32 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#translationGizmoInteracting = false
     this.#skipTranslationGizmoPointerUp = false
     this.#pointerDown = null
-    this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    if (!this.#angularGizmoInteracting) {
+      this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    }
     this.#translationControls.enabled = true
     this.#axialGizmo = null
     this.#translationPositionPublisher.cancel()
     this.#axialDistancePublisher.cancel()
+    this.#render()
+  }
+
+  showAngularGizmo(gizmo: ViewerAngularGizmo) {
+    const normalized = normalizedViewerAngularGizmo(gizmo)
+    if (this.#disposed || !normalized) return
+    this.hideTranslationGizmo()
+    this.#angularGizmo = normalized
+    this.#renderAngularGizmo()
+  }
+
+  hideAngularGizmo() {
+    if (this.#disposed) return
+    if (this.#angularGizmoInteracting) this.#finishAngularGizmoInteraction(false)
+    this.#angularAnglePublisher.cancel()
+    this.#angularGizmo = null
+    this.#angularGizmoHandle = null
+    delete this.#canvas.dataset.angularGizmoHandle
+    disposeModelGroup(this.#angularGizmoGroup)
     this.#render()
   }
 
@@ -1636,7 +1803,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#disposed) return
     this.#disposed = true
     this.#resizeObserver.disconnect()
-    this.#canvas.removeEventListener("pointerdown", this.#onPointerDown)
+    this.#canvas.removeEventListener("pointerdown", this.#onPointerDown, true)
     this.#canvas.removeEventListener("pointermove", this.#onPointerMove)
     this.#canvas.removeEventListener("pointerup", this.#onPointerUp)
     this.#canvas.removeEventListener("pointerleave", this.#onPointerLeave)
@@ -1646,6 +1813,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     window.removeEventListener("blur", this.#cancelTranslationGesture)
     this.#translationPositionPublisher.cancel()
     this.#axialDistancePublisher.cancel()
+    this.#angularAnglePublisher.cancel()
     this.#clearSketchReferencePicking()
     this.#controls.removeEventListener("change", this.#onControlsChange)
     this.#controls.dispose()
@@ -1670,6 +1838,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     disposeModelGroup(this.#featureSelectionGroup)
     disposeModelGroup(this.#preselectionGroup)
     disposeModelGroup(this.#selectionGroup)
+    disposeModelGroup(this.#angularGizmoGroup)
     this.#scene.remove(this.#translationObject)
     this.#previewSurfaceMaterial.dispose()
     this.#previewEdgeMaterial.dispose()
@@ -1692,6 +1861,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#featurePreselectionEdgeMaterial.dispose()
     this.#featureSelectionMaterial.dispose()
     this.#featureSelectionEdgeMaterial.dispose()
+    this.#angularGizmoLineMaterial.dispose()
+    this.#angularGizmoHandleMaterial.dispose()
     for (const material of this.#originPlaneMaterials.values()) material.dispose()
     for (const material of this.#originPlaneEdgeMaterials) material.dispose()
     this.#orientationAxes.geometry.dispose()
@@ -2029,7 +2200,104 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
   }
 
+  #renderAngularGizmo() {
+    disposeModelGroup(this.#angularGizmoGroup)
+    this.#angularGizmoHandle = null
+    if (!this.#angularGizmo) return
+    const positions = viewerAngularGizmoLinePositions(this.#angularGizmo)
+    const handlePosition = viewerAngularGizmoPoint(this.#angularGizmo)
+    if (!positions || !handlePosition) return
+    const lines = new LineSegments(
+      createViewerSketchGeometry(positions),
+      this.#angularGizmoLineMaterial,
+    )
+    lines.name = "angular-gizmo-arc"
+    lines.renderOrder = 10
+    this.#angularGizmoGroup.add(lines)
+    const handle = new Points(
+      createViewerSketchGeometry(new Float32Array(handlePosition)),
+      this.#angularGizmoHandleMaterial,
+    )
+    handle.name = "angular-gizmo-handle"
+    handle.renderOrder = 11
+    this.#angularGizmoHandle = handle
+    this.#angularGizmoGroup.add(handle)
+    this.#render()
+  }
+
+  #isAngularGizmoHandleHit(event: PointerEvent) {
+    return (
+      !!this.#angularGizmoHandle &&
+      this.#prepareRaycaster(event) &&
+      this.#raycaster.intersectObject(this.#angularGizmoHandle, false).length > 0
+    )
+  }
+
+  #beginAngularGizmoInteraction(event: PointerEvent) {
+    if (!this.#angularGizmo || !this.#isAngularGizmoHandleHit(event)) return false
+    this.#angularGizmoInteracting = true
+    this.#angularGizmoStartAngle = this.#angularGizmo.angle
+    this.#angularGizmoPointerId = event.pointerId
+    this.#orbitControlsEnabledBeforeTranslation = this.#controls.enabled
+    this.#controls.enabled = false
+    this.#pointerDown = null
+    this.#canvas.style.cursor = "grabbing"
+    this.#canvas.setPointerCapture(event.pointerId)
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    return true
+  }
+
+  #updateAngularGizmoInteraction(event: PointerEvent) {
+    const gizmo = this.#angularGizmo
+    if (
+      !this.#angularGizmoInteracting ||
+      !gizmo ||
+      event.pointerId !== this.#angularGizmoPointerId ||
+      !this.#prepareRaycaster(event)
+    ) {
+      return
+    }
+    const frame = viewerAngularGizmoFrame(gizmo)
+    if (!frame) return
+    const point = this.#raycaster.ray.intersectPlane(
+      new Plane().setFromNormalAndCoplanarPoint(frame.axis, frame.origin),
+      new Vector3(),
+    )
+    if (!point) return
+    const angle = viewerAngularGizmoAngle(gizmo, [point.x, point.y, point.z], gizmo.angle)
+    if (angle === null || angle === gizmo.angle) return
+    this.#angularGizmo = { ...gizmo, angle }
+    this.#renderAngularGizmo()
+    this.#angularAnglePublisher.push(angle)
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
+  #finishAngularGizmoInteraction(commit: boolean) {
+    if (!this.#angularGizmoInteracting) return
+    const pointerId = this.#angularGizmoPointerId
+    if (!commit && this.#angularGizmo) {
+      this.#angularGizmo = { ...this.#angularGizmo, angle: this.#angularGizmoStartAngle }
+      this.#renderAngularGizmo()
+      this.#angularAnglePublisher.push(this.#angularGizmoStartAngle)
+    }
+    this.#angularAnglePublisher.flush()
+    this.#angularGizmoInteracting = false
+    this.#angularGizmoPointerId = null
+    this.#controls.enabled = this.#orbitControlsEnabledBeforeTranslation
+    this.#pointerDown = null
+    this.#canvas.style.cursor = this.#angularGizmo ? "grab" : ""
+    if (pointerId !== null && this.#canvas.hasPointerCapture(pointerId)) {
+      this.#canvas.releasePointerCapture(pointerId)
+    }
+  }
+
   #cancelTranslationGesture = () => {
+    if (this.#angularGizmoInteracting) {
+      this.#finishAngularGizmoInteraction(false)
+      return
+    }
     if (this.#disposed || !this.#translationGizmoInteracting) return
     this.#translationControls.reset()
     this.#translationControls.pointerUp(null)
@@ -2045,7 +2313,12 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onTranslationGestureKeyDown = (event: KeyboardEvent) => {
-    if (!this.#translationGizmoInteracting || event.key !== "Escape") return
+    if (
+      (!this.#translationGizmoInteracting && !this.#angularGizmoInteracting) ||
+      event.key !== "Escape"
+    ) {
+      return
+    }
     event.preventDefault()
     event.stopImmediatePropagation()
     this.#cancelTranslationGesture()
@@ -2209,15 +2482,67 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  #handleAngularGizmoPointerMove(event: PointerEvent) {
+    if (this.#angularGizmoInteracting) {
+      this.#updateAngularGizmoInteraction(event)
+      return true
+    }
+    if (!this.#angularGizmo) return false
+    if (!this.#isAngularGizmoHandleHit(event)) {
+      if (this.#canvas.style.cursor === "grab") this.#canvas.style.cursor = ""
+      return false
+    }
+    this.#canvas.style.cursor = "grab"
+    this.#setOriginPlanePreselection(null)
+    this.#setPreselection(null)
+    this.#setSketchProfilePreselection(null)
+    return true
+  }
+
+  #updateOriginPlanePointerPreselection(event: PointerEvent) {
+    const stack = this.#pickSelectionStack(event, true)
+    this.#setSelectionCandidateStack(stack)
+    const retained = stack.find((selection) => sameSelection(selection, this.#preselection))
+    const modelSelection = retained ?? stack[0] ?? null
+    const plane = modelSelection ? null : this.#pickOriginPlane(event)
+    this.#setOriginPlanePreselection(plane)
+    this.#setPreselection(modelSelection)
+    this.#setSketchProfilePreselection(null)
+  }
+
+  #handleAngularGizmoPointerUp(event: PointerEvent) {
+    if (!this.#angularGizmoInteracting) return false
+    if (event.pointerId === this.#angularGizmoPointerId) {
+      this.#finishAngularGizmoInteraction(true)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    return true
+  }
+
+  #commitPointerActivation(event: PointerEvent) {
+    if (this.#interactionMode === "sketch-reference-select") {
+      this.#commitSketchPointSelection(event)
+      return
+    }
+    if (this.#originPlaneSelectionActive) {
+      this.#commitOriginPlaneSelection(event)
+      return
+    }
+    this.#commitIdleSelection(event)
+  }
+
   #onPointerDown = (event: PointerEvent) => {
     if (this.#translationGizmoInteracting) return
     if (event.isPrimary && event.button === 0) {
+      if (this.#beginAngularGizmoInteraction(event)) return
       this.#pointerDown = { x: event.clientX, y: event.clientY }
     }
   }
 
   #onPointerMove = (event: PointerEvent) => {
     if (!event.isPrimary) return
+    if (this.#handleAngularGizmoPointerMove(event)) return
     if (this.#translationGizmoInteracting) return
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") {
@@ -2225,20 +2550,14 @@ class ThreeGeometryViewport implements GeometryViewport {
       return
     }
     if (this.#originPlaneSelectionActive) {
-      const stack = this.#pickSelectionStack(event, true)
-      this.#setSelectionCandidateStack(stack)
-      const retained = stack.find((selection) => sameSelection(selection, this.#preselection))
-      const modelSelection = retained ?? stack[0] ?? null
-      const plane = modelSelection ? null : this.#pickOriginPlane(event)
-      this.#setOriginPlanePreselection(plane)
-      this.#setPreselection(modelSelection)
-      this.#setSketchProfilePreselection(null)
+      this.#updateOriginPlanePointerPreselection(event)
       return
     }
     this.#updateIdleSelectionPreselection(event)
   }
 
   #onPointerUp = (event: PointerEvent) => {
+    if (this.#handleAngularGizmoPointerUp(event)) return
     if (this.#skipTranslationGizmoPointerUp) {
       this.#skipTranslationGizmoPointerUp = false
       this.#pointerDown = null
@@ -2250,15 +2569,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (this.#interactionMode === "camera-only") return
     const movement = Math.hypot(event.clientX - start.x, event.clientY - start.y)
     if (movement > 3) return
-    if (this.#interactionMode === "sketch-reference-select") {
-      this.#commitSketchPointSelection(event)
-      return
-    }
-    if (this.#originPlaneSelectionActive) {
-      this.#commitOriginPlaneSelection(event)
-      return
-    }
-    this.#commitIdleSelection(event)
+    this.#commitPointerActivation(event)
   }
 
   #updateIdleSelectionPreselection(event: PointerEvent) {
@@ -2335,6 +2646,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   }
 
   #onPointerLeave = () => {
+    if (this.#angularGizmoInteracting) return
     this.#pointerDown = null
     if (this.#interactionMode === "camera-only") return
     if (this.#interactionMode === "sketch-reference-select") return
@@ -2351,6 +2663,15 @@ class ThreeGeometryViewport implements GeometryViewport {
     const width = this.#canvas.clientWidth
     const height = this.#canvas.clientHeight
     if (width <= 0 || height <= 0) return
+    const angularHandle = this.#angularGizmo ? viewerAngularGizmoPoint(this.#angularGizmo) : null
+    if (angularHandle) {
+      const projected = new Vector3(...angularHandle).project(this.#camera)
+      const x = ((projected.x + 1) / 2) * width
+      const y = ((1 - projected.y) / 2) * height
+      this.#canvas.dataset.angularGizmoHandle = `${x},${y}`
+    } else {
+      delete this.#canvas.dataset.angularGizmoHandle
+    }
     this.#renderer.setScissorTest(false)
     this.#renderer.setViewport(0, 0, width, height)
     this.#renderer.render(this.#scene, this.#camera)

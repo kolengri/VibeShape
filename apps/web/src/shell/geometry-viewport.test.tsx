@@ -213,6 +213,10 @@ function readyController(
   } as unknown as DocumentControllerState
 }
 
+function optionalProp<Value>(name: string, value: Value | undefined) {
+  return value === undefined ? {} : { [name]: value }
+}
+
 function renderViewport(
   controller: DocumentControllerState,
   selection: ViewerSelection | null = null,
@@ -255,6 +259,14 @@ function renderViewport(
     onDistanceChange: (distance: number) => void
     origin: readonly [number, number, number]
   }>,
+  angularGizmo?: Readonly<{
+    angle: number
+    axisDirection: readonly [number, number, number]
+    axisOrigin: readonly [number, number, number]
+    featureId: string
+    onAngleChange: (angle: number) => void
+    rotationOrigin: readonly [number, number, number]
+  }>,
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -276,7 +288,9 @@ function renderViewport(
     setOriginPlaneVisibility: vi.fn(),
     showTranslationGizmo: vi.fn(),
     showAxialTranslationGizmo: vi.fn(),
+    showAngularGizmo: vi.fn(),
     hideTranslationGizmo: vi.fn(),
+    hideAngularGizmo: vi.fn(),
     setStandardView: vi.fn(),
     fit: vi.fn(),
     clearSelection: vi.fn(),
@@ -294,15 +308,16 @@ function renderViewport(
           createViewport={createViewport}
           selection={selection}
           onSelectionChange={onSelectionChange}
-          {...(nextSketchContext ? { sketchContext: nextSketchContext } : {})}
+          {...optionalProp("sketchContext", nextSketchContext)}
           {...featureHighlight}
-          {...(featurePreview ? { featurePreview } : {})}
-          {...(originPlaneSelection ? { originPlaneSelection } : {})}
-          {...(originPlaneVisibility ? { originPlaneVisibility } : {})}
-          {...(idleOriginPlaneSelection ? { idleOriginPlaneSelection } : {})}
-          {...(sketchProfileSelection ? { sketchProfileSelection } : {})}
-          {...(translationGizmo ? { translationGizmo } : {})}
-          {...(axialGizmo ? { axialGizmo } : {})}
+          {...optionalProp("featurePreview", featurePreview)}
+          {...optionalProp("originPlaneSelection", originPlaneSelection)}
+          {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
+          {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
+          {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
+          {...optionalProp("translationGizmo", translationGizmo)}
+          {...optionalProp("axialGizmo", axialGizmo)}
+          {...optionalProp("angularGizmo", angularGizmo)}
         />
       </TooltipProvider>
     </I18nProvider>
@@ -387,6 +402,40 @@ describe("GeometryViewport", () => {
     const options = createViewport.mock.calls[0]?.[1]
     act(() => options?.onAxialGizmoDistanceChange?.(18))
     expect(onDistanceChange).toHaveBeenCalledWith(18)
+  })
+
+  it("shows an angular feature gizmo and forwards scalar angle changes", async () => {
+    const onAngleChange = vi.fn()
+    const angularGizmo = {
+      angle: Math.PI,
+      axisDirection: [0, 1, 0] as const,
+      axisOrigin: [2, 3, 4] as const,
+      featureId: boxId,
+      onAngleChange,
+      rotationOrigin: [8, 3, 4] as const,
+    }
+    const { createViewport, port } = renderViewport(
+      readyController([], []),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      angularGizmo,
+    )
+
+    await waitFor(() => expect(port.showAngularGizmo).toHaveBeenCalledWith(angularGizmo))
+    expect(
+      screen.getByRole("region", { name: "3D viewport" }).getAttribute("data-angular-gizmo-angle"),
+    ).toBe(Math.PI.toString())
+    const options = createViewport.mock.calls[0]?.[1]
+    act(() => options?.onAngularGizmoAngleChange?.(Math.PI / 2))
+    expect(onAngleChange).toHaveBeenCalledWith(Math.PI / 2)
   })
 
   it("adapts bounded saved profile loops to one stable viewer region", () => {
