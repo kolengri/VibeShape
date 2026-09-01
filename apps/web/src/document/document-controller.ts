@@ -1,15 +1,16 @@
 import {
   createPersistentDocumentSession,
-  openPersistentDocumentSession,
+  type PersistentDocumentRepositoryPort,
   type PersistentDocumentSession,
   type PersistentDocumentSessionDiagnostic,
   type PersistentDocumentSessionReport,
   type PersistentSketchSolveOptions,
   type PersistentSketchSolveResult,
 } from "@vibeshape/application/persistent-document-session"
+import { openVersionedDocumentSession } from "@vibeshape/application/versioned-document-session"
+import { createVersionedPersistenceAdapter } from "@vibeshape/application/versioned-persistence-adapter"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
-  copyDocumentHistory,
   createCommandDispatcher,
   createCoreCommandHandlers,
   createFeatureTypeRegistry,
@@ -41,10 +42,9 @@ import {
   type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
-import { readVShape, writeVShape } from "@vibeshape/formats/vshape"
+import { readVersionedVShape, writeVShapeV2 } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
-  LocalDocumentRepository,
   type LocalProjectSummary,
   releaseDocumentLease,
   VibeShapeDatabase,
@@ -52,7 +52,9 @@ import {
 import type { GeometryExportFormat } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
+import { BrowserProjectRepository } from "./browser-project-repository"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
+import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
 
 const DATABASE_NAME = "vibeshape-product-v0"
 const DOCUMENT_STORAGE_KEY = "vibeshape-active-document-id"
@@ -121,7 +123,7 @@ let state: DocumentControllerState = {
   diagnostic: null,
 }
 let session: PersistentDocumentSession | null = null
-let activeRepository: LocalDocumentRepository | null = null
+let activeRepository: BrowserProjectRepository | null = null
 let startPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
 
@@ -198,18 +200,10 @@ export function resolveDocumentFeatureParameters(document: DocumentSnapshot) {
   })
 }
 
-function dependencies(database: VibeShapeDatabase, repository: LocalDocumentRepository) {
+function dependencies(database: VibeShapeDatabase, repository: PersistentDocumentRepositoryPort) {
   return {
     commandDispatcher: coreCommandDispatcher(),
-    repository: {
-      commit: (input: Parameters<LocalDocumentRepository["commit"]>[0]) => repository.commit(input),
-      commitDraft: (input: Parameters<LocalDocumentRepository["commitDraft"]>[0]) =>
-        repository.commitDraft(input),
-      recover: (documentId: Parameters<LocalDocumentRepository["recover"]>[0]) =>
-        repository.recover(documentId),
-      closeCleanly: (input: Parameters<LocalDocumentRepository["closeCleanly"]>[0]) =>
-        repository.closeCleanly(input),
-    },
+    repository,
     leases: {
       acquire: (input: Parameters<typeof acquireDocumentLease>[1]) =>
         acquireDocumentLease(database, input),
@@ -245,20 +239,29 @@ function createCommand(documentId: ReturnType<typeof documentIdSchema.parse>, na
 
 async function openOrCreate(defaultDocumentName: string) {
   const database = new VibeShapeDatabase(DATABASE_NAME)
-  const repository = new LocalDocumentRepository(database)
+  const repository = new BrowserProjectRepository(database)
   activeRepository = repository
-  const sessionDependencies = dependencies(database, repository)
+  const versionedAdapter = createVersionedPersistenceAdapter(repository.versioned)
+  const sessionDependencies = dependencies(database, versionedAdapter)
   const sessionId = currentSessionId()
   const storedDocumentId = documentIdSchema.safeParse(
     readStoredId(localStorage, DOCUMENT_STORAGE_KEY),
   )
 
   if (storedDocumentId.success) {
-    const opened = await openPersistentDocumentSession(sessionDependencies, {
-      documentId: storedDocumentId.data,
-      sessionId,
-      mesh: PRODUCT_MESH_POLICY,
-    })
+    const opened = await openVersionedDocumentSession(
+      {
+        ...sessionDependencies,
+        legacyRepository: repository.legacy,
+        versionedRepository: repository.versioned,
+      },
+      {
+        documentId: storedDocumentId.data,
+        sessionId,
+        mesh: PRODUCT_MESH_POLICY,
+        storedAt: new Date().toISOString(),
+      },
+    )
     if (opened.ok) return opened
     if (opened.diagnostic.sourceCode !== "document-not-found") return opened
   }
@@ -588,9 +591,9 @@ export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupRe
   if (!session || !activeRepository || state.status !== "ready" || !state.report) {
     return unavailableProjectFileResult()
   }
-  const portable = await activeRepository.exportPortableProject(session.snapshot.id)
+  const portable = await activeRepository.exportPortableProjectV2(session.snapshot.id)
   if (!portable.ok) return portable
-  const archived = await writeVShape({
+  const archived = await writeVShapeV2({
     ...portable.value,
     exportedAt: new Date().toISOString(),
     createdBy: { application: "VibeShape", version: "0.0.0", build: null },
@@ -603,12 +606,13 @@ export async function exportActiveProjectBackup(): Promise<ActiveProjectBackupRe
 
 export async function importProjectBackup(bytes: Uint8Array): Promise<ProjectImportResult> {
   if (!activeRepository || state.status !== "ready") return unavailableProjectFileResult()
-  const decoded = await readVShape(bytes)
+  const decoded = await readVersionedVShape(bytes)
   if (!decoded.ok) return decoded
-  const imported = await activeRepository.importPortableProject({
-    snapshot: decoded.value.snapshot,
-    events: decoded.value.events,
-    exportedAt: decoded.value.manifest.exportedAt,
+  const portable = portableProjectV2FromArchive(decoded.value)
+  if (!portable.ok) return portable
+  const imported = await activeRepository.importPortableProjectV2({
+    ...portable.project,
+    exportedAt: portable.exportedAt,
     importedAt: new Date().toISOString(),
   })
   return imported.ok
@@ -673,7 +677,14 @@ export async function activateLocalProject(documentIdInput: unknown): Promise<Pr
       diagnostic: { code: "document-not-found", message: "The local project does not exist." },
     }
   }
+  const closed = await session.close()
+  session = null
+  if (!closed.ok) {
+    window.location.reload()
+    return { ok: false, diagnostic: closed.diagnostic }
+  }
   if (!writeStoredId(localStorage, DOCUMENT_STORAGE_KEY, documentId.data)) {
+    window.location.reload()
     return {
       ok: false,
       diagnostic: {
@@ -682,15 +693,20 @@ export async function activateLocalProject(documentIdInput: unknown): Promise<Pr
       },
     }
   }
-  await session.close()
-  session = null
   window.location.reload()
   return { ok: true }
 }
 
 export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
   if (!session || state.status !== "ready") return unavailableProjectFileResult()
+  const closed = await session.close()
+  session = null
+  if (!closed.ok) {
+    window.location.reload()
+    return { ok: false, diagnostic: closed.diagnostic }
+  }
   if (!removeStoredId(localStorage, DOCUMENT_STORAGE_KEY)) {
+    window.location.reload()
     return {
       ok: false,
       diagnostic: {
@@ -699,8 +715,6 @@ export async function createNewLocalProject(): Promise<ProjectSwitchResult> {
       },
     }
   }
-  await session.close()
-  session = null
   window.location.reload()
   return { ok: true }
 }
@@ -746,7 +760,7 @@ export async function duplicateLocalProject(
       diagnostic: { code: "invalid-input", message: "The project ID is invalid." },
     }
   }
-  const portable = await activeRepository.exportPortableProject(documentId.data)
+  const portable = await activeRepository.exportPortableProjectV2(documentId.data)
   if (!portable.ok) return { ok: false, diagnostic: portable.diagnostic }
   if (portable.value.snapshot.revision !== expectedHeadRevision) {
     return {
@@ -756,20 +770,18 @@ export async function duplicateLocalProject(
   }
 
   const copiedAt = new Date().toISOString()
-  const copied = copyDocumentHistory({
-    sourceSnapshot: portable.value.snapshot,
-    sourceEvents: portable.value.events,
+  const copied = copyPortableProjectV2({
+    source: portable.value,
     documentId: documentIdSchema.parse(browserUuidV7()),
-    commandIds: Array.from({ length: portable.value.events.length + 1 }, browserUuidV7),
     name,
     issuedAt: copiedAt,
-    actor: { type: "user", userId: null },
+    nextCommandId: browserUuidV7,
+    nextTransactionId: () => draftIdSchema.parse(browserUuidV7()),
   })
   if (!copied.ok) return { ok: false, diagnostic: copied.diagnostic }
 
-  const stored = await activeRepository.copyPortableProject({
-    snapshot: copied.snapshot,
-    events: copied.events,
+  const stored = await activeRepository.copyPortableProjectV2({
+    ...copied.project,
     copiedAt,
   })
   if (!stored.ok) return { ok: false, diagnostic: stored.diagnostic }
@@ -780,7 +792,7 @@ export async function duplicateLocalProject(
     targetRevision: stored.value.revision,
     generatedAt: copiedAt,
   })
-  return { ok: true, documentId: stored.value.documentId, name: copied.snapshot.name }
+  return { ok: true, documentId: stored.value.documentId, name: copied.project.snapshot.name }
 }
 
 export function renameVariable(baseRevision: number, variableId: VariableId, name: string) {

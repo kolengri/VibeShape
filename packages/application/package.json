@@ -10,6 +10,7 @@
     "./feature-rebuild": "./src/feature-rebuild.ts",
     "./persistent-document-session": "./src/persistent-document-session.ts",
     "./versioned-persistence-adapter": "./src/versioned-persistence-adapter.ts",
+    "./versioned-document-session": "./src/versioned-document-session.ts",
     "./sketch-curve-projection": "./src/sketch-curve-projection.ts",
     "./support-frame": "./src/support-frame.ts",
     "./pierce-point": "./src/pierce-point.ts",
