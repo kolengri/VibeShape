@@ -1,15 +1,18 @@
 import { expect, it } from "vitest"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
-import { featureRecordV1Schema } from "./feature-graph"
+import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import {
+  applyInsertFeatureInHistoryCommand,
   applyInsertSketchInHistoryCommand,
   reduceHistoryDocumentEvent,
   replayHistoryDocumentEvents,
   type SketchInsertedInHistoryEvent,
 } from "./history-document-commands"
 import { commandIdSchema, featureIdSchema, sketchIdSchema } from "./identifiers"
+import { boxFeatureType, extrusionFeatureType } from "./part-design"
 import { sketchRecordSchema } from "./sketch"
 import { createEmptySketch } from "./sketch-edit"
+import { createLengthQuantity } from "./units"
 
 const uuid = (value: number) => `0195b5ac-b220-7a2c-8c33-${value.toString().padStart(12, "0")}`
 const actor = { type: "user", userId: "org.vibeshape.user.history-test" } as const
@@ -61,6 +64,47 @@ function unavailableFeature(value: number) {
   })
 }
 
+function box(value: number) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: uuid(value),
+    type: boxFeatureType.type,
+    parameters: {
+      width: createLengthQuantity(20),
+      depth: createLengthQuantity(15),
+      height: createLengthQuantity(10),
+      centered: false,
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+    label: `Box ${value}`,
+  })
+}
+
+function extrusion(value: number, sketchId: string) {
+  return featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: uuid(value),
+    type: extrusionFeatureType.type,
+    parameters: {
+      profile: {
+        schemaVersion: 0,
+        sketchId,
+        outerBoundaryEntityIds: [uuid(value + 1_000)],
+        holeBoundaryEntityIds: [],
+      },
+      distance: createLengthQuantity(10),
+      symmetric: false,
+      operation: "new",
+    },
+    dependencies: [],
+    references: [],
+    suppressed: false,
+    label: `Extrusion ${value}`,
+  })
+}
+
 function seed(
   input: {
     revision?: number
@@ -109,6 +153,29 @@ function command(
   }
 }
 
+function featureCommand(
+  snapshot: DocumentSnapshotV1,
+  input: {
+    feature?: ReturnType<typeof box>
+    historyAfter?: DocumentSnapshotV1["history"][number] | null
+    commandId?: string
+  } = {},
+) {
+  return {
+    kind: "org.vibeshape.history.insert-feature",
+    schemaVersion: 1,
+    commandId: input.commandId ?? uuid(600 + snapshot.revision),
+    documentId: snapshot.id,
+    baseRevision: snapshot.revision,
+    issuedAt,
+    actor,
+    payload: {
+      feature: input.feature ?? box(30),
+      historyAfter: input.historyAfter === undefined ? null : input.historyAfter,
+    },
+  }
+}
+
 function expectApplied(result: ReturnType<typeof applyInsertSketchInHistoryCommand>) {
   expect(result).toMatchObject({ ok: true })
   if (!result.ok) throw new Error(result.diagnostic.message)
@@ -144,6 +211,88 @@ it("uses History rather than sketch storage order for v1 external references", (
   expect(
     documentSnapshotV1Schema.safeParse({ ...input, history: [...input.history].reverse() }).success,
   ).toBe(false)
+})
+
+it("inserts first-party features at stable History anchors with semantic inputs", () => {
+  const profile = sketch(31)
+  const current = seed({
+    sketches: [profile],
+    history: [{ kind: "sketch", id: profile.id }],
+  })
+  const solid = box(32)
+  const result = applyInsertFeatureInHistoryCommand(
+    current,
+    featureCommand(current, {
+      feature: solid,
+      historyAfter: { kind: "sketch", id: profile.id },
+    }),
+  )
+
+  expect(result).toMatchObject({ ok: true })
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  expect(result.snapshot.history).toEqual([
+    { kind: "sketch", id: profile.id },
+    { kind: "feature", id: solid.id },
+  ])
+  expect(result.event).toMatchObject({
+    type: "org.vibeshape.history.feature-inserted",
+    feature: { id: solid.id, schemaVersion: 1, semanticInputs: [] },
+    historyAfter: { kind: "sketch", id: profile.id },
+  })
+  expect(reduceHistoryDocumentEvent(current, result.event)).toEqual({
+    ok: true,
+    snapshot: result.snapshot,
+  })
+})
+
+it("rejects feature insertion before its semantic sketch dependency", () => {
+  const profile = sketch(33)
+  const current = seed({
+    sketches: [profile],
+    history: [{ kind: "sketch", id: profile.id }],
+  })
+  const feature = extrusion(34, profile.id)
+
+  expect(
+    applyInsertFeatureInHistoryCommand(
+      current,
+      featureCommand(current, { feature, historyAfter: null }),
+    ),
+  ).toMatchObject({ ok: false, diagnostic: { code: "invalid-command" } })
+  expect(
+    applyInsertFeatureInHistoryCommand(
+      current,
+      featureCommand(current, {
+        feature,
+        historyAfter: { kind: "sketch", id: profile.id },
+      }),
+    ),
+  ).toMatchObject({ ok: true })
+})
+
+it("rejects extension feature insertion without a durable dependency declaration", () => {
+  const current = seed()
+  const extension = featureRecordSchema.parse({
+    schemaVersion: 0,
+    id: uuid(35),
+    type: {
+      moduleId: "org.example.extension",
+      moduleVersion: "1.0.0",
+      typeId: "org.example.extension.feature",
+      schemaVersion: 1,
+    },
+    parameters: {},
+    dependencies: [],
+    references: [],
+    suppressed: false,
+  })
+
+  expect(
+    applyInsertFeatureInHistoryCommand(current, featureCommand(current, { feature: extension })),
+  ).toMatchObject({
+    ok: false,
+    diagnostic: { code: "unavailable-dependency-model" },
+  })
 })
 
 it("inserts a sketch at the start and emits a replayable event", () => {
@@ -328,16 +477,41 @@ it("returns diagnostics instead of throwing for invalid runtime options", () => 
   const invalidOptions = [null, "invalid", { transactionId: "not-a-uuid" }]
 
   for (const options of invalidOptions) {
-    const run = () => applyInsertSketchInHistoryCommand(current, command(current), options as never)
-    expect(run).not.toThrow()
-    expect(run()).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: "invalid-command",
-        issues: [expect.objectContaining({ path: expect.stringMatching(/^options/) })],
-      },
-    })
+    const calls = [
+      () => applyInsertSketchInHistoryCommand(current, command(current), options as never),
+      () => applyInsertFeatureInHistoryCommand(current, featureCommand(current), options as never),
+    ]
+    for (const run of calls) {
+      expect(run).not.toThrow()
+      expect(run()).toMatchObject({
+        ok: false,
+        diagnostic: {
+          code: "invalid-command",
+          issues: [expect.objectContaining({ path: expect.stringMatching(/^options/) })],
+        },
+      })
+    }
   }
+})
+
+it("reports malformed feature event fields at their owning paths", () => {
+  const current = seed()
+  const applied = applyInsertFeatureInHistoryCommand(current, featureCommand(current))
+  expect(applied).toMatchObject({ ok: true })
+  if (!applied.ok) throw new Error(applied.diagnostic.message)
+
+  expect(
+    reduceHistoryDocumentEvent(current, {
+      ...applied.event,
+      feature: { ...applied.event.feature, semanticInputs: "invalid" },
+    }),
+  ).toMatchObject({
+    ok: false,
+    diagnostic: {
+      code: "invalid-event",
+      issues: [expect.objectContaining({ path: "feature.semanticInputs" })],
+    },
+  })
 })
 
 it("rejects duplicate sketch identities for commands and events", () => {

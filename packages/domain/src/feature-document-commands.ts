@@ -22,12 +22,12 @@ import {
   updateFeature,
 } from "./feature-collection"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
-import type { draftIdSchema } from "./identifiers"
 import {
-  isOrphanedModelReference,
-  isSketchExternalModelReference,
-  sketchRecordSchema,
-} from "./sketch"
+  orphanModelReferencesToFeature,
+  preservableModelReferenceSketchIds,
+  unsupportedPreservingIntentBlockers,
+} from "./feature-removal-intent"
+import type { draftIdSchema } from "./identifiers"
 
 type FeatureCommand = Extract<
   DocumentCommand,
@@ -256,23 +256,7 @@ export function reduceFeatureDocumentEvent(
         snapshot: {
           ...removed.snapshot,
           sketches: removed.snapshot.sketches.map((sketch) =>
-            sketchRecordSchema.parse({
-              ...sketch,
-              externalReferences: sketch.externalReferences?.map((reference) =>
-                isSketchExternalModelReference(reference) &&
-                !isOrphanedModelReference(reference) &&
-                reference.reference.featureId === event.feature.id
-                  ? {
-                      ...reference,
-                      schemaVersion: 1 as const,
-                      orphanedSource: {
-                        kind: "deleted-feature" as const,
-                        featureId: event.feature.id,
-                      },
-                    }
-                  : reference,
-              ),
-            }),
+            orphanModelReferencesToFeature(sketch, event.feature.id),
           ),
         },
       }
@@ -421,23 +405,13 @@ function createRemovedPreservingIntentEvent(
     return domainDiagnostic("feature-not-found", "The feature does not exist in the document.")
   const graph = featureDependents(current.snapshot, feature.id)
   if (!graph.ok) return graph.diagnostic
-  const preservableSketchIds = new Set(
-    current.snapshot.sketches
-      .filter((sketch) =>
-        sketch.externalReferences?.some(
-          (reference) =>
-            isSketchExternalModelReference(reference) &&
-            !isOrphanedModelReference(reference) &&
-            reference.reference.featureId === feature.id,
-        ),
-      )
-      .map(({ id }) => id),
+  const preservableSketchIds = preservableModelReferenceSketchIds(
+    current.snapshot.sketches,
+    feature.id,
   )
-  const unsupportedBlockers = graph.blockers.filter(
-    (blocker) =>
-      blocker.relation !== "feature-topology-reference" ||
-      blocker.dependent.kind !== "sketch" ||
-      !preservableSketchIds.has(blocker.dependent.id),
+  const unsupportedBlockers = unsupportedPreservingIntentBlockers(
+    graph.blockers,
+    preservableSketchIds,
   )
   if (unsupportedBlockers.length > 0) {
     return {

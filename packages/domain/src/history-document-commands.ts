@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import {
   type DomainDiagnostic,
   documentGraphDiagnostic,
@@ -10,6 +11,8 @@ import { commandActorSchema } from "./commands"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
 import { createDocumentDependencyGraph } from "./document-graph"
 import { type HistoryItemRef, historyItemRefSchema } from "./document-node"
+import { type FeatureRecordV1, featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
+import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import {
   commandIdSchema,
   documentIdSchema,
@@ -40,6 +43,13 @@ export const insertSketchInHistoryCommandSchema = historyCommandEnvelopeSchema.e
     .strict(),
 })
 
+export const insertFeatureInHistoryCommandSchema = historyCommandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.history.insert-feature"),
+  payload: z
+    .object({ feature: featureRecordSchema, historyAfter: historyItemRefSchema.nullable() })
+    .strict(),
+})
+
 const historyEventEnvelopeSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -62,6 +72,19 @@ export const sketchInsertedInHistoryEventSchema = historyEventEnvelopeSchema.ext
   sketch: sketchRecordSchema,
   historyAfter: historyItemRefSchema.nullable(),
 })
+export const featureInsertedInHistoryEventSchema = historyEventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.history.feature-inserted"),
+  feature: featureRecordV1Schema,
+  historyAfter: historyItemRefSchema.nullable(),
+})
+export const historyDocumentCommandSchema = z.discriminatedUnion("kind", [
+  insertSketchInHistoryCommandSchema,
+  insertFeatureInHistoryCommandSchema,
+])
+export const historyDocumentEventSchema = z.discriminatedUnion("type", [
+  sketchInsertedInHistoryEventSchema,
+  featureInsertedInHistoryEventSchema,
+])
 
 export type InsertSketchInHistoryCommand = Readonly<
   z.infer<typeof insertSketchInHistoryCommandSchema>
@@ -69,12 +92,18 @@ export type InsertSketchInHistoryCommand = Readonly<
 export type SketchInsertedInHistoryEvent = Readonly<
   z.infer<typeof sketchInsertedInHistoryEventSchema>
 >
+export type InsertFeatureInHistoryCommand = Readonly<
+  z.infer<typeof insertFeatureInHistoryCommandSchema>
+>
+export type FeatureInsertedInHistoryEvent = Readonly<
+  z.infer<typeof featureInsertedInHistoryEventSchema>
+>
 
 export type HistoryDocumentCommandResult =
   | Readonly<{
       ok: true
       snapshot: DocumentSnapshotV1
-      event: SketchInsertedInHistoryEvent
+      event: SketchInsertedInHistoryEvent | FeatureInsertedInHistoryEvent
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
 
@@ -182,6 +211,67 @@ function insertionCandidateDiagnostic(
   )
 }
 
+function featureInsertionDiagnostic(
+  snapshot: DocumentSnapshotV1,
+  feature: FeatureRecordV1,
+  invalidEvent: boolean,
+): DomainDiagnostic | null {
+  const authority = validateHistoryMutationAuthority(snapshot, invalidEvent)
+  if (authority) return authority
+  if (snapshot.features.some(({ id }) => id === feature.id))
+    return domainDiagnostic(
+      invalidEvent ? "invalid-event" : "feature-already-exists",
+      "The feature already exists in the document.",
+    )
+  return featureSemanticInputsDiagnostic(snapshot, feature, invalidEvent)
+}
+
+function featureSemanticInputsDiagnostic(
+  snapshot: DocumentSnapshotV1,
+  feature: FeatureRecordV1,
+  invalidEvent: boolean,
+): DomainDiagnostic | null {
+  const projection = projectFirstPartyFeatureSemanticInputs(feature)
+  if (!projection.recognized)
+    return unknownFeatureDependencyDiagnostic(snapshot, feature, invalidEvent)
+  if (!projection.ok)
+    return domainDiagnostic(invalidEvent ? "invalid-event" : "invalid-command", projection.message)
+  if (canonicalJson(feature.semanticInputs) !== canonicalJson(projection.inputs))
+    return domainDiagnostic(
+      invalidEvent ? "invalid-event" : "invalid-command",
+      "The first-party feature semantic inputs are not canonical.",
+    )
+  return null
+}
+
+function unknownFeatureDependencyDiagnostic(
+  snapshot: DocumentSnapshotV1,
+  feature: FeatureRecordV1,
+  invalidEvent: boolean,
+) {
+  return unavailableDependencyModelDiagnostic(
+    [
+      {
+        featureId: feature.id,
+        ownerPath: `features.${snapshot.features.length}.type`,
+        typeKey: "extension",
+      },
+    ],
+    invalidEvent,
+  )
+}
+
+function invalidOptionsDiagnostic(error: z.ZodError): DomainDiagnostic {
+  const diagnostic = invalidInputDiagnostic("command", error)
+  return {
+    ...diagnostic,
+    issues: diagnostic.issues.map((issue) => ({
+      ...issue,
+      path: issue.path ? `options.${issue.path}` : "options",
+    })),
+  }
+}
+
 function reduceParsedHistoryEvent(
   snapshot: DocumentSnapshotV1,
   event: SketchInsertedInHistoryEvent,
@@ -218,6 +308,46 @@ function reduceParsedHistoryEvent(
   }
 }
 
+function reduceParsedFeatureHistoryEvent(
+  snapshot: DocumentSnapshotV1,
+  event: FeatureInsertedInHistoryEvent,
+  invalidEvent: boolean,
+): HistoryDocumentEventResult {
+  const revision = revisionDiagnostic(snapshot, event)
+  if (revision) return { ok: false, diagnostic: revision }
+  const candidate = featureInsertionDiagnostic(snapshot, event.feature, invalidEvent)
+  if (candidate) return { ok: false, diagnostic: candidate }
+  const history = insertAfter(
+    snapshot.history,
+    { kind: "feature", id: event.feature.id },
+    event.historyAfter,
+  )
+  if (!history) return { ok: false, diagnostic: missingAnchorDiagnostic(invalidEvent) }
+  const projection = projectFirstPartyFeatureSemanticInputs(event.feature)
+  const feature =
+    projection.recognized && projection.ok
+      ? { ...event.feature, semanticInputs: projection.inputs }
+      : event.feature
+  const parsed = documentSnapshotV1Schema.safeParse({
+    ...snapshot,
+    revision: event.revision,
+    features: [...snapshot.features, feature],
+    history,
+    updatedAt: event.issuedAt,
+  })
+  return parsed.success
+    ? { ok: true, snapshot: parsed.data }
+    : {
+        ok: false,
+        diagnostic: {
+          code: invalidEvent ? "invalid-event" : "invalid-command",
+          message: `The History ${invalidEvent ? "event" : "command"} produces an invalid document.`,
+          retryable: false,
+          issues: zodDiagnosticIssues(parsed.error),
+        },
+      }
+}
+
 export type HistoryDocumentCommandOptions = Readonly<
   z.infer<typeof historyDocumentCommandOptionsSchema>
 >
@@ -226,7 +356,9 @@ export function applyInsertSketchInHistoryCommand(
   snapshot: DocumentSnapshotV1,
   input: unknown,
   options?: HistoryDocumentCommandOptions,
-): HistoryDocumentCommandResult
+):
+  | (HistoryDocumentCommandResult & { ok: true; event: SketchInsertedInHistoryEvent })
+  | { ok: false; diagnostic: DomainDiagnostic }
 export function applyInsertSketchInHistoryCommand(
   snapshot: DocumentSnapshotV1,
   input: unknown,
@@ -238,19 +370,8 @@ export function applyInsertSketchInHistoryCommand(
   const revision = revisionDiagnostic(snapshot, parsed.data)
   if (revision) return { ok: false, diagnostic: revision }
   const parsedOptions = historyDocumentCommandOptionsSchema.safeParse(options)
-  if (!parsedOptions.success) {
-    const diagnostic = invalidInputDiagnostic("command", parsedOptions.error)
-    return {
-      ok: false,
-      diagnostic: {
-        ...diagnostic,
-        issues: diagnostic.issues.map((issue) => ({
-          ...issue,
-          path: issue.path ? `options.${issue.path}` : "options",
-        })),
-      },
-    }
-  }
+  if (!parsedOptions.success)
+    return { ok: false, diagnostic: invalidOptionsDiagnostic(parsedOptions.error) }
   const event = sketchInsertedInHistoryEventSchema.parse({
     schemaVersion: 1,
     type: "org.vibeshape.history.sketch-inserted",
@@ -268,14 +389,57 @@ export function applyInsertSketchInHistoryCommand(
   return reduced.ok ? { ...reduced, event } : reduced
 }
 
+export function applyInsertFeatureInHistoryCommand(
+  snapshot: DocumentSnapshotV1,
+  input: unknown,
+  options?: HistoryDocumentCommandOptions,
+):
+  | (HistoryDocumentCommandResult & { ok: true; event: FeatureInsertedInHistoryEvent })
+  | { ok: false; diagnostic: DomainDiagnostic }
+export function applyInsertFeatureInHistoryCommand(
+  snapshot: DocumentSnapshotV1,
+  input: unknown,
+  options: unknown = {},
+): HistoryDocumentCommandResult {
+  const parsed = insertFeatureInHistoryCommandSchema.safeParse(input)
+  if (!parsed.success)
+    return { ok: false, diagnostic: invalidInputDiagnostic("command", parsed.error) }
+  const revision = revisionDiagnostic(snapshot, parsed.data)
+  if (revision) return { ok: false, diagnostic: revision }
+  const parsedOptions = historyDocumentCommandOptionsSchema.safeParse(options)
+  if (!parsedOptions.success)
+    return { ok: false, diagnostic: invalidOptionsDiagnostic(parsedOptions.error) }
+  const event = featureInsertedInHistoryEventSchema.parse({
+    schemaVersion: 1,
+    type: "org.vibeshape.history.feature-inserted",
+    commandId: parsed.data.commandId,
+    transactionId: parsedOptions.data.transactionId ?? null,
+    documentId: parsed.data.documentId,
+    baseRevision: parsed.data.baseRevision,
+    revision: parsed.data.baseRevision + 1,
+    issuedAt: parsed.data.issuedAt,
+    actor: parsed.data.actor,
+    feature: (() => {
+      const f = parsed.data.payload.feature
+      const p = projectFirstPartyFeatureSemanticInputs(f)
+      return { ...f, schemaVersion: 1, semanticInputs: p.recognized && p.ok ? p.inputs : null }
+    })(),
+    historyAfter: parsed.data.payload.historyAfter,
+  })
+  const reduced = reduceParsedFeatureHistoryEvent(snapshot, event, false)
+  return reduced.ok ? { ...reduced, event } : reduced
+}
+
 export function reduceHistoryDocumentEvent(
   snapshot: DocumentSnapshotV1,
   input: unknown,
 ): HistoryDocumentEventResult {
-  const parsed = sketchInsertedInHistoryEventSchema.safeParse(input)
-  return parsed.success
+  const parsed = historyDocumentEventSchema.safeParse(input)
+  if (!parsed.success)
+    return { ok: false, diagnostic: invalidInputDiagnostic("event", parsed.error) }
+  return parsed.data.type === "org.vibeshape.history.sketch-inserted"
     ? reduceParsedHistoryEvent(snapshot, parsed.data, true)
-    : { ok: false, diagnostic: invalidInputDiagnostic("event", parsed.error) }
+    : reduceParsedFeatureHistoryEvent(snapshot, parsed.data, true)
 }
 
 export function replayHistoryDocumentEvents(
