@@ -73,6 +73,10 @@ session report.
 Native-format tests separately require deterministic `.vshape` v1 bytes, a strict version-1 manifest, exact
 three-entry/resource enforcement, explicit v0/v1 dispatch, and replay-to-migration canonical equality. They also
 recompute semantic-entry checksums after tampering with History and require the reader to reject the archive.
+Version-2 tests separately cover native v1 replay from document creation, complete legacy-prefix migration followed
+by an anchored History suffix, explicit checkpoint evidence, deterministic bytes, v0/v1/v2 dispatch, exact-entry
+enforcement, and rejection of tampered seeds, History anchors, and promotion boundaries after checksums are
+recomputed. Manifest tests also reject JSON/NDJSON media-type substitutions before replay.
 Legacy `readVShape` and `writeVShape` remain strict v0 compatibility gates.
 
 The transitional model-tree suite verifies that the schema-version-0 graph projection produces one History
