@@ -8,9 +8,31 @@ import { createEmptySketch } from "./sketch-edit"
 import { createLengthQuantity } from "./units"
 import {
   applyVersionedDocumentCommand,
+  projectDocumentSnapshotV1ToV0,
   reduceVersionedDocumentEvent,
   replayVersionedDocumentEvents,
 } from "./versioned-document-commands"
+
+it("projects strict v1 snapshots by History without mutating the source", () => {
+  const created = createDocument()
+  const withSketch = insertSketch(created.snapshot)
+  const withFeature = insertBox(withSketch.snapshot)
+  const source = JSON.parse(JSON.stringify(withFeature.snapshot))
+  const projected = projectDocumentSnapshotV1ToV0(withFeature.snapshot)
+  expect(projected).toMatchObject({ ok: true, snapshot: { schemaVersion: 0 } })
+  if (!projected.ok) return
+  expect(projected.snapshot.sketches.map(({ id }) => id)).toEqual([uuid(10)])
+  expect(projected.snapshot.features.map(({ id }) => id)).toEqual([uuid(20)])
+  expect(projected.snapshot.features[0]).not.toHaveProperty("semanticInputs")
+  expect(withFeature.snapshot).toEqual(source)
+})
+
+it("returns bounded diagnostics for invalid v1 projection input", () => {
+  expect(projectDocumentSnapshotV1ToV0({ schemaVersion: 1 })).toMatchObject({
+    ok: false,
+    diagnostic: { issues: expect.any(Array) },
+  })
+})
 
 const uuid = (value: number) => `0195b5ac-b250-7a2c-8c33-${value.toString().padStart(12, "0")}`
 const documentId = uuid(1)

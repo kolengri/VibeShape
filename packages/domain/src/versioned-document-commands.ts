@@ -125,6 +125,45 @@ function projectSnapshot(snapshot: DocumentSnapshotV1): TransformationResult<Doc
       }
 }
 
+export type DocumentSnapshotProjectionResult =
+  | Readonly<{ ok: true; snapshot: DocumentSnapshot }>
+  | Readonly<{
+      ok: false
+      diagnostic: Readonly<{
+        code: "invalid-snapshot"
+        message: string
+        retryable: false
+        issues: DomainDiagnostic["issues"]
+      }>
+    }>
+
+/** Projects a validated History-bearing snapshot into the strict legacy shape. */
+export function projectDocumentSnapshotV1ToV0(input: unknown): DocumentSnapshotProjectionResult {
+  const parsed = documentSnapshotV1Schema.safeParse(input)
+  if (!parsed.success)
+    return {
+      ok: false,
+      diagnostic: {
+        code: "invalid-snapshot",
+        message: "The versioned document snapshot is invalid.",
+        retryable: false,
+        issues: zodDiagnosticIssues(parsed.error),
+      },
+    }
+  const projected = projectSnapshot(parsed.data)
+  return projected.ok
+    ? { ok: true, snapshot: projected.value }
+    : {
+        ok: false,
+        diagnostic: {
+          code: "invalid-snapshot",
+          message: projected.message,
+          retryable: false,
+          issues: projected.issues,
+        },
+      }
+}
+
 function historyAfterLegacyEvent(
   history: readonly HistoryItemRef[],
   event: DocumentEvent,

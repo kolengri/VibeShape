@@ -79,6 +79,13 @@ export type PersistedRecoveryReport = Readonly<{
   recoveredRevision: number
   lostRevisionCount: number
   corruptRecords: readonly string[]
+  migration?: PersistedRecoveryMigration
+}>
+
+export type PersistedRecoveryMigration = Readonly<{
+  provenance: "current" | "journal-derived" | "snapshot-derived"
+  diagnostic: Readonly<{ code: string; message: string }> | null
+  unavailableRecords: readonly string[]
 }>
 
 type PersistenceCommitInput = Readonly<{
@@ -192,6 +199,7 @@ export type PersistentDocumentSessionReport = Readonly<{
   rebuild: DocumentRebuildOutcome
   lostRevisionCount: number
   corruptRecords: readonly string[]
+  migration: PersistedRecoveryMigration | null
   writeAccessDiagnostic: PersistentDocumentSessionDiagnostic | null
 }>
 
@@ -706,6 +714,7 @@ export async function openPersistentDocumentSession(
       rebuild: opened.rebuild,
       lostRevisionCount: recovered.value.lostRevisionCount,
       corruptRecords: recovered.value.corruptRecords,
+      migration: recovered.value.migration ?? null,
       writeAccessDiagnostic: opened.writeAccessDiagnostic,
     },
   }
@@ -757,6 +766,7 @@ export async function createPersistentDocumentSession(
       rebuild: opened.rebuild,
       lostRevisionCount: 0,
       corruptRecords: [],
+      migration: null,
       writeAccessDiagnostic: opened.writeAccessDiagnostic,
     },
   }

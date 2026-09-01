@@ -58,6 +58,14 @@ snapshot, bounds loss after corrupting the matching suffix event, proves transac
 quota failure, and verifies clean-close recovery. It also proves that all v1 activity leaves the complete v0
 rollback source byte-canonical.
 
+Domain projection tests require a valid v1 snapshot to produce a strict v0 document ordered by History without
+mutating the source or leaking History and feature semantic-input declarations. Application adapter tests cover
+schema-version-1 recovery through that projection, canonical base/result equality, legacy sketch and feature add
+translation, final-History anchoring, first-party semantic-input derivation, draft transaction identity, and
+authority rollback when persistence rejects a commit. Snapshot-derived recovery fixtures require provenance,
+diagnostics, and unavailable-record evidence to survive the v0 compatibility projection and remain visible in the
+session report.
+
 Native-format tests separately require deterministic `.vshape` v1 bytes, a strict version-1 manifest, exact
 three-entry/resource enforcement, explicit v0/v1 dispatch, and replay-to-migration canonical equality. They also
 recompute semantic-entry checksums after tampering with History and require the reader to reject the archive.
