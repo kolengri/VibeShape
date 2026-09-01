@@ -36,6 +36,7 @@
 | [0032](0032-stable-linear-model-edge-revolve-axis.md) | Accepted | Stable straight model-edge axes for exact Revolve replay |
 | [0033](0033-selector-backed-saved-profile-picking.md) | Accepted | Stable saved-sketch profile picking through disposable 3D render regions |
 | [0034](0034-versioned-multi-profile-feature-input.md) | Accepted | Canonical multi-profile New intent with a bounded multi-solid result |
+| [0035](0035-versioned-portable-history.md) | Accepted | Replay-proven complete and explicitly evidenced checkpoint history in `.vshape` v2 |
 
 Statuses:
 

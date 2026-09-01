@@ -1,5 +1,6 @@
+import { applyVersionedDocumentCommand } from "@vibeshape/domain"
 import { applyDocumentCommand, type DocumentEvent } from "@vibeshape/domain/commands"
-import type { DocumentSnapshot } from "@vibeshape/domain/document"
+import type { DocumentSnapshot, DocumentSnapshotV1 } from "@vibeshape/domain/document"
 import { migrateDocumentSnapshot } from "@vibeshape/domain/document-migration"
 import { boxFeatureType } from "@vibeshape/domain/part-design"
 import { createLengthQuantity } from "@vibeshape/domain/units"
@@ -9,9 +10,11 @@ import {
   readVersionedVShape,
   readVShape,
   readVShapeV1,
+  readVShapeV2,
   VSHAPE_MEDIA_TYPE,
   writeVShape,
   writeVShapeV1,
+  writeVShapeV2,
 } from "./vshape"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
@@ -27,6 +30,7 @@ const repairFeatureId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c4"
 const repairSketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c5"
 const repairReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c6"
 const repairProjectedPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c7"
+const v2SketchId = "0195b5ac-b220-7a2c-8c33-67a36a7f21c8"
 const timestamp = "2026-08-09T10:00:00Z"
 
 function commandId(index: number) {
@@ -546,4 +550,323 @@ describe(".vshape v1", () => {
       value: { version: 1, project: { manifest: { formatVersion: 1 } } },
     })
   })
+})
+
+function applyV2(
+  snapshot: DocumentSnapshotV1 | null,
+  command: Parameters<typeof applyVersionedDocumentCommand>[1],
+) {
+  const result = applyVersionedDocumentCommand(snapshot, command)
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  return result
+}
+
+function insertedSketch(snapshot: DocumentSnapshotV1, id: string, commandIndex: number) {
+  return applyV2(snapshot, {
+    schemaVersion: 1,
+    kind: "org.vibeshape.history.insert-sketch",
+    commandId: commandId(commandIndex),
+    documentId,
+    baseRevision: snapshot.revision,
+    issuedAt: "2026-08-09T10:06:00Z",
+    actor: { type: "user", userId: null },
+    payload: {
+      sketch: {
+        schemaVersion: 0,
+        id,
+        label: "Versioned sketch",
+        plane: "xy",
+        entities: [],
+        constraints: [],
+      },
+      historyAfter: snapshot.history.at(-1) ?? null,
+    },
+  })
+}
+
+function nativeVersionedProject() {
+  const created = applyV2(null, {
+    schemaVersion: 1,
+    kind: "org.vibeshape.document.create",
+    commandId: commandId(31),
+    documentId,
+    baseRevision: 0,
+    issuedAt: timestamp,
+    actor: { type: "user", userId: null },
+    payload: { name: "Native History" },
+  })
+  const sketch = insertedSketch(created.snapshot, v2SketchId, 32)
+  return { snapshot: sketch.snapshot, events: [created.event, sketch.event] }
+}
+
+function legacySketchProject() {
+  const created = apply(null, {
+    schemaVersion: 1,
+    kind: "org.vibeshape.document.create",
+    commandId: commandId(34),
+    documentId,
+    baseRevision: 0,
+    issuedAt: timestamp,
+    actor: { type: "user", userId: null },
+    payload: { name: "Promoted History" },
+  })
+  const sketch = apply(created.snapshot, {
+    schemaVersion: 1,
+    kind: "org.vibeshape.sketch.add",
+    commandId: commandId(35),
+    documentId,
+    baseRevision: created.snapshot.revision,
+    issuedAt: "2026-08-09T10:05:00Z",
+    actor: { type: "user", userId: null },
+    payload: {
+      sketch: {
+        schemaVersion: 0,
+        id: sketchId,
+        label: "Legacy sketch",
+        plane: "xy",
+        entities: [],
+        constraints: [],
+      },
+    },
+  })
+  return { snapshot: sketch.snapshot, events: [created.event, sketch.event] }
+}
+
+function promotedVersionedProject() {
+  const legacy = legacySketchProject()
+  const migrated = migrateDocumentSnapshot(legacy.snapshot, legacy.events)
+  if (!migrated.ok) throw new Error(migrated.diagnostic.message)
+  const sketch = insertedSketch(migrated.snapshot, v2SketchId, 33)
+  return { legacy, seed: migrated.snapshot, snapshot: sketch.snapshot, suffix: [sketch.event] }
+}
+
+async function sha256(bytes: Uint8Array) {
+  const runtime = globalThis as typeof globalThis & {
+    crypto: {
+      subtle: { digest: (algorithm: string, data: Uint8Array) => Promise<ArrayBuffer> }
+    }
+  }
+  const digest = await runtime.crypto.subtle.digest("SHA-256", Uint8Array.from(bytes))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
+async function replaceSemanticEntry(archive: Uint8Array, path: string, bytes: Uint8Array) {
+  const files = unzipSync(archive)
+  files[path] = Uint8Array.from(bytes)
+  const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array))
+  const entry = manifest.semanticEntries.find(
+    (candidate: { path: string }) => candidate.path === path,
+  )
+  entry.bytes = bytes.byteLength
+  entry.sha256 = await sha256(bytes)
+  files["manifest.json"] = strToU8(JSON.stringify(manifest))
+  return zipSync(files)
+}
+
+async function promotedV2Archive() {
+  const project = promotedVersionedProject()
+  const written = await writeVShapeV2({
+    snapshot: project.snapshot,
+    seed: project.seed,
+    legacyEvents: project.legacy.events,
+    versionedEvents: project.suffix,
+    historyMode: "complete",
+    promotionRevision: project.seed.revision,
+    ...metadata,
+  })
+  if (!written.ok) throw new Error(written.diagnostic.message)
+  return { project, bytes: written.value }
+}
+
+it("round-trips `.vshape` v2 native History from document creation", async () => {
+  const project = nativeVersionedProject()
+  const written = await writeVShapeV2({
+    snapshot: project.snapshot,
+    seed: null,
+    legacyEvents: [],
+    versionedEvents: project.events,
+    historyMode: "complete",
+    promotionRevision: 0,
+    ...metadata,
+  })
+  if (!written.ok) throw new Error(written.diagnostic.message)
+  await expect(readVShapeV2(written.value)).resolves.toMatchObject({
+    ok: true,
+    value: {
+      seed: null,
+      legacyEvents: [],
+      versionedEvents: [
+        { type: "org.vibeshape.document.created" },
+        {
+          type: "org.vibeshape.history.sketch-inserted",
+          historyAfter: null,
+        },
+      ],
+    },
+  })
+})
+
+it("round-trips `.vshape` v2 promoted history deterministically", async () => {
+  const project = promotedVersionedProject()
+  const input = {
+    snapshot: project.snapshot,
+    seed: project.seed,
+    legacyEvents: project.legacy.events,
+    versionedEvents: project.suffix,
+    historyMode: "complete" as const,
+    promotionRevision: project.seed.revision,
+    ...metadata,
+  }
+  const first = await writeVShapeV2(input)
+  const second = await writeVShapeV2(input)
+  expect(first).toEqual(second)
+  if (!first.ok) throw new Error(first.diagnostic.message)
+  await expect(readVShapeV2(first.value)).resolves.toMatchObject({
+    ok: true,
+    value: {
+      manifest: {
+        formatVersion: 2,
+        historyMode: "complete",
+        promotionRevision: 2,
+      },
+      snapshot: project.snapshot,
+      versionedEvents: [
+        {
+          type: "org.vibeshape.history.sketch-inserted",
+          historyAfter: { kind: "sketch", id: sketchId },
+        },
+      ],
+    },
+  })
+  await expect(readVersionedVShape(first.value)).resolves.toMatchObject({
+    ok: true,
+    value: { version: 2 },
+  })
+  await expect(readVShapeV1(first.value)).resolves.toMatchObject({
+    ok: false,
+  })
+  await expect(readVShape(first.value)).resolves.toMatchObject({
+    ok: false,
+  })
+})
+
+it("round-trips an explicitly evidenced `.vshape` v2 checkpoint", async () => {
+  const project = promotedVersionedProject()
+  const written = await writeVShapeV2({
+    snapshot: project.snapshot,
+    seed: project.seed,
+    legacyEvents: [],
+    versionedEvents: project.suffix,
+    historyMode: "checkpoint",
+    promotionRevision: project.seed.revision,
+    migrationDiagnostic: {
+      code: "legacy-journal-unavailable",
+      message: "The legacy prefix could not be recovered.",
+    },
+    unavailableRecords: ["event:3"],
+    ...metadata,
+  })
+  if (!written.ok) throw new Error(written.diagnostic.message)
+  await expect(readVShapeV2(written.value)).resolves.toMatchObject({
+    ok: true,
+    value: {
+      manifest: {
+        historyMode: "checkpoint",
+        migrationDiagnostic: { code: "legacy-journal-unavailable" },
+        unavailableRecords: ["event:3"],
+      },
+      legacyEvents: [],
+      seed: project.seed,
+      snapshot: project.snapshot,
+    },
+  })
+})
+
+it("rejects `.vshape` v2 checkpoints without bounded recovery evidence", async () => {
+  const project = promotedVersionedProject()
+  await expect(
+    writeVShapeV2({
+      snapshot: project.snapshot,
+      seed: project.seed,
+      legacyEvents: [],
+      versionedEvents: project.suffix,
+      historyMode: "checkpoint",
+      promotionRevision: project.seed.revision,
+      ...metadata,
+    }),
+  ).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "invalid-document" },
+  })
+})
+
+it("rejects a tampered `.vshape` v2 promotion seed", async () => {
+  const { project, bytes } = await promotedV2Archive()
+  const changedSeed = { ...project.seed, name: "Tampered seed" }
+  await expect(
+    readVShapeV2(
+      await replaceSemanticEntry(bytes, "journal/seed.json", strToU8(JSON.stringify(changedSeed))),
+    ),
+  ).resolves.toMatchObject({ ok: false, diagnostic: { code: "history-mismatch" } })
+})
+
+it("rejects a tampered `.vshape` v2 History anchor", async () => {
+  const { project, bytes } = await promotedV2Archive()
+  const changedSuffix = {
+    ...project.suffix[0],
+    historyAfter: { kind: "sketch", id: repairProjectedPointId },
+  }
+  await expect(
+    readVShapeV2(
+      await replaceSemanticEntry(
+        bytes,
+        "journal/versioned-suffix.jsonl",
+        strToU8(`${JSON.stringify(changedSuffix)}\n`),
+      ),
+    ),
+  ).resolves.toMatchObject({ ok: false, diagnostic: { code: "history-mismatch" } })
+})
+
+it("rejects a tampered `.vshape` v2 promotion boundary", async () => {
+  const { bytes } = await promotedV2Archive()
+  const files = unzipSync(bytes)
+  const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array))
+  manifest.promotionRevision -= 1
+  files["manifest.json"] = strToU8(JSON.stringify(manifest))
+  await expect(readVShapeV2(zipSync(files))).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "history-mismatch" },
+  })
+})
+
+it("rejects undeclared `.vshape` v2 entries", async () => {
+  const { bytes } = await promotedV2Archive()
+  const files = unzipSync(bytes)
+  files["unexpected.json"] = strToU8("{}")
+  await expect(readVShapeV2(zipSync(files))).resolves.toMatchObject({
+    ok: false,
+    diagnostic: { code: "undeclared-entry" },
+  })
+})
+
+it("rejects substituted `.vshape` v2 semantic-entry media types", async () => {
+  const { bytes } = await promotedV2Archive()
+  const substitutions = [
+    ["journal/seed.json", "application/x-ndjson"],
+    ["journal/versioned-suffix.jsonl", "application/json"],
+  ] as const
+
+  for (const [path, mediaType] of substitutions) {
+    const files = unzipSync(bytes)
+    const manifest = JSON.parse(strFromU8(files["manifest.json"] as Uint8Array))
+    const entry = manifest.semanticEntries.find(
+      (candidate: { path: string }) => candidate.path === path,
+    )
+    entry.mediaType = mediaType
+    files["manifest.json"] = strToU8(JSON.stringify(manifest))
+    await expect(readVShapeV2(zipSync(files))).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-manifest" },
+    })
+  }
 })

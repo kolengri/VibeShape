@@ -105,7 +105,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - strict feature schema v0 records with stable type ownership, bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and presentation order;
 - deterministic feature-graph construction with duplicate, missing-dependency, self-reference, undeclared-reference, and cycle rejection;
 - a bounded pure document-dependency graph over typed sketch and feature nodes, with explicit current first-party relation kinds, exact supplied-History coverage, forward-order validation, cross-kind cycle rejection, deterministic evaluation order, and parent/child queries;
-- strict version-0 and version-1 snapshot/feature schemas plus a pure migration contract: verified complete journals preserve authored interleaving, degraded snapshot-only recovery is explicit, and unavailable legacy extension dependency models remain `null`; persistence exposes read-only migrated recovery and side-by-side atomic v1 stores, the native format exposes parallel strict v1 codecs, and an application adapter preserves v1 as semantic authority while projecting a validated History-ordered v0 view to the current session and worker contracts;
+- strict version-0 and version-1 snapshot/feature schemas plus a pure migration contract: verified complete journals preserve authored interleaving, degraded snapshot-only recovery is explicit, and unavailable legacy extension dependency models remain `null`; persistence exposes read-only migrated recovery and side-by-side atomic v1 stores, the native format exposes strict v1 migration archives and v2 versioned-history archives, and an application adapter preserves v1 as semantic authority while projecting a validated History-ordered v0 view to the current session and worker contracts;
 - atomic feature collection mutations that validate the complete resulting DAG before advancing the document revision and never retain partial state after rejection;
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.
@@ -139,6 +139,35 @@ project.vshape
 ```
 
 `document.json` is canonical JSON for the current `DocumentSnapshot`. It retains stable variable IDs, authored variable formulas, analytical sketch records, sketch dimension sources such as `#width`, feature parameter source expressions, and every other semantic feature field. `journal/events.jsonl` contains the complete canonical event history, one strict event per line with a final newline. The writer uses deterministic DEFLATE ZIP output with a fixed ZIP timestamp. Periodic snapshot entries, embedded imports, caches, previews, reports, extension locks, and license attachments remain planned versioned additions; a v0 reader rejects every extra entry rather than guessing whether it is authoritative.
+
+The strict v1 codec keeps that three-entry layout for a migrated `DocumentSnapshotV1` whose complete legacy journal
+still proves History through replay and pure migration. It remains readable unchanged.
+
+Format version 2 introduces the first archive that can retain events authored after v1 promotion:
+
+```text
+project.vshape
+  manifest.json
+  document.json
+  journal/seed.json
+  journal/legacy-prefix.jsonl
+  journal/versioned-suffix.jsonl
+```
+
+`document.json` is the final `DocumentSnapshotV1`. `journal/seed.json` is either `null` for a native complete v1
+history or the exact promoted/checkpoint v1 snapshot. The legacy prefix and versioned suffix are distinct strict
+NDJSON streams so an anchored History event cannot be misread as a legacy add event. Empty streams encode as zero
+bytes; non-empty streams use canonical JSON records and a final newline. The two streams share one aggregate
+`100,000`-event limit.
+
+V2 has two explicit history modes. `complete` either replays the versioned suffix from `null`, or replays and
+migrates the complete legacy prefix to the exact seed before replaying the suffix. It permits no recovery
+diagnostic. `checkpoint` requires a non-null seed, an empty legacy prefix, a bounded diagnostic, and at least one
+unavailable-record identifier; it never presents inferred or missing pre-seed history as complete. Both modes must
+replay the suffix to canonical equality with the final document. Every one of the four semantic entries declares
+its exact media type, byte length, and SHA-256 digest, and the ZIP must contain exactly those entries plus the
+manifest. V0 and v1 readers remain unchanged and fail closed on v2 archives.
+See [ADR-0035](../adr/0035-versioned-portable-history.md) for the version boundary and replay contract.
 
 ### `manifest.json`
 
