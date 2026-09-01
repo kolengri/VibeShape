@@ -409,9 +409,10 @@ part of the rebuild integration work.
 
 ### Slice 0C — versioned History migration
 
-Status: pure domain schema/migration, opt-in read-only persistence recovery, strict parallel `.vshape` v1 codecs,
-and the first version-1-only anchored sketch-insertion command/event are implemented. Version-1 persistence
-writes, mixed-journal application adoption, History reorder, and the user-visible cursor remain open.
+Status: versioned domain commands and replay, lease-gated side-by-side promotion, v1 persistence, the v1-to-v0
+application adapter, product controller adoption, authoritative dual-generation project lifecycle, and strict
+`.vshape` v2 complete/checkpoint codecs are implemented. History reorder, a durable writable-checkpoint boundary,
+and the user-visible rollback cursor remain open.
 
 - Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
 - Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a

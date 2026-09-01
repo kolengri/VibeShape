@@ -175,9 +175,13 @@ v1 seed, and the contiguous v1 suffix; when the prefix cannot prove the seed, ex
 evidenced checkpoint instead. Complete-history import and semantic copy validate replay before opening one
 transaction, reject a document ID already present in either storage generation, and publish legacy-prefix records, v1 seed/final
 snapshots, v1 suffix events, project metadata, and recovery cleanup atomically. A pure domain copy seam preserves
-History anchors and entity IDs while requiring fresh document, command, and transaction identities. Product
-controller adoption, automatic promotion-on-open, and a durable writable-checkpoint metadata contract remain
-separate gates; checkpoint archives cannot silently become ordinary writable projects.
+History anchors and entity IDs while requiring fresh document, command, and transaction identities. The product
+controller now creates native v1 projects, opens existing v1 authority through the v1-to-v0 application adapter,
+and promotes a complete legacy recovery only while it owns the writer lease. A contended legacy project remains
+read-only and unpromoted. Backup, import, duplicate, catalog, preview, and deletion use the authoritative
+generation and the v2 lifecycle; v0 and v1 archives are lifted through their already replay-proven legacy journal
+before writable import. A durable writable-checkpoint metadata contract remains a separate gate, so checkpoint
+archives cannot silently become ordinary writable projects.
 
 ### `manifest.json`
 

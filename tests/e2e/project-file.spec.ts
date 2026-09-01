@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 import type { Page } from "@playwright/test"
+import { readVersionedVShape } from "../../packages/formats/src/vshape"
 import { expect, test } from "./fixtures"
 
 type BrowserRequest<Result> = {
@@ -107,6 +108,28 @@ async function projectThumbnailCount(page: Page) {
   )
 }
 
+async function writerLeaseCount(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const request = (globalThis as unknown as BrowserGlobal).indexedDB.open(
+          "vibeshape-product-v0",
+        )
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+          const database = request.result
+          const transaction = database.transaction("leases", "readonly")
+          const count = transaction.objectStore("leases").count()
+          count.onerror = () => reject(count.error)
+          count.onsuccess = () => {
+            database.close()
+            resolve(count.result)
+          }
+        }
+      }),
+  )
+}
+
 test.describe("native project file", () => {
   test("adds the preview store without replacing version-one browser data", async ({ page }) => {
     await seedVersionOneDatabase(page)
@@ -183,6 +206,17 @@ test.describe("native project file", () => {
     if (!backupPath) throw new Error("Playwright did not retain the .vshape download.")
     const backupBytes = await readFile(backupPath)
     expect(backupBytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+    const decodedBackup = await readVersionedVShape(new Uint8Array(backupBytes))
+    expect(decodedBackup).toMatchObject({
+      ok: true,
+      value: {
+        version: 2,
+        project: {
+          manifest: { historyMode: "complete", promotionRevision: 0 },
+          versionedEvents: { length: 4 },
+        },
+      },
+    })
 
     await page.getByRole("button", { name: "Project…" }).click()
     const currentProjectDialog = page.getByRole("dialog", { name: "Projects" })
@@ -305,6 +339,7 @@ test.describe("native project file", () => {
     await expect(
       page.getByRole("form", { name: "Edit box" }).getByRole("combobox", { name: "Width" }),
     ).toHaveValue("#width")
+    await expect.poll(() => writerLeaseCount(page)).toBe(1)
 
     await page.getByRole("button", { name: "Project…" }).click()
     const copiedDialog = page.getByRole("dialog", { name: "Projects" })
