@@ -13,10 +13,15 @@ import {
   cacheIndexRecordSchema,
   localProjectSummarySchema,
   persistenceCommitInputSchema,
+  persistencePromotionInputSchema,
+  persistenceV1CommitInputSchema,
+  persistenceV1DraftCommitInputSchema,
   portableProjectCopySchema,
   projectDeleteInputSchema,
   projectRecordSchema,
+  projectRecordV1Schema,
   projectThumbnailRecordSchema,
+  unavailableRecordsSchema,
 } from "./schemas"
 
 const documentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ac"
@@ -24,7 +29,108 @@ const commandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ad"
 const sessionId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ae"
 const timestamp = "2026-08-08T00:00:00Z"
 
+const versionedSnapshot = {
+  schemaVersion: 1 as const,
+  id: documentId,
+  revision: 1,
+  name: "Bracket",
+  displayUnits: { length: "mm", angle: "deg" },
+  variables: [],
+  sketches: [],
+  features: [],
+  history: [],
+  createdAt: timestamp,
+  updatedAt: timestamp,
+}
+
+const versionedEvent = {
+  schemaVersion: 1 as const,
+  type: "org.vibeshape.document.created" as const,
+  commandId,
+  transactionId: null,
+  documentId,
+  baseRevision: 0,
+  revision: 1,
+  issuedAt: timestamp,
+  actor: { type: "user" as const, userId: null },
+  name: "Bracket",
+}
+
 describe("persistence contracts", () => {
+  it("accepts strict v1 records and retains migration provenance", () => {
+    const project = projectRecordV1Schema.safeParse({
+      schemaVersion: 1,
+      documentId,
+      name: "Bracket",
+      headRevision: 1,
+      latestSnapshotRevision: 1,
+      cleanCloseRevision: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastExternalBackupAt: null,
+      migrationProvenance: "snapshot-derived",
+      migrationDiagnostic: {
+        code: "legacy-journal-unavailable",
+        message: "Event 1 is unavailable.",
+      },
+      unavailableRecords: ["event:1"],
+    })
+    expect(project.success).toBe(true)
+    expect(projectRecordV1Schema.safeParse({ ...project.data, unexpected: true }).success).toBe(
+      false,
+    )
+  })
+
+  it("bounds unavailable migration records", () => {
+    expect(
+      unavailableRecordsSchema.safeParse(Array.from({ length: 257 }, (_, i) => `event:${i}`))
+        .success,
+    ).toBe(false)
+    expect(unavailableRecordsSchema.safeParse(["event:1", ""]).success).toBe(false)
+  })
+
+  it("validates v1 promotion and single or draft commit envelopes", () => {
+    const common = {
+      sessionId,
+      lease: null,
+      storedAt: timestamp,
+      snapshot: versionedSnapshot,
+    }
+    expect(
+      persistencePromotionInputSchema.safeParse({
+        ...common,
+        lease: { epoch: 1, nowMs: 0 },
+        sourceHeadRevision: 1,
+        migrationProvenance: "journal-derived",
+        migrationDiagnostic: null,
+        unavailableRecords: [],
+      }).success,
+    ).toBe(true)
+    expect(
+      persistenceV1CommitInputSchema.safeParse({
+        ...common,
+        baseSnapshot: null,
+        event: versionedEvent,
+      }).success,
+    ).toBe(true)
+    expect(
+      persistenceV1DraftCommitInputSchema.safeParse({
+        ...common,
+        lease: { epoch: 1, nowMs: 0 },
+        transactionId: "0195b5ac-b220-7a2c-8c33-67a36a7f21af",
+        baseSnapshot: versionedSnapshot,
+        events: [versionedEvent],
+      }).success,
+    ).toBe(true)
+    expect(
+      persistenceV1CommitInputSchema.safeParse({
+        ...common,
+        baseSnapshot: null,
+        event: { ...versionedEvent, unknown: true },
+      }).success,
+    ).toBe(false)
+  })
+
   it("uses deterministic SHA-256 checksums", async () => {
     await expect(sha256Text("VibeShape")).resolves.toBe(
       "1280decbc112ac499fdaba62a119900e89a454244273f2aea2c1cb0ad29ac116",

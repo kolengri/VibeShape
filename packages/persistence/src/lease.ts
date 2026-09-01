@@ -7,7 +7,12 @@ import {
   persistenceInvariantError,
 } from "./diagnostics"
 import type { PersistenceResult } from "./repository"
-import { type LeaseRecord, leaseRecordSchema } from "./schemas"
+import {
+  type LeaseRecord,
+  leaseRecordSchema,
+  projectRecordSchema,
+  projectRecordV1Schema,
+} from "./schemas"
 
 const leaseRequestSchema = z
   .object({
@@ -89,12 +94,18 @@ async function grantDocumentLease(
 ): Promise<PersistenceResult<LeaseGrant>> {
   const current = await database.leases.get(input.documentId)
   requireLeaseAvailable(current, input)
-  const project = await database.projects.get(input.documentId)
-  if (!project) {
+  const versionedProject = await database.projectsV1.get(input.documentId)
+  const legacyProject = versionedProject ? undefined : await database.projects.get(input.documentId)
+  if (!versionedProject && !legacyProject) {
     throw persistenceInvariantError("document-not-found", "The document does not exist.")
   }
+  const project = versionedProject
+    ? projectRecordV1Schema.safeParse(versionedProject)
+    : projectRecordSchema.safeParse(legacyProject)
+  if (!project.success)
+    throw persistenceInvariantError("corrupt-history", "The persisted project head is invalid.")
   const status = grantStatus(current, input.ownerId, input.nowMs)
-  requireTakeoverSnapshot(status, project)
+  requireTakeoverSnapshot(status, project.data)
   const lease = nextLease(current, input)
   await database.leases.put(lease)
   return { ok: true, value: { status, lease } }
@@ -112,8 +123,12 @@ export async function acquireDocumentLease(
     }
   }
   try {
-    return await database.transaction("rw", database.projects, database.leases, () =>
-      grantDocumentLease(database, parsed.data),
+    return await database.transaction(
+      "rw",
+      database.projects,
+      database.projectsV1,
+      database.leases,
+      () => grantDocumentLease(database, parsed.data),
     )
   } catch (error) {
     return { ok: false, diagnostic: classifyPersistenceError(error) }

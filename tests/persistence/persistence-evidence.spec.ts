@@ -43,6 +43,25 @@ const reportSchema = z
         oldWriterCommit: z.literal("lease-lost"),
       })
       .strict(),
+    versioned: z
+      .object({
+        stalePromotionBarrier: z.literal("stale-revision"),
+        lossyPromotionBarrier: z.literal("corrupt-history"),
+        promotionProvenance: z.literal("journal-derived"),
+        committedRevision: z.literal(3),
+        recoveredRevision: z.literal(3),
+        boundedLossRevision: z.literal(2),
+        lostRevisionCount: z.literal(1),
+        corruptRecords: z.array(z.string()).refine((records) => records.includes("snapshot-v1:3")),
+        legacyWriteBarrier: z.literal("stale-revision"),
+        corruptHeadBarrier: z.literal("corrupt-history"),
+        transactionRolledBack: z.literal(true),
+        cleanStatus: z.literal("clean"),
+        records: z
+          .object({ projects: z.literal(1), snapshots: z.literal(2), events: z.literal(1) })
+          .strict(),
+      })
+      .strict(),
     rejectedCleanClose: z.literal("lease-lost"),
     cache: z
       .object({
