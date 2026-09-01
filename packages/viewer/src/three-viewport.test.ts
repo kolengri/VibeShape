@@ -12,6 +12,8 @@ import {
   orderedUniqueViewerSketchProfiles,
   orthographicFrustum,
   type ViewerMesh,
+  viewerAngularGizmoAngle,
+  viewerAngularGizmoPoint,
   viewerAxialGizmoDistance,
   viewerAxialGizmoHandlePosition,
   viewerCameraPoseForFrame,
@@ -84,6 +86,59 @@ describe("Three viewport geometry", () => {
     ).toBeNull()
     expect(
       viewerAxialGizmoDistance({ direction: [0, 0, 0], origin: [0, 0, 0] }, [0, 0, 1]),
+    ).toBeNull()
+  })
+
+  it("maps angular manipulator values to exact points around an arbitrary world axis", () => {
+    const gizmo = {
+      angle: Math.PI / 2,
+      axisDirection: [0, 2, 0] as const,
+      axisOrigin: [1, 2, 3] as const,
+      rotationOrigin: [4, 2, 3] as const,
+    }
+
+    const point = viewerAngularGizmoPoint(gizmo)
+
+    expect(point?.[0]).toBeCloseTo(1)
+    expect(point?.[1]).toBeCloseTo(2)
+    expect(point?.[2]).toBeCloseTo(0)
+    expect(point && viewerAngularGizmoAngle(gizmo, point)).toBeCloseTo(Math.PI / 2)
+  })
+
+  it("unwraps angular manipulator input continuously near a full revolution", () => {
+    const gizmo = {
+      angle: Math.PI * 2 - 0.05,
+      axisDirection: [0, 0, 1] as const,
+      axisOrigin: [0, 0, 0] as const,
+      rotationOrigin: [10, 0, 0] as const,
+    }
+    const point = viewerAngularGizmoPoint(gizmo)
+
+    expect(point && viewerAngularGizmoAngle(gizmo, point, Math.PI * 2)).toBeCloseTo(
+      Math.PI * 2 - 0.05,
+    )
+    expect(viewerAngularGizmoAngle(gizmo, [10, -0.01, 0], Math.PI * 2)).toBeGreaterThan(6)
+  })
+
+  it("fails closed for degenerate angular manipulator frames", () => {
+    expect(
+      viewerAngularGizmoPoint({
+        angle: 1,
+        axisDirection: [0, 0, 0],
+        axisOrigin: [0, 0, 0],
+        rotationOrigin: [1, 0, 0],
+      }),
+    ).toBeNull()
+    expect(
+      viewerAngularGizmoAngle(
+        {
+          angle: 1,
+          axisDirection: [0, 0, 1],
+          axisOrigin: [0, 0, 0],
+          rotationOrigin: [0, 0, 2],
+        },
+        [1, 0, 0],
+      ),
     ).toBeNull()
   })
 

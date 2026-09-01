@@ -42,6 +42,11 @@ export type ActiveExtrusionPartDesignTool = Extract<
   { kind: "create-extrusion" | "edit-extrusion" }
 >
 
+export type ActiveRevolvePartDesignTool = Extract<
+  ActivePartDesignTool,
+  { kind: "create-revolve" | "edit-revolve" }
+>
+
 const primitivePartDesignToolKinds = new Set<ActivePartDesignTool["kind"]>([
   "create-box",
   "edit-box",
@@ -64,6 +69,17 @@ export function isExtrusionPartDesignTool(
   tool: ActivePartDesignTool | null,
 ): tool is ActiveExtrusionPartDesignTool {
   return tool !== null && extrusionPartDesignToolKinds.has(tool.kind)
+}
+
+const revolvePartDesignToolKinds = new Set<ActivePartDesignTool["kind"]>([
+  "create-revolve",
+  "edit-revolve",
+])
+
+export function isRevolvePartDesignTool(
+  tool: ActivePartDesignTool | null,
+): tool is ActiveRevolvePartDesignTool {
+  return tool !== null && revolvePartDesignToolKinds.has(tool.kind)
 }
 
 function hasFeatureType(feature: FeatureRecord, expected: FeatureRecord["type"]) {

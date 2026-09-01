@@ -61,6 +61,7 @@ import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
 } from "../features/reference-geometry/datum-plane-form"
+import type { RevolveAngleRequest } from "../features/revolve/revolve-angle-manipulator"
 import { RevolveForm, type RevolveFormMode } from "../features/revolve/revolve-form"
 import {
   externalModelCurveLabelKind,
@@ -97,6 +98,7 @@ type TaskPanelProps = Readonly<{
   onEditSketch: (sketchId: SketchId) => void
   onFeaturePreviewChange: (feature: FeatureRecord | null) => void
   primitivePlacementRequest: PrimitivePlacementRequest | null
+  revolveAngleRequest: RevolveAngleRequest | null
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onFeatureProfilesClear?: (() => void) | undefined
@@ -694,6 +696,7 @@ function selectedProfileLabel(
 }
 
 function RevolveTaskPanel({
+  angleRequest,
   axisLineLabel,
   axisSelection,
   mode,
@@ -708,6 +711,7 @@ function RevolveTaskPanel({
   profileSelectionActive,
   report,
 }: {
+  angleRequest: RevolveAngleRequest | null
   axisLineLabel?: string | undefined
   axisSelection?: ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"] | undefined
   mode: RevolveFormMode
@@ -738,6 +742,7 @@ function RevolveTaskPanel({
   return (
     <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">
       <RevolveForm
+        angleRequest={angleRequest}
         axisLineLabel={axisLineLabel}
         axisSelection={axisSelection}
         key={task.key}
@@ -1401,6 +1406,7 @@ type ActiveTaskPanelProps = Readonly<{
   onCloseTool: () => void
   onFeaturePreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   primitivePlacementRequest: PrimitivePlacementRequest | null
+  revolveAngleRequest: RevolveAngleRequest | null
   onRevolveAxisChange?: TaskPanelProps["onRevolveAxisChange"] | undefined
   onRevolveAxisSelectionRequest?: TaskPanelProps["onRevolveAxisSelectionRequest"] | undefined
   onRevolveProfileSelectionRequest?: TaskPanelProps["onRevolveProfileSelectionRequest"] | undefined
@@ -1512,6 +1518,7 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
     : []
   return mode ? (
     <RevolveTaskPanel
+      angleRequest={props.revolveAngleRequest}
       axisLineLabel={props.revolveAxisLineLabel}
       axisSelection={props.revolveAxisSelection}
       mode={mode}
@@ -1590,6 +1597,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
         onCloseTool={props.onCloseTool}
         onFeaturePreviewChange={props.onFeaturePreviewChange}
         primitivePlacementRequest={props.primitivePlacementRequest}
+        revolveAngleRequest={props.revolveAngleRequest}
         onRevolveAxisChange={props.onRevolveAxisChange}
         onRevolveAxisSelectionRequest={props.onRevolveAxisSelectionRequest}
         onRevolveProfileSelectionRequest={props.onRevolveProfileSelectionRequest}

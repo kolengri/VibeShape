@@ -29,16 +29,19 @@ import type { FeatureMutationResult } from "../../document/document-controller"
 import {
   defaultAngleExpression,
   normalizeExpressionWithDisplayUnit,
+  positiveDirectManipulationAngleExpression,
 } from "../../document/document-display-units"
 import { submitFeatureMutation } from "../part-design/primitive-form"
 import {
   profileSelectorsEqual,
+  revolveAxesEqual,
   topologyReferencesEqual,
 } from "../part-design/profile-feature-selection"
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
 import { VariableExpressionField } from "../variables/variable-expression-field"
+import type { RevolveAngleRequest } from "./revolve-angle-manipulator"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
 
 const EMPTY_TARGET_OPTIONS = [] as const
@@ -438,6 +441,7 @@ function RevolveProfileSelectionSync({
 }
 
 export type RevolveFormProps = Readonly<{
+  angleRequest?: RevolveAngleRequest | null
   axisLineLabel?: string | undefined
   axisSelection?: RevolveAxis | undefined
   baseRevision: number
@@ -493,9 +497,32 @@ function useRevolveFormController(props: RevolveFormProps) {
     }),
   })
   const applyAxisSelection = useCallback(
-    (axis: RevolveAxis) => form.setFieldValue("axis", axis),
+    (axis: RevolveAxis) => {
+      if (!revolveAxesEqual(form.getFieldValue("axis"), axis)) {
+        form.setFieldValue("axis", axis)
+      }
+    },
     [form],
   )
+  useEffect(() => {
+    if (props.disabled || !props.angleRequest || props.angleRequest.featureId !== featureId) {
+      return
+    }
+    const expression = positiveDirectManipulationAngleExpression(
+      props.angleRequest.angle,
+      displayUnits.angle,
+    )
+    if (form.getFieldValue("angle") === expression) return
+    clearSubmissionErrors()
+    form.setFieldValue("angle", expression)
+  }, [
+    clearSubmissionErrors,
+    displayUnits.angle,
+    featureId,
+    form,
+    props.angleRequest,
+    props.disabled,
+  ])
   const applyProfileSelection = useCallback(
     (profiles: readonly SketchProfileSelector[], supportReference: TopoRef | null) => {
       const nextProfiles = createSketchProfileSet(profiles)

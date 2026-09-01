@@ -249,6 +249,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     () =>
       ({
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
+        acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
         closeTool: sessionActions.closeActiveTool,
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
@@ -262,6 +263,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
         setPrimitivePlacement: sessionActions.setPrimitivePlacement,
+        setRevolveAngle: sessionActions.setRevolveAngle,
         select,
         selectSavedSketchProfile: sessionActions.selectSavedSketchProfile,
         selectOriginPlane: sessionActions.setSelectedOriginPlane,
@@ -310,6 +312,7 @@ type EditorApplicationSession = Pick<
   | "originPlaneVisibility"
   | "preselectedFeatureId"
   | "primitivePlacementRequest"
+  | "revolveAngleRequest"
   | "selectedOriginPlane"
   | "selection"
   | "sketch"
@@ -327,6 +330,7 @@ function useEditorApplicationSession() {
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
       primitivePlacementRequest: state.primitivePlacementRequest,
+      revolveAngleRequest: state.revolveAngleRequest,
       selectedOriginPlane: state.selectedOriginPlane,
       selection: state.selection,
       sketch: state.sketch,
@@ -418,6 +422,7 @@ function EditorWorkspaceComposition({
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
       primitivePlacementRequest={session.primitivePlacementRequest}
+      revolveAngleRequest={session.revolveAngleRequest}
       selectedOriginPlane={session.selectedOriginPlane}
       workspace={session.workspace}
       selection={session.selection}

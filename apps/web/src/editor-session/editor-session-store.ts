@@ -25,12 +25,17 @@ import {
   type ActivePartDesignTool,
   isExtrusionPartDesignTool,
   isPrimitivePartDesignTool,
+  isRevolvePartDesignTool,
 } from "../features/part-design/part-design-tool"
 import {
   finitePrimitivePlacement,
   type PrimitivePlacement,
   type PrimitivePlacementRequest,
 } from "../features/part-design/primitive-placement"
+import {
+  finiteRevolveAngle,
+  type RevolveAngleRequest,
+} from "../features/revolve/revolve-angle-manipulator"
 import type { SelectedSketchSupport } from "../features/sketch/sketch-support"
 import {
   type ActiveSketchTool,
@@ -72,6 +77,7 @@ export type EditorSessionState = Readonly<{
   originPlaneVisibility: ViewerOriginPlaneVisibility
   preselectedFeatureId: FeatureId | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
+  revolveAngleRequest: RevolveAngleRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketch: SketchEditorSessionState
@@ -80,6 +86,7 @@ export type EditorSessionState = Readonly<{
 
 export type EditorSessionActions = Readonly<{
   acknowledgeExtrusionDistance: (featureId: FeatureId) => void
+  acknowledgeRevolveAngle: (featureId: FeatureId) => void
   beginSketchCreate: (sketch: SketchRecord) => void
   beginSketchEdit: (sketch: SketchRecord) => void
   beginSketchSupportReplacement: () => void
@@ -105,6 +112,7 @@ export type EditorSessionActions = Readonly<{
   setFeaturePreselection: (featureId: FeatureId | null) => void
   setExtrusionDistance: (featureId: FeatureId, distance: number) => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
+  setRevolveAngle: (featureId: FeatureId, angle: number) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: (sketchIds: readonly SketchId[]) => void
   setSelection: (selection: ViewerSelection | null) => void
@@ -160,6 +168,7 @@ function createEditorSessionState(): EditorSessionState {
     originPlaneVisibility: { ...defaultViewerOriginPlaneVisibility },
     preselectedFeatureId: null,
     primitivePlacementRequest: null,
+    revolveAngleRequest: null,
     selectedOriginPlane: null,
     selection: null,
     sketch: createSketchState(),
@@ -234,12 +243,19 @@ export function createEditorSessionStore() {
               state.extrusionDistanceRequest = null
             }
           }),
+        acknowledgeRevolveAngle: (featureId) =>
+          set((state) => {
+            if (state.revolveAngleRequest?.featureId === featureId) {
+              state.revolveAngleRequest = null
+            }
+          }),
         beginSketchCreate: (sketch) =>
           set((state) => {
             state.workspace = "model"
             state.activePartDesignTool = null
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
+            state.revolveAngleRequest = null
             state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
@@ -253,6 +269,7 @@ export function createEditorSessionStore() {
             state.activePartDesignTool = null
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
+            state.revolveAngleRequest = null
             state.selectedOriginPlane = null
             state.selection = null
             state.sketch.activeSketchId = sketch.id
@@ -283,6 +300,7 @@ export function createEditorSessionStore() {
             state.activePartDesignTool = null
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
+            state.revolveAngleRequest = null
             const activeSketchTool = state.sketch.activeSketchTool
             if (activeSketchTool?.kind === "select-sketch-plane" && activeSketchTool.returnTo) {
               state.workspace = "sketch"
@@ -333,6 +351,7 @@ export function createEditorSessionStore() {
             state.activePartDesignTool = null
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
+            state.revolveAngleRequest = null
             state.preselectedFeatureId = null
             state.selectedOriginPlane = null
             state.selection = null
@@ -419,6 +438,16 @@ export function createEditorSessionStore() {
               distance,
               featureId,
               sequence: (state.extrusionDistanceRequest?.sequence ?? 0) + 1,
+            }
+          }),
+        setRevolveAngle: (featureId, angle) =>
+          set((state) => {
+            if (!finiteRevolveAngle(angle)) return
+            if (!isRevolvePartDesignTool(state.activePartDesignTool)) return
+            state.revolveAngleRequest = {
+              angle,
+              featureId,
+              sequence: (state.revolveAngleRequest?.sequence ?? 0) + 1,
             }
           }),
         setPrimitivePlacement: (featureId, position) =>
@@ -583,6 +612,7 @@ export function createEditorSessionStore() {
             state.selectedOriginPlane = null
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
+            state.revolveAngleRequest = null
             state.activePartDesignTool = tool
           }),
         switchWorkspace: (workspace) =>
@@ -592,6 +622,7 @@ export function createEditorSessionStore() {
               state.activePartDesignTool = null
               state.extrusionDistanceRequest = null
               state.primitivePlacementRequest = null
+              state.revolveAngleRequest = null
               state.selectedOriginPlane = null
               state.selection = null
             }

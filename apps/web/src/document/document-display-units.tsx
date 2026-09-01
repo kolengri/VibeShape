@@ -22,6 +22,11 @@ const directManipulationLengthStep: Readonly<Record<DocumentDisplayUnits["length
   ft: 0.0001,
 }
 
+const directManipulationAngleStep: Readonly<Record<DocumentDisplayUnits["angle"], number>> = {
+  deg: 1,
+  rad: 0.01,
+}
+
 export function DocumentDisplayUnitsProvider({
   children,
   displayUnits,
@@ -68,6 +73,19 @@ export function positiveDirectManipulationLengthExpression(
 
 export function defaultAngleExpression(radians: number, unit: DocumentDisplayUnits["angle"]) {
   return `${stableExpressionNumber(radiansToAngle(radians, unit))} ${unit}`
+}
+
+export function positiveDirectManipulationAngleExpression(
+  radians: number,
+  unit: DocumentDisplayUnits["angle"],
+) {
+  if (radians >= Math.PI * 2 - Number.EPSILON * 16) {
+    return defaultAngleExpression(Math.PI * 2, unit)
+  }
+  const step = directManipulationAngleStep[unit]
+  const value = radiansToAngle(radians, unit)
+  const snapped = Math.max(step, Math.round(value / step) * step)
+  return `${stableExpressionNumber(snapped)} ${unit}`
 }
 
 export function formatDisplayLength(

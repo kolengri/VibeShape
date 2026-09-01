@@ -50,6 +50,7 @@ import {
   activeFeatureId,
   isExtrusionPartDesignTool,
   isPrimitivePartDesignTool,
+  isRevolvePartDesignTool,
 } from "../features/part-design/part-design-tool"
 import type {
   PrimitivePlacement,
@@ -60,10 +61,12 @@ import {
   isProfileFeatureTool,
   nextProfileFeatureSelection,
   profileFeatureToolKey,
+  profileSelectorsEqual,
   profilesForFeatureTool,
   revolveAxisAfterProfileSelection,
 } from "../features/part-design/profile-feature-selection"
 import { useFeaturePreview } from "../features/preview/use-feature-preview"
+import type { RevolveAngleRequest } from "../features/revolve/revolve-angle-manipulator"
 import {
   type RevolveAxisCandidate,
   revolveModelEdgeAxisCandidates,
@@ -167,6 +170,155 @@ type ExtrusionManipulator = Readonly<{
   origin: PrimitivePlacement
 }>
 
+type RevolveManipulator = Readonly<{
+  angle: number
+  axisDirection: PrimitivePlacement
+  axisOrigin: PrimitivePlacement
+  featureId: FeatureId
+  rotationOrigin: PrimitivePlacement
+}>
+
+type RevolveAxisLine = Readonly<{
+  direction: PrimitivePlacement
+  origin: PrimitivePlacement
+}>
+
+function normalizedAxisLine(
+  start: PrimitivePlacement,
+  end: PrimitivePlacement,
+): RevolveAxisLine | null {
+  const direction: PrimitivePlacement = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
+  const length = Math.hypot(...direction)
+  return Number.isFinite(length) && length > 1e-9
+    ? {
+        direction: [direction[0] / length, direction[1] / length, direction[2] / length],
+        origin: start,
+      }
+    : null
+}
+
+function revolveManipulatorAxis(
+  axis: RevolveAxis,
+  sketch: SketchDisplayRecord,
+  candidates: readonly RevolveAxisCandidate[],
+): RevolveAxisLine | null {
+  if (axis.kind === "origin-axis") {
+    return {
+      direction: axis.axis === "x" ? sketch.frame.xAxis : sketch.frame.yAxis,
+      origin: sketch.frame.origin,
+    }
+  }
+  const candidate = candidates.find(({ axis: candidateAxis }) =>
+    revolveAxisIntentsMatch(candidateAxis, axis),
+  )
+  return candidate ? normalizedAxisLine(candidate.start, candidate.end) : null
+}
+
+function profileRotationFrame(
+  sketch: SketchDisplayRecord,
+  profile: SketchProfileSelector,
+  axis: RevolveAxisLine,
+) {
+  const displayProfile = sketch.profiles.find((candidate) =>
+    profileSelectorsEqual(candidate.selector, profile),
+  )
+  if (!displayProfile) return null
+  let best: Readonly<{
+    axisOrigin: PrimitivePlacement
+    distance: number
+    rotationOrigin: PrimitivePlacement
+  }> | null = null
+  for (const segment of displayProfile.outerLoop.segments) {
+    for (const [x, y] of segment.samples) {
+      const point: PrimitivePlacement = [
+        sketch.frame.origin[0] + sketch.frame.xAxis[0] * x + sketch.frame.yAxis[0] * y,
+        sketch.frame.origin[1] + sketch.frame.xAxis[1] * x + sketch.frame.yAxis[1] * y,
+        sketch.frame.origin[2] + sketch.frame.xAxis[2] * x + sketch.frame.yAxis[2] * y,
+      ]
+      const relative: PrimitivePlacement = [
+        point[0] - axis.origin[0],
+        point[1] - axis.origin[1],
+        point[2] - axis.origin[2],
+      ]
+      const along =
+        relative[0] * axis.direction[0] +
+        relative[1] * axis.direction[1] +
+        relative[2] * axis.direction[2]
+      const axisOrigin: PrimitivePlacement = [
+        axis.origin[0] + axis.direction[0] * along,
+        axis.origin[1] + axis.direction[1] * along,
+        axis.origin[2] + axis.direction[2] * along,
+      ]
+      const distance = Math.hypot(
+        point[0] - axisOrigin[0],
+        point[1] - axisOrigin[1],
+        point[2] - axisOrigin[2],
+      )
+      if (!Number.isFinite(distance) || distance <= (best?.distance ?? 1e-6)) continue
+      best = { axisOrigin, distance, rotationOrigin: point }
+    }
+  }
+  return best
+}
+
+function activeRevolveCandidate(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+  readOnly: boolean,
+) {
+  return !readOnly && candidate && isRevolvePartDesignTool(activeTool) ? candidate : null
+}
+
+function revolveManipulatorGeometry(
+  candidate: FeatureRecord,
+  axisCandidates: readonly RevolveAxisCandidate[],
+  sketches: readonly SketchDisplayRecord[],
+) {
+  const parameters = readRevolveFeatureParameters(candidate)
+  if (!parameters) return null
+  const sketch = sketches.find(({ sketchId }) => sketchId === parameters.profile.sketchId)
+  if (!sketch) return null
+  const axis = revolveManipulatorAxis(parameters.axis, sketch, axisCandidates)
+  const frame = axis ? profileRotationFrame(sketch, parameters.profile, axis) : null
+  return axis && frame ? { axis, frame, parameters } : null
+}
+
+function requestedRevolveAngle(
+  candidate: FeatureRecord,
+  parameterAngle: number,
+  angleRequest: RevolveAngleRequest | null,
+) {
+  const angle = angleRequest?.featureId === candidate.id ? angleRequest.angle : parameterAngle
+  return Number.isFinite(angle) && angle > 0 && angle <= Math.PI * 2 ? angle : null
+}
+
+function revolveManipulator(
+  activeTool: ActivePartDesignTool | null,
+  candidate: FeatureRecord | null,
+  angleRequest: RevolveAngleRequest | null,
+  axisCandidates: readonly RevolveAxisCandidate[],
+  sketches: readonly SketchDisplayRecord[],
+  readOnly: boolean,
+): RevolveManipulator | null {
+  const activeCandidate = activeRevolveCandidate(activeTool, candidate, readOnly)
+  if (!activeCandidate) return null
+  const geometry = revolveManipulatorGeometry(activeCandidate, axisCandidates, sketches)
+  if (!geometry) return null
+  const angle = requestedRevolveAngle(
+    activeCandidate,
+    geometry.parameters.angle.value,
+    angleRequest,
+  )
+  if (angle === null) return null
+  return {
+    angle,
+    axisDirection: geometry.axis.direction,
+    axisOrigin: geometry.frame.axisOrigin,
+    featureId: activeCandidate.id,
+    rotationOrigin: geometry.frame.rotationOrigin,
+  }
+}
+
 function extrusionManipulatorParameters(
   activeTool: ActivePartDesignTool | null,
   candidate: FeatureRecord | null,
@@ -264,6 +416,21 @@ function extrusionAxialGizmoProps(
   }
 }
 
+function revolveAngularGizmoProps(
+  manipulator: RevolveManipulator | null,
+  onAngleChange: (featureId: FeatureId, angle: number) => void,
+) {
+  if (!manipulator) return {}
+  return {
+    angularGizmo: {
+      ...manipulator,
+      maxAngle: Math.PI * 2,
+      minAngle: Math.PI / 180,
+      onAngleChange: (angle: number) => onAngleChange(manipulator.featureId, angle),
+    },
+  }
+}
+
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
     onSelectionChange: (selection: ViewerSelection | null) => void
@@ -273,6 +440,7 @@ type WorkspaceContentProps = Readonly<{
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
     onExtrusionDistanceChange: (featureId: FeatureId, distance: number) => void
+    onRevolveAngleChange: (featureId: FeatureId, angle: number) => void
     onRevolveAxisChange: (axis: RevolveAxis) => void
     onPrimitivePlacementChange: (featureId: FeatureId, position: PrimitivePlacement) => void
     onSketchDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
@@ -295,6 +463,7 @@ type WorkspaceContentProps = Readonly<{
     extrusionManipulator: ExtrusionManipulator | null
     featurePreview: ReturnType<typeof useFeaturePreview>
     primitiveManipulator: PrimitiveManipulator | null
+    revolveManipulator: RevolveManipulator | null
     hiddenFeatureIds: readonly FeatureId[]
     hiddenSketchIds: readonly SketchId[]
     idleOriginPlaneSelectionAvailable: boolean
@@ -439,6 +608,7 @@ function ModelingWorkspaceContent({
       controller={controller}
       featurePreview={model.featurePreview}
       {...extrusionAxialGizmoProps(model.extrusionManipulator, actions.onExtrusionDistanceChange)}
+      {...revolveAngularGizmoProps(model.revolveManipulator, actions.onRevolveAngleChange)}
       {...primitiveTranslationGizmoProps(
         model.primitiveManipulator,
         actions.onPrimitivePlacementChange,
@@ -1431,6 +1601,7 @@ function WorkspaceContent(props: WorkspaceContentProps) {
 
 export type EditorWorkspaceActions = Readonly<{
   acknowledgeExtrusionDistance: (featureId: FeatureId) => void
+  acknowledgeRevolveAngle: (featureId: FeatureId) => void
   beginSketchSupportReplacement: () => void
   closeTool: () => void
   createBox: () => void
@@ -1455,6 +1626,7 @@ export type EditorWorkspaceActions = Readonly<{
   setExtrusionDistance: (featureId: FeatureId, distance: number) => void
   setOriginPlaneVisibility: (plane: ViewerOriginPlane, visible: boolean) => void
   setPrimitivePlacement: (featureId: FeatureId, position: PrimitivePlacement) => void
+  setRevolveAngle: (featureId: FeatureId, angle: number) => void
   setSketchVisibility: (sketchId: SketchId, visible: boolean) => void
   toggleAllSketchVisibility: () => void
   setSketchConstruction: (construction: boolean) => void
@@ -1491,6 +1663,7 @@ type EditorWorkspaceProps = Readonly<{
   preselectedFeatureId: FeatureId | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
+  revolveAngleRequest: RevolveAngleRequest | null
   selectedOriginPlane: ViewerOriginPlane | null
   selection: ViewerSelection | null
   sketchConstruction: boolean
@@ -1628,7 +1801,7 @@ function useRevolveAxisSelection(
   snapshot: DocumentSnapshot | undefined,
 ) {
   const key = revolveToolKey(activeTool)
-  const fallback = defaultRevolveAxis(activeTool, snapshot)
+  const fallback = useMemo(() => defaultRevolveAxis(activeTool, snapshot), [activeTool, snapshot])
   const [state, setState] = useState<Readonly<{ key: string; value: RevolveAxis | null }>>(() => ({
     key,
     value: fallback,
@@ -1666,7 +1839,10 @@ function useProfileFeatureSelection(
   snapshot: DocumentSnapshot | undefined,
 ) {
   const key = profileFeatureToolKey(activeTool)
-  const fallback = profilesForFeatureTool(activeTool, snapshot)
+  const fallback = useMemo(
+    () => profilesForFeatureTool(activeTool, snapshot),
+    [activeTool, snapshot],
+  )
   const [state, setState] = useState<
     Readonly<{ key: string; value: readonly SketchProfileSelector[] }>
   >(() => ({ key, value: fallback }))
@@ -1802,6 +1978,7 @@ function EditorContent({
     <WorkspaceContent
       actions={{
         onExtrusionDistanceChange: actions.setExtrusionDistance,
+        onRevolveAngleChange: actions.setRevolveAngle,
         onSelectionChange: actions.select,
         onSavedSketchProfileSelect: savedProfileSelectionAction(props, onFeatureProfileChange),
         onRevolveAxisChange,
@@ -1835,6 +2012,14 @@ function EditorContent({
           props.activeTool,
           previewFeature,
           props.primitivePlacementRequest,
+          props.controller.report?.mode === "read-only",
+        ),
+        revolveManipulator: revolveManipulator(
+          props.activeTool,
+          previewFeature,
+          props.revolveAngleRequest,
+          revolveAxisCandidates,
+          rebuiltSketchDisplays(props.controller),
           props.controller.report?.mode === "read-only",
         ),
         hiddenFeatureIds: props.hiddenFeatureIds,
@@ -1917,6 +2102,7 @@ function EditorTaskPanel({
       extrusionDistanceRequest={props.extrusionDistanceRequest}
       onFeaturePreviewChange={onFeaturePreviewChange}
       primitivePlacementRequest={props.primitivePlacementRequest}
+      revolveAngleRequest={props.revolveAngleRequest}
       onRevolveAxisChange={onRevolveAxisChange}
       onRevolveAxisSelectionRequest={() => onRevolveSelectionPurposeChange("axis")}
       onRevolveProfileSelectionRequest={() => onRevolveSelectionPurposeChange("profile")}
@@ -1979,12 +2165,17 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
   const snapshot = props.controller.report?.snapshot
   const featureProfileSelection = useProfileFeatureSelection(props.activeTool, snapshot)
+  const acknowledgeExtrusionDistance = props.actions.acknowledgeExtrusionDistance
+  const acknowledgeRevolveAngle = props.actions.acknowledgeRevolveAngle
   const onFeaturePreviewChange = useCallback(
     (feature: FeatureRecord | null) => {
       setPreviewFeature(feature)
-      if (feature) props.actions.acknowledgeExtrusionDistance(feature.id)
+      if (feature) {
+        acknowledgeExtrusionDistance(feature.id)
+        acknowledgeRevolveAngle(feature.id)
+      }
     },
-    [props.actions, setPreviewFeature],
+    [acknowledgeExtrusionDistance, acknowledgeRevolveAngle, setPreviewFeature],
   )
   const revolveAxisSelection = useRevolveAxisSelection(props.activeTool, snapshot)
   const revolveSelectionPurpose = useRevolveSelectionPurpose(props.activeTool)
