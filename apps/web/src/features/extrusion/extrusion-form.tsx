@@ -1,7 +1,9 @@
 import {
   createSketchProfileSet,
   extrusionFeatureParametersSchema,
+  extrusionFeatureParametersV4Schema,
   extrusionFeatureType,
+  extrusionFeatureTypeV4,
   extrusionOperationSchema,
   type FeatureId,
   type FeatureRecord,
@@ -118,7 +120,14 @@ function valuesFromFeature(
 ): ExtrusionFormValues {
   const legacy = extrusionFeatureParametersSchema.safeParse(feature.parameters)
   const multi = multiProfileExtrusionFeatureParametersSchema.safeParse(feature.parameters)
-  const parameters = legacy.success ? legacy.data : multi.success ? multi.data : null
+  const modifyingMulti = extrusionFeatureParametersV4Schema.safeParse(feature.parameters)
+  const parameters = legacy.success
+    ? legacy.data
+    : multi.success
+      ? multi.data
+      : modifyingMulti.success
+        ? modifyingMulti.data
+        : null
   if (!parameters) throw new Error("Extrusion parameters are unavailable.")
   return {
     distance: quantityExpression(parameters.distance),
@@ -135,7 +144,8 @@ function extrusionRecord(
   featureId: FeatureId,
   parameters:
     | ReturnType<typeof extrusionFeatureParametersSchema.parse>
-    | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>,
+    | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>,
   targetFeatureId: FeatureId | null,
   supportReference: TopoRef | null,
 ) {
@@ -146,10 +156,7 @@ function extrusionRecord(
   if (mode.kind === "edit") {
     return featureRecordSchema.parse({
       ...mode.feature,
-      type:
-        "profiles" in parameters
-          ? multiProfileExtrusionFeatureType.type
-          : extrusionFeatureType.type,
+      type: extrusionType(parameters),
       parameters,
       dependencies,
       references,
@@ -158,14 +165,25 @@ function extrusionRecord(
   return featureRecordSchema.parse({
     schemaVersion: 0,
     id: featureId,
-    type:
-      "profiles" in parameters ? multiProfileExtrusionFeatureType.type : extrusionFeatureType.type,
+    type: extrusionType(parameters),
     parameters,
     dependencies,
     references,
     suppressed: false,
     label: mode.featureLabel,
   })
+}
+
+function extrusionType(
+  parameters:
+    | ReturnType<typeof extrusionFeatureParametersSchema.parse>
+    | ReturnType<typeof multiProfileExtrusionFeatureParametersSchema.parse>
+    | ReturnType<typeof extrusionFeatureParametersV4Schema.parse>,
+) {
+  if (!("profiles" in parameters)) return extrusionFeatureType.type
+  return parameters.operation === "new"
+    ? multiProfileExtrusionFeatureType.type
+    : extrusionFeatureTypeV4.type
 }
 
 function ExtrusionPreviewSync({
@@ -231,9 +249,6 @@ function parseValues(
   )
   if (!distance.ok) return { ok: false as const, issues: { distance: distance.message } }
   const operation = extrusionOperationSchema.parse(values.operation)
-  if (values.profiles.profiles.length > 1 && operation !== "new") {
-    return { ok: false as const, issues: { targetFeatureId: copy.missingTarget } }
-  }
   const target = parseTarget(values.targetFeatureId, operation, options, copy)
   if (!target.ok) return target
   return {
@@ -242,12 +257,19 @@ function parseValues(
     supportReference: values.supportReference,
     parameters:
       values.profiles.profiles.length > 1
-        ? multiProfileExtrusionFeatureParametersSchema.parse({
-            profiles: values.profiles,
-            distance: distance.quantity,
-            symmetric: values.symmetric,
-            operation,
-          })
+        ? operation === "new"
+          ? multiProfileExtrusionFeatureParametersSchema.parse({
+              profiles: values.profiles,
+              distance: distance.quantity,
+              symmetric: values.symmetric,
+              operation,
+            })
+          : extrusionFeatureParametersV4Schema.parse({
+              profiles: values.profiles,
+              distance: distance.quantity,
+              symmetric: values.symmetric,
+              operation,
+            })
         : extrusionFeatureParametersSchema.parse({
             profile,
             distance: distance.quantity,
@@ -404,7 +426,6 @@ function useExtrusionFormController(props: ExtrusionFormProps) {
         )
       if (!matches) {
         form.setFieldValue("profiles", nextProfiles)
-        if (nextProfiles.profiles.length > 1) form.setFieldValue("operation", "new")
       }
       if (!topologyReferencesEqual(form.getFieldValue("supportReference"), supportReference)) {
         form.setFieldValue("supportReference", supportReference)
@@ -453,30 +474,26 @@ function ExtrusionPreviewField({ controller }: { controller: ExtrusionFormContro
 function ExtrusionOperationField({ controller }: { controller: ExtrusionFormController }) {
   const { form } = controller
   return (
-    <form.Subscribe selector={(state) => state.values.profiles.profiles.length}>
-      {(profileCount) => (
-        <form.Field name="operation">
-          {(field) => (
-            <NativeSelectField
-              name={field.name}
-              value={field.state.value}
-              label={controller.copy.operation}
-              disabled={controller.disabled || profileCount > 1}
-              onBlur={field.handleBlur}
-              onChange={(event) => {
-                controller.clearSubmissionErrors()
-                field.handleChange(event.currentTarget.value)
-              }}
-            >
-              <option value="new">{controller.copy.operationNew}</option>
-              <option value="add">{controller.copy.operationAdd}</option>
-              <option value="remove">{controller.copy.operationRemove}</option>
-              <option value="intersect">{controller.copy.operationIntersect}</option>
-            </NativeSelectField>
-          )}
-        </form.Field>
+    <form.Field name="operation">
+      {(field) => (
+        <NativeSelectField
+          name={field.name}
+          value={field.state.value}
+          label={controller.copy.operation}
+          disabled={controller.disabled}
+          onBlur={field.handleBlur}
+          onChange={(event) => {
+            controller.clearSubmissionErrors()
+            field.handleChange(event.currentTarget.value)
+          }}
+        >
+          <option value="new">{controller.copy.operationNew}</option>
+          <option value="add">{controller.copy.operationAdd}</option>
+          <option value="remove">{controller.copy.operationRemove}</option>
+          <option value="intersect">{controller.copy.operationIntersect}</option>
+        </NativeSelectField>
       )}
-    </form.Subscribe>
+    </form.Field>
   )
 }
 

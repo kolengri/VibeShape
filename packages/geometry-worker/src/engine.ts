@@ -5,6 +5,7 @@ import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
   extrusionMultiProfileFeatureContentParametersSchema,
+  extrusionMultiProfileModifyingFeatureContentParametersSchema,
   type FeatureContentEnvironment,
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
@@ -57,6 +58,11 @@ import {
   ellipticalArcKernelParameters,
   normalizedExtrusionDirection,
 } from "./extrusion-curve-geometry"
+import {
+  disposeTemporaryShape,
+  featureResultMetricsAreValid,
+  featureSolidCountLimit,
+} from "./feature-result-validation"
 import {
   createMemoryProfile,
   getWasmHeapBytes,
@@ -186,6 +192,8 @@ const EXTRUSION_FEATURE_TYPE_V2_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#2"
 const EXTRUSION_FEATURE_TYPE_V3_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#3"
+const EXTRUSION_FEATURE_TYPE_V4_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#4"
 const REVOLVE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#1"
 const REVOLVE_FEATURE_TYPE_V2_KEY =
@@ -725,6 +733,9 @@ type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParam
 type ExtrusionMultiProfileContentParameters = ReturnType<
   typeof extrusionMultiProfileFeatureContentParametersSchema.parse
 >
+type ExtrusionMultiProfileModifyingContentParameters = ReturnType<
+  typeof extrusionMultiProfileModifyingFeatureContentParametersSchema.parse
+>
 export type RevolveContentParameters = ReturnType<
   typeof revolveFeatureContentParametersSchema.parse
 >
@@ -862,6 +873,10 @@ type ParsedFeature =
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
   | { kind: "extrusion"; parameters: ExtrusionContentParameters }
   | { kind: "multi-extrusion"; parameters: ExtrusionMultiProfileContentParameters }
+  | {
+      kind: "multi-extrusion-modifying"
+      parameters: ExtrusionMultiProfileModifyingContentParameters
+    }
   | { kind: "revolve"; parameters: RevolveContentParameters }
   | { kind: "multi-revolve"; parameters: RevolveMultiProfileContentParameters }
 
@@ -1028,6 +1043,32 @@ function parseMultiExtrusionFeature(input: FeatureEvaluationInput): FeatureParse
   return { ok: true, feature: { kind: "multi-extrusion", parameters: parameters.data } }
 }
 
+function parseMultiExtrusionModifyingFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = extrusionMultiProfileModifyingFeatureContentParametersSchema.safeParse(
+    feature.parameters,
+  )
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Multi-profile modifying extrusion content parameters are invalid.",
+    )
+  }
+  if (
+    !modifyingInputCardinalityIsValid(input.dependencies, parameters.data.supportFeatureId) ||
+    !supportReferencesAreValid(input, parameters.data.supportFeatureId) ||
+    feature.inputs.length !== input.dependencies.length
+  ) {
+    return invalidInputCardinality(
+      "A multi-profile modifying extrusion requires one target and may also depend on its sketch support.",
+    )
+  }
+  return {
+    ok: true,
+    feature: { kind: "multi-extrusion-modifying", parameters: parameters.data },
+  }
+}
+
 function parseRevolveFeature(input: FeatureEvaluationInput): FeatureParseResult {
   const feature = input.content.feature
   const parameters = revolveFeatureContentParametersSchema.safeParse(feature.parameters)
@@ -1154,6 +1195,7 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V2_KEY, parseExtrusionFeature],
   [EXTRUSION_FEATURE_TYPE_V3_KEY, parseMultiExtrusionFeature],
+  [EXTRUSION_FEATURE_TYPE_V4_KEY, parseMultiExtrusionModifyingFeature],
   [REVOLVE_FEATURE_TYPE_KEY, parseLegacyRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V2_KEY, parseRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V3_KEY, parseRevolveFeature],
@@ -1176,7 +1218,7 @@ function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
 
 function applyExtrusionOperation(
   opencascade: OpenCascadeInstance,
-  parameters: ExtrusionContentParameters,
+  parameters: Pick<ExtrusionContentParameters, "operation">,
   target: Shape3D,
   tool: Shape3D,
 ) {
@@ -1251,7 +1293,14 @@ function createProfileFeatureShape(
   opencascade: OpenCascadeInstance,
   feature: Extract<
     ParsedFeature,
-    { kind: "extrusion" | "multi-extrusion" | "revolve" | "multi-revolve" }
+    {
+      kind:
+        | "extrusion"
+        | "multi-extrusion"
+        | "multi-extrusion-modifying"
+        | "revolve"
+        | "multi-revolve"
+    }
   >,
   dependencyShapes: readonly Shape3D[],
 ) {
@@ -1260,6 +1309,12 @@ function createProfileFeatureShape(
       return createExtrusionFeatureShape(opencascade, feature.parameters, dependencyShapes)
     case "multi-extrusion":
       return createMultiExtrusionFeatureShape(opencascade, feature.parameters)
+    case "multi-extrusion-modifying":
+      return createMultiExtrusionModifyingFeatureShape(
+        opencascade,
+        feature.parameters,
+        dependencyShapes,
+      )
     case "revolve":
       return createRevolveFeatureShape(opencascade, feature.parameters, dependencyShapes)
     case "multi-revolve":
@@ -1841,6 +1896,23 @@ function createMultiExtrusionFeatureShape(
   )
 }
 
+function createMultiExtrusionModifyingFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: ExtrusionMultiProfileModifyingContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const target = dependencyShapes[0]
+  if (!target) throw new Error("Multi-profile extrusion target dependency shape is unavailable.")
+  const tool = combineMultiProfileTools(opencascade, parameters.profiles, (profile) =>
+    createExtrusionShape(opencascade, { ...parameters, ...profile }),
+  )
+  try {
+    return applyExtrusionOperation(opencascade, parameters, target, tool)
+  } finally {
+    tool.delete()
+  }
+}
+
 function createMultiRevolveFeatureShape(
   opencascade: OpenCascadeInstance,
   parameters: RevolveMultiProfileContentParameters,
@@ -1851,7 +1923,9 @@ function createMultiRevolveFeatureShape(
 }
 
 function multiExtrusionRoleParameters(
-  parameters: ExtrusionMultiProfileContentParameters,
+  parameters:
+    | ExtrusionMultiProfileContentParameters
+    | ExtrusionMultiProfileModifyingContentParameters,
 ): ExtrusionContentParameters | undefined {
   const [first, ...rest] = parameters.profiles
   if (!first) return undefined
@@ -1894,7 +1968,7 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   const extrusionParameters =
     feature.kind === "extrusion"
       ? feature.parameters
-      : feature.kind === "multi-extrusion"
+      : feature.kind === "multi-extrusion" || feature.kind === "multi-extrusion-modifying"
         ? multiExtrusionRoleParameters(feature.parameters)
         : undefined
   const extrusionRoleIndex = extrusionParameters
@@ -1913,16 +1987,12 @@ function evaluateFeatureGeometry(
 ) {
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
-  const maximumSolidCount =
+  const profileCount =
     feature.kind === "multi-extrusion" || feature.kind === "multi-revolve"
       ? feature.parameters.profiles.length
       : 1
-  if (
-    !metrics.valid ||
-    metrics.solidCount < 1 ||
-    metrics.solidCount > maximumSolidCount ||
-    metrics.volume <= 0
-  ) {
+  const maximumSolidCount = featureSolidCountLimit(feature.kind, profileCount)
+  if (!featureResultMetricsAreValid(metrics, maximumSolidCount)) {
     throw new Error("Feature evaluation did not produce a valid bounded positive-volume result.")
   }
   return {
@@ -1943,16 +2013,6 @@ function tessellateFeatureGeometry(
     angularTolerance: meshPolicy.angularTolerance,
   })
   return { mesh, tessellationMs: elapsed(startedAt) }
-}
-
-function disposeFeatureShape(shape: Shape3D | null) {
-  if (!shape) return true
-  try {
-    shape.delete()
-    return true
-  } catch {
-    return false
-  }
 }
 
 type FeatureShapeSource =
@@ -2250,7 +2310,7 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
         },
       }
     } catch {
-      const cleanupSucceeded = disposeFeatureShape(temporaryShape)
+      const cleanupSucceeded = disposeTemporaryShape(temporaryShape)
       return featureFailure(
         "invalid-feature-geometry",
         cleanupSucceeded

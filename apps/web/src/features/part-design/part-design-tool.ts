@@ -4,6 +4,7 @@ import {
   cylinderFeatureType,
   datumPlaneFeatureType,
   extrusionFeatureType,
+  extrusionFeatureTypeV4,
   type FeatureId,
   type FeatureRecord,
   featureBodyDependencyIds,
@@ -107,6 +108,7 @@ export function isExtrusionFeature(feature: FeatureRecord) {
   return (
     hasFeatureType(feature, extrusionFeatureType.type) ||
     hasFeatureType(feature, multiProfileExtrusionFeatureType.type) ||
+    hasFeatureType(feature, extrusionFeatureTypeV4.type) ||
     hasFeatureType(feature, legacyExtrusionFeatureType.type)
   )
 }

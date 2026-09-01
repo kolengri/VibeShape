@@ -27,6 +27,7 @@ import {
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
   extrusionMultiProfileFeatureContentParametersSchema,
+  extrusionMultiProfileModifyingFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
 } from "@vibeshape/protocol"
@@ -313,26 +314,24 @@ function prepareMultiExtrusion(
   parameters: MultiProfileParameters,
   frame: SupportFrame,
 ) {
-  if (parameters.operation !== "new") {
-    return failure(
-      "org.vibeshape.feature.sketch-profile-invalid",
-      "multi-profile-operation-unsupported",
-    )
-  }
   if (!parameters.distance || parameters.symmetric === undefined) {
     return failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-multi-profile-input")
   }
   const profiles = materializeSelectedProfiles(sketch, solution, parameters.profiles.profiles)
   if (!profiles.ok) return profiles
-  const prepared = extrusionMultiProfileFeatureContentParametersSchema.safeParse({
+  const content = {
     sketchId: sketch.id,
     ...(sketch.support ? { supportFeatureId: sketch.support.reference.featureId } : {}),
     frame,
     profiles: profiles.profiles,
     distance: parameters.distance.value,
     symmetric: parameters.symmetric,
-    operation: "new",
-  })
+    operation: parameters.operation,
+  }
+  const prepared =
+    parameters.operation === "new"
+      ? extrusionMultiProfileFeatureContentParametersSchema.safeParse(content)
+      : extrusionMultiProfileModifyingFeatureContentParametersSchema.safeParse(content)
   return prepared.success
     ? ({ ok: true, parameters: prepared.data as never } as const)
     : failure("org.vibeshape.feature.sketch-profile-invalid", "invalid-materialized-profile-set", {
@@ -609,6 +608,25 @@ function validatedSolution(
     : failure("org.vibeshape.feature.sketch-solve-failed", solution.status)
 }
 
+function profileFeatureFromRecord(feature: FeatureRecord): ProfileFeature | null {
+  const extrusion = readExtrusionFeatureParameters(feature)
+  if (extrusion) {
+    return {
+      kind: "extrusion",
+      parameters: extrusion,
+      multiProfile: feature.type.schemaVersion === 3 || feature.type.schemaVersion === 4,
+    }
+  }
+  const revolve = readRevolveFeatureParameters(feature)
+  return revolve
+    ? {
+        kind: "revolve",
+        parameters: revolve,
+        multiProfile: feature.type.schemaVersion === 5,
+      }
+    : null
+}
+
 async function prepareFeatureContent(
   document: DocumentSnapshot,
   feature: FeatureRecord,
@@ -636,48 +654,11 @@ async function prepareFeatureContent(
       }),
     }
   }
-  const extrusion = readExtrusionFeatureParameters(feature)
-  if (extrusion && feature.type.schemaVersion === 3) {
-    return prepareProfileFeatureContent({
-      document,
-      feature: { kind: "extrusion", parameters: extrusion, multiProfile: true },
-      features,
-      geometry,
-      modelMaterializationCache,
-      sectionPlanarFace,
-      solveSketch,
-      solvedBySketchId,
-    })
-  }
-  if (extrusion) {
-    return prepareProfileFeatureContent({
-      document,
-      feature: { kind: "extrusion", parameters: extrusion, multiProfile: false },
-      features,
-      geometry,
-      modelMaterializationCache,
-      sectionPlanarFace,
-      solveSketch,
-      solvedBySketchId,
-    })
-  }
-  const revolve = readRevolveFeatureParameters(feature)
-  if (!revolve) return null
-  if (feature.type.schemaVersion === 5) {
-    return prepareProfileFeatureContent({
-      document,
-      feature: { kind: "revolve", parameters: revolve, multiProfile: true },
-      features,
-      geometry,
-      modelMaterializationCache,
-      sectionPlanarFace,
-      solveSketch,
-      solvedBySketchId,
-    })
-  }
+  const profileFeature = profileFeatureFromRecord(feature)
+  if (!profileFeature) return null
   return prepareProfileFeatureContent({
     document,
-    feature: { kind: "revolve", parameters: revolve, multiProfile: false },
+    feature: profileFeature,
     features,
     geometry,
     modelMaterializationCache,

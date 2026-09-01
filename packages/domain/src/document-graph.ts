@@ -17,6 +17,7 @@ import {
   expectedRevolveDependencyIds,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
+  extrusionFeatureTypeV4,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -171,7 +172,8 @@ function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (
     typeKey === featureTypeKey(legacyExtrusionFeatureType.type) ||
     typeKey === featureTypeKey(extrusionFeatureType.type) ||
-    typeKey === featureTypeKey(extrusionFeatureTypeV3.type)
+    typeKey === featureTypeKey(extrusionFeatureTypeV3.type) ||
+    typeKey === featureTypeKey(extrusionFeatureTypeV4.type)
   ) {
     return readExtrusionFeatureParameters(feature) !== null
   }
