@@ -143,8 +143,8 @@ Implementation proceeds in integrity-first slices:
 The pure schema and migration foundation from step 3 is implemented. It keeps the strict schema-version-0
 snapshot and feature parsers as compatibility APIs, adds strict schema-version-1 records, and provides a bounded
 pure migration with verified full-journal replay and an explicit snapshot-derived degraded fallback. Persistence,
-portable-format, command, and application adoption remain separate transactions so an unsuccessful integration
-cannot overwrite legacy data.
+portable-format, and application adoption remain separate transactions so an unsuccessful integration cannot
+overwrite legacy data.
 
 Persistence now exposes an opt-in, read-only migrated recovery path. It first performs the existing bounded
 semantic recovery, then independently loads the complete checksummed event prefix through the actually recovered
@@ -158,6 +158,14 @@ APIs while leaving the product-facing version-0 codec unchanged. Version-1 archi
 event journal and prove the enclosed History by replaying that journal, migrating its version-0 result, and
 requiring canonical equality with the enclosed version-1 snapshot. The current product import remains version 0
 until persistence and application can adopt version 1 atomically.
+
+The domain now also exposes an additive version-1-only command/event boundary for inserting a new sketch after a
+stable `HistoryItemRef`; `null` means the start of History. The reducer validates the complete resulting version-1
+snapshot after every command and replayed event, including exact History coverage, dependency order, revision
+continuity, duplicate identity, and orphaned-reference intent. Version-1 sketch-reference ordering is derived from
+History rather than storage-array position. This boundary intentionally replays only a suffix whose seed is already
+a validated version-1 snapshot. Persistence writes, mixed version-0 journal adoption, History reorder, and the
+user-visible cursor remain pending integration slices.
 
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.

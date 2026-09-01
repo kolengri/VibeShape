@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { createDocumentDependencyGraph } from "./document-graph"
-import { historyItemsSchema } from "./document-node"
+import { type HistoryItemRef, historyItemsSchema } from "./document-node"
 import {
   type FeatureRecord,
   type FeatureRecordV1,
@@ -42,6 +42,7 @@ export type DocumentDisplayUnits = Readonly<z.infer<typeof documentDisplayUnitsS
 type DocumentReferenceValidationInput = Readonly<{
   features: readonly Pick<FeatureRecord, "id">[]
   sketches: readonly SketchRecord[]
+  history?: readonly HistoryItemRef[]
 }>
 
 function addDocumentIssue(context: z.RefinementCtx, path: readonly PropertyKey[], message: string) {
@@ -54,8 +55,9 @@ type ExternalReferenceValidationInput = Readonly<{
   referenceIndex: number
   sketch: SketchRecord
   sketchIndex: number
+  sketchOrder: number | undefined
   source: SketchRecord
-  sourceIndex: number
+  sourceOrder: number | undefined
 }>
 
 function externalReferencePath(
@@ -65,7 +67,13 @@ function externalReferencePath(
 }
 
 function validateExternalReferenceOrder(input: ExternalReferenceValidationInput) {
-  if (input.source.id !== input.sketch.id && input.sourceIndex < input.sketchIndex) return
+  if (
+    input.source.id !== input.sketch.id &&
+    input.sourceOrder !== undefined &&
+    input.sketchOrder !== undefined &&
+    input.sourceOrder < input.sketchOrder
+  )
+    return
   addDocumentIssue(
     input.context,
     [...externalReferencePath(input), "sourceSketchId"],
@@ -79,8 +87,9 @@ function validateExternalSketchReference(input: {
   referenceIndex: number
   sketch: SketchRecord
   sketchIndex: number
+  sketchOrder: number | undefined
   source: SketchRecord | undefined
-  sourceIndex: number
+  sourceOrder: number | undefined
 }) {
   const path = ["sketches", input.sketchIndex, "externalReferences", input.referenceIndex] as const
   if (!input.source) {
@@ -134,6 +143,15 @@ function validateDocumentSketchReferences(
 ) {
   const featureIds = new Set(document.features.map(({ id }) => id))
   const sketchesById = new Map(document.sketches.map((sketch) => [sketch.id, sketch]))
+  const sketchOrderById = new Map(
+    document.history
+      ? document.history
+          .filter(
+            (item): item is Extract<HistoryItemRef, { kind: "sketch" }> => item.kind === "sketch",
+          )
+          .map((item, index) => [item.id, index] as const)
+      : document.sketches.map((sketch, index) => [sketch.id, index] as const),
+  )
   for (const [sketchIndex, sketch] of document.sketches.entries()) {
     const supportFeatureId = sketch.support?.reference.featureId
     if (supportFeatureId && !featureIds.has(supportFeatureId)) {
@@ -160,10 +178,9 @@ function validateDocumentSketchReferences(
         referenceIndex,
         sketch,
         sketchIndex,
+        sketchOrder: sketchOrderById.get(sketch.id),
         source: sketchesById.get(reference.sourceSketchId),
-        sourceIndex: document.sketches.findIndex(
-          (candidate) => candidate.id === reference.sourceSketchId,
-        ),
+        sourceOrder: sketchOrderById.get(reference.sourceSketchId),
       })
     }
   }

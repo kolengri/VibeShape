@@ -158,11 +158,11 @@ export function unavailableDependencyModelDiagnostic(
     code: invalidEvent ? "invalid-event" : "unavailable-dependency-model",
     message: invalidEvent
       ? "The document event requires an unavailable feature dependency model."
-      : "A feature dependency model is unavailable for this destructive operation.",
+      : "A feature dependency model is unavailable for this dependency-sensitive operation.",
     retryable: false,
     issues: issues.slice(0, 8).map((issue) => ({
       path: issue.ownerPath,
-      message: `Feature type ${issue.typeKey} must declare its semantic inputs before deletion is safe.`,
+      message: `Feature type ${issue.typeKey} must declare its semantic inputs before this mutation is safe.`,
     })),
   }
 }
