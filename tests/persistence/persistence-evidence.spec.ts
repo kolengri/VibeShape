@@ -65,6 +65,23 @@ const reportSchema = z
             lastExternalBackupAt: z.literal("2026-08-08T00:00:03Z"),
             legacyThumbnailWriteBarrier: z.literal("stale-revision"),
             copiedPreviewRevision: z.literal(1),
+            portable: z
+              .object({
+                historyMode: z.literal("complete"),
+                copiedRevision: z.literal(2),
+                collisionBarrier: z.literal("document-already-exists"),
+                importedRevision: z.literal(2),
+              })
+              .strict(),
+            promotedPortable: z
+              .object({
+                historyMode: z.literal("complete"),
+                promotionRevision: z.literal(2),
+                legacyEvents: z.literal(2),
+                versionedEvents: z.literal(1),
+                copiedRevision: z.literal(4),
+              })
+              .strict(),
             deletedCopyRecords: z
               .object({ events: z.literal(1), snapshots: z.literal(1), thumbnails: z.literal(1) })
               .strict(),

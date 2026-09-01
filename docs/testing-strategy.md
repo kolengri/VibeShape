@@ -60,7 +60,11 @@ rollback source byte-canonical. The same browser stage verifies that the unified
 revision rather than the retained v0 head, accepts only an exact-v1-revision preview, and rejects a legacy preview
 write after promotion without changing the current thumbnail. It also creates a v1-only project, copies the
 source preview to its exact head, deletes the copy atomically, and verifies the event, snapshot, and thumbnail
-deletion counts before confirming that the catalog no longer exposes it.
+deletion counts before confirming that the catalog no longer exposes it. The stage exports the promoted project as
+a complete v2 legacy-prefix/seed/versioned-suffix boundary, replay-proves both promoted and native-v1 semantic
+copies, then exercises same-ID collision rejection, deletion, atomic complete-history import, recovery, and
+byte-canonical boundary re-export.
+Contract tests reject turning an evidenced checkpoint into an ordinary writable import or copy.
 
 Domain projection tests require a valid v1 snapshot to produce a strict v0 document ordered by History without
 mutating the source or leaking History and feature semantic-input declarations. Application adapter tests cover
@@ -284,6 +288,7 @@ SPK-004 implements the 3MF writer baseline with strict Zod input and report sche
 - Dirty-document update deferral, user-gesture persistent-storage policy, and Save As fallback selection.
 - Atomic v0-to-v1 promotion, provenance retention, v1 suffix replay, bounded v1 loss, the legacy write barrier, and preservation of the v0 rollback source.
 - Authoritative v0/v1 project catalog selection, exact-head previews, and the post-promotion legacy preview barrier.
+- Replay-proven v2 export plus atomic native-v1 copy/import, cross-generation ID collision rejection, and exact boundary re-export.
 
 SPK-005 implements this boundary through `bun run persistence:evidence`. The runner and `playwright.persistence.config.ts` reject truthy `CI`, exercise Chromium, Firefox, and WebKit serially, and write reports only under `.artifacts/persistence-spike`. The recorded WebKit runtime keeps semantic IndexedDB recovery operational while reporting OPFS unavailable. No GitHub Actions workflow invokes the persistence evidence command. See [SPK-005 evidence](spikes/spk-005-local-first.md).
 
