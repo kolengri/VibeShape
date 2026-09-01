@@ -1,3 +1,4 @@
 export * from "./feature-rebuild"
 export * from "./persistent-document-session"
 export * from "./pierce-point"
+export * from "./versioned-persistence-adapter"

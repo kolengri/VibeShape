@@ -11,6 +11,7 @@ import {
   type DocumentLeasePort,
   type DocumentRebuildPort,
   openPersistentDocumentSession,
+  type PersistedRecoveryMigration,
   type PersistentDocumentRepositoryPort,
   type PersistentDocumentSessionDependencies,
 } from "./persistent-document-session"
@@ -33,6 +34,7 @@ class MemoryRepository implements PersistentDocumentRepositoryPort {
   failNextCommit = false
   commitCount = 0
   draftCommitCount = 0
+  migration: PersistedRecoveryMigration | null = null
 
   async commit(input: Parameters<PersistentDocumentRepositoryPort["commit"]>[0]) {
     if (this.failNextCommit) {
@@ -69,6 +71,7 @@ class MemoryRepository implements PersistentDocumentRepositoryPort {
         recoveredRevision: this.snapshot.revision,
         lostRevisionCount: 0,
         corruptRecords: [],
+        ...(this.migration ? { migration: this.migration } : {}),
       },
     } as const
   }
@@ -361,6 +364,14 @@ describe("persistent document session", () => {
     expect(state.rebuildPorts[0]?.revisions).toEqual([1, 2])
 
     state.rebuildPorts[0]?.terminate()
+    state.repository.migration = {
+      provenance: "snapshot-derived",
+      diagnostic: {
+        code: "legacy-journal-unavailable",
+        message: "The legacy journal prefix is unavailable.",
+      },
+      unavailableRecords: ["event:1"],
+    }
     const reopened = await openPersistentDocumentSession(state.dependencies, {
       documentId,
       sessionId: sessionA,
@@ -372,6 +383,11 @@ describe("persistent document session", () => {
         status: "recovered",
         mode: "read-write",
         snapshot: { revision: 2 },
+        migration: {
+          provenance: "snapshot-derived",
+          diagnostic: { code: "legacy-journal-unavailable" },
+          unavailableRecords: ["event:1"],
+        },
         rebuild: { ok: true, response: { revision: 2 } },
       },
     })

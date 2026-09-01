@@ -187,6 +187,17 @@ version-1 snapshot. Version-1 sketch-reference ordering is derived from History 
 Application adoption, product-facing portable-format switching, History reorder, and the user-visible cursor remain
 pending integration slices.
 
+The application package now provides the compatibility boundary for that adoption. It keeps a validated
+schema-version-1 snapshot as the semantic authority, projects a strict History-ordered schema-version-0 view only
+for the existing session and worker contracts, and translates legacy sketch and feature add events into anchored
+History insertion events before calling a versioned repository port. A draft preserves one transaction identity
+across every translated event. Canonical base and result projections must match the legacy session input, and failed
+persistence never advances the versioned authority. Recovery carries `current`, `journal-derived`, or
+`snapshot-derived` provenance, its bounded diagnostic, and unavailable-record evidence through the adapter into
+the session report; the compatibility projection cannot make inferred History appear authoritative. This adapter
+is not yet the product composition root: project listing, copy/import/export, promotion-on-open, and controller
+wiring remain separate lifecycle gates.
+
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
 
