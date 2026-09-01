@@ -195,8 +195,12 @@ across every translated event. Canonical base and result projections must match 
 persistence never advances the versioned authority. Recovery carries `current`, `journal-derived`, or
 `snapshot-derived` provenance, its bounded diagnostic, and unavailable-record evidence through the adapter into
 the session report; the compatibility projection cannot make inferred History appear authoritative. This adapter
-is not yet the product composition root: project listing, copy/import/export, promotion-on-open, and controller
-wiring remain separate lifecycle gates.
+is not yet the product composition root. The versioned repository now owns a unified bounded project catalog that
+prefers a valid v1 head over its retained v0 rollback source, reads only an exact-head derived preview, and supports
+thumbnail writes, thumbnail copies, and deletion against either an unpromoted v0 project or the authoritative v1
+head. Legacy thumbnail mutations fail once v1 authority exists so they cannot replace a current preview with a
+rollback revision. Copy/import/export, promotion-on-open, and controller wiring remain separate lifecycle gates;
+the product must not switch until the portable journal can retain post-promotion versioned events without loss.
 
 The graph is not treated as authoritative for deletion, reorder, scheduling, or UI eligibility until the
 corresponding integration slice and its migration tests are complete.
