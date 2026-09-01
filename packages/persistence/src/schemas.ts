@@ -314,6 +314,102 @@ export const portableProjectCopySchema = portableProjectPayloadSchema.extend({
   copiedAt: timestampSchema,
 })
 
+export const portableProjectV2HistoryModeSchema = z.enum(["complete", "checkpoint"])
+
+type PortableV2Boundary = Readonly<{
+  seed: { revision: number } | null
+  legacyEvents: readonly unknown[]
+  versionedEvents: readonly unknown[]
+  historyMode: "complete" | "checkpoint"
+  promotionRevision: number
+  migrationDiagnostic: unknown | null
+  unavailableRecords: readonly string[]
+}>
+
+function isNativeCompleteBoundary(input: PortableV2Boundary) {
+  return [
+    input.promotionRevision === 0,
+    input.seed === null,
+    input.legacyEvents.length === 0,
+  ].every(Boolean)
+}
+
+function isPromotedCompleteBoundary(input: PortableV2Boundary) {
+  return [
+    input.promotionRevision > 0,
+    input.seed?.revision === input.promotionRevision,
+    input.legacyEvents.length === input.promotionRevision,
+  ].every(Boolean)
+}
+
+function isCompleteBoundary(input: PortableV2Boundary) {
+  return (
+    input.historyMode === "complete" &&
+    input.migrationDiagnostic === null &&
+    input.unavailableRecords.length === 0 &&
+    (isNativeCompleteBoundary(input) || isPromotedCompleteBoundary(input))
+  )
+}
+
+function isCheckpointBoundary(input: PortableV2Boundary) {
+  return [
+    input.historyMode === "checkpoint",
+    input.seed?.revision === input.promotionRevision,
+    input.legacyEvents.length === 0,
+    input.migrationDiagnostic !== null,
+    input.unavailableRecords.length > 0,
+  ].every(Boolean)
+}
+
+function validatePortableV2Boundary(input: PortableV2Boundary, context: z.RefinementCtx) {
+  if (input.legacyEvents.length + input.versionedEvents.length > 100_000)
+    context.addIssue({
+      code: "custom",
+      path: ["versionedEvents"],
+      message: "The portable v2 history exceeds its aggregate event limit.",
+    })
+  if (isCompleteBoundary(input) || isCheckpointBoundary(input)) return
+  context.addIssue({
+    code: "custom",
+    path: ["historyMode"],
+    message: "The portable v2 replay boundary and recovery evidence are inconsistent.",
+  })
+}
+
+export const portableProjectV2PayloadSchema = z
+  .object({
+    snapshot: documentSnapshotV1Schema,
+    seed: documentSnapshotV1Schema.nullable(),
+    legacyEvents: z.array(documentEventSchema).max(100_000),
+    versionedEvents: z.array(versionedDocumentEventSchema).max(100_000),
+    historyMode: portableProjectV2HistoryModeSchema,
+    promotionRevision: revisionSchema,
+    migrationDiagnostic: documentMigrationDiagnosticSchema.nullable(),
+    unavailableRecords: unavailableRecordsSchema,
+  })
+  .strict()
+  .superRefine(validatePortableV2Boundary)
+
+function requireWritablePortableV2History(input: PortableV2Boundary, context: z.RefinementCtx) {
+  if (input.historyMode === "complete") return
+  context.addIssue({
+    code: "custom",
+    path: ["historyMode"],
+    message: "Checkpoint history cannot become a writable local project.",
+  })
+}
+
+export const portableProjectV2ImportSchema = portableProjectV2PayloadSchema
+  .extend({
+    importedAt: timestampSchema,
+    exportedAt: timestampSchema,
+  })
+  .superRefine(requireWritablePortableV2History)
+
+export const portableProjectV2CopySchema = portableProjectV2PayloadSchema
+  .extend({ copiedAt: timestampSchema })
+  .superRefine(requireWritablePortableV2History)
+
 export const projectThumbnailWriteInputSchema = projectThumbnailRecordSchema.omit({
   schemaVersion: true,
 })
@@ -381,6 +477,8 @@ export type PersistenceV1DraftCommitInput = z.input<typeof persistenceV1DraftCom
 export type PersistencePromotionInput = z.input<typeof persistencePromotionInputSchema>
 export type PortableProjectImport = z.input<typeof portableProjectImportSchema>
 export type PortableProjectCopy = z.input<typeof portableProjectCopySchema>
+export type PortableProjectV2Import = z.input<typeof portableProjectV2ImportSchema>
+export type PortableProjectV2Copy = z.input<typeof portableProjectV2CopySchema>
 export type ProjectThumbnailWriteInput = z.input<typeof projectThumbnailWriteInputSchema>
 export type ProjectThumbnailCopyInput = z.input<typeof projectThumbnailCopyInputSchema>
 export type ProjectDeleteInput = z.input<typeof projectDeleteInputSchema>

@@ -105,7 +105,7 @@ The domain reducer MUST be deterministic: one snapshot plus the same commands pr
 - strict feature schema v0 records with stable type ownership, bounded JSON parameters, explicit dependencies, declared `TopoRef` inputs, suppression, and presentation order;
 - deterministic feature-graph construction with duplicate, missing-dependency, self-reference, undeclared-reference, and cycle rejection;
 - a bounded pure document-dependency graph over typed sketch and feature nodes, with explicit current first-party relation kinds, exact supplied-History coverage, forward-order validation, cross-kind cycle rejection, deterministic evaluation order, and parent/child queries;
-- strict version-0 and version-1 snapshot/feature schemas plus a pure migration contract: verified complete journals preserve authored interleaving, degraded snapshot-only recovery is explicit, and unavailable legacy extension dependency models remain `null`; persistence exposes read-only migrated recovery and side-by-side atomic v1 stores, the native format exposes strict v1 migration archives and v2 versioned-history archives, and an application adapter preserves v1 as semantic authority while projecting a validated History-ordered v0 view to the current session and worker contracts;
+- strict version-0 and version-1 snapshot/feature schemas plus a pure migration contract: verified complete journals preserve authored interleaving, degraded snapshot-only recovery is explicit, and unavailable legacy extension dependency models remain `null`; persistence exposes read-only migrated recovery, side-by-side atomic v1 stores, and atomic v2 export/import/copy payloads, the native format exposes strict v1 migration archives and v2 versioned-history archives, and an application adapter preserves v1 as semantic authority while projecting a validated History-ordered v0 view to the current session and worker contracts;
 - atomic feature collection mutations that validate the complete resulting DAG before advancing the document revision and never retain partial state after rejection;
 - a pure rebuild seam with stable topological scheduling, transitive dirty propagation, independent cache reuse, conservative suppression, dependent-only blocking, bounded stable diagnostics, and validated SHA-256 result identities;
 - automation exposure and confirmation metadata without importing MCP or transport types.
@@ -168,6 +168,16 @@ replay the suffix to canonical equality with the final document. Every one of th
 its exact media type, byte length, and SHA-256 digest, and the ZIP must contain exactly those entries plus the
 manifest. V0 and v1 readers remain unchanged and fail closed on v2 archives.
 See [ADR-0035](../adr/0035-versioned-portable-history.md) for the version boundary and replay contract.
+
+The versioned repository assembles this boundary from authoritative IndexedDB records. Native v1 projects export a
+complete suffix from revision 1. Promoted projects export the retained checksummed legacy prefix, its exact stored
+v1 seed, and the contiguous v1 suffix; when the prefix cannot prove the seed, export produces an explicitly
+evidenced checkpoint instead. Complete-history import and semantic copy validate replay before opening one
+transaction, reject a document ID already present in either storage generation, and publish legacy-prefix records, v1 seed/final
+snapshots, v1 suffix events, project metadata, and recovery cleanup atomically. A pure domain copy seam preserves
+History anchors and entity IDs while requiring fresh document, command, and transaction identities. Product
+controller adoption, automatic promotion-on-open, and a durable writable-checkpoint metadata contract remain
+separate gates; checkpoint archives cannot silently become ordinary writable projects.
 
 ### `manifest.json`
 

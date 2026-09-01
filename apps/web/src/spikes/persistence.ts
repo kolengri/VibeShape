@@ -2,6 +2,7 @@ import {
   applyDocumentCommand,
   applyVersionedDocumentCommand,
   canonicalJson,
+  copyCompleteVersionedDocumentHistory,
   type DocumentSnapshot,
   type DocumentSnapshotV1,
 } from "@vibeshape/domain"
@@ -14,6 +15,7 @@ import {
   LocalDocumentRepository,
   openOriginPrivateFileSystem,
   type PersistenceResult,
+  type PortableProjectV2,
   readDerivedCache,
   releaseDocumentLease,
   selectSaveAsMethod,
@@ -47,6 +49,15 @@ const versionedRenameCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b4"
 const legacyAfterPromotionCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b5"
 const lifecycleCopyDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b6"
 const lifecycleCopyCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b7"
+const portableCopyDocumentId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b8"
+const portableCopyCreateCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b9"
+const portableCopyRenameCommandId = "0195b5ac-b220-7a2c-8c33-67a36a7f21ba"
+const promotedCopyCommandIds = [
+  "0195b5ac-b220-7a2c-8c33-67a36a7f21bb",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f21bc",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f21bd",
+  "0195b5ac-b220-7a2c-8c33-67a36a7f21be",
+] as const
 const ownerA = "0195b5ac-b220-7a2c-8c33-67a36a7f21b0"
 const ownerB = "0195b5ac-b220-7a2c-8c33-67a36a7f21b1"
 const operationId = "0195b5ac-b220-7a2c-8c33-67a36a7f21b2"
@@ -707,7 +718,7 @@ function requireVersionedCatalogProject(
   return { project, thumbnail }
 }
 
-async function createVersionedLifecycleCopy(repository: VersionedLocalDocumentRepository) {
+async function createNativePortableSource(repository: VersionedLocalDocumentRepository) {
   const created = requireVersionedDomainResult(
     applyVersionedDocumentCommand(null, {
       schemaVersion: 1,
@@ -730,7 +741,162 @@ async function createVersionedLifecycleCopy(repository: VersionedLocalDocumentRe
       snapshot: created.snapshot,
     }),
   )
-  return created.snapshot
+  return {
+    snapshot: created.snapshot,
+    exported: requirePersistenceValue(
+      await repository.exportPortableProjectV2(lifecycleCopyDocumentId),
+    ),
+  }
+}
+
+async function copyNativePortableSource(
+  repository: VersionedLocalDocumentRepository,
+  exported: PortableProjectV2,
+) {
+  const copied = copyCompleteVersionedDocumentHistory({
+    sourceLegacyEvents: exported.legacyEvents,
+    sourceSeed: exported.seed,
+    sourceSnapshot: exported.snapshot,
+    sourceEvents: exported.versionedEvents,
+    documentId: portableCopyDocumentId,
+    commandIds: [portableCopyCreateCommandId, portableCopyRenameCommandId],
+    transactionIds: [],
+    name: "Bracket portable copy",
+    issuedAt: "2026-08-08T00:00:08Z",
+    actor: { type: "user", userId: null },
+  })
+  if (!copied.ok) throw new Error(copied.diagnostic.message)
+  const portableCopy = {
+    ...exported,
+    legacyEvents: copied.legacyEvents,
+    seed: copied.seed,
+    snapshot: copied.snapshot,
+    versionedEvents: copied.versionedEvents,
+    copiedAt: "2026-08-08T00:00:08Z",
+  }
+  requirePersistenceValue(await repository.copyPortableProjectV2(portableCopy))
+  requirePersistenceFailure(
+    await repository.copyPortableProjectV2(portableCopy),
+    "document-already-exists",
+    "Portable v2 copy replaced an existing project.",
+  )
+  const recoveredCopy = requirePersistenceValue(await repository.recover(portableCopyDocumentId))
+  requireCondition(
+    recoveredCopy.snapshot.name === "Bracket portable copy" &&
+      recoveredCopy.snapshot.revision === 2,
+    "Portable v2 copy did not replay to its copied snapshot.",
+  )
+  return { copied, portableCopy }
+}
+
+async function deletePortableCopy(repository: VersionedLocalDocumentRepository, revision: number) {
+  requirePersistenceValue(
+    await repository.deleteProject({
+      documentId: portableCopyDocumentId,
+      expectedHeadRevision: revision,
+      nowMs: 2_500,
+    }),
+  )
+}
+
+async function reimportPortableCopy(
+  repository: VersionedLocalDocumentRepository,
+  portableCopy: Awaited<ReturnType<typeof copyNativePortableSource>>["portableCopy"],
+) {
+  const { copiedAt: _copiedAt, ...portableImport } = portableCopy
+  requirePersistenceValue(
+    await repository.importPortableProjectV2({
+      ...portableImport,
+      importedAt: "2026-08-08T00:00:09Z",
+      exportedAt: "2026-08-08T00:00:08Z",
+    }),
+  )
+  const imported = requirePersistenceValue(
+    await repository.exportPortableProjectV2(portableCopyDocumentId),
+  )
+  requireCondition(
+    canonicalJson(imported) === canonicalJson(portableImport),
+    "Portable v2 import changed the replay boundary.",
+  )
+  return imported
+}
+
+async function createVersionedLifecycleCopy(repository: VersionedLocalDocumentRepository) {
+  const { snapshot, exported } = await createNativePortableSource(repository)
+  const { copied, portableCopy } = await copyNativePortableSource(repository, exported)
+  await deletePortableCopy(repository, copied.snapshot.revision)
+  const imported = await reimportPortableCopy(repository, portableCopy)
+  await deletePortableCopy(repository, copied.snapshot.revision)
+  return {
+    snapshot,
+    portable: {
+      historyMode: exported.historyMode,
+      copiedRevision: copied.snapshot.revision,
+      collisionBarrier: "document-already-exists" as const,
+      importedRevision: imported.snapshot.revision,
+    },
+  }
+}
+
+async function verifyPromotedPortableExport(
+  repository: VersionedLocalDocumentRepository,
+  revision: number,
+) {
+  const portable = requirePersistenceValue(await repository.exportPortableProjectV2(documentId))
+  requireCondition(
+    [
+      portable.historyMode === "complete",
+      portable.promotionRevision === 2,
+      portable.legacyEvents.length === 2,
+      portable.versionedEvents.length === 1,
+      portable.snapshot.revision === revision,
+    ].every(Boolean),
+    "Promoted portable v2 export did not preserve its replay boundary.",
+  )
+  return portable
+}
+
+async function verifyPromotedPortableCopy(
+  repository: VersionedLocalDocumentRepository,
+  source: PortableProjectV2,
+) {
+  const copied = copyCompleteVersionedDocumentHistory({
+    sourceLegacyEvents: source.legacyEvents,
+    sourceSeed: source.seed,
+    sourceSnapshot: source.snapshot,
+    sourceEvents: source.versionedEvents,
+    documentId: portableCopyDocumentId,
+    commandIds: promotedCopyCommandIds,
+    transactionIds: [],
+    name: "Promoted portable copy",
+    issuedAt: "2026-08-08T00:00:10Z",
+    actor: { type: "user", userId: null },
+  })
+  if (!copied.ok) throw new Error(copied.diagnostic.message)
+  const portable = {
+    ...source,
+    legacyEvents: copied.legacyEvents,
+    seed: copied.seed,
+    snapshot: copied.snapshot,
+    versionedEvents: copied.versionedEvents,
+  }
+  requirePersistenceValue(
+    await repository.copyPortableProjectV2({ ...portable, copiedAt: "2026-08-08T00:00:10Z" }),
+  )
+  const recovered = requirePersistenceValue(await repository.recover(portableCopyDocumentId))
+  requireCondition(
+    recovered.snapshot.name === "Promoted portable copy" && recovered.snapshot.revision === 4,
+    "Promoted portable v2 copy did not recover its complete History.",
+  )
+  const reexported = requirePersistenceValue(
+    await repository.exportPortableProjectV2(portableCopyDocumentId),
+  )
+  requireCondition(
+    canonicalJson(reexported) === canonicalJson(portable),
+    "Promoted portable v2 copy changed its replay boundary.",
+  )
+  await deletePortableCopy(repository, copied.snapshot.revision)
+  return copied.snapshot.revision
 }
 
 async function verifyVersionedProjectLifecycle(
@@ -738,6 +904,8 @@ async function verifyVersionedProjectLifecycle(
   legacyRepository: LocalDocumentRepository,
   revision: number,
 ) {
+  const promotedPortable = await verifyPromotedPortableExport(repository, revision)
+  const promotedCopyRevision = await verifyPromotedPortableCopy(repository, promotedPortable)
   const generatedAt = "2026-08-08T00:00:06Z"
   const bytes = new TextEncoder().encode(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" role="img"><g stroke="#263746" stroke-width="0.75" stroke-linejoin="round"><polygon points="12.00,148.00 228.00,148.00 120.00,12.00" fill="rgb(120 140 160)"/></g></svg>',
@@ -771,7 +939,7 @@ async function verifyVersionedProjectLifecycle(
     name: "Bracket History v1",
     revision,
   })
-  const copy = await createVersionedLifecycleCopy(repository)
+  const { snapshot: copy, portable } = await createVersionedLifecycleCopy(repository)
   requirePersistenceValue(
     await repository.copyProjectThumbnail({
       sourceDocumentId: documentId,
@@ -806,6 +974,14 @@ async function verifyVersionedProjectLifecycle(
     lastExternalBackupAt: project.lastExternalBackupAt,
     legacyThumbnailWriteBarrier: "stale-revision" as const,
     copiedPreviewRevision: copy.revision,
+    portable,
+    promotedPortable: {
+      historyMode: promotedPortable.historyMode,
+      promotionRevision: promotedPortable.promotionRevision,
+      legacyEvents: promotedPortable.legacyEvents.length,
+      versionedEvents: promotedPortable.versionedEvents.length,
+      copiedRevision: promotedCopyRevision,
+    },
     deletedCopyRecords: {
       events: deleted.deletedEventCount,
       snapshots: deleted.deletedSnapshotCount,
