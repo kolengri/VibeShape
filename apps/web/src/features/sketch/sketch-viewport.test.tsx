@@ -6150,6 +6150,34 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("highlights a constraint's related geometry on pointer hover and keyboard focus", () => {
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
+    if (!constraint || !("lineId" in constraint)) {
+      throw new Error("The rectangle fixture must contain a horizontal line constraint.")
+    }
+    const glyph = document.querySelector(`[data-sketch-constraint-id="${constraint.id}"]`)
+    if (!glyph) throw new Error("The horizontal constraint annotation must be rendered.")
+
+    fireEvent.pointerEnter(glyph)
+    expect(
+      document.querySelector(`[data-sketch-constraint-related-entity="${constraint.lineId}"]`),
+    ).toBeTruthy()
+    fireEvent.pointerLeave(glyph)
+    expect(document.querySelector("[data-sketch-constraint-related-entity-layer]")).toBeNull()
+
+    fireEvent.focus(glyph)
+    expect(
+      document.querySelector(`[data-sketch-constraint-related-entity="${constraint.lineId}"]`),
+    ).toBeTruthy()
+    fireEvent.blur(glyph)
+    expect(document.querySelector("[data-sketch-constraint-related-entity-layer]")).toBeNull()
+  })
+
   it("renders a line relation to projected geometry as an external selectable constraint", async () => {
     const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3276")
     const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3277")
@@ -6203,6 +6231,16 @@ describe("SketchViewport", () => {
     expect(glyph.getAttribute("data-sketch-constraint-source")).toBe("external")
     expect(glyph.className).toContain("text-sketch-reference-context")
     expect(glyph.querySelector("svg")).toBeTruthy()
+
+    fireEvent.pointerEnter(glyph)
+    expect(
+      document.querySelector(`[data-sketch-constraint-related-entity="${localLine.id}"]`),
+    ).toBeTruthy()
+    expect(
+      document.querySelector(`[data-sketch-constraint-related-entity="${projectedLineId}"]`),
+    ).toBeTruthy()
+    fireEvent.pointerLeave(glyph)
+    expect(document.querySelector("[data-sketch-constraint-related-entity-layer]")).toBeNull()
 
     fireEvent.click(glyph)
     expect(onConstraintSelectionChange).toHaveBeenCalledWith(externalConstraintId)

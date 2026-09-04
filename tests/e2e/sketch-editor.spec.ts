@@ -3406,6 +3406,8 @@ test.describe("full sketch editor", () => {
     await expect(midpointConstraint).toBeVisible()
     await midpointConstraint.hover()
     await expect(page.getByRole("tooltip", { name: "Select constraint Midpoint" })).toBeVisible()
+    await expect(drawing.locator("[data-sketch-constraint-related-entity-layer]")).toBeVisible()
+    await expect(drawing.locator("[data-sketch-constraint-related-entity]")).toHaveCount(2)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 

@@ -266,10 +266,11 @@ Exit criterion: the reference bracket's primary outline can be drawn to exact si
   marker or curve shape, so it does not introduce duplicate point or center geometry.
 - Accepted geometric and dimensional annotations expose a localized tooltip and accessible action
   label, with a 24 px minimum visual target that remains compact beside the constrained geometry.
+- Hovering or keyboard-focusing an accepted annotation highlights every related local or projected
+  entity in the canvas preselection color without changing the document selection.
 - Keep that cursor language consistent as new inference candidates are introduced.
 - Add remembered wake-up references for coplanar earlier sketch and feature geometry.
 - Move selection-driven constraint actions next to the selection and make glyphs draggable and directly deletable.
-- Add focused related-entity highlighting on glyph hover.
 
 Exit criterion: users can predict which relation will be created before clicking and can inspect it without opening the constraint list.
 

@@ -241,3 +241,5 @@ and source highlight together for the current pointer sample.
 Accepted constraint and dimension annotations remain spatially anchored beside their geometry.
 Each compact annotation has a localized hover tooltip and accessible action name; geometric
 relations select on click, while driving dimensions keep double-click edit and direct label drag.
+Hover or keyboard focus highlights every local or projected entity participating in that relation
+without changing the actual sketch selection.
