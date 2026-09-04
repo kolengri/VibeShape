@@ -104,7 +104,7 @@ test.describe("selector-backed revolve", () => {
     await expect(viewport).not.toHaveAttribute("data-angular-gizmo-feature")
   })
 
-  test("creates and reopens a new result from two profiles", async ({ page }) => {
+  test("starts from an open sketch with every closed profile selected", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
@@ -116,22 +116,16 @@ test.describe("selector-backed revolve", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     await drawTwoProfilesAwayFromOriginAxes(page)
-    await page.getByRole("button", { name: "Finish sketch" }).click()
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
+    await toolbar.getByRole("button", { name: "Profile features" }).click()
+    const revolve = page.getByRole("menuitemradio", { name: "Revolve" })
+    await expect(revolve).toBeEnabled({
       timeout: 120_000,
     })
-    await viewport
-      .getByRole("combobox", { name: "Select saved profile" })
-      .selectOption({ label: "Sketch 1 · Profile 1" })
-    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    await revolve.click()
     const form = page.getByRole("form", { name: "Revolve profile" })
-    await form
-      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
-      .click()
-    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
 
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -309,30 +303,47 @@ test.describe("selector-backed revolve", () => {
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     let form = page.getByRole("form", { name: "Revolve profile" })
+    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
     await form
       .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
       .click()
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 2" })
     await expect(form).toBeVisible()
-    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(
+      form.getByRole("button", {
+        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2",
+      }),
+    ).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
-    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect(
+      editForm.getByRole("button", {
+        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2",
+      }),
+    ).toBeVisible()
     await editForm
       .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2" })
       .click()
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await expect(editForm).toBeVisible()
-    await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(
+      editForm.getByRole("button", {
+        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1",
+      }),
+    ).toBeVisible()
     await editForm.getByRole("button", { name: "Update revolve" }).click()
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     form = page.getByRole("form", { name: "Edit revolve" })
-    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(
+      form.getByRole("button", {
+        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1",
+      }),
+    ).toBeVisible()
   })
 
   test("creates, previews, edits, and reopens a graphical sketch-line-axis solid", async ({

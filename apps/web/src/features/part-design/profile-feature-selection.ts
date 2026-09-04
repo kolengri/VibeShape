@@ -89,7 +89,9 @@ export function revolveAxesEqual(left: RevolveAxis, right: RevolveAxis) {
 export function profileFeatureToolKey(tool: ActivePartDesignTool | null) {
   if (!isProfileFeatureTool(tool)) return "inactive"
   if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") {
-    return `${tool.kind}:${tool.profile.sketchId}:${tool.profile.outerBoundaryEntityIds.join(",")}|${tool.profile.holeBoundaryEntityIds.map((hole) => hole.join(",")).join("|")}`
+    const profiles =
+      tool.profiles.length > 0 ? createSketchProfileSet(tool.profiles).profiles : tool.profiles
+    return `${tool.kind}:${canonicalJson(profiles)}`
   }
   return `${tool.kind}:${tool.featureId}`
 }
@@ -106,7 +108,7 @@ export function profilesForFeatureTool(
   snapshot: DocumentSnapshot | undefined,
 ): readonly SketchProfileSelector[] {
   if (!isProfileFeatureTool(tool)) return []
-  if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") return [tool.profile]
+  if (tool.kind === "create-extrusion" || tool.kind === "create-revolve") return tool.profiles
   const feature = snapshot?.features.find(({ id }) => id === tool.featureId)
   if (!feature) return []
   const profileSet =
@@ -114,6 +116,15 @@ export function profilesForFeatureTool(
       ? readExtrusionProfileSet(feature)
       : readRevolveProfileSet(feature)
   return profileSet?.profiles ?? []
+}
+
+export function initialProfileFeatureSelection(
+  profiles: readonly SketchProfileSelector[],
+  activeSketchId: SketchId | null,
+): readonly SketchProfileSelector[] {
+  if (!activeSketchId) return []
+  const activeProfiles = profiles.filter(({ sketchId }) => sketchId === activeSketchId)
+  return activeProfiles.length > 0 ? createSketchProfileSet(activeProfiles).profiles : []
 }
 
 export function profileSupportReference(

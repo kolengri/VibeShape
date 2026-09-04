@@ -613,7 +613,10 @@ export function createEditorSessionStore() {
             state.extrusionDistanceRequest = null
             state.primitivePlacementRequest = null
             state.revolveAngleRequest = null
-            state.activePartDesignTool = tool
+            state.activePartDesignTool =
+              tool.kind === "create-extrusion" || tool.kind === "create-revolve"
+                ? { ...tool, profiles: [...tool.profiles] }
+                : tool
           }),
         switchWorkspace: (workspace) =>
           set((state) => {

@@ -163,6 +163,8 @@ function renderPanel(
   >["state"]["selectedConstraintId"] = null,
   profileSelection?: Readonly<{
     profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
+    profiles?: React.ComponentProps<typeof SketchEditorPanel>["state"]["profiles"]
+    selectedProfile?: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
   }>,
   externalReferenceLabels: React.ComponentProps<
     typeof SketchEditorPanel
@@ -199,12 +201,15 @@ function renderPanel(
               missingExternalReferenceIds,
               failedConstraintIds,
               message: null,
-              profiles: profileSelection?.profile ? [profileSelection.profile] : [],
+              profiles:
+                profileSelection?.profiles ??
+                (profileSelection?.profile ? [profileSelection.profile] : []),
               referenceDimensionLabels,
               repairReferenceId,
               selectedConstraintId,
               selectedEntityIds,
-              selectedProfile: profileSelection?.profile ?? null,
+              selectedProfile:
+                profileSelection?.selectedProfile ?? profileSelection?.profile ?? null,
               supportLabel,
               supportProblem,
               variables,
@@ -509,6 +514,28 @@ describe("SketchEditorPanel", () => {
     expect(screen.queryByRole("button", { name: "Finish sketch" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Extrude selected profile" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Revolve selected profile" })).toBeNull()
+  })
+
+  it("keeps the selected profile highlighted after solved selectors are replaced", () => {
+    const sketch = lineSketch()
+    const boundary = sketch.entities.find((entity) => entity.type === "line")
+    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
+    const profile = {
+      holeBoundaryEntityIds: [],
+      outerBoundaryEntityIds: [boundary.id],
+      schemaVersion: 0,
+      sketchId: sketch.id,
+    } satisfies SketchProfileSelector
+
+    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, {
+      profile,
+      profiles: [{ ...profile }],
+      selectedProfile: profile,
+    })
+
+    expect(screen.getByRole("button", { name: "Profile 1" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
   })
 
   it("adds an applicable geometric constraint from the current selection", async () => {

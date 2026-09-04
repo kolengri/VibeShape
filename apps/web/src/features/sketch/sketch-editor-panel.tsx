@@ -28,6 +28,7 @@ import {
   defaultLengthExpression,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
+import { profileSelectorsEqual } from "../part-design/profile-feature-selection"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
@@ -731,8 +732,8 @@ function SketchProfilesSection({
             key={profile.outerBoundaryEntityIds.join(":")}
             type="button"
             size="xs"
-            variant={selectedProfile === profile ? "secondary" : "outline"}
-            aria-pressed={selectedProfile === profile}
+            variant={profileSelectorsEqual(selectedProfile, profile) ? "secondary" : "outline"}
+            aria-pressed={profileSelectorsEqual(selectedProfile, profile)}
             onClick={() => onSelectedProfileChange(profile)}
           >
             {copy.profile(index + 1)}

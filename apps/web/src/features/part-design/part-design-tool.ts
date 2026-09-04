@@ -25,9 +25,9 @@ export type ActivePartDesignTool =
   | Readonly<{ kind: "edit-box"; featureId: FeatureId }>
   | Readonly<{ kind: "create-cylinder" }>
   | Readonly<{ kind: "edit-cylinder"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-extrusion"; profile: SketchProfileSelector }>
+  | Readonly<{ kind: "create-extrusion"; profiles: readonly SketchProfileSelector[] }>
   | Readonly<{ kind: "edit-extrusion"; featureId: FeatureId }>
-  | Readonly<{ kind: "create-revolve"; profile: SketchProfileSelector }>
+  | Readonly<{ kind: "create-revolve"; profiles: readonly SketchProfileSelector[] }>
   | Readonly<{ kind: "edit-revolve"; featureId: FeatureId }>
   | Readonly<{ kind: "create-subtract" }>
   | Readonly<{ kind: "edit-subtract"; featureId: FeatureId }>

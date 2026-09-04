@@ -94,7 +94,7 @@ describe("editor session store", () => {
 
     store
       .getState()
-      .actions.startPartDesignTool({ kind: "create-extrusion", profile: createProfile() })
+      .actions.startPartDesignTool({ kind: "create-extrusion", profiles: [createProfile()] })
     store.getState().actions.setExtrusionDistance(featureId, 12)
     expect(store.getState().extrusionDistanceRequest).toEqual({
       distance: 12,
@@ -126,7 +126,7 @@ describe("editor session store", () => {
 
     store
       .getState()
-      .actions.startPartDesignTool({ kind: "create-revolve", profile: createProfile() })
+      .actions.startPartDesignTool({ kind: "create-revolve", profiles: [createProfile()] })
     store.getState().actions.setRevolveAngle(featureId, Math.PI)
     expect(store.getState().revolveAngleRequest).toEqual({
       angle: Math.PI,
