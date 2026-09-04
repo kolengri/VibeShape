@@ -557,7 +557,7 @@ Responsive behavior prioritizes model visibility:
 
 Do not hide Apply, Cancel, errors, save state, or the active selection filter solely to fit a narrow viewport.
 
-The compact task-panel sheet opens automatically for a new active command and may be collapsed with a tooltip-labeled icon. Collapsing changes presentation only: the mounted command form, buffered values, validation, preview state, and lifecycle actions are preserved.
+The compact task-panel sheet opens automatically for a parameter-driven feature command and may be collapsed with a tooltip-labeled icon. Sketch support selection and active sketch editing start collapsed because their primary interaction belongs to the 3D or analytical canvas; the same icon opens the mounted accessible fallback without losing draft state. Collapsing changes presentation only: the mounted command form, buffered values, validation, preview state, and lifecycle actions are preserved.
 
 At the 1024 px authoring minimum, direct sketch creation, profile features, view controls, and history remain visible. Sketch modification commands collapse into one tooltip-labeled overflow menu and return to direct icon actions when the desktop width permits.
 

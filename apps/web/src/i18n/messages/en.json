@@ -947,6 +947,8 @@
         "dimensionPlace": "Dimension · Move the pointer to place the annotation, then click.",
         "dimensionInlineEditor": "Dimension value",
         "dimensionExpression": "Driving dimension expression",
+        "creationPrecisionInlineEditor": "Exact geometry value",
+        "creationPrecisionExpression": "Exact geometry expression",
         "dimensionMode": "Dimension mode",
         "driving": "Driving",
         "reference": "Reference",

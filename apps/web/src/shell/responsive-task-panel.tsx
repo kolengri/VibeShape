@@ -29,6 +29,7 @@ function useCompactTaskPanel() {
 
 export type ResponsiveTaskPanelProps = Readonly<{
   activeTaskKey: string | null
+  autoExpandActiveTask?: boolean
   children: ReactNode
   collapseLabel: string
   expandLabel: string
@@ -37,15 +38,20 @@ export type ResponsiveTaskPanelProps = Readonly<{
 /** Keeps one task form mounted while presenting it as a collapsible narrow-screen sheet. */
 export function ResponsiveTaskPanel({
   activeTaskKey,
+  autoExpandActiveTask = true,
   children,
   collapseLabel,
   expandLabel,
 }: ResponsiveTaskPanelProps) {
   const compact = useCompactTaskPanel()
   const contentId = useId()
-  const [expanded, setExpanded] = useState(activeTaskKey !== null)
+  const activeTaskExpanded = activeTaskKey !== null && autoExpandActiveTask
+  const [expanded, setExpanded] = useState(activeTaskExpanded)
 
-  useEffect(() => setExpanded(activeTaskKey !== null), [activeTaskKey])
+  useEffect(
+    () => setExpanded(activeTaskKey !== null && autoExpandActiveTask),
+    [activeTaskKey, autoExpandActiveTask],
+  )
 
   const panelExpanded = !compact || expanded
   const actionLabel = panelExpanded ? collapseLabel : expandLabel

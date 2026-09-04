@@ -1,5 +1,10 @@
 import { expect, test } from "./fixtures"
-import { confirmSketchPlane, selectIdleOriginPlaneInViewport } from "./sketch-helpers"
+import {
+  confirmSketchPlane,
+  drawRectangle,
+  selectIdleOriginPlaneInViewport,
+  selectOriginPlaneInViewport,
+} from "./sketch-helpers"
 
 test.describe("foundation CAD shell", () => {
   test("renders the localized landmark structure", async ({ page }) => {
@@ -213,6 +218,49 @@ test.describe("foundation CAD shell", () => {
 
     await expect(form).toBeVisible()
     await expect(width).toHaveValue("42 mm")
+  })
+
+  test("keeps compact sketch creation on the canvas", async ({ page }) => {
+    const reactStateWarnings: string[] = []
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("Cannot update a component")) {
+        reactStateWarnings.push(message.text())
+      }
+    })
+    await page.setViewportSize({ width: 512, height: 360 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await expect(page.getByRole("button", { name: "Open task panel" })).toBeVisible()
+    await expect(page.getByRole("complementary", { name: "Sketch task panel" })).toBeHidden()
+
+    await selectOriginPlaneInViewport(page, "xy")
+    const drawing = await drawRectangle(page)
+
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    const precision = page.getByRole("form", { name: "Exact geometry value" })
+    const openTaskPanel = page.getByRole("button", { name: "Open task panel" })
+    await expect(precision).toBeVisible()
+    await expect(openTaskPanel).toBeVisible()
+    await openTaskPanel.click()
+    await expect(page.getByRole("complementary", { name: "Sketch task panel" })).toBeVisible()
+
+    const precisionBounds = await precision.boundingBox()
+    if (!precisionBounds) throw new Error("The exact-value editor is not visible.")
+    expect(precisionBounds.x).toBeGreaterThanOrEqual(0)
+    expect(precisionBounds.x + precisionBounds.width).toBeLessThanOrEqual(512)
+    const expression = precision.getByRole("combobox", { name: "Exact geometry expression" })
+    await expression.fill("40 mm")
+    await precision.getByRole("button", { name: "Apply dimension" }).click()
+    await expect(precision.getByText("Vertical", { exact: true })).toBeVisible()
+    await expression.fill("20 mm")
+    await precision.getByRole("button", { name: "Apply dimension" }).click()
+    await expect(precision).toHaveCount(0)
+    expect(reactStateWarnings).toEqual([])
   })
 
   test("boots without external network requests", async ({ page }) => {

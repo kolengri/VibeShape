@@ -440,6 +440,8 @@ recompute the exact crossing from the current solved source coordinates. The bro
 authored point, chooses the labeled earlier-sketch line in the orbitable picker, verifies Coincident and the
 read-only Pierce point, then finishes and reopens the dependent sketch without losing the relation.
 
+Creation-time sketch precision component coverage verifies that Line retains chain continuation, corner Rectangle collects width and height in spatial order, both Circle and Arc workflows expose diameter or radius, and Ellipse and Elliptical Arc expose both authored-axis dimensions beside the new geometry. Accepted literals, bare project-unit values, and multi-step dimensions use stable entity references and replace the geometry draft checkpoint so one Undo removes the complete creation gesture. Escape keeps valid geometry without adding a dimension.
+
 ## Design and UX acceptance
 
 Every core flow is checked against the [Design and UX Guidelines](product/design-and-ux-guidelines.md).

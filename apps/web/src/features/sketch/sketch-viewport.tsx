@@ -3253,7 +3253,12 @@ function constraintGlyphs(
     .filter((glyph): glyph is ConstraintGlyph => glyph !== null)
 }
 
-type SketchViewportSize = Readonly<{ height: number; width: number }>
+type SketchViewportSize = Readonly<{
+  height: number
+  left?: number
+  top?: number
+  width: number
+}>
 
 function constraintAnnotationPosition(
   point: SketchPoint2,
@@ -3274,18 +3279,47 @@ function constraintAnnotationPosition(
   }
 }
 
+const inlineDimensionEditorInset = 8
+const inlineDimensionEditorReservedWidth = 248
+
+function inlineDimensionEditorPosition(
+  point: SketchPoint2,
+  bounds: SketchBounds,
+  viewport: SketchViewportSize,
+): CSSProperties {
+  const position = constraintAnnotationPosition(point, bounds, viewport)
+  if (typeof position.left !== "number") return position
+  const maximumLeft = Math.max(
+    inlineDimensionEditorInset,
+    viewport.width - inlineDimensionEditorReservedWidth - inlineDimensionEditorInset,
+  )
+  return {
+    ...position,
+    left:
+      (viewport.left ?? 0) +
+      Math.min(Math.max(position.left, inlineDimensionEditorInset), maximumLeft),
+    position: "fixed",
+    top: (viewport.top ?? 0) + (typeof position.top === "number" ? position.top : 0),
+  }
+}
+
 function useSketchViewportSize(svgRef: RefObject<SVGSVGElement | null>) {
-  const [size, setSize] = useState<SketchViewportSize>({ height: 0, width: 0 })
+  const [size, setSize] = useState<SketchViewportSize>({ height: 0, left: 0, top: 0, width: 0 })
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
-    const update = (width: number, height: number) => setSize({ width, height })
-    const rectangle = svg.getBoundingClientRect()
-    update(rectangle.width, rectangle.height)
+    const update = () => {
+      const rectangle = svg.getBoundingClientRect()
+      setSize({
+        height: rectangle.height,
+        left: rectangle.left,
+        top: rectangle.top,
+        width: rectangle.width,
+      })
+    }
+    update()
     if (typeof ResizeObserver === "undefined") return
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) update(entry.contentRect.width, entry.contentRect.height)
-    })
+    const observer = new ResizeObserver(() => update())
     observer.observe(svg)
     return () => observer.disconnect()
   }, [svgRef])
@@ -4591,9 +4625,21 @@ type PlacementInput = Readonly<{
 }>
 
 type PlacementUpdate = Readonly<{
+  creationPrecision?: SketchCreationPrecisionRequest
   draft: SketchRecord | null
   nextTool?: SketchEditorTool
   pending: PendingGeometry | null
+}>
+
+type SketchCreationPrecisionStep = Readonly<{
+  anchor: SketchPoint2
+  entityIds: readonly SketchEntityId[]
+  initialKind: SketchDimensionKind
+}>
+
+type SketchCreationPrecisionRequest = Readonly<{
+  activeStep: number
+  steps: readonly SketchCreationPrecisionStep[]
 }>
 
 function placePoint(input: PlacementInput): PlacementUpdate {
@@ -4894,6 +4940,16 @@ function placeLine(input: PlacementInput): PlacementUpdate {
   const nextSketch = appendInferredDirection(withEndRelations, line.id, input.direction)
   return {
     draft: nextSketch,
+    creationPrecision: {
+      activeStep: 0,
+      steps: [
+        {
+          anchor: input.point,
+          entityIds: [line.id],
+          initialKind: "distance",
+        },
+      ],
+    },
     pending: {
       kind: "line",
       start: { kind: "existing", pointId: line.endPointId },
@@ -5028,18 +5084,88 @@ function directionInferenceGlyph(direction: SketchDirectionInference) {
   }
 }
 
+function createdRectanglePoint(
+  result: ReturnType<typeof appendSketchRectangle>,
+  point: SketchPoint2,
+) {
+  const createdIds = new Set<string>(result.createdEntityIds)
+  return result.sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: "point" }> =>
+      entity.type === "point" &&
+      createdIds.has(entity.id) &&
+      entity.x === point.x &&
+      entity.y === point.y,
+  )
+}
+
+function rectangleCreationPrecision(
+  result: ReturnType<typeof appendSketchRectangle>,
+  firstCorner: SketchPoint2,
+  oppositeCorner: SketchPoint2,
+): SketchCreationPrecisionRequest | undefined {
+  const first = createdRectanglePoint(result, firstCorner)
+  const widthEnd = createdRectanglePoint(result, {
+    x: oppositeCorner.x,
+    y: firstCorner.y,
+  })
+  const opposite = createdRectanglePoint(result, oppositeCorner)
+  if (!first || !widthEnd || !opposite) return undefined
+  return {
+    activeStep: 0,
+    steps: [
+      {
+        anchor: { x: (firstCorner.x + oppositeCorner.x) / 2, y: firstCorner.y },
+        entityIds: [first.id, widthEnd.id],
+        initialKind: "horizontal-distance",
+      },
+      {
+        anchor: { x: oppositeCorner.x, y: (firstCorner.y + oppositeCorner.y) / 2 },
+        entityIds: [widthEnd.id, opposite.id],
+        initialKind: "vertical-distance",
+      },
+    ],
+  }
+}
+
+function curveCreationPrecision(
+  result: Readonly<{ createdEntityIds: readonly SketchEntityId[]; sketch: SketchRecord }>,
+  curveType: Exclude<SketchCurveEntity["type"], "line">,
+  steps: readonly Readonly<{
+    anchor: SketchPoint2
+    initialKind: SketchDimensionKind
+  }>[],
+): SketchCreationPrecisionRequest | undefined {
+  const createdIds = new Set<string>(result.createdEntityIds)
+  const curve = result.sketch.entities.find(
+    (entity) => createdIds.has(entity.id) && entity.type === curveType,
+  )
+  return curve
+    ? {
+        activeStep: 0,
+        steps: steps.map((step) => ({ ...step, entityIds: [curve.id] })),
+      }
+    : undefined
+}
+
 function placeRectangle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "rectangle") {
     return { draft: null, pending: { kind: "rectangle", firstCorner: input.point } }
   }
+  const result = appendSketchRectangle(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    firstCorner: input.pending.firstCorner,
+    oppositeCorner: input.point,
+  })
+  const creationPrecision = rectangleCreationPrecision(
+    result,
+    input.pending.firstCorner,
+    input.point,
+  )
   return {
-    draft: appendSketchRectangle(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      firstCorner: input.pending.firstCorner,
-      oppositeCorner: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5197,13 +5323,18 @@ function placeCircle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "circle") {
     return { draft: null, pending: { kind: "circle", center: input.target } }
   }
+  const result = appendSketchCircle(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+    perimeterPoint: input.point,
+  })
+  const creationPrecision = curveCreationPrecision(result, "circle", [
+    { anchor: input.point, initialKind: "diameter" },
+  ])
   return {
-    draft: appendSketchCircle(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      createEntityId: createBrowserSketchEntityId,
-      perimeterPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5222,14 +5353,21 @@ function placeEllipse(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const result = appendSketchEllipse(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+    primaryAxisPoint: input.pending.primaryAxisPoint,
+    secondaryRadiusPoint: input.point,
+  })
+  const primaryAxisPoint = pointForTarget(result.sketch, input.pending.primaryAxisPoint)
+  const creationPrecision = curveCreationPrecision(result, "ellipse", [
+    { anchor: primaryAxisPoint, initialKind: "primary-axis-diameter" },
+    { anchor: input.point, initialKind: "secondary-axis-diameter" },
+  ])
   return {
-    draft: appendSketchEllipse(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      createEntityId: createBrowserSketchEntityId,
-      primaryAxisPoint: input.pending.primaryAxisPoint,
-      secondaryRadiusPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5275,16 +5413,25 @@ function placeEllipticalArcEnd(
   input: PlacementInput,
   pending: Extract<PendingEllipticalArc, { kind: "elliptical-arc-end" }>,
 ): PlacementUpdate {
+  const result = appendSketchEllipticalArc(input.draft, {
+    center: pending.center,
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+    endPoint: { kind: "new", point: input.point },
+    primaryAxisPoint: pending.primaryAxisPoint,
+    secondaryAxisPoint: pending.secondaryAxisPoint,
+    startPoint: pending.startPoint,
+  })
+  const creationPrecision = curveCreationPrecision(result, "elliptical-arc", [
+    {
+      anchor: pointForTarget(result.sketch, pending.primaryAxisPoint),
+      initialKind: "primary-axis-diameter",
+    },
+    { anchor: pending.secondaryAxisPoint, initialKind: "secondary-axis-diameter" },
+  ])
   return {
-    draft: appendSketchEllipticalArc(input.draft, {
-      center: pending.center,
-      construction: input.construction,
-      createEntityId: createBrowserSketchEntityId,
-      endPoint: { kind: "new", point: input.point },
-      primaryAxisPoint: pending.primaryAxisPoint,
-      secondaryAxisPoint: pending.secondaryAxisPoint,
-      startPoint: pending.startPoint,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5385,15 +5532,20 @@ function placeThreePointCircle(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const result = appendSketchThreePointCircle(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    firstPoint: input.pending.first,
+    secondPoint: input.pending.second,
+    thirdPoint: input.target,
+  })
+  const creationPrecision = curveCreationPrecision(result, "circle", [
+    { anchor: input.point, initialKind: "diameter" },
+  ])
   return {
-    draft: appendSketchThreePointCircle(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      firstPoint: input.pending.first,
-      secondPoint: input.pending.second,
-      thirdPoint: input.target,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5408,14 +5560,19 @@ function placeArc(input: PlacementInput): PlacementUpdate {
       pending: { kind: "arc-end", center: input.pending.center, start: input.point },
     }
   }
+  const result = appendSketchArc(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+    start: input.pending.start,
+    end: input.point,
+  })
+  const creationPrecision = curveCreationPrecision(result, "arc", [
+    { anchor: input.point, initialKind: "radius" },
+  ])
   return {
-    draft: appendSketchArc(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      createEntityId: createBrowserSketchEntityId,
-      start: input.pending.start,
-      end: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5459,14 +5616,19 @@ function placeThreePointArc(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const result = appendSketchThreePointArc(input.draft, {
+    construction: input.construction,
+    createEntityId: createBrowserSketchEntityId,
+    firstEndpoint: input.pending.start,
+    secondEndpoint: input.pending.end,
+    pointOnArc: input.point,
+  })
+  const creationPrecision = curveCreationPrecision(result, "arc", [
+    { anchor: input.point, initialKind: "radius" },
+  ])
   return {
-    draft: appendSketchThreePointArc(input.draft, {
-      construction: input.construction,
-      createEntityId: createBrowserSketchEntityId,
-      firstEndpoint: input.pending.start,
-      secondEndpoint: input.pending.end,
-      pointOnArc: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -6012,11 +6174,13 @@ function publishPlacementResolution(
   actions: {
     onDraftChange: SketchDrawingConfiguration["onDraftChange"]
     onEditorToolChange: SketchDrawingConfiguration["onEditorToolChange"]
+    setCreationPrecision: Dispatch<SetStateAction<SketchCreationPrecisionRequest | null>>
     setInference: Dispatch<SetStateAction<SketchPointInference | null>>
     setPending: Dispatch<SetStateAction<PendingGeometry | null>>
   },
 ) {
   if (!resolution.ok) {
+    actions.setCreationPrecision(null)
     actions.setPending(null)
     return
   }
@@ -6024,6 +6188,7 @@ function publishPlacementResolution(
   if (!update) return
   if (update.draft) actions.onDraftChange(update.draft)
   if (update.nextTool) actions.onEditorToolChange(update.nextTool)
+  if (update.creationPrecision) actions.setCreationPrecision(update.creationPrecision)
   actions.setPending(update.pending)
   actions.setInference(null)
 }
@@ -8677,12 +8842,131 @@ function SketchDimensionEditorOverlay({
       initialKind={editor.initialKind}
       mode={editor.kind}
       options={editorOptions}
-      position={constraintAnnotationPosition(editor.anchor, bounds, viewportSize)}
+      position={inlineDimensionEditorPosition(editor.anchor, bounds, viewportSize)}
       variables={configuration.variables}
       onCancel={onClose}
       onSubmit={submit}
     />
   )
+}
+
+function creationPrecisionOption(
+  step: SketchCreationPrecisionStep,
+  draft: SketchRecord,
+  geometry: SketchGeometryPresentation,
+  labels: SketchDimensionLabels,
+): SketchDimensionOption | null {
+  const available = compatibleSketchDimensionToolsForSelection(draft, step.entityIds)
+  if (!available.includes(step.initialKind)) return null
+  const entities = selectedSketchConstraintEntities(draft, step.entityIds)
+  const value = sketchDimensionCanonicalValue(
+    step.initialKind,
+    createSketchDimensionGeometry(geometry, entities),
+  )
+  return value === null ? null : { kind: step.initialKind, label: labels[step.initialKind], value }
+}
+
+function SketchCreationPrecisionOverlay({
+  bounds,
+  configuration,
+  geometry,
+  moveLabel,
+  onAdvance,
+  onClose,
+  request,
+  viewportSize,
+}: Readonly<{
+  bounds: SketchBounds
+  configuration: SketchDrawingConfiguration
+  geometry: SketchGeometryPresentation
+  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onAdvance: () => void
+  onClose: () => void
+  request: SketchCreationPrecisionRequest
+  viewportSize: SketchViewportSize
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  const labels = useMemo(() => dimensionKindLabels(t), [t])
+  const displayUnits = useDocumentDisplayUnits()
+  const draft = configuration.draft
+  if (!draft) return null
+  const step = request.steps[request.activeStep]
+  if (!step) return null
+  const option = creationPrecisionOption(step, draft, geometry, labels)
+  if (!option) return null
+  const submit = (result: SketchDimensionInlineEditorResult) => {
+    if (result.kind !== "create") return
+    const nextDraft = appendSketchConstraint(
+      draft,
+      result.definition,
+      createBrowserSketchConstraintId,
+    )
+    const previousIds = new Set(draft.constraints.map(({ id }) => id))
+    const created = nextDraft.constraints.find(({ id }) => !previousIds.has(id))
+    if (created) moveLabel(created.id, step.anchor)
+    configuration.onDraftChange(nextDraft, "replace")
+    if (request.activeStep + 1 < request.steps.length) onAdvance()
+    else onClose()
+  }
+  return (
+    <SketchDimensionInlineEditor
+      key={`${request.activeStep}:${step.entityIds.join(":")}`}
+      allowReference={false}
+      displayUnits={displayUnits}
+      entities={selectedSketchConstraintEntities(draft, step.entityIds)}
+      expressionAriaLabel={t("creationPrecisionExpression")}
+      formAriaLabel={t("creationPrecisionInlineEditor")}
+      initialKind={step.initialKind}
+      mode="create"
+      onCancel={onClose}
+      onSubmit={submit}
+      options={[option]}
+      position={inlineDimensionEditorPosition(step.anchor, bounds, viewportSize)}
+      variables={configuration.variables}
+    />
+  )
+}
+
+function useSketchCreationPrecision({
+  bounds,
+  configuration,
+  geometry,
+  moveLabel,
+  svgRef,
+  viewportSize,
+}: Readonly<{
+  bounds: SketchBounds
+  configuration: SketchDrawingConfiguration
+  geometry: SketchGeometryPresentation
+  moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  svgRef: RefObject<SVGSVGElement | null>
+  viewportSize: SketchViewportSize
+}>) {
+  const [request, setRequest] = useState<SketchCreationPrecisionRequest | null>(null)
+  const close = useCallback(() => {
+    setRequest(null)
+    requestAnimationFrame(() => svgRef.current?.focus())
+  }, [svgRef])
+  const advance = useCallback(() => {
+    setRequest((current) => (current ? { ...current, activeStep: current.activeStep + 1 } : null))
+  }, [])
+  useEffect(() => setRequest(null), [configuration.editorTool])
+
+  return {
+    overlay: request ? (
+      <SketchCreationPrecisionOverlay
+        bounds={bounds}
+        configuration={configuration}
+        geometry={geometry}
+        moveLabel={moveLabel}
+        onAdvance={advance}
+        onClose={close}
+        request={request}
+        viewportSize={viewportSize}
+      />
+    ) : null,
+    setRequest,
+  }
 }
 
 function useSketchDimensionInteraction({
@@ -8919,6 +9203,76 @@ function beginSketchOffsetFromSource(input: {
   input.setPending({ kind: "offset-distance", lineIds, referenceLineId: entity.id })
 }
 
+function useAppendSketchPlacement(input: {
+  configuration: Pick<
+    SketchDrawingConfiguration,
+    "construction" | "draft" | "editorTool" | "onDraftChange" | "onEditorToolChange"
+  >
+  inferencePresentation: ReturnType<typeof useSketchInferencePresentation>
+  pending: PendingGeometry | null
+  setCreationPrecision: Dispatch<SetStateAction<SketchCreationPrecisionRequest | null>>
+  setInference: Dispatch<SetStateAction<SketchPointInference | null>>
+  setPending: Dispatch<SetStateAction<PendingGeometry | null>>
+}) {
+  const { construction, draft, editorTool, onDraftChange, onEditorToolChange } = input.configuration
+  return useCallback(
+    (target: SketchPointTarget, pointInference?: SketchPointInference) => {
+      if (!draft) return
+      const commitsPlacement = editorTool !== "line" || input.pending?.kind === "line"
+      const materialized = commitsPlacement
+        ? materializeExternalInference({
+            candidatesByInferenceId: input.inferencePresentation.externalCandidatesByInferenceId,
+            draft,
+            inference: pointInference,
+            pending: input.pending,
+          })
+        : { draft, inference: pointInference, pending: input.pending }
+      const point = pointForTarget(materialized.draft, target)
+      const placementInput = placementInputWithInference({
+        construction,
+        draft: materialized.draft,
+        inference: materialized.inference,
+        pending: materialized.pending,
+        point,
+        target,
+      })
+      publishPlacementResolution(safePlacementUpdate(editorTool, placementInput), {
+        onDraftChange,
+        onEditorToolChange,
+        setCreationPrecision: input.setCreationPrecision,
+        setInference: input.setInference,
+        setPending: input.setPending,
+      })
+    },
+    [
+      construction,
+      draft,
+      editorTool,
+      input.inferencePresentation.externalCandidatesByInferenceId,
+      input.pending,
+      input.setCreationPrecision,
+      input.setInference,
+      input.setPending,
+      onDraftChange,
+      onEditorToolChange,
+    ],
+  )
+}
+
+function useSketchDrawingCanvas(
+  sketch: SketchRecord,
+  solution: SolvedSketchWire | null,
+  projectionFrame: ViewerFrame | null | undefined,
+) {
+  const geometry = useMemo(
+    () => createSketchGeometryPresentation(sketch, solution),
+    [sketch, solution],
+  )
+  const viewport = useSketchCanvasViewport(geometry)
+  usePublishSketchProjection(viewport.bounds, projectionFrame)
+  return { geometry, ...viewport }
+}
+
 function SketchDrawing({
   configuration,
   projectionFrame,
@@ -8929,7 +9283,6 @@ function SketchDrawing({
   sketch: SketchRecord
 }) {
   const {
-    construction,
     draft,
     editorTool,
     onDraggingPointChange,
@@ -8942,12 +9295,11 @@ function SketchDrawing({
     solution,
     annotationSolution,
   } = configuration
-  const geometry = useMemo(
-    () => createSketchGeometryPresentation(sketch, solution),
-    [sketch, solution],
+  const { bounds, geometry, setBounds, svgRef, viewportSize } = useSketchDrawingCanvas(
+    sketch,
+    solution,
+    projectionFrame,
   )
-  const { bounds, setBounds, svgRef, viewportSize } = useSketchCanvasViewport(geometry)
-  usePublishSketchProjection(bounds, projectionFrame)
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
   const { cursor, inference, pending, setCursor, setInference, setPending } =
     useSketchPlacementPresentation({ draft, editorTool, selectedEntityIds, sketchId: sketch.id })
@@ -8961,6 +9313,14 @@ function SketchDrawing({
     viewportSize,
   })
   const resetDimensionEditor = dimensions.resetEditor
+  const creationPrecision = useSketchCreationPrecision({
+    bounds,
+    configuration,
+    geometry,
+    moveLabel: dimensions.moveLabel,
+    svgRef,
+    viewportSize,
+  })
   const editable = draft !== null
   const { circularPattern, linearPattern, transform } = useSketchModificationInteractions({
     bounds,
@@ -8985,6 +9345,14 @@ function SketchDrawing({
     externalModelCandidates: configuration.externalModelCandidates,
     geometry,
     inference,
+  })
+  const appendAt = useAppendSketchPlacement({
+    configuration,
+    inferencePresentation,
+    pending,
+    setCreationPrecision: creationPrecision.setRequest,
+    setInference,
+    setPending,
   })
   const handleDragPreview = useCallback((preview: SketchPointDragPreview) => {
     setCursor(preview.point)
@@ -9033,44 +9401,6 @@ function SketchDrawing({
       references: inferencePresentation.references,
       suppressed,
     })
-  const appendAt = useCallback(
-    (target: SketchPointTarget, pointInference?: SketchPointInference) => {
-      if (!draft) return
-      const commitsPlacement = editorTool !== "line" || pending?.kind === "line"
-      const materialized = commitsPlacement
-        ? materializeExternalInference({
-            candidatesByInferenceId: inferencePresentation.externalCandidatesByInferenceId,
-            draft,
-            inference: pointInference,
-            pending,
-          })
-        : { draft, inference: pointInference, pending }
-      const point = pointForTarget(materialized.draft, target)
-      const input = placementInputWithInference({
-        construction,
-        draft: materialized.draft,
-        inference: materialized.inference,
-        pending: materialized.pending,
-        point,
-        target,
-      })
-      publishPlacementResolution(safePlacementUpdate(editorTool, input), {
-        onDraftChange,
-        onEditorToolChange,
-        setInference,
-        setPending,
-      })
-    },
-    [
-      construction,
-      draft,
-      editorTool,
-      inferencePresentation.externalCandidatesByInferenceId,
-      onDraftChange,
-      onEditorToolChange,
-      pending,
-    ],
-  )
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (transform.consumePointerMove(event)) return
     handleSketchPointerMove({
@@ -9294,6 +9624,7 @@ function SketchDrawing({
         svgRef={svgRef}
       />
       {dimensions.overlay}
+      {creationPrecision.overlay}
     </>
   )
 }
