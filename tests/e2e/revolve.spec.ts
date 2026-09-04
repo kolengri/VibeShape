@@ -236,6 +236,56 @@ test.describe("selector-backed revolve", () => {
     })
   }
 
+  test("blocks saving while the exact multi-profile preview has failed", async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await toolbar.getByRole("button", { name: "Box", exact: true }).click()
+    const boxForm = page.getByRole("form", { name: "Create box" })
+    for (const dimension of ["Width", "Depth", "Height"] as const) {
+      await boxForm.getByRole("combobox", { name: dimension }).fill("1 mm")
+    }
+    await expect(boxForm.getByRole("button", { name: "Create box", exact: true })).toBeEnabled({
+      timeout: 120_000,
+    })
+    await boxForm.getByRole("button", { name: "Create box", exact: true }).click()
+
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    await drawTwoProfilesAwayFromOriginAxes(page)
+    await page.getByRole("button", { name: "Finish sketch" }).click()
+
+    const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
+      timeout: 120_000,
+    })
+    await viewport
+      .getByRole("combobox", { name: "Select saved profile" })
+      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
+    const form = page.getByRole("form", { name: "Revolve profile" })
+    await form
+      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+      .click()
+    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
+    await form.getByRole("combobox", { name: "Result operation" }).selectOption("intersect")
+
+    await expect(viewport).toHaveAttribute("data-preview-status", "error", {
+      timeout: 120_000,
+    })
+    const submit = form.getByRole("button", { name: "Create revolve" })
+    await expect(submit).toBeDisabled()
+    await submit.click({ force: true })
+    await expect(page.getByRole("treeitem", { name: "Revolve 1" })).toHaveCount(0)
+  })
+
   test("reselects a profile without closing create or edit", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

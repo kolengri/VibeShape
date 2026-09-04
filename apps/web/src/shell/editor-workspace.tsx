@@ -2054,6 +2054,7 @@ function EditorContent({
 }
 
 function EditorTaskPanel({
+  featurePreviewStatus,
   featureProfileSelections,
   onFeatureProfileRemove,
   onFeatureProfilesClear,
@@ -2065,6 +2066,7 @@ function EditorTaskPanel({
   revolveAxisSelection,
   revolveSelectionPurpose,
 }: {
+  featurePreviewStatus: ReturnType<typeof useFeaturePreview>["status"]
   featureProfileSelections: readonly SketchProfileSelector[]
   onFeatureProfileRemove: (profile: SketchProfileSelector) => void
   onFeatureProfilesClear: () => void
@@ -2087,6 +2089,7 @@ function EditorTaskPanel({
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
       controller={props.controller}
+      featurePreviewStatus={featurePreviewStatus}
       featureProfileSelections={featureProfileSelections}
       onFeatureProfileRemove={onFeatureProfileRemove}
       onFeatureProfilesClear={onFeatureProfilesClear}
@@ -2240,6 +2243,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
         <EditorTaskPanel
+          featurePreviewStatus={featurePreview.status}
           featureProfileSelections={featureProfileSelection.value}
           onFeatureProfileRemove={removeFeatureProfile}
           onFeatureProfilesClear={clearFeatureProfiles}

@@ -13,6 +13,7 @@ import {
   defaultLengthExpression,
   normalizeExpressionWithDisplayUnit,
 } from "../../document/document-display-units"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 
 export type PrimitiveLengthCopy = Readonly<{
   invalidExpression: string
@@ -97,6 +98,7 @@ export type FeatureParameterFormProps<Mode, Copy> = Readonly<{
   onCancel: () => void
   onSave: (baseRevision: number, feature: FeatureRecord) => Promise<FeatureMutationResult>
   onSaved: () => void
+  previewStatus?: FeaturePreviewState["status"] | undefined
   variables: readonly VariableDefinition[]
 }>
 

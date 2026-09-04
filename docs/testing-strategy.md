@@ -171,6 +171,12 @@ bounds, meshes, single-solid validity, and native ownership against a Box target
 a persisted new-body Revolve into Remove, verifies its disposable preview, saves it, reloads the project,
 and restores both the operation and friendly target selection.
 
+Preview-commit coverage requires every previewed feature form to invalidate the previous worker
+acknowledgement immediately when its draft changes. Shared action tests keep Create, Apply, and Update
+disabled for idle, loading, and error states and enable submission only for ready. The cross-browser
+Revolve regression constructs a schema-valid multi-profile Intersect whose exact result is empty,
+observes the failed preview, and proves that no semantic feature can be committed.
+
 Reference-dimension coverage validates strict value-less domain and protocol records for distance,
 projected distance, angle, radius, and diameter; rejects value tampering; and proves that compilation
 adds no native constraint, handle, or solver-state change. Component coverage derives the displayed
