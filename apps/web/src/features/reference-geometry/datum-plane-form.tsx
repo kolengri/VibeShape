@@ -167,21 +167,10 @@ function DatumPlanePreviewSync({
   values: DatumPlaneFormValues
   variables: Parameters<typeof parsePrimitiveLengthExpression>[1]
 }>) {
+  const parsed = parsedDatumPlaneRecord(values, mode, featureId, variables, copy, displayUnit)
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, variables },
     onPreviewChange,
-    values,
-    resolve: (currentValues, input) => {
-      const parsed = parsedDatumPlaneRecord(
-        currentValues,
-        input.mode,
-        featureId,
-        input.variables,
-        input.copy,
-        input.displayUnit,
-      )
-      return parsed.ok ? parsed.feature : null
-    },
+    preview: parsed.ok ? parsed.feature : null,
   })
   return null
 }
@@ -195,6 +184,7 @@ export function DatumPlaneForm({
   onSave,
   onSaved,
   onPreviewChange,
+  previewStatus,
   variables,
 }: FeatureParameterFormProps<DatumPlaneFormMode, DatumPlaneFormCopy> &
   Readonly<{ onPreviewChange?: (feature: FeatureRecord | null) => void }>) {
@@ -268,6 +258,7 @@ export function DatumPlaneForm({
             cancelLabel={copy.cancel}
             disabled={disabled}
             onCancel={onCancel}
+            previewStatus={previewStatus}
           />
         }
         copy={copy}

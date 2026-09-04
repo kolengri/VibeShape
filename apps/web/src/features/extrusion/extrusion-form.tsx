@@ -39,6 +39,7 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import type { ExtrusionDistanceRequest } from "./extrusion-distance-manipulator"
 import {
   ExtrusionParameterPanel,
@@ -205,28 +206,18 @@ function ExtrusionPreviewSync({
   values: ExtrusionFormValues
   variables: readonly VariableDefinition[]
 }) {
+  const parsed = parseValues(values, variables, options, copy, displayUnit)
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, options, variables },
     onPreviewChange,
-    values,
-    resolve: (currentValues, input) => {
-      const parsed = parseValues(
-        currentValues,
-        input.variables,
-        input.options,
-        input.copy,
-        input.displayUnit,
-      )
-      return parsed.ok
-        ? extrusionRecord(
-            input.mode,
-            featureId,
-            parsed.parameters,
-            parsed.targetFeatureId,
-            parsed.supportReference,
-          )
-        : null
-    },
+    preview: parsed.ok
+      ? extrusionRecord(
+          mode,
+          featureId,
+          parsed.parameters,
+          parsed.targetFeatureId,
+          parsed.supportReference,
+        )
+      : null,
   })
   return null
 }
@@ -324,6 +315,7 @@ export type ExtrusionFormProps = Readonly<{
   profileLabels?: readonly string[] | undefined
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
+  previewStatus?: FeaturePreviewState["status"] | undefined
   variables: readonly VariableDefinition[]
 }>
 
@@ -598,6 +590,7 @@ function ExtrusionFormView({ controller }: { controller: ExtrusionFormController
             cancelLabel={controller.copy.cancel}
             disabled={controller.disabled}
             onCancel={controller.onCancel}
+            previewStatus={controller.previewStatus}
           />
         }
         copy={controller.copy}

@@ -176,19 +176,10 @@ function CylinderPreviewSync({
   values: CylinderFormValues
   variables: readonly VariableDefinition[]
 }>) {
+  const parsed = parseCylinderValues(values, variables, copy, displayUnit)
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, variables },
     onPreviewChange,
-    values,
-    resolve: (currentValues, input) => {
-      const parsed = parseCylinderValues(
-        currentValues,
-        input.variables,
-        input.copy,
-        input.displayUnit,
-      )
-      return parsed.ok ? cylinderFeatureRecord(input.mode, featureId, parsed.parameters) : null
-    },
+    preview: parsed.ok ? cylinderFeatureRecord(mode, featureId, parsed.parameters) : null,
   })
   return null
 }
@@ -203,6 +194,7 @@ export function CylinderForm({
   onSave,
   onSaved,
   placementRequest,
+  previewStatus,
   variables,
 }: CylinderFormProps) {
   const {
@@ -326,6 +318,7 @@ export function CylinderForm({
             cancelLabel={copy.cancel}
             disabled={disabled}
             onCancel={onCancel}
+            previewStatus={previewStatus}
           />
         }
         copy={copy}

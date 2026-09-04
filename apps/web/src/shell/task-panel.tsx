@@ -57,6 +57,7 @@ import {
   profileSelectorsEqual,
   profileSupportReference,
 } from "../features/part-design/profile-feature-selection"
+import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import {
   DatumPlaneForm,
   type DatumPlaneFormMode,
@@ -88,6 +89,7 @@ type TaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool | null
   controller: DocumentControllerState
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
+  featurePreviewStatus: FeaturePreviewState["status"]
   onCloseTool: () => void
   onCreateBox: () => void
   onCreateCylinder: () => void
@@ -625,6 +627,7 @@ function ExtrusionTaskPanel({
   onProfilesClear,
   onPreviewChange,
   options,
+  previewStatus,
   report,
 }: {
   distanceRequest: ExtrusionDistanceRequest | null
@@ -634,6 +637,7 @@ function ExtrusionTaskPanel({
   onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   options: readonly ExtrusionTargetOption[]
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -669,6 +673,7 @@ function ExtrusionTaskPanel({
         onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
+        previewStatus={previewStatus}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -703,12 +708,12 @@ function RevolveTaskPanel({
   onAxisChange,
   onAxisSelectionRequest,
   onCloseTool,
-  onPreviewChange,
   onProfileRemove,
   onProfilesClear,
   onProfileSelectionRequest,
   options,
   profileSelectionActive,
+  preview,
   report,
 }: {
   angleRequest: RevolveAngleRequest | null
@@ -720,12 +725,15 @@ function RevolveTaskPanel({
     | undefined
   onAxisSelectionRequest?: (() => void) | undefined
   onCloseTool: () => void
-  onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onProfilesClear?: (() => void) | undefined
   onProfileSelectionRequest?: (() => void) | undefined
   options: readonly { id: FeatureRecord["id"]; label: string }[]
   profileSelectionActive?: boolean | undefined
+  preview: Readonly<{
+    onChange: TaskPanelProps["onFeaturePreviewChange"]
+    status: FeaturePreviewState["status"]
+  }>
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -764,10 +772,11 @@ function RevolveTaskPanel({
         onCancel={onCloseTool}
         onAxisChange={onAxisChange}
         onAxisSelectionRequest={onAxisSelectionRequest}
-        onPreviewChange={onPreviewChange}
+        onPreviewChange={preview.onChange}
         onProfileSelectionRequest={onProfileSelectionRequest}
         onSave={task.onSave}
         onSaved={onCloseTool}
+        previewStatus={preview.status}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -779,12 +788,14 @@ function BoxTaskPanel({
   onCloseTool,
   onPreviewChange,
   placementRequest,
+  previewStatus,
   report,
 }: {
   mode: BoxFormMode
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   placementRequest: PrimitivePlacementRequest | null
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -806,6 +817,7 @@ function BoxTaskPanel({
         onSave={task.onSave}
         onSaved={onCloseTool}
         placementRequest={placementRequest}
+        previewStatus={previewStatus}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -816,11 +828,13 @@ function DatumPlaneTaskPanel({
   mode,
   onCloseTool,
   onPreviewChange,
+  previewStatus,
   report,
 }: {
   mode: DatumPlaneFormMode
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -840,6 +854,7 @@ function DatumPlaneTaskPanel({
         onPreviewChange={onPreviewChange}
         onSave={task.onSave}
         onSaved={onCloseTool}
+        previewStatus={previewStatus}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -851,12 +866,14 @@ function CylinderTaskPanel({
   onCloseTool,
   onPreviewChange,
   placementRequest,
+  previewStatus,
   report,
 }: {
   mode: CylinderFormMode
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   placementRequest: PrimitivePlacementRequest | null
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const snapshot = report.snapshot
@@ -878,6 +895,7 @@ function CylinderTaskPanel({
         onSave={task.onSave}
         onSaved={onCloseTool}
         placementRequest={placementRequest}
+        previewStatus={previewStatus}
       />
       <EditFeatureDeleteAction mode={mode} report={report} onDeleted={onCloseTool} />
     </aside>
@@ -1208,12 +1226,14 @@ function ActiveBoxTaskPanel({
   onCloseTool,
   onPreviewChange,
   placementRequest,
+  previewStatus,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-box" | "edit-box" }>
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   placementRequest: PrimitivePlacementRequest | null
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -1226,6 +1246,7 @@ function ActiveBoxTaskPanel({
       onCloseTool={onCloseTool}
       onPreviewChange={onPreviewChange}
       placementRequest={placementRequest}
+      previewStatus={previewStatus}
     />
   ) : null
 }
@@ -1235,12 +1256,14 @@ function ActiveCylinderTaskPanel({
   onCloseTool,
   onPreviewChange,
   placementRequest,
+  previewStatus,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-cylinder" | "edit-cylinder" }>
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
   placementRequest: PrimitivePlacementRequest | null
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel")
@@ -1257,6 +1280,7 @@ function ActiveCylinderTaskPanel({
       onCloseTool={onCloseTool}
       onPreviewChange={onPreviewChange}
       placementRequest={placementRequest}
+      previewStatus={previewStatus}
     />
   ) : null
 }
@@ -1265,11 +1289,13 @@ function ActiveDatumPlaneTaskPanel({
   activeTool,
   onCloseTool,
   onPreviewChange,
+  previewStatus,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-datum-plane" | "edit-datum-plane" }>
   onCloseTool: () => void
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.datumPlane")
@@ -1281,6 +1307,7 @@ function ActiveDatumPlaneTaskPanel({
       mode={mode}
       onCloseTool={onCloseTool}
       onPreviewChange={onPreviewChange}
+      previewStatus={previewStatus}
     />
   ) : null
 }
@@ -1321,6 +1348,7 @@ function ActiveExtrusionTaskPanel({
   onProfileRemove,
   onProfilesClear,
   onPreviewChange,
+  previewStatus,
   report,
 }: {
   activeTool: Extract<ActivePartDesignTool, { kind: "create-extrusion" | "edit-extrusion" }>
@@ -1330,6 +1358,7 @@ function ActiveExtrusionTaskPanel({
   onProfileRemove?: ((profile: SketchProfileSelector) => void) | undefined
   onProfilesClear?: (() => void) | undefined
   onPreviewChange: TaskPanelProps["onFeaturePreviewChange"]
+  previewStatus: FeaturePreviewState["status"]
   report: NonNullable<DocumentControllerState["report"]>
 }) {
   const t = useTranslations("app.shell.taskPanel.extrusion")
@@ -1365,6 +1394,7 @@ function ActiveExtrusionTaskPanel({
       onProfileRemove={onProfileRemove}
       onProfilesClear={onProfilesClear}
       onPreviewChange={onPreviewChange}
+      previewStatus={previewStatus}
     />
   )
 }
@@ -1400,6 +1430,7 @@ function ActiveSubtractTaskPanel({
 type ActiveTaskPanelProps = Readonly<{
   activeTool: ActivePartDesignTool
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
+  featurePreviewStatus: FeaturePreviewState["status"]
   featureProfileSelections?: readonly SketchProfileSelector[] | undefined
   onFeatureProfileRemove?: TaskPanelProps["onFeatureProfileRemove"] | undefined
   onFeatureProfilesClear?: TaskPanelProps["onFeatureProfilesClear"] | undefined
@@ -1418,6 +1449,7 @@ type ActiveTaskPanelProps = Readonly<{
 
 function BoxToolTaskPanel({
   activeTool,
+  featurePreviewStatus,
   onCloseTool,
   onFeaturePreviewChange,
   primitivePlacementRequest,
@@ -1430,6 +1462,7 @@ function BoxToolTaskPanel({
       onCloseTool={onCloseTool}
       onPreviewChange={onFeaturePreviewChange}
       placementRequest={primitivePlacementRequest}
+      previewStatus={featurePreviewStatus}
       report={report}
     />
   )
@@ -1437,6 +1470,7 @@ function BoxToolTaskPanel({
 
 function CylinderToolTaskPanel({
   activeTool,
+  featurePreviewStatus,
   onCloseTool,
   onFeaturePreviewChange,
   primitivePlacementRequest,
@@ -1449,6 +1483,7 @@ function CylinderToolTaskPanel({
       onCloseTool={onCloseTool}
       onPreviewChange={onFeaturePreviewChange}
       placementRequest={primitivePlacementRequest}
+      previewStatus={featurePreviewStatus}
       report={report}
     />
   )
@@ -1456,6 +1491,7 @@ function CylinderToolTaskPanel({
 
 function DatumPlaneToolTaskPanel({
   activeTool,
+  featurePreviewStatus,
   onCloseTool,
   onFeaturePreviewChange,
   report,
@@ -1467,6 +1503,7 @@ function DatumPlaneToolTaskPanel({
       activeTool={activeTool}
       onCloseTool={onCloseTool}
       onPreviewChange={onFeaturePreviewChange}
+      previewStatus={featurePreviewStatus}
       report={report}
     />
   )
@@ -1476,6 +1513,7 @@ function ExtrusionToolTaskPanel({
   activeTool,
   extrusionDistanceRequest,
   featureProfileSelections,
+  featurePreviewStatus,
   onCloseTool,
   onFeatureProfileRemove,
   onFeatureProfilesClear,
@@ -1492,6 +1530,7 @@ function ExtrusionToolTaskPanel({
       onProfileRemove={onFeatureProfileRemove}
       onProfilesClear={onFeatureProfilesClear}
       onPreviewChange={onFeaturePreviewChange}
+      previewStatus={featurePreviewStatus}
       report={report}
     />
   )
@@ -1525,12 +1564,15 @@ function RevolveToolTaskPanel(props: ActiveTaskPanelProps) {
       onAxisChange={props.onRevolveAxisChange}
       onAxisSelectionRequest={props.onRevolveAxisSelectionRequest}
       onCloseTool={props.onCloseTool}
-      onPreviewChange={props.onFeaturePreviewChange}
       onProfileRemove={props.onFeatureProfileRemove}
       onProfilesClear={props.onFeatureProfilesClear}
       onProfileSelectionRequest={props.onRevolveProfileSelectionRequest}
       options={options}
       profileSelectionActive={props.revolveProfileSelectionActive}
+      preview={{
+        onChange: props.onFeaturePreviewChange,
+        status: props.featurePreviewStatus,
+      }}
       report={props.report}
     />
   ) : (
@@ -1591,6 +1633,7 @@ function ModelTaskPanel(props: TaskPanelProps) {
         activeTool={props.activeTool}
         extrusionDistanceRequest={props.extrusionDistanceRequest}
         featureProfileSelections={props.featureProfileSelections}
+        featurePreviewStatus={props.featurePreviewStatus}
         onFeatureProfileRemove={props.onFeatureProfileRemove}
         onFeatureProfilesClear={props.onFeatureProfilesClear}
         report={report}

@@ -1,26 +1,24 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useLayoutEffect, useRef } from "react"
 
-export function useDebouncedFeaturePreview<Values, Input, Preview>({
-  input,
+export function useDebouncedFeaturePreview<Preview>({
   onPreviewChange,
-  resolve,
-  values,
+  preview,
 }: Readonly<{
-  input: Input
   onPreviewChange: (preview: Preview | null) => void
-  resolve: (values: Values, input: Input) => Preview | null
-  values: Values
+  preview: Preview | null
 }>) {
-  const current = useRef({ input, resolve })
-  current.current = { input, resolve }
+  const currentPreview = useRef(preview)
+  currentPreview.current = preview
+  // Schema-parsed preview records are plain data, so this key tracks semantic candidate identity.
+  const previewKey = JSON.stringify(preview)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    onPreviewChange(null)
     const timeout = window.setTimeout(() => {
-      const latest = current.current
-      onPreviewChange(latest.resolve(values, latest.input))
+      onPreviewChange(currentPreview.current)
     }, 180)
     return () => window.clearTimeout(timeout)
-  }, [onPreviewChange, values])
+  }, [onPreviewChange, previewKey])
 
   useEffect(() => () => onPreviewChange(null), [onPreviewChange])
 }

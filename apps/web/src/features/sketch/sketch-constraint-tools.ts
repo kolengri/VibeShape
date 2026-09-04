@@ -80,10 +80,14 @@ function entitiesOfType<Type extends SketchEntity["type"]>(
   )
 }
 
+function single<Value>(values: readonly Value[]): Value | null {
+  return values.length === 1 ? (values[0] ?? null) : null
+}
+
 function pair<Value>(values: readonly Value[]): readonly [Value, Value] | null {
   const first = values[0]
   const second = values[1]
-  return values.length === 2 && first && second ? [first, second] : null
+  return values.length === 2 && first !== undefined && second !== undefined ? [first, second] : null
 }
 
 function roundCurves(entities: readonly SketchEntity[]) {
@@ -99,9 +103,9 @@ function axisConstraint(
   type: "horizontal" | "vertical",
   entities: readonly SketchEntity[],
 ): SketchConstraintDefinition | null {
-  const lines = entitiesOfType(entities, "line")
-  if (entities.length === 1 && lines.length === 1 && lines[0]) {
-    return { type, lineId: lines[0].id }
+  const line = single(entitiesOfType(entities, "line"))
+  if (entities.length === 1 && line) {
+    return { type, lineId: line.id }
   }
   const points = pair(entitiesOfType(entities, "point"))
   return entities.length === 2 && points
@@ -151,74 +155,66 @@ const constraintBuilders = {
       : null
   },
   fixed: (entities) => {
-    const points = entitiesOfType(entities, "point")
-    return entities.length === 1 && points.length === 1 && points[0]
-      ? { type: "fixed", pointId: points[0].id }
-      : null
+    const point = single(entitiesOfType(entities, "point"))
+    return entities.length === 1 && point ? { type: "fixed", pointId: point.id } : null
   },
   horizontal: (entities) => axisConstraint("horizontal", entities),
   midpoint: (entities) => {
-    const points = entitiesOfType(entities, "point")
-    const lines = entitiesOfType(entities, "line")
-    const arcs = entitiesOfType(entities, "arc")
-    if (entities.length !== 2 || points.length !== 1 || !points[0]) return null
-    if (lines.length === 1 && lines[0]) {
-      return { type: "midpoint", pointId: points[0].id, lineId: lines[0].id }
+    const point = single(entitiesOfType(entities, "point"))
+    if (entities.length !== 2 || !point) return null
+    const line = single(entitiesOfType(entities, "line"))
+    if (line) {
+      return { type: "midpoint", pointId: point.id, lineId: line.id }
     }
-    return arcs.length === 1 && arcs[0]
-      ? { type: "arc-midpoint", pointId: points[0].id, arcId: arcs[0].id }
-      : null
+    const arc = single(entitiesOfType(entities, "arc"))
+    return arc ? { type: "arc-midpoint", pointId: point.id, arcId: arc.id } : null
   },
   parallel: (entities) => pairedLineConstraint("parallel", entities),
   perpendicular: (entities) => pairedLineConstraint("perpendicular", entities),
   "point-on-curve": (entities) => {
-    const points = entitiesOfType(entities, "point")
-    if (entities.length !== 2 || points.length !== 1 || !points[0]) return null
-    const roundTarget = roundCurves(entities)[0]
+    const point = single(entitiesOfType(entities, "point"))
+    if (entities.length !== 2 || !point) return null
+    const roundTarget = single(roundCurves(entities))
     if (roundTarget) {
-      return { type: "point-on-curve", pointId: points[0].id, curveId: roundTarget.id }
+      return { type: "point-on-curve", pointId: point.id, curveId: roundTarget.id }
     }
-    const ellipseTarget = entitiesOfType(entities, "ellipse")[0]
+    const ellipseTarget = single(entitiesOfType(entities, "ellipse"))
     if (ellipseTarget) {
-      return { type: "point-on-ellipse", pointId: points[0].id, ellipseId: ellipseTarget.id }
+      return { type: "point-on-ellipse", pointId: point.id, ellipseId: ellipseTarget.id }
     }
-    const ellipticalArcTarget = entitiesOfType(entities, "elliptical-arc")[0]
+    const ellipticalArcTarget = single(entitiesOfType(entities, "elliptical-arc"))
     return ellipticalArcTarget
       ? {
           type: "point-on-elliptical-arc",
-          pointId: points[0].id,
+          pointId: point.id,
           ellipticalArcId: ellipticalArcTarget.id,
         }
       : null
   },
   "point-on-line": (entities) => {
-    const points = entitiesOfType(entities, "point")
-    const lines = entitiesOfType(entities, "line")
-    return entities.length === 2 &&
-      points.length === 1 &&
-      points[0] &&
-      lines.length === 1 &&
-      lines[0]
-      ? { type: "point-on-line", pointId: points[0].id, lineId: lines[0].id }
+    const point = single(entitiesOfType(entities, "point"))
+    const line = single(entitiesOfType(entities, "line"))
+    return entities.length === 2 && point && line
+      ? { type: "point-on-line", pointId: point.id, lineId: line.id }
       : null
   },
   symmetric: (entities) => {
     const points = pair(entitiesOfType(entities, "point"))
-    const lines = entitiesOfType(entities, "line")
-    return entities.length === 3 && points && lines.length === 1 && lines[0]
+    const line = single(entitiesOfType(entities, "line"))
+    return entities.length === 3 && points && line
       ? {
           type: "symmetric",
           firstPointId: points[0].id,
           secondPointId: points[1].id,
-          lineId: lines[0].id,
+          lineId: line.id,
         }
       : null
   },
   tangent: (entities) => {
-    const lines = entitiesOfType(entities, "line")
-    const arcs = entitiesOfType(entities, "arc")
-    return entities.length === 2 && lines.length === 1 && lines[0] && arcs.length === 1 && arcs[0]
-      ? { type: "tangent", lineId: lines[0].id, arcId: arcs[0].id }
+    const line = single(entitiesOfType(entities, "line"))
+    const arc = single(entitiesOfType(entities, "arc"))
+    return entities.length === 2 && line && arc
+      ? { type: "tangent", lineId: line.id, arcId: arc.id }
       : null
   },
   vertical: (entities) => axisConstraint("vertical", entities),

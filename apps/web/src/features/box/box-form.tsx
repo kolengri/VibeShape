@@ -195,14 +195,10 @@ function BoxPreviewSync({
   values: BoxFormValues
   variables: readonly VariableDefinition[]
 }>) {
+  const parsed = parseBoxValues(values, variables, copy, displayUnit)
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, variables },
     onPreviewChange,
-    values,
-    resolve: (currentValues, input) => {
-      const parsed = parseBoxValues(currentValues, input.variables, input.copy, input.displayUnit)
-      return parsed.ok ? boxFeatureRecord(input.mode, featureId, parsed.parameters) : null
-    },
+    preview: parsed.ok ? boxFeatureRecord(mode, featureId, parsed.parameters) : null,
   })
   return null
 }
@@ -217,6 +213,7 @@ export function BoxForm({
   onSave,
   onSaved,
   placementRequest,
+  previewStatus,
   variables,
 }: BoxFormProps) {
   const {
@@ -340,6 +337,7 @@ export function BoxForm({
             cancelLabel={copy.cancel}
             disabled={disabled}
             onCancel={onCancel}
+            previewStatus={previewStatus}
           />
         }
         copy={copy}

@@ -42,6 +42,7 @@ import {
 import { TaskPanelFormActions } from "../part-design/task-panel-form-actions"
 import { useDebouncedFeaturePreview } from "../part-design/use-debounced-feature-preview"
 import { useParameterFormState } from "../part-design/use-parameter-form-state"
+import type { FeaturePreviewState } from "../preview/use-feature-preview"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import type { RevolveAngleRequest } from "./revolve-angle-manipulator"
 import { RevolveParameterPanel, type RevolveParameterPanelCopy } from "./revolve-parameter-panel"
@@ -330,28 +331,12 @@ function RevolvePreviewSync({
   values: Values
   variables: readonly VariableDefinition[]
 }) {
+  const parsed = parseValues(values, variables, displayUnit, copy, options)
   useDebouncedFeaturePreview({
-    input: { copy, displayUnit, mode, options, variables },
     onPreviewChange,
-    values,
-    resolve: (currentValues, input) => {
-      const parsed = parseValues(
-        currentValues,
-        input.variables,
-        input.displayUnit,
-        input.copy,
-        input.options,
-      )
-      return parsed.ok
-        ? record(
-            input.mode,
-            featureId,
-            parsed.parameters,
-            parsed.targetFeatureId,
-            parsed.supportReference,
-          )
-        : null
-    },
+    preview: parsed.ok
+      ? record(mode, featureId, parsed.parameters, parsed.targetFeatureId, parsed.supportReference)
+      : null,
   })
   return null
 }
@@ -475,6 +460,7 @@ export type RevolveFormProps = Readonly<{
   onProfileRemove?: ((index: number) => void) | undefined
   onProfilesClear?: (() => void) | undefined
   profileSelectionActive?: boolean
+  previewStatus?: FeaturePreviewState["status"] | undefined
   variables: readonly VariableDefinition[]
 }>
 
@@ -735,6 +721,7 @@ function RevolveFormView({ controller }: { controller: RevolveFormController }) 
             cancelLabel={controller.copy.cancel}
             disabled={controller.disabled}
             onCancel={controller.onCancel}
+            previewStatus={controller.previewStatus}
           />
         }
         copy={controller.copy}

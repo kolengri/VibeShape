@@ -21,7 +21,13 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-function FormActionsHarness({ onSubmit }: { onSubmit: () => Promise<void> }) {
+function FormActionsHarness({
+  onSubmit,
+  previewStatus,
+}: {
+  onSubmit: () => Promise<void>
+  previewStatus?: "error" | "idle" | "loading" | "ready"
+}) {
   const form = useAppForm({ defaultValues: { name: "Feature" }, onSubmit })
   return (
     <TooltipProvider>
@@ -31,6 +37,7 @@ function FormActionsHarness({ onSubmit }: { onSubmit: () => Promise<void> }) {
           ariaLabel="Feature actions"
           cancelLabel="Cancel"
           onCancel={vi.fn()}
+          {...(previewStatus ? { previewStatus } : {})}
         />
       </Form>
     </TooltipProvider>
@@ -42,6 +49,29 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 afterEach(cleanup)
 
 describe("TaskPanelFormActions", () => {
+  it.each(["idle", "loading", "error"] as const)(
+    "blocks submission while the exact preview is %s",
+    async (previewStatus) => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn(async () => undefined)
+      render(<FormActionsHarness onSubmit={onSubmit} previewStatus={previewStatus} />)
+
+      const accept = screen.getByRole("button", { name: "Create feature" }) as HTMLButtonElement
+      expect(accept.disabled).toBe(true)
+      await user.click(accept)
+      expect(onSubmit).not.toHaveBeenCalled()
+    },
+  )
+
+  it("allows submission after the exact preview is ready", async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => undefined)
+    render(<FormActionsHarness onSubmit={onSubmit} previewStatus="ready" />)
+
+    await user.click(screen.getByRole("button", { name: "Create feature" }))
+    expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
   it("submits once and exposes the pending state through the compact accept action", async () => {
     const user = userEvent.setup()
     const operation = deferred<void>()
