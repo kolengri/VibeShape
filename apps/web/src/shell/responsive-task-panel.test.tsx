@@ -106,4 +106,34 @@ describe("ResponsiveTaskPanel", () => {
       screen.getByText("Task content").closest(".responsive-task-panel__content"),
     ).toHaveProperty("hidden", false)
   })
+
+  it("keeps a canvas-first task collapsed when its active state changes", () => {
+    setCompactLayout(true)
+    const { rerender } = render(
+      <ResponsiveTaskPanel
+        activeTaskKey={null}
+        autoExpandActiveTask={false}
+        collapseLabel="Collapse task panel"
+        expandLabel="Open task panel"
+      >
+        <aside aria-label="Task panel">Sketch details</aside>
+      </ResponsiveTaskPanel>,
+    )
+
+    rerender(
+      <ResponsiveTaskPanel
+        activeTaskKey="sketch:edit"
+        autoExpandActiveTask={false}
+        collapseLabel="Collapse task panel"
+        expandLabel="Open task panel"
+      >
+        <aside aria-label="Task panel">Sketch details</aside>
+      </ResponsiveTaskPanel>,
+    )
+
+    expect(
+      screen.getByText("Sketch details").closest(".responsive-task-panel__content"),
+    ).toHaveProperty("hidden", true)
+    expect(screen.getByRole("button", { name: "Open task panel" })).toBeTruthy()
+  })
 })

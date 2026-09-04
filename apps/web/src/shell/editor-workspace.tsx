@@ -2246,6 +2246,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
         />
         <ResponsiveTaskPanel
           activeTaskKey={taskPanelActivityKey(props)}
+          autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
           collapseLabel={taskPanelT("collapsePanel")}
           expandLabel={taskPanelT("expandPanel")}
         >

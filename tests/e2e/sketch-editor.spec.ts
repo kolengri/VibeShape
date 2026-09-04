@@ -1748,6 +1748,40 @@ test.describe("full sketch editor", () => {
     ).toHaveValue("35 mm")
   })
 
+  test("sets and persists exact rectangle dimensions during creation", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    await drawRectangle(page)
+
+    const precision = page.getByRole("form", { name: "Exact geometry value" })
+    const expression = precision.getByRole("combobox", { name: "Exact geometry expression" })
+    await expect(precision.getByText("Horizontal", { exact: true })).toBeVisible()
+    await expression.fill("80 mm")
+    await precision.getByRole("button", { name: "Apply dimension" }).click()
+
+    await expect(precision.getByText("Vertical", { exact: true })).toBeVisible()
+    await expression.fill("30 mm")
+    await precision.getByRole("button", { name: "Apply dimension" }).click()
+    await expect(precision).toHaveCount(0)
+
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+
+    await taskPanel.getByRole("button", { name: "Finish sketch", exact: true }).click()
+    await expect(page.getByRole("treeitem", { name: "Sketch 1" })).toBeVisible()
+    await page.reload()
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
+    await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+  })
+
   test("persists a reference dimension without driving sketch geometry", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

@@ -705,6 +705,26 @@ describe("editor session store", () => {
     expect(store.getState().sketch.selectedEntityIds).toEqual([])
   })
 
+  it("coalesces multi-step creation precision into the geometry undo checkpoint", () => {
+    const store = createEditorSessionStore()
+    const initial = createSketch("Before rectangle")
+    const geometry = createSketch("Rectangle geometry")
+    const width = createSketch("Rectangle with width")
+    const widthAndHeight = createSketch("Rectangle with width and height")
+    store.getState().actions.beginSketchEdit(initial)
+
+    store.getState().actions.setSketchDraft(geometry)
+    store.getState().actions.setSketchDraft(width, "replace")
+    store.getState().actions.setSketchDraft(widthAndHeight, "replace")
+
+    expect(store.getState().sketch).toMatchObject({
+      draft: widthAndHeight,
+      undoStack: [initial],
+    })
+    store.getState().actions.undoSketchDraft()
+    expect(store.getState().sketch.draft).toBe(initial)
+  })
+
   it("keeps entity and constraint selection mutually exclusive", () => {
     const store = createEditorSessionStore()
     store.getState().actions.beginSketchEdit(createSketch())

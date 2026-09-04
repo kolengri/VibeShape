@@ -119,7 +119,7 @@ These commands require a form only for optional exact refinement. Pointer target
 | Dimension creation | Canvas selection focuses a remote task-panel form | Canvas selection enters annotation placement, then opens an anchored inline expression editor |
 | Dimension editing | Clicking a label selects it and exposes the panel editor | Double-click edits at the label; drag moves the annotation; the panel remains an accessible fallback |
 | Dimension meaning | Kind is chosen mainly from a select field | Pointer direction, selected entity types, and placement side determine the default kind; a compact menu resolves genuine ambiguity |
-| Geometry precision | Exact values are generally added after creation | Supported tools show transient length, radius, angle, width, and count input immediately after placement |
+| Geometry precision | Line, corner Rectangle, center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now open anchored exact-value fields after placement; other geometry families still require later Dimension commands | Every supported tool shows transient length, radius, angle, width, and count input immediately after placement |
 | Inference | Several candidates are implemented, but the system is not yet a consistent cursor language | Every candidate has source highlight, guide, glyph, accepted state, and `Shift` suppression |
 | Constraints | Compatible actions appear in a compact toolbar and a panel list | Selection-driven mini-toolbar stays near the selection; glyphs own hover, edit, move, and delete; the list becomes diagnostics |
 | External references | Use candidates exist in 2D/3D, with panel duplication | Default flow is hover-preview-click in the viewport; panels show provenance, broken references, and repair only |
@@ -249,8 +249,11 @@ Exit criterion: a user creates and edits line length, point distance, projected 
 
 ### SKX-2 — creation-time numeric HUD
 
-- Add immediate numeric entry to Line, rectangle families, circle families, arc families, slot families, ellipse, and polygon.
-- Preserve continuous Line and tangent-arc continuation.
+- Line now opens an anchored length field at its final point and retains continuous chain continuation after Apply or Escape.
+- Corner Rectangle now collects horizontal width and vertical height in two anchored fields while preserving one local undo boundary.
+- Center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now reuse the same anchored, variable-aware dimension editor for diameter, radius, and axis diameters.
+- Extend the same contract to the remaining rectangle, slot, tangent-arc, and polygon families, including meaningful multi-value navigation.
+- Preserve tangent-arc continuation when its creation-time values are added.
 - Share variable suggestions, unit normalization, validation, and expression parsing with existing fields.
 
 Exit criterion: the reference bracket's primary outline can be drawn to exact size without activating Dimension after every entity.

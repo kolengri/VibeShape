@@ -13,8 +13,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import type { CSSProperties, KeyboardEvent } from "react"
 import { useState } from "react"
+import { createPortal } from "react-dom"
 import {
   VariableExpressionInput,
+  type VariableExpressionSuggestion,
   variableExpressionSuggestions,
 } from "../variables/variable-expression-input"
 import {
@@ -135,20 +137,12 @@ function cancelDimensionEditor(
   onCancel()
 }
 
-export function SketchDimensionInlineEditor({
-  displayUnits,
-  entities,
-  initialExpression,
-  initialKind,
-  mode,
-  onCancel,
-  onSubmit,
-  options,
-  position,
-  variables,
-}: Readonly<{
+type SketchDimensionInlineEditorProps = Readonly<{
+  allowReference?: boolean
   displayUnits: DocumentDisplayUnits
   entities: readonly SketchEntity[]
+  expressionAriaLabel?: string
+  formAriaLabel?: string
   initialExpression?: string
   initialKind: SketchDimensionKind
   mode: "create" | "edit"
@@ -157,140 +151,246 @@ export function SketchDimensionInlineEditor({
   options: readonly SketchDimensionOption[]
   position: CSSProperties
   variables: readonly VariableDefinition[]
-}>) {
+}>
+
+function useInlineDimensionForm(
+  props: SketchDimensionInlineEditorProps,
+  setMessage: (message: string | null) => void,
+) {
   const t = useTranslations("app.sketch.viewport")
-  const [message, setMessage] = useState<string | null>(null)
-  const suggestions = variableExpressionSuggestions(variables)
-  const referenceAvailable = options.some(
-    ({ kind }) => createSketchReferenceDimensionConstraint(kind, entities) !== null,
-  )
-  const form = useAppForm({
-    defaultValues: inlineDimensionDefaults(displayUnits, initialExpression, initialKind, options),
+  return useAppForm({
+    defaultValues: inlineDimensionDefaults(
+      props.displayUnits,
+      props.initialExpression,
+      props.initialKind,
+      props.options,
+    ),
     onSubmit: ({ value }) => {
       const result = resolveInlineDimensionResult({
-        displayUnits,
-        entities,
+        displayUnits: props.displayUnits,
+        entities: props.entities,
         expression: value.expression,
         kind: value.kind,
-        mode,
+        mode: props.mode,
         valueMode: value.mode,
-        variables,
+        variables: props.variables,
       })
       if (!result) {
         setMessage(t("dimensionInvalid"))
         return
       }
-      onSubmit(result)
+      props.onSubmit(result)
     },
   })
-  const cancelOnEscape = (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) =>
-    cancelDimensionEditor(event, onCancel)
+}
 
+type InlineDimensionForm = ReturnType<typeof useInlineDimensionForm>
+
+function DimensionKindControl({
+  displayUnits,
+  form,
+  onEscape,
+  options,
+}: Readonly<{
+  displayUnits: DocumentDisplayUnits
+  form: InlineDimensionForm
+  onEscape: (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => void
+  options: readonly SketchDimensionOption[]
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (options.length <= 1) {
+    return (
+      <span
+        className="px-1 text-[10px] font-medium text-muted-foreground"
+        data-sketch-dimension-kind={options[0]?.kind}
+      >
+        {options[0]?.label}
+      </span>
+    )
+  }
   return (
+    <form.Field name="kind">
+      {(field) => (
+        <NativeSelect
+          aria-label={t("dimensionType")}
+          className="h-7 w-auto max-w-32 text-xs"
+          name={field.name}
+          value={field.state.value}
+          onBlur={field.handleBlur}
+          onKeyDown={onEscape}
+          onChange={(event) => {
+            const kind = event.currentTarget.value as SketchDimensionKind
+            field.handleChange(kind)
+            const option = options.find((candidate) => candidate.kind === kind)
+            form.setFieldValue(
+              "expression",
+              defaultSketchDimensionExpression(kind, option?.value ?? 10, displayUnits),
+            )
+          }}
+        >
+          {options.map((option) => (
+            <option key={option.kind} value={option.kind}>
+              {option.label}
+            </option>
+          ))}
+        </NativeSelect>
+      )}
+    </form.Field>
+  )
+}
+
+function DimensionModeControl({
+  form,
+  referenceAvailable,
+  resetMessage,
+}: Readonly<{
+  form: InlineDimensionForm
+  referenceAvailable: boolean
+  resetMessage: () => void
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  if (!referenceAvailable) return null
+  return (
+    <form.Field name="mode">
+      {(field) => (
+        <DimensionModeButtons
+          drivingLabel={t("driving")}
+          label={t("dimensionMode")}
+          referenceLabel={t("reference")}
+          value={field.state.value}
+          onChange={(value) => {
+            resetMessage()
+            field.handleChange(value)
+          }}
+        />
+      )}
+    </form.Field>
+  )
+}
+
+function DimensionExpressionControl({
+  ariaLabel,
+  form,
+  onEscape,
+  resetMessage,
+  suggestions,
+}: Readonly<{
+  ariaLabel: string
+  form: InlineDimensionForm
+  onEscape: (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => void
+  resetMessage: () => void
+  suggestions: readonly VariableExpressionSuggestion[]
+}>) {
+  return (
+    <form.Subscribe selector={(state) => state.values.mode}>
+      {(dimensionMode) =>
+        dimensionMode === "reference" ? null : (
+          <form.Field name="expression">
+            {(field) => (
+              <VariableExpressionInput
+                autoFocus
+                aria-label={ariaLabel}
+                className="h-7 min-w-28 flex-1 font-mono text-xs tabular-nums"
+                name={field.name}
+                suggestions={suggestions}
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onKeyDown={onEscape}
+                onValueChange={(value) => {
+                  resetMessage()
+                  field.handleChange(value)
+                }}
+              />
+            )}
+          </form.Field>
+        )
+      }
+    </form.Subscribe>
+  )
+}
+
+function DimensionEditorActions({
+  form,
+  onCancel,
+}: Readonly<{ form: InlineDimensionForm; onCancel: () => void }>) {
+  const t = useTranslations("app.sketch.viewport")
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <form.SubmitButton aria-label={t("dimensionApply")} requireDirty={false} size="icon-xs">
+            <Check aria-hidden="true" />
+          </form.SubmitButton>
+        </TooltipTrigger>
+        <TooltipContent>{t("dimensionApply")}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={t("dimensionCancel")}
+            className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={onCancel}
+          >
+            <X aria-hidden="true" className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{t("dimensionCancel")}</TooltipContent>
+      </Tooltip>
+    </>
+  )
+}
+
+export function SketchDimensionInlineEditor(props: SketchDimensionInlineEditorProps) {
+  const t = useTranslations("app.sketch.viewport")
+  const [message, setMessage] = useState<string | null>(null)
+  const form = useInlineDimensionForm(props, setMessage)
+  const suggestions = variableExpressionSuggestions(props.variables)
+  const referenceAvailable =
+    (props.allowReference ?? true) &&
+    props.mode === "create" &&
+    props.options.some(
+      ({ kind }) => createSketchReferenceDimensionConstraint(kind, props.entities) !== null,
+    )
+  const cancelOnEscape = (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) =>
+    cancelDimensionEditor(event, props.onCancel)
+  const resetMessage = () => setMessage(null)
+
+  const editor = (
     <div
-      className="absolute z-30 min-w-52 -translate-y-1/2 rounded-md border border-primary/60 bg-popover p-1.5 text-popover-foreground shadow-lg"
+      className="absolute z-50 min-w-52 max-w-[calc(100%-1rem)] -translate-y-1/2 rounded-md border border-primary/60 bg-popover p-1.5 text-popover-foreground shadow-lg"
       data-sketch-dimension-editor
-      style={position}
+      style={props.position}
     >
-      <Form form={form} aria-label={t("dimensionInlineEditor")} className="gap-1.5">
+      <Form
+        form={form}
+        aria-label={props.formAriaLabel ?? t("dimensionInlineEditor")}
+        className="gap-1.5"
+      >
         <div className="flex items-center gap-1">
-          {options.length > 1 ? (
-            <form.Field name="kind">
-              {(field) => (
-                <NativeSelect
-                  aria-label={t("dimensionType")}
-                  className="h-7 w-auto max-w-32 text-xs"
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onKeyDown={cancelOnEscape}
-                  onChange={(event) => {
-                    const kind = event.currentTarget.value as SketchDimensionKind
-                    field.handleChange(kind)
-                    const option = options.find((candidate) => candidate.kind === kind)
-                    form.setFieldValue(
-                      "expression",
-                      defaultSketchDimensionExpression(kind, option?.value ?? 10, displayUnits),
-                    )
-                  }}
-                >
-                  {options.map((option) => (
-                    <option key={option.kind} value={option.kind}>
-                      {option.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              )}
-            </form.Field>
-          ) : null}
-          {mode === "create" && referenceAvailable ? (
-            <form.Field name="mode">
-              {(field) => (
-                <DimensionModeButtons
-                  drivingLabel={t("driving")}
-                  label={t("dimensionMode")}
-                  referenceLabel={t("reference")}
-                  value={field.state.value}
-                  onChange={(value) => {
-                    setMessage(null)
-                    field.handleChange(value)
-                  }}
-                />
-              )}
-            </form.Field>
-          ) : null}
-          <form.Subscribe selector={(state) => state.values.mode}>
-            {(dimensionMode) =>
-              dimensionMode === "reference" ? null : (
-                <form.Field name="expression">
-                  {(field) => (
-                    <VariableExpressionInput
-                      autoFocus
-                      aria-label={t("dimensionExpression")}
-                      className="h-7 min-w-28 flex-1 font-mono text-xs tabular-nums"
-                      name={field.name}
-                      suggestions={suggestions}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onKeyDown={cancelOnEscape}
-                      onValueChange={(value) => {
-                        setMessage(null)
-                        field.handleChange(value)
-                      }}
-                    />
-                  )}
-                </form.Field>
-              )
-            }
-          </form.Subscribe>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <form.SubmitButton
-                aria-label={t("dimensionApply")}
-                requireDirty={false}
-                size="icon-xs"
-              >
-                <Check aria-hidden="true" />
-              </form.SubmitButton>
-            </TooltipTrigger>
-            <TooltipContent>{t("dimensionApply")}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("dimensionCancel")}
-                className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={onCancel}
-              >
-                <X aria-hidden="true" className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{t("dimensionCancel")}</TooltipContent>
-          </Tooltip>
+          <DimensionKindControl
+            displayUnits={props.displayUnits}
+            form={form}
+            onEscape={cancelOnEscape}
+            options={props.options}
+          />
+          <DimensionModeControl
+            form={form}
+            referenceAvailable={referenceAvailable}
+            resetMessage={resetMessage}
+          />
+          <DimensionExpressionControl
+            ariaLabel={props.expressionAriaLabel ?? t("dimensionExpression")}
+            form={form}
+            onEscape={cancelOnEscape}
+            resetMessage={resetMessage}
+            suggestions={suggestions}
+          />
+          <DimensionEditorActions form={form} onCancel={props.onCancel} />
         </div>
         <FieldError className="max-w-64 text-[10px] leading-3">{message}</FieldError>
       </Form>
     </div>
   )
+  return typeof document === "undefined" ? editor : createPortal(editor, document.body)
 }
