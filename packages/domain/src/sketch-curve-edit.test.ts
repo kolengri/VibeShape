@@ -4,6 +4,7 @@ import type { SketchEntity, SketchRecord } from "./sketch"
 import {
   extendSketchArc,
   extendSketchEllipticalArc,
+  findSketchCurvesCrossedBySegment,
   splitSketchArc,
   splitSketchCircle,
   splitSketchEllipse,
@@ -83,6 +84,75 @@ function appendUpperEllipticalArc(sketch = empty()) {
 }
 
 describe("analytical sketch curve modification", () => {
+  it("queries all authored analytical curve kinds in pointer-path order", () => {
+    const lineSketch = appendSketchLine(empty(), {
+      createEntityId: entityId,
+      start: { kind: "new", point: { x: -2, y: -4 } },
+      end: { kind: "new", point: { x: -2, y: 4 } },
+    }).sketch
+    const line = curveByType(lineSketch, "line")
+    const arcSketch = appendSketchArc(lineSketch, {
+      center: { x: 0, y: 0 },
+      createEntityId: entityId,
+      start: { x: 5, y: 0 },
+      end: { x: -5, y: 0 },
+    }).sketch
+    const arc = curveByType(arcSketch, "arc")
+    const circleSketch = appendSketchCircle(arcSketch, {
+      center: { kind: "new", point: { x: 0, y: 0 } },
+      createEntityId: entityId,
+      perimeterPoint: { x: 3, y: 0 },
+    }).sketch
+    const circle = curveByType(circleSketch, "circle")
+    const ellipseSketch = appendEllipse(circleSketch)
+    const ellipse = curveByType(ellipseSketch, "ellipse")
+    const fixture = appendUpperEllipticalArc(ellipseSketch)
+    const ellipticalArc = curveByType(fixture, "elliptical-arc")
+
+    const hits = findSketchCurvesCrossedBySegment(fixture, { x: 0, y: -8 }, { x: 0, y: 8 })
+
+    expect(hits.map(({ curveId }) => curveId)).toEqual([
+      ellipse.id,
+      circle.id,
+      arc.id,
+      ellipticalArc.id,
+    ])
+    expect(hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ curveId: arc.id, point: { x: 0, y: 5 } }),
+        expect.objectContaining({ curveId: circle.id, point: { x: 0, y: -3 } }),
+        expect.objectContaining({ curveId: ellipse.id, point: { x: 0, y: -5 } }),
+        expect.objectContaining({ curveId: ellipticalArc.id, point: { x: 0, y: 5 } }),
+      ]),
+    )
+    expect(hits.every(({ parameter }) => parameter >= 0 && parameter <= 1)).toBe(true)
+    expect(findSketchCurvesCrossedBySegment(lineSketch, { x: -4, y: 0 }, { x: 0, y: 0 })).toEqual([
+      expect.objectContaining({ curveId: line.id, point: { x: -2, y: 0 } }),
+    ])
+  })
+
+  it("returns one tangent or endpoint hit and safely ignores degenerate paths", () => {
+    const fixture = appendUpperEllipticalArc(
+      appendSketchCircle(empty(), {
+        center: { kind: "new", point: { x: 0, y: 0 } },
+        createEntityId: entityId,
+        perimeterPoint: { x: 5, y: 0 },
+      }).sketch,
+    )
+    const circle = curveByType(fixture, "circle")
+    const ellipticalArc = curveByType(fixture, "elliptical-arc")
+
+    const tangent = findSketchCurvesCrossedBySegment(fixture, { x: -8, y: 5 }, { x: 8, y: 5 })
+    expect(tangent.filter(({ curveId }) => curveId === circle.id)).toHaveLength(1)
+    expect(tangent.find(({ curveId }) => curveId === circle.id)?.point).toEqual({ x: 0, y: 5 })
+
+    const endpoint = findSketchCurvesCrossedBySegment(fixture, { x: 10, y: -1 }, { x: 10, y: 1 })
+    expect(endpoint).toEqual([
+      expect.objectContaining({ curveId: ellipticalArc.id, point: { x: 10, y: 0 } }),
+    ])
+    expect(findSketchCurvesCrossedBySegment(fixture, { x: 1, y: 1 }, { x: 1, y: 1 })).toEqual([])
+  })
+
   it("splits an open arc at one projected point while retaining its identity", () => {
     const fixture = appendSketchArc(empty(), {
       center: { x: 0, y: 0 },

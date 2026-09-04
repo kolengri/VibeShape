@@ -2877,6 +2877,7 @@ test.describe("full sketch editor", () => {
       await page.mouse.click(start.x, start.y)
       await page.mouse.click(end.x, end.y)
       await page.keyboard.press("Escape")
+      await page.getByRole("button", { name: "Select", exact: true }).click()
     }
     const activateLine = async (
       tool: "Trim" | "Extend" | "Split",
@@ -2915,6 +2916,61 @@ test.describe("full sketch editor", () => {
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
+  test("preselects and drag-trims multiple curves with one local undo", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+    const canvasPoint = (horizontal: number, vertical: number) => ({
+      x: bounds.x + bounds.width * horizontal,
+      y: bounds.y + bounds.height * vertical,
+    })
+    const drawLine = async (
+      start: Readonly<{ x: number; y: number }>,
+      end: Readonly<{ x: number; y: number }>,
+    ) => {
+      await page.getByRole("button", { name: "Line", exact: true }).click()
+      await page.mouse.click(start.x, start.y)
+      await page.mouse.click(end.x, end.y)
+      await page.keyboard.press("Escape")
+      await page.getByRole("button", { name: "Select", exact: true }).click()
+    }
+
+    await drawLine(canvasPoint(0.25, 0.4), canvasPoint(0.75, 0.4))
+    await drawLine(canvasPoint(0.25, 0.5), canvasPoint(0.75, 0.5))
+    await drawLine(canvasPoint(0.25, 0.6), canvasPoint(0.75, 0.6))
+    await drawLine(canvasPoint(0.4, 0.3), canvasPoint(0.4, 0.7))
+    await drawLine(canvasPoint(0.6, 0.3), canvasPoint(0.6, 0.7))
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
+
+    await page.getByRole("button", { name: "Trim", exact: true }).click()
+    const start = canvasPoint(0.5, 0.4)
+    const end = canvasPoint(0.5, 0.6)
+    await page.mouse.move(start.x, start.y)
+    await expect(drawing.locator('[data-sketch-preselected="true"]')).toHaveCount(1)
+
+    await page.mouse.down()
+    await page.mouse.move(end.x, end.y, { steps: 5 })
+
+    await expect(drawing).toHaveAttribute("data-sketch-trim-gesture", "active")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+
+    await page.mouse.up()
+    await expect(drawing).not.toHaveAttribute("data-sketch-trim-gesture")
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
+    await page.getByRole("button", { name: "Redo", exact: true }).click()
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
+  })
+
   test("trims and splits circles and extends arcs with exact solver feedback", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
@@ -2940,6 +2996,7 @@ test.describe("full sketch editor", () => {
       await page.mouse.click(start.x, start.y)
       await page.mouse.click(end.x, end.y)
       await page.keyboard.press("Escape")
+      await page.getByRole("button", { name: "Select", exact: true }).click()
     }
     await page.getByRole("button", { name: "Center-point circle", exact: true }).click()
     await clickPoint(canvasPoint(0.65, 0.4))
@@ -3006,6 +3063,7 @@ test.describe("full sketch editor", () => {
       await clickPoint(start)
       await clickPoint(end)
       await page.keyboard.press("Escape")
+      await page.getByRole("button", { name: "Select", exact: true }).click()
     }
     await selectSketchTool(page, "Circle tools", "Center-point ellipse")
     await clickPoint(canvasPoint(0.65, 0.4))

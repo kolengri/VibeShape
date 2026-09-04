@@ -53,12 +53,15 @@ the standard shortcut when one exists. Every family exposes a center-origin vari
 geometry has a stable, unambiguous center construction. Free-form or selection-driven tools are not
 duplicated with artificial center modes.
 
-Trim and Split operate on analytical lines, arcs, and circles. Extend operates on open analytical
-lines and arcs because a closed circle has no endpoint. Mirror accepts a sketch line as its axis and
+Trim and Split operate on analytical lines, arcs, circles, ellipses, and elliptical arcs. Trim also
+processes every stable authored curve crossed by one pointer drag as a cancellable transient gesture
+with one release commit. Extend operates on open analytical lines, arcs, and elliptical arcs because
+closed curves have no endpoint. Mirror accepts a sketch line as its axis and
 reflects points or analytical curves through shared pure domain operations. Offset accepts a
 preselected line set or expands one clicked line to its connected non-branching component, previews
 the signed side and miter intersections, and commits one compound constraint whose dimension drives
-every line pair plus both open-chain endpoints. Ellipse-to-round and ellipse-to-ellipse modification boundaries, spline, drag-through Trim, free-end Extend,
+every line pair plus both open-chain endpoints. Exact removable-span Trim preselection,
+ellipse-to-round and ellipse-to-ellipse modification boundaries, spline, free-end Extend,
 round-curve Offset, associative pattern authoring, curve-chain slots, and projected
 external geometry remain follow-up work. Linear Pattern currently materializes independent copies
 and clones only constraints wholly internal to the seed selection; it intentionally omits crossing,
@@ -95,7 +98,7 @@ documentation.
 | Polygon | Inscribed and Circumscribed variants; center, radius/apothem, pointer or typed side count; 3–50 sides | Numeric radius entry and side-count editing after creation |
 | Arc | Elliptical, Three-point, Tangent, and Center-point variants | Fillet and selection-driven arc repair |
 | Slot | Straight, Centered, and selected-line variants | Analytical arc/curve-chain selection |
-| Modify | Delete, direct point manipulation, line/arc/circle/ellipse/elliptical-arc Trim and Split, open line/arc/elliptical-arc Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Ellipse-to-round and ellipse-to-ellipse boundaries, drag-through Trim, free-end Extend, round-curve Offset, spline modification, draggable circular-pattern center, and associative pattern editing |
+| Modify | Delete, direct point manipulation, line/arc/circle/ellipse/elliptical-arc hover, click, and analytical drag-through Trim, the same curve family for Split, open line/arc/elliptical-arc Extend, point/line/arc/circle/ellipse Mirror and Transform, signed connected-line Offset, one/two-direction Linear Pattern, and center-based closed/open Circular Pattern | Exact removable-span Trim preselection, ellipse-to-round and ellipse-to-ellipse boundaries, free-end Extend, round-curve Offset, spline modification, draggable circular-pattern center, and associative pattern editing |
 | Curves | Analytical lines, circles, circular arcs, full ellipses, and elliptical arcs | Spline, other conics, and projected/external geometry |
 
 Every family button invokes its active or last-used variant. Polygon placement uses three visible
@@ -248,6 +251,7 @@ active support plane and display unit.
    relocatable manipulator origin.
 4. Add driving/reference conversion and the remaining ellipse-axis reference measurements.
 5. Extend ellipse Trim and Extend from bounded line intersections to round and ellipse boundaries,
-   then add future spline entities, drag-through Trim, and explicit free-end Extend behavior.
+   refine Trim preselection to the exact removable span, then add future spline entities and explicit
+   free-end Extend behavior.
 6. Add guided over-constraint repair that presents a bounded conflicting set without automatic
    deletion.
