@@ -1357,6 +1357,64 @@ test.describe("full sketch editor", () => {
       .toBeLessThan(0.01)
   })
 
+  test("keeps selection actions beside geometry and exposes the same labeled context menu", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = await drawRectangle(page)
+    const precision = page.getByRole("form", { name: "Exact geometry value" })
+    if (await precision.isVisible()) {
+      await precision.getByRole("button", { name: "Cancel dimension value" }).click()
+    }
+
+    await selectSketchEntities(page, drawing, "line", [0])
+    const selectedLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    const toolbar = page.getByRole("toolbar", { name: "Sketch precision tools" })
+    await expect(toolbar).toBeVisible()
+    const lineBounds = await selectedLine.boundingBox()
+    const toolbarBounds = await toolbar.boundingBox()
+    if (!lineBounds || !toolbarBounds) {
+      throw new Error("The selected line and its adjacent action toolbar must be measurable.")
+    }
+    const toolbarCenterX = toolbarBounds.x + toolbarBounds.width / 2
+    const lineCenterX = lineBounds.x + lineBounds.width / 2
+    const verticalGap = Math.min(
+      Math.abs(toolbarBounds.y + toolbarBounds.height - lineBounds.y),
+      Math.abs(toolbarBounds.y - (lineBounds.y + lineBounds.height)),
+    )
+    expect(Math.abs(toolbarCenterX - lineCenterX)).toBeLessThanOrEqual(lineBounds.width / 2 + 16)
+    expect(verticalGap).toBeLessThan(80)
+
+    await clickSketchEntityAt(page, selectedLine, 0.37, false, "right")
+    const contextMenu = page.getByRole("menu", { name: "Sketch actions" })
+    await expect(contextMenu).toBeVisible()
+    await expect(contextMenu.getByRole("menuitem", { name: "Add drawing dimension" })).toBeVisible()
+    await expect(contextMenu.getByRole("menuitem", { name: "Delete geometry" })).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(contextMenu).not.toBeVisible()
+    await expect(selectedLine).toHaveClass(/stroke-ring/)
+
+    const drawingBounds = await drawing.boundingBox()
+    if (!drawingBounds) throw new Error("The sketch canvas must remain measurable while panning.")
+    const panStart = {
+      x: drawingBounds.x + drawingBounds.width * 0.8,
+      y: drawingBounds.y + drawingBounds.height * 0.8,
+    }
+    const panEnd = { x: panStart.x - 48, y: panStart.y - 36 }
+    await page.mouse.move(panStart.x, panStart.y)
+    await page.mouse.down({ button: "right" })
+    await page.mouse.move(panEnd.x, panEnd.y, { steps: 4 })
+    await page.mouse.up({ button: "right" })
+    await expect(contextMenu).not.toBeVisible()
+    await expect(page.locator('[data-sketch-entity-type="line"].stroke-ring')).toHaveCount(1)
+  })
+
   test("selects a projected point and preserves its manual relation after source edits", async ({
     page,
   }) => {

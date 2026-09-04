@@ -2984,6 +2984,21 @@ describe("SketchViewport", () => {
       if (!element) throw new Error("The committed external point must be rendered.")
       return element
     })
+    fireEvent.pointerDown(externalPoint, {
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+      pointerId: 11,
+    })
+    fireEvent.contextMenu(externalPoint, { clientX: 420, clientY: 260 })
+    fireEvent.pointerUp(externalPoint, {
+      button: 2,
+      clientX: 420,
+      clientY: 260,
+      pointerId: 11,
+    })
+    expect(onSelectionChange).not.toHaveBeenCalled()
+
     fireEvent.pointerDown(externalPoint, { shiftKey: true })
     expect(onSelectionChange).toHaveBeenCalledWith([localPoint.id, projectedPointId])
 
@@ -6040,7 +6055,7 @@ describe("SketchViewport", () => {
     expect(screen.queryByRole("combobox", { name: "Driving dimension expression" })).toBeNull()
   })
 
-  it("offers icon-only precision tools for the current sketch selection", () => {
+  it("positions compatible precision tools beside the current sketch selection", () => {
     const selectedLine = sketch.entities.find((entity) => entity.type === "line")
     if (!selectedLine) throw new Error("The rectangle fixture must contain a line.")
     const onDraftChange = vi.fn()
@@ -6054,7 +6069,10 @@ describe("SketchViewport", () => {
       onEditorToolChange,
     })
 
-    expect(screen.getByRole("toolbar", { name: "Sketch precision tools" })).toBeTruthy()
+    const toolbar = screen.getByRole("toolbar", { name: "Sketch precision tools" })
+    expect(toolbar.hasAttribute("data-sketch-selection-toolbar")).toBe(true)
+    expect(toolbar.className).toContain("absolute")
+    expect(toolbar.style.left).not.toBe("")
     expect(screen.getByRole("button", { name: "Horizontal" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Vertical" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Add drawing dimension" })).toBeTruthy()
@@ -6068,6 +6086,112 @@ describe("SketchViewport", () => {
         ]),
       }),
     )
+  })
+
+  it("uses the current selection for one-step sketch context actions", async () => {
+    const selectedLine = requiredSketchEntity(sketch, "line")
+    const onDraftChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: sketch,
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+      onSelectionChange,
+    })
+    const target = view.container.querySelector(
+      `[data-sketch-entity-id="${selectedLine.id}"][data-sketch-hit-area="true"]`,
+    )
+    if (!target) throw new Error("The selected line context target must be rendered.")
+
+    fireEvent.pointerDown(target, { button: 2, clientX: 300, clientY: 240, pointerId: 7 })
+    fireEvent.contextMenu(target, { clientX: 300, clientY: 240 })
+    expect(screen.queryByRole("menu", { name: "Sketch actions" })).toBeNull()
+    fireEvent.pointerUp(target, { button: 2, clientX: 300, clientY: 240, pointerId: 7 })
+
+    const menu = await screen.findByRole("menu", { name: "Sketch actions" })
+    expect(within(menu).getByText("Sketch actions")).toBeTruthy()
+    expect(within(menu).getByRole("menuitem", { name: "Horizontal" })).toBeTruthy()
+    expect(within(menu).getByRole("menuitem", { name: "Add drawing dimension" })).toBeTruthy()
+    expect(within(menu).getByRole("menuitem", { name: "Delete geometry" })).toBeTruthy()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Vertical" }))
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.arrayContaining([
+          expect.objectContaining({ type: "vertical", lineId: selectedLine.id }),
+        ]),
+      }),
+    )
+    expect(onSelectionChange).not.toHaveBeenCalled()
+  })
+
+  it("targets right-clicked geometry without silently replacing the current selection", async () => {
+    const lines = sketchEntitiesOfType(sketch, "line")
+    const selectedLine = lines[0]
+    const contextLine = lines[1]
+    if (!selectedLine || !contextLine) throw new Error("The context menu fixture needs two lines.")
+    const onDraftChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: sketch,
+      sketch,
+      selectedEntityIds: [selectedLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onDraftChange,
+      onSelectionChange,
+    })
+    const target = view.container.querySelector(
+      `[data-sketch-entity-id="${contextLine.id}"][data-sketch-hit-area="true"]`,
+    )
+    if (!target) throw new Error("The unselected line context target must be rendered.")
+
+    fireEvent.pointerDown(target, { button: 2, clientX: 420, clientY: 260, pointerId: 8 })
+    fireEvent.pointerUp(target, { button: 2, clientX: 420, clientY: 260, pointerId: 8 })
+    fireEvent.contextMenu(target, { clientX: 420, clientY: 260 })
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete geometry" }))
+
+    const nextDraft = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(nextDraft.entities.some(({ id }) => id === contextLine.id)).toBe(false)
+    expect(nextDraft.entities.some(({ id }) => id === selectedLine.id)).toBe(true)
+    expect(onSelectionChange).toHaveBeenCalledWith([selectedLine.id])
+  })
+
+  it("preserves multi-selection and suppresses context actions after a secondary drag", async () => {
+    const lines = sketchEntitiesOfType(sketch, "line")
+    const firstLine = lines[0]
+    const secondLine = lines[1]
+    if (!firstLine || !secondLine) throw new Error("The context menu fixture needs two lines.")
+    const onSelectionChange = vi.fn()
+    const view = renderViewport({
+      draft: sketch,
+      sketch,
+      selectedEntityIds: [firstLine.id, secondLine.id],
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onSelectionChange,
+    })
+    const target = view.container.querySelector(
+      `[data-sketch-entity-id="${firstLine.id}"][data-sketch-hit-area="true"]`,
+    )
+    if (!target) throw new Error("The selected line context target must be rendered.")
+
+    fireEvent.pointerDown(target, { button: 2, clientX: 300, clientY: 240, pointerId: 9 })
+    fireEvent.pointerUp(target, { button: 2, clientX: 300, clientY: 240, pointerId: 9 })
+    fireEvent.contextMenu(target, { clientX: 300, clientY: 240 })
+    expect(await screen.findByRole("menu", { name: "Sketch actions" })).toBeTruthy()
+    expect(onSelectionChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: "Escape" })
+
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    fireEvent.pointerDown(drawing, { button: 2, clientX: 500, clientY: 400, pointerId: 10 })
+    fireEvent.pointerMove(drawing, { buttons: 2, clientX: 540, clientY: 440, pointerId: 10 })
+    fireEvent.pointerUp(drawing, { button: 2, clientX: 540, clientY: 440, pointerId: 10 })
+    fireEvent.contextMenu(drawing, { clientX: 540, clientY: 440 })
+    expect(screen.queryByRole("menu", { name: "Sketch actions" })).toBeNull()
+    expect(onSelectionChange).not.toHaveBeenCalled()
   })
 
   it("adds an exact point-on-ellipse relation from a direct canvas selection", () => {

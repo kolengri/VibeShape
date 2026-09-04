@@ -74,6 +74,7 @@ import {
   sketchEllipsePointAt,
   sketchEllipticalArcGeometry,
   sketchEllipticalArcStartGeometry,
+  sketchEntityIdSchema,
   sketchEntityTransformOrigin,
   sketchProfileSelectorSchema,
   splitSketchCircle,
@@ -98,7 +99,15 @@ import { createLengthQuantity } from "@vibeshape/domain/units"
 import { useFormatter, useTranslations } from "@vibeshape/i18n"
 import type { SolvedSketchWire } from "@vibeshape/protocol"
 import { Button, buttonVariants } from "@vibeshape/ui/components/button"
-import { IntersectionIcon, Link2, PierceIcon, Ruler } from "@vibeshape/ui/components/icons"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@vibeshape/ui/components/context-menu"
+import { IntersectionIcon, Link2, PierceIcon, Ruler, Trash2 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import type {
@@ -420,12 +429,26 @@ type PanGesture = Readonly<{
   pointerId: number
 }>
 
+type SecondaryPointerGesture = Readonly<{
+  clientX: number
+  clientY: number
+  moved: boolean
+  pendingContextMenu: Readonly<{
+    clientX: number
+    clientY: number
+    target: Element
+  }> | null
+  pointerId: number
+  released: boolean
+}>
+
 const MIN_VIEW_WIDTH = 200
 const MIN_VIEW_HEIGHT = 150
 const LIVE_DRAG_SOLVE_INTERVAL_MS = 32
 const DENSE_DRAG_IDLE_SOLVE_DELAY_MS = 120
 const DENSE_DRAG_SOLVE_COMPLEXITY = 128
 const VERY_DENSE_DRAG_SOLVE_COMPLEXITY = 512
+const SECONDARY_DRAG_CONTEXT_MENU_THRESHOLD_PX = 4
 const DRAG_INFERENCE_FALLBACK_VIEWPORT = { height: 600, width: 800 } as const
 const DEFAULT_REGULAR_POLYGON_SIDES = 6
 
@@ -1642,6 +1665,7 @@ const SketchPoint = memo(function SketchPoint({
         pointerEvents="all"
         stroke="none"
         onPointerDown={(event) => {
+          if (event.button !== 0) return
           event.stopPropagation()
           if (selectable) {
             onSelect(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
@@ -1764,7 +1788,7 @@ function SketchGeometry({
   }, [pending, selectedEntityIds])
   const geometryPointerDown = useCallback(
     (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
-      if (!selectable && !modifiable) return
+      if (event.button !== 0 || (!selectable && !modifiable)) return
       event.stopPropagation()
       if (selectable) onSelect(entityId, event.metaKey || event.ctrlKey || event.shiftKey)
       else onCurveAction(event, entityId)
@@ -1881,7 +1905,7 @@ function SketchExternalPoints({
           data-sketch-external-point-id={point.id}
           className={interactive ? "cursor-crosshair" : undefined}
           onPointerDown={(event) => {
-            if (!interactive) return
+            if (!interactive || event.button !== 0) return
             event.stopPropagation()
             onSelect?.(point.id, event.metaKey || event.ctrlKey || event.shiftKey)
           }}
@@ -1943,6 +1967,7 @@ function SketchExternalLines({
               strokeWidth={10}
               vectorEffect="non-scaling-stroke"
               onPointerDown={(event) => {
+                if (event.button !== 0) return
                 event.stopPropagation()
                 onSelect(line.id, event.metaKey || event.ctrlKey || event.shiftKey)
               }}
@@ -2003,6 +2028,7 @@ function SketchExternalCurves({
           selected={selected.has(curve.id)}
           solvedRadius={solvedCircles.get(curve.id)}
           onPointerDown={(event, entityId) => {
+            if (event.button !== 0) return
             event.stopPropagation()
             onSelect(entityId, event.metaKey || event.ctrlKey || event.shiftKey)
           }}
@@ -7613,7 +7639,7 @@ function handleSketchCanvasPointerDown(input: {
   event.currentTarget.focus()
   if (event.button === 1 || event.button === 2) {
     event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (event.nativeEvent.isTrusted) event.currentTarget.setPointerCapture(event.pointerId)
     input.setPanGesture({
       bounds: input.bounds,
       clientX: event.clientX,
@@ -8121,6 +8147,91 @@ function trimGestureAttribute(active: boolean) {
   return active ? "active" : undefined
 }
 
+function sketchContextEntityId(
+  target: EventTarget | null,
+  draft: SketchRecord | null,
+): SketchEntityId | null {
+  if (!(target instanceof Element) || !draft) return null
+  const entity = target.closest(
+    "[data-sketch-entity-id], [data-sketch-external-point-id], [data-sketch-external-line-id]",
+  )
+  const entityId =
+    entity?.getAttribute("data-sketch-entity-id") ??
+    entity?.getAttribute("data-sketch-external-point-id") ??
+    entity?.getAttribute("data-sketch-external-line-id")
+  if (!entityId) return null
+  const parsedEntityId = sketchEntityIdSchema.safeParse(entityId)
+  if (!parsedEntityId.success) return null
+  return (
+    selectedSketchConstraintEntities(draft, [parsedEntityId.data]).find(
+      ({ id }) => id === parsedEntityId.data,
+    )?.id ?? null
+  )
+}
+
+function sketchContextEntityIds(
+  target: EventTarget | null,
+  draft: SketchRecord,
+  selectedEntityIds: readonly SketchEntityId[],
+) {
+  const entityId = sketchContextEntityId(target, draft)
+  if (!entityId) return selectedEntityIds
+  return selectedEntityIds.includes(entityId) ? selectedEntityIds : [entityId]
+}
+
+function hasSketchSelectionActions(draft: SketchRecord, entityIds: readonly SketchEntityId[]) {
+  return (
+    selectedSketchEntities(draft, entityIds).length > 0 ||
+    compatibleSketchConstraintToolsForSelection(draft, entityIds).length > 0 ||
+    compatibleSketchDimensionToolsForSelection(draft, entityIds).length > 0
+  )
+}
+
+function sketchContextActionEntityIds(input: {
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  selectedEntityIds: readonly SketchEntityId[]
+  target: EventTarget | null
+}) {
+  if (!input.draft || input.editorTool !== "select") return []
+  const entityIds = sketchContextEntityIds(input.target, input.draft, input.selectedEntityIds)
+  return hasSketchSelectionActions(input.draft, entityIds) ? entityIds : []
+}
+
+function consumeSecondaryContextMenu(input: {
+  contextTargetRef: { current: readonly SketchEntityId[] }
+  event: MouseEvent<SVGSVGElement>
+  replayingRef: { current: boolean }
+  secondaryGestureRef: { current: SecondaryPointerGesture | null }
+}) {
+  if (input.replayingRef.current) {
+    input.replayingRef.current = false
+    return false
+  }
+  const gesture = input.secondaryGestureRef.current
+  if (gesture?.moved) {
+    input.secondaryGestureRef.current = null
+    input.contextTargetRef.current = []
+    input.event.preventDefault()
+    return true
+  }
+  if (!gesture || gesture.released) {
+    input.secondaryGestureRef.current = null
+    return false
+  }
+  input.secondaryGestureRef.current = {
+    ...gesture,
+    pendingContextMenu: {
+      clientX: input.event.clientX,
+      clientY: input.event.clientY,
+      target:
+        input.event.target instanceof Element ? input.event.target : input.event.currentTarget,
+    },
+  }
+  input.event.preventDefault()
+  return true
+}
+
 function SketchDrawingView({
   configuration,
   handlers,
@@ -8129,111 +8240,202 @@ function SketchDrawingView({
   svgRef,
 }: SketchDrawingViewProps) {
   const markerScale = sketchMarkerScale(state.bounds, state.viewportSize)
+  const contextTargetRef = useRef<readonly SketchEntityId[]>([])
+  const secondaryPointerGestureRef = useRef<SecondaryPointerGesture | null>(null)
+  const replayingContextMenuRef = useRef(false)
+  const [contextEntityIds, setContextEntityIds] = useState<readonly SketchEntityId[]>([])
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const handlePointerDownCapture = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 2) return
+    secondaryPointerGestureRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      moved: false,
+      pendingContextMenu: null,
+      pointerId: event.pointerId,
+      released: false,
+    }
+  }
+  const handlePointerMoveCapture = (event: PointerEvent<SVGSVGElement>) => {
+    const gesture = secondaryPointerGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.moved) return
+    const moved =
+      Math.hypot(event.clientX - gesture.clientX, event.clientY - gesture.clientY) >
+      SECONDARY_DRAG_CONTEXT_MENU_THRESHOLD_PX
+    if (!moved) return
+    secondaryPointerGestureRef.current = { ...gesture, moved: true }
+    contextTargetRef.current = []
+    setContextMenuOpen(false)
+  }
+  const handlePointerUpCapture = (event: PointerEvent<SVGSVGElement>) => {
+    const gesture = secondaryPointerGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    const releasedGesture = { ...gesture, released: true }
+    secondaryPointerGestureRef.current = releasedGesture
+    if (gesture.moved || !gesture.pendingContextMenu) return
+    secondaryPointerGestureRef.current = null
+    replayingContextMenuRef.current = true
+    gesture.pendingContextMenu.target.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        button: 2,
+        cancelable: true,
+        clientX: gesture.pendingContextMenu.clientX,
+        clientY: gesture.pendingContextMenu.clientY,
+      }),
+    )
+  }
+  const handleContextMenuCapture = (event: MouseEvent<SVGSVGElement>) => {
+    if (
+      consumeSecondaryContextMenu({
+        contextTargetRef,
+        event,
+        replayingRef: replayingContextMenuRef,
+        secondaryGestureRef: secondaryPointerGestureRef,
+      })
+    )
+      return
+    const entityIds = sketchContextActionEntityIds({
+      draft: configuration.draft,
+      editorTool: configuration.editorTool,
+      selectedEntityIds: configuration.selectedEntityIds,
+      target: event.target,
+    })
+    contextTargetRef.current = entityIds
+    if (entityIds.length === 0) event.preventDefault()
+  }
+  const handleContextMenuOpenChange = (open: boolean) => {
+    if (!open) {
+      setContextMenuOpen(false)
+      return
+    }
+    const target = contextTargetRef.current
+    if (target.length === 0) return
+    setContextEntityIds(target)
+    setContextMenuOpen(true)
+  }
   return (
     <div className="relative size-full">
-      <svg
-        ref={svgRef}
-        aria-label={configuration.ariaLabel}
-        className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${usesSketchCrosshairCursor(configuration.editorTool) ? "cursor-crosshair" : ""}`}
-        data-sketch-dragging-point-id={state.draggingPointId ?? undefined}
-        data-sketch-modification-tool={
-          isSketchModificationTool(configuration.editorTool) ? configuration.editorTool : undefined
-        }
-        data-sketch-trim-gesture={trimGestureAttribute(state.trimGestureActive)}
-        role="img"
-        tabIndex={state.editable ? 0 : undefined}
-        viewBox={`${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`}
-        onKeyDown={handlers.onKeyDown}
-        onPointerDown={handlers.onCanvasPointerDown}
-        onPointerMove={handlers.onPointerMove}
-        onPointerUp={handlers.onPointerUp}
-        onPointerCancel={handlers.onPointerCancel}
-        onPointerLeave={handlers.onPointerLeave}
-        onContextMenu={(event) => event.preventDefault()}
-        onWheel={handlers.onWheel}
-      >
-        <title>{configuration.ariaLabel}</title>
-        <SketchOriginPlaneReferences
-          activePlane={sketch.plane}
-          bounds={state.bounds}
-          visibility={configuration.originPlaneVisibility}
-        />
-        <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
-          <line
-            x1={state.bounds.minX}
-            y1={0}
-            x2={state.bounds.minX + state.bounds.width}
-            y2={0}
-            vectorEffect="non-scaling-stroke"
-          />
-          <line
-            x1={0}
-            y1={state.bounds.minY}
-            x2={0}
-            y2={state.bounds.minY + state.bounds.height}
-            vectorEffect="non-scaling-stroke"
-          />
-        </g>
-        <StableProfileRegions
-          editable={state.editable}
-          editorTool={configuration.editorTool}
-          profiles={state.annotationProfiles}
-          selectedProfile={configuration.selectedProfile}
-          sketch={sketch}
-          solution={state.annotationSolution}
-          onSelect={configuration.onProfileSelect}
-        />
-        <SketchExternalReferenceLayer
-          configuration={configuration}
-          markerScale={markerScale}
-          onSelect={handlers.onSelection}
-          state={state}
-        />
-        <StableSketchGeometry
-          draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
-          editable={state.editable}
-          markerScale={markerScale}
+      <ContextMenu open={contextMenuOpen} onOpenChange={handleContextMenuOpenChange}>
+        <ContextMenuTrigger asChild>
+          <svg
+            ref={svgRef}
+            aria-label={configuration.ariaLabel}
+            className={`size-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-ring ${usesSketchCrosshairCursor(configuration.editorTool) ? "cursor-crosshair" : ""}`}
+            data-sketch-dragging-point-id={state.draggingPointId ?? undefined}
+            data-sketch-modification-tool={
+              isSketchModificationTool(configuration.editorTool)
+                ? configuration.editorTool
+                : undefined
+            }
+            data-sketch-trim-gesture={trimGestureAttribute(state.trimGestureActive)}
+            role="img"
+            tabIndex={state.editable ? 0 : undefined}
+            viewBox={`${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`}
+            onKeyDown={handlers.onKeyDown}
+            onPointerDownCapture={handlePointerDownCapture}
+            onPointerDown={handlers.onCanvasPointerDown}
+            onPointerMoveCapture={handlePointerMoveCapture}
+            onPointerMove={handlers.onPointerMove}
+            onPointerUpCapture={handlePointerUpCapture}
+            onPointerUp={handlers.onPointerUp}
+            onPointerCancel={handlers.onPointerCancel}
+            onPointerLeave={handlers.onPointerLeave}
+            onContextMenuCapture={handleContextMenuCapture}
+            onWheel={handlers.onWheel}
+          >
+            <title>{configuration.ariaLabel}</title>
+            <SketchOriginPlaneReferences
+              activePlane={sketch.plane}
+              bounds={state.bounds}
+              visibility={configuration.originPlaneVisibility}
+            />
+            <g transform="scale(1 -1)" className="pointer-events-none stroke-muted-foreground/45">
+              <line
+                x1={state.bounds.minX}
+                y1={0}
+                x2={state.bounds.minX + state.bounds.width}
+                y2={0}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={0}
+                y1={state.bounds.minY}
+                x2={0}
+                y2={state.bounds.minY + state.bounds.height}
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+            <StableProfileRegions
+              editable={state.editable}
+              editorTool={configuration.editorTool}
+              profiles={state.annotationProfiles}
+              selectedProfile={configuration.selectedProfile}
+              sketch={sketch}
+              solution={state.annotationSolution}
+              onSelect={configuration.onProfileSelect}
+            />
+            <SketchExternalReferenceLayer
+              configuration={configuration}
+              markerScale={markerScale}
+              onSelect={handlers.onSelection}
+              state={state}
+            />
+            <StableSketchGeometry
+              draggingPointId={state.draggingPointId ?? state.dragTarget?.entityId ?? null}
+              editable={state.editable}
+              markerScale={markerScale}
+              selectedEntityIds={configuration.selectedEntityIds}
+              presentation={state.geometry}
+              tool={configuration.editorTool}
+              onCurveAction={
+                isSketchModificationTool(configuration.editorTool)
+                  ? handlers.onCurveAction
+                  : ignoreCurveAction
+              }
+              onPointPointerDown={handlers.onPointPointerDown}
+              onSelect={handlers.onSelection}
+              onTarget={handlers.appendAt}
+              pending={state.pending}
+              preselectedEntityId={state.preselectedEntityId}
+            />
+            <DraggedSketchGeometry
+              dragTarget={state.dragTarget}
+              presentation={state.geometry}
+              selectedEntityIds={configuration.selectedEntityIds}
+            />
+            <SketchTransformPresentation
+              bounds={state.bounds}
+              entityIds={configuration.selectedEntityIds}
+              geometry={state.geometry}
+              transform={state.transform}
+              viewportSize={state.viewportSize}
+              onStart={handlers.onTransformStart}
+            />
+            <SketchLinearPatternPresentation
+              entityIds={configuration.selectedEntityIds}
+              geometry={state.geometry}
+              pattern={state.linearPattern}
+            />
+            <SketchCircularPatternPresentation
+              entityIds={configuration.selectedEntityIds}
+              geometry={state.geometry}
+              pattern={state.circularPattern}
+            />
+            <SketchDimensionPlacementPreview value={state.dimensionPreview} />
+            <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
+            <InferenceGlyph bounds={state.bounds} inference={state.inference} />
+          </svg>
+        </ContextMenuTrigger>
+        <SketchSelectionContextMenu
+          draft={configuration.draft}
+          entityIds={contextEntityIds}
+          onDraftChange={configuration.onDraftChange}
+          onEditorToolChange={configuration.onEditorToolChange}
+          onSelectionChange={configuration.onSelectionChange}
           selectedEntityIds={configuration.selectedEntityIds}
-          presentation={state.geometry}
-          tool={configuration.editorTool}
-          onCurveAction={
-            isSketchModificationTool(configuration.editorTool)
-              ? handlers.onCurveAction
-              : ignoreCurveAction
-          }
-          onPointPointerDown={handlers.onPointPointerDown}
-          onSelect={handlers.onSelection}
-          onTarget={handlers.appendAt}
-          pending={state.pending}
-          preselectedEntityId={state.preselectedEntityId}
         />
-        <DraggedSketchGeometry
-          dragTarget={state.dragTarget}
-          presentation={state.geometry}
-          selectedEntityIds={configuration.selectedEntityIds}
-        />
-        <SketchTransformPresentation
-          bounds={state.bounds}
-          entityIds={configuration.selectedEntityIds}
-          geometry={state.geometry}
-          transform={state.transform}
-          viewportSize={state.viewportSize}
-          onStart={handlers.onTransformStart}
-        />
-        <SketchLinearPatternPresentation
-          entityIds={configuration.selectedEntityIds}
-          geometry={state.geometry}
-          pattern={state.linearPattern}
-        />
-        <SketchCircularPatternPresentation
-          entityIds={configuration.selectedEntityIds}
-          geometry={state.geometry}
-          pattern={state.circularPattern}
-        />
-        <SketchDimensionPlacementPreview value={state.dimensionPreview} />
-        <PendingPreview cursor={state.cursor} pending={state.pending} sketch={sketch} />
-        <InferenceGlyph bounds={state.bounds} inference={state.inference} />
-      </svg>
+      </ContextMenu>
       <SketchDrawingAnnotations
         configuration={configuration}
         dimensionLabelPositions={state.dimensionLabelPositions}
@@ -8281,6 +8483,20 @@ function SketchDrawingView({
         configuration={configuration}
         handlers={handlers}
         value={state.transform}
+      />
+      <SketchPrecisionToolbar
+        anchor={sketchSelectionToolbarAnchor(
+          configuration.draft,
+          configuration.selectedEntityIds,
+          state.geometry,
+          state.bounds,
+          state.viewportSize,
+        )}
+        draft={configuration.draft}
+        editorTool={configuration.editorTool}
+        onDraftChange={configuration.onDraftChange}
+        onEditorToolChange={configuration.onEditorToolChange}
+        selectedEntityIds={configuration.selectedEntityIds}
       />
     </div>
   )
@@ -10396,31 +10612,62 @@ const constraintToolSymbols = {
   vertical: "V",
 } satisfies Record<SketchConstraintToolKind, string>
 
-function SketchPrecisionToolbar({
-  draft,
-  editorTool,
-  onDraftChange,
-  onEditorToolChange,
-  selectedEntityIds,
-}: Readonly<{
-  draft: SketchRecord | null
-  editorTool: SketchEditorTool
-  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
-  onEditorToolChange: (tool: SketchEditorTool) => void
-  selectedEntityIds: readonly SketchEntityId[]
-}>) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  const viewportT = useTranslations("app.sketch.viewport")
-  const constraints = draft
-    ? compatibleSketchConstraintToolsForSelection(draft, selectedEntityIds)
-    : []
-  const dimensions = draft
-    ? compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
-    : []
-  if (!draft || editorTool !== "select" || (constraints.length === 0 && dimensions.length === 0)) {
-    return null
+type SketchSelectionToolbarAnchor = Readonly<{
+  placement: "above" | "below"
+  x: CSSProperties["left"]
+  y: CSSProperties["top"]
+}>
+
+function sketchSelectionToolbarAnchor(
+  draft: SketchRecord | null,
+  entityIds: readonly SketchEntityId[],
+  geometry: SketchGeometryPresentation,
+  bounds: SketchBounds,
+  viewport: SketchViewportSize,
+): SketchSelectionToolbarAnchor | null {
+  if (!draft) return null
+  const pointIds = new Set<SketchEntityId>()
+  for (const entity of selectedSketchConstraintEntities(draft, entityIds)) {
+    if (entity.type === "point") pointIds.add(entity.id)
+    else for (const pointId of sketchCurvePointIds(entity)) pointIds.add(pointId)
   }
-  const labels: Record<SketchConstraintToolKind, string> = {
+  const points = [...pointIds].flatMap((pointId) => {
+    const point = geometry.pointsById.get(pointId)
+    return point ? [point] : []
+  })
+  if (points.length === 0) return null
+  const minimumX = Math.min(...points.map(({ x }) => x))
+  const maximumX = Math.max(...points.map(({ x }) => x))
+  const maximumY = Math.max(...points.map(({ y }) => y))
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    const fallback = constraintAnnotationPosition(
+      { x: (minimumX + maximumX) / 2, y: maximumY },
+      bounds,
+      viewport,
+    )
+    return { placement: "above", x: fallback.left, y: fallback.top }
+  }
+  const positions = points.map((point) => {
+    const position = constraintAnnotationPosition(point, bounds, viewport)
+    return { x: Number(position.left), y: Number(position.top) }
+  })
+  const left = Math.min(...positions.map(({ x }) => x))
+  const right = Math.max(...positions.map(({ x }) => x))
+  const top = Math.min(...positions.map(({ y }) => y))
+  const bottom = Math.max(...positions.map(({ y }) => y))
+  const horizontalInset = Math.min(144, Math.max(0, viewport.width / 2 - 8))
+  const x = Math.min(
+    Math.max((left + right) / 2, horizontalInset),
+    viewport.width - horizontalInset,
+  )
+  return top >= 48
+    ? { placement: "above", x, y: top - 8 }
+    : { placement: "below", x, y: bottom + 8 }
+}
+
+function useSketchConstraintToolLabels() {
+  const t = useTranslations("app.shell.taskPanel.sketch")
+  return {
     coincident: t("coincident"),
     concentric: t("concentric"),
     equal: t("equal"),
@@ -10434,51 +10681,194 @@ function SketchPrecisionToolbar({
     symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
     vertical: t("vertical"),
-  }
+  } satisfies Record<SketchConstraintToolKind, string>
+}
+
+function SketchConstraintToolbarAction({
+  definition,
+  kind,
+  label,
+  onApply,
+}: Readonly<{
+  definition: SketchConstraintDefinition
+  kind: SketchConstraintToolKind
+  label: string
+  onApply: (definition: SketchConstraintDefinition) => void
+}>) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={label}
+          onClick={() => onApply(definition)}
+        >
+          <span aria-hidden="true" className="font-mono text-sm font-semibold">
+            {constraintToolSymbols[kind]}
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SketchDimensionToolbarAction({
+  label,
+  onActivate,
+}: Readonly<{ label: string; onActivate: () => void }>) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label={label}
+          onClick={onActivate}
+        >
+          <Ruler aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function sketchPrecisionActions(
+  draft: SketchRecord | null,
+  selectedEntityIds: readonly SketchEntityId[],
+) {
+  if (!draft) return null
+  const constraints = compatibleSketchConstraintToolsForSelection(draft, selectedEntityIds)
+  const dimensions = compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
+  return constraints.length === 0 && dimensions.length === 0
+    ? null
+    : { constraints, draft, hasDimensions: dimensions.length > 0 }
+}
+
+function SketchPrecisionToolbar({
+  anchor,
+  draft,
+  editorTool,
+  onDraftChange,
+  onEditorToolChange,
+  selectedEntityIds,
+}: Readonly<{
+  anchor: SketchSelectionToolbarAnchor | null
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
+  selectedEntityIds: readonly SketchEntityId[]
+}>) {
+  const labels = useSketchConstraintToolLabels()
+  const viewportT = useTranslations("app.sketch.viewport")
+  const actions = sketchPrecisionActions(draft, selectedEntityIds)
+  if (!anchor || editorTool !== "select" || !actions) return null
   const apply = (definition: SketchConstraintDefinition) => {
-    onDraftChange(appendSketchConstraint(draft, definition, createBrowserSketchConstraintId))
+    onDraftChange(
+      appendSketchConstraint(actions.draft, definition, createBrowserSketchConstraintId),
+    )
   }
   return (
     <div
       aria-label={viewportT("precisionTools")}
-      className="flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm"
+      className={cn(
+        "absolute z-20 flex max-w-72 -translate-x-1/2 flex-wrap items-center justify-center gap-0.5 rounded-md border bg-background/95 p-1 shadow-md backdrop-blur-sm",
+        anchor.placement === "above" && "-translate-y-full",
+      )}
+      data-sketch-selection-toolbar
       role="toolbar"
+      style={{ left: anchor.x, top: anchor.y }}
     >
-      {constraints.map(({ definition, kind }) => (
-        <Tooltip key={kind}>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={labels[kind]}
-              onClick={() => apply(definition)}
-            >
-              <span aria-hidden="true" className="font-mono text-sm font-semibold">
-                {constraintToolSymbols[kind]}
-              </span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{labels[kind]}</TooltipContent>
-        </Tooltip>
+      {actions.constraints.map(({ definition, kind }) => (
+        <SketchConstraintToolbarAction
+          key={kind}
+          definition={definition}
+          kind={kind}
+          label={labels[kind]}
+          onApply={apply}
+        />
       ))}
-      {dimensions.length > 0 ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={viewportT("dimensionTool")}
-              onClick={() => onEditorToolChange("dimension")}
-            >
-              <Ruler aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{viewportT("dimensionTool")}</TooltipContent>
-        </Tooltip>
+      {actions.hasDimensions ? (
+        <SketchDimensionToolbarAction
+          label={viewportT("dimensionTool")}
+          onActivate={() => onEditorToolChange("dimension")}
+        />
       ) : null}
     </div>
+  )
+}
+
+function SketchSelectionContextMenu({
+  draft,
+  entityIds,
+  onDraftChange,
+  onEditorToolChange,
+  onSelectionChange,
+  selectedEntityIds,
+}: Readonly<{
+  draft: SketchRecord | null
+  entityIds: readonly SketchEntityId[]
+  onDraftChange: (sketch: SketchRecord, mode?: SketchDraftChangeMode) => void
+  onEditorToolChange: (tool: SketchEditorTool) => void
+  onSelectionChange: (entityIds: readonly SketchEntityId[]) => void
+  selectedEntityIds: readonly SketchEntityId[]
+}>) {
+  const labels = useSketchConstraintToolLabels()
+  const viewportT = useTranslations("app.sketch.viewport")
+  if (!draft) return null
+  const constraints = compatibleSketchConstraintToolsForSelection(draft, entityIds)
+  const dimensions = compatibleSketchDimensionToolsForSelection(draft, entityIds)
+  const authoredEntityIds = selectedSketchEntities(draft, entityIds).map(({ id }) => id)
+  const hasPrecisionActions = constraints.length > 0 || dimensions.length > 0
+  if (!hasPrecisionActions && authoredEntityIds.length === 0) return null
+  const apply = (definition: SketchConstraintDefinition) => {
+    onDraftChange(appendSketchConstraint(draft, definition, createBrowserSketchConstraintId))
+  }
+  const startDimension = () => {
+    onSelectionChange(entityIds)
+    onEditorToolChange("dimension")
+  }
+  const removeGeometry = () => {
+    const nextDraft = removeSketchEntities(draft, authoredEntityIds)
+    const survivingEntityIds = new Set(
+      selectedSketchConstraintEntities(nextDraft, selectedEntityIds).map(({ id }) => id),
+    )
+    onDraftChange(nextDraft)
+    onSelectionChange(selectedEntityIds.filter((id) => survivingEntityIds.has(id)))
+  }
+  return (
+    <ContextMenuContent aria-label={viewportT("contextActions")}>
+      <ContextMenuLabel>{viewportT("contextActions")}</ContextMenuLabel>
+      {constraints.map(({ definition, kind }) => (
+        <ContextMenuItem key={kind} onSelect={() => apply(definition)}>
+          <span aria-hidden="true" className="w-4 text-center font-mono font-semibold">
+            {constraintToolSymbols[kind]}
+          </span>
+          {labels[kind]}
+        </ContextMenuItem>
+      ))}
+      {dimensions.length > 0 ? (
+        <ContextMenuItem onSelect={startDimension}>
+          <Ruler aria-hidden="true" />
+          {viewportT("dimensionTool")}
+        </ContextMenuItem>
+      ) : null}
+      {hasPrecisionActions && authoredEntityIds.length > 0 ? <ContextMenuSeparator /> : null}
+      {authoredEntityIds.length > 0 ? (
+        <ContextMenuItem
+          className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+          onSelect={removeGeometry}
+        >
+          <Trash2 aria-hidden="true" />
+          {viewportT("deleteGeometry")}
+        </ContextMenuItem>
+      ) : null}
+    </ContextMenuContent>
   )
 }
 
@@ -10998,13 +11388,6 @@ export function SketchViewport({
           onEditorToolChange={onEditorToolChange}
           pierceCandidateCount={state.pierceCandidateCount ?? 0}
           selectedEntityIds={selectedEntityIds}
-        />
-        <SketchPrecisionToolbar
-          draft={draft}
-          editorTool={editorTool}
-          selectedEntityIds={selectedEntityIds}
-          onDraftChange={onDraftChange}
-          onEditorToolChange={onEditorToolChange}
         />
       </div>
       <div className="absolute bottom-3 right-3">

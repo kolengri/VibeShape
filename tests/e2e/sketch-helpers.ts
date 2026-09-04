@@ -172,6 +172,7 @@ export async function clickSketchEntityAt(
   entity: Locator,
   fraction: number,
   additive = false,
+  button: "left" | "right" = "left",
 ) {
   const position = await entity.evaluate(
     (element, normalizedFraction) => {
@@ -199,7 +200,7 @@ export async function clickSketchEntityAt(
   )
   if (additive) await page.keyboard.down("Shift")
   try {
-    await page.mouse.click(position.x, position.y)
+    await page.mouse.click(position.x, position.y, { button })
   } finally {
     if (additive) await page.keyboard.up("Shift")
   }
