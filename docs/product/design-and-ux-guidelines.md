@@ -426,6 +426,14 @@ The model tree is a dedicated accessible tree, not a styled table.
 - Recent commands MAY improve ranking locally; no usage data leaves the device.
 - The palette does not become a second implementation of command behavior.
 
+### Sketch Shortcut Toolbar
+
+- `S` opens a compact, non-modal icon toolbar beside the latest pointer position in the active sketch viewport. If the pointer is unavailable, it opens at the viewport center.
+- The shortcut toolbar is a curated view of the same registered commands used by the main toolbar, command palette, menus, and shortcuts. It does not own command eligibility or execution.
+- Collision-aware placement keeps the complete toolbar inside the visible browser area, including at 200% zoom.
+- Every icon has a distinct command meaning, localized accessible name, pressed or disabled state, and tooltip with the shortcut or unmet precondition.
+- `Escape`, a second `S`, or outside interaction closes this toolbar before the sketch command cancellation hierarchy continues. It never includes a second Finish or Cancel action.
+
 ## Dialogs, Popovers, Tooltips, and Sheets
 
 - Every `Dialog`, `Sheet`, and future `Drawer` includes a programmatic title; visually hidden titles are allowed only when another visible heading is unambiguous.
@@ -533,6 +541,7 @@ The WebGL canvas cannot be the only representation of document structure or stat
 ### Shortcut Safety
 
 - Do not trigger single-letter shortcuts while focus is in an input, textarea, content-editable element, or active text composition.
+- The sketch `S` shortcut toolbar follows the same exclusion and ignores repeat events. It is available only while a sketch is actively being created or edited.
 - Platform browser and assistive-technology shortcuts take precedence.
 - Shortcut help is searchable and shows macOS versus Windows/Linux notation.
 - Shortcut remapping is P1 and detects conflicts before saving.
@@ -657,6 +666,7 @@ The technical trust and lifecycle contract is defined in [Extension architecture
 | Product need | Base primitive | VibeShape rule |
 |---|---|---|
 | Command palette | `Command` + `Dialog` | Registered application commands only; show shortcut and disabled reason |
+| Cursor-near sketch shortcuts | `Popover` + `Toolbar` | Non-modal collision-aware anchor; registered icon commands only; restore focus on close |
 | Global and row actions | `DropdownMenu` | Keep grouping and keyboard behavior; context menu is not the sole entry point |
 | Viewport context action | `ContextMenu` | Operates on explicit hit target or current selection; never silently changes selection and acts in one step |
 | Feature parameters | `Field`, `Input`, `Select`, `Checkbox` | Persistent labels, units, inline validation, stable layout |

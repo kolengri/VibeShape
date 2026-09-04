@@ -53,6 +53,7 @@ const recentCommandIdsSchema = z
       editorCommandIds.sketchSlot,
       editorCommandIds.sketchSlotAroundLine,
       editorCommandIds.sketchTangentArc,
+      editorCommandIds.sketchUse,
       editorCommandIds.sketchUndo,
       editorCommandIds.workspaceModel,
       editorCommandIds.workspaceSketch,

@@ -10,7 +10,9 @@ import { useEditorCommandShortcuts } from "./editor-command-shortcuts"
 const invokeLine = vi.fn()
 const invokeCenterRectangle = vi.fn()
 const invokeCancel = vi.fn()
+const invokeUndo = vi.fn()
 const paletteChange = vi.fn()
+const sketchShortcutToolbarChange = vi.fn()
 const lineCommand: ResolvedEditorCommand = {
   active: false,
   descriptor: {
@@ -53,9 +55,38 @@ const centerRectangleCommand: ResolvedEditorCommand = {
   invoke: invokeCenterRectangle,
   toolbarVisible: true,
 }
+const undoCommand: ResolvedEditorCommand = {
+  active: false,
+  descriptor: {
+    group: "sketch",
+    icon: "undo",
+    id: editorCommandIds.sketchUndo,
+    labelKey: "sketchUndo",
+    ownerModuleId: "org.vibeshape.core.sketch",
+    shortcut: { key: "z", modifiers: ["mod"] },
+  },
+  eligibility: editorCommandEnabled(),
+  invoke: invokeUndo,
+  toolbarVisible: true,
+}
 
-function ShortcutHarness({ commands = [lineCommand] }: { commands?: ResolvedEditorCommand[] }) {
-  useEditorCommandShortcuts({ commands, paletteOpen: false, onPaletteOpenChange: paletteChange })
+function ShortcutHarness({
+  commands = [lineCommand],
+  sketchShortcutToolbarAvailable = false,
+  sketchShortcutToolbarOpen = false,
+}: {
+  commands?: ResolvedEditorCommand[]
+  sketchShortcutToolbarAvailable?: boolean
+  sketchShortcutToolbarOpen?: boolean
+}) {
+  useEditorCommandShortcuts({
+    commands,
+    paletteOpen: false,
+    sketchShortcutToolbarAvailable,
+    sketchShortcutToolbarOpen,
+    onPaletteOpenChange: paletteChange,
+    onSketchShortcutToolbarOpenChange: sketchShortcutToolbarChange,
+  })
   return <input aria-label="Expression" />
 }
 
@@ -102,6 +133,60 @@ describe("useEditorCommandShortcuts", () => {
     await user.click(screen.getByRole("textbox", { name: "Expression" }))
     await user.keyboard("{Control>}k{/Control}")
     expect(paletteChange).toHaveBeenCalledWith(true)
+  })
+
+  it("opens the sketch shortcut toolbar with S only while sketch editing is available", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ShortcutHarness />)
+
+    await user.keyboard("s")
+    expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
+
+    rerender(<ShortcutHarness sketchShortcutToolbarAvailable />)
+    await user.keyboard("s")
+    expect(sketchShortcutToolbarChange).toHaveBeenCalledWith(true)
+  })
+
+  it("does not open the sketch shortcut toolbar while typing", async () => {
+    const user = userEvent.setup()
+    render(<ShortcutHarness sketchShortcutToolbarAvailable />)
+
+    await user.click(screen.getByRole("textbox", { name: "Expression" }))
+    await user.keyboard("s")
+
+    expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
+  })
+
+  it("closes the sketch shortcut toolbar before the active editor command", async () => {
+    const user = userEvent.setup()
+    render(
+      <ShortcutHarness
+        commands={[cancelCommand]}
+        sketchShortcutToolbarAvailable
+        sketchShortcutToolbarOpen
+      />,
+    )
+
+    await user.keyboard("{Escape}")
+
+    expect(sketchShortcutToolbarChange).toHaveBeenCalledWith(false)
+    expect(invokeCancel).not.toHaveBeenCalled()
+  })
+
+  it("keeps registered shortcuts available while the non-modal sketch toolbar is open", async () => {
+    const user = userEvent.setup()
+    render(
+      <ShortcutHarness
+        commands={[undoCommand]}
+        sketchShortcutToolbarAvailable
+        sketchShortcutToolbarOpen
+      />,
+    )
+
+    await user.keyboard("{Control>}z{/Control}")
+
+    expect(invokeUndo).toHaveBeenCalledOnce()
+    expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
   })
 
   it("allows Escape to cancel the active editor command from text input", async () => {

@@ -156,6 +156,14 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
   {
     group: "sketch",
+    icon: "use-external-geometry",
+    id: editorCommandIds.sketchUse,
+    labelKey: "sketchUse",
+    ownerModuleId: sketchOwner,
+    toolbarGroup: "sketch-tools",
+  },
+  {
+    group: "sketch",
     icon: "point",
     id: editorCommandIds.sketchPoint,
     labelKey: "sketchPoint",
@@ -487,6 +495,14 @@ function requiresExistingSketch(context: BuiltInEditorCommandContext) {
     : editorCommandDisabled("requiresExistingSketch")
 }
 
+function canUseExternalGeometry(context: BuiltInEditorCommandContext) {
+  const sketchEligibility = requiresSketch(context)
+  if (!sketchEligibility.enabled) return sketchEligibility
+  return context.state.sketchFinalContext
+    ? editorCommandDisabled("hideFinalContext")
+    : editorCommandEnabled()
+}
+
 function sketchToolHandler(
   id: (typeof editorCommandIds)[
     | "sketchAlignedRectangle"
@@ -516,12 +532,14 @@ function sketchToolHandler(
     | "sketchSplit"
     | "sketchTransform"
     | "sketchTangentArc"
-    | "sketchTrim"],
+    | "sketchTrim"
+    | "sketchUse"],
   tool: SketchEditorTool,
+  getEligibility: EditorCommandHandler<BuiltInEditorCommandContext>["getEligibility"] = requiresSketch,
 ): EditorCommandHandler<BuiltInEditorCommandContext> {
   return {
     execute: ({ actions }) => actions.setSketchTool(tool),
-    getEligibility: requiresSketch,
+    getEligibility,
     id,
     isActive: ({ state }) => state.sketchTool === tool,
     isToolbarVisible: ({ state }) => isActiveSketchEditorTool(state.activeSketchTool),
@@ -625,6 +643,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     ownerModuleId: partDesignOwner,
   },
   sketchToolHandler(editorCommandIds.sketchSelect, "select"),
+  sketchToolHandler(editorCommandIds.sketchUse, "use", canUseExternalGeometry),
   sketchToolHandler(editorCommandIds.sketchPoint, "point"),
   sketchToolHandler(editorCommandIds.sketchLine, "line"),
   sketchToolHandler(editorCommandIds.sketchMidpointLine, "midpoint-line"),

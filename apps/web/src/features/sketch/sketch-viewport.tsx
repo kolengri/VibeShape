@@ -10482,33 +10482,6 @@ function SketchPrecisionToolbar({
   )
 }
 
-function UseExternalGeometryAction({
-  active,
-  onEditorToolChange,
-}: Readonly<{
-  active: boolean
-  onEditorToolChange: (tool: SketchEditorTool) => void
-}>) {
-  const t = useTranslations("app.shell.taskPanel.sketch")
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant={active ? "secondary" : "ghost"}
-          aria-label={t("useExternalGeometry")}
-          aria-pressed={active}
-          onClick={() => onEditorToolChange(active ? "select" : "use")}
-        >
-          <Link2 aria-hidden="true" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{t("useExternalGeometry")}</TooltipContent>
-    </Tooltip>
-  )
-}
-
 function IntersectionAction({
   active,
   onEditorToolChange,
@@ -10576,7 +10549,6 @@ function pierceSelectionEnabled(
 }
 
 function SketchExternalReferenceToolbar({
-  candidates,
   draft,
   editorTool,
   modelCandidateCount,
@@ -10584,7 +10556,6 @@ function SketchExternalReferenceToolbar({
   pierceCandidateCount,
   selectedEntityIds,
 }: Readonly<{
-  candidates: readonly ExternalSketchGeometryCandidate[]
   draft: SketchRecord | null
   editorTool: SketchEditorTool
   modelCandidateCount: number
@@ -10592,22 +10563,9 @@ function SketchExternalReferenceToolbar({
   pierceCandidateCount: number
   selectedEntityIds: readonly SketchEntityId[]
 }>) {
-  const availableCandidateCount = useMemo(() => {
-    if (!draft) return 0
-    const references = draft.externalReferences ?? []
-    return candidates.filter(
-      (candidate) =>
-        !references.some((reference) => externalReferenceMatchesCandidate(reference, candidate)),
-    ).length
-  }, [candidates, draft])
-  if (!draft || availableCandidateCount + modelCandidateCount + pierceCandidateCount === 0)
-    return null
+  if (!draft || modelCandidateCount + pierceCandidateCount === 0) return null
   return (
     <div className="flex items-center gap-0.5 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
-      <UseExternalGeometryAction
-        active={editorTool === "use"}
-        onEditorToolChange={onEditorToolChange}
-      />
       {modelCandidateCount > 0 ? (
         <IntersectionAction
           active={editorTool === "intersection"}
@@ -11034,7 +10992,6 @@ export function SketchViewport({
       />
       <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
         <SketchExternalReferenceToolbar
-          candidates={externalPointCandidates}
           draft={draft}
           editorTool={editorTool}
           modelCandidateCount={externalModelCandidates.length}

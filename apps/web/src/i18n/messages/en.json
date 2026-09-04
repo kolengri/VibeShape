@@ -233,6 +233,7 @@
         "activeFeature": "Finish or cancel the active feature first.",
         "activeSketch": "Finish or cancel the active sketch first.",
         "documentUnavailable": "Open a writable document first.",
+        "hideFinalContext": "Hide the final result before referencing earlier geometry.",
         "noActiveCommand": "No command is active.",
         "noSketchRedo": "There is no sketch change to redo.",
         "noSavedSketches": "Create and save a sketch first.",
@@ -390,6 +391,10 @@
           "label": "Trim",
           "keywords": "trim sketch line|remove segment|cut geometry|m"
         },
+        "sketchUse": {
+          "label": "Use external geometry",
+          "keywords": "use external geometry|project geometry|reference edge|reference sketch"
+        },
         "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
         "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
         "workspaceSketch": {
@@ -421,6 +426,9 @@
         "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
         "workspaceLabel": "Editor workspace"
+      },
+      "sketchShortcutToolbar": {
+        "ariaLabel": "Sketch shortcuts"
       },
       "modelTree": {
         "ariaLabel": "Model tree",
