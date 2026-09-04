@@ -1,12 +1,9 @@
 import {
-  appendSketchConstraint,
   isReferenceSketchDimension,
   removeSketchConstraints,
   removeSketchExternalReference,
-  type SketchConstraintDefinition,
   type SketchConstraintId,
   type SketchDimensionValue,
-  type SketchEntity,
   type SketchEntityId,
   type SketchExternalReferenceId,
   type SketchRecord,
@@ -16,57 +13,46 @@ import {
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
 import {
-  ChevronDown,
   CircleAlert,
   Layers3,
   Link2,
+  ListFilter,
   Pencil,
   Trash2,
   X,
 } from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from "@vibeshape/ui/components/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { useMemo, useState } from "react"
-import { createBrowserSketchConstraintId } from "../../document/document-controller"
-import {
-  defaultAngleExpression,
-  defaultLengthExpression,
-  useDocumentDisplayUnits,
-} from "../../document/document-display-units"
+import { useState } from "react"
+import { useDocumentDisplayUnits } from "../../document/document-display-units"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
   type ExternalSketchGeometryCandidate,
   externalReferenceMatchesCandidate,
 } from "./external-sketch-points"
-import {
-  compatibleSketchConstraintToolsForSelection,
-  compatibleSketchDimensionToolsForSelection,
-  createSketchReferenceDimensionConstraint,
-  type SketchDimensionKind,
-  selectedSketchConstraintEntities,
-} from "./sketch-constraint-tools"
-import {
-  createSketchDimensionDefinition,
-  evaluateSketchDimensionValue,
-} from "./sketch-dimension-value"
+import { evaluateSketchDimensionValue } from "./sketch-dimension-value"
 
-type SketchEditorPanelCopy = Readonly<{
-  addConstraint: string
+export type SketchEditorPanelCopy = Readonly<{
   angle: string
   cancel: string
   coincident: string
   concentric: string
   conflict: string
+  closeConstraintManager: string
   constraintManager: (count: number) => string
   constraints: string
   diameter: string
-  dimension: string
   dimensionExpression: string
   dimensionInvalid: string
-  dimensions: string
   distance: string
   externalReferenceDescription: string
   externalReferences: string
@@ -84,6 +70,7 @@ type SketchEditorPanelCopy = Readonly<{
   midpoint: string
   quadrant: string
   noConstraints: string
+  openConstraintManager: string
   offset: string
   parallel: string
   perpendicular: string
@@ -103,19 +90,15 @@ type SketchEditorPanelCopy = Readonly<{
   remove: string
   replaceSupport: string
   saveDimension: string
-  selectionHint: string
   secondaryAxisDiameter: string
   symmetric: string
   tangent: string
   useExternalGeometry: string
   vertical: string
   verticalDistance: string
-  driving: string
   reference: string
-  dimensionMode: string
 }>
 
-type DimensionOption = Readonly<{ kind: SketchDimensionKind; label: string }>
 function constraintName(
   type: SketchRecord["constraints"][number]["type"],
   copy: SketchEditorPanelCopy,
@@ -157,159 +140,6 @@ function constraintValue(constraint: SketchRecord["constraints"][number]) {
   return (
     constraint.value.source.expression ??
     `${constraint.value.source.value} ${constraint.value.source.unit}`
-  )
-}
-
-function dimensionOptions(kinds: readonly SketchDimensionKind[], copy: SketchEditorPanelCopy) {
-  const labels: Record<SketchDimensionKind, string> = {
-    angle: copy.angle,
-    diameter: copy.diameter,
-    distance: copy.distance,
-    "horizontal-distance": copy.horizontalDistance,
-    offset: copy.offset,
-    "primary-axis-diameter": copy.primaryAxisDiameter,
-    radius: copy.radius,
-    "secondary-axis-diameter": copy.secondaryAxisDiameter,
-    "vertical-distance": copy.verticalDistance,
-  }
-  return kinds.map((kind) => ({ kind, label: labels[kind] }))
-}
-
-function SketchDimensionForm({
-  copy,
-  entities,
-  onAdd,
-  options,
-  variables,
-}: {
-  copy: SketchEditorPanelCopy
-  entities: readonly SketchEntity[]
-  onAdd: (definition: SketchConstraintDefinition) => void
-  options: readonly DimensionOption[]
-  variables: readonly VariableDefinition[]
-}) {
-  const displayUnits = useDocumentDisplayUnits()
-  const [message, setMessage] = useState<string | null>(null)
-  const firstOption = options[0]
-  const suggestions = variableExpressionSuggestions(variables)
-  const referenceAvailable = options.some(
-    ({ kind }) => createSketchReferenceDimensionConstraint(kind, entities) !== null,
-  )
-  const form = useAppForm({
-    defaultValues: {
-      kind: firstOption?.kind ?? ("distance" as SketchDimensionKind),
-      mode: "driving" as "driving" | "reference",
-      expression:
-        firstOption?.kind === "angle"
-          ? defaultAngleExpression(Math.PI / 2, displayUnits.angle)
-          : defaultLengthExpression(10, displayUnits.length),
-    },
-    onSubmit: ({ value }) => {
-      if (value.mode === "reference") {
-        const definition = createSketchReferenceDimensionConstraint(value.kind, entities)
-        if (!definition) {
-          setMessage(copy.dimensionInvalid)
-          return
-        }
-        setMessage(null)
-        onAdd(definition)
-        return
-      }
-      const definition = createSketchDimensionDefinition(
-        value.kind,
-        value.expression,
-        entities,
-        variables,
-        displayUnits,
-      )
-      if (!definition) {
-        setMessage(copy.dimensionInvalid)
-        return
-      }
-      setMessage(null)
-      onAdd(definition)
-    },
-  })
-  if (!firstOption) return null
-  return (
-    <Form form={form} aria-label={copy.dimensions} className="mt-2 gap-2">
-      <form.Field name="kind">
-        {(field) => (
-          <Field>
-            <FieldLabel htmlFor="sketch-dimension-kind">{copy.dimension}</FieldLabel>
-            <NativeSelect
-              id="sketch-dimension-kind"
-              name={field.name}
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(event) =>
-                field.handleChange(event.currentTarget.value as SketchDimensionKind)
-              }
-            >
-              {options.map((option) => (
-                <option key={option.kind} value={option.kind}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-        )}
-      </form.Field>
-      {referenceAvailable ? (
-        <form.Field name="mode">
-          {(field) => (
-            <div className="grid gap-1">
-              <FieldLabel>{copy.dimensionMode}</FieldLabel>
-              <fieldset className="flex gap-1">
-                <legend className="sr-only">{copy.dimensionMode}</legend>
-                {(["driving", "reference"] as const).map((candidate) => (
-                  <Button
-                    key={candidate}
-                    type="button"
-                    size="xs"
-                    variant={field.state.value === candidate ? "secondary" : "outline"}
-                    aria-pressed={field.state.value === candidate}
-                    onClick={() => {
-                      setMessage(null)
-                      field.handleChange(candidate)
-                    }}
-                  >
-                    {candidate === "driving" ? copy.driving : copy.reference}
-                  </Button>
-                ))}
-              </fieldset>
-            </div>
-          )}
-        </form.Field>
-      ) : null}
-      <form.Subscribe selector={(state) => state.values.mode}>
-        {(dimensionMode) =>
-          dimensionMode === "reference" ? null : (
-            <form.Field name="expression">
-              {(field) => (
-                <VariableExpressionField
-                  id="sketch-dimension-expression"
-                  name={field.name}
-                  label={copy.dimensionExpression}
-                  value={field.state.value}
-                  error={message ?? undefined}
-                  suggestions={suggestions}
-                  inputClassName="font-mono tabular-nums"
-                  onBlur={field.handleBlur}
-                  onValueChange={(value) => {
-                    setMessage(null)
-                    field.handleChange(value)
-                  }}
-                />
-              )}
-            </form.Field>
-          )
-        }
-      </form.Subscribe>
-      <form.SubmitButton size="xs" requireDirty={false}>
-        {copy.addConstraint}
-      </form.SubmitButton>
-    </Form>
   )
 }
 
@@ -405,78 +235,6 @@ function SketchSetupSection({
         </div>
         <SketchSupportProblemMessage copy={copy} problem={supportProblem} />
       </Field>
-    </section>
-  )
-}
-
-function ConstraintAction({
-  definition,
-  label,
-  onAdd,
-}: {
-  definition: SketchConstraintDefinition | null
-  label: string
-  onAdd: (definition: SketchConstraintDefinition) => void
-}) {
-  return (
-    <Button
-      type="button"
-      size="xs"
-      variant="outline"
-      disabled={!definition}
-      onClick={() => {
-        if (definition) onAdd(definition)
-      }}
-    >
-      {label}
-    </Button>
-  )
-}
-
-function SketchConstraintSection({
-  actions,
-  copy,
-  entities,
-  onAdd,
-  options,
-  selectionKey,
-  variables,
-}: {
-  actions: ReturnType<typeof compatibleSketchConstraintToolsForSelection>
-  copy: SketchEditorPanelCopy
-  entities: readonly SketchEntity[]
-  onAdd: (definition: SketchConstraintDefinition) => void
-  options: readonly DimensionOption[]
-  selectionKey: string
-  variables: readonly VariableDefinition[]
-}) {
-  const availableActions = actions.map(({ definition, kind }) => ({
-    definition,
-    kind,
-    label: constraintName(kind, copy),
-  }))
-  return (
-    <section className="grid gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {copy.addConstraint}
-      </h3>
-      {availableActions.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
-          {availableActions.map(({ definition, kind, label }) => (
-            <ConstraintAction key={kind} definition={definition} label={label} onAdd={onAdd} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs leading-4 text-muted-foreground">{copy.selectionHint}</p>
-      )}
-      <SketchDimensionForm
-        key={`${selectionKey}:${options.map(({ kind }) => kind).join(":")}`}
-        copy={copy}
-        entities={entities}
-        options={options}
-        variables={variables}
-        onAdd={onAdd}
-      />
     </section>
   )
 }
@@ -714,44 +472,61 @@ function AppliedConstraintsSection({
   )
 }
 
-function SketchConstraintManager({
+export function SketchConstraintManagerPopover({
   actions,
-  constraintActions,
   copy,
-  entities,
-  onAdd,
-  options,
-  selectionKey,
   state,
 }: Readonly<{
   actions: SketchEditorPanelActions
-  constraintActions: ReturnType<typeof compatibleSketchConstraintToolsForSelection>
   copy: SketchEditorPanelCopy
-  entities: readonly SketchEntity[]
-  onAdd: (definition: SketchConstraintDefinition) => void
-  options: readonly DimensionOption[]
-  selectionKey: string
   state: SketchEditorPanelState
 }>) {
   return (
-    <details className="group relative border-t pt-1">
-      <summary className="flex h-8 w-full cursor-pointer list-none items-center justify-between rounded-md px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-        <span>{copy.constraintManager(state.draft.constraints.length)}</span>
-        <ChevronDown
-          aria-hidden="true"
-          className="size-3.5 transition-transform group-open:rotate-180"
-        />
-      </summary>
-      <div className="absolute bottom-9 right-0 z-50 grid max-h-[min(32rem,calc(100vh-8rem))] w-80 gap-4 overflow-y-auto rounded-md border bg-popover p-3 text-popover-foreground shadow-md">
-        <SketchConstraintSection
-          actions={constraintActions}
-          copy={copy}
-          entities={entities}
-          options={options}
-          selectionKey={selectionKey}
-          variables={state.variables}
-          onAdd={onAdd}
-        />
+    <Popover>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={copy.openConstraintManager}
+              className="data-[state=open]:bg-accent"
+            >
+              <ListFilter aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{copy.openConstraintManager}</TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        aria-label={copy.constraintManager(state.draft.constraints.length)}
+        className="grid max-h-[min(32rem,calc(100vh-6rem))] w-80 gap-4 overflow-y-auto p-3"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <header className="flex min-w-0 items-center justify-between gap-2">
+          <h3 className="truncate text-sm font-medium">
+            {copy.constraintManager(state.draft.constraints.length)}
+          </h3>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverClose asChild>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={copy.closeConstraintManager}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </PopoverClose>
+            </TooltipTrigger>
+            <TooltipContent>{copy.closeConstraintManager}</TooltipContent>
+          </Tooltip>
+        </header>
         <AppliedConstraintsSection
           copy={copy}
           draft={state.draft}
@@ -762,8 +537,8 @@ function SketchConstraintManager({
           onDraftChange={actions.onDraftChange}
           onSelectedConstraintChange={actions.onSelectedConstraintChange}
         />
-      </div>
-    </details>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -895,7 +670,7 @@ function ExternalReferencesSection({
   )
 }
 
-type SketchEditorPanelState = Readonly<{
+export type SketchEditorPanelState = Readonly<{
   disabled: boolean
   draft: SketchRecord
   externalPointCandidates: readonly ExternalSketchGeometryCandidate[]
@@ -912,7 +687,7 @@ type SketchEditorPanelState = Readonly<{
   variables: readonly VariableDefinition[]
 }>
 
-type SketchEditorPanelActions = Readonly<{
+export type SketchEditorPanelActions = Readonly<{
   onDraftChange: (draft: SketchRecord) => void
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
@@ -936,22 +711,10 @@ export function SketchEditorPanel({
     missingExternalReferenceIds,
     message,
     repairReferenceId,
-    selectedEntityIds,
     supportLabel,
     supportProblem,
   } = state
   const { onDraftChange, onReferenceRepairChange, onSupportReplace } = actions
-  const entities = useMemo(
-    () => selectedSketchConstraintEntities(draft, selectedEntityIds),
-    [draft, selectedEntityIds],
-  )
-  const constraintActions = compatibleSketchConstraintToolsForSelection(draft, selectedEntityIds)
-  const optionKinds = compatibleSketchDimensionToolsForSelection(draft, selectedEntityIds)
-  const options = dimensionOptions(optionKinds, copy)
-  const apply = (definition: SketchConstraintDefinition) => {
-    onDraftChange(appendSketchConstraint(draft, definition, createBrowserSketchConstraintId))
-  }
-
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="grid gap-4">
@@ -973,16 +736,6 @@ export function SketchEditorPanel({
           onDraftChange={onDraftChange}
           onReferenceRepairChange={onReferenceRepairChange}
           repairReferenceId={repairReferenceId}
-        />
-        <SketchConstraintManager
-          actions={actions}
-          constraintActions={constraintActions}
-          copy={copy}
-          entities={entities}
-          onAdd={apply}
-          options={options}
-          selectionKey={selectedEntityIds.join(":")}
-          state={state}
         />
       </div>
       {message ? (

@@ -2,8 +2,17 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 import type * as React from "react"
 import { cn } from "#lib/cn"
 
-function TooltipProvider(props: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return <TooltipPrimitive.Provider data-slot="tooltip-provider" {...props} />
+function TooltipProvider({
+  disableHoverableContent = true,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipPrimitive.Provider
+      data-slot="tooltip-provider"
+      disableHoverableContent={disableHoverableContent}
+      {...props}
+    />
+  )
 }
 
 function Tooltip(props: React.ComponentProps<typeof TooltipPrimitive.Root>) {
@@ -26,7 +35,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-fit max-w-72 rounded-md border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md",
+          "pointer-events-none z-50 w-fit max-w-72 rounded-md border bg-popover px-2 py-1.5 text-xs text-popover-foreground shadow-md",
           className,
         )}
         {...props}

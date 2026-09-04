@@ -20,7 +20,7 @@ import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
-import { SketchEditorPanel } from "./sketch-editor-panel"
+import { SketchConstraintManagerPopover, SketchEditorPanel } from "./sketch-editor-panel"
 
 class ResizeObserverMock {
   observe() {}
@@ -29,7 +29,6 @@ class ResizeObserverMock {
 }
 
 const copy = {
-  addConstraint: "Add constraint",
   angle: "Angle",
   arc: "Arc",
   cancel: "Cancel",
@@ -37,17 +36,14 @@ const copy = {
   coincident: "Coincident",
   concentric: "Concentric",
   conflict: "Conflict",
+  closeConstraintManager: "Close constraint manager",
   constraintManager: (count: number) => `Constraint manager (${count})`,
   construction: "Construction geometry",
   constraints: "Applied constraints",
   diameter: "Diameter",
-  dimension: "Dimension type",
   dimensionExpression: "Driving expression",
-  dimensionMode: "Dimension mode",
   dimensionInvalid: "Invalid dimension",
-  dimensions: "Dimensions",
   distance: "Distance",
-  driving: "Driving",
   externalReferenceDescription: "Use geometry from an earlier sketch.",
   externalReferences: "External references",
   brokenExternalReference: "Broken external reference.",
@@ -66,6 +62,7 @@ const copy = {
   quadrant: "Quadrant",
   noConstraints: "No constraints",
   noExternalReferences: "No external points are in use.",
+  openConstraintManager: "Open constraint manager",
   offset: "Offset",
   parallel: "Parallel",
   perpendicular: "Perpendicular",
@@ -91,7 +88,6 @@ const copy = {
   remove: "Remove",
   replaceSupport: "Replace support",
   saveDimension: "Save dimension",
-  selectionHint: "Select geometry to see compatible constraints.",
   secondaryAxisDiameter: "Secondary axis diameter",
   select: "Select",
   symmetric: "Symmetric",
@@ -182,35 +178,34 @@ function renderPanel(
   >["state"]["referenceDimensionLabels"] = {},
   supportProblem: React.ComponentProps<typeof SketchEditorPanel>["state"]["supportProblem"] = null,
 ) {
+  const state = {
+    disabled: false,
+    draft: sketch,
+    externalPointCandidates: [],
+    externalReferenceLabels,
+    missingExternalReferenceIds,
+    failedConstraintIds,
+    message: null,
+    referenceDimensionLabels,
+    repairReferenceId,
+    selectedConstraintId,
+    selectedEntityIds,
+    supportLabel,
+    supportProblem,
+    variables,
+  } as const
+  const actions = {
+    onDraftChange,
+    onReferenceRepairChange,
+    onSupportReplace,
+    onSelectedConstraintChange: vi.fn(),
+  }
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider delayDuration={0}>
         <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
-          <SketchEditorPanel
-            copy={copy}
-            state={{
-              disabled: false,
-              draft: sketch,
-              externalPointCandidates: [],
-              externalReferenceLabels,
-              missingExternalReferenceIds,
-              failedConstraintIds,
-              message: null,
-              referenceDimensionLabels,
-              repairReferenceId,
-              selectedConstraintId,
-              selectedEntityIds,
-              supportLabel,
-              supportProblem,
-              variables,
-            }}
-            actions={{
-              onDraftChange,
-              onReferenceRepairChange,
-              onSupportReplace,
-              onSelectedConstraintChange: vi.fn(),
-            }}
-          />
+          <SketchConstraintManagerPopover actions={actions} copy={copy} state={state} />
+          <SketchEditorPanel copy={copy} state={state} actions={actions} />
         </DocumentDisplayUnitsProvider>
       </TooltipProvider>
     </I18nProvider>,
@@ -219,11 +214,9 @@ function renderPanel(
 }
 
 async function openConstraintManager(user: ReturnType<typeof userEvent.setup>) {
-  const label = screen.getByText(/Constraint manager/)
-  const manager = label.closest("details")
-  const trigger = manager?.querySelector("summary")
-  if (!manager || !trigger) throw new Error("The constraint manager disclosure is not available.")
-  if (!manager.hasAttribute("open")) await user.click(trigger)
+  const trigger = screen.getByRole("button", { name: "Open constraint manager" })
+  if (trigger.getAttribute("aria-expanded") !== "true") await user.click(trigger)
+  await screen.findByRole("dialog", { name: /Constraint manager/ })
 }
 
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
@@ -496,159 +489,17 @@ describe("SketchEditorPanel", () => {
     expect(screen.queryByRole("button", { name: "Profile 1" })).toBeNull()
   })
 
-  it("keeps the optional constraint manager collapsed until requested", async () => {
+  it("keeps the optional constraint manager behind an explicit diagnostic action", async () => {
     const user = userEvent.setup()
     renderPanel(lineSketch(), [])
-    const label = screen.getByText("Constraint manager (0)")
-    const manager = label.closest("details")
-    const trigger = manager?.querySelector("summary")
-    if (!manager || !trigger) throw new Error("The constraint manager disclosure is not available.")
 
-    expect(manager.hasAttribute("open")).toBe(false)
-    await user.click(trigger)
-    expect(manager.hasAttribute("open")).toBe(true)
+    expect(screen.queryByRole("dialog", { name: "Constraint manager (0)" })).toBeNull()
+    await openConstraintManager(user)
     expect(screen.getByText("Applied constraints")).toBeTruthy()
-  })
-
-  it("adds an applicable geometric constraint from the current selection", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const line = sketch.entities.find((entity) => entity.type === "line")
-    expect(line).toBeDefined()
-    if (!line) return
-    const onDraftChange = renderPanel(sketch, [line.id])
-
-    await openConstraintManager(user)
-    await user.click(screen.getByRole("button", { name: "Horizontal" }))
-
-    expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [expect.objectContaining({ type: "horizontal", lineId: line.id })],
-      }),
-    )
-  })
-
-  it("offers midpoint and symmetric design-intent constraints for compatible selections", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const line = sketch.entities.find((entity) => entity.type === "line")
-    const points = sketch.entities.filter((entity) => entity.type === "point")
-    const firstPoint = points[0]
-    const secondPoint = points[1]
-    if (!line || !firstPoint || !secondPoint) {
-      throw new Error("The line fixture must contain one line and two points.")
-    }
-
-    const midpointChange = renderPanel(sketch, [firstPoint.id, line.id])
-    await openConstraintManager(user)
-    await user.click(screen.getByRole("button", { name: "Midpoint" }))
-    expect(midpointChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({ type: "midpoint", pointId: firstPoint.id, lineId: line.id }),
-        ],
-      }),
-    )
-    cleanup()
-
-    const symmetricChange = renderPanel(sketch, [firstPoint.id, secondPoint.id, line.id])
-    await openConstraintManager(user)
-    await user.click(screen.getByRole("button", { name: "Symmetric" }))
-    expect(symmetricChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({
-            type: "symmetric",
-            firstPointId: firstPoint.id,
-            secondPointId: secondPoint.id,
-            lineId: line.id,
-          }),
-        ],
-      }),
-    )
-  })
-
-  it("uses the TanStack Form adapter to add a variable-ready driving dimension", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const points = sketch.entities.filter((entity) => entity.type === "point")
-    const onDraftChange = renderPanel(
-      sketch,
-      points.map(({ id }) => id),
-    )
-
-    await openConstraintManager(user)
-    await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
-    await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "20 mm")
-    await user.click(screen.getByRole("button", { name: "Add constraint" }))
-
-    expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({
-            type: "distance",
-            value: expect.objectContaining({
-              source: expect.objectContaining({ expression: "20 mm" }),
-            }),
-          }),
-        ],
-      }),
-    )
-  })
-
-  it("creates a length dimension directly from a selected line", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const line = sketch.entities.find((entity) => entity.type === "line")
-    expect(line).toBeDefined()
-    if (!line) return
-    const onDraftChange = renderPanel(sketch, [line.id])
-
-    await openConstraintManager(user)
-    await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
-    await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "25 mm")
-    await user.click(screen.getByRole("button", { name: "Add constraint" }))
-
-    expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({
-            type: "distance",
-            firstPointId: line.startPointId,
-            secondPointId: line.endPointId,
-            value: expect.objectContaining({ value: 25 }),
-          }),
-        ],
-      }),
-    )
-  })
-
-  it("creates a value-less reference dimension from the task-panel fallback", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const line = sketch.entities.find((entity) => entity.type === "line")
-    if (!line) throw new Error("The line fixture must contain one line.")
-    const onDraftChange = renderPanel(sketch, [line.id])
-
-    await openConstraintManager(user)
-    await user.click(screen.getByRole("button", { name: "Reference" }))
-    expect(screen.queryByRole("combobox", { name: "Driving expression" })).toBeNull()
-    await user.click(screen.getByRole("button", { name: "Add constraint" }))
-
-    expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({
-            type: "distance",
-            firstPointId: line.startPointId,
-            secondPointId: line.endPointId,
-            mode: "reference",
-          }),
-        ],
-      }),
-    )
-    const changed = onDraftChange.mock.calls[0]?.[0]
-    expect(changed?.constraints[0]).not.toHaveProperty("value")
+    expect(screen.queryByRole("button", { name: "Add constraint" })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Dimension type" })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Close constraint manager" }))
+    expect(screen.queryByRole("dialog", { name: "Constraint manager (0)" })).toBeNull()
   })
 
   it("exposes the live reference measurement in the accessible constraint row", async () => {
@@ -801,35 +652,6 @@ describe("SketchEditorPanel", () => {
     )
   })
 
-  it("completes a variable reference inside a driving dimension", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const points = sketch.entities.filter((entity) => entity.type === "point")
-    renderPanel(
-      sketch,
-      points.map(({ id }) => id),
-      vi.fn(),
-      [],
-      undefined,
-      [
-        {
-          schemaVersion: 0,
-          id: variableIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2601"),
-          name: "width",
-          expression: "20 mm",
-        },
-      ],
-    )
-
-    await openConstraintManager(user)
-    const expression = screen.getByRole("combobox", { name: "Driving expression" })
-    await user.clear(expression)
-    await user.type(expression, "#wi")
-    await user.keyboard("{Enter}")
-
-    expect((expression as HTMLInputElement).value).toBe("#width")
-  })
-
   it("marks solver-reported conflicting constraints without removing them", async () => {
     const user = userEvent.setup()
     const sketch = lineSketch()
@@ -849,37 +671,5 @@ describe("SketchEditorPanel", () => {
     const label = screen.getByText("Horizontal · Conflict")
     expect(label.closest("li")?.getAttribute("aria-invalid")).toBe("true")
     expect(constrained.constraints).toHaveLength(1)
-  })
-
-  it("uses project units for new sketch dimensions and persists unitless input explicitly", async () => {
-    const user = userEvent.setup()
-    const sketch = lineSketch()
-    const points = sketch.entities.filter((entity) => entity.type === "point")
-    const onDraftChange = renderPanel(
-      sketch,
-      points.map(({ id }) => id),
-      vi.fn(),
-      [],
-      { length: "in", angle: "rad" },
-    )
-    await openConstraintManager(user)
-    const expression = screen.getByRole("combobox", { name: "Driving expression" })
-    expect((expression as HTMLInputElement).value).toBe("0.393700787402 in")
-    await user.clear(expression)
-    await user.type(expression, "2")
-    await user.click(screen.getByRole("button", { name: "Add constraint" }))
-
-    expect(onDraftChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        constraints: [
-          expect.objectContaining({
-            value: expect.objectContaining({
-              value: 50.8,
-              source: expect.objectContaining({ expression: "2 in" }),
-            }),
-          }),
-        ],
-      }),
-    )
   })
 })

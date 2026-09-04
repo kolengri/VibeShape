@@ -73,7 +73,12 @@ import {
   externalSketchGeometryCandidates,
   externalSketchReferenceResolution,
 } from "../features/sketch/external-sketch-points"
-import { SketchEditorPanel } from "../features/sketch/sketch-editor-panel"
+import {
+  type SketchEditorPanelActions,
+  type SketchEditorPanelState,
+  SketchConstraintManagerPopover,
+  SketchEditorPanel,
+} from "../features/sketch/sketch-editor-panel"
 import { inspectSketchSupportHealth } from "../features/sketch/sketch-support"
 import {
   type ActiveSketchEditorTool,
@@ -155,21 +160,17 @@ function VariablesTaskPanel() {
 function useSketchEditorCopy() {
   const t = useTranslations("app.shell.taskPanel.sketch")
   return {
-    addConstraint: t("addConstraint"),
     angle: t("angle"),
     cancel: t("cancel"),
     coincident: t("coincident"),
     concentric: t("concentric"),
     conflict: t("conflict"),
+    closeConstraintManager: t("closeConstraintManager"),
     constraintManager: (count: number) => t("constraintManager", { count }),
     constraints: t("constraints"),
     diameter: t("diameter"),
-    dimension: t("dimension"),
     dimensionExpression: t("dimensionExpression"),
     dimensionInvalid: t("dimensionInvalid"),
-    dimensionMode: t("dimensionMode"),
-    driving: t("driving"),
-    dimensions: t("dimensions"),
     distance: t("distance"),
     externalReferenceDescription: t("externalReferenceDescription"),
     externalReferences: t("externalReferences"),
@@ -188,6 +189,7 @@ function useSketchEditorCopy() {
     midpoint: t("midpoint"),
     quadrant: t("quadrant"),
     noConstraints: t("noConstraints"),
+    openConstraintManager: t("openConstraintManager"),
     offset: t("offset"),
     parallel: t("parallel"),
     perpendicular: t("perpendicular"),
@@ -207,7 +209,6 @@ function useSketchEditorCopy() {
     reference: t("reference"),
     remove: t("removeConstraint"),
     saveDimension: t("saveDimension"),
-    selectionHint: t("constraintSelectionHint"),
     secondaryAxisDiameter: t("secondaryAxisDiameter"),
     symmetric: t("symmetricConstraint"),
     tangent: t("tangent"),
@@ -1842,6 +1843,28 @@ function ActiveSketchTaskPanel({
     }
     onSketchSaved(draft, { profiles, selectedProfile })
   }
+  const panelState: SketchEditorPanelState = {
+    disabled: report.mode === "read-only",
+    draft,
+    externalPointCandidates: referenceCandidates,
+    externalReferenceLabels,
+    missingExternalReferenceIds: sketchReferenceResolution.missingReferenceIds,
+    failedConstraintIds,
+    message,
+    referenceDimensionLabels,
+    repairReferenceId,
+    selectedConstraintId,
+    selectedEntityIds,
+    supportLabel,
+    supportProblem,
+    variables: report.snapshot.variables,
+  }
+  const panelActions: SketchEditorPanelActions = {
+    onDraftChange,
+    onReferenceRepairChange,
+    onSupportReplace,
+    onSelectedConstraintChange,
+  }
   return (
     <aside
       aria-label={t("taskAriaLabel")}
@@ -1853,41 +1876,20 @@ function ActiveSketchTaskPanel({
           <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
           <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
         </div>
-        <TaskPanelLifecycleActions
-          acceptDisabled={report.mode === "read-only"}
-          acceptLabel={t("finish")}
-          ariaLabel={t("lifecycleActions")}
-          cancelLabel={t("cancel")}
-          onAccept={finish}
-          onCancel={onCloseTool}
-        />
+        <div className="flex items-start gap-1">
+          <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
+          <TaskPanelLifecycleActions
+            acceptDisabled={report.mode === "read-only"}
+            acceptLabel={t("finish")}
+            ariaLabel={t("lifecycleActions")}
+            cancelLabel={t("cancel")}
+            onAccept={finish}
+            onCancel={onCloseTool}
+          />
+        </div>
       </header>
       <div className="min-h-0 overflow-auto p-4">
-        <SketchEditorPanel
-          copy={copy}
-          state={{
-            disabled: report.mode === "read-only",
-            draft,
-            externalPointCandidates: referenceCandidates,
-            externalReferenceLabels,
-            missingExternalReferenceIds: sketchReferenceResolution.missingReferenceIds,
-            failedConstraintIds,
-            message,
-            referenceDimensionLabels,
-            repairReferenceId,
-            selectedConstraintId,
-            selectedEntityIds,
-            supportLabel,
-            supportProblem,
-            variables: report.snapshot.variables,
-          }}
-          actions={{
-            onDraftChange,
-            onReferenceRepairChange,
-            onSupportReplace,
-            onSelectedConstraintChange,
-          }}
-        />
+        <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />
       </div>
     </aside>
   )
