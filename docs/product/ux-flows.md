@@ -242,4 +242,5 @@ Accepted constraint and dimension annotations remain spatially anchored beside t
 Each compact annotation has a localized hover tooltip and accessible action name; geometric
 relations select on click, while driving dimensions keep double-click edit and direct label drag.
 Hover or keyboard focus highlights every local or projected entity participating in that relation
-without changing the actual sketch selection.
+without changing the actual sketch selection. `Delete` or `Backspace` on a focused annotation
+removes that constraint directly while leaving its related geometry in place.

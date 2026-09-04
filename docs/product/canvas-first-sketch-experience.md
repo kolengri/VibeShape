@@ -268,9 +268,11 @@ Exit criterion: the reference bracket's primary outline can be drawn to exact si
   label, with a 24 px minimum visual target that remains compact beside the constrained geometry.
 - Hovering or keyboard-focusing an accepted annotation highlights every related local or projected
   entity in the canvas preselection color without changing the document selection.
+- A focused annotation accepts `Delete` or `Backspace` directly and removes only that constraint;
+  users do not have to find the matching row in the task panel.
 - Keep that cursor language consistent as new inference candidates are introduced.
 - Add remembered wake-up references for coplanar earlier sketch and feature geometry.
-- Move selection-driven constraint actions next to the selection and make glyphs draggable and directly deletable.
+- Move selection-driven constraint actions next to the selection and make geometric glyphs draggable.
 
 Exit criterion: users can predict which relation will be created before clicking and can inspect it without opening the constraint list.
 

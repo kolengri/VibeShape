@@ -46,6 +46,7 @@ import {
   projectPointToSketchEllipse,
   type RegularPolygonMode,
   regularPolygonGeometry,
+  removeSketchConstraints,
   removeSketchEntities,
   type SketchConstraintDefinition,
   type SketchConstraintId,
@@ -3650,6 +3651,7 @@ type ConstraintAnnotationInteraction = Readonly<{
   dragRef: RefObject<ConstraintAnnotationDrag | null>
   editDimensionLabel: (label: string) => string
   onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onDelete: (constraintId: SketchConstraintId) => void
   onPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onRelatedEntitiesChange: ConstraintRelatedEntityChange
   onSelect: (constraintId: SketchConstraintId) => void
@@ -3665,6 +3667,17 @@ type ConstraintAnnotationInteraction = Readonly<{
   ) => string
   suppressClickRef: RefObject<boolean>
 }>
+
+function deleteConstraintAnnotation(
+  event: KeyboardEvent<HTMLButtonElement>,
+  glyph: ConstraintGlyph,
+  onDelete: (constraintId: SketchConstraintId) => void,
+) {
+  if (event.key !== "Delete" && event.key !== "Backspace") return
+  event.preventDefault()
+  event.stopPropagation()
+  onDelete(glyph.id)
+}
 
 function ConstraintAnnotation({
   bounds,
@@ -3710,6 +3723,7 @@ function ConstraintAnnotation({
           onDoubleClick={(event) =>
             editConstraintAnnotation(event, glyph, interaction.onEditDimension)
           }
+          onKeyDown={(event) => deleteConstraintAnnotation(event, glyph, interaction.onDelete)}
           onPointerDown={(event) =>
             beginConstraintAnnotationDrag({
               bounds,
@@ -3779,6 +3793,8 @@ function useConstraintGlyphPresentation(
 type ConstraintAnnotationConfiguration = Pick<
   SketchDrawingConfiguration,
   | "editDimensionLabel"
+  | "draft"
+  | "onDraftChange"
   | "onConstraintSelectionChange"
   | "selectedConstraintId"
   | "selectConstraintLabel"
@@ -3820,10 +3836,19 @@ function ConstraintAnnotations({
     [],
   )
   const glyphs = useConstraintGlyphPresentation(sketch, geometry, dimensionLabelPositions)
+  const deleteConstraint = useCallback(
+    (constraintId: SketchConstraintId) => {
+      if (!configuration.draft) return
+      configuration.onDraftChange(removeSketchConstraints(configuration.draft, [constraintId]))
+      configuration.onConstraintSelectionChange(null)
+    },
+    [configuration.draft, configuration.onConstraintSelectionChange, configuration.onDraftChange],
+  )
   const interaction: ConstraintAnnotationInteraction = {
     cleanupRef: dragCleanupRef,
     dragRef,
     editDimensionLabel: configuration.editDimensionLabel,
+    onDelete: deleteConstraint,
     onEditDimension,
     onPositionChange: onDimensionPositionChange,
     onRelatedEntitiesChange,
@@ -3865,6 +3890,8 @@ function SketchDrawingAnnotations({
   const annotationConfiguration = useMemo<ConstraintAnnotationConfiguration>(
     () => ({
       editDimensionLabel: configuration.editDimensionLabel,
+      draft: configuration.draft,
+      onDraftChange: configuration.onDraftChange,
       onConstraintSelectionChange: configuration.onConstraintSelectionChange,
       selectedConstraintId: configuration.selectedConstraintId,
       selectConstraintLabel: configuration.selectConstraintLabel,
@@ -3872,6 +3899,8 @@ function SketchDrawingAnnotations({
     }),
     [
       configuration.editDimensionLabel,
+      configuration.draft,
+      configuration.onDraftChange,
       configuration.onConstraintSelectionChange,
       configuration.selectedConstraintId,
       configuration.selectConstraintLabel,

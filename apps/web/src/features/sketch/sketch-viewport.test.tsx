@@ -6178,6 +6178,32 @@ describe("SketchViewport", () => {
     expect(document.querySelector("[data-sketch-constraint-related-entity-layer]")).toBeNull()
   })
 
+  it.each(["Delete", "Backspace"])("removes a focused constraint directly with %s", (key) => {
+    const onConstraintSelectionChange = vi.fn()
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: sketch,
+      sketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      onConstraintSelectionChange,
+      onDraftChange,
+    })
+    const constraint = sketch.constraints.find(({ type }) => type === "horizontal")
+    if (!constraint) throw new Error("The rectangle fixture must contain a horizontal constraint.")
+    const glyph = document.querySelector(`[data-sketch-constraint-id="${constraint.id}"]`)
+    if (!glyph) throw new Error("The horizontal constraint annotation must be rendered.")
+
+    fireEvent.click(glyph)
+    fireEvent.keyDown(glyph, { key })
+
+    expect(onDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.not.arrayContaining([expect.objectContaining({ id: constraint.id })]),
+      }),
+    )
+    expect(onConstraintSelectionChange).toHaveBeenLastCalledWith(null)
+  })
+
   it("renders a line relation to projected geometry as an external selectable constraint", async () => {
     const projectedLineId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3276")
     const projectedStartPointId = sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3277")
