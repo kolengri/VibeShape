@@ -120,7 +120,7 @@ These commands require a form only for optional exact refinement. Pointer target
 | Dimension editing | Clicking a label selects it and exposes the panel editor | Double-click edits at the label; drag moves the annotation; the panel remains an accessible fallback |
 | Dimension meaning | Kind is chosen mainly from a select field | Pointer direction, selected entity types, and placement side determine the default kind; a compact menu resolves genuine ambiguity |
 | Geometry precision | Dimensionable Line, Rectangle, Circle, Arc, Ellipse, Slot, and regular Polygon families show an anchored optional exact-value affordance after placement; polygon side count remains a non-blocking placement input | Every supported tool offers meaningful transient length, radius, angle, width, and count input without interrupting continued drawing |
-| Inference | Several candidates are implemented, but the system is not yet a consistent cursor language | Every candidate has source highlight, guide, glyph, accepted state, and `Shift` suppression |
+| Inference | Implemented local point, curve, and direction candidates use one glyph, guide, source-highlight, accepted-state, and `Shift`-suppression language; compatible external geometry uses the same preview contract | Extend the same language to every future candidate and add direct constraint-glyph inspection |
 | Constraints | Compatible actions appear in a compact toolbar and a panel list | Selection-driven mini-toolbar stays near the selection; glyphs own hover, edit, move, and delete; the list becomes diagnostics |
 | External references | Use candidates exist in 2D/3D, with panel duplication | Default flow is hover-preview-click in the viewport; panels show provenance, broken references, and repair only |
 | Trim | Hover preselection, click Trim, analytical drag-through across multiple authored curves, cancellation, and one undo boundary per gesture are implemented | Preview only the exact removable span instead of highlighting the complete source curve |
@@ -260,7 +260,11 @@ Exit criterion: the reference bracket's primary outline can be drawn to exact si
 
 ### SKX-3 — inference and constraint language
 
-- Standardize cursor glyphs, guide lines, source highlights, accepted-state feedback, and suppression across every implemented inference.
+- Implemented local point, curve, intersection, alignment, parallel, perpendicular, and tangent
+  candidates now highlight the exact source entities while keeping the existing cursor glyphs,
+  guides, accepted constraint glyphs, and `Shift` suppression. The highlight reuses the authored
+  marker or curve shape, so it does not introduce duplicate point or center geometry.
+- Keep that cursor language consistent as new inference candidates are introduced.
 - Add remembered wake-up references for coplanar earlier sketch and feature geometry.
 - Move selection-driven constraint actions next to the selection and make glyphs draggable and directly deletable.
 - Add focused related-entity highlighting on glyph hover.

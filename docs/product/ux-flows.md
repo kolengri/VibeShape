@@ -232,3 +232,8 @@ A new unsaved sketch treats every committed sketch as earlier context. Editing a
 Editing a sketch rolls the viewport back at its History row by hiding its committed display and every later sketch or feature, including independent later items. Terminal bodies are derived again from the remaining feature graph, which keeps the latest upstream body visible in both normal and orbit views even when a hidden downstream operation consumed it. Explicit model-tree visibility remains independent: hiding a body does not expose an older body state, and restoring it takes effect immediately while the sketch stays open.
 
 **Show final result** temporarily restores the downstream result behind the editable draft when the rollback view lacks useful spatial context. If rollback removes every solid but a later visible result exists, a compact viewport notice explains the History boundary and exposes this action directly; it does not appear while any earlier solid remains available. A visible **Final result · display only** status distinguishes that presentation from the authoritative editing boundary. Downstream geometry never enters hover inference, selection, or **Use** candidate sets, and the preference resets when the sketch session closes.
+
+Every active local inference highlights its exact source point or curve in the same amber
+preselection language used by external wake-up, including both lines at an intersection and the
+reference curve for parallel, perpendicular, or tangent intent. `Shift` clears the glyph, guide,
+and source highlight together for the current pointer sample.
