@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import {
   type AuditAttemptResult,
   isTransientAuditFailure,
+  runAuditProcess,
   runCriticalDependencyAudit,
 } from "./run-critical-dependency-audit"
 
@@ -53,5 +54,17 @@ describe("critical dependency audit", () => {
 
   it("treats a killed timeout as transient without relying on output text", () => {
     expect(isTransientAuditFailure(result(137, "", true))).toBe(true)
+  })
+
+  it("distinguishes a completed nonzero subprocess from an actual timeout", async () => {
+    const completed = await runAuditProcess(
+      ["bun", "-e", "console.error('critical advisory'); process.exit(1)"],
+      1_000,
+    )
+    const timedOut = await runAuditProcess(["bun", "-e", "await Bun.sleep(200)"], 10)
+
+    expect(completed).toMatchObject({ exitCode: 1, timedOut: false })
+    expect(completed.stderr).toContain("critical advisory")
+    expect(timedOut.timedOut).toBe(true)
   })
 })

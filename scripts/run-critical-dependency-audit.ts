@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process"
+
 const auditCommand = ["bun", "audit", "--audit-level=critical"] as const
 const auditAttemptTimeoutMs = 45_000
 const auditRetryDelayMs = 2_000
@@ -46,19 +48,44 @@ export async function runCriticalDependencyAudit({
   return result
 }
 
-async function runAuditAttempt(): Promise<AuditAttemptResult> {
-  const child = Bun.spawn([...auditCommand], {
-    killSignal: "SIGKILL",
-    stderr: "pipe",
-    stdout: "pipe",
-    timeout: auditAttemptTimeoutMs,
+export async function runAuditProcess(
+  command: readonly string[],
+  timeoutMs: number,
+): Promise<AuditAttemptResult> {
+  const [executable, ...arguments_] = command
+  if (!executable) {
+    return { exitCode: 1, stderr: "The audit command is empty.", stdout: "", timedOut: false }
+  }
+  return await new Promise((resolve) => {
+    const child = spawn(executable, arguments_, { stdio: ["ignore", "pipe", "pipe"] })
+    let stderr = ""
+    let stdout = ""
+    let timedOut = false
+    child.stderr.setEncoding("utf8")
+    child.stdout.setEncoding("utf8")
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk
+    })
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk
+    })
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill("SIGKILL")
+    }, timeoutMs)
+    child.once("error", (error) => {
+      clearTimeout(timeout)
+      resolve({ exitCode: 1, stderr: `${stderr}${error.message}\n`, stdout, timedOut })
+    })
+    child.once("close", (exitCode) => {
+      clearTimeout(timeout)
+      resolve({ exitCode: exitCode ?? (timedOut ? 137 : 1), stderr, stdout, timedOut })
+    })
   })
-  const [exitCode, stderr, stdout] = await Promise.all([
-    child.exited,
-    new Response(child.stderr).text(),
-    new Response(child.stdout).text(),
-  ])
-  return { exitCode, stderr, stdout, timedOut: child.killed }
+}
+
+function runAuditAttempt() {
+  return runAuditProcess(auditCommand, auditAttemptTimeoutMs)
 }
 
 function reportAuditAttempt(result: AuditAttemptResult, attempt: number, maximumAttempts: number) {
