@@ -184,6 +184,12 @@ describe("sketch constraint tools", () => {
     ).toEqual([])
   })
 
+  it("rejects ambiguous selections with extra constraint targets", () => {
+    expect(compatibleSketchConstraintTools([firstPoint, circle, arc])).toEqual([])
+    expect(compatibleSketchConstraintTools([firstPoint, line, secondLine])).toEqual([])
+    expect(compatibleSketchConstraintTools([firstPoint, secondPoint, line, secondLine])).toEqual([])
+  })
+
   it("offers drawing dimensions and builds their semantic definitions", () => {
     expect(compatibleSketchDimensionTools([line])).toEqual(["distance"])
     expect(compatibleSketchDimensionTools([firstPoint, secondPoint])).toEqual([
