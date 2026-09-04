@@ -139,6 +139,45 @@ describe("sketch profile detection", () => {
     expect(result.loops[0]?.segments).toHaveLength(4)
   })
 
+  it("keeps tangent slot caps joined by stable endpoint identity", () => {
+    const radius = 25.833_333_333_333_343
+    const value = sketch([
+      point(1, -40, -radius, true),
+      point(2, 20, -radius, true),
+      point(3, -40, 0),
+      point(4, 20, 0),
+      point(5, 20, -radius * 2),
+      point(6, -40, -radius * 2),
+      line(101, 3, 4),
+      line(102, 5, 6),
+      arc(103, 2, 5, 4),
+      arc(104, 1, 3, 6),
+    ])
+
+    const result = detectSketchProfiles(value, authoredSolution(value))
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.profiles).toHaveLength(1)
+    expect(result.profiles[0]?.area).toBeCloseTo(60 * radius * 2 + Math.PI * radius ** 2, 8)
+    expect(result.profiles[0]?.perimeter).toBeCloseTo(120 + Math.PI * radius * 2, 8)
+  })
+
+  it("still rejects an interior crossing when curves share an endpoint", () => {
+    const value = sketch([
+      point(1, 0, 0),
+      point(2, 10, 0),
+      point(3, -10, 0),
+      point(4, -10, 5),
+      arc(101, 1, 2, 3),
+      line(102, 2, 4),
+    ])
+
+    expect(detectSketchProfiles(value, authoredSolution(value))).toMatchObject({
+      profiles: [],
+      diagnostics: [{ code: "intersecting-entities", entityIds: [id(101), id(102)] }],
+    })
+  })
+
   it("groups a nested circle as a hole and preserves an island", () => {
     const value = sketch([point(1, 0, 0), circle(101, 1, 10), circle(102, 1, 6), circle(103, 1, 2)])
 

@@ -7,6 +7,8 @@ export type ProfilePoint = Readonly<{ x: number; y: number }>
 type CurveEnvelope = Readonly<{
   entityId: SketchEntityId
   bounds: ProfileBounds
+  endPointId?: SketchEntityId
+  startPointId?: SketchEntityId
 }>
 
 export type ProfileLineCurve = CurveEnvelope &

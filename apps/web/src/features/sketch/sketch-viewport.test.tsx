@@ -4459,14 +4459,15 @@ describe("SketchViewport", () => {
     expect(point.y).toBeCloseTo(25)
   })
 
-  it("previews and creates a midpoint line with persistent symmetry", () => {
+  it("creates a midpoint line with persistent symmetry and optional exact length", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "midpoint-line",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4496,6 +4497,17 @@ describe("SketchViewport", () => {
       expect.arrayContaining([expect.objectContaining({ type: "point", construction: true })]),
     )
     expect(draft.constraints).toEqual([expect.objectContaining({ type: "midpoint" })])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "midpoint-line",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="distance"]')).toBeTruthy()
   })
 
   it("collects optional exact rectangle width and height beside the new geometry", async () => {
@@ -4571,14 +4583,15 @@ describe("SketchViewport", () => {
     expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
   })
 
-  it("previews and creates a symmetric center rectangle as one draft edit", () => {
+  it("offers exact width and height after creating a symmetric center rectangle", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "center-rectangle",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4618,16 +4631,44 @@ describe("SketchViewport", () => {
     expect(draft.entities.filter(({ type }: { type: string }) => type === "point")).toHaveLength(5)
     expect(draft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(8)
     expect(draft.constraints).toHaveLength(6)
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "center-rectangle",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    const width = await openCreationPrecisionEditor()
+    expect(
+      document.querySelector('[data-sketch-dimension-kind="horizontal-distance"]'),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(2))
+    const widthDraft = sketchRecordSchema.parse(onDraftChange.mock.calls[1]?.[0])
+    view.rerender(
+      viewportElement({
+        draft: widthDraft,
+        editorTool: "center-rectangle",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    expect(width).toBeTruthy()
+    expect(document.querySelector('[data-sketch-dimension-kind="vertical-distance"]')).toBeTruthy()
   })
 
-  it("creates a circumscribed polygon from center, radius, and typed side count", () => {
+  it("creates a circumscribed polygon with typed sides and optional exact radius", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "circumscribed-polygon",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4675,6 +4716,17 @@ describe("SketchViewport", () => {
     expect(draft.constraints.filter(({ type }: { type: string }) => type === "equal")).toHaveLength(
       7,
     )
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "circumscribed-polygon",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="radius"]')).toBeTruthy()
   })
 
   it("keeps invalid inscribed polygon side input pending and commits one valid edit", () => {
@@ -4726,14 +4778,15 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("previews and creates an aligned rectangle with persistent design intent", () => {
+  it("creates an aligned rectangle with persistent intent and optional exact sides", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "aligned-rectangle",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4773,16 +4826,28 @@ describe("SketchViewport", () => {
       expect.objectContaining({ type: "parallel" }),
       expect.objectContaining({ type: "parallel" }),
     ])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "aligned-rectangle",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="distance"]')).toBeTruthy()
   })
 
-  it("previews and creates a centered aligned rectangle with a persistent center axis", () => {
+  it("creates a centered aligned rectangle with a center axis and optional exact sides", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "centered-aligned-rectangle",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4831,16 +4896,28 @@ describe("SketchViewport", () => {
       "midpoint",
       "midpoint",
     ])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "centered-aligned-rectangle",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="distance"]')).toBeTruthy()
   })
 
-  it("previews and creates a straight slot with analytical tangent end caps", () => {
+  it("creates a straight slot with analytical caps and optional exact length and width", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "slot",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4878,17 +4955,48 @@ describe("SketchViewport", () => {
           type === "line" && construction,
       ),
     ).toHaveLength(1)
-    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual(["parallel"])
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual([
+      "equal",
+      "equal",
+      "tangent",
+      "tangent",
+      "tangent",
+    ])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "slot",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="distance"]')).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledTimes(2))
+    const lengthDraft = sketchRecordSchema.parse(onDraftChange.mock.calls[1]?.[0])
+    view.rerender(
+      viewportElement({
+        draft: lengthDraft,
+        editorTool: "slot",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    expect(document.querySelector('[data-sketch-dimension-kind="diameter"]')).toBeTruthy()
   })
 
-  it("previews and creates a centered slot around a midpoint-constrained centerline", () => {
+  it("creates a centered slot around a midpoint-constrained centerline with exact values", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: emptySketch,
       editorTool: "centered-slot",
       sketch: emptySketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
@@ -4923,11 +5031,26 @@ describe("SketchViewport", () => {
     expect(draft.entities.filter(({ type }: { type: string }) => type === "arc")).toHaveLength(2)
     expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual([
       "midpoint",
-      "parallel",
+      "equal",
+      "equal",
+      "tangent",
+      "tangent",
+      "tangent",
     ])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "centered-slot",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="distance"]')).toBeTruthy()
   })
 
-  it("turns one selected line into a straight slot with one width click", () => {
+  it("turns one selected line into a slot and retains optional width in Select", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const lineSketch = appendSketchLine(emptySketch, {
       construction: false,
@@ -4939,14 +5062,15 @@ describe("SketchViewport", () => {
     if (!centerLine) throw new Error("Expected the slot source line to exist.")
     const onDraftChange = vi.fn()
     const onEditorToolChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: lineSketch,
       editorTool: "slot-from-selection",
       onDraftChange,
       onEditorToolChange,
       selectedEntityIds: [centerLine.id],
       sketch: lineSketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
     })
     const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
     vi.spyOn(drawing, "getBoundingClientRect").mockReturnValue({
@@ -4976,7 +5100,26 @@ describe("SketchViewport", () => {
     expect(
       draft.entities.find(({ id }: { id: string }) => id === centerLine.id)?.construction,
     ).toBe(true)
-    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual(["parallel"])
+    expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual([
+      "equal",
+      "equal",
+      "tangent",
+      "tangent",
+      "tangent",
+    ])
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "select",
+        onDraftChange,
+        onEditorToolChange,
+        selectedEntityIds: [],
+        sketch: lineSketch,
+        solveSketch,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="diameter"]')).toBeTruthy()
   })
 
   it("offers optional exact radius for a three-point arc", async () => {
@@ -5094,14 +5237,15 @@ describe("SketchViewport", () => {
     expect(onDraftChange.mock.calls[1]?.[1]).toBe("replace")
   })
 
-  it("creates a tangent arc from a line endpoint and returns to the line tool", () => {
+  it("creates a tangent arc, returns to Line, and retains optional exact radius", async () => {
     const onDraftChange = vi.fn()
     const onEditorToolChange = vi.fn()
-    renderViewport({
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
       draft: sketch,
       editorTool: "tangent-arc",
       sketch,
-      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+      solveSketch,
       onDraftChange,
       onEditorToolChange,
     })
@@ -5135,6 +5279,18 @@ describe("SketchViewport", () => {
       expect.arrayContaining([expect.objectContaining({ type: "tangent" })]),
     )
     expect(onEditorToolChange).toHaveBeenCalledWith("line")
+    view.rerender(
+      viewportElement({
+        draft,
+        editorTool: "line",
+        sketch,
+        solveSketch,
+        onDraftChange,
+        onEditorToolChange,
+      }),
+    )
+    await openCreationPrecisionEditor()
+    expect(document.querySelector('[data-sketch-dimension-kind="radius"]')).toBeTruthy()
   })
 
   it("offers optional exact diameter after center-point circle placement", async () => {

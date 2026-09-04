@@ -119,7 +119,7 @@ These commands require a form only for optional exact refinement. Pointer target
 | Dimension creation | Canvas selection focuses a remote task-panel form | Canvas selection enters annotation placement, then opens an anchored inline expression editor |
 | Dimension editing | Clicking a label selects it and exposes the panel editor | Double-click edits at the label; drag moves the annotation; the panel remains an accessible fallback |
 | Dimension meaning | Kind is chosen mainly from a select field | Pointer direction, selected entity types, and placement side determine the default kind; a compact menu resolves genuine ambiguity |
-| Geometry precision | Line, corner Rectangle, center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now show an anchored optional exact-value affordance after placement; other geometry families still require later Dimension commands | Every supported tool offers meaningful transient length, radius, angle, width, and count input without interrupting continued drawing |
+| Geometry precision | Dimensionable Line, Rectangle, Circle, Arc, Ellipse, Slot, and regular Polygon families show an anchored optional exact-value affordance after placement; polygon side count remains a non-blocking placement input | Every supported tool offers meaningful transient length, radius, angle, width, and count input without interrupting continued drawing |
 | Inference | Several candidates are implemented, but the system is not yet a consistent cursor language | Every candidate has source highlight, guide, glyph, accepted state, and `Shift` suppression |
 | Constraints | Compatible actions appear in a compact toolbar and a panel list | Selection-driven mini-toolbar stays near the selection; glyphs own hover, edit, move, and delete; the list becomes diagnostics |
 | External references | Use candidates exist in 2D/3D, with panel duplication | Default flow is hover-preview-click in the viewport; panels show provenance, broken references, and repair only |
@@ -250,10 +250,10 @@ Exit criterion: a user creates and edits line length, point distance, projected 
 ### SKX-2 — creation-time numeric HUD
 
 - Line now shows an anchored optional length affordance at its final point and retains continuous chain continuation before, during, and after exact entry.
-- Corner Rectangle now offers horizontal width and vertical height through an explicit anchored affordance while preserving one local undo boundary.
+- Corner and Center Rectangle offer horizontal width and vertical height; Aligned and Centered Aligned Rectangle offer the two visible side lengths through the same explicit affordance.
 - Center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now offer the same non-blocking affordance before opening the shared variable-aware dimension editor for diameter, radius, and axis diameters.
-- Extend the same contract to the remaining rectangle, slot, tangent-arc, and polygon families, including meaningful multi-value navigation.
-- Preserve tangent-arc continuation when its creation-time values are added.
+- Straight and Centered Slot offer center-to-center length followed by total width; Slot from selected line offers only the newly authored width.
+- Tangent Arc retains Line continuation while offering its new radius. Regular polygons keep their typed 3–50 side-count placement and offer the construction radius after commit.
 - Share variable suggestions, unit normalization, validation, and expression parsing with existing fields.
 
 Exit criterion: the reference bracket's primary outline can be drawn to exact size without activating Dimension after every entity.
