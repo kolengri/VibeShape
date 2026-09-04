@@ -391,7 +391,7 @@ geometry-class drift, and degenerate projections; projection tests cover full an
 - I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
-The automatic pull-request workflow is one Linux job: frozen install, skill validation, format, lint, typecheck, unit tests, critical dependency audit, and uncached Fallow audit. Production build, all Playwright suites, native builds, and spike evidence are local merge gates. The workflow does not run again on `main`.
+The automatic pull-request workflow is one Linux job: frozen install, skill validation, format, lint, typecheck, unit tests, critical dependency audit, and uncached Fallow audit. The critical audit retries only bounded registry transport failures, applies a per-attempt timeout, and still fails immediately when a completed audit reports a critical advisory. Production build, all Playwright suites, native builds, and spike evidence are local merge gates. The workflow does not run again on `main`.
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 

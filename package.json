@@ -80,7 +80,7 @@
     "fallow": "fallow",
     "fallow:audit": "fallow audit",
     "fallow:health": "fallow health --score",
-    "audit": "bun audit --audit-level=critical",
+    "audit": "bun run scripts/run-critical-dependency-audit.ts",
     "shadcn:add": "shadcn add --cwd apps/web",
     "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
   },
