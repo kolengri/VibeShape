@@ -3409,6 +3409,9 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-constraint-related-entity-layer]")).toBeVisible()
     await expect(drawing.locator("[data-sketch-constraint-related-entity]")).toHaveCount(2)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+    await midpointConstraint.click()
+    await midpointConstraint.press("Delete")
+    await expect(page.getByRole("button", { name: "Select constraint Midpoint" })).toHaveCount(0)
   })
 
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({
