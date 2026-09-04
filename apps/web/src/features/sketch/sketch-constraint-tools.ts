@@ -49,6 +49,11 @@ const mandatorySketchConstraintTools = [
   "point-on-curve",
 ] as const satisfies readonly SketchConstraintToolKind[]
 
+export type SketchConstraintSelectionResult = Readonly<{
+  selectedEntityIds: readonly SketchEntityId[]
+  definition: SketchConstraintDefinition | null
+}>
+
 export function selectedSketchEntities(sketch: SketchRecord, ids: readonly SketchEntityId[]) {
   const selected = new Set<string>(ids)
   return sketch.entities.filter(({ id }) => selected.has(id))
@@ -254,6 +259,125 @@ const constraintBuilders = {
   },
   vertical: (entities) => axisConstraint("vertical", entities),
 } satisfies Record<SketchConstraintToolKind, ConstraintBuilder>
+
+const MAX_CONSTRAINT_SELECTION = 3
+
+function containsAuthoredEntity(
+  authoredIds: ReadonlySet<SketchEntityId>,
+  ids: readonly SketchEntityId[],
+): boolean {
+  return ids.some((id) => authoredIds.has(id))
+}
+
+function representativeCompletionEntities(
+  entities: readonly SketchEntity[],
+  selectedIds: ReadonlySet<SketchEntityId>,
+  authoredIds: ReadonlySet<SketchEntityId>,
+  remainingSlots: number,
+) {
+  const buckets = new Map<
+    SketchEntity["type"],
+    { authored: SketchEntity[]; external: SketchEntity[] }
+  >()
+  for (const entity of entities) {
+    if (selectedIds.has(entity.id)) continue
+    const bucket = buckets.get(entity.type) ?? { authored: [], external: [] }
+    const candidates = authoredIds.has(entity.id) ? bucket.authored : bucket.external
+    if (candidates.length < remainingSlots) candidates.push(entity)
+    buckets.set(entity.type, bucket)
+  }
+  return [...buckets.values()].flatMap(({ authored, external }) => [...authored, ...external])
+}
+
+function canCompleteConstraintSelection(
+  kind: SketchConstraintToolKind,
+  ids: readonly SketchEntityId[],
+  entities: readonly SketchEntity[],
+  authoredIds: ReadonlySet<SketchEntityId>,
+): boolean {
+  if (ids.length === 0 || ids.length > MAX_CONSTRAINT_SELECTION) return false
+  const selectedIds = new Set(ids)
+  const remaining = representativeCompletionEntities(
+    entities,
+    selectedIds,
+    authoredIds,
+    MAX_CONSTRAINT_SELECTION - ids.length,
+  )
+  const entitiesById = new Map(entities.map((entity) => [entity.id, entity]))
+  const entitiesForIds = (candidateIds: readonly SketchEntityId[]) =>
+    candidateIds.flatMap((id) => {
+      const entity = entitiesById.get(id)
+      return entity ? [entity] : []
+    })
+  const selectedEntities = entitiesForIds(ids)
+
+  function search(start: number, additions: readonly SketchEntityId[]): boolean {
+    const candidateIds = [...ids, ...additions]
+    const candidateEntities = entitiesForIds(candidateIds)
+    if (
+      containsAuthoredEntity(authoredIds, candidateIds) &&
+      constraintBuilders[kind](candidateEntities) !== null
+    ) {
+      return true
+    }
+    if (candidateIds.length >= MAX_CONSTRAINT_SELECTION) return false
+    for (let index = start; index < remaining.length; index += 1) {
+      const id = remaining[index]?.id
+      if (id && search(index + 1, [...additions, id])) return true
+    }
+    return false
+  }
+
+  return (
+    (containsAuthoredEntity(authoredIds, ids) &&
+      constraintBuilders[kind](selectedEntities) !== null) ||
+    search(0, [])
+  )
+}
+
+/**
+ * Advance a repeatable constraint tool by one canvas pick.
+ * Completed definitions clear the selection so the same tool can be applied again.
+ */
+export function nextSketchConstraintSelection(
+  sketch: SketchRecord,
+  kind: SketchConstraintToolKind,
+  currentIds: readonly SketchEntityId[],
+  clickedEntityId: SketchEntityId,
+): SketchConstraintSelectionResult {
+  const availableIds = [
+    ...sketch.entities.map(({ id }) => id),
+    ...projectedExternalSketchEntities(sketch.externalReferences ?? []).map(({ id }) => id),
+  ]
+  const available = new Set(availableIds)
+  const authoredIds = new Set(sketch.entities.map(({ id }) => id))
+  if (!available.has(clickedEntityId)) return { selectedEntityIds: [], definition: null }
+
+  const validCurrentIds = currentIds.filter(
+    (id, index, ids) => available.has(id) && ids.indexOf(id) === index,
+  )
+  if (validCurrentIds.includes(clickedEntityId)) {
+    return {
+      selectedEntityIds: validCurrentIds.filter((id) => id !== clickedEntityId),
+      definition: null,
+    }
+  }
+
+  const candidateIds = [...validCurrentIds, clickedEntityId]
+  const candidateEntities = selectedSketchConstraintEntities(sketch, candidateIds)
+  const definition = constraintBuilders[kind](candidateEntities)
+  if (definition && containsAuthoredEntity(authoredIds, candidateIds)) {
+    return { selectedEntityIds: [], definition }
+  }
+
+  const allEntities = selectedSketchConstraintEntities(sketch, availableIds)
+  if (canCompleteConstraintSelection(kind, candidateIds, allEntities, authoredIds)) {
+    return { selectedEntityIds: candidateIds, definition: null }
+  }
+  return canCompleteConstraintSelection(kind, [clickedEntityId], allEntities, authoredIds)
+    ? { selectedEntityIds: [clickedEntityId], definition: null }
+    : { selectedEntityIds: [], definition: null }
+}
 
 export function compatibleSketchConstraintTools(entities: readonly SketchEntity[]) {
   return mandatorySketchConstraintTools.flatMap((kind) => {

@@ -319,6 +319,58 @@
           "label": "Construction geometry",
           "keywords": "toggle construction|reference geometry|helper"
         },
+        "sketchConstraintCoincident": {
+          "label": "Coincident",
+          "keywords": "coincident constraint|join points|point on point"
+        },
+        "sketchConstraintConcentric": {
+          "label": "Concentric",
+          "keywords": "concentric constraint|same center|circles arcs"
+        },
+        "sketchConstraintEqual": {
+          "label": "Equal",
+          "keywords": "equal constraint|same length|same radius"
+        },
+        "sketchConstraintFixed": {
+          "label": "Fix",
+          "keywords": "fixed constraint|lock point|ground geometry"
+        },
+        "sketchConstraintHorizontal": {
+          "label": "Horizontal",
+          "keywords": "horizontal constraint|horizontal line|align points"
+        },
+        "sketchConstraintMidpoint": {
+          "label": "Midpoint",
+          "keywords": "midpoint constraint|center point|bisect line arc"
+        },
+        "sketchConstraintParallel": {
+          "label": "Parallel",
+          "keywords": "parallel constraint|parallel lines|same direction"
+        },
+        "sketchConstraintPerpendicular": {
+          "label": "Perpendicular",
+          "keywords": "perpendicular constraint|right angle|square lines"
+        },
+        "sketchConstraintPointOnCurve": {
+          "label": "Point on curve",
+          "keywords": "point on curve constraint|point on circle|point on arc"
+        },
+        "sketchConstraintPointOnLine": {
+          "label": "Point on line",
+          "keywords": "point on line constraint|point on segment|coincident line"
+        },
+        "sketchConstraintSymmetric": {
+          "label": "Symmetric",
+          "keywords": "symmetric constraint|mirror points|symmetry line"
+        },
+        "sketchConstraintTangent": {
+          "label": "Tangent",
+          "keywords": "tangent constraint|line circle tangent|touching curves"
+        },
+        "sketchConstraintVertical": {
+          "label": "Vertical",
+          "keywords": "vertical constraint|vertical line|align points"
+        },
         "sketchDimension": {
           "label": "Dimension",
           "keywords": "dimension|measure|driving constraint|distance|angle|radius|diameter"
@@ -415,6 +467,7 @@
         "ariaLabel": "Model commands",
         "arcToolsLabel": "Arc tools",
         "circleToolsLabel": "Circle tools",
+        "constraintToolsLabel": "Constraint tools",
         "lineToolsLabel": "Line tools",
         "modelPrimaryLabel": "Modeling actions",
         "profileFeaturesLabel": "Profile features",
@@ -954,6 +1007,7 @@
         "precisionTools": "Sketch precision tools",
         "contextActions": "Sketch actions",
         "dimensionTool": "Add drawing dimension",
+        "constraintSelectGeometry": "{constraint} · {selected, plural, =0 {Select compatible geometry.} other {Select the next compatible entity. Escape clears the selection.}}",
         "deleteGeometry": "Delete geometry",
         "dimensionSelectGeometry": "Dimension · Select a line, circle, ellipse, or two points or lines.",
         "dimensionPlace": "Dimension · Move the pointer to place the annotation, then click.",

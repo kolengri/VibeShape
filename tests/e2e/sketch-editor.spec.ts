@@ -13,6 +13,48 @@ import {
 } from "./sketch-helpers"
 
 test.describe("full sketch editor", () => {
+  test("applies a preselected constraint once and keeps the repeatable tool active", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await confirmSketchPlane(page, "xy")
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await page.getByRole("button", { name: "Point", exact: true }).click()
+    await page.keyboard.down("Shift")
+    await page.mouse.click(bounds.x + bounds.width * 0.62, bounds.y + bounds.height * 0.62)
+    await page.keyboard.up("Shift")
+    await selectSketchEntities(page, drawing, "point", [0])
+    await expect(page.getByRole("toolbar", { name: "Sketch precision tools" })).toBeVisible()
+
+    await selectSketchTool(page, "Constraint tools", "Fix")
+    const modelToolbar = page.getByRole("toolbar", { name: "Model commands" })
+    await expect(modelToolbar.getByRole("button", { name: "Fix", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect(page.getByRole("toolbar", { name: "Sketch precision tools" })).toHaveCount(0)
+
+    await openConstraintManager(page)
+    const manager = page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })
+    const fixedConstraint = manager.getByRole("listitem").filter({ hasText: "Fix point" })
+    await expect(fixedConstraint).toHaveCount(1)
+
+    await modelToolbar.getByRole("button", { name: "Undo", exact: true }).click()
+    await expect(fixedConstraint).toHaveCount(0)
+    await expect(modelToolbar.getByRole("button", { name: "Fix", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+  })
+
   test("uses an exact elliptical edge from a rebuilt extrusion", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")

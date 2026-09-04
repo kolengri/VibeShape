@@ -6430,6 +6430,125 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("keeps an active constraint tool ready for repeated canvas application", () => {
+    const fixture = lineSketchFixture("b271", [
+      { start: { x: -20, y: -10 }, end: { x: -5, y: -10 } },
+      { start: { x: -20, y: 0 }, end: { x: -5, y: 0 } },
+      { start: { x: 5, y: -10 }, end: { x: 20, y: -10 } },
+      { start: { x: 5, y: 0 }, end: { x: 20, y: 0 } },
+    ])
+    const lines = sketchEntitiesOfType(fixture, "line")
+    const first = lines[0]
+    const second = lines[1]
+    const third = lines[2]
+    const fourth = lines[3]
+    if (!first || !second || !third || !fourth) {
+      throw new Error("The repeatable constraint fixture needs four lines.")
+    }
+    const onDraftChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: fixture,
+      editorTool: "constraint-parallel",
+      onDraftChange,
+      onSelectionChange,
+      sketch: fixture,
+      solveSketch,
+    })
+    const hitArea = (id: SketchEntityId) => {
+      const element = view.container.querySelector(
+        `[data-sketch-entity-id="${id}"][data-sketch-hit-area="true"]`,
+      )
+      if (!element) throw new Error(`Expected a selectable line for ${id}.`)
+      return element
+    }
+
+    fireEvent.pointerDown(hitArea(first.id))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([first.id])
+    view.rerender(
+      viewportElement({
+        draft: fixture,
+        editorTool: "constraint-parallel",
+        onDraftChange,
+        onSelectionChange,
+        selectedEntityIds: [first.id],
+        sketch: fixture,
+        solveSketch,
+      }),
+    )
+    fireEvent.pointerDown(hitArea(second.id))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([])
+    const firstResult = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    expect(firstResult.constraints).toContainEqual(
+      expect.objectContaining({
+        firstEntityId: first.id,
+        secondEntityId: second.id,
+        type: "parallel",
+      }),
+    )
+
+    view.rerender(
+      viewportElement({
+        draft: firstResult,
+        editorTool: "constraint-parallel",
+        onDraftChange,
+        onSelectionChange,
+        sketch: firstResult,
+        solveSketch,
+      }),
+    )
+    fireEvent.pointerDown(hitArea(third.id))
+    view.rerender(
+      viewportElement({
+        draft: firstResult,
+        editorTool: "constraint-parallel",
+        onDraftChange,
+        onSelectionChange,
+        selectedEntityIds: [third.id],
+        sketch: firstResult,
+        solveSketch,
+      }),
+    )
+    fireEvent.pointerDown(hitArea(fourth.id))
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
+    expect(onSelectionChange).toHaveBeenLastCalledWith([])
+    expect(screen.getByText(/^Parallel · Select the next compatible entity\./)).toBeTruthy()
+  })
+
+  it("clears a partial constraint selection before Escape can exit the tool", () => {
+    const fixture = lineSketchFixture("b272", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -10, y: 5 }, end: { x: 10, y: 5 } },
+    ])
+    const line = requiredSketchEntity(fixture, "line")
+    const onSelectionChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: fixture,
+      editorTool: "constraint-parallel",
+      onSelectionChange,
+      selectedEntityIds: [line.id],
+      sketch: fixture,
+      solveSketch,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+
+    expect(fireEvent.keyDown(drawing, { key: "Escape" })).toBe(false)
+    expect(onSelectionChange).toHaveBeenLastCalledWith([])
+
+    view.rerender(
+      viewportElement({
+        draft: fixture,
+        editorTool: "constraint-parallel",
+        onSelectionChange,
+        sketch: fixture,
+        solveSketch,
+      }),
+    )
+    expect(fireEvent.keyDown(drawing, { key: "Escape" })).toBe(true)
+  })
+
   it("uses the current selection for one-step sketch context actions", async () => {
     const selectedLine = requiredSketchEntity(sketch, "line")
     const onDraftChange = vi.fn()

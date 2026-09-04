@@ -10,8 +10,8 @@ import {
   resolveBuiltInEditorCommands,
 } from "../commands/built-in-editor-commands"
 import type { DocumentControllerState } from "../document/document-controller"
-import { i18n } from "../i18n"
 import { SketchToolbarPortalsProvider } from "../features/sketch/sketch-toolbar-portals"
+import { i18n } from "../i18n"
 import { CommandToolbar } from "./command-toolbar"
 
 const controller = {
@@ -139,6 +139,7 @@ describe("CommandToolbar", () => {
       screen.getByRole("button", { name: "Construction geometry" }).getAttribute("aria-pressed"),
     ).toBe("false")
     expect(screen.getByRole("button", { name: "Dimension" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Constraint tools" })).toBeTruthy()
     const toolbarActions = screen
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"))
@@ -173,6 +174,15 @@ describe("CommandToolbar", () => {
     await user.click(screen.getByRole("button", { name: "Line tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Midpoint line" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("midpoint-line")
+    await user.click(screen.getByRole("button", { name: "Line tools" }))
+    expect(
+      screen.getByRole("menuitemradio", { name: "Midpoint line" }).getAttribute("aria-checked"),
+    ).toBe("true")
+    await user.keyboard("{Escape}")
+
+    await user.click(screen.getByRole("button", { name: "Constraint tools" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Point on line" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("constraint-point-on-line")
 
     await user.click(screen.getByRole("button", { name: "Circle tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Three-point circle" }))

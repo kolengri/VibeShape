@@ -8,12 +8,14 @@ import {
   type ActiveSketchTool,
   isActiveSketchEditorTool,
   type SketchEditorTool,
+  sketchConstraintEditorTools,
 } from "../features/sketch/sketch-tool"
 import type { EditorWorkspaceName } from "../shell/workspace"
 import {
   createEditorCommandRegistry,
   type EditorCommandDescriptor,
   type EditorCommandHandler,
+  type EditorCommandId,
   editorCommandDisabled,
   editorCommandEnabled,
   editorCommandIds,
@@ -63,6 +65,37 @@ const editorOwner = "org.vibeshape.core.editor"
 const partDesignOwner = "org.vibeshape.core.part-design"
 const referenceGeometryOwner = "org.vibeshape.core.reference-geometry"
 const sketchOwner = "org.vibeshape.core.sketch"
+
+const constraintCommandDescriptors = [
+  ["sketchConstraintCoincident", "constraint-coincident", "coincident"],
+  ["sketchConstraintHorizontal", "constraint-horizontal", "horizontal"],
+  ["sketchConstraintVertical", "constraint-vertical", "vertical"],
+  ["sketchConstraintParallel", "constraint-parallel", "parallel"],
+  ["sketchConstraintPerpendicular", "constraint-perpendicular", "perpendicular"],
+  ["sketchConstraintEqual", "constraint-equal", "equal"],
+  ["sketchConstraintTangent", "constraint-tangent", "tangent"],
+  ["sketchConstraintConcentric", "constraint-concentric", "concentric"],
+  ["sketchConstraintMidpoint", "constraint-midpoint", "midpoint"],
+  ["sketchConstraintSymmetric", "constraint-symmetric", "symmetric"],
+  ["sketchConstraintFixed", "constraint-fixed", "fixed"],
+  ["sketchConstraintPointOnLine", "constraint-point-on-line", "point-on-line"],
+  ["sketchConstraintPointOnCurve", "constraint-point-on-curve", "point-on-curve"],
+] as const
+
+const constraintEditorCommandDescriptors: readonly EditorCommandDescriptor[] =
+  constraintCommandDescriptors.map(([key, icon], familyOrder) => ({
+    group: "sketch",
+    icon,
+    id: editorCommandIds[key],
+    labelKey: key,
+    ownerModuleId: sketchOwner,
+    sketchPresentation: {
+      family: "constraint",
+      ...(familyOrder === 0 ? { familyDefault: true as const } : {}),
+      familyOrder,
+    },
+    toolbarGroup: "sketch-precision",
+  }))
 
 const descriptors: readonly EditorCommandDescriptor[] = [
   {
@@ -383,6 +416,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     shortcut: { key: "d" },
     toolbarGroup: "sketch-precision",
   },
+  ...constraintEditorCommandDescriptors,
   {
     group: "sketch",
     icon: "extend",
@@ -549,36 +583,7 @@ function canUseExternalGeometry(context: BuiltInEditorCommandContext) {
 }
 
 function sketchToolHandler(
-  id: (typeof editorCommandIds)[
-    | "sketchAlignedRectangle"
-    | "sketchArc"
-    | "sketchMidpointLine"
-    | "sketchThreePointArc"
-    | "sketchThreePointCircle"
-    | "sketchCenterRectangle"
-    | "sketchCenteredAlignedRectangle"
-    | "sketchCenteredSlot"
-    | "sketchCircle"
-    | "sketchEllipse"
-    | "sketchEllipticalArc"
-    | "sketchCircularPattern"
-    | "sketchCircumscribedPolygon"
-    | "sketchDimension"
-    | "sketchExtend"
-    | "sketchInscribedPolygon"
-    | "sketchLine"
-    | "sketchLinearPattern"
-    | "sketchMirror"
-    | "sketchOffset"
-    | "sketchPoint"
-    | "sketchRectangle"
-    | "sketchSelect"
-    | "sketchSlot"
-    | "sketchSplit"
-    | "sketchTransform"
-    | "sketchTangentArc"
-    | "sketchTrim"
-    | "sketchUse"],
+  id: EditorCommandId,
   tool: SketchEditorTool,
   getEligibility: EditorCommandHandler<BuiltInEditorCommandContext>["getEligibility"] = requiresSketch,
 ): EditorCommandHandler<BuiltInEditorCommandContext> {
@@ -722,6 +727,9 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
   sketchToolHandler(editorCommandIds.sketchThreePointArc, "three-point-arc"),
   sketchToolHandler(editorCommandIds.sketchTangentArc, "tangent-arc"),
   sketchToolHandler(editorCommandIds.sketchDimension, "dimension"),
+  ...constraintCommandDescriptors.map(([key, , kind]) =>
+    sketchToolHandler(editorCommandIds[key], sketchConstraintEditorTools[kind]),
+  ),
   sketchToolHandler(editorCommandIds.sketchTrim, "trim"),
   sketchToolHandler(editorCommandIds.sketchExtend, "extend"),
   sketchToolHandler(editorCommandIds.sketchMirror, "mirror"),
