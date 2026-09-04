@@ -88,7 +88,7 @@ The visual annotation is the primary object. A list or inspector is a secondary 
 - Constraint glyphs can be dragged away from overlaps, selected, and deleted directly.
 - Under-constrained, fully constrained, and conflicting geometry use distinct visual states.
 - Dragging under-constrained geometry is an ordinary diagnostic technique for discovering remaining degrees of freedom.
-- The Constraint manager is a filtered diagnostic surface for complex sketches. It is not the primary creation workflow.
+- The Constraint manager is a filtered diagnostic surface for complex sketches. It stays collapsed by default, opens explicitly, and is not the primary creation workflow. Solver conflicts remain visible on the canvas and in the solve summary before the manager is opened.
 
 ### External geometry is selected visually
 

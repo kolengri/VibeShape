@@ -161,6 +161,7 @@ function useSketchEditorCopy() {
     coincident: t("coincident"),
     concentric: t("concentric"),
     conflict: t("conflict"),
+    constraintManager: (count: number) => t("constraintManager", { count }),
     constraints: t("constraints"),
     diameter: t("diameter"),
     dimension: t("dimension"),

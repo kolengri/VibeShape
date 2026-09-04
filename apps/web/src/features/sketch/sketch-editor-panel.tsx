@@ -15,7 +15,15 @@ import {
 } from "@vibeshape/domain"
 import { Button } from "@vibeshape/ui/components/button"
 import { Field, FieldLabel } from "@vibeshape/ui/components/field"
-import { CircleAlert, Layers3, Link2, Pencil, Trash2, X } from "@vibeshape/ui/components/icons"
+import {
+  ChevronDown,
+  CircleAlert,
+  Layers3,
+  Link2,
+  Pencil,
+  Trash2,
+  X,
+} from "@vibeshape/ui/components/icons"
 import { NativeSelect } from "@vibeshape/ui/components/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
@@ -52,6 +60,7 @@ type SketchEditorPanelCopy = Readonly<{
   coincident: string
   concentric: string
   conflict: string
+  constraintManager: (count: number) => string
   constraints: string
   diameter: string
   dimension: string
@@ -447,7 +456,7 @@ function SketchConstraintSection({
     label: constraintName(kind, copy),
   }))
   return (
-    <section className="grid gap-2 border-t pt-3">
+    <section className="grid gap-2">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {copy.addConstraint}
       </h3>
@@ -705,6 +714,59 @@ function AppliedConstraintsSection({
   )
 }
 
+function SketchConstraintManager({
+  actions,
+  constraintActions,
+  copy,
+  entities,
+  onAdd,
+  options,
+  selectionKey,
+  state,
+}: Readonly<{
+  actions: SketchEditorPanelActions
+  constraintActions: ReturnType<typeof compatibleSketchConstraintToolsForSelection>
+  copy: SketchEditorPanelCopy
+  entities: readonly SketchEntity[]
+  onAdd: (definition: SketchConstraintDefinition) => void
+  options: readonly DimensionOption[]
+  selectionKey: string
+  state: SketchEditorPanelState
+}>) {
+  return (
+    <details className="group relative border-t pt-1">
+      <summary className="flex h-8 w-full cursor-pointer list-none items-center justify-between rounded-md px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+        <span>{copy.constraintManager(state.draft.constraints.length)}</span>
+        <ChevronDown
+          aria-hidden="true"
+          className="size-3.5 transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="absolute bottom-9 right-0 z-50 grid max-h-[min(32rem,calc(100vh-8rem))] w-80 gap-4 overflow-y-auto rounded-md border bg-popover p-3 text-popover-foreground shadow-md">
+        <SketchConstraintSection
+          actions={constraintActions}
+          copy={copy}
+          entities={entities}
+          options={options}
+          selectionKey={selectionKey}
+          variables={state.variables}
+          onAdd={onAdd}
+        />
+        <AppliedConstraintsSection
+          copy={copy}
+          draft={state.draft}
+          failedConstraintIds={state.failedConstraintIds}
+          referenceDimensionLabels={state.referenceDimensionLabels}
+          selectedConstraintId={state.selectedConstraintId}
+          variables={state.variables}
+          onDraftChange={actions.onDraftChange}
+          onSelectedConstraintChange={actions.onSelectedConstraintChange}
+        />
+      </div>
+    </details>
+  )
+}
+
 function ExternalReferencesSection({
   candidates,
   copy,
@@ -872,18 +934,13 @@ export function SketchEditorPanel({
     externalPointCandidates,
     externalReferenceLabels,
     missingExternalReferenceIds,
-    failedConstraintIds,
     message,
-    referenceDimensionLabels,
     repairReferenceId,
     selectedEntityIds,
-    selectedConstraintId,
     supportLabel,
     supportProblem,
-    variables,
   } = state
-  const { onDraftChange, onReferenceRepairChange, onSupportReplace, onSelectedConstraintChange } =
-    actions
+  const { onDraftChange, onReferenceRepairChange, onSupportReplace } = actions
   const entities = useMemo(
     () => selectedSketchConstraintEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
@@ -917,24 +974,15 @@ export function SketchEditorPanel({
           onReferenceRepairChange={onReferenceRepairChange}
           repairReferenceId={repairReferenceId}
         />
-        <SketchConstraintSection
-          actions={constraintActions}
+        <SketchConstraintManager
+          actions={actions}
+          constraintActions={constraintActions}
           copy={copy}
           entities={entities}
+          onAdd={apply}
           options={options}
           selectionKey={selectedEntityIds.join(":")}
-          variables={variables}
-          onAdd={apply}
-        />
-        <AppliedConstraintsSection
-          copy={copy}
-          draft={draft}
-          failedConstraintIds={failedConstraintIds}
-          referenceDimensionLabels={referenceDimensionLabels}
-          selectedConstraintId={selectedConstraintId}
-          variables={variables}
-          onDraftChange={onDraftChange}
-          onSelectedConstraintChange={onSelectedConstraintChange}
+          state={state}
         />
       </div>
       {message ? (

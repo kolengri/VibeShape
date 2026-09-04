@@ -30,6 +30,15 @@ export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" =
   await expect(page.getByRole("img", { name: "Editable sketch geometry" })).toBeVisible()
 }
 
+export async function openConstraintManager(page: Page) {
+  const manager = page
+    .getByRole("complementary", { name: "Sketch task panel" })
+    .locator("details")
+    .filter({ hasText: /^Constraint manager \(\d+\)/ })
+  if ((await manager.getAttribute("open")) === null) await manager.locator("summary").click()
+  await expect(manager).toHaveAttribute("open", "")
+}
+
 export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
   const viewport = page.getByRole("region", { name: "3D viewport" })
   await expect(viewport).toHaveAttribute("data-origin-plane-selection", /xy|xz|yz/)
@@ -219,6 +228,7 @@ export async function addDimension(
     | "Secondary axis diameter",
   expression: string,
 ) {
+  await openConstraintManager(page)
   await page.getByRole("combobox", { name: "Dimension type" }).selectOption({ label: type })
   const input = page.getByRole("combobox", { name: "Driving expression" })
   await input.fill(expression)
