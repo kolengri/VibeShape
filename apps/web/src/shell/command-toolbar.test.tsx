@@ -129,15 +129,29 @@ describe("CommandToolbar", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Box" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Model" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Sketch" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Create sketch" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Create datum plane" })).toBeNull()
     expect(document.querySelector("[data-sketch-constraint-manager-toolbar-slot]")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Select" }).getAttribute("aria-pressed")).toBe("true")
     expect(
       screen.getByRole("button", { name: "Construction geometry" }).getAttribute("aria-pressed"),
     ).toBe("false")
     expect(screen.getByRole("button", { name: "Dimension" })).toBeTruthy()
+    const toolbarActions = screen
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"))
+    expect(toolbarActions.indexOf("Line tools")).toBeLessThan(toolbarActions.indexOf("Arc tools"))
+    expect(toolbarActions.indexOf("Arc tools")).toBeLessThan(
+      toolbarActions.indexOf("Rectangle tools"),
+    )
+    expect(toolbarActions.indexOf("Polygon tools")).toBeGreaterThan(
+      toolbarActions.indexOf("Slot tools"),
+    )
+    expect(toolbarActions.indexOf("Dimension")).toBeLessThan(toolbarActions.indexOf("Trim"))
     await user.click(screen.getByRole("button", { name: "Use external geometry" }))
     expect(actions.setSketchTool).toHaveBeenCalledWith("use")
-    expect((screen.getByRole("button", { name: "Model" }) as HTMLButtonElement).disabled).toBe(true)
 
     await user.click(screen.getByRole("button", { name: "Rectangle tools" }))
     await user.click(screen.getByRole("menuitemradio", { name: "Rectangle G" }))
@@ -259,9 +273,9 @@ describe("CommandToolbar", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Sketch modification tools" }))
-    await user.click(screen.getByRole("menuitem", { name: "Trim" }))
+    await user.click(screen.getByRole("menuitem", { name: "Extend" }))
 
-    expect(actions.setSketchTool).toHaveBeenCalledWith("trim")
+    expect(actions.setSketchTool).toHaveBeenCalledWith("extend")
   })
 
   it("shows Extrude and Revolve as separate sketch toolbar commands", async () => {

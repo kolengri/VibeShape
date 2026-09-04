@@ -4,11 +4,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@vibeshape/ui/components
 import { Toolbar, ToolbarButton } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { type CSSProperties, type KeyboardEvent, type RefObject, useEffect, useRef } from "react"
-import {
-  type EditorCommandId,
-  editorCommandIds,
-  type ResolvedEditorCommand,
-} from "../commands/editor-command"
+import type { ResolvedEditorCommand } from "../commands/editor-command"
 import {
   EditorCommandIconView,
   editorCommandShortcutLabel,
@@ -28,26 +24,15 @@ function dismissesShortcutToolbar(event: KeyboardEvent<HTMLDivElement>) {
   )
 }
 
-const sketchShortcutCommandIds = [
-  editorCommandIds.sketchSelect,
-  editorCommandIds.sketchUse,
-  editorCommandIds.sketchLine,
-  editorCommandIds.sketchCenterRectangle,
-  editorCommandIds.sketchCircle,
-  editorCommandIds.sketchThreePointArc,
-  editorCommandIds.sketchDimension,
-  editorCommandIds.sketchTrim,
-  editorCommandIds.sketchOffset,
-  editorCommandIds.createExtrusion,
-  editorCommandIds.createRevolve,
-] as const satisfies readonly EditorCommandId[]
-
 function shortcutCommands(commands: readonly ResolvedEditorCommand[]) {
-  const byId = new Map(commands.map((command) => [command.descriptor.id, command]))
-  return sketchShortcutCommandIds.flatMap((id) => {
-    const command = byId.get(id)
-    return command ? [command] : []
-  })
+  return commands
+    .filter(({ descriptor }) => descriptor.sketchPresentation?.shortcutOrder !== undefined)
+    .sort((first, second) => {
+      const order =
+        (first.descriptor.sketchPresentation?.shortcutOrder ?? 0) -
+        (second.descriptor.sketchPresentation?.shortcutOrder ?? 0)
+      return order || first.descriptor.id.localeCompare(second.descriptor.id)
+    })
 }
 
 function ShortcutAction({

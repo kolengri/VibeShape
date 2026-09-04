@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { useEffect, useState } from "react"
 import {
   type EditorCommandId,
+  type EditorCommandSketchFamilyId,
   editorCommandIds,
   type ResolvedEditorCommand,
 } from "../commands/editor-command"
@@ -73,63 +74,33 @@ function ToolbarAction({
   )
 }
 
-type SketchToolFamilyId = "line" | "rectangle" | "circle" | "polygon" | "arc" | "slot"
-
 const sketchToolFamilies = [
   {
-    commandIds: [editorCommandIds.sketchLine, editorCommandIds.sketchMidpointLine],
     id: "line",
     labelKey: "lineToolsLabel",
   },
   {
-    commandIds: [
-      editorCommandIds.sketchRectangle,
-      editorCommandIds.sketchCenterRectangle,
-      editorCommandIds.sketchAlignedRectangle,
-      editorCommandIds.sketchCenteredAlignedRectangle,
-    ],
+    id: "arc",
+    labelKey: "arcToolsLabel",
+  },
+  {
     id: "rectangle",
     labelKey: "rectangleToolsLabel",
   },
   {
-    commandIds: [
-      editorCommandIds.sketchCircle,
-      editorCommandIds.sketchThreePointCircle,
-      editorCommandIds.sketchEllipse,
-    ],
     id: "circle",
     labelKey: "circleToolsLabel",
   },
   {
-    commandIds: [
-      editorCommandIds.sketchInscribedPolygon,
-      editorCommandIds.sketchCircumscribedPolygon,
-    ],
-    id: "polygon",
-    labelKey: "polygonToolsLabel",
-  },
-  {
-    commandIds: [
-      editorCommandIds.sketchSlot,
-      editorCommandIds.sketchCenteredSlot,
-      editorCommandIds.sketchSlotAroundLine,
-    ],
     id: "slot",
     labelKey: "slotToolsLabel",
   },
   {
-    commandIds: [
-      editorCommandIds.sketchThreePointArc,
-      editorCommandIds.sketchTangentArc,
-      editorCommandIds.sketchArc,
-      editorCommandIds.sketchEllipticalArc,
-    ],
-    id: "arc",
-    labelKey: "arcToolsLabel",
+    id: "polygon",
+    labelKey: "polygonToolsLabel",
   },
 ] as const satisfies readonly {
-  commandIds: readonly EditorCommandId[]
-  id: SketchToolFamilyId
+  id: EditorCommandSketchFamilyId
   labelKey:
     | "lineToolsLabel"
     | "rectangleToolsLabel"
@@ -139,34 +110,34 @@ const sketchToolFamilies = [
     | "slotToolsLabel"
 }[]
 
-const defaultFamilyCommandIds: Readonly<Record<SketchToolFamilyId, EditorCommandId>> = {
-  arc: editorCommandIds.sketchThreePointArc,
-  circle: editorCommandIds.sketchCircle,
-  line: editorCommandIds.sketchLine,
-  polygon: editorCommandIds.sketchInscribedPolygon,
-  rectangle: editorCommandIds.sketchCenterRectangle,
-  slot: editorCommandIds.sketchCenteredSlot,
-}
-
-const groupedSketchToolIds: ReadonlySet<EditorCommandId> = new Set<EditorCommandId>(
-  sketchToolFamilies.flatMap(({ commandIds }) => commandIds),
-)
-
 const profileFeatureCommandIds = [
   editorCommandIds.createExtrusion,
   editorCommandIds.createRevolve,
 ] as const satisfies readonly EditorCommandId[]
-const profileFeatureCommandIdSet: ReadonlySet<EditorCommandId> = new Set(profileFeatureCommandIds)
 
-function familyCommands(
+function commandsById(
   commands: readonly ResolvedEditorCommand[],
   commandIds: readonly EditorCommandId[],
 ) {
-  const commandsById = new Map(commands.map((command) => [command.descriptor.id, command]))
+  const byId = new Map(commands.map((command) => [command.descriptor.id, command]))
   return commandIds.flatMap((id) => {
-    const command = commandsById.get(id)
+    const command = byId.get(id)
     return command ? [command] : []
   })
+}
+
+function familyCommands(
+  commands: readonly ResolvedEditorCommand[],
+  familyId: EditorCommandSketchFamilyId,
+) {
+  return commands
+    .filter(({ descriptor }) => descriptor.sketchPresentation?.family === familyId)
+    .sort(
+      (first, second) =>
+        (first.descriptor.sketchPresentation?.familyOrder ?? 0) -
+          (second.descriptor.sketchPresentation?.familyOrder ?? 0) ||
+        first.descriptor.id.localeCompare(second.descriptor.id),
+    )
 }
 
 function ToolbarCommandFamilyAction({
@@ -181,13 +152,14 @@ function ToolbarCommandFamilyAction({
   disabledReason: (command: ResolvedEditorCommand) => string | null
   familyLabel: string
   label: (command: ResolvedEditorCommand) => string
-  lastUsedCommandId: EditorCommandId
+  lastUsedCommandId: EditorCommandId | undefined
   onCommandSelect: (command: ResolvedEditorCommand) => void
 }) {
   const activeCommand = commands.find(({ active }) => active)
   const primaryCommand =
     activeCommand ??
     commands.find(({ descriptor }) => descriptor.id === lastUsedCommandId) ??
+    commands.find(({ descriptor }) => descriptor.sketchPresentation?.familyDefault) ??
     commands[0]
   if (!primaryCommand) return null
   return (
@@ -349,29 +321,35 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const modelPrimaryCommands = group("model-primary")
   const modelPrimitiveCommands = group("model-primitives")
   const sketchToolCommands = group("sketch-tools")
+  const sketchPrecisionCommands = group("sketch-precision")
   const sketchModifyCommands = group("sketch-modify")
   const sketchModeCommands = group("sketch-mode")
   const sketchViewCommands = group("sketch-view")
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
-  const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState(defaultFamilyCommandIds)
+  const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState<
+    Partial<Record<EditorCommandSketchFamilyId, EditorCommandId>>
+  >({})
   const activeSketchToolId = sketchToolCommands.find(({ active }) => active)?.descriptor.id
-  const profileFeatureCommands = familyCommands(modelPrimaryCommands, profileFeatureCommandIds)
+  const activeSketchFamilyId = sketchToolCommands.find(
+    ({ descriptor }) => descriptor.id === activeSketchToolId,
+  )?.descriptor.sketchPresentation?.family
+  const profileFeatureCommands = commandsById(modelPrimaryCommands, profileFeatureCommandIds)
 
   useEffect(() => {
     if (!activeSketchToolId) return
-    const family = sketchToolFamilies.find(({ commandIds }) =>
-      commandIds.some((commandId) => commandId === activeSketchToolId),
-    )
-    if (!family) return
+    if (!activeSketchFamilyId) return
     setLastUsedFamilyCommands((current) =>
-      current[family.id] === activeSketchToolId
+      current[activeSketchFamilyId] === activeSketchToolId
         ? current
-        : { ...current, [family.id]: activeSketchToolId },
+        : { ...current, [activeSketchFamilyId]: activeSketchToolId },
     )
-  }, [activeSketchToolId])
+  }, [activeSketchFamilyId, activeSketchToolId])
 
-  const selectFamilyCommand = (familyId: SketchToolFamilyId, command: ResolvedEditorCommand) => {
+  const selectFamilyCommand = (
+    familyId: EditorCommandSketchFamilyId,
+    command: ResolvedEditorCommand,
+  ) => {
     setLastUsedFamilyCommands((current) => ({
       ...current,
       [familyId]: command.descriptor.id,
@@ -386,13 +364,17 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
       className="min-w-0 gap-1 overflow-x-auto border-b bg-toolbar px-2"
     >
       <nav>
-        <ToolbarCommandGroup
-          commands={workspaceCommands}
-          getDisabledReason={getDisabledReason}
-          getLabel={getLabel}
-          label={t("workspaceLabel")}
-        />
-        <ToolbarSeparator />
+        {sketchMode ? null : (
+          <>
+            <ToolbarCommandGroup
+              commands={workspaceCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("workspaceLabel")}
+            />
+            <ToolbarSeparator />
+          </>
+        )}
         {sketchMode ? (
           <>
             <ToolbarCommandGroup
@@ -401,18 +383,10 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               getLabel={getLabel}
               label={t("profileFeaturesLabel")}
             />
-            <ToolbarCommandGroup
-              commands={modelPrimaryCommands.filter(
-                ({ descriptor }) => !profileFeatureCommandIdSet.has(descriptor.id),
-              )}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("modelPrimaryLabel")}
-            />
             <ToolbarSeparator />
             <ToolbarCommandGroup
               commands={sketchToolCommands.filter(
-                ({ descriptor }) => !groupedSketchToolIds.has(descriptor.id),
+                ({ descriptor }) => !descriptor.sketchPresentation?.family,
               )}
               getDisabledReason={getDisabledReason}
               getLabel={getLabel}
@@ -421,7 +395,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
             {sketchToolFamilies.map((family) => (
               <ToolbarCommandFamilyAction
                 key={family.id}
-                commands={familyCommands(sketchToolCommands, family.commandIds)}
+                commands={familyCommands(sketchToolCommands, family.id)}
                 disabledReason={getDisabledReason}
                 familyLabel={t(family.labelKey)}
                 label={getLabel}
@@ -430,9 +404,32 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               />
             ))}
             <ToolbarSeparator />
+            <ToolbarCommandGroup
+              commands={sketchPrecisionCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("sketchPrecisionLabel")}
+            />
+            <ToolbarCommandGroup
+              commands={sketchModeCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("sketchModeLabel")}
+            />
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
+              commands={sketchModifyCommands.filter(
+                ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar === "visible",
+              )}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("sketchModifyLabel")}
+            />
             <span className="hidden xl:contents">
               <ToolbarCommandGroup
-                commands={sketchModifyCommands}
+                commands={sketchModifyCommands.filter(
+                  ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
+                )}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
                 label={t("sketchModifyLabel")}
@@ -440,21 +437,14 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
             </span>
             <span className="contents xl:hidden">
               <ToolbarCommandMenu
-                commands={sketchModifyCommands}
+                commands={sketchModifyCommands.filter(
+                  ({ descriptor }) => descriptor.sketchPresentation?.compactToolbar !== "visible",
+                )}
                 getDisabledReason={getDisabledReason}
                 getLabel={getLabel}
                 label={t("sketchModifyLabel")}
               />
             </span>
-            <ToolbarSeparator />
-            {sketchModeCommands.map((command) => (
-              <ToolbarAction
-                key={command.descriptor.id}
-                command={command}
-                disabledReason={getDisabledReason(command)}
-                label={getLabel(command)}
-              />
-            ))}
             <ToolbarSeparator />
             <ToolbarCommandGroup
               commands={sketchViewCommands}

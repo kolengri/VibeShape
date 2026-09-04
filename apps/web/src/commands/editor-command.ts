@@ -57,10 +57,38 @@ export type EditorCommandToolbarGroup =
   | "model-primary"
   | "model-primitives"
   | "sketch-tools"
+  | "sketch-precision"
   | "sketch-mode"
   | "sketch-modify"
   | "sketch-view"
   | "history"
+
+export type EditorCommandSketchFamilyId =
+  | "arc"
+  | "circle"
+  | "line"
+  | "polygon"
+  | "rectangle"
+  | "slot"
+
+type EditorCommandSketchPresentationBase = Readonly<{
+  compactToolbar?: "visible" | "overflow"
+  shortcutOrder?: number
+}>
+
+export type EditorCommandSketchPresentation = EditorCommandSketchPresentationBase &
+  (
+    | Readonly<{
+        family: EditorCommandSketchFamilyId
+        familyDefault?: true
+        familyOrder: number
+      }>
+    | Readonly<{
+        family?: never
+        familyDefault?: never
+        familyOrder?: never
+      }>
+  )
 
 export type EditorCommandIcon =
   | "aligned-rectangle"
@@ -185,6 +213,7 @@ export type EditorCommandDescriptor = Readonly<{
   id: EditorCommandId
   labelKey: EditorCommandLabelKey
   ownerModuleId: string
+  sketchPresentation?: EditorCommandSketchPresentation
   shortcut?: EditorCommandShortcut
   toolbarGroup?: EditorCommandToolbarGroup
 }>
@@ -219,6 +248,7 @@ export type EditorCommandRegistryDiagnostic = Readonly<{
   code:
     | "duplicate-descriptor"
     | "duplicate-handler"
+    | "invalid-presentation"
     | "missing-handler"
     | "orphan-handler"
     | "owner-mismatch"
@@ -248,6 +278,120 @@ function registryFailure(
   return { ok: false, diagnostic: { code, message } }
 }
 
+type SketchPresentationValidationState = {
+  familyDefaults: Map<EditorCommandSketchFamilyId, EditorCommandId>
+  familyOrders: Map<string, EditorCommandId>
+  families: Set<EditorCommandSketchFamilyId>
+  shortcutOrders: Map<number, EditorCommandId>
+}
+
+function invalidPresentation(message: string): EditorCommandRegistryDiagnostic {
+  return { code: "invalid-presentation", message }
+}
+
+function validateCompactToolbarPresentation(
+  descriptor: EditorCommandDescriptor,
+  presentation: EditorCommandSketchPresentation,
+): EditorCommandRegistryDiagnostic | null {
+  if (presentation.compactToolbar !== undefined && descriptor.toolbarGroup !== "sketch-modify") {
+    return invalidPresentation(
+      `Editor command ${descriptor.id} places compact sketch-toolbar metadata outside sketch-modify.`,
+    )
+  }
+  return null
+}
+
+function validateShortcutPresentation(
+  descriptor: EditorCommandDescriptor,
+  presentation: EditorCommandSketchPresentation,
+  state: SketchPresentationValidationState,
+): EditorCommandRegistryDiagnostic | null {
+  if (presentation.shortcutOrder === undefined) return null
+  if (!Number.isSafeInteger(presentation.shortcutOrder) || presentation.shortcutOrder < 0) {
+    return invalidPresentation(
+      `Editor command ${descriptor.id} has an invalid sketch shortcut order.`,
+    )
+  }
+  const existing = state.shortcutOrders.get(presentation.shortcutOrder)
+  if (existing) {
+    return invalidPresentation(
+      `Editor commands ${existing} and ${descriptor.id} share sketch shortcut order ${presentation.shortcutOrder}.`,
+    )
+  }
+  state.shortcutOrders.set(presentation.shortcutOrder, descriptor.id)
+  return null
+}
+
+function validateFamilyPresentation(
+  descriptor: EditorCommandDescriptor,
+  presentation: EditorCommandSketchPresentation,
+  state: SketchPresentationValidationState,
+): EditorCommandRegistryDiagnostic | null {
+  if (!presentation.family) return null
+  if (descriptor.toolbarGroup !== "sketch-tools") {
+    return invalidPresentation(
+      `Editor command ${descriptor.id} places sketch-family metadata outside sketch-tools.`,
+    )
+  }
+  if (!Number.isSafeInteger(presentation.familyOrder) || presentation.familyOrder < 0) {
+    return invalidPresentation(
+      `Editor command ${descriptor.id} has an invalid order in sketch family ${presentation.family}.`,
+    )
+  }
+  state.families.add(presentation.family)
+  const familyOrderKey = `${presentation.family}:${presentation.familyOrder}`
+  const existingFamilyCommand = state.familyOrders.get(familyOrderKey)
+  if (existingFamilyCommand) {
+    return invalidPresentation(
+      `Editor commands ${existingFamilyCommand} and ${descriptor.id} share order ${presentation.familyOrder} in sketch family ${presentation.family}.`,
+    )
+  }
+  state.familyOrders.set(familyOrderKey, descriptor.id)
+  if (!presentation.familyDefault) return null
+  const existingDefault = state.familyDefaults.get(presentation.family)
+  if (existingDefault) {
+    return invalidPresentation(
+      `Sketch family ${presentation.family} has multiple defaults: ${existingDefault} and ${descriptor.id}.`,
+    )
+  }
+  state.familyDefaults.set(presentation.family, descriptor.id)
+  return null
+}
+
+function validateSketchPresentation(
+  descriptor: EditorCommandDescriptor,
+  state: SketchPresentationValidationState,
+): EditorCommandRegistryDiagnostic | null {
+  const presentation = descriptor.sketchPresentation
+  if (!presentation) return null
+  return (
+    validateCompactToolbarPresentation(descriptor, presentation) ??
+    validateShortcutPresentation(descriptor, presentation, state) ??
+    validateFamilyPresentation(descriptor, presentation, state)
+  )
+}
+
+function validateSketchPresentations(
+  descriptors: readonly EditorCommandDescriptor[],
+): EditorCommandRegistryDiagnostic | null {
+  const state: SketchPresentationValidationState = {
+    familyDefaults: new Map(),
+    familyOrders: new Map(),
+    families: new Set(),
+    shortcutOrders: new Map(),
+  }
+  for (const descriptor of descriptors) {
+    const diagnostic = validateSketchPresentation(descriptor, state)
+    if (diagnostic) return diagnostic
+  }
+  for (const family of state.families) {
+    if (!state.familyDefaults.has(family)) {
+      return invalidPresentation(`Sketch family ${family} has no default command.`)
+    }
+  }
+  return null
+}
+
 export function createEditorCommandRegistry<Context>(
   descriptors: readonly EditorCommandDescriptor[],
   handlers: readonly EditorCommandHandler<Context>[],
@@ -262,6 +406,9 @@ export function createEditorCommandRegistry<Context>(
     }
     descriptorsById.set(descriptor.id, descriptor)
   }
+
+  const presentationDiagnostic = validateSketchPresentations(descriptors)
+  if (presentationDiagnostic) return { ok: false, diagnostic: presentationDiagnostic }
 
   const handlersById = new Map<EditorCommandId, EditorCommandHandler<Context>>()
   for (const handler of handlers) {

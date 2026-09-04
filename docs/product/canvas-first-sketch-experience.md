@@ -26,6 +26,7 @@ Before SKX-1, VibeShape implemented many of the necessary domain operations, but
 - Creating or editing a sketch replaces unrelated feature tools with the sketch toolbar.
 - Tool families use a compact dropdown. The family's primary icon remembers the most recently used member.
 - `S` opens a customizable shortcut toolbar near the active graphics area.
+- The active sketch toolbar does not retain disabled Model, Sketch, Create sketch, or reference-plane controls. It keeps direct feature transitions, core drawing tools, Dimension, Construction, and frequent modification actions visually distinct instead of presenting one undifferentiated icon row.
 - A saved sketch is a parametric feature in the feature list and reopens directly for editing.
 - Extrude and Revolve are available from the sketch toolbar. Starting one accepts the current sketch, opens the feature command, and selects usable sketch regions automatically.
 

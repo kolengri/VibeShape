@@ -150,6 +150,8 @@ The initial slice composes serializable, owner-attributed descriptors with trust
 
 The shared command registry now also owns global saved-sketch visibility through `Shift+H`; the model-tree header exposes the same transient action with an icon, accessible name, and shortcut tooltip.
 
+Sketch command descriptors now also own geometry-family membership, each family default, deterministic menu order, and `S` shortcut-surface order. The contextual toolbar omits unavailable workspace and model-authoring controls during sketch editing, keeps Dimension and Trim visible at compact desktop widths, and moves only lower-frequency modifications into the labeled overflow menu.
+
 Context-menu projection, extension-provided presentation descriptors, `Enter`, delete, fit, view shortcuts, committed document undo/redo, and complete selection restoration remain open. The UI presentation registry is not itself an automation or MCP contract; future external exposure must map to the versioned domain command descriptors and host policy described in the automation architecture.
 
 Exit criterion: toolbar, palette, shortcut, and context menu invoke the same command and eligibility logic.

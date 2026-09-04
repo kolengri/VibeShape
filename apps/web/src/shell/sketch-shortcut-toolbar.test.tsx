@@ -91,6 +91,21 @@ describe("SketchShortcutToolbar", () => {
     const { onOpenChange } = renderToolbar()
 
     expect(screen.getByRole("toolbar", { name: "Sketch shortcuts" })).toBeTruthy()
+    expect(
+      screen.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Select",
+      "Use external geometry",
+      "Line",
+      "Center rectangle",
+      "Center-point circle",
+      "Three-point arc",
+      "Dimension",
+      "Trim",
+      "Offset",
+      "Extrude",
+      "Revolve",
+    ])
     expect(screen.getByRole("button", { name: "Use external geometry" })).toBeTruthy()
     expect((screen.getByRole("button", { name: "Extrude" }) as HTMLButtonElement).disabled).toBe(
       true,

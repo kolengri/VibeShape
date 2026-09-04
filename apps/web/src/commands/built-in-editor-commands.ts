@@ -111,6 +111,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.createExtrusion,
     labelKey: "createExtrusion",
     ownerModuleId: partDesignOwner,
+    sketchPresentation: { shortcutOrder: 9 },
     toolbarGroup: "model-primary",
   },
   {
@@ -119,6 +120,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.createRevolve,
     labelKey: "createRevolve",
     ownerModuleId: partDesignOwner,
+    sketchPresentation: { shortcutOrder: 10 },
     toolbarGroup: "model-primary",
   },
   {
@@ -151,6 +153,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchSelect,
     labelKey: "sketchSelect",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { shortcutOrder: 0 },
     shortcut: { key: "v" },
     toolbarGroup: "sketch-tools",
   },
@@ -160,6 +163,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchUse,
     labelKey: "sketchUse",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { shortcutOrder: 1 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -177,6 +181,12 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchLine,
     labelKey: "sketchLine",
     ownerModuleId: sketchOwner,
+    sketchPresentation: {
+      family: "line",
+      familyDefault: true,
+      familyOrder: 0,
+      shortcutOrder: 2,
+    },
     shortcut: { key: "l" },
     toolbarGroup: "sketch-tools",
   },
@@ -186,6 +196,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchMidpointLine,
     labelKey: "sketchMidpointLine",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "line", familyOrder: 1 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -194,6 +205,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchRectangle,
     labelKey: "sketchRectangle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "rectangle", familyOrder: 0 },
     shortcut: { key: "g" },
     toolbarGroup: "sketch-tools",
   },
@@ -203,6 +215,12 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCenterRectangle,
     labelKey: "sketchCenterRectangle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: {
+      family: "rectangle",
+      familyDefault: true,
+      familyOrder: 1,
+      shortcutOrder: 3,
+    },
     shortcut: { key: "r" },
     toolbarGroup: "sketch-tools",
   },
@@ -212,6 +230,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchAlignedRectangle,
     labelKey: "sketchAlignedRectangle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "rectangle", familyOrder: 2 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -220,6 +239,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCenteredAlignedRectangle,
     labelKey: "sketchCenteredAlignedRectangle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "rectangle", familyOrder: 3 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -228,6 +248,12 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCircle,
     labelKey: "sketchCircle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: {
+      family: "circle",
+      familyDefault: true,
+      familyOrder: 0,
+      shortcutOrder: 4,
+    },
     shortcut: { key: "c" },
     toolbarGroup: "sketch-tools",
   },
@@ -237,6 +263,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchEllipse,
     labelKey: "sketchEllipse",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "circle", familyOrder: 2 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -245,6 +272,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchEllipticalArc,
     labelKey: "sketchEllipticalArc",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "arc", familyOrder: 3 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -253,6 +281,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchInscribedPolygon,
     labelKey: "sketchInscribedPolygon",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "polygon", familyDefault: true, familyOrder: 0 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -261,6 +290,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCircumscribedPolygon,
     labelKey: "sketchCircumscribedPolygon",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "polygon", familyOrder: 1 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -269,6 +299,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchThreePointCircle,
     labelKey: "sketchThreePointCircle",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "circle", familyOrder: 1 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -277,6 +308,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchSlot,
     labelKey: "sketchSlot",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "slot", familyOrder: 0 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -285,6 +317,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchCenteredSlot,
     labelKey: "sketchCenteredSlot",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "slot", familyDefault: true, familyOrder: 1 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -293,6 +326,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchSlotAroundLine,
     labelKey: "sketchSlotAroundLine",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "slot", familyOrder: 2 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -301,6 +335,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchArc,
     labelKey: "sketchArc",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "arc", familyOrder: 2 },
     toolbarGroup: "sketch-tools",
   },
   {
@@ -309,6 +344,12 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchThreePointArc,
     labelKey: "sketchThreePointArc",
     ownerModuleId: sketchOwner,
+    sketchPresentation: {
+      family: "arc",
+      familyDefault: true,
+      familyOrder: 0,
+      shortcutOrder: 5,
+    },
     shortcut: { key: "a" },
     toolbarGroup: "sketch-tools",
   },
@@ -318,6 +359,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchTangentArc,
     labelKey: "sketchTangentArc",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { family: "arc", familyOrder: 1 },
     shortcut: { key: "a", modifiers: ["shift"] },
     toolbarGroup: "sketch-tools",
   },
@@ -327,6 +369,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchTrim,
     labelKey: "sketchTrim",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { compactToolbar: "visible", shortcutOrder: 7 },
     shortcut: { key: "m" },
     toolbarGroup: "sketch-modify",
   },
@@ -336,8 +379,9 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchDimension,
     labelKey: "sketchDimension",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { shortcutOrder: 6 },
     shortcut: { key: "d" },
-    toolbarGroup: "sketch-modify",
+    toolbarGroup: "sketch-precision",
   },
   {
     group: "sketch",
@@ -361,6 +405,7 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     id: editorCommandIds.sketchOffset,
     labelKey: "sketchOffset",
     ownerModuleId: sketchOwner,
+    sketchPresentation: { shortcutOrder: 8 },
     shortcut: { key: "o" },
     toolbarGroup: "sketch-modify",
   },
