@@ -372,6 +372,10 @@ The table has these columns:
 - Optional and advanced parameters use a labeled collapsible section.
 - Interdependent values show their relationship near the controls.
 - A selection field shows entity type, user-facing name, source feature, and missing or ambiguous state.
+- A graphical multi-selection field lists each selected entity exactly once. When viewport picking must be
+  reactivated, its compact header owns that action, while each row owns removal; a separate clear-all action
+  appears only when more than one value is selected, so a single selection never receives two equivalent
+  delete controls.
 - Ordered Boolean inputs are labeled by role rather than position alone: the target remains and the tool is removed. The same feature, the edited feature itself, suppressed features, and transitive dependents that would create a cycle are unavailable as input choices.
 - A finite list of local feature inputs uses the native select contract for keyboard navigation and typeahead. A searchable combobox is introduced only when measured list size or disambiguation needs justify it.
 - Create and edit reuse the same non-modal task-panel composition. Edit restores the authored source string, preserves stable feature identity and untouched record fields, and commits only through the ordinary update command.

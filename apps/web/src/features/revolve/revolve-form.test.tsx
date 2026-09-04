@@ -72,7 +72,6 @@ const copy = {
   profile: "Selected profile",
   clearProfiles: "Clear selected profiles",
   removeProfile: (label: string) => `Remove ${label}`,
-  profileSelectAriaLabel: "Select a profile in the 3D viewport: Sketch 1",
   profileSelectHint: "Select a profile in the 3D viewport",
   axis: "Revolve axis",
   axisX: "Horizontal sketch axis (X)",

@@ -372,7 +372,7 @@ function useExtrusionFormCopy(mode: ExtrusionFormMode["kind"]) {
   }
 }
 
-function useRevolveFormCopy(mode: RevolveFormMode["kind"], profileLabel: string) {
+function useRevolveFormCopy(mode: RevolveFormMode["kind"]) {
   const t = useTranslations("app.shell.taskPanel.revolve")
   return {
     title: mode === "create" ? t("title") : t("editTitle"),
@@ -384,7 +384,6 @@ function useRevolveFormCopy(mode: RevolveFormMode["kind"], profileLabel: string)
     profile: t("profile"),
     clearProfiles: t("clearProfiles"),
     removeProfile: (profile: string) => t("removeProfile", { profile }),
-    profileSelectAriaLabel: t("profileSelectAriaLabel", { profile: profileLabel }),
     profileSelectHint: t("profileSelectHint"),
     axis: t("axis"),
     axisX: t("axisX"),
@@ -743,7 +742,7 @@ function RevolveTaskPanel({
     ),
   )
   const profileLabel = profileLabels.join(", ")
-  const copy = useRevolveFormCopy(mode.kind, profileLabel)
+  const copy = useRevolveFormCopy(mode.kind)
   const task = featureTaskContext(mode, snapshot.revision)
   return (
     <aside aria-label={panelT("ariaLabel")} className="min-h-0 overflow-auto border-l bg-panel p-4">

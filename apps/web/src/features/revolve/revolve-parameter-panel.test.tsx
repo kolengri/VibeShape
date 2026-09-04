@@ -23,7 +23,6 @@ describe("RevolveParameterPanel", () => {
             description: "Inspect an existing solid.",
             parameters: "Revolve parameters",
             profile: "Selected profiles",
-            profileSelectAriaLabel: "Select profiles in the viewport",
             profileSelectHint: "Select profiles in the viewport",
             clearProfiles: "Clear selected profiles",
             removeProfile: (profile: string) => `Remove ${profile}`,
