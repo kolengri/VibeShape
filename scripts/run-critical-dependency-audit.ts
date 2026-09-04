@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process"
 
 const auditCommand = ["bun", "audit", "--audit-level=critical"] as const
-const auditAttemptTimeoutMs = 45_000
+const auditAttemptTimeoutMs = 300_000
 const auditRetryDelayMs = 2_000
-const maximumAuditAttempts = 3
+const maximumAuditAttempts = 2
 
 export type AuditAttemptResult = Readonly<{
   exitCode: number

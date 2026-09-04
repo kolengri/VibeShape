@@ -49,7 +49,7 @@ describe("critical dependency audit", () => {
     })
 
     expect(final.exitCode).toBe(1)
-    expect(runAttempt).toHaveBeenCalledTimes(3)
+    expect(runAttempt).toHaveBeenCalledTimes(2)
   })
 
   it("treats a killed timeout as transient without relying on output text", () => {
