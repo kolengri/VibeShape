@@ -3,11 +3,12 @@ import { Button } from "@vibeshape/ui/components/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@vibeshape/ui/components/dropdown-menu"
-import { ChevronDown } from "@vibeshape/ui/components/icons"
+import { ChevronDown, Ellipsis } from "@vibeshape/ui/components/icons"
 import { Toolbar, ToolbarButton, ToolbarSeparator } from "@vibeshape/ui/components/toolbar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { useEffect, useState } from "react"
@@ -275,6 +276,65 @@ function ToolbarCommandGroup({
   )
 }
 
+function ToolbarCommandMenu({
+  commands,
+  getDisabledReason,
+  getLabel,
+  label,
+}: {
+  commands: readonly ResolvedEditorCommand[]
+  getDisabledReason: (command: ResolvedEditorCommand) => string | null
+  getLabel: (command: ResolvedEditorCommand) => string
+  label: string
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <ToolbarButton asChild>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={label}>
+                <Ellipsis aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+        </ToolbarButton>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start">
+        {commands.map((command) => {
+          const commandLabel = getLabel(command)
+          const disabledReason = getDisabledReason(command)
+          const shortcut = command.descriptor.shortcut
+            ? editorCommandShortcutLabel(command.descriptor.shortcut)
+            : null
+          return (
+            <DropdownMenuItem
+              key={command.descriptor.id}
+              aria-label={commandLabel}
+              disabled={!command.eligibility.enabled}
+              onSelect={command.invoke}
+            >
+              <EditorCommandIconView icon={command.descriptor.icon} />
+              <span className="min-w-0 flex-1">
+                <span className="block">{commandLabel}</span>
+                {disabledReason ? (
+                  <span className="block max-w-72 whitespace-normal text-xs text-muted-foreground">
+                    {disabledReason}
+                  </span>
+                ) : null}
+              </span>
+              {shortcut ? (
+                <kbd className="font-mono text-[10px] text-muted-foreground">{shortcut}</kbd>
+              ) : null}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function CommandToolbar({ commands }: { commands: readonly ResolvedEditorCommand[] }) {
   const t = useTranslations("app.shell.commandToolbar")
   const copy = useEditorCommandCopy()
@@ -294,8 +354,6 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const historyCommands = group("history")
   const sketchMode = sketchToolCommands.length > 0
   const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState(defaultFamilyCommandIds)
-  const [lastUsedProfileFeatureCommand, setLastUsedProfileFeatureCommand] =
-    useState<EditorCommandId>(editorCommandIds.createExtrusion)
   const activeSketchToolId = sketchToolCommands.find(({ active }) => active)?.descriptor.id
   const profileFeatureCommands = familyCommands(modelPrimaryCommands, profileFeatureCommandIds)
 
@@ -336,16 +394,11 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
         <ToolbarSeparator />
         {sketchMode ? (
           <>
-            <ToolbarCommandFamilyAction
+            <ToolbarCommandGroup
               commands={profileFeatureCommands}
-              disabledReason={getDisabledReason}
-              familyLabel={t("profileFeaturesLabel")}
-              label={getLabel}
-              lastUsedCommandId={lastUsedProfileFeatureCommand}
-              onCommandSelect={(command) => {
-                setLastUsedProfileFeatureCommand(command.descriptor.id)
-                command.invoke()
-              }}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("profileFeaturesLabel")}
             />
             <ToolbarCommandGroup
               commands={modelPrimaryCommands.filter(
@@ -376,12 +429,22 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               />
             ))}
             <ToolbarSeparator />
-            <ToolbarCommandGroup
-              commands={sketchModifyCommands}
-              getDisabledReason={getDisabledReason}
-              getLabel={getLabel}
-              label={t("sketchModifyLabel")}
-            />
+            <span className="hidden xl:contents">
+              <ToolbarCommandGroup
+                commands={sketchModifyCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("sketchModifyLabel")}
+              />
+            </span>
+            <span className="contents xl:hidden">
+              <ToolbarCommandMenu
+                commands={sketchModifyCommands}
+                getDisabledReason={getDisabledReason}
+                getLabel={getLabel}
+                label={t("sketchModifyLabel")}
+              />
+            </span>
             <ToolbarSeparator />
             {sketchModeCommands.map((command) => (
               <ToolbarAction

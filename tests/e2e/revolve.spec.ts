@@ -106,6 +106,7 @@ test.describe("selector-backed revolve", () => {
 
   test("starts from an open sketch with every closed profile selected", async ({ page }) => {
     test.setTimeout(120_000)
+    await page.setViewportSize({ width: 1024, height: 768 })
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
       timeout: 120_000,
@@ -119,8 +120,7 @@ test.describe("selector-backed revolve", () => {
 
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await toolbar.getByRole("button", { name: "Profile features" }).click()
-    const revolve = page.getByRole("menuitemradio", { name: "Revolve" })
+    const revolve = toolbar.getByRole("button", { name: "Revolve", exact: true })
     await expect(revolve).toBeEnabled({
       timeout: 120_000,
     })
@@ -129,6 +129,9 @@ test.describe("selector-backed revolve", () => {
 
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await expect
+      .poll(() => form.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true)
     await expect(viewport).toHaveAttribute("data-selected-sketch-profile-count", "2")
     await expect(form.getByRole("combobox", { name: "Result operation" })).toBeEnabled()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })

@@ -237,7 +237,22 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
   })
 
-  it("keeps profile feature commands in the sketch toolbar", async () => {
+  it("keeps sketch modification commands available in the compact overflow menu", async () => {
+    const user = userEvent.setup()
+    renderToolbar(
+      commands({
+        activeSketchTool: { kind: "create-sketch" },
+        workspace: "sketch",
+      }),
+    )
+
+    await user.click(screen.getByRole("button", { name: "Sketch modification tools" }))
+    await user.click(screen.getByRole("menuitem", { name: "Trim" }))
+
+    expect(actions.setSketchTool).toHaveBeenCalledWith("trim")
+  })
+
+  it("shows Extrude and Revolve as separate sketch toolbar commands", async () => {
     const user = userEvent.setup()
     actions.createExtrusion.mockImplementation(() => new Promise<boolean>(() => undefined))
     renderToolbar(
@@ -250,14 +265,16 @@ describe("CommandToolbar", () => {
     )
 
     const extrude = screen.getByRole("button", { name: "Extrude" })
+    const revolve = screen.getByRole("button", { name: "Revolve" })
+    expect(screen.queryByRole("button", { name: "Profile features" })).toBeNull()
+
     await user.dblClick(extrude)
     expect(actions.createExtrusion).toHaveBeenCalledOnce()
     expect(extrude.getAttribute("aria-busy")).toBe("true")
-    expect(screen.queryByRole("button", { name: "Revolve" })).toBeNull()
 
-    await user.click(screen.getByRole("button", { name: "Profile features" }))
-    await user.click(screen.getByRole("menuitemradio", { name: "Revolve" }))
+    await user.click(revolve)
     expect(actions.createRevolve).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Extrude" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Revolve" })).toBeTruthy()
   })
 })

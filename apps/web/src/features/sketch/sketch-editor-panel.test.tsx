@@ -8,7 +8,6 @@ import {
   createEmptySketch,
   createLengthQuantity,
   featureIdSchema,
-  type SketchProfileSelector,
   sketchConstraintIdSchema,
   sketchEntityIdSchema,
   sketchExternalReferenceIdSchema,
@@ -161,11 +160,6 @@ function renderPanel(
   selectedConstraintId: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["selectedConstraintId"] = null,
-  profileSelection?: Readonly<{
-    profile: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
-    profiles?: React.ComponentProps<typeof SketchEditorPanel>["state"]["profiles"]
-    selectedProfile?: React.ComponentProps<typeof SketchEditorPanel>["state"]["selectedProfile"]
-  }>,
   externalReferenceLabels: React.ComponentProps<
     typeof SketchEditorPanel
   >["state"]["externalReferenceLabels"] = new Map(),
@@ -201,15 +195,10 @@ function renderPanel(
               missingExternalReferenceIds,
               failedConstraintIds,
               message: null,
-              profiles:
-                profileSelection?.profiles ??
-                (profileSelection?.profile ? [profileSelection.profile] : []),
               referenceDimensionLabels,
               repairReferenceId,
               selectedConstraintId,
               selectedEntityIds,
-              selectedProfile:
-                profileSelection?.selectedProfile ?? profileSelection?.profile ?? null,
               supportLabel,
               supportProblem,
               variables,
@@ -219,7 +208,6 @@ function renderPanel(
               onReferenceRepairChange,
               onSupportReplace,
               onSelectedConstraintChange: vi.fn(),
-              onSelectedProfileChange: vi.fn(),
             }}
           />
         </DocumentDisplayUnitsProvider>
@@ -244,7 +232,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map(),
       null,
       vi.fn(),
@@ -264,7 +251,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map(),
       null,
       vi.fn(),
@@ -295,7 +281,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map(),
       null,
       vi.fn(),
@@ -349,7 +334,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map([[referenceId, "Box 1 · Edge 1"]]),
     )
 
@@ -399,7 +383,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map([[referenceId, "Box 1 · Vertex 1"]]),
       null,
       onReferenceRepairChange,
@@ -419,7 +402,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map([[referenceId, "Box 1 · Vertex 1"]]),
       referenceId,
       onActiveRepairChange,
@@ -439,7 +421,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map([[referenceId, "Box 1 · Vertex 1"]]),
       referenceId,
       onRemoveRepairChange,
@@ -481,7 +462,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map([[referenceId, "Sketch 1 · Missing line"]]),
       null,
       onReferenceRepairChange,
@@ -498,44 +478,13 @@ describe("SketchEditorPanel", () => {
   })
 
   it("keeps lifecycle and feature commands out of the sketch properties panel", () => {
-    const sketch = lineSketch()
-    const boundary = sketch.entities.find((entity) => entity.type === "line")
-    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
-    const profile = {
-      holeBoundaryEntityIds: [],
-      outerBoundaryEntityIds: [boundary.id],
-      schemaVersion: 0,
-      sketchId: sketch.id,
-    } satisfies SketchProfileSelector
-
-    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, { profile })
+    renderPanel(lineSketch(), [])
 
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Finish sketch" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Extrude selected profile" })).toBeNull()
     expect(screen.queryByRole("button", { name: "Revolve selected profile" })).toBeNull()
-  })
-
-  it("keeps the selected profile highlighted after solved selectors are replaced", () => {
-    const sketch = lineSketch()
-    const boundary = sketch.entities.find((entity) => entity.type === "line")
-    if (!boundary) throw new Error("The fixture must contain a profile boundary.")
-    const profile = {
-      holeBoundaryEntityIds: [],
-      outerBoundaryEntityIds: [boundary.id],
-      schemaVersion: 0,
-      sketchId: sketch.id,
-    } satisfies SketchProfileSelector
-
-    renderPanel(sketch, [], vi.fn(), [], undefined, [], null, {
-      profile,
-      profiles: [{ ...profile }],
-      selectedProfile: profile,
-    })
-
-    expect(screen.getByRole("button", { name: "Profile 1" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    )
+    expect(screen.queryByRole("button", { name: "Profile 1" })).toBeNull()
   })
 
   it("adds an applicable geometric constraint from the current selection", async () => {
@@ -694,7 +643,6 @@ describe("SketchEditorPanel", () => {
       undefined,
       [],
       null,
-      undefined,
       new Map(),
       null,
       vi.fn(),

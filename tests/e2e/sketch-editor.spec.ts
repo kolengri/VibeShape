@@ -1629,6 +1629,7 @@ test.describe("full sketch editor", () => {
   })
 
   test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 })
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page
@@ -1638,15 +1639,21 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
     const cancel = taskPanel.getByRole("button", { name: "Cancel", exact: true })
     const finish = taskPanel.getByRole("button", { name: "Finish sketch", exact: true })
-    const [panelBounds, cancelBounds, finishBounds] = await Promise.all([
-      taskPanel.boundingBox(),
-      cancel.boundingBox(),
-      finish.boundingBox(),
-    ])
-    if (!panelBounds || !cancelBounds || !finishBounds) {
-      throw new Error("Sketch task-panel actions are not visible.")
+    const extrude = toolbar.getByRole("button", { name: "Extrude", exact: true })
+    const revolve = toolbar.getByRole("button", { name: "Revolve", exact: true })
+    const [panelBounds, cancelBounds, finishBounds, extrudeBounds, revolveBounds] =
+      await Promise.all([
+        taskPanel.boundingBox(),
+        cancel.boundingBox(),
+        finish.boundingBox(),
+        extrude.boundingBox(),
+        revolve.boundingBox(),
+      ])
+    if (!panelBounds || !cancelBounds || !finishBounds || !extrudeBounds || !revolveBounds) {
+      throw new Error("Sketch lifecycle and profile-feature actions are not visible.")
     }
 
     expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(2)
@@ -1657,8 +1664,24 @@ test.describe("full sketch editor", () => {
       panelBounds.x + panelBounds.width,
     )
     expect(finishBounds.y - panelBounds.y).toBeLessThanOrEqual(32)
+    expect(extrudeBounds.width).toBeLessThanOrEqual(36)
+    expect(revolveBounds.width).toBeLessThanOrEqual(36)
+    expect(Math.abs(extrudeBounds.y - revolveBounds.y)).toBeLessThanOrEqual(2)
+    expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+    const sketchModificationTools = toolbar.getByRole("button", {
+      name: "Sketch modification tools",
+      exact: true,
+    })
+    await expect(sketchModificationTools).toBeVisible()
+    await sketchModificationTools.click()
+    await expect(page.getByRole("menuitem", { name: /^Trim/ })).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(toolbar.getByRole("button", { name: "Profile features" })).toHaveCount(0)
     await expect(taskPanel.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)
     await expect(taskPanel.getByRole("button", { name: "Revolve selected profile" })).toHaveCount(0)
+    await expect(taskPanel.getByRole("button", { name: /^Profile \d+$/ })).toHaveCount(0)
   })
 
   test("adds and edits a driving dimension from a selected line", async ({ page }) => {
