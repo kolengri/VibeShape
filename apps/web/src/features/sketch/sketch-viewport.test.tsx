@@ -3383,7 +3383,12 @@ describe("SketchViewport", () => {
     const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
     if (!targetElement) throw new Error("The trim target must be rendered.")
 
-    fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300 })
+    fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300, pointerId: 1 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBe("active")
+
+    fireEvent.pointerUp(drawing, { clientX: 400, clientY: 300, pointerId: 1 })
 
     expect(onDraftChange).toHaveBeenCalledOnce()
     const nextDraft = onDraftChange.mock.calls[0]?.[0]
@@ -3395,6 +3400,246 @@ describe("SketchViewport", () => {
         expect.objectContaining({ type: "parallel", firstEntityId: target.id }),
       ]),
     )
+  })
+
+  it("preselects the authored curve under the pointer before trimming", () => {
+    const fixture = lineSketchFixture("b25a", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -3, y: -10 }, end: { x: -3, y: 10 } },
+      { start: { x: 3, y: -10 }, end: { x: 3, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+
+    fireEvent.pointerMove(targetElement, { clientX: 400, clientY: 300, pointerId: 1 })
+
+    expect(
+      document.querySelector(
+        `[data-sketch-entity-id="${target.id}"][data-sketch-preselected="true"]`,
+      ),
+    ).toBeTruthy()
+
+    fireEvent.pointerLeave(drawing, { pointerId: 1 })
+
+    expect(document.querySelector('[data-sketch-preselected="true"]')).toBeNull()
+  })
+
+  it("clears a detached endpoint selection when a trim gesture commits", () => {
+    const fixture = lineSketchFixture("b25d", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: 0, y: -10 }, end: { x: 0, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      onSelectionChange,
+      selectedEntityIds: [target.startPointId],
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+    const click = clientPointForSketch(drawing, { x: -5, y: 0 })
+
+    fireEvent.pointerDown(targetElement, { ...click, pointerId: 2 })
+    fireEvent.pointerUp(drawing, { ...click, pointerId: 2 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0] as SketchRecord
+    expect(nextDraft.entities.some(({ id }) => id === target.startPointId)).toBe(false)
+    expect(onSelectionChange).toHaveBeenLastCalledWith([])
+  })
+
+  it("hides stale solved profile regions during a transient trim preview", async () => {
+    const target = sketch.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The solved fixture must contain a target line.")
+    const points = new Map(
+      sketch.entities.flatMap((entity) => (entity.type === "point" ? [[entity.id, entity]] : [])),
+    )
+    const start = points.get(target.startPointId)
+    const end = points.get(target.endPointId)
+    if (!start || !end) throw new Error("The solved target line must resolve both endpoints.")
+    const direction = { x: end.x - start.x, y: end.y - start.y }
+    const length = Math.hypot(direction.x, direction.y)
+    const normal = { x: (-direction.y / length) * 10, y: (direction.x / length) * 10 }
+    const pointAt = (fraction: number) => ({
+      x: start.x + direction.x * fraction,
+      y: start.y + direction.y * fraction,
+    })
+    const createEntityId = sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b25e")
+    let fixture = sketch
+    for (const fraction of [1 / 3, 2 / 3]) {
+      const center = pointAt(fraction)
+      fixture = appendSketchLine(fixture, {
+        createEntityId,
+        start: { kind: "new", point: { x: center.x - normal.x, y: center.y - normal.y } },
+        end: { kind: "new", point: { x: center.x + normal.x, y: center.y + normal.y } },
+      }).sketch
+    }
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      sketch: fixture,
+      solveSketch: vi.fn(async () => solveResult()),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    await waitFor(() =>
+      expect(document.querySelector('[data-sketch-profile-index="0"]')).toBeTruthy(),
+    )
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+    const midpoint = clientPointForSketch(drawing, pointAt(0.5))
+
+    fireEvent.pointerDown(targetElement, { ...midpoint, pointerId: 5 })
+
+    expect(document.querySelector('[data-sketch-profile-index="0"]')).toBeNull()
+
+    fireEvent.pointerMove(drawing, {
+      clientX: midpoint.clientX + 1,
+      clientY: midpoint.clientY,
+      pointerId: 5,
+    })
+
+    expect(document.querySelector('[data-sketch-profile-index="0"]')).toBeNull()
+    fireEvent.pointerCancel(drawing, { pointerId: 5 })
+  })
+
+  it("trims every curve crossed by one pointer gesture as one draft edit", () => {
+    const fixture = lineSketchFixture("b25b", [
+      { start: { x: -10, y: -4 }, end: { x: 10, y: -4 } },
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -10, y: 4 }, end: { x: 10, y: 4 } },
+      { start: { x: -3, y: -10 }, end: { x: -3, y: 10 } },
+      { start: { x: 3, y: -10 }, end: { x: 3, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const start = clientPointForSketch(drawing, { x: 0, y: -4 })
+    const end = clientPointForSketch(drawing, { x: 0, y: 4 })
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { ...start, pointerId: 7 })
+    fireEvent.pointerMove(drawing, { ...end, pointerId: 7 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBe("active")
+    expect(document.querySelectorAll('[data-sketch-entity-type="line"]')).toHaveLength(8)
+
+    fireEvent.pointerUp(drawing, { ...end, pointerId: 7 })
+
+    expect(onDraftChange).toHaveBeenCalledOnce()
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
+      8,
+    )
+  })
+
+  it("batches a dense trim path across animation frames before one commit", async () => {
+    const horizontalLines = Array.from({ length: 25 }, (_, index) => ({
+      start: { x: -10, y: index - 12 },
+      end: { x: 10, y: index - 12 },
+    }))
+    const fixture = lineSketchFixture("b25f", [
+      ...horizontalLines,
+      { start: { x: -3, y: -20 }, end: { x: -3, y: 20 } },
+      { start: { x: 3, y: -20 }, end: { x: 3, y: 20 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const start = clientPointForSketch(drawing, { x: 0, y: -12 })
+    const end = clientPointForSketch(drawing, { x: 0, y: 12 })
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { ...start, pointerId: 8 })
+    fireEvent.pointerMove(drawing, { ...end, pointerId: 8 })
+    fireEvent.pointerUp(drawing, { ...end, pointerId: 8 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBe("active")
+    fireEvent.keyDown(drawing, { key: "Escape" })
+    await waitFor(() => expect(onDraftChange).toHaveBeenCalledOnce())
+    const nextDraft = onDraftChange.mock.calls[0]?.[0]
+    expect(nextDraft.entities.filter(({ type }: { type: string }) => type === "line")).toHaveLength(
+      52,
+    )
+  })
+
+  it("cancels a transient trim gesture with Escape or pointer cancellation", () => {
+    const fixture = lineSketchFixture("b25c", [
+      { start: { x: -10, y: 0 }, end: { x: 10, y: 0 } },
+      { start: { x: -3, y: -10 }, end: { x: -3, y: 10 } },
+      { start: { x: 3, y: -10 }, end: { x: 3, y: 10 } },
+    ])
+    const target = fixture.entities.find((entity) => entity.type === "line")
+    if (!target) throw new Error("The trim fixture must contain a target line.")
+    const onDraftChange = vi.fn()
+    renderViewport({
+      draft: fixture,
+      editorTool: "trim",
+      onDraftChange,
+      sketch: fixture,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const targetElement = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!targetElement) throw new Error("The trim target must be rendered.")
+
+    fireEvent.pointerDown(targetElement, { clientX: 400, clientY: 300, pointerId: 3 })
+    fireEvent.keyDown(drawing, { key: "Escape" })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBeNull()
+    expect(document.querySelectorAll('[data-sketch-entity-type="line"]')).toHaveLength(3)
+
+    const restoredTarget = document.querySelector(`[data-sketch-entity-id="${target.id}"]`)
+    if (!restoredTarget) throw new Error("The cancelled trim target must be restored.")
+    fireEvent.pointerDown(restoredTarget, { clientX: 400, clientY: 300, pointerId: 4 })
+    fireEvent.pointerCancel(drawing, { pointerId: 4 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    expect(drawing.getAttribute("data-sketch-trim-gesture")).toBeNull()
+    expect(document.querySelectorAll('[data-sketch-entity-type="line"]')).toHaveLength(3)
   })
 
   it("extends the clicked line endpoint to the nearest bounded line", () => {
@@ -3926,7 +4171,10 @@ describe("SketchViewport", () => {
     const arcElement = document.querySelector(`[data-sketch-entity-id="${arc.id}"]`)
     if (!arcElement) throw new Error("The arc trim target must be rendered.")
 
-    fireEvent.pointerDown(arcElement, { clientX: 400, clientY: 280 })
+    fireEvent.pointerDown(arcElement, { clientX: 400, clientY: 280, pointerId: 1 })
+
+    expect(onDraftChange).not.toHaveBeenCalled()
+    fireEvent.pointerUp(drawing, { clientX: 400, clientY: 280, pointerId: 1 })
 
     expect(onDraftChange).toHaveBeenCalledOnce()
     const nextDraft = onDraftChange.mock.calls[0]?.[0]

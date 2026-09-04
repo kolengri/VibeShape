@@ -39,6 +39,13 @@ type CurveIntersection = Readonly<{
   point: SketchPoint2
 }>
 
+/** A stable authored-curve hit produced by a pointer segment query. */
+export type SketchCurvePathHit = Readonly<{
+  curveId: SketchEntityId
+  parameter: number
+  point: SketchPoint2
+}>
+
 type RoundGeometry = Readonly<{
   center: SketchPointEntity
   radius: number
@@ -368,6 +375,92 @@ function supportingIntersections(
   }
   if (target.type === "line") return lineSupportingIntersections(sketch, target, boundary)
   return roundSupportingIntersections(sketch, target, boundary)
+}
+
+/**
+ * Finds authored sketch curves crossed by a straight pointer path segment.
+ *
+ * The returned parameter is the normalized position along `start` → `end` and
+ * therefore also provides deterministic drag-through ordering. Curves that
+ * cannot be resolved to valid analytical geometry are ignored so a malformed
+ * unrelated entity cannot make the query fail.
+ */
+export function findSketchCurvesCrossedBySegment(
+  sketch: SketchRecord,
+  start: SketchPoint2,
+  end: SketchPoint2,
+): readonly SketchCurvePathHit[] {
+  if (
+    !Number.isFinite(start.x) ||
+    !Number.isFinite(start.y) ||
+    !Number.isFinite(end.x) ||
+    !Number.isFinite(end.y) ||
+    distance(start, end) <= OPERATION_EPSILON
+  ) {
+    return []
+  }
+
+  const hits: SketchCurvePathHit[] = []
+  for (const curve of sketch.entities) {
+    if (curve.type === "point") continue
+    try {
+      const points =
+        curve.type === "line"
+          ? (() => {
+              const path = sketchLineIntersection(
+                start,
+                end,
+                linePoints(sketch, curve).start,
+                linePoints(sketch, curve).end,
+              )
+              return path &&
+                path.firstParameter >= -OPERATION_EPSILON &&
+                path.firstParameter <= 1 + OPERATION_EPSILON &&
+                path.secondParameter >= -OPERATION_EPSILON &&
+                path.secondParameter <= 1 + OPERATION_EPSILON
+                ? [{ parameter: path.firstParameter, point: path.point }]
+                : []
+            })()
+          : curve.type === "ellipse" || curve.type === "elliptical-arc"
+            ? lineEllipseIntersections(start, end, ellipseGeometry(sketch, curve)).map((point) => ({
+                parameter: lineParameter(start, end, point),
+                point,
+              }))
+            : lineRoundIntersections(start, end, roundGeometry(sketch, curve)).map((point) => ({
+                parameter: lineParameter(start, end, point),
+                point,
+              }))
+
+      const unique = points.filter(
+        ({ parameter, point }, index) =>
+          Number.isFinite(parameter) &&
+          parameter >= -OPERATION_EPSILON &&
+          parameter <= 1 + OPERATION_EPSILON &&
+          pointOnBoundedCurve(sketch, curve, point) &&
+          points.findIndex(
+            (candidate) =>
+              Math.abs(candidate.parameter - parameter) <= OPERATION_EPSILON &&
+              distance(candidate.point, point) <= OPERATION_EPSILON,
+          ) === index,
+      )
+      unique.sort((left, right) => left.parameter - right.parameter)
+      const hit = unique[0]
+      if (hit) {
+        hits.push({
+          curveId: curve.id,
+          parameter: Math.max(0, Math.min(1, hit.parameter)),
+          point: hit.point,
+        })
+      }
+    } catch {
+      // Invalid authored geometry is not a hit and must not abort drag-through.
+    }
+  }
+
+  hits.sort(
+    (left, right) => left.parameter - right.parameter || left.curveId.localeCompare(right.curveId),
+  )
+  return hits
 }
 
 function curveParameter(sketch: SketchRecord, curve: SketchCurveEntity, point: SketchPoint2) {

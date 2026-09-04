@@ -123,7 +123,7 @@ These commands require a form only for optional exact refinement. Pointer target
 | Inference | Several candidates are implemented, but the system is not yet a consistent cursor language | Every candidate has source highlight, guide, glyph, accepted state, and `Shift` suppression |
 | Constraints | Compatible actions appear in a compact toolbar and a panel list | Selection-driven mini-toolbar stays near the selection; glyphs own hover, edit, move, and delete; the list becomes diagnostics |
 | External references | Use candidates exist in 2D/3D, with panel duplication | Default flow is hover-preview-click in the viewport; panels show provenance, broken references, and repair only |
-| Trim | Click targeting works | Add preselection preview and drag-through trimming while keeping one undo boundary per gesture |
+| Trim | Hover preselection, click Trim, analytical drag-through across multiple authored curves, cancellation, and one undo boundary per gesture are implemented | Preview only the exact removable span instead of highlighting the complete source curve |
 | Mirror | Both selection orders exist | Replace generic status copy with cursor-local prompts and immediate mirrored preview |
 | Sketch completion | Persistent footer exposes Finish/Cancel/Extrude | Keep a compact stable confirmation surface, but allow valid Extrude/Revolve to continue directly from selected regions |
 | Diagnostics | Solver and constraint lists are persistent panel content | Keep compact solver status always visible; open the full manager only for filtering, conflicts, and repair |
@@ -280,7 +280,7 @@ Exit criterion: a new sketch can be positioned from earlier sketches, extrusion 
 
 ### SKX-5 — direct modification polish
 
-- Add drag-through Trim with preselection preview.
+- Refine the implemented drag-through Trim preselection from the complete authored curve to the exact removable span.
 - Add cursor-local Mirror, Offset, Pattern, and Transform prompts.
 - Keep exact optional values in anchored HUDs or compact manipulators.
 - Apply one sketch-local undo checkpoint per completed gesture.

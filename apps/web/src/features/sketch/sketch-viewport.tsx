@@ -32,6 +32,7 @@ import {
   extendSketchCurve,
   type FeatureId,
   type FeatureRecord,
+  findSketchCurvesCrossedBySegment,
   inferSketchPoint,
   isReferenceSketchDimension,
   type LinearSketchPatternDefinition,
@@ -48,6 +49,7 @@ import {
   removeSketchEntities,
   type SketchConstraintDefinition,
   type SketchConstraintId,
+  type SketchCurvePathHit,
   type SketchDirectionInference,
   type SketchEntity,
   type SketchEntityId,
@@ -1263,38 +1265,52 @@ type CurveDrawingProps = Readonly<{
   interactive: boolean
   onPointerDown: (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => void
   points: SketchPointLookup
+  preselected: boolean
   selected: boolean
   solvedRadius: number | undefined
 }>
+
+function sketchCurveClassName(construction: boolean, preselected: boolean, selected: boolean) {
+  if (selected) return "stroke-ring"
+  if (preselected) return "stroke-preselection"
+  return construction ? "stroke-muted-foreground" : "stroke-primary"
+}
+
+function interactiveCurveDrawingProps(
+  entity: Exclude<SketchEntity, { type: "point" }>,
+  hidden: boolean,
+  interactive: boolean,
+  onPointerDown: CurveDrawingProps["onPointerDown"],
+) {
+  if (!interactive) return { pointerEvents: "none" as const }
+  return {
+    "data-sketch-entity-id": entity.id,
+    "data-sketch-entity-type": entity.type,
+    ...(hidden
+      ? { pointerEvents: "none" as const }
+      : {
+          onPointerDown: (event: PointerEvent<SVGElement>) => onPointerDown(event, entity.id),
+        }),
+  }
+}
 
 function curveDrawingProps(
   entity: Exclude<SketchEntity, { type: "point" }>,
   hidden: boolean,
   interactive: boolean,
+  preselected: boolean,
   selected: boolean,
   onPointerDown: CurveDrawingProps["onPointerDown"],
 ) {
-  let className = "stroke-primary"
-  if (entity.construction) className = "stroke-muted-foreground"
-  if (selected) className = "stroke-ring"
   return {
-    className,
+    className: sketchCurveClassName(entity.construction, preselected, selected),
+    "data-sketch-preselected": preselected ? "true" : undefined,
     fill: "none",
     opacity: hidden ? 0 : undefined,
-    ...(interactive
-      ? {
-          "data-sketch-entity-id": entity.id,
-          "data-sketch-entity-type": entity.type,
-        }
-      : {}),
-    ...(interactive && !hidden
-      ? {
-          onPointerDown: (event: PointerEvent<SVGElement>) => onPointerDown(event, entity.id),
-        }
-      : { pointerEvents: "none" as const }),
+    ...interactiveCurveDrawingProps(entity, hidden, interactive, onPointerDown),
     strokeDasharray: entity.construction ? "6 4" : undefined,
     strokeLinecap: "round" as const,
-    strokeWidth: selected ? 3 : 2,
+    strokeWidth: selected || preselected ? 3 : 2,
     vectorEffect: "non-scaling-stroke" as const,
   }
 }
@@ -1304,6 +1320,8 @@ function curveHitAreaProps(
   onPointerDown: CurveDrawingProps["onPointerDown"],
 ) {
   return {
+    "data-sketch-entity-id": entityId,
+    "data-sketch-hit-area": "true",
     fill: "none",
     pointerEvents: "stroke" as const,
     stroke: "transparent",
@@ -1320,6 +1338,7 @@ function SketchLine({
   interactive,
   onPointerDown,
   points,
+  preselected,
   selected,
 }: Omit<CurveDrawingProps, "solvedRadius"> & {
   entity: Extract<SketchEntity, { type: "line" }>
@@ -1339,7 +1358,7 @@ function SketchLine({
         />
       ) : null}
       <line
-        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        {...curveDrawingProps(entity, hidden, interactive, preselected, selected, onPointerDown)}
         x1={start.x}
         y1={start.y}
         x2={end.x}
@@ -1355,6 +1374,7 @@ function SketchCircle({
   interactive,
   onPointerDown,
   points,
+  preselected,
   selected,
   solvedRadius,
 }: CurveDrawingProps & { entity: Extract<SketchEntity, { type: "circle" }> }) {
@@ -1371,7 +1391,7 @@ function SketchCircle({
         />
       ) : null}
       <circle
-        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        {...curveDrawingProps(entity, hidden, interactive, preselected, selected, onPointerDown)}
         cx={center.x}
         cy={center.y}
         r={solvedRadius ?? entity.radius}
@@ -1386,6 +1406,7 @@ function SketchArc({
   interactive,
   onPointerDown,
   points,
+  preselected,
   selected,
 }: Omit<CurveDrawingProps, "solvedRadius"> & {
   entity: Extract<SketchEntity, { type: "arc" }>
@@ -1401,7 +1422,7 @@ function SketchArc({
         <polyline {...curveHitAreaProps(entity.id, onPointerDown)} points={pointsValue} />
       ) : null}
       <polyline
-        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        {...curveDrawingProps(entity, hidden, interactive, preselected, selected, onPointerDown)}
         points={pointsValue}
       />
     </>
@@ -1414,6 +1435,7 @@ function SketchEllipse({
   interactive,
   onPointerDown,
   points,
+  preselected,
   selected,
 }: Omit<CurveDrawingProps, "solvedRadius"> & {
   entity: Extract<SketchEntity, { type: "ellipse" }>
@@ -1433,7 +1455,7 @@ function SketchEllipse({
         />
       ) : null}
       <ellipse
-        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        {...curveDrawingProps(entity, hidden, interactive, preselected, selected, onPointerDown)}
         cx={geometry.center.x}
         cy={geometry.center.y}
         rx={geometry.primaryRadius}
@@ -1450,6 +1472,7 @@ function SketchEllipticalArc({
   interactive,
   onPointerDown,
   points,
+  preselected,
   selected,
 }: Omit<CurveDrawingProps, "solvedRadius"> & {
   entity: Extract<SketchEntity, { type: "elliptical-arc" }>
@@ -1465,7 +1488,7 @@ function SketchEllipticalArc({
         <polyline {...curveHitAreaProps(entity.id, onPointerDown)} points={pointsValue} />
       ) : null}
       <polyline
-        {...curveDrawingProps(entity, hidden, interactive, selected, onPointerDown)}
+        {...curveDrawingProps(entity, hidden, interactive, preselected, selected, onPointerDown)}
         points={pointsValue}
       />
     </>
@@ -1506,6 +1529,7 @@ const SketchCurve = memo(
       previous.entity !== next.entity ||
       previous.hidden !== next.hidden ||
       previous.interactive !== next.interactive ||
+      previous.preselected !== next.preselected ||
       previous.selected !== next.selected ||
       previous.solvedRadius !== next.solvedRadius ||
       previous.onPointerDown !== next.onPointerDown
@@ -1711,6 +1735,7 @@ function SketchGeometry({
   onSelect,
   onTarget,
   pending,
+  preselectedEntityId,
   selectedEntityIds,
   presentation,
   tool,
@@ -1723,6 +1748,7 @@ function SketchGeometry({
   onSelect: (entityId: SketchEntityId, additive: boolean) => void
   onTarget: (target: SketchPointTarget) => void
   pending: PendingGeometry | null
+  preselectedEntityId: SketchEntityId | null
   selectedEntityIds: readonly SketchEntityId[]
   presentation: SketchGeometryPresentation
   tool: SketchEditorTool
@@ -1761,6 +1787,7 @@ function SketchGeometry({
               supportsSketchCurveModification(tool, entity, pending))
           }
           points={presentation.pointsById}
+          preselected={preselectedEntityId === entity.id}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
           onPointerDown={geometryPointerDown}
@@ -1972,6 +1999,7 @@ function SketchExternalCurves({
           hidden={false}
           interactive={selectable}
           points={points}
+          preselected={false}
           selected={selected.has(curve.id)}
           solvedRadius={solvedCircles.get(curve.id)}
           onPointerDown={(event, entityId) => {
@@ -2907,6 +2935,7 @@ function DraggedSketchGeometry({
           hidden={false}
           interactive={false}
           points={points}
+          preselected={false}
           selected={selectedIds.has(entity.id)}
           solvedRadius={presentation.solvedCircles.get(entity.id)}
           onPointerDown={ignoreCurveAction}
@@ -2969,6 +2998,7 @@ function SketchTransformGeometry({
             hidden={false}
             interactive={false}
             points={presentation.pointsById}
+            preselected={false}
             selected
             solvedRadius={presentation.solvedCircles.get(entity.id)}
             onPointerDown={ignoreCurveAction}
@@ -5820,6 +5850,424 @@ function safeSketchModificationUpdate(
   }
 }
 
+type SketchTrimGesture = Readonly<{
+  draft: SketchRecord
+  lastPoint: SketchPoint2
+  pendingHits: readonly SketchCurvePathHit[]
+  pointerId: number
+  sourceDraft: SketchRecord
+  trimmedEntityIds: ReadonlySet<SketchEntityId>
+}>
+
+const TRIM_GESTURE_BATCH_SIZE = 8
+
+function applySketchTrimBatch(gesture: SketchTrimGesture): SketchTrimGesture {
+  let draft = gesture.draft
+  for (const hit of gesture.pendingHits.slice(0, TRIM_GESTURE_BATCH_SIZE)) {
+    const trimmed = safeSketchModificationUpdate("trim", draft, hit.curveId, hit.point)
+    if (trimmed) draft = trimmed
+  }
+  return {
+    ...gesture,
+    draft,
+    pendingHits: gesture.pendingHits.slice(TRIM_GESTURE_BATCH_SIZE),
+  }
+}
+
+function createSketchTrimGesture(
+  draft: SketchRecord | null,
+  editorTool: SketchEditorTool,
+  pointerId: number,
+  entityId: SketchEntityId,
+  point: SketchPoint2,
+): SketchTrimGesture | null {
+  if (editorTool !== "trim" || !draft) return null
+  const nextDraft = safeSketchModificationUpdate("trim", draft, entityId, point)
+  return nextDraft
+    ? {
+        draft: nextDraft,
+        lastPoint: point,
+        pendingHits: [],
+        pointerId,
+        sourceDraft: draft,
+        trimmedEntityIds: new Set([entityId]),
+      }
+    : null
+}
+
+function appendSketchTrimPath(
+  gesture: SketchTrimGesture | null,
+  pointerId: number,
+  point: SketchPoint2,
+): SketchTrimGesture | null {
+  if (!gesture || gesture.pointerId !== pointerId) return null
+  const trimmedEntityIds = new Set(gesture.trimmedEntityIds)
+  const pendingHits = [...gesture.pendingHits]
+  for (const hit of findSketchCurvesCrossedBySegment(gesture.draft, gesture.lastPoint, point)) {
+    if (trimmedEntityIds.has(hit.curveId)) continue
+    trimmedEntityIds.add(hit.curveId)
+    pendingHits.push(hit)
+  }
+  return { ...gesture, lastPoint: point, pendingHits, trimmedEntityIds }
+}
+
+function useAnimationFrameDrain(drain: () => boolean) {
+  const drainRef = useRef(drain)
+  const frameRef = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    drainRef.current = drain
+  }, [drain])
+
+  const cancel = useCallback(() => {
+    if (frameRef.current === null) return
+    window.cancelAnimationFrame(frameRef.current)
+    frameRef.current = null
+  }, [])
+  const schedule = useCallback(() => {
+    if (frameRef.current !== null) return
+    const run = () => {
+      frameRef.current = null
+      if (drainRef.current()) frameRef.current = window.requestAnimationFrame(run)
+    }
+    frameRef.current = window.requestAnimationFrame(run)
+  }, [])
+  const runNow = useCallback(() => {
+    if (frameRef.current === null && drainRef.current()) schedule()
+  }, [schedule])
+  return { cancel, runNow, schedule }
+}
+
+function useCoalescedTrimPointerUpdate(
+  applyUpdate: (pointerId: number, point: SketchPoint2) => boolean,
+) {
+  const queuedRef = useRef<Readonly<{ pointerId: number; point: SketchPoint2 }> | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const clear = useCallback(() => {
+    queuedRef.current = null
+    if (frameRef.current === null) return
+    window.cancelAnimationFrame(frameRef.current)
+    frameRef.current = null
+  }, [])
+  const flush = useCallback(
+    (pointerId: number) => {
+      const queued = queuedRef.current
+      clear()
+      if (queued?.pointerId === pointerId) applyUpdate(queued.pointerId, queued.point)
+    },
+    [applyUpdate, clear],
+  )
+  const update = useCallback(
+    (pointerId: number, point: SketchPoint2) => {
+      queuedRef.current = { pointerId, point }
+      if (frameRef.current !== null) return
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null
+        const queued = queuedRef.current
+        queuedRef.current = null
+        if (queued) applyUpdate(queued.pointerId, queued.point)
+      })
+    },
+    [applyUpdate],
+  )
+  return { clear, flush, update }
+}
+
+function useSketchTrimQueue({
+  gestureRef,
+  releasedPublishRef,
+  resetPresentation,
+  setPreviewDraft,
+}: Readonly<{
+  gestureRef: { current: SketchTrimGesture | null }
+  releasedPublishRef: { current: ((draft: SketchRecord) => void) | null }
+  resetPresentation: () => void
+  setPreviewDraft: Dispatch<SetStateAction<SketchRecord | null>>
+}>) {
+  const completeReleasedGesture = useCallback(() => {
+    const gesture = gestureRef.current
+    const publish = releasedPublishRef.current
+    if (!gesture || gesture.pendingHits.length > 0 || !publish) return false
+    gestureRef.current = null
+    releasedPublishRef.current = null
+    resetPresentation()
+    publish(gesture.draft)
+    return true
+  }, [gestureRef, releasedPublishRef, resetPresentation])
+  const drainTrimQueue = useCallback(() => {
+    const gesture = gestureRef.current
+    if (!gesture) return false
+    const nextGesture = applySketchTrimBatch(gesture)
+    gestureRef.current = nextGesture
+    setPreviewDraft(nextGesture.draft)
+    if (nextGesture.pendingHits.length === 0) completeReleasedGesture()
+    return nextGesture.pendingHits.length > 0
+  }, [completeReleasedGesture, gestureRef, setPreviewDraft])
+  const frames = useAnimationFrameDrain(drainTrimQueue)
+  return { ...frames, completeReleasedGesture }
+}
+
+function sketchCurveIdFromPointerTarget(
+  target: EventTarget | null,
+  draft: SketchRecord | null,
+): SketchEntityId | null {
+  if (!(target instanceof Element) || !draft) return null
+  const entityId = target.closest("[data-sketch-entity-id]")?.getAttribute("data-sketch-entity-id")
+  if (!entityId) return null
+  const entity = draft.entities.find(({ id }) => id === entityId)
+  return entity && entity.type !== "point" ? entity.id : null
+}
+
+function useSketchTrimGesture({
+  draft,
+  editorTool,
+}: Readonly<{
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+}>) {
+  const gestureRef = useRef<SketchTrimGesture | null>(null)
+  const releasedPublishRef = useRef<((draft: SketchRecord) => void) | null>(null)
+  const [active, setActive] = useState(false)
+  const [previewDraft, setPreviewDraft] = useState<SketchRecord | null>(null)
+  const [preselectedEntityId, setPreselectedEntityId] = useState<SketchEntityId | null>(null)
+
+  const resetPresentation = useCallback(() => {
+    setActive(false)
+    setPreviewDraft(null)
+    setPreselectedEntityId(null)
+  }, [])
+  const {
+    cancel: cancelTrimFrame,
+    completeReleasedGesture,
+    runNow: runTrimQueueNow,
+    schedule: scheduleTrimQueue,
+  } = useSketchTrimQueue({
+    gestureRef,
+    releasedPublishRef,
+    resetPresentation,
+    setPreviewDraft,
+  })
+
+  const start = useCallback(
+    (pointerId: number, entityId: SketchEntityId, point: SketchPoint2) => {
+      const gesture = createSketchTrimGesture(draft, editorTool, pointerId, entityId, point)
+      if (!gesture) return false
+      gestureRef.current = gesture
+      releasedPublishRef.current = null
+      setActive(true)
+      setPreselectedEntityId(null)
+      return true
+    },
+    [draft, editorTool],
+  )
+
+  const applyUpdate = useCallback(
+    (pointerId: number, point: SketchPoint2) => {
+      const gesture = appendSketchTrimPath(gestureRef.current, pointerId, point)
+      if (!gesture) return false
+      gestureRef.current = gesture
+      if (gesture.pendingHits.length > 0) runTrimQueueNow()
+      return true
+    },
+    [runTrimQueueNow],
+  )
+  const {
+    clear: clearPointerUpdate,
+    flush: flushPointerUpdate,
+    update: queuePointerUpdate,
+  } = useCoalescedTrimPointerUpdate(applyUpdate)
+
+  const update = useCallback(
+    (pointerId: number, point: SketchPoint2, immediate: boolean) => {
+      const gesture = gestureRef.current
+      if (!gesture || gesture.pointerId !== pointerId) return false
+      if (immediate) return applyUpdate(pointerId, point)
+      queuePointerUpdate(pointerId, point)
+      return true
+    },
+    [applyUpdate, queuePointerUpdate],
+  )
+
+  const finish = useCallback(
+    (pointerId: number, publish: (draft: SketchRecord) => void) => {
+      flushPointerUpdate(pointerId)
+      const gesture = gestureRef.current
+      if (!gesture || gesture.pointerId !== pointerId) return false
+      releasedPublishRef.current = publish
+      if (gesture.pendingHits.length === 0) completeReleasedGesture()
+      else scheduleTrimQueue()
+      return true
+    },
+    [completeReleasedGesture, flushPointerUpdate, scheduleTrimQueue],
+  )
+
+  const cancel = useCallback(
+    (pointerId?: number) => {
+      const gesture = gestureRef.current
+      if (!gesture || (pointerId !== undefined && gesture.pointerId !== pointerId)) return false
+      if (releasedPublishRef.current) return true
+      gestureRef.current = null
+      clearPointerUpdate()
+      cancelTrimFrame()
+      releasedPublishRef.current = null
+      resetPresentation()
+      return true
+    },
+    [cancelTrimFrame, clearPointerUpdate, resetPresentation],
+  )
+
+  useEffect(() => {
+    const gesture = gestureRef.current
+    if (editorTool !== "trim" || (gesture && gesture.sourceDraft !== draft)) {
+      gestureRef.current = null
+      releasedPublishRef.current = null
+      clearPointerUpdate()
+      cancelTrimFrame()
+      resetPresentation()
+    }
+    return () => {
+      clearPointerUpdate()
+      cancelTrimFrame()
+    }
+  }, [cancelTrimFrame, clearPointerUpdate, draft, editorTool, resetPresentation])
+
+  const consumeEscape = useCallback(
+    (event: KeyboardEvent<SVGSVGElement>) => {
+      if (event.key !== "Escape" || !cancel()) return false
+      event.preventDefault()
+      return true
+    },
+    [cancel],
+  )
+
+  return {
+    active,
+    cancel,
+    consumeEscape,
+    finish,
+    preselectedEntityId,
+    previewDraft,
+    setPreselectedEntityId,
+    start,
+    update,
+  }
+}
+
+type SketchTrimGestureController = ReturnType<typeof useSketchTrimGesture>
+
+function sketchTrimDisplay(
+  sketch: SketchRecord,
+  solution: SolvedSketchWire | null,
+  annotationSolution: SolvedSketchWire | null,
+  gesture: SketchTrimGestureController,
+) {
+  if (!gesture.previewDraft) {
+    return {
+      annotationSolution: gesture.active ? null : annotationSolution,
+      sketch,
+      solution,
+    }
+  }
+  return { annotationSolution: null, sketch: gesture.previewDraft, solution: null }
+}
+
+function currentSketchDragTarget(
+  draggingPointId: SketchEntityId | null,
+  cursor: SketchPoint2 | null,
+  releasedDragTarget: SketchDragTarget | null,
+): SketchDragTarget | null {
+  if (!draggingPointId || !cursor) return releasedDragTarget
+  return { entityId: draggingPointId, x: cursor.x, y: cursor.y }
+}
+
+function consumeTrimPointerMove({
+  bounds,
+  draft,
+  editorTool,
+  event,
+  gesture,
+  setCursor,
+  setInference,
+  svg,
+}: Readonly<{
+  bounds: SketchBounds
+  draft: SketchRecord | null
+  editorTool: SketchEditorTool
+  event: PointerEvent<SVGSVGElement>
+  gesture: SketchTrimGestureController
+  setCursor: Dispatch<SetStateAction<SketchPoint2 | null>>
+  setInference: Dispatch<SetStateAction<SketchPointInference | null>>
+  svg: SVGSVGElement | null
+}>) {
+  if (editorTool !== "trim") return false
+  const rectangle = svg?.getBoundingClientRect()
+  if (!rectangle) return true
+  const point = pointerToSketchPoint(event, rectangle, bounds)
+  if (gesture.update(event.pointerId, point, !event.nativeEvent.isTrusted)) return true
+  gesture.setPreselectedEntityId(sketchCurveIdFromPointerTarget(event.target, draft))
+  setCursor(null)
+  setInference(null)
+  return true
+}
+
+function consumeTrimCurveAction({
+  editorTool,
+  entityId,
+  event,
+  eventPoint,
+  gesture,
+  svg,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  entityId: SketchEntityId
+  event: PointerEvent<SVGElement>
+  eventPoint: (event: PointerEvent<SVGElement>) => SketchPoint2 | null
+  gesture: SketchTrimGestureController
+  svg: SVGSVGElement | null
+}>) {
+  if (editorTool !== "trim") return false
+  const point = eventPoint(event)
+  if (event.button !== 0 || !point || !gesture.start(event.pointerId, entityId, point)) return true
+  if (event.nativeEvent.isTrusted) svg?.setPointerCapture?.(event.pointerId)
+  event.preventDefault()
+  return true
+}
+
+function releaseTrimPointerCapture(event: PointerEvent<SVGSVGElement>) {
+  if (!event.nativeEvent.isTrusted || !event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+    return
+  }
+  event.currentTarget.releasePointerCapture?.(event.pointerId)
+}
+
+function consumeTrimPointerUp({
+  event,
+  gesture,
+  publish,
+}: Readonly<{
+  event: PointerEvent<SVGSVGElement>
+  gesture: SketchTrimGestureController
+  publish: (draft: SketchRecord) => void
+}>) {
+  if (!gesture.finish(event.pointerId, publish)) return false
+  releaseTrimPointerCapture(event)
+  return true
+}
+
+function consumeTrimPointerCancel({
+  event,
+  gesture,
+  setInference,
+}: Readonly<{
+  event: PointerEvent<SVGSVGElement>
+  gesture: SketchTrimGestureController
+  setInference: Dispatch<SetStateAction<SketchPointInference | null>>
+}>) {
+  if (!gesture.cancel(event.pointerId)) return false
+  setInference(null)
+  return true
+}
+
 function safeMirrorSketchEntities(
   draft: SketchRecord,
   axisLineId: SketchEntityId,
@@ -7386,6 +7834,7 @@ type SketchDrawingViewProps = Readonly<{
     onLinearPatternCancel: () => void
     onLinearPatternPreview: (value: LinearSketchPatternDefinition | null) => void
     onPointPointerDown: (event: PointerEvent<SVGCircleElement>, pointId: SketchEntityId) => void
+    onPointerCancel: (event: PointerEvent<SVGSVGElement>) => void
     onPointerLeave: () => void
     onPointerMove: (event: PointerEvent<SVGSVGElement>) => void
     onPointerUp: (event: PointerEvent<SVGSVGElement>) => void
@@ -7398,6 +7847,7 @@ type SketchDrawingViewProps = Readonly<{
   sketch: SketchRecord
   state: Readonly<{
     annotationProfiles: readonly SketchProfileSelector[]
+    annotationSolution: SolvedSketchWire | null
     bounds: SketchBounds
     cursor: SketchPoint2 | null
     dragTarget: SketchDragTarget | null
@@ -7420,6 +7870,8 @@ type SketchDrawingViewProps = Readonly<{
       selectionKey: string
     }> | null
     pending: PendingGeometry | null
+    preselectedEntityId: SketchEntityId | null
+    trimGestureActive: boolean
     transform: Readonly<{
       origin: SketchPoint2
       preview: SketchTransformPreview
@@ -7665,6 +8117,10 @@ function SketchTransformPanel({
   )
 }
 
+function trimGestureAttribute(active: boolean) {
+  return active ? "active" : undefined
+}
+
 function SketchDrawingView({
   configuration,
   handlers,
@@ -7683,6 +8139,7 @@ function SketchDrawingView({
         data-sketch-modification-tool={
           isSketchModificationTool(configuration.editorTool) ? configuration.editorTool : undefined
         }
+        data-sketch-trim-gesture={trimGestureAttribute(state.trimGestureActive)}
         role="img"
         tabIndex={state.editable ? 0 : undefined}
         viewBox={`${state.bounds.minX} ${-state.bounds.minY - state.bounds.height} ${state.bounds.width} ${state.bounds.height}`}
@@ -7690,7 +8147,7 @@ function SketchDrawingView({
         onPointerDown={handlers.onCanvasPointerDown}
         onPointerMove={handlers.onPointerMove}
         onPointerUp={handlers.onPointerUp}
-        onPointerCancel={handlers.onPointerUp}
+        onPointerCancel={handlers.onPointerCancel}
         onPointerLeave={handlers.onPointerLeave}
         onContextMenu={(event) => event.preventDefault()}
         onWheel={handlers.onWheel}
@@ -7723,7 +8180,7 @@ function SketchDrawingView({
           profiles={state.annotationProfiles}
           selectedProfile={configuration.selectedProfile}
           sketch={sketch}
-          solution={configuration.annotationSolution}
+          solution={state.annotationSolution}
           onSelect={configuration.onProfileSelect}
         />
         <SketchExternalReferenceLayer
@@ -7748,6 +8205,7 @@ function SketchDrawingView({
           onSelect={handlers.onSelection}
           onTarget={handlers.appendAt}
           pending={state.pending}
+          preselectedEntityId={state.preselectedEntityId}
         />
         <DraggedSketchGeometry
           dragTarget={state.dragTarget}
@@ -9295,9 +9753,11 @@ function SketchDrawing({
     solution,
     annotationSolution,
   } = configuration
+  const trimGesture = useSketchTrimGesture({ draft, editorTool })
+  const trimDisplay = sketchTrimDisplay(sketch, solution, annotationSolution, trimGesture)
   const { bounds, geometry, setBounds, svgRef, viewportSize } = useSketchDrawingCanvas(
-    sketch,
-    solution,
+    trimDisplay.sketch,
+    trimDisplay.solution,
     projectionFrame,
   )
   const [panGesture, setPanGesture] = useState<PanGesture | null>(null)
@@ -9333,10 +9793,7 @@ function SketchDrawing({
     sketchId: sketch.id,
     svgRef,
   })
-  const annotationProfiles = useMemo(
-    () => (annotationSolution ? profileSelectors(annotationSolution) : []),
-    [annotationSolution],
-  )
+  const annotationProfiles = useSolvedProfiles(trimDisplay.annotationSolution)
   const inferencePresentation = useSketchInferencePresentation({
     cellSize: dragInferenceCellSize(bounds, viewportSize),
     draft,
@@ -9373,12 +9830,10 @@ function SketchDrawing({
     onPreview: handleDragPreview,
     svgRef,
   })
-  const dragTarget = useMemo<SketchDragTarget | null>(
-    () =>
-      draggingPointId && cursor
-        ? { entityId: draggingPointId, x: cursor.x, y: cursor.y }
-        : configuration.releasedDragTarget,
-    [configuration.releasedDragTarget, cursor, draggingPointId],
+  const dragTarget = currentSketchDragTarget(
+    draggingPointId,
+    cursor,
+    configuration.releasedDragTarget,
   )
   const eventPoint = (event: PointerEvent<SVGElement>) => {
     const svg = svgRef.current
@@ -9402,6 +9857,19 @@ function SketchDrawing({
       suppressed,
     })
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (
+      consumeTrimPointerMove({
+        bounds,
+        draft,
+        editorTool,
+        event,
+        gesture: trimGesture,
+        setCursor,
+        setInference,
+        svg: svgRef.current,
+      })
+    )
+      return
     if (transform.consumePointerMove(event)) return
     handleSketchPointerMove({
       bounds,
@@ -9417,6 +9885,7 @@ function SketchDrawing({
     })
   }
   const handleKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    if (trimGesture.consumeEscape(event)) return
     if (transform.consumeKeyDown(event)) return
     if (circularPattern.consumeKeyDown(event)) return
     if (linearPattern.consumeKeyDown(event)) return
@@ -9521,6 +9990,17 @@ function SketchDrawing({
       setPending,
     })
   const handleCurveAction = (event: PointerEvent<SVGElement>, entityId: SketchEntityId) => {
+    if (
+      consumeTrimCurveAction({
+        editorTool,
+        entityId,
+        event,
+        eventPoint,
+        gesture: trimGesture,
+        svg: svgRef.current,
+      })
+    )
+      return
     applySketchCurveAction({
       circularPatternSelect: circularPattern.selectEntity,
       draft,
@@ -9538,13 +10018,20 @@ function SketchDrawing({
     })
   }
   const handlePointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    if (consumeTrimPointerUp({ event, gesture: trimGesture, publish: publishModificationDraft }))
+      return
     if (transform.consumePointerUp(event)) return
     finishPointDrag()
     setInference(null)
     setPanGesture(null)
   }
+  const handlePointerCancel = (event: PointerEvent<SVGSVGElement>) => {
+    if (consumeTrimPointerCancel({ event, gesture: trimGesture, setInference })) return
+    handlePointerUp(event)
+  }
   const handlePointerLeave = () => {
-    if (draggingPointId) return
+    if (draggingPointId || trimGesture.active) return
+    trimGesture.setPreselectedEntityId(null)
     setCursor(null)
     setInference(null)
   }
@@ -9593,6 +10080,7 @@ function SketchDrawing({
           onLinearPatternCancel: linearPattern.cancel,
           onLinearPatternPreview: linearPattern.preview,
           onPointPointerDown: handlePointPointerDown,
+          onPointerCancel: handlePointerCancel,
           onPointerLeave: handlePointerLeave,
           onPointerMove: handlePointerMove,
           onPointerUp: handlePointerUp,
@@ -9602,9 +10090,10 @@ function SketchDrawing({
           onTransformCancel: transform.cancel,
           onWheel: handleWheel,
         }}
-        sketch={sketch}
+        sketch={trimDisplay.sketch}
         state={{
           annotationProfiles,
+          annotationSolution: trimDisplay.annotationSolution,
           bounds,
           circularPattern: circularPattern.presentation,
           cursor,
@@ -9618,7 +10107,9 @@ function SketchDrawing({
           inference,
           linearPattern: linearPattern.presentation,
           pending,
+          preselectedEntityId: editorTool === "trim" ? trimGesture.preselectedEntityId : null,
           transform: transform.presentation,
+          trimGestureActive: trimGesture.active,
           viewportSize,
         }}
         svgRef={svgRef}
