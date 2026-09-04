@@ -959,6 +959,7 @@
         "dimensionExpression": "Driving dimension expression",
         "creationPrecisionInlineEditor": "Exact geometry value",
         "creationPrecisionExpression": "Exact geometry expression",
+        "creationPrecisionSetExact": "Set exact {kind}: {value}",
         "dimensionMode": "Dimension mode",
         "driving": "Driving",
         "reference": "Reference",

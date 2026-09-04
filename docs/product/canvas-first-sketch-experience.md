@@ -119,7 +119,7 @@ These commands require a form only for optional exact refinement. Pointer target
 | Dimension creation | Canvas selection focuses a remote task-panel form | Canvas selection enters annotation placement, then opens an anchored inline expression editor |
 | Dimension editing | Clicking a label selects it and exposes the panel editor | Double-click edits at the label; drag moves the annotation; the panel remains an accessible fallback |
 | Dimension meaning | Kind is chosen mainly from a select field | Pointer direction, selected entity types, and placement side determine the default kind; a compact menu resolves genuine ambiguity |
-| Geometry precision | Line, corner Rectangle, center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now open anchored exact-value fields after placement; other geometry families still require later Dimension commands | Every supported tool shows transient length, radius, angle, width, and count input immediately after placement |
+| Geometry precision | Line, corner Rectangle, center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now show an anchored optional exact-value affordance after placement; other geometry families still require later Dimension commands | Every supported tool offers meaningful transient length, radius, angle, width, and count input without interrupting continued drawing |
 | Inference | Several candidates are implemented, but the system is not yet a consistent cursor language | Every candidate has source highlight, guide, glyph, accepted state, and `Shift` suppression |
 | Constraints | Compatible actions appear in a compact toolbar and a panel list | Selection-driven mini-toolbar stays near the selection; glyphs own hover, edit, move, and delete; the list becomes diagnostics |
 | External references | Use candidates exist in 2D/3D, with panel duplication | Default flow is hover-preview-click in the viewport; panels show provenance, broken references, and repair only |
@@ -167,13 +167,13 @@ Idle -> Collecting references -> Placing annotation -> Editing value -> Committe
 - Dragging an existing annotation changes presentation metadata only and creates no geometry rebuild or document revision.
 - The task-panel list exposes the same field for keyboard and assistive-technology access, but never steals focus from a pointer-driven placement.
 
-### Geometry with immediate precision
+### Non-blocking creation precision
 
-- The final placement click keeps the new geometry provisional for one short precision stage.
-- A compact HUD presents only values meaningful for that tool: line length/angle, circle radius/diameter, rectangle width/height, slot length/width, polygon radius/count, or arc radius/angle.
-- Typing immediately routes to the primary field; pointer movement may continue without accepting a value.
-- `Tab` or `Alt` plus arrow moves between multiple values; `Enter` accepts the active exact values; `Escape` leaves valid geometry undimensioned and returns to drawing.
-- Line-chain continuation begins after this precision stage and retains the previous endpoint.
+- The final placement click commits valid geometry immediately and exposes one compact, anchored exact-value affordance.
+- The affordance presents only values meaningful for that tool and never steals focus or blocks pointer input.
+- Clicking the affordance opens the shared variable-aware expression editor beside the geometry; ordinary Dimension remains available later from the selection toolbar, context menu, shortcut, and task panel.
+- Multi-value tools advance only after an accepted value. `Enter` accepts the active exact value; `Escape` keeps the valid geometry undimensioned and returns focus to the drawing.
+- Line-chain continuation retains the previous endpoint and remains active while the exact-value affordance is untouched.
 
 ### Automatic inference
 
@@ -249,9 +249,9 @@ Exit criterion: a user creates and edits line length, point distance, projected 
 
 ### SKX-2 — creation-time numeric HUD
 
-- Line now opens an anchored length field at its final point and retains continuous chain continuation after Apply or Escape.
-- Corner Rectangle now collects horizontal width and vertical height in two anchored fields while preserving one local undo boundary.
-- Center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now reuse the same anchored, variable-aware dimension editor for diameter, radius, and axis diameters.
+- Line now shows an anchored optional length affordance at its final point and retains continuous chain continuation before, during, and after exact entry.
+- Corner Rectangle now offers horizontal width and vertical height through an explicit anchored affordance while preserving one local undo boundary.
+- Center-point and three-point Circle, center-point and three-point Arc, Ellipse, and Elliptical Arc now offer the same non-blocking affordance before opening the shared variable-aware dimension editor for diameter, radius, and axis diameters.
 - Extend the same contract to the remaining rectangle, slot, tangent-arc, and polygon families, including meaningful multi-value navigation.
 - Preserve tangent-arc continuation when its creation-time values are added.
 - Share variable suggestions, unit normalization, validation, and expression parsing with existing fields.

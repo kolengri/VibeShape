@@ -1918,6 +1918,7 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
     await drawRectangle(page)
 
+    await page.getByRole("button", { name: /^Set exact Horizontal:/ }).click()
     const precision = page.getByRole("form", { name: "Exact geometry value" })
     const expression = precision.getByRole("combobox", { name: "Exact geometry expression" })
     await expect(precision.getByText("Horizontal", { exact: true })).toBeVisible()
@@ -1940,6 +1941,44 @@ test.describe("full sketch editor", () => {
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
     await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
+  })
+
+  test("keeps optional creation precision inside the viewport at both vertical edges", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    const viewport = page.viewportSize()
+    if (!bounds || !viewport) throw new Error("The sketch viewport is not measurable.")
+
+    await page.getByRole("button", { name: "Line", exact: true }).click()
+    const firstPoint = { x: bounds.x + bounds.width * 0.3, y: bounds.y + 8 }
+    const secondPoint = { x: bounds.x + bounds.width * 0.5, y: bounds.y + 8 }
+    await page.mouse.click(firstPoint.x, firstPoint.y)
+    await page.mouse.click(secondPoint.x, secondPoint.y)
+
+    const trigger = page.getByRole("button", { name: /^Set exact Distance:/ })
+    await expect(trigger).toBeVisible()
+    await expect(page.getByRole("form", { name: "Exact geometry value" })).toHaveCount(0)
+    const topBounds = await trigger.boundingBox()
+    if (!topBounds) throw new Error("The optional precision control is not visible.")
+    expect(topBounds.y).toBeGreaterThanOrEqual(0)
+    expect(topBounds.y + topBounds.height).toBeLessThanOrEqual(viewport.height)
+
+    await page.mouse.click(bounds.x + bounds.width * 0.7, bounds.y + bounds.height - 8)
+    await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
+    const bottomBounds = await trigger.boundingBox()
+    if (!bottomBounds) throw new Error("The optional precision control is not visible.")
+    expect(bottomBounds.y).toBeGreaterThanOrEqual(0)
+    expect(bottomBounds.y + bottomBounds.height).toBeLessThanOrEqual(viewport.height)
   })
 
   test("persists a reference dimension without driving sketch geometry", async ({ page }) => {
