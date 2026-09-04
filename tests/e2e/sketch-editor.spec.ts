@@ -1808,6 +1808,14 @@ test.describe("full sketch editor", () => {
     await expect(
       taskPanel.getByRole("button", { name: "Open constraint manager", exact: true }),
     ).toHaveCount(0)
+    await expect(toolbar.getByRole("button", { name: "Model", exact: true })).toHaveCount(0)
+    await expect(toolbar.getByRole("button", { name: "Sketch", exact: true })).toHaveCount(0)
+    await expect(toolbar.getByRole("button", { name: "Create sketch", exact: true })).toHaveCount(0)
+    await expect(
+      toolbar.getByRole("button", { name: "Create datum plane", exact: true }),
+    ).toHaveCount(0)
+    await expect(toolbar.getByRole("button", { name: "Dimension", exact: true })).toBeVisible()
+    await expect(toolbar.getByRole("button", { name: "Trim", exact: true })).toBeVisible()
     expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     )
@@ -1817,7 +1825,8 @@ test.describe("full sketch editor", () => {
     })
     await expect(sketchModificationTools).toBeVisible()
     await sketchModificationTools.click()
-    await expect(page.getByRole("menuitem", { name: /^Trim/ })).toBeVisible()
+    await expect(page.getByRole("menuitem", { name: /^Extend/ })).toBeVisible()
+    await expect(page.getByRole("menuitem", { name: /^Trim/ })).toHaveCount(0)
     await page.keyboard.press("Escape")
     await expect(toolbar.getByRole("button", { name: "Profile features" })).toHaveCount(0)
     await expect(taskPanel.getByRole("button", { name: "Extrude selected profile" })).toHaveCount(0)

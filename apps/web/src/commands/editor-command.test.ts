@@ -87,6 +87,38 @@ describe("editor command registry", () => {
     )
   })
 
+  it("keeps sketch family defaults and shortcut ordering registry-owned", () => {
+    const shortcutOrders = builtInEditorCommandDescriptors.flatMap(({ sketchPresentation }) =>
+      sketchPresentation?.shortcutOrder === undefined ? [] : [sketchPresentation.shortcutOrder],
+    )
+    expect(shortcutOrders.sort((first, second) => first - second)).toEqual(
+      Array.from({ length: shortcutOrders.length }, (_, index) => index),
+    )
+
+    const familyCommands = builtInEditorCommandDescriptors.filter(
+      ({ sketchPresentation }) => sketchPresentation?.family,
+    )
+    const families = new Set(
+      familyCommands.flatMap(({ sketchPresentation }) =>
+        sketchPresentation?.family ? [sketchPresentation.family] : [],
+      ),
+    )
+    for (const family of families) {
+      const commands = familyCommands.filter(
+        ({ sketchPresentation }) => sketchPresentation?.family === family,
+      )
+      expect(
+        commands.filter(({ sketchPresentation }) => sketchPresentation?.familyDefault),
+      ).toHaveLength(1)
+      expect(
+        commands
+          .map(({ sketchPresentation }) => sketchPresentation?.familyOrder)
+          .sort((first, second) => (first ?? 0) - (second ?? 0)),
+      ).toEqual(Array.from({ length: commands.length }, (_, index) => index))
+      expect(commands.every(({ toolbarGroup }) => toolbarGroup === "sketch-tools")).toBe(true)
+    }
+  })
+
   it("rejects duplicate, missing, orphaned, and owner-mismatched composition", () => {
     expect(createEditorCommandRegistry([descriptor, descriptor], [handler])).toMatchObject({
       ok: false,
@@ -110,6 +142,89 @@ describe("editor command registry", () => {
       ok: false,
       diagnostic: { code: "duplicate-handler" },
     })
+  })
+
+  it("rejects ambiguous sketch presentation metadata at the registry boundary", () => {
+    const line = builtInEditorCommandDescriptors.find(
+      ({ id }) => id === editorCommandIds.sketchLine,
+    )
+    const midpointLine = builtInEditorCommandDescriptors.find(
+      ({ id }) => id === editorCommandIds.sketchMidpointLine,
+    )
+    const centerRectangle = builtInEditorCommandDescriptors.find(
+      ({ id }) => id === editorCommandIds.sketchCenterRectangle,
+    )
+    const trim = builtInEditorCommandDescriptors.find(
+      ({ id }) => id === editorCommandIds.sketchTrim,
+    )
+    if (!line?.sketchPresentation?.family || !midpointLine?.sketchPresentation?.family) {
+      throw new Error("Expected line-family command descriptors.")
+    }
+    if (!centerRectangle?.sketchPresentation?.family || !trim?.sketchPresentation) {
+      throw new Error("Expected sketch presentation descriptors.")
+    }
+
+    expect(
+      createEditorCommandRegistry(
+        [
+          { ...line, sketchPresentation: { ...line.sketchPresentation, shortcutOrder: 0 } },
+          {
+            ...centerRectangle,
+            sketchPresentation: { ...centerRectangle.sketchPresentation, shortcutOrder: 0 },
+          },
+        ],
+        [],
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
+
+    expect(
+      createEditorCommandRegistry(
+        [
+          line,
+          {
+            ...midpointLine,
+            sketchPresentation: { ...midpointLine.sketchPresentation, familyOrder: 0 },
+          },
+        ],
+        [],
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
+
+    expect(
+      createEditorCommandRegistry(
+        [
+          {
+            ...line,
+            sketchPresentation: {
+              family: line.sketchPresentation.family,
+              familyOrder: line.sketchPresentation.familyOrder,
+            },
+          },
+        ],
+        [],
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
+
+    expect(
+      createEditorCommandRegistry(
+        [
+          line,
+          {
+            ...midpointLine,
+            sketchPresentation: { ...midpointLine.sketchPresentation, familyDefault: true },
+          },
+        ],
+        [],
+      ),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
+
+    expect(
+      createEditorCommandRegistry([{ ...line, toolbarGroup: "sketch-modify" }], []),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
+
+    expect(
+      createEditorCommandRegistry([{ ...trim, toolbarGroup: "sketch-tools" }], []),
+    ).toMatchObject({ ok: false, diagnostic: { code: "invalid-presentation" } })
   })
 
   it("resolves eligibility and invokes the same trusted handler used by every surface", () => {
@@ -229,7 +344,7 @@ describe("editor command registry", () => {
     )
 
     expect(command?.descriptor.shortcut).toEqual({ key: "d" })
-    expect(command?.descriptor.toolbarGroup).toBe("sketch-modify")
+    expect(command?.descriptor.toolbarGroup).toBe("sketch-precision")
     expect(command?.toolbarVisible).toBe(true)
     command?.invoke()
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("dimension")

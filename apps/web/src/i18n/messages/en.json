@@ -422,6 +422,8 @@
         "primitives": "Primitives",
         "rectangleToolsLabel": "Rectangle tools",
         "sketchModifyLabel": "Sketch modification tools",
+        "sketchModeLabel": "Sketch modes",
+        "sketchPrecisionLabel": "Sketch precision tools",
         "sketchToolsLabel": "Sketch geometry tools",
         "sketchViewLabel": "Sketch view controls",
         "slotToolsLabel": "Slot tools",
