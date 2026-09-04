@@ -21,6 +21,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { DocumentDisplayUnitsProvider } from "../../document/document-display-units"
 import { i18n } from "../../i18n"
 import { SketchConstraintManagerPopover, SketchEditorPanel } from "./sketch-editor-panel"
+import {
+  SketchConstraintManagerToolbarSlot,
+  SketchToolbarPortalsProvider,
+} from "./sketch-toolbar-portals"
 
 class ResizeObserverMock {
   observe() {}
@@ -203,10 +207,15 @@ function renderPanel(
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider delayDuration={0}>
-        <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
-          <SketchConstraintManagerPopover actions={actions} copy={copy} state={state} />
-          <SketchEditorPanel copy={copy} state={state} actions={actions} />
-        </DocumentDisplayUnitsProvider>
+        <SketchToolbarPortalsProvider>
+          <DocumentDisplayUnitsProvider displayUnits={displayUnits}>
+            <div data-testid="sketch-toolbar">
+              <SketchConstraintManagerToolbarSlot />
+            </div>
+            <SketchConstraintManagerPopover actions={actions} copy={copy} state={state} />
+            <SketchEditorPanel copy={copy} state={state} actions={actions} />
+          </DocumentDisplayUnitsProvider>
+        </SketchToolbarPortalsProvider>
       </TooltipProvider>
     </I18nProvider>,
   )
@@ -494,6 +503,13 @@ describe("SketchEditorPanel", () => {
     renderPanel(lineSketch(), [])
 
     expect(screen.queryByRole("dialog", { name: "Constraint manager (0)" })).toBeNull()
+    expect(
+      screen.getByTestId("sketch-toolbar").contains(
+        screen.getByRole("button", {
+          name: "Open constraint manager",
+        }),
+      ),
+    ).toBe(true)
     await openConstraintManager(user)
     expect(screen.getByText("Applied constraints")).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Add constraint" })).toBeNull()

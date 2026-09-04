@@ -1870,23 +1870,21 @@ function ActiveSketchTaskPanel({
       aria-label={t("taskAriaLabel")}
       className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l bg-panel"
     >
+      <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-primary">{t("modeLabel")}</p>
           <h2 className="mt-1 truncate text-sm font-medium">{draft.label}</h2>
           <p className="mt-1 text-xs leading-4 text-muted-foreground">{modeDescription}</p>
         </div>
-        <div className="flex items-start gap-1">
-          <SketchConstraintManagerPopover actions={panelActions} copy={copy} state={panelState} />
-          <TaskPanelLifecycleActions
-            acceptDisabled={report.mode === "read-only"}
-            acceptLabel={t("finish")}
-            ariaLabel={t("lifecycleActions")}
-            cancelLabel={t("cancel")}
-            onAccept={finish}
-            onCancel={onCloseTool}
-          />
-        </div>
+        <TaskPanelLifecycleActions
+          acceptDisabled={report.mode === "read-only"}
+          acceptLabel={t("finish")}
+          ariaLabel={t("lifecycleActions")}
+          cancelLabel={t("cancel")}
+          onAccept={finish}
+          onCancel={onCloseTool}
+        />
       </header>
       <div className="min-h-0 overflow-auto p-4">
         <SketchEditorPanel copy={copy} state={panelState} actions={panelActions} />

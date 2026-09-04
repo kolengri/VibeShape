@@ -1728,7 +1728,8 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
-    const trigger = sketchPanel.getByRole("button", {
+    const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const trigger = toolbar.getByRole("button", {
       name: "Open constraint manager",
       exact: true,
     })
@@ -1757,7 +1758,7 @@ test.describe("full sketch editor", () => {
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
-    const diagnostics = taskPanel.getByRole("button", {
+    const diagnostics = toolbar.getByRole("button", {
       name: "Open constraint manager",
       exact: true,
     })
@@ -1791,7 +1792,6 @@ test.describe("full sketch editor", () => {
       throw new Error("Sketch lifecycle and profile-feature actions are not visible.")
     }
 
-    expect(Math.abs(diagnosticsBounds.y - cancelBounds.y)).toBeLessThanOrEqual(2)
     expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(2)
     expect(diagnosticsBounds.width).toBeLessThanOrEqual(36)
     expect(cancelBounds.width).toBeLessThanOrEqual(36)
@@ -1803,7 +1803,11 @@ test.describe("full sketch editor", () => {
     expect(finishBounds.y - panelBounds.y).toBeLessThanOrEqual(32)
     expect(extrudeBounds.width).toBeLessThanOrEqual(36)
     expect(revolveBounds.width).toBeLessThanOrEqual(36)
+    expect(Math.abs(diagnosticsBounds.y - extrudeBounds.y)).toBeLessThanOrEqual(2)
     expect(Math.abs(extrudeBounds.y - revolveBounds.y)).toBeLessThanOrEqual(2)
+    await expect(
+      taskPanel.getByRole("button", { name: "Open constraint manager", exact: true }),
+    ).toHaveCount(0)
     expect(await toolbar.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     )

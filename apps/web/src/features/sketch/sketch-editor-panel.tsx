@@ -32,7 +32,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/component
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
 import { cn } from "@vibeshape/ui/lib/cn"
 import { useState } from "react"
+import { createPortal } from "react-dom"
 import { useDocumentDisplayUnits } from "../../document/document-display-units"
+import { useSketchConstraintManagerToolbarTarget } from "./sketch-toolbar-portals"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
@@ -481,24 +483,30 @@ export function SketchConstraintManagerPopover({
   copy: SketchEditorPanelCopy
   state: SketchEditorPanelState
 }>) {
+  const toolbarTarget = useSketchConstraintManagerToolbarTarget()
   return (
     <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={copy.openConstraintManager}
-              className="data-[state=open]:bg-accent"
-            >
-              <ListFilter aria-hidden="true" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{copy.openConstraintManager}</TooltipContent>
-      </Tooltip>
+      {toolbarTarget
+        ? createPortal(
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={copy.openConstraintManager}
+                    className="data-[state=open]:bg-accent"
+                  >
+                    <ListFilter aria-hidden="true" />
+                  </Button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{copy.openConstraintManager}</TooltipContent>
+            </Tooltip>,
+            toolbarTarget,
+          )
+        : null}
       <PopoverContent
         align="end"
         side="bottom"
