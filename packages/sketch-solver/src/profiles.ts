@@ -128,6 +128,8 @@ function lineCurve(
   return {
     entityId: entity.id,
     type: "line",
+    endPointId: entity.endPointId,
+    startPointId: entity.startPointId,
     start,
     end,
     bounds: pointBounds([start, end]),
@@ -180,6 +182,8 @@ function arcCurve(
   return {
     entityId: entity.id,
     type: "arc",
+    endPointId: entity.endPointId,
+    startPointId: entity.startPointId,
     center,
     radius,
     startAngle,
@@ -320,6 +324,8 @@ function ellipticalArcCurve(
   const curveWithoutBounds = {
     entityId: entity.id,
     type: "elliptical-arc",
+    endPointId: entity.endPointId,
+    startPointId: entity.startPointId,
     center: resolved.center,
     primaryRadius: frame.primaryRadius,
     secondaryRadius: frame.secondaryRadius,
@@ -414,11 +420,28 @@ function intersectionIsOnlySharedEndpoints(
   points: readonly ProfilePoint[],
   tolerance: number,
 ) {
+  const coordinateScale = Math.max(
+    1,
+    ...[left.bounds, right.bounds].flatMap(({ minX, minY, maxX, maxY }) =>
+      [minX, minY, maxX, maxY].map(Math.abs),
+    ),
+  )
+  const numericalTolerance = Math.max(tolerance, Math.sqrt(Number.EPSILON) * coordinateScale)
+  const leftEndpoints = [
+    { id: left.startPointId, point: left.start },
+    { id: left.endPointId, point: left.end },
+  ]
+  const rightEndpointIds = new Set([right.startPointId, right.endPointId].filter(Boolean))
+  const sharedEndpoints = leftEndpoints.filter(
+    (endpoint): endpoint is { id: SketchEntityId; point: ProfilePoint } =>
+      endpoint.id !== undefined && rightEndpointIds.has(endpoint.id),
+  )
   return (
     points.length > 0 &&
     points.every(
       (point) =>
-        isCurveEndpoint(left, point, tolerance) && isCurveEndpoint(right, point, tolerance),
+        (isCurveEndpoint(left, point, tolerance) && isCurveEndpoint(right, point, tolerance)) ||
+        sharedEndpoints.some((endpoint) => distance(endpoint.point, point) <= numericalTolerance),
     )
   )
 }

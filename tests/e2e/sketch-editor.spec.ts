@@ -2216,6 +2216,7 @@ test.describe("full sketch editor", () => {
     await expect(
       drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
     ).toHaveCount(4)
+    await expect(page.getByRole("button", { name: /^Set exact Horizontal:/ })).toBeVisible()
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Undo", exact: true }).click()
@@ -2565,6 +2566,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.move(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.55)
     await expect(drawing.locator('[data-sketch-preview-tool="midpoint-line"]')).toBeVisible()
     await page.mouse.click(bounds.x + bounds.width * 0.45, bounds.y + bounds.height * 0.55)
+    await expect(page.getByRole("button", { name: /^Set exact Distance:/ })).toBeVisible()
 
     await selectSketchTool(page, "Circle tools", "Three-point circle")
     await page.mouse.click(bounds.x + bounds.width * 0.58, bounds.y + bounds.height * 0.62)
@@ -2608,6 +2610,7 @@ test.describe("full sketch editor", () => {
 
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8)
     await expect(drawing.locator('[data-sketch-entity-type="circle"]')).toHaveCount(1)
+    await expect(page.getByRole("button", { name: /^Set exact Radius:/ })).toBeVisible()
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Undo", exact: true }).click()
@@ -2653,6 +2656,7 @@ test.describe("full sketch editor", () => {
 
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
+    await expect(page.getByRole("button", { name: /^Set exact Distance:/ })).toBeVisible()
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
     await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
 
@@ -2669,6 +2673,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.5)
 
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(1)
+    await expect(page.getByRole("button", { name: /^Set exact Radius:/ })).toBeVisible()
     await expect(page.getByText("Tangent", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Line", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -2706,6 +2711,7 @@ test.describe("full sketch editor", () => {
 
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(7)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
+    await expect(page.getByRole("button", { name: /^Set exact Distance:/ })).toBeVisible()
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
     await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
     await expect(page.getByText("Midpoint", { exact: true })).toHaveCount(3)
@@ -2747,7 +2753,8 @@ test.describe("full sketch editor", () => {
       drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
     ).toHaveCount(1)
     await expect(page.getByText("Midpoint", { exact: true })).toBeVisible()
-    await expect(page.getByText("Parallel", { exact: true })).toBeVisible()
+    await expect(page.getByText("Equal", { exact: true })).toHaveCount(2)
+    await expect(page.getByText("Tangent", { exact: true })).toHaveCount(3)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Undo", exact: true }).click()
@@ -2789,6 +2796,34 @@ test.describe("full sketch editor", () => {
       drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
     ).toHaveCount(1)
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
+  })
+
+  test("offers non-blocking exact length and width for a new straight slot", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const bounds = await drawing.boundingBox()
+    if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+
+    await selectSketchTool(page, "Slot tools", "Straight slot")
+    await page.mouse.click(bounds.x + bounds.width * 0.3, bounds.y + bounds.height * 0.6)
+    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.6)
+    await page.mouse.click(bounds.x + bounds.width * 0.65, bounds.y + bounds.height * 0.42)
+
+    const lengthTrigger = page.getByRole("button", { name: /^Set exact Distance:/ })
+    const precision = page.getByRole("form", { name: "Exact geometry value" })
+    await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+    await expect(lengthTrigger).toBeVisible()
+    await expect(precision).toHaveCount(0)
+    await lengthTrigger.click()
+    await expect(precision.getByText("Distance", { exact: true })).toBeVisible()
+    await precision.getByRole("button", { name: "Apply dimension" }).click()
+    await expect(precision.getByText("Diameter", { exact: true })).toBeVisible()
   })
 
   test("mirrors selected or subsequently picked geometry across a sketch line", async ({

@@ -4707,6 +4707,7 @@ type SketchCreationPrecisionStep = Readonly<{
 
 type SketchCreationPrecisionRequest = Readonly<{
   activeStep: number
+  retainForTool?: SketchEditorTool
   steps: readonly SketchCreationPrecisionStep[]
 }>
 
@@ -5030,14 +5031,22 @@ function placeMidpointLine(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "midpoint-line") {
     return { draft: null, pending: { kind: "midpoint-line", midpoint: input.target } }
   }
+  const midpoint = pointForTarget(input.draft, input.pending.midpoint)
+  const endpoint = pointForTarget(input.draft, input.target)
+  const opposite = { x: midpoint.x * 2 - endpoint.x, y: midpoint.y * 2 - endpoint.y }
+  const result = appendSketchMidpointLine(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    endpoint: input.target,
+    midpoint: input.pending.midpoint,
+  })
+  const creationPrecision = lineCreationPrecision(result, [
+    { anchor: input.point, end: endpoint, start: opposite },
+  ])
   return {
-    draft: appendSketchMidpointLine(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      endpoint: input.target,
-      midpoint: input.pending.midpoint,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5215,6 +5224,128 @@ function curveCreationPrecision(
     : undefined
 }
 
+type SketchPlacementResult = Readonly<{
+  createdEntityIds: readonly SketchEntityId[]
+  sketch: SketchRecord
+}>
+
+const authoredGeometryMatchTolerance = 1e-9
+
+function authoredPointsMatch(first: SketchPoint2, second: SketchPoint2) {
+  const scale = Math.max(
+    1,
+    Math.abs(first.x),
+    Math.abs(first.y),
+    Math.abs(second.x),
+    Math.abs(second.y),
+  )
+  return (
+    Math.abs(first.x - second.x) <= authoredGeometryMatchTolerance * scale &&
+    Math.abs(first.y - second.y) <= authoredGeometryMatchTolerance * scale
+  )
+}
+
+function sketchPointEntity(sketch: SketchRecord, pointId: SketchEntityId) {
+  const point = sketch.entities.find(({ id }) => id === pointId)
+  return point?.type === "point" ? point : null
+}
+
+function createdEntityOfType<Type extends SketchEntity["type"]>(
+  result: SketchPlacementResult,
+  type: Type,
+) {
+  const createdIds = new Set<string>(result.createdEntityIds)
+  return result.sketch.entities.find(
+    (entity): entity is Extract<SketchEntity, { type: Type }> =>
+      createdIds.has(entity.id) && entity.type === type,
+  )
+}
+
+function createdLineBetween(
+  result: SketchPlacementResult,
+  first: SketchPoint2,
+  second: SketchPoint2,
+) {
+  const createdIds = new Set<string>(result.createdEntityIds)
+  return result.sketch.entities.find((entity) => {
+    if (entity.type !== "line" || !createdIds.has(entity.id)) return false
+    const start = sketchPointEntity(result.sketch, entity.startPointId)
+    const end = sketchPointEntity(result.sketch, entity.endPointId)
+    if (!start || !end) return false
+    return (
+      (authoredPointsMatch(start, first) && authoredPointsMatch(end, second)) ||
+      (authoredPointsMatch(start, second) && authoredPointsMatch(end, first))
+    )
+  })
+}
+
+function lineCreationPrecision(
+  result: SketchPlacementResult,
+  segments: readonly Readonly<{
+    anchor: SketchPoint2
+    end: SketchPoint2
+    start: SketchPoint2
+  }>[],
+): SketchCreationPrecisionRequest | undefined {
+  const steps = segments.flatMap(({ anchor, end, start }) => {
+    const line = createdLineBetween(result, start, end)
+    return line ? [{ anchor, entityIds: [line.id], initialKind: "distance" as const }] : []
+  })
+  if (steps.length !== segments.length) return undefined
+  return {
+    activeStep: 0,
+    steps,
+  }
+}
+
+function pointPairMidpoint(first: SketchPoint2, second: SketchPoint2) {
+  return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 }
+}
+
+function adjacentLineCreationPrecision(
+  result: SketchPlacementResult,
+  first: SketchPoint2,
+  second: SketchPoint2,
+  third: SketchPoint2,
+) {
+  return lineCreationPrecision(result, [
+    { anchor: pointPairMidpoint(first, second), end: second, start: first },
+    { anchor: pointPairMidpoint(second, third), end: third, start: second },
+  ])
+}
+
+function lineMidpoint(sketch: SketchRecord, lineId: SketchEntityId) {
+  const line = sketch.entities.find(({ id }) => id === lineId)
+  if (line?.type !== "line") return null
+  const start = sketchPointEntity(sketch, line.startPointId)
+  const end = sketchPointEntity(sketch, line.endPointId)
+  return start && end ? pointPairMidpoint(start, end) : null
+}
+
+function slotCreationPrecision(
+  result: SketchPlacementResult,
+  centerLineId: SketchEntityId,
+  widthAnchor: SketchPoint2,
+  includeLength = true,
+  retainForTool?: SketchEditorTool,
+): SketchCreationPrecisionRequest | undefined {
+  const endCap = createdEntityOfType(result, "arc")
+  if (!endCap) return undefined
+  const lengthAnchor = includeLength ? lineMidpoint(result.sketch, centerLineId) : null
+  if (includeLength && !lengthAnchor) return undefined
+  const lengthSteps = lengthAnchor
+    ? [{ anchor: lengthAnchor, entityIds: [centerLineId], initialKind: "distance" as const }]
+    : []
+  return {
+    activeStep: 0,
+    ...(retainForTool ? { retainForTool } : {}),
+    steps: [
+      ...lengthSteps,
+      { anchor: widthAnchor, entityIds: [endCap.id], initialKind: "diameter" },
+    ],
+  }
+}
+
 function placeRectangle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "rectangle") {
     return { draft: null, pending: { kind: "rectangle", firstCorner: input.point } }
@@ -5242,14 +5373,22 @@ function placeCenterRectangle(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "center-rectangle") {
     return { draft: null, pending: { kind: "center-rectangle", center: input.target } }
   }
+  const center = pointForTarget(input.draft, input.pending.center)
+  const reflectedCorner = {
+    x: center.x * 2 - input.point.x,
+    y: center.y * 2 - input.point.y,
+  }
+  const result = appendSketchCenterRectangle(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    corner: input.point,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+  })
+  const creationPrecision = rectangleCreationPrecision(result, reflectedCorner, input.point)
   return {
-    draft: appendSketchCenterRectangle(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      corner: input.point,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5271,15 +5410,23 @@ function placeAlignedRectangle(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const first = pointForTarget(input.draft, input.pending.start)
+  const second = pointForTarget(input.draft, input.pending.end)
+  const geometry = alignedRectangleGeometry(first, second, input.point)
+  const result = appendSketchAlignedRectangle(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    firstSideStart: input.pending.start,
+    firstSideEnd: input.pending.end,
+    widthPoint: input.point,
+  })
+  const creationPrecision = geometry
+    ? adjacentLineCreationPrecision(result, first, second, geometry.third)
+    : undefined
   return {
-    draft: appendSketchAlignedRectangle(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      firstSideStart: input.pending.start,
-      firstSideEnd: input.pending.end,
-      widthPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5304,15 +5451,28 @@ function placeCenteredAlignedRectangle(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const center = pointForTarget(input.draft, input.pending.center)
+  const side = pointForTarget(input.draft, input.pending.side)
+  const geometry = centeredAlignedRectangleGeometry(center, side, input.point)
+  const result = appendSketchCenteredAlignedRectangle(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    sidePoint: input.pending.side,
+    widthPoint: input.point,
+  })
+  const creationPrecision = geometry
+    ? adjacentLineCreationPrecision(
+        result,
+        geometry.corners[0],
+        geometry.corners[1],
+        geometry.corners[2],
+      )
+    : undefined
   return {
-    draft: appendSketchCenteredAlignedRectangle(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      sidePoint: input.pending.side,
-      widthPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5327,15 +5487,23 @@ function placeStraightSlot(input: PlacementInput): PlacementUpdate {
       pending: { end: input.target, kind: "slot-width", start: input.pending.start },
     }
   }
+  const start = pointForTarget(input.draft, input.pending.start)
+  const end = pointForTarget(input.draft, input.pending.end)
+  const result = appendSketchStraightSlot(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    endCenter: input.pending.end,
+    startCenter: input.pending.start,
+    widthPoint: input.point,
+  })
+  const centerLine = createdLineBetween(result, start, end)
+  const creationPrecision = centerLine
+    ? slotCreationPrecision(result, centerLine.id, input.point)
+    : undefined
   return {
-    draft: appendSketchStraightSlot(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      endCenter: input.pending.end,
-      startCenter: input.pending.start,
-      widthPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5357,15 +5525,24 @@ function placeCenteredSlot(input: PlacementInput): PlacementUpdate {
       },
     }
   }
+  const center = pointForTarget(input.draft, input.pending.center)
+  const end = pointForTarget(input.draft, input.pending.end)
+  const opposite = { x: center.x * 2 - end.x, y: center.y * 2 - end.y }
+  const result = appendSketchCenteredSlot(input.draft, {
+    center: input.pending.center,
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    endCenter: input.pending.end,
+    widthPoint: input.point,
+  })
+  const centerLine = createdLineBetween(result, opposite, end)
+  const creationPrecision = centerLine
+    ? slotCreationPrecision(result, centerLine.id, input.point)
+    : undefined
   return {
-    draft: appendSketchCenteredSlot(input.draft, {
-      center: input.pending.center,
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      endCenter: input.pending.end,
-      widthPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5374,14 +5551,23 @@ function placeSlotFromSelection(input: PlacementInput): PlacementUpdate {
   if (input.pending?.kind !== "slot-from-selection-width") {
     return { draft: null, nextTool: "select", pending: null }
   }
+  const result = appendSketchSlotAroundLine(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    lineId: input.pending.lineId,
+    widthPoint: input.point,
+  })
+  const creationPrecision = slotCreationPrecision(
+    result,
+    input.pending.lineId,
+    input.point,
+    false,
+    "select",
+  )
   return {
-    draft: appendSketchSlotAroundLine(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      lineId: input.pending.lineId,
-      widthPoint: input.point,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     nextTool: "select",
     pending: null,
   }
@@ -5551,16 +5737,21 @@ function completeRegularPolygon(
   }
   const sideCount =
     typedSideCount ?? regularPolygonPointerSideCount(center, radiusPoint, input.point)
+  const result = appendSketchRegularPolygon(input.draft, {
+    center: pending.center,
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    mode,
+    radiusPoint: pending.radiusPoint,
+    sideCount,
+  })
+  const creationPrecision = curveCreationPrecision(result, "circle", [
+    { anchor: radiusPoint, initialKind: "radius" },
+  ])
   return {
-    draft: appendSketchRegularPolygon(input.draft, {
-      center: pending.center,
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      mode,
-      radiusPoint: pending.radiusPoint,
-      sideCount,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     pending: null,
   }
 }
@@ -5653,15 +5844,21 @@ function placeTangentArc(input: PlacementInput): PlacementUpdate {
       pending: reference ? { kind: "tangent-arc", ...reference } : null,
     }
   }
+  const result = appendSketchTangentArc(input.draft, {
+    construction: input.construction,
+    createConstraintId: createBrowserSketchConstraintId,
+    createEntityId: createBrowserSketchEntityId,
+    end: input.target,
+    lineId: input.pending.lineId,
+    startPointId: input.pending.startPointId,
+  })
+  const precision = curveCreationPrecision(result, "arc", [
+    { anchor: input.point, initialKind: "radius" },
+  ])
+  const creationPrecision = precision ? { ...precision, retainForTool: "line" as const } : undefined
   return {
-    draft: appendSketchTangentArc(input.draft, {
-      construction: input.construction,
-      createConstraintId: createBrowserSketchConstraintId,
-      createEntityId: createBrowserSketchEntityId,
-      end: input.target,
-      lineId: input.pending.lineId,
-      startPointId: input.pending.startPointId,
-    }).sketch,
+    ...(creationPrecision ? { creationPrecision } : {}),
+    draft: result.sketch,
     nextTool: "line",
     pending: null,
   }
@@ -9678,7 +9875,9 @@ function useSketchCreationPrecision({
   }, [])
   useEffect(() => {
     setEditing(false)
-    setRequestState(null)
+    setRequestState((current) =>
+      current?.retainForTool === configuration.editorTool ? current : null,
+    )
   }, [configuration.editorTool])
 
   return {

@@ -537,7 +537,13 @@ describe("sketch editing", () => {
     expect(lines.filter(({ construction }) => construction)).toHaveLength(1)
     expect(arcs).toHaveLength(2)
     expect(arcs.every(({ construction }) => !construction)).toBe(true)
-    expect(result.sketch.constraints.map(({ type }) => type)).toEqual(["parallel"])
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "equal",
+      "equal",
+      "tangent",
+      "tangent",
+      "tangent",
+    ])
   })
 
   it("adds a centered slot with a midpoint-constrained symmetric centerline", () => {
@@ -562,7 +568,14 @@ describe("sketch editing", () => {
     )
     expect(result.sketch.entities.filter(({ type }) => type === "line")).toHaveLength(3)
     expect(result.sketch.entities.filter(({ type }) => type === "arc")).toHaveLength(2)
-    expect(result.sketch.constraints.map(({ type }) => type)).toEqual(["midpoint", "parallel"])
+    expect(result.sketch.constraints.map(({ type }) => type)).toEqual([
+      "midpoint",
+      "equal",
+      "equal",
+      "tangent",
+      "tangent",
+      "tangent",
+    ])
   })
 
   it("reuses an inferred center point without duplicating its identity", () => {

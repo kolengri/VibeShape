@@ -864,8 +864,11 @@ function slotBoundaryEntities(
     },
   ]
   return {
+    endArcId,
     entities,
+    negativeLineId,
     positiveLineId,
+    startArcId,
   }
 }
 
@@ -874,12 +877,22 @@ function slotConstraints(
   boundary: ReturnType<typeof slotBoundaryEntities>,
   createConstraintId: ConstraintIdFactory,
 ): readonly SketchConstraint[] {
+  // Equal side lengths and three independent tangencies imply parallel sides,
+  // equal cap radii, and the fourth tangency without over-constraining SolveSpace.
   const definitions = [
     {
-      type: "parallel",
-      firstEntityId: centerLineId,
-      secondEntityId: boundary.positiveLineId,
+      type: "equal",
+      firstEntityId: boundary.positiveLineId,
+      secondEntityId: centerLineId,
     },
+    {
+      type: "equal",
+      firstEntityId: boundary.negativeLineId,
+      secondEntityId: centerLineId,
+    },
+    { type: "tangent", lineId: boundary.positiveLineId, arcId: boundary.startArcId },
+    { type: "tangent", lineId: boundary.positiveLineId, arcId: boundary.endArcId },
+    { type: "tangent", lineId: boundary.negativeLineId, arcId: boundary.startArcId },
   ] as const
   return definitions.map(
     (definition): SketchConstraint => ({
