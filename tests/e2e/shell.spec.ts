@@ -178,6 +178,10 @@ test.describe("foundation CAD shell", () => {
 
     await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
     await expect(page.getByRole("complementary", { name: "Task panel" })).toBeHidden()
+    await expect(page.getByRole("button", { name: "Open task panel" })).toBeVisible()
+    await page.getByRole("button", { name: "Open task panel" }).click()
+    await expect(page.getByRole("complementary", { name: "Task panel" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Collapse task panel" })).toBeVisible()
     await expect
       .poll(() =>
         page.evaluate<boolean>(
@@ -185,6 +189,30 @@ test.describe("foundation CAD shell", () => {
         ),
       )
       .toBe(true)
+  })
+
+  test("keeps an active task form reachable and mounted at 200 percent zoom", async ({ page }) => {
+    await page.setViewportSize({ width: 512, height: 360 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Box", exact: true })
+      .click()
+    const form = page.getByRole("form", { name: "Create box" })
+    const width = form.getByRole("combobox", { name: "Width" })
+    await expect(form).toBeVisible()
+    await expect(form.getByRole("button", { name: "Cancel" })).toBeVisible()
+    await width.fill("42 mm")
+
+    await page.getByRole("button", { name: "Collapse task panel" }).click()
+    await expect(form).toBeHidden()
+    await expect(page.getByRole("region", { name: "3D viewport" })).toBeVisible()
+    await page.getByRole("button", { name: "Open task panel" }).click()
+
+    await expect(form).toBeVisible()
+    await expect(width).toHaveValue("42 mm")
   })
 
   test("boots without external network requests", async ({ page }) => {

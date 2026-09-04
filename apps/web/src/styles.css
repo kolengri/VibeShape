@@ -10,6 +10,7 @@
 }
 
 .cad-workspace-grid {
+  position: relative;
   display: grid;
   grid-template-columns:
     var(--model-tree-width) minmax(0, 1fr)
@@ -17,12 +18,47 @@
   overflow: hidden;
 }
 
+.responsive-task-panel {
+  overflow: hidden;
+}
+
+.responsive-task-panel__toggle {
+  display: none;
+}
+
+.responsive-task-panel__content {
+  height: 100%;
+}
+
+.responsive-task-panel__content > [role="complementary"] {
+  height: 100%;
+}
+
 @media (width < 64rem) {
   .cad-workspace-grid {
     grid-template-columns: 13rem minmax(0, 1fr);
   }
 
-  .cad-workspace-grid > :last-child {
-    display: none;
+  .responsive-task-panel {
+    position: absolute;
+    z-index: 30;
+    inset-inline: 13rem 0;
+    bottom: 0;
+    display: grid;
+    height: min(78%, 32rem);
+    grid-template-rows: 2.25rem minmax(0, 1fr);
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    box-shadow: 0 -0.75rem 2rem color-mix(in oklab, black 24%, transparent);
+  }
+
+  .responsive-task-panel[data-expanded="false"] {
+    height: 2.25rem;
+  }
+
+  .responsive-task-panel__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
   }
 }

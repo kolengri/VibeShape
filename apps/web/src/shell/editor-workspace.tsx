@@ -121,6 +121,7 @@ import {
   viewerSketchDisplay,
 } from "./geometry-viewport"
 import { ModelTree } from "./model-tree"
+import { ResponsiveTaskPanel } from "./responsive-task-panel"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
 
@@ -2162,6 +2163,7 @@ function modelEdgeAxesMatch(
 }
 
 export function EditorWorkspace(props: EditorWorkspaceProps) {
+  const taskPanelT = useTranslations("app.shell.taskPanel")
   const { featurePreview, previewFeature, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
     props.activeTool,
@@ -2242,20 +2244,39 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           revolveAxisSelection={revolveAxisSelection.value}
           revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
-        <EditorTaskPanel
-          featurePreviewStatus={featurePreview.status}
-          featureProfileSelections={featureProfileSelection.value}
-          onFeatureProfileRemove={removeFeatureProfile}
-          onFeatureProfilesClear={clearFeatureProfiles}
-          onFeaturePreviewChange={onFeaturePreviewChange}
-          onRevolveAxisChange={revolveAxisSelection.setValue}
-          onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
-          props={props}
-          revolveAxisCandidates={revolveAxisCandidates}
-          revolveAxisSelection={revolveAxisSelection.value}
-          revolveSelectionPurpose={revolveSelectionPurpose.value}
-        />
+        <ResponsiveTaskPanel
+          activeTaskKey={taskPanelActivityKey(props)}
+          collapseLabel={taskPanelT("collapsePanel")}
+          expandLabel={taskPanelT("expandPanel")}
+        >
+          <EditorTaskPanel
+            featurePreviewStatus={featurePreview.status}
+            featureProfileSelections={featureProfileSelection.value}
+            onFeatureProfileRemove={removeFeatureProfile}
+            onFeatureProfilesClear={clearFeatureProfiles}
+            onFeaturePreviewChange={onFeaturePreviewChange}
+            onRevolveAxisChange={revolveAxisSelection.setValue}
+            onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
+            props={props}
+            revolveAxisCandidates={revolveAxisCandidates}
+            revolveAxisSelection={revolveAxisSelection.value}
+            revolveSelectionPurpose={revolveSelectionPurpose.value}
+          />
+        </ResponsiveTaskPanel>
       </div>
     </SketchProjectionProvider>
   )
+}
+
+function taskPanelActivityKey(props: EditorWorkspaceProps) {
+  if (props.activeSketchTool) {
+    return props.activeSketchTool.kind === "edit-sketch"
+      ? `sketch:${props.activeSketchTool.sketchId}`
+      : `sketch:${props.activeSketchTool.kind}`
+  }
+  if (props.activeSketchId) return `sketch:${props.activeSketchId}`
+  if (props.activeTool) {
+    return `feature:${props.activeTool.kind}:${activeFeatureId(props.activeTool) ?? "create"}`
+  }
+  return props.workspace === "variables" ? "variables" : null
 }
