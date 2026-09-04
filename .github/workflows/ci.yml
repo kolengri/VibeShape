@@ -16,7 +16,7 @@ jobs:
   verify:
     name: Fast PR checks
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 14
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -30,6 +30,9 @@ jobs:
 
       - name: Install dependencies
         run: bun ci
+
+      - name: Audit critical dependency vulnerabilities
+        run: bun run audit
 
       - name: Validate agent skills
         run: bun run skills:validate
@@ -45,9 +48,6 @@ jobs:
 
       - name: Test
         run: bun run test
-
-      - name: Audit critical dependency vulnerabilities
-        run: bun run audit
 
       - name: Fallow audit
         run: bun run fallow:audit -- --no-cache

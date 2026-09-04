@@ -28,6 +28,7 @@ import {
   activePartDesignCommand,
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
+import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
 import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
 import { selectedSketchSupportFromController } from "./features/sketch/sketch-support"
 import type { ActiveSketchTool } from "./features/sketch/sketch-tool"
@@ -88,13 +89,6 @@ async function persistOpenSketchBeforeExtrusion(
 }
 const persistOpenSketchBeforeRevolve = persistOpenSketchBeforeExtrusion
 
-function selectedExtrusionProfile(
-  profile: SketchProfileSelector | null,
-  activeSketchId: SketchId | null,
-) {
-  return profile?.sketchId === activeSketchId ? profile : null
-}
-
 function applySavedSketchToSession(
   persistence: SketchPersistenceBeforeExtrusionResult,
   request: OpenSketchSaveRequest,
@@ -141,6 +135,20 @@ function selectedSupportForPlaneTool(
   return supportFromSelection(controller, selection)
 }
 
+function profileFeatureSelectionForCommand(
+  profiles: readonly SketchProfileSelector[],
+  selectedProfile: SketchProfileSelector | null,
+  activeSketchId: SketchId | null,
+  activeSketchTool: ActiveSketchTool | null,
+) {
+  const candidates = sketchSaveForTool(activeSketchTool)
+    ? profiles
+    : selectedProfile
+      ? [selectedProfile]
+      : []
+  return initialProfileFeatureSelection(candidates, activeSketchId)
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
@@ -148,6 +156,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     activeSketchId,
     activeSketchTool,
     draft,
+    profiles,
     selectedOriginPlane,
     selectedProfile,
     selection,
@@ -156,6 +165,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       activeSketchId: state.sketch.activeSketchId,
       activeSketchTool: state.sketch.activeSketchTool,
       draft: state.sketch.draft,
+      profiles: state.sketch.profiles,
       selectedOriginPlane: state.selectedOriginPlane,
       selectedProfile: state.sketch.selectedProfile,
       selection: state.selection,
@@ -205,29 +215,55 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
   )
 
   const createExtrusion = useCallback(async () => {
-    const profile = selectedExtrusionProfile(selectedProfile, activeSketchId)
-    if (!profile) return false
+    const initialProfiles = profileFeatureSelectionForCommand(
+      profiles,
+      selectedProfile,
+      activeSketchId,
+      activeSketchTool,
+    )
+    if (initialProfiles.length === 0) return false
     const request = openSketchSaveRequest(controller, activeSketchTool, draft)
     const persistence = await persistOpenSketchBeforeExtrusion(request)
     if (persistence === "failed") return false
     applySavedSketchToSession(persistence, request, sessionActions.saveSketch)
     sessionActions.startPartDesignTool({
       kind: "create-extrusion",
-      profile,
+      profiles: initialProfiles,
     })
     return true
-  }, [activeSketchId, activeSketchTool, controller.report, draft, selectedProfile, sessionActions])
+  }, [
+    activeSketchId,
+    activeSketchTool,
+    controller.report,
+    draft,
+    profiles,
+    selectedProfile,
+    sessionActions,
+  ])
   const createRevolve = useCallback(async () => {
-    const profile = selectedExtrusionProfile(selectedProfile, activeSketchId)
-    if (!profile) return false
+    const initialProfiles = profileFeatureSelectionForCommand(
+      profiles,
+      selectedProfile,
+      activeSketchId,
+      activeSketchTool,
+    )
+    if (initialProfiles.length === 0) return false
     const request = openSketchSaveRequest(controller, activeSketchTool, draft)
     const persistence: SketchPersistenceBeforeRevolveResult =
       await persistOpenSketchBeforeRevolve(request)
     if (persistence === "failed") return false
     applySavedSketchToSession(persistence, request, sessionActions.saveSketch)
-    sessionActions.startPartDesignTool({ kind: "create-revolve", profile })
+    sessionActions.startPartDesignTool({ kind: "create-revolve", profiles: initialProfiles })
     return true
-  }, [activeSketchId, activeSketchTool, controller.report, draft, selectedProfile, sessionActions])
+  }, [
+    activeSketchId,
+    activeSketchTool,
+    controller.report,
+    draft,
+    profiles,
+    selectedProfile,
+    sessionActions,
+  ])
 
   const editFeature = useCallback(
     (featureId: FeatureId) => {
@@ -340,11 +376,18 @@ function useEditorApplicationSession() {
 }
 
 function sketchProfileCommandAvailable(session: EditorApplicationSession) {
-  return (
-    session.sketch.selectedProfile !== null &&
-    session.sketch.selectedProfile.sketchId === session.sketch.activeSketchId &&
-    session.activePartDesignTool === null
-  )
+  if (session.activePartDesignTool) return false
+  if (openSketchProfileCommandAvailable(session)) return true
+  return savedProfileCommandAvailable(session)
+}
+
+function openSketchProfileCommandAvailable(session: EditorApplicationSession) {
+  if (!sketchSaveForTool(session.sketch.activeSketchTool)) return false
+  return session.sketch.profiles.some(({ sketchId }) => sketchId === session.sketch.activeSketchId)
+}
+
+function savedProfileCommandAvailable(session: EditorApplicationSession) {
+  return session.sketch.selectedProfile?.sketchId === session.sketch.activeSketchId
 }
 
 function sketchLineCommandAvailable(session: EditorApplicationSession) {

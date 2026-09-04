@@ -1791,7 +1791,7 @@ function defaultRevolveAxis(
 }
 
 function revolveToolKey(activeTool: ActivePartDesignTool | null) {
-  if (activeTool?.kind === "create-revolve") return `create:${activeTool.profile.sketchId}`
+  if (activeTool?.kind === "create-revolve") return profileFeatureToolKey(activeTool)
   if (activeTool?.kind === "edit-revolve") return `edit:${activeTool.featureId}`
   return "inactive"
 }

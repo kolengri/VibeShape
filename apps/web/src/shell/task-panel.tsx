@@ -1993,8 +1993,8 @@ function SelectedSketchTaskPanel({
               key={profile.outerBoundaryEntityIds.join(":")}
               type="button"
               size="xs"
-              variant={selectedProfile === profile ? "secondary" : "outline"}
-              aria-pressed={selectedProfile === profile}
+              variant={profileSelectorsEqual(selectedProfile, profile) ? "secondary" : "outline"}
+              aria-pressed={profileSelectorsEqual(selectedProfile, profile)}
               onClick={() => onSelectedProfileChange(profile)}
             >
               {t("profile", { number: index + 1 })}

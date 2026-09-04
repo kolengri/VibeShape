@@ -14,8 +14,11 @@ import { describe, expect, it } from "vitest"
 import type { ActivePartDesignTool } from "./part-design-tool"
 import {
   ineligibleProfileSketchIds,
+  initialProfileFeatureSelection,
   nextProfileFeatureSelection,
   profileForFeatureTool,
+  profileFeatureToolKey,
+  profilesForFeatureTool,
   profileSelectorsEqual,
   revolveAxesEqual,
   revolveAxisAfterProfileSelection,
@@ -88,6 +91,44 @@ describe("profile feature selection", () => {
   it("resolves the committed profile for feature editing", () => {
     const tool = { kind: "edit-extrusion", featureId } satisfies ActivePartDesignTool
     expect(profileForFeatureTool(tool, snapshot)).toEqual(profile)
+  })
+
+  it("keeps every active-sketch profile as the initial create-feature selection", () => {
+    const second = sketchProfileSelectorSchema.parse({
+      ...profile,
+      outerBoundaryEntityIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f6112")],
+    })
+    const otherSketch = sketchProfileSelectorSchema.parse({ ...second, sketchId: laterSketchId })
+    const initial = initialProfileFeatureSelection([second, otherSketch, profile], firstSketchId)
+    const extrusionTool = {
+      kind: "create-extrusion",
+      profiles: initial,
+    } satisfies ActivePartDesignTool
+    const revolveTool = { kind: "create-revolve", profiles: initial } satisfies ActivePartDesignTool
+
+    expect(initial).toEqual([profile, second])
+    expect(profilesForFeatureTool(extrusionTool, snapshot)).toEqual([profile, second])
+    expect(profilesForFeatureTool(revolveTool, snapshot)).toEqual([profile, second])
+    expect(initialProfileFeatureSelection([profile], null)).toEqual([])
+  })
+
+  it("keys create tools by the complete canonical profile set", () => {
+    const second = sketchProfileSelectorSchema.parse({
+      ...profile,
+      outerBoundaryEntityIds: [sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f6112")],
+    })
+    const firstKey = profileFeatureToolKey({
+      kind: "create-extrusion",
+      profiles: [profile, second],
+    })
+    const equivalentKey = profileFeatureToolKey({
+      kind: "create-extrusion",
+      profiles: [{ ...second }, { ...profile }],
+    })
+    const distinctKey = profileFeatureToolKey({ kind: "create-extrusion", profiles: [profile] })
+
+    expect(equivalentKey).toBe(firstKey)
+    expect(distinctKey).not.toBe(firstKey)
   })
 
   it("compares the complete stable selector identity", () => {

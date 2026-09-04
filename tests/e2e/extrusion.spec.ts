@@ -118,7 +118,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(viewport).not.toHaveAttribute("data-axial-gizmo-feature")
   })
 
-  test("creates and reopens a new result from two profiles", async ({ page }) => {
+  test("starts from an open sketch with every closed profile selected", async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible({
@@ -130,20 +130,11 @@ test.describe("selector-backed extrusion", () => {
       .click()
     await confirmSketchPlane(page, "xy")
     await drawTwoSeparatedProfiles(page)
-    await page.getByRole("button", { name: "Finish sketch" }).click()
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
-    await expect(viewport).toHaveAttribute("data-rendered-sketch-profile-count", "2", {
-      timeout: 120_000,
-    })
-    await viewport
-      .getByRole("combobox", { name: "Select saved profile" })
-      .selectOption({ label: "Sketch 1 · Profile 1" })
+    await expect(extrudeCommand(page)).toBeEnabled({ timeout: 120_000 })
     await extrudeCommand(page).click()
     const form = page.getByRole("form", { name: "Extrude profile" })
-    await page.getByRole("button", { name: "Hide Box 1" }).click()
-    await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
-    await page.getByRole("button", { name: "Show Box 1" }).click()
 
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
@@ -264,6 +255,7 @@ test.describe("selector-backed extrusion", () => {
     await extrudeCommand(page).click()
     let form = page.getByRole("form", { name: "Extrude profile" })
     await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
 
     await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2")
     await expect(form).toBeVisible()
