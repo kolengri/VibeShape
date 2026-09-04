@@ -232,7 +232,9 @@ test.describe("full sketch editor", () => {
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
-    const externalRelation = page.getByRole("button", { name: "Select external relation ×" })
+    const externalRelation = page.getByRole("button", {
+      name: "Select external relation Coincident",
+    })
     await expect(externalRelation).toHaveAttribute("data-sketch-constraint-source", "external")
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
@@ -3399,7 +3401,11 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(midpointProbe.x + 1, midpointProbe.y)
 
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)
-    await expect(page.getByText("Midpoint", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    const midpointConstraint = page.getByRole("button", { name: "Select constraint Midpoint" })
+    await expect(midpointConstraint).toBeVisible()
+    await midpointConstraint.hover()
+    await expect(page.getByRole("tooltip", { name: "Select constraint Midpoint" })).toBeVisible()
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
   })
 
