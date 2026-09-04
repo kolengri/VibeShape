@@ -264,6 +264,8 @@ Exit criterion: the reference bracket's primary outline can be drawn to exact si
   candidates now highlight the exact source entities while keeping the existing cursor glyphs,
   guides, accepted constraint glyphs, and `Shift` suppression. The highlight reuses the authored
   marker or curve shape, so it does not introduce duplicate point or center geometry.
+- Accepted geometric and dimensional annotations expose a localized tooltip and accessible action
+  label, with a 24 px minimum visual target that remains compact beside the constrained geometry.
 - Keep that cursor language consistent as new inference candidates are introduced.
 - Add remembered wake-up references for coplanar earlier sketch and feature geometry.
 - Move selection-driven constraint actions next to the selection and make glyphs draggable and directly deletable.

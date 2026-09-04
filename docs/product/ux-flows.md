@@ -237,3 +237,7 @@ Every active local inference highlights its exact source point or curve in the s
 preselection language used by external wake-up, including both lines at an intersection and the
 reference curve for parallel, perpendicular, or tangent intent. `Shift` clears the glyph, guide,
 and source highlight together for the current pointer sample.
+
+Accepted constraint and dimension annotations remain spatially anchored beside their geometry.
+Each compact annotation has a localized hover tooltip and accessible action name; geometric
+relations select on click, while driving dimensions keep double-click edit and direct label drag.

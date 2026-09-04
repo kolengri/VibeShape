@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import {
   appendSketchArc,
   appendSketchCircle,
@@ -43,6 +44,14 @@ import {
 import { SketchViewport } from "./sketch-viewport"
 
 const sketchInferenceIndexBuilds = vi.hoisted(() => vi.fn())
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal("ResizeObserver", ResizeObserverMock)
 
 vi.mock("@vibeshape/domain", async (importOriginal) => {
   const domain = await importOriginal<typeof import("@vibeshape/domain")>()
@@ -5955,6 +5964,7 @@ describe("SketchViewport", () => {
   })
 
   it("persists an authored ellipse quadrant with an accessible constraint glyph", async () => {
+    const user = userEvent.setup()
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const ellipseSketch = appendSketchEllipse(emptySketch, {
       center: { kind: "new", point: { x: 0, y: 0 } },
@@ -6003,7 +6013,9 @@ describe("SketchViewport", () => {
         onDraftChange,
       }),
     )
-    expect(await screen.findByRole("button", { name: "Select constraint Quadrant" })).toBeTruthy()
+    const glyph = await screen.findByRole("button", { name: "Select constraint Quadrant" })
+    await user.hover(glyph)
+    expect(await screen.findByRole("tooltip", { name: "Select constraint Quadrant" })).toBeTruthy()
   })
 
   it("persists an exact point-on-ellipse relation away from the ellipse axes", async () => {
@@ -6186,7 +6198,7 @@ describe("SketchViewport", () => {
       onConstraintSelectionChange,
     })
 
-    const glyph = await screen.findByRole("button", { name: "Select external relation ∥" })
+    const glyph = await screen.findByRole("button", { name: "Select external relation Parallel" })
     expect(glyph.getAttribute("data-sketch-constraint-id")).toBe(externalConstraintId)
     expect(glyph.getAttribute("data-sketch-constraint-source")).toBe("external")
     expect(glyph.className).toContain("text-sketch-reference-context")

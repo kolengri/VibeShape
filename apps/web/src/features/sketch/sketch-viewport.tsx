@@ -3208,6 +3208,46 @@ const geometricConstraintLabels: Partial<
   "vertical-points": "V",
 }
 
+type AccessibleConstraintMessageKey =
+  | "constraintCoincident"
+  | "constraintConcentric"
+  | "constraintEqual"
+  | "constraintFixed"
+  | "constraintHorizontal"
+  | "constraintMidpoint"
+  | "constraintParallel"
+  | "constraintPerpendicular"
+  | "constraintSymmetric"
+  | "constraintTangent"
+  | "constraintVertical"
+  | "pointOnCurve"
+  | "pointOnLine"
+  | "quadrant"
+
+const accessibleConstraintMessageKeys: Partial<
+  Record<SketchRecord["constraints"][number]["type"], AccessibleConstraintMessageKey>
+> = {
+  "arc-midpoint": "constraintMidpoint",
+  coincident: "constraintCoincident",
+  concentric: "constraintConcentric",
+  "ellipse-quadrant": "quadrant",
+  equal: "constraintEqual",
+  fixed: "constraintFixed",
+  horizontal: "constraintHorizontal",
+  "horizontal-points": "constraintHorizontal",
+  midpoint: "constraintMidpoint",
+  parallel: "constraintParallel",
+  perpendicular: "constraintPerpendicular",
+  "point-on-curve": "pointOnCurve",
+  "point-on-ellipse": "pointOnCurve",
+  "point-on-elliptical-arc": "pointOnCurve",
+  "point-on-line": "pointOnLine",
+  symmetric: "constraintSymmetric",
+  tangent: "constraintTangent",
+  vertical: "constraintVertical",
+  "vertical-points": "constraintVertical",
+}
+
 const ellipseAxisDimensionAxes: Partial<
   Record<SketchRecord["constraints"][number]["type"], "primary" | "secondary">
 > = {
@@ -3457,7 +3497,7 @@ function constraintGlyphClassName(
     return cn(
       variant,
       pointerEventsClass,
-      "absolute h-5 min-w-5 -translate-y-1/2 bg-background/85 px-1 py-0 font-mono text-[10px] shadow-xs",
+      "absolute h-6 min-w-6 -translate-y-1/2 bg-background/90 px-1.5 py-0 font-mono text-[11px] shadow-xs",
       glyph.reference
         ? "border border-dashed border-muted-foreground/50 text-muted-foreground"
         : "text-foreground",
@@ -3466,7 +3506,7 @@ function constraintGlyphClassName(
   return cn(
     variant,
     pointerEventsClass,
-    "absolute h-5 min-w-5 -translate-y-1/2 gap-0.5 bg-background/75 px-1 py-0 font-mono text-[10px] font-semibold shadow-xs",
+    "absolute h-6 min-w-6 -translate-y-1/2 gap-0.5 bg-background/85 px-1.5 py-0 font-mono text-[11px] font-semibold shadow-xs",
     glyph.external ? "text-sketch-reference-context" : "text-primary",
   )
 }
@@ -3623,40 +3663,46 @@ function ConstraintAnnotation({
   suppressClickRef: RefObject<boolean>
   viewport: SketchViewportSize
 }>) {
+  const accessibleLabel = constraintGlyphAccessibleLabel(
+    glyph,
+    editDimensionLabel,
+    selectConstraintLabel,
+    selectExternalConstraintLabel,
+  )
   return (
-    <button
-      type="button"
-      data-sketch-constraint-id={glyph.id}
-      data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
-      data-sketch-dimension-mode={glyph.reference ? "reference" : undefined}
-      data-sketch-constraint-source={glyph.external ? "external" : "internal"}
-      aria-label={constraintGlyphAccessibleLabel(
-        glyph,
-        editDimensionLabel,
-        selectConstraintLabel,
-        selectExternalConstraintLabel,
-      )}
-      aria-pressed={selected}
-      className={constraintGlyphClassName(glyph, pointerEventsClass, selected)}
-      style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
-      onClick={(event) => selectConstraintAnnotation(event, glyph, onSelect, suppressClickRef)}
-      onDoubleClick={(event) => editConstraintAnnotation(event, glyph, onEditDimension)}
-      onPointerDown={(event) =>
-        beginConstraintAnnotationDrag({
-          bounds,
-          cleanupRef,
-          dragRef,
-          event,
-          glyph,
-          onPositionChange,
-          scale,
-          suppressClickRef,
-        })
-      }
-    >
-      {glyph.external ? <Link2 aria-hidden="true" className="size-2.5" /> : null}
-      {glyph.label}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-sketch-constraint-id={glyph.id}
+          data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
+          data-sketch-dimension-mode={glyph.reference ? "reference" : undefined}
+          data-sketch-constraint-source={glyph.external ? "external" : "internal"}
+          aria-label={accessibleLabel}
+          aria-pressed={selected}
+          className={constraintGlyphClassName(glyph, pointerEventsClass, selected)}
+          style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
+          onClick={(event) => selectConstraintAnnotation(event, glyph, onSelect, suppressClickRef)}
+          onDoubleClick={(event) => editConstraintAnnotation(event, glyph, onEditDimension)}
+          onPointerDown={(event) =>
+            beginConstraintAnnotationDrag({
+              bounds,
+              cleanupRef,
+              dragRef,
+              event,
+              glyph,
+              onPositionChange,
+              scale,
+              suppressClickRef,
+            })
+          }
+        >
+          {glyph.external ? <Link2 aria-hidden="true" className="size-2.5" /> : null}
+          {glyph.label}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{accessibleLabel}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -3700,7 +3746,7 @@ function ConstraintAnnotationCollection({
   viewport: SketchViewportSize
 }>) {
   return (
-    <div className="pointer-events-none absolute inset-0">
+    <div className="pointer-events-none absolute inset-0 z-10">
       {glyphs.map((glyph) => (
         <ConstraintAnnotation
           key={glyph.id}
@@ -11378,16 +11424,8 @@ function useSketchViewportPresentation(
   const editDimensionLabel = useCallback((label: string) => t("editDimension", { label }), [t])
   const accessibleConstraintLabel = useCallback(
     (label: string, constraintType: SketchRecord["constraints"][number]["type"]) => {
-      if (constraintType === "ellipse-quadrant") return t("quadrant")
-      if (
-        constraintType === "point-on-curve" ||
-        constraintType === "point-on-ellipse" ||
-        constraintType === "point-on-elliptical-arc"
-      ) {
-        return t("pointOnCurve")
-      }
-      if (constraintType === "point-on-line") return t("pointOnLine")
-      return label
+      const messageKey = accessibleConstraintMessageKeys[constraintType]
+      return messageKey ? t(messageKey) : label
     },
     [t],
   )
