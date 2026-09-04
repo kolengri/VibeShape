@@ -3364,21 +3364,24 @@ test.describe("full sketch editor", () => {
       x: bounds.x + bounds.width * 0.5,
       y: bounds.y + bounds.height * 0.5,
     }
-    const perpendicularEnd = {
-      x: bounds.x + bounds.width * 0.3875,
-      y: bounds.y + bounds.height * 0.2333,
-    }
     await page.mouse.click(firstStart.x, firstStart.y)
     await page.mouse.click(sharedEndpoint.x, sharedEndpoint.y)
+    const firstLine = drawing.locator('[data-sketch-entity-type="line"]').first()
+    const authoredLineBounds = await firstLine.boundingBox()
+    if (!authoredLineBounds) throw new Error("The authored reference line is not visible.")
+    const perpendicularEnd = {
+      x: sharedEndpoint.x - authoredLineBounds.height,
+      y: sharedEndpoint.y - authoredLineBounds.width,
+    }
     await page.mouse.move(perpendicularEnd.x, perpendicularEnd.y)
     await expect(drawing.locator('[data-sketch-direction-inference="perpendicular"]')).toBeVisible()
+    await expect(drawing.locator("[data-sketch-inference-source]")).toHaveCount(1)
     await page.mouse.click(perpendicularEnd.x, perpendicularEnd.y)
 
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Point", exact: true }).click()
-    const firstLine = drawing.locator('[data-sketch-entity-type="line"]').first()
     const firstLineBounds = await firstLine.boundingBox()
     if (!firstLineBounds) throw new Error("The inferred reference line is not visible.")
     const midpointProbe = {
@@ -3388,9 +3391,11 @@ test.describe("full sketch editor", () => {
     await page.keyboard.down("Shift")
     await page.mouse.move(midpointProbe.x, midpointProbe.y)
     await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toHaveCount(0)
+    await expect(drawing.locator("[data-sketch-inference-source]")).toHaveCount(0)
     await page.keyboard.up("Shift")
     await page.mouse.move(midpointProbe.x + 1, midpointProbe.y)
     await expect(drawing.locator('[data-sketch-inference="midpoint"]')).toBeVisible()
+    await expect(drawing.locator("[data-sketch-inference-source]")).toHaveCount(1)
     await page.mouse.click(midpointProbe.x + 1, midpointProbe.y)
 
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)

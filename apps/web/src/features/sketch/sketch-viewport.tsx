@@ -312,10 +312,12 @@ type SketchPointLookup = Pick<ReadonlyMap<string, DisplayPoint>, "get">
 type SketchGeometryPresentation = Readonly<{
   centerPointIds: ReadonlySet<SketchEntityId>
   curves: readonly SketchCurveEntity[]
+  curvesById: ReadonlyMap<string, SketchCurveEntity>
   curvesByPointId: ReadonlyMap<string, readonly SketchCurveEntity[]>
   externalLines: readonly DisplayExternalLine[]
   externalPoints: readonly DisplayPoint[]
   externalCurves: readonly DisplayExternalCurve[]
+  localPointsById: ReadonlyMap<string, DisplayPoint>
   points: readonly DisplayPoint[]
   pointsById: ReadonlyMap<string, DisplayPoint>
   solvedCircles: ReadonlyMap<string, number>
@@ -861,6 +863,8 @@ function createSketchGeometryPresentation(
   const curves = sketch.entities.filter(
     (entity): entity is SketchCurveEntity => entity.type !== "point",
   )
+  const curvesById = new Map(curves.map((curve) => [curve.id, curve]))
+  const localPointsById = new Map(points.map((point) => [point.id, point]))
   const centerPointIds = new Set<SketchEntityId>(
     curves.flatMap((curve) => ("centerPointId" in curve ? [curve.centerPointId] : [])),
   )
@@ -875,10 +879,12 @@ function createSketchGeometryPresentation(
   return {
     centerPointIds,
     curves,
+    curvesById,
     curvesByPointId,
     externalLines,
     externalPoints,
     externalCurves,
+    localPointsById,
     points,
     pointsById,
     solvedCircles: new Map(solution?.circles.map((circle) => [circle.entityId, circle.radius])),
@@ -1582,8 +1588,13 @@ type SketchPointDrawingProps = Readonly<{
   selected: boolean
 }>
 
-function sketchPointMarkerClass(selected: boolean, construction: boolean) {
+function sketchPointMarkerClass(
+  selected: boolean,
+  inferenceSource: boolean,
+  construction: boolean,
+) {
   if (selected) return "pointer-events-none fill-ring stroke-background"
+  if (inferenceSource) return "pointer-events-none fill-background stroke-preselection"
   return construction
     ? "pointer-events-none fill-background stroke-muted-foreground"
     : "pointer-events-none fill-background stroke-primary"
@@ -1592,17 +1603,27 @@ function sketchPointMarkerClass(selected: boolean, construction: boolean) {
 function SketchPointMarker({
   center,
   dragging,
+  inferenceSource = false,
   markerScale,
   point,
   selected,
-}: Pick<SketchPointDrawingProps, "center" | "dragging" | "markerScale" | "point" | "selected">) {
+}: Pick<SketchPointDrawingProps, "center" | "dragging" | "markerScale" | "point" | "selected"> & {
+  inferenceSource?: boolean
+}) {
   if (center) {
     const halfExtent = 3.5 * markerScale
     const centerClass = selected
       ? "pointer-events-none stroke-ring"
-      : "pointer-events-none stroke-primary"
+      : inferenceSource
+        ? "pointer-events-none stroke-preselection"
+        : "pointer-events-none stroke-primary"
     return (
-      <g data-sketch-point-role="center" className={centerClass} opacity={dragging ? 0 : undefined}>
+      <g
+        data-sketch-inference-source={inferenceSource ? point.id : undefined}
+        data-sketch-point-role="center"
+        className={centerClass}
+        opacity={dragging ? 0 : undefined}
+      >
         <line
           x1={point.x - halfExtent}
           x2={point.x + halfExtent}
@@ -1625,13 +1646,14 @@ function SketchPointMarker({
   const size = 6 * markerScale
   return (
     <rect
+      data-sketch-inference-source={inferenceSource ? point.id : undefined}
       data-sketch-point-role="vertex"
       x={point.x - size / 2}
       y={point.y - size / 2}
       width={size}
       height={size}
       rx={size / 2}
-      className={sketchPointMarkerClass(selected, point.construction)}
+      className={sketchPointMarkerClass(selected, inferenceSource, point.construction)}
       opacity={dragging ? 0 : undefined}
       strokeWidth={2}
       vectorEffect="non-scaling-stroke"
@@ -5087,6 +5109,73 @@ function InferenceGlyph({
   )
 }
 
+function inferenceSourceEntityIds(inference: SketchPointInference | null) {
+  const ids = new Set<SketchEntityId>()
+  if (!inference) return ids
+  for (const relation of inference.relations) ids.add(pointRelationEntityId(relation).id)
+  if (inference.target.kind === "existing") ids.add(inference.target.pointId)
+  switch (inference.direction?.type) {
+    case "parallel":
+    case "perpendicular":
+      ids.add(inference.direction.lineId)
+      break
+    case "tangent":
+      ids.add(inference.direction.arcId)
+      break
+  }
+  return ids
+}
+
+function SketchInferenceSourceHighlight({
+  entityIds,
+  markerScale,
+  presentation,
+}: {
+  entityIds: ReadonlySet<SketchEntityId>
+  markerScale: number
+  presentation: SketchGeometryPresentation
+}) {
+  if (entityIds.size === 0) return null
+  const curves: SketchCurveEntity[] = []
+  const points: DisplayPoint[] = []
+  for (const entityId of entityIds) {
+    const curve = presentation.curvesById.get(entityId)
+    const point = presentation.localPointsById.get(entityId)
+    if (curve) curves.push(curve)
+    if (point) points.push(point)
+  }
+  if (curves.length === 0 && points.length === 0) return null
+  return (
+    <g className="pointer-events-none" data-sketch-inference-source-layer transform="scale(1 -1)">
+      {curves.map((entity) => (
+        <g key={entity.id} data-sketch-inference-source={entity.id}>
+          <SketchCurve
+            entity={entity}
+            hidden={false}
+            interactive={false}
+            points={presentation.pointsById}
+            preselected
+            selected={false}
+            solvedRadius={presentation.solvedCircles.get(entity.id)}
+            onPointerDown={ignoreCurveAction}
+          />
+        </g>
+      ))}
+      {points.map((point) => (
+        <SketchPointMarker
+          key={point.id}
+          center={presentation.centerPointIds.has(point.id)}
+          dragging={false}
+          inferenceSource
+          markerScale={markerScale}
+          point={point}
+          selected={false}
+        />
+      ))}
+    </g>
+  )
+}
+
 function PointInferenceMark({ kind, size }: { kind: SketchPointInference["kind"]; size: number }) {
   if (kind === "none") return null
   if (kind === "coincident") {
@@ -8449,6 +8538,10 @@ function SketchDrawingView({
   svgRef,
 }: SketchDrawingViewProps) {
   const markerScale = sketchMarkerScale(state.bounds, state.viewportSize)
+  const inferenceSources = useMemo(
+    () => inferenceSourceEntityIds(state.inference),
+    [state.inference],
+  )
   const contextTargetRef = useRef<readonly SketchEntityId[]>([])
   const secondaryPointerGestureRef = useRef<SecondaryPointerGesture | null>(null)
   const replayingContextMenuRef = useRef(false)
@@ -8607,6 +8700,11 @@ function SketchDrawingView({
               onTarget={handlers.appendAt}
               pending={state.pending}
               preselectedEntityId={state.preselectedEntityId}
+            />
+            <SketchInferenceSourceHighlight
+              entityIds={inferenceSources}
+              markerScale={markerScale}
+              presentation={state.geometry}
             />
             <DraggedSketchGeometry
               dragTarget={state.dragTarget}

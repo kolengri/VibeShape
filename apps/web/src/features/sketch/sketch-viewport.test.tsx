@@ -1113,6 +1113,32 @@ describe("SketchViewport", () => {
     )
   })
 
+  it("highlights the reusable authored point for coincident inference", () => {
+    const sourcePoint = sketchEntitiesOfType(sketch, "point")[0]
+    if (!sourcePoint) throw new Error("The coincident fixture requires a point.")
+    const target: SketchRecord = {
+      ...sketch,
+      entities: [sourcePoint],
+      constraints: [],
+      externalReferences: [],
+    }
+    renderViewport({
+      draft: target,
+      editorTool: "point",
+      sketch: target,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+
+    fireEvent.pointerMove(drawing, clientPointForSketch(drawing, sourcePoint))
+
+    expect(document.querySelector('[data-sketch-inference="coincident"]')).toBeTruthy()
+    expect(
+      document.querySelector(`[data-sketch-inference-source="${sourcePoint.id}"]`),
+    ).toBeTruthy()
+  })
+
   it("previews and persists point-to-point horizontal alignment", () => {
     const sourcePoint = sketchEntitiesOfType(sketch, "point")[0]
     if (!sourcePoint) throw new Error("The alignment fixture requires a point.")
@@ -1136,8 +1162,12 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerMove(drawing, { ...pointer, shiftKey: true })
     expect(document.querySelector('[data-sketch-inference="horizontal-alignment"]')).toBeNull()
+    expect(document.querySelector("[data-sketch-inference-source]")).toBeNull()
     fireEvent.pointerMove(drawing, pointer)
     expect(document.querySelector('[data-sketch-inference="horizontal-alignment"]')).toBeTruthy()
+    expect(
+      document.querySelector(`[data-sketch-inference-source="${sourcePoint.id}"]`),
+    ).toBeTruthy()
     expect(
       document.querySelector('[data-sketch-inference-guide="horizontal-alignment"]'),
     ).toBeTruthy()
@@ -1802,6 +1832,39 @@ describe("SketchViewport", () => {
         ),
       ),
     )
+  })
+
+  it("highlights both authored lines for an intersection inference", () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const withHorizontal = appendSketchLine(emptySketch, {
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b259"),
+      start: { kind: "new", point: { x: -10, y: 0 } },
+      end: { kind: "new", point: { x: 10, y: 0 } },
+    }).sketch
+    const crossingSketch = appendSketchLine(withHorizontal, {
+      createEntityId: sequentialIdFactory((value) => sketchEntityIdSchema.parse(value), "b25a"),
+      start: { kind: "new", point: { x: 0, y: -10 } },
+      end: { kind: "new", point: { x: 0, y: 10 } },
+    }).sketch
+    const sourceLines = sketchEntitiesOfType(crossingSketch, "line")
+    renderViewport({
+      draft: crossingSketch,
+      editorTool: "point",
+      sketch: crossingSketch,
+      solveSketch: vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined)),
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+    const intersection = clientPointForSketch(drawing, { x: 0.1, y: 0.1 })
+
+    fireEvent.pointerMove(drawing, intersection)
+
+    expect(document.querySelector('[data-sketch-inference="intersection"]')).toBeTruthy()
+    expect(
+      sourceLines.every(({ id }) =>
+        document.querySelector(`[data-sketch-inference-source="${id}"]`),
+      ),
+    ).toBe(true)
   })
 
   it("defers point wake-up materialization until a line placement commits", () => {
@@ -5715,10 +5778,16 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerMove(drawing, { clientX: 400, clientY: 324, shiftKey: true })
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeNull()
+    expect(document.querySelector("[data-sketch-inference-source]")).toBeNull()
     fireEvent.pointerMove(drawing, { clientX: 400, clientY: 324 })
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    const referenceLine = sketch.entities.find((entity) => entity.type === "line")
+    if (!referenceLine) throw new Error("The midpoint fixture requires a line.")
+    expect(
+      document.querySelector(`[data-sketch-inference-source="${referenceLine.id}"]`),
+    ).toBeTruthy()
     const referenceLineElement = document.querySelector(
-      `[data-sketch-entity-id="${sketch.entities.find(({ type }) => type === "line")?.id}"]`,
+      `[data-sketch-entity-id="${referenceLine.id}"]`,
     )
     if (!referenceLineElement) throw new Error("The midpoint source line must be rendered.")
     fireEvent.pointerDown(referenceLineElement, { clientX: 400, clientY: 324 })
@@ -5728,8 +5797,7 @@ describe("SketchViewport", () => {
     const createdPoint = draft.entities
       .filter(({ type }: { type: string }) => type === "point")
       .at(-1)
-    const referenceLine = sketch.entities.find((entity) => entity.type === "line")
-    if (!createdPoint || !referenceLine) throw new Error("Midpoint inference must create a point.")
+    if (!createdPoint) throw new Error("Midpoint inference must create a point.")
     expect(draft.constraints).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -5778,6 +5846,9 @@ describe("SketchViewport", () => {
     fireEvent.pointerDown(pointElement)
     fireEvent.pointerMove(drawing, { clientX: 380, clientY: 140 })
     expect(document.querySelector('[data-sketch-direction-inference="perpendicular"]')).toBeTruthy()
+    expect(
+      document.querySelector(`[data-sketch-inference-source="${referenceLine.id}"]`),
+    ).toBeTruthy()
     fireEvent.pointerDown(drawing, { clientX: 380, clientY: 140 })
 
     const draft = onDraftChange.mock.calls[0]?.[0]
@@ -5830,6 +5901,7 @@ describe("SketchViewport", () => {
     fireEvent.pointerDown(startPoint)
     fireEvent.pointerMove(drawing, { clientX: 420, clientY: 200 })
     expect(document.querySelector('[data-sketch-direction-inference="tangent"]')).toBeTruthy()
+    expect(document.querySelector(`[data-sketch-inference-source="${arc.id}"]`)).toBeTruthy()
     fireEvent.pointerDown(drawing, { clientX: 420, clientY: 200 })
 
     const draft = onDraftChange.mock.calls[0]?.[0]
@@ -5865,6 +5937,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerMove(drawing, pointer)
     expect(document.querySelector('[data-sketch-inference="midpoint"]')).toBeTruthy()
+    expect(document.querySelector(`[data-sketch-inference-source="${arc.id}"]`)).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
     expect(onDraftChange).toHaveBeenCalledOnce()
@@ -5904,6 +5977,7 @@ describe("SketchViewport", () => {
 
     fireEvent.pointerMove(drawing, pointer)
     expect(document.querySelector('[data-sketch-inference="quadrant"]')).toBeTruthy()
+    expect(document.querySelector(`[data-sketch-inference-source="${ellipse.id}"]`)).toBeTruthy()
     fireEvent.pointerDown(drawing, pointer)
 
     expect(onDraftChange).toHaveBeenCalledOnce()
