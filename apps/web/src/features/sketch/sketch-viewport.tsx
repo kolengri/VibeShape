@@ -189,6 +189,7 @@ import {
   sketchDimensionCanonicalValue,
   sketchDimensionWitnessPoints,
 } from "./sketch-dimension-placement"
+import { defaultSketchDimensionExpression } from "./sketch-dimension-value"
 import {
   defaultLinearSketchPatternDefinition,
   SketchLinearPatternForm,
@@ -3337,6 +3338,7 @@ function constraintAnnotationPosition(
 
 const inlineDimensionEditorInset = 8
 const inlineDimensionEditorReservedWidth = 248
+const inlineDimensionEditorHalfHeight = 24
 
 function inlineDimensionEditorPosition(
   point: SketchPoint2,
@@ -3349,13 +3351,23 @@ function inlineDimensionEditorPosition(
     inlineDimensionEditorInset,
     viewport.width - inlineDimensionEditorReservedWidth - inlineDimensionEditorInset,
   )
+  const minimumTop = inlineDimensionEditorInset + inlineDimensionEditorHalfHeight
+  const maximumTop = Math.max(
+    minimumTop,
+    viewport.height - inlineDimensionEditorHalfHeight - inlineDimensionEditorInset,
+  )
   return {
     ...position,
     left:
       (viewport.left ?? 0) +
       Math.min(Math.max(position.left, inlineDimensionEditorInset), maximumLeft),
     position: "fixed",
-    top: (viewport.top ?? 0) + (typeof position.top === "number" ? position.top : 0),
+    top:
+      (viewport.top ?? 0) +
+      Math.min(
+        Math.max(typeof position.top === "number" ? position.top : 0, minimumTop),
+        maximumTop,
+      ),
   }
 }
 
@@ -9543,8 +9555,10 @@ function creationPrecisionOption(
 function SketchCreationPrecisionOverlay({
   bounds,
   configuration,
+  editing,
   geometry,
   moveLabel,
+  onActivate,
   onAdvance,
   onClose,
   request,
@@ -9552,8 +9566,10 @@ function SketchCreationPrecisionOverlay({
 }: Readonly<{
   bounds: SketchBounds
   configuration: SketchDrawingConfiguration
+  editing: boolean
   geometry: SketchGeometryPresentation
   moveLabel: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onActivate: () => void
   onAdvance: () => void
   onClose: () => void
   request: SketchCreationPrecisionRequest
@@ -9568,6 +9584,31 @@ function SketchCreationPrecisionOverlay({
   if (!step) return null
   const option = creationPrecisionOption(step, draft, geometry, labels)
   if (!option) return null
+  const position = inlineDimensionEditorPosition(step.anchor, bounds, viewportSize)
+  if (!editing) {
+    const value = defaultSketchDimensionExpression(option.kind, option.value, displayUnits)
+    const label = t("creationPrecisionSetExact", { kind: option.label, value })
+    const affordance = (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            className="absolute z-40 inline-flex max-w-52 -translate-y-1/2 items-center gap-1.5 rounded-md border border-border/80 bg-popover/95 px-2 py-1 text-xs text-popover-foreground shadow-sm backdrop-blur-sm hover:border-primary/60 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-sketch-creation-precision-trigger
+            style={position}
+            onClick={onActivate}
+          >
+            <Ruler aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{option.label}</span>
+            <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{value}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    )
+    return typeof document === "undefined" ? affordance : createPortal(affordance, document.body)
+  }
   const submit = (result: SketchDimensionInlineEditorResult) => {
     if (result.kind !== "create") return
     const nextDraft = appendSketchConstraint(
@@ -9595,7 +9636,7 @@ function SketchCreationPrecisionOverlay({
       onCancel={onClose}
       onSubmit={submit}
       options={[option]}
-      position={inlineDimensionEditorPosition(step.anchor, bounds, viewportSize)}
+      position={position}
       variables={configuration.variables}
     />
   )
@@ -9616,23 +9657,39 @@ function useSketchCreationPrecision({
   svgRef: RefObject<SVGSVGElement | null>
   viewportSize: SketchViewportSize
 }>) {
-  const [request, setRequest] = useState<SketchCreationPrecisionRequest | null>(null)
+  const [request, setRequestState] = useState<SketchCreationPrecisionRequest | null>(null)
+  const [editing, setEditing] = useState(false)
+  const setRequest = useCallback<Dispatch<SetStateAction<SketchCreationPrecisionRequest | null>>>(
+    (next) => {
+      setEditing(false)
+      setRequestState(next)
+    },
+    [],
+  )
   const close = useCallback(() => {
-    setRequest(null)
+    setEditing(false)
+    setRequestState(null)
     requestAnimationFrame(() => svgRef.current?.focus())
   }, [svgRef])
   const advance = useCallback(() => {
-    setRequest((current) => (current ? { ...current, activeStep: current.activeStep + 1 } : null))
+    setRequestState((current) =>
+      current ? { ...current, activeStep: current.activeStep + 1 } : null,
+    )
   }, [])
-  useEffect(() => setRequest(null), [configuration.editorTool])
+  useEffect(() => {
+    setEditing(false)
+    setRequestState(null)
+  }, [configuration.editorTool])
 
   return {
     overlay: request ? (
       <SketchCreationPrecisionOverlay
         bounds={bounds}
         configuration={configuration}
+        editing={editing}
         geometry={geometry}
         moveLabel={moveLabel}
+        onActivate={() => setEditing(true)}
         onAdvance={advance}
         onClose={close}
         request={request}

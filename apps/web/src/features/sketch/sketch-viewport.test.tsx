@@ -316,6 +316,13 @@ function renderViewport(props: SketchViewportTestProps) {
   return render(viewportElement(props))
 }
 
+async function openCreationPrecisionEditor() {
+  expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
+  const trigger = await screen.findByRole("button", { name: /^Set exact / })
+  fireEvent.click(trigger)
+  return screen.findByRole("combobox", { name: "Exact geometry expression" })
+}
+
 function lineSketchFixture(
   group: string,
   segments: readonly Readonly<{ end: { x: number; y: number }; start: { x: number; y: number } }>[],
@@ -4285,7 +4292,7 @@ describe("SketchViewport", () => {
     )
   })
 
-  it("offers exact line length at the endpoint and keeps line-chain continuation", async () => {
+  it("offers optional exact line length without interrupting line-chain continuation", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -4316,8 +4323,16 @@ describe("SketchViewport", () => {
       }),
     )
 
-    expect(await screen.findByRole("form", { name: "Exact geometry value" })).toBeTruthy()
-    const expression = screen.getByRole("combobox", { name: "Exact geometry expression" })
+    const precisionTrigger = await screen.findByRole("button", {
+      name: "Set exact Distance: 10 cm",
+    })
+    expect(document.activeElement).not.toBe(precisionTrigger)
+    fireEvent.pointerMove(drawing, { clientX: 700, clientY: 220 })
+    expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy()
+    fireEvent.click(precisionTrigger)
+    const expression = await screen.findByRole("combobox", {
+      name: "Exact geometry expression",
+    })
     expect((expression as HTMLInputElement).value).toBe("10 cm")
     expect(screen.queryByRole("button", { name: "Reference" })).toBeNull()
     fireEvent.change(expression, { target: { value: "4.2" } })
@@ -4336,8 +4351,43 @@ describe("SketchViewport", () => {
         }),
       ]),
     )
-    fireEvent.pointerMove(drawing, { clientX: 700, clientY: 220 })
-    expect(document.querySelector('[data-sketch-preview-tool="line"]')).toBeTruthy()
+    expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
+  })
+
+  it("continues a line chain while the exact-length affordance remains unopened", async () => {
+    const emptySketch = { ...sketch, entities: [], constraints: [] }
+    const onDraftChange = vi.fn()
+    const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const view = renderViewport({
+      draft: emptySketch,
+      editorTool: "line",
+      sketch: emptySketch,
+      solveSketch,
+      onDraftChange,
+    })
+    const drawing = screen.getByRole("img", { name: "Editable sketch geometry" })
+    mockDrawingRectangle(drawing)
+
+    fireEvent.pointerDown(drawing, { clientX: 200, clientY: 300 })
+    fireEvent.pointerDown(drawing, { clientX: 500, clientY: 300 })
+    const firstSegment = sketchRecordSchema.parse(onDraftChange.mock.calls[0]?.[0])
+    view.rerender(
+      viewportElement({
+        draft: firstSegment,
+        editorTool: "line",
+        sketch: emptySketch,
+        solveSketch,
+        onDraftChange,
+      }),
+    )
+
+    expect(await screen.findByRole("button", { name: /^Set exact Distance:/ })).toBeTruthy()
+    expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
+    fireEvent.pointerDown(drawing, { clientX: 650, clientY: 180 })
+
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
+    const chained = sketchRecordSchema.parse(onDraftChange.mock.calls[1]?.[0])
+    expect(sketchEntitiesOfType(chained, "line")).toHaveLength(2)
     expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
   })
 
@@ -4368,9 +4418,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const expression = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const expression = await openCreationPrecisionEditor()
     fireEvent.keyDown(expression, { key: "Escape" })
 
     expect(screen.queryByRole("form", { name: "Exact geometry value" })).toBeNull()
@@ -4450,7 +4498,7 @@ describe("SketchViewport", () => {
     expect(draft.constraints).toEqual([expect.objectContaining({ type: "midpoint" })])
   })
 
-  it("collects exact rectangle width and height beside the new geometry", async () => {
+  it("collects optional exact rectangle width and height beside the new geometry", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -4479,7 +4527,7 @@ describe("SketchViewport", () => {
         onDraftChange,
       }),
     )
-    const width = await screen.findByRole("combobox", { name: "Exact geometry expression" })
+    const width = await openCreationPrecisionEditor()
     expect(
       document.querySelector('[data-sketch-dimension-kind="horizontal-distance"]'),
     ).toBeTruthy()
@@ -4931,7 +4979,7 @@ describe("SketchViewport", () => {
     expect(draft.constraints.map(({ type }: { type: string }) => type)).toEqual(["parallel"])
   })
 
-  it("creates a three-point arc with immediate exact radius", async () => {
+  it("offers optional exact radius for a three-point arc", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -4979,9 +5027,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const expression = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const expression = await openCreationPrecisionEditor()
     expect(document.querySelector('[data-sketch-dimension-kind="radius"]')).toBeTruthy()
     fireEvent.change(expression, { target: { value: "45 mm" } })
     fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
@@ -5000,7 +5046,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange.mock.calls[1]?.[1]).toBe("replace")
   })
 
-  it("creates a center-point arc with immediate exact radius", async () => {
+  it("offers optional exact radius for a center-point arc", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -5029,9 +5075,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const expression = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const expression = await openCreationPrecisionEditor()
     expect(document.querySelector('[data-sketch-dimension-kind="radius"]')).toBeTruthy()
     fireEvent.change(expression, { target: { value: "35 mm" } })
     fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
@@ -5093,7 +5137,7 @@ describe("SketchViewport", () => {
     expect(onEditorToolChange).toHaveBeenCalledWith("line")
   })
 
-  it("offers an exact diameter immediately after center-point circle placement", async () => {
+  it("offers optional exact diameter after center-point circle placement", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -5121,9 +5165,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const expression = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const expression = await openCreationPrecisionEditor()
     expect(document.querySelector('[data-sketch-dimension-kind="diameter"]')).toBeTruthy()
     expect((expression as HTMLInputElement).value).toBe("80 mm")
     fireEvent.change(expression, { target: { value: "50 mm" } })
@@ -5143,7 +5185,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange.mock.calls[1]?.[1]).toBe("replace")
   })
 
-  it("creates a three-point circle with immediate exact diameter", async () => {
+  it("offers optional exact diameter for a three-point circle", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -5198,9 +5240,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const expression = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const expression = await openCreationPrecisionEditor()
     expect(document.querySelector('[data-sketch-dimension-kind="diameter"]')).toBeTruthy()
     fireEvent.change(expression, { target: { value: "70 mm" } })
     fireEvent.click(screen.getByRole("button", { name: "Apply dimension" }))
@@ -5279,7 +5319,7 @@ describe("SketchViewport", () => {
     expect(rendered?.getAttribute("transform")).toContain("rotate(")
   })
 
-  it("collects both exact ellipse axes beside their authored directions", async () => {
+  it("collects optional exact ellipse axes beside their authored directions", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -5308,9 +5348,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const primary = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const primary = await openCreationPrecisionEditor()
     expect(
       document.querySelector('[data-sketch-dimension-kind="primary-axis-diameter"]'),
     ).toBeTruthy()
@@ -5357,7 +5395,7 @@ describe("SketchViewport", () => {
     expect(onDraftChange.mock.calls[2]?.[1]).toBe("replace")
   })
 
-  it("creates an elliptical arc with immediate exact axes", async () => {
+  it("offers optional exact axes for an elliptical arc", async () => {
     const emptySketch = { ...sketch, entities: [], constraints: [] }
     const onDraftChange = vi.fn()
     const solveSketch = vi.fn(() => new Promise<ActiveSketchSolveResult>(() => undefined))
@@ -5411,9 +5449,7 @@ describe("SketchViewport", () => {
       }),
     )
 
-    const primary = await screen.findByRole("combobox", {
-      name: "Exact geometry expression",
-    })
+    const primary = await openCreationPrecisionEditor()
     expect(
       document.querySelector('[data-sketch-dimension-kind="primary-axis-diameter"]'),
     ).toBeTruthy()
