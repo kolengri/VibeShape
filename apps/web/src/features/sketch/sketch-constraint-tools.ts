@@ -90,6 +90,23 @@ function pair<Value>(values: readonly Value[]): readonly [Value, Value] | null {
   return values.length === 2 && first !== undefined && second !== undefined ? [first, second] : null
 }
 
+type SketchPointEntity = Extract<SketchEntity, { type: "point" }>
+
+function selectedPointAndTarget(
+  entities: readonly SketchEntity[],
+): Readonly<{ point: SketchPointEntity; target: SketchEntity }> | null {
+  const selected = pair(entities)
+  if (!selected) return null
+  const [first, second] = selected
+  if (first.type === "point" && second.type !== "point") {
+    return { point: first, target: second }
+  }
+  if (second.type === "point" && first.type !== "point") {
+    return { point: second, target: first }
+  }
+  return null
+}
+
 function roundCurves(entities: readonly SketchEntity[]) {
   return entities.filter(
     (entity): entity is Extract<SketchEntity, { type: "arc" | "circle" }> =>
@@ -160,42 +177,60 @@ const constraintBuilders = {
   },
   horizontal: (entities) => axisConstraint("horizontal", entities),
   midpoint: (entities) => {
-    const point = single(entitiesOfType(entities, "point"))
-    if (entities.length !== 2 || !point) return null
-    const line = single(entitiesOfType(entities, "line"))
-    if (line) {
-      return { type: "midpoint", pointId: point.id, lineId: line.id }
+    const selection = selectedPointAndTarget(entities)
+    if (!selection) return null
+    if (selection.target.type === "line") {
+      return {
+        type: "midpoint",
+        pointId: selection.point.id,
+        lineId: selection.target.id,
+      }
     }
-    const arc = single(entitiesOfType(entities, "arc"))
-    return arc ? { type: "arc-midpoint", pointId: point.id, arcId: arc.id } : null
+    return selection.target.type === "arc"
+      ? {
+          type: "arc-midpoint",
+          pointId: selection.point.id,
+          arcId: selection.target.id,
+        }
+      : null
   },
   parallel: (entities) => pairedLineConstraint("parallel", entities),
   perpendicular: (entities) => pairedLineConstraint("perpendicular", entities),
   "point-on-curve": (entities) => {
-    const point = single(entitiesOfType(entities, "point"))
-    if (entities.length !== 2 || !point) return null
-    const roundTarget = single(roundCurves(entities))
-    if (roundTarget) {
-      return { type: "point-on-curve", pointId: point.id, curveId: roundTarget.id }
-    }
-    const ellipseTarget = single(entitiesOfType(entities, "ellipse"))
-    if (ellipseTarget) {
-      return { type: "point-on-ellipse", pointId: point.id, ellipseId: ellipseTarget.id }
-    }
-    const ellipticalArcTarget = single(entitiesOfType(entities, "elliptical-arc"))
-    return ellipticalArcTarget
-      ? {
-          type: "point-on-elliptical-arc",
-          pointId: point.id,
-          ellipticalArcId: ellipticalArcTarget.id,
+    const selection = selectedPointAndTarget(entities)
+    if (!selection) return null
+    switch (selection.target.type) {
+      case "arc":
+      case "circle":
+        return {
+          type: "point-on-curve",
+          pointId: selection.point.id,
+          curveId: selection.target.id,
         }
-      : null
+      case "ellipse":
+        return {
+          type: "point-on-ellipse",
+          pointId: selection.point.id,
+          ellipseId: selection.target.id,
+        }
+      case "elliptical-arc":
+        return {
+          type: "point-on-elliptical-arc",
+          pointId: selection.point.id,
+          ellipticalArcId: selection.target.id,
+        }
+      default:
+        return null
+    }
   },
   "point-on-line": (entities) => {
-    const point = single(entitiesOfType(entities, "point"))
-    const line = single(entitiesOfType(entities, "line"))
-    return entities.length === 2 && point && line
-      ? { type: "point-on-line", pointId: point.id, lineId: line.id }
+    const selection = selectedPointAndTarget(entities)
+    return selection?.target.type === "line"
+      ? {
+          type: "point-on-line",
+          pointId: selection.point.id,
+          lineId: selection.target.id,
+        }
       : null
   },
   symmetric: (entities) => {

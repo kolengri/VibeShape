@@ -581,6 +581,17 @@ function useSketchSolution(
   dragTarget: SketchDragTarget | null,
 ): SolveState {
   const [state, setState] = useState<SolveState>({ kind: "idle" })
+  const stableDragTarget = useMemo(
+    () =>
+      dragTarget
+        ? {
+            entityId: dragTarget.entityId,
+            x: dragTarget.x,
+            y: dragTarget.y,
+          }
+        : null,
+    [dragTarget?.entityId, dragTarget?.x, dragTarget?.y],
+  )
   const schedulerRef = useRef<SketchSolveScheduler | null>(null)
   if (!schedulerRef.current) schedulerRef.current = createSketchSolveScheduler(solveSketch)
   const scheduler = schedulerRef.current
@@ -609,7 +620,7 @@ function useSketchSolution(
     scheduler.latestSketch = sketch
     if (resetContinuation) scheduler.latestSolution = null
     const request: SketchSolveRequest = {
-      dragTarget,
+      dragTarget: stableDragTarget,
       requestId: scheduler.nextRequestId,
       resetContinuation,
       revision,
@@ -622,7 +633,7 @@ function useSketchSolution(
     return () => {
       clearSketchSolveTimer(scheduler)
     }
-  }, [dragTarget, rebuildOk, revision, scheduler, sketch, solveSketch])
+  }, [rebuildOk, revision, scheduler, sketch, solveSketch, stableDragTarget])
 
   return state
 }
@@ -670,7 +681,7 @@ function nextSketchDragState(
   pointId: SketchEntityId | null,
   point?: SketchPoint2,
 ): SketchDragState | null {
-  if (!pointId) return current === null ? null : { ...current, active: false }
+  if (!pointId) return current === null || !current.active ? current : { ...current, active: false }
   if (!activeSketch) return null
   const authoredPoint = authoredPoints(activeSketch).find(({ id }) => id === pointId)
   const target = point ?? authoredPoint

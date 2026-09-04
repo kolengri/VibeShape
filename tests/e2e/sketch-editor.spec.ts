@@ -5,6 +5,7 @@ import {
   clickSketchEntityAt,
   confirmSketchPlane,
   drawRectangle,
+  openConstraintManager,
   selectModelEdgeInViewport,
   selectOriginPlaneInViewport,
   selectSketchEntities,
@@ -120,11 +121,13 @@ test.describe("full sketch editor", () => {
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Vertical", { exact: true })).toBeVisible()
   })
@@ -186,10 +189,12 @@ test.describe("full sketch editor", () => {
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
   })
 
@@ -231,6 +236,7 @@ test.describe("full sketch editor", () => {
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(sourceLabel, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
     const externalRelation = page.getByRole("button", {
       name: "Select external relation Coincident",
@@ -577,6 +583,12 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    const editSketch = page.getByRole("button", { name: "Edit sketch", exact: true })
+    const orbitSketch = page.getByRole("button", { name: "Orbit 3D view", exact: true })
+    await expect(editSketch.or(orbitSketch)).toBeVisible()
+    if (await editSketch.isVisible()) await editSketch.click()
+    await expect(orbitSketch).toBeVisible()
+    await expect(drawing).toBeVisible()
     const normalContext = page.locator("section[data-sketch-context-mode='normal']")
     await expect(normalContext).toHaveAttribute("data-rendered-feature-count", "1")
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
@@ -592,6 +604,7 @@ test.describe("full sketch editor", () => {
     await expect(earlierLine).toHaveCount(1)
     await expect(earlierLine).toHaveAttribute("stroke-dasharray", "5 4")
 
+    await drawing.focus()
     await page.keyboard.press("Shift+H")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Show all sketches" })).toBeVisible()
@@ -605,6 +618,7 @@ test.describe("full sketch editor", () => {
     await expect(normalContext).toHaveAttribute("data-rendered-sketch-count", "0")
     await expect(drawing.locator("[data-sketch-context-geometry-count]")).toHaveCount(0)
 
+    await drawing.focus()
     await page.keyboard.press("Shift+H")
     await expect(page.getByRole("button", { name: "Hide all sketches" })).toBeVisible()
     await expect(drawing.locator("[data-sketch-context-geometry-count='3']")).toHaveCount(1)
@@ -716,6 +730,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.move(snapPoint.x, snapPoint.y)
     await expect(drawing.locator('[data-sketch-inference="point-on-line"]')).toBeVisible()
     await page.mouse.click(snapPoint.x, snapPoint.y)
+    await openConstraintManager(page)
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
@@ -796,6 +811,7 @@ test.describe("full sketch editor", () => {
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText("Pierce · Sketch 1 · Line 1", { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
@@ -844,6 +860,7 @@ test.describe("full sketch editor", () => {
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(`Pierce · ${edgeLabel}`, { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Coincident", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Normal to sketch", exact: true }).click()
     await expect(drawing.locator("[data-sketch-external-point-id]")).toHaveCount(1)
@@ -914,6 +931,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(wakeupPoint.x, wakeupPoint.y)
 
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
+    await openConstraintManager(page)
     await expect(page.getByText("Point on line", { exact: true })).toBeVisible()
   })
 
@@ -980,11 +998,13 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
     await expect(sketchPanel.getByText(/Sketch 1 · Line/)).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on line", { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-line-count='1']")).toHaveCount(1)
   })
@@ -1321,6 +1341,7 @@ test.describe("full sketch editor", () => {
     await precisionTools.getByRole("button", { name: "Equal" }).click()
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     const equalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Equal" })
     await expect(equalConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -1339,6 +1360,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await openConstraintManager(page)
     await expect(equalConstraint).toBeVisible()
     const authoredLine = drawing.locator('[data-sketch-entity-type="line"]').first()
     const updatedProjectedLine = drawing
@@ -1463,6 +1485,7 @@ test.describe("full sketch editor", () => {
     await expect(precisionTools.getByRole("button", { name: "Horizontal" })).toBeVisible()
     await precisionTools.getByRole("button", { name: "Horizontal" }).click()
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     const horizontalConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Horizontal" })
     await expect(horizontalConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -1481,6 +1504,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await openConstraintManager(page)
     await expect(horizontalConstraint).toBeVisible()
     await expect
       .poll(async () => {
@@ -1538,6 +1562,7 @@ test.describe("full sketch editor", () => {
     await precisionTools.getByRole("button", { name: "Concentric" }).click()
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     const concentricConstraint = sketchPanel.getByRole("listitem").filter({ hasText: "Concentric" })
     await expect(concentricConstraint).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
@@ -1556,6 +1581,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
+    await openConstraintManager(page)
     await expect(concentricConstraint).toBeVisible()
     await expect
       .poll(async () => {
@@ -1677,15 +1703,36 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-context-curve-type="circle"]')).toHaveCount(0)
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
     await expect(sketchPanel.getByText("Sketch 1 · Circle 1", { exact: true })).toBeVisible()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(sketchPanel.getByText("Horizontal", { exact: true })).toBeVisible()
     await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
+  })
+
+  test("keeps constraint forms out of the primary sketch workflow", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("complementary", { name: "Task panel" })
+      .getByRole("button", { name: "Create sketch" })
+      .click()
+    await confirmSketchPlane(page)
+
+    const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const manager = sketchPanel.locator("details").filter({ hasText: /^Constraint manager \(0\)/ })
+    await expect(manager).not.toHaveAttribute("open", "")
+    await expect(sketchPanel.getByText("Applied constraints", { exact: true })).toBeHidden()
+
+    await manager.locator("summary").click()
+    await expect(manager).toHaveAttribute("open", "")
+    await expect(sketchPanel.getByText("Applied constraints", { exact: true })).toBeVisible()
   })
 
   test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
@@ -1871,6 +1918,7 @@ test.describe("full sketch editor", () => {
     await expect(inlineExpression).toBeFocused()
     await inlineExpression.fill("30 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
+    await openConstraintManager(page)
     const distanceConstraint = page.getByRole("listitem").filter({ hasText: "Distance · 30 mm" })
     await expect(distanceConstraint).toBeVisible()
 
@@ -1933,6 +1981,7 @@ test.describe("full sketch editor", () => {
     await expect(precision).toHaveCount(0)
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
     await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
 
@@ -1941,6 +1990,7 @@ test.describe("full sketch editor", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(taskPanel.getByText("Horizontal distance · 80 mm", { exact: true })).toBeVisible()
     await expect(taskPanel.getByText("Vertical distance · 30 mm", { exact: true })).toBeVisible()
   })
@@ -2008,6 +2058,7 @@ test.describe("full sketch editor", () => {
     await editor.getByRole("button", { name: "Apply dimension" }).click()
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(
       taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
@@ -2029,6 +2080,7 @@ test.describe("full sketch editor", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(
       taskPanel.getByRole("listitem").filter({ hasText: /Distance · Reference · \(.+ mm\)/ }),
     ).toBeVisible()
@@ -2060,6 +2112,7 @@ test.describe("full sketch editor", () => {
     })
     await canvasExpression.fill("30 mm")
     await page.getByRole("button", { name: "Apply dimension" }).click()
+    await openConstraintManager(page)
 
     const dimensionAnnotation = page
       .getByRole("region", { name: "2D sketch workspace" })
@@ -2095,8 +2148,8 @@ test.describe("full sketch editor", () => {
     const drawing = await drawRectangle(page)
     const bounds = await drawing.boundingBox()
     if (!bounds) throw new Error("The editable sketch canvas is not visible.")
-    await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     for (let index = 0; index < 24; index += 1) {
+      await selectSketchTool(page, "Rectangle tools", "Rectangle G")
       const column = index % 6
       const row = Math.floor(index / 6)
       const left = 0.1 + column * 0.13
@@ -2106,10 +2159,9 @@ test.describe("full sketch editor", () => {
         bounds.x + bounds.width * (left + 0.08),
         bounds.y + bounds.height * (top + 0.1),
       )
+      await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(8 + index * 4)
+      await page.keyboard.press("Escape")
     }
-    await expect
-      .poll(() => drawing.locator('[data-sketch-entity-type="line"]').count())
-      .toBeGreaterThanOrEqual(96)
     await page.getByRole("button", { name: "Select", exact: true }).click()
     const points = drawing.locator('[data-sketch-entity-type="point"]')
     const endpoint = points.last()
@@ -2299,9 +2351,11 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(midpoint.x, midpoint.y)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Midpoint", { exact: true })).toBeVisible()
   })
 
@@ -2384,12 +2438,14 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(arcPoint.x, arcPoint.y)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
     ).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
   })
 
@@ -2460,10 +2516,12 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(negativePrimary.x, negativePrimary.y)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Quadrant", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Select constraint Quadrant" })).toBeVisible()
   })
@@ -2496,12 +2554,14 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(ellipsePoint.x, ellipsePoint.y)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
     ).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(sketchPanel.getByText("Point on curve", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Select constraint Point on curve" }),
@@ -2539,6 +2599,7 @@ test.describe("full sketch editor", () => {
     await precisionTools.getByRole("button", { name: "Point on curve" }).click()
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    await openConstraintManager(page)
     const constraintRow = sketchPanel
       .getByRole("listitem")
       .getByRole("button", { name: "Point on curve" })
@@ -2548,6 +2609,7 @@ test.describe("full sketch editor", () => {
     ).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(constraintRow).toBeVisible()
   })
 
@@ -2659,6 +2721,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(4)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(4)
     await expect(page.getByRole("button", { name: /^Set exact Distance:/ })).toBeVisible()
+    await openConstraintManager(page)
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
     await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
 
@@ -2714,6 +2777,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="point"]')).toHaveCount(7)
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(5)
     await expect(page.getByRole("button", { name: /^Set exact Distance:/ })).toBeVisible()
+    await openConstraintManager(page)
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
     await expect(page.getByText("Parallel", { exact: true })).toHaveCount(2)
     await expect(page.getByText("Midpoint", { exact: true })).toHaveCount(3)
@@ -2751,6 +2815,7 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(3)
     await expect(drawing.locator('[data-sketch-entity-type="arc"]')).toHaveCount(2)
     await expect(drawing.locator("[data-sketch-profile-index]")).toHaveCount(1)
+    await openConstraintManager(page)
     await expect(
       drawing.locator('[data-sketch-entity-type="line"][stroke-dasharray="6 4"]'),
     ).toHaveCount(1)
@@ -3042,6 +3107,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(bounds.x + bounds.width * 0.82, bounds.y + bounds.height * 0.52)
 
     await expect(lines).toHaveCount(8)
+    await openConstraintManager(page)
     const offsetConstraint = page.getByRole("listitem").filter({ hasText: /Offset ·/ })
     await expect(offsetConstraint).toBeVisible()
     await expect(page.getByText("Under-constrained", { exact: true })).toBeVisible()
@@ -3381,6 +3447,7 @@ test.describe("full sketch editor", () => {
     await page.mouse.click(perpendicularEnd.x, perpendicularEnd.y)
 
     await expect(drawing.locator('[data-sketch-entity-type="line"]')).toHaveCount(2)
+    await openConstraintManager(page)
     await expect(page.getByText("Perpendicular", { exact: true })).toBeVisible()
 
     await page.getByRole("button", { name: "Point", exact: true }).click()
@@ -3465,6 +3532,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Rename variable" }).dblclick()
 
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     const verticalConstraint = page
       .getByRole("listitem")
@@ -3484,6 +3552,7 @@ test.describe("full sketch editor", () => {
     await page.reload()
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Sketch 1" }).click()
+    await openConstraintManager(page)
     await expect(page.getByText("Horizontal distance · #span", { exact: true })).toBeVisible()
     await expect(page.getByText("Vertical distance · 25 mm", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()

@@ -493,7 +493,8 @@ export function createEditorSessionStore() {
             if (
               !allHidden &&
               state.sketch.activeSketchId &&
-              currentSketchIdSet.has(state.sketch.activeSketchId)
+              currentSketchIdSet.has(state.sketch.activeSketchId) &&
+              !isActiveSketchEditorTool(state.sketch.activeSketchTool)
             ) {
               closeSketch(state.sketch)
             }

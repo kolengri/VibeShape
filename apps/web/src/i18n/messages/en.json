@@ -756,6 +756,7 @@
           "redo": "Redo",
           "addConstraint": "Add constraint",
           "constraintSelectionHint": "Select sketch geometry to see compatible constraints and dimensions.",
+          "constraintManager": "Constraint manager ({count})",
           "constraints": "Applied constraints",
           "noConstraints": "No constraints have been applied.",
           "externalReferences": "External references",

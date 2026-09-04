@@ -37,6 +37,7 @@ const copy = {
   coincident: "Coincident",
   concentric: "Concentric",
   conflict: "Conflict",
+  constraintManager: (count: number) => `Constraint manager (${count})`,
   construction: "Construction geometry",
   constraints: "Applied constraints",
   diameter: "Diameter",
@@ -215,6 +216,14 @@ function renderPanel(
     </I18nProvider>,
   )
   return onDraftChange
+}
+
+async function openConstraintManager(user: ReturnType<typeof userEvent.setup>) {
+  const label = screen.getByText(/Constraint manager/)
+  const manager = label.closest("details")
+  const trigger = manager?.querySelector("summary")
+  if (!manager || !trigger) throw new Error("The constraint manager disclosure is not available.")
+  if (!manager.hasAttribute("open")) await user.click(trigger)
 }
 
 vi.stubGlobal("ResizeObserver", ResizeObserverMock)
@@ -487,6 +496,20 @@ describe("SketchEditorPanel", () => {
     expect(screen.queryByRole("button", { name: "Profile 1" })).toBeNull()
   })
 
+  it("keeps the optional constraint manager collapsed until requested", async () => {
+    const user = userEvent.setup()
+    renderPanel(lineSketch(), [])
+    const label = screen.getByText("Constraint manager (0)")
+    const manager = label.closest("details")
+    const trigger = manager?.querySelector("summary")
+    if (!manager || !trigger) throw new Error("The constraint manager disclosure is not available.")
+
+    expect(manager.hasAttribute("open")).toBe(false)
+    await user.click(trigger)
+    expect(manager.hasAttribute("open")).toBe(true)
+    expect(screen.getByText("Applied constraints")).toBeTruthy()
+  })
+
   it("adds an applicable geometric constraint from the current selection", async () => {
     const user = userEvent.setup()
     const sketch = lineSketch()
@@ -495,6 +518,7 @@ describe("SketchEditorPanel", () => {
     if (!line) return
     const onDraftChange = renderPanel(sketch, [line.id])
 
+    await openConstraintManager(user)
     await user.click(screen.getByRole("button", { name: "Horizontal" }))
 
     expect(onDraftChange).toHaveBeenCalledWith(
@@ -509,29 +533,34 @@ describe("SketchEditorPanel", () => {
     const sketch = lineSketch()
     const line = sketch.entities.find((entity) => entity.type === "line")
     const points = sketch.entities.filter((entity) => entity.type === "point")
-    expect(line && points[0] && points[1]).toBeTruthy()
-    if (!line || !points[0] || !points[1]) return
+    const firstPoint = points[0]
+    const secondPoint = points[1]
+    if (!line || !firstPoint || !secondPoint) {
+      throw new Error("The line fixture must contain one line and two points.")
+    }
 
-    const midpointChange = renderPanel(sketch, [points[0].id, line.id])
+    const midpointChange = renderPanel(sketch, [firstPoint.id, line.id])
+    await openConstraintManager(user)
     await user.click(screen.getByRole("button", { name: "Midpoint" }))
     expect(midpointChange).toHaveBeenCalledWith(
       expect.objectContaining({
         constraints: [
-          expect.objectContaining({ type: "midpoint", pointId: points[0].id, lineId: line.id }),
+          expect.objectContaining({ type: "midpoint", pointId: firstPoint.id, lineId: line.id }),
         ],
       }),
     )
     cleanup()
 
-    const symmetricChange = renderPanel(sketch, [points[0].id, points[1].id, line.id])
+    const symmetricChange = renderPanel(sketch, [firstPoint.id, secondPoint.id, line.id])
+    await openConstraintManager(user)
     await user.click(screen.getByRole("button", { name: "Symmetric" }))
     expect(symmetricChange).toHaveBeenCalledWith(
       expect.objectContaining({
         constraints: [
           expect.objectContaining({
             type: "symmetric",
-            firstPointId: points[0].id,
-            secondPointId: points[1].id,
+            firstPointId: firstPoint.id,
+            secondPointId: secondPoint.id,
             lineId: line.id,
           }),
         ],
@@ -548,6 +577,7 @@ describe("SketchEditorPanel", () => {
       points.map(({ id }) => id),
     )
 
+    await openConstraintManager(user)
     await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
     await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "20 mm")
     await user.click(screen.getByRole("button", { name: "Add constraint" }))
@@ -574,6 +604,7 @@ describe("SketchEditorPanel", () => {
     if (!line) return
     const onDraftChange = renderPanel(sketch, [line.id])
 
+    await openConstraintManager(user)
     await user.clear(screen.getByRole("combobox", { name: "Driving expression" }))
     await user.type(screen.getByRole("combobox", { name: "Driving expression" }), "25 mm")
     await user.click(screen.getByRole("button", { name: "Add constraint" }))
@@ -599,6 +630,7 @@ describe("SketchEditorPanel", () => {
     if (!line) throw new Error("The line fixture must contain one line.")
     const onDraftChange = renderPanel(sketch, [line.id])
 
+    await openConstraintManager(user)
     await user.click(screen.getByRole("button", { name: "Reference" }))
     expect(screen.queryByRole("combobox", { name: "Driving expression" })).toBeNull()
     await user.click(screen.getByRole("button", { name: "Add constraint" }))
@@ -619,7 +651,8 @@ describe("SketchEditorPanel", () => {
     expect(changed?.constraints[0]).not.toHaveProperty("value")
   })
 
-  it("exposes the live reference measurement in the accessible constraint row", () => {
+  it("exposes the live reference measurement in the accessible constraint row", async () => {
+    const user = userEvent.setup()
     const sketch = lineSketch()
     const line = sketch.entities.find((entity) => entity.type === "line")
     if (!line) throw new Error("The line fixture must contain one line.")
@@ -652,6 +685,7 @@ describe("SketchEditorPanel", () => {
       { [constraintId]: "(21.541 mm)" },
     )
 
+    await openConstraintManager(user)
     expect(screen.getByRole("button", { name: "Distance · Reference · (21.541 mm)" })).toBeTruthy()
   })
 
@@ -674,6 +708,7 @@ describe("SketchEditorPanel", () => {
     )
     const onDraftChange = renderPanel(constrained, [], vi.fn(), [], undefined, [], constraintId)
 
+    await openConstraintManager(user)
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     expect((expression as HTMLInputElement).value).toBe("20 mm")
     await user.clear(expression)
@@ -742,6 +777,7 @@ describe("SketchEditorPanel", () => {
       constraintId,
     )
 
+    await openConstraintManager(user)
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     await user.clear(expression)
     await user.type(expression, "-#ga")
@@ -785,6 +821,7 @@ describe("SketchEditorPanel", () => {
       ],
     )
 
+    await openConstraintManager(user)
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     await user.clear(expression)
     await user.type(expression, "#wi")
@@ -793,7 +830,8 @@ describe("SketchEditorPanel", () => {
     expect((expression as HTMLInputElement).value).toBe("#width")
   })
 
-  it("marks solver-reported conflicting constraints without removing them", () => {
+  it("marks solver-reported conflicting constraints without removing them", async () => {
+    const user = userEvent.setup()
     const sketch = lineSketch()
     const line = sketch.entities.find((entity) => entity.type === "line")
     expect(line).toBeDefined()
@@ -807,6 +845,7 @@ describe("SketchEditorPanel", () => {
 
     renderPanel(constrained, [], vi.fn(), [constraintId])
 
+    await openConstraintManager(user)
     const label = screen.getByText("Horizontal · Conflict")
     expect(label.closest("li")?.getAttribute("aria-invalid")).toBe("true")
     expect(constrained.constraints).toHaveLength(1)
@@ -823,6 +862,7 @@ describe("SketchEditorPanel", () => {
       [],
       { length: "in", angle: "rad" },
     )
+    await openConstraintManager(user)
     const expression = screen.getByRole("combobox", { name: "Driving expression" })
     expect((expression as HTMLInputElement).value).toBe("0.393700787402 in")
     await user.clear(expression)

@@ -438,6 +438,21 @@ describe("editor session store", () => {
     })
   })
 
+  it("keeps the active sketch editor open when all saved sketches are hidden", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.toggleAllSketchVisibility([sketch.id])
+
+    expect(store.getState().hiddenSketchIds).toEqual([sketch.id])
+    expect(store.getState().sketch).toMatchObject({
+      activeSketchId: sketch.id,
+      activeSketchTool: { kind: "edit-sketch", sketchId: sketch.id },
+      draft: sketch,
+    })
+  })
+
   it("owns the create-sketch support-selection lifecycle without committing a document", () => {
     const store = createEditorSessionStore()
     const sketch = createSketch()
