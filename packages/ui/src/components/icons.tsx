@@ -42,7 +42,135 @@ export {
   X,
 } from "lucide-react"
 
-import type { SVGProps } from "react"
+import type { ReactNode, SVGProps } from "react"
+
+function ConstraintGlyph({
+  children,
+  ...props
+}: SVGProps<SVGSVGElement> & Readonly<{ children: ReactNode }>) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      {children}
+    </svg>
+  )
+}
+
+const constraintStrokeProps = {
+  stroke: "currentColor",
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  strokeWidth: 2,
+} as const
+
+export function ConstraintCoincidentIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <circle cx="12" cy="12" r="3" {...constraintStrokeProps} />
+      <path d="M3 12h6m6 0h6M12 3v6m0 6v6" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintConcentricIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <circle cx="12" cy="12" r="3" {...constraintStrokeProps} />
+      <circle cx="12" cy="12" r="8" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintEqualIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M5 9h14M5 15h14" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintFixedIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M7 20V4h10M7 11h8" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintHorizontalIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M4 6v12M20 6v12M4 12h16" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintMidpointIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M3 18 12 5l9 13H3Z" {...constraintStrokeProps} />
+      <circle cx="12" cy="18" r="1.75" fill="currentColor" />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintParallelIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="m7 19 7-14m-4 14 7-14" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintPerpendicularIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M5 5v14h14M5 13h8v6" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintPointOnCurveIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M3 16c4-9 14-9 18 0" {...constraintStrokeProps} />
+      <circle cx="12" cy="10" r="2" fill="currentColor" />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintPointOnLineIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M3 17 21 7" {...constraintStrokeProps} />
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintSymmetricIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M12 3v18M4 8l5 4-5 4m16-8-5 4 5 4" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintTangentIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <circle cx="12" cy="14" r="6" {...constraintStrokeProps} />
+      <path d="M3 8h18" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
+
+export function ConstraintVerticalIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <ConstraintGlyph {...props}>
+      <path d="M6 4h12M6 20h12M12 4v16" {...constraintStrokeProps} />
+    </ConstraintGlyph>
+  )
+}
 
 export function InscribedPolygonIcon(props: SVGProps<SVGSVGElement>) {
   return (

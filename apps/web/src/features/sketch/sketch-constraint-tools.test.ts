@@ -13,6 +13,7 @@ import {
   compatibleSketchDimensionToolsForSelection,
   createSketchDimensionConstraint,
   createSketchReferenceDimensionConstraint,
+  nextSketchConstraintSelection,
   nextSketchDimensionSelection,
 } from "./sketch-constraint-tools"
 
@@ -81,6 +82,10 @@ const dimensionSketch = {
   constraints: [],
   entities: [firstPoint, secondPoint, line, secondLine, circle, ellipse],
 } as unknown as SketchRecord
+const constraintSketch = {
+  constraints: [],
+  entities: [firstPoint, secondPoint, line, secondLine, circle, arc, ellipse, ellipticalArc],
+} as unknown as SketchRecord
 const externalPointId = entityId(98)
 const externalConstraintSketch = {
   constraints: [],
@@ -98,6 +103,73 @@ const externalConstraintSketch = {
 } as unknown as SketchRecord
 
 describe("sketch constraint tools", () => {
+  it("advances every constraint kind, clears after application, and supports repetition", () => {
+    const cases: ReadonlyArray<{
+      kind: Parameters<typeof nextSketchConstraintSelection>[1]
+      ids: readonly SketchEntity["id"][]
+    }> = [
+      { kind: "coincident", ids: [firstPoint.id, secondPoint.id] },
+      { kind: "horizontal", ids: [line.id] },
+      { kind: "vertical", ids: [firstPoint.id, secondPoint.id] },
+      { kind: "parallel", ids: [line.id, secondLine.id] },
+      { kind: "perpendicular", ids: [line.id, secondLine.id] },
+      { kind: "equal", ids: [line.id, secondLine.id] },
+      { kind: "tangent", ids: [line.id, arc.id] },
+      { kind: "concentric", ids: [circle.id, arc.id] },
+      { kind: "midpoint", ids: [firstPoint.id, line.id] },
+      { kind: "symmetric", ids: [firstPoint.id, secondPoint.id, line.id] },
+      { kind: "fixed", ids: [firstPoint.id] },
+      { kind: "point-on-line", ids: [firstPoint.id, line.id] },
+      { kind: "point-on-curve", ids: [firstPoint.id, ellipse.id] },
+    ]
+
+    for (const { kind, ids } of cases) {
+      let selection = [] as SketchEntity["id"][]
+      let definition = null
+      for (const id of ids) {
+        const result = nextSketchConstraintSelection(constraintSketch, kind, selection, id)
+        selection = [...result.selectedEntityIds]
+        definition = result.definition
+      }
+      expect(definition, kind).not.toBeNull()
+      expect(selection, kind).toEqual([])
+      const firstId = ids[0]
+      if (!firstId) continue
+      const repeated = nextSketchConstraintSelection(constraintSketch, kind, [], firstId)
+      if (ids.length === 1) {
+        expect(repeated.definition, kind).not.toBeNull()
+        expect(repeated.selectedEntityIds, kind).toEqual([])
+      } else {
+        expect(repeated.definition, kind).toBeNull()
+        expect(repeated.selectedEntityIds, kind).toEqual([ids[0]])
+      }
+    }
+  })
+
+  it("toggles, recovers from incompatible picks, and rejects unknown or external-only completion", () => {
+    expect(nextSketchConstraintSelection(dimensionSketch, "parallel", [], line.id)).toMatchObject({
+      selectedEntityIds: [line.id],
+      definition: null,
+    })
+    expect(nextSketchConstraintSelection(dimensionSketch, "parallel", [line.id], line.id)).toEqual({
+      selectedEntityIds: [],
+      definition: null,
+    })
+    expect(
+      nextSketchConstraintSelection(dimensionSketch, "parallel", [line.id], circle.id),
+    ).toEqual({ selectedEntityIds: [], definition: null })
+    expect(
+      nextSketchConstraintSelection(externalConstraintSketch, "coincident", [], externalPointId),
+    ).toEqual({ selectedEntityIds: [externalPointId], definition: null })
+    expect(
+      nextSketchConstraintSelection(externalConstraintSketch, "fixed", [], externalPointId),
+    ).toEqual({ selectedEntityIds: [], definition: null })
+    expect(nextSketchConstraintSelection(dimensionSketch, "fixed", [], entityId(999))).toEqual({
+      selectedEntityIds: [],
+      definition: null,
+    })
+  })
+
   it("offers only constraints compatible with the current semantic selection", () => {
     expect(compatibleSketchConstraintTools([line]).map(({ kind }) => kind)).toEqual([
       "horizontal",

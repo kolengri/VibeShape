@@ -8,6 +8,19 @@ export const editorCommandIds = {
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
   sketchDimension: "org.vibeshape.editor.sketch.tool.dimension",
+  sketchConstraintCoincident: "org.vibeshape.editor.sketch.constraint.coincident",
+  sketchConstraintConcentric: "org.vibeshape.editor.sketch.constraint.concentric",
+  sketchConstraintEqual: "org.vibeshape.editor.sketch.constraint.equal",
+  sketchConstraintFixed: "org.vibeshape.editor.sketch.constraint.fixed",
+  sketchConstraintHorizontal: "org.vibeshape.editor.sketch.constraint.horizontal",
+  sketchConstraintMidpoint: "org.vibeshape.editor.sketch.constraint.midpoint",
+  sketchConstraintParallel: "org.vibeshape.editor.sketch.constraint.parallel",
+  sketchConstraintPerpendicular: "org.vibeshape.editor.sketch.constraint.perpendicular",
+  sketchConstraintPointOnCurve: "org.vibeshape.editor.sketch.constraint.point-on-curve",
+  sketchConstraintPointOnLine: "org.vibeshape.editor.sketch.constraint.point-on-line",
+  sketchConstraintSymmetric: "org.vibeshape.editor.sketch.constraint.symmetric",
+  sketchConstraintTangent: "org.vibeshape.editor.sketch.constraint.tangent",
+  sketchConstraintVertical: "org.vibeshape.editor.sketch.constraint.vertical",
   sketchAlignedRectangle: "org.vibeshape.editor.sketch.tool.aligned-rectangle",
   sketchArc: "org.vibeshape.editor.sketch.tool.arc",
   sketchMidpointLine: "org.vibeshape.editor.sketch.tool.midpoint-line",
@@ -66,6 +79,7 @@ export type EditorCommandToolbarGroup =
 export type EditorCommandSketchFamilyId =
   | "arc"
   | "circle"
+  | "constraint"
   | "line"
   | "polygon"
   | "rectangle"
@@ -104,6 +118,19 @@ export type EditorCommandIcon =
   | "centered-aligned-rectangle"
   | "centered-slot"
   | "construction"
+  | "constraint-coincident"
+  | "constraint-concentric"
+  | "constraint-equal"
+  | "constraint-fixed"
+  | "constraint-horizontal"
+  | "constraint-midpoint"
+  | "constraint-parallel"
+  | "constraint-perpendicular"
+  | "constraint-point-on-curve"
+  | "constraint-point-on-line"
+  | "constraint-symmetric"
+  | "constraint-tangent"
+  | "constraint-vertical"
   | "cylinder"
   | "datum-plane"
   | "dimension"
@@ -160,6 +187,19 @@ export type EditorCommandLabelKey =
   | "sketchCircularPattern"
   | "sketchCircumscribedPolygon"
   | "sketchConstruction"
+  | "sketchConstraintCoincident"
+  | "sketchConstraintConcentric"
+  | "sketchConstraintEqual"
+  | "sketchConstraintFixed"
+  | "sketchConstraintHorizontal"
+  | "sketchConstraintMidpoint"
+  | "sketchConstraintParallel"
+  | "sketchConstraintPerpendicular"
+  | "sketchConstraintPointOnCurve"
+  | "sketchConstraintPointOnLine"
+  | "sketchConstraintSymmetric"
+  | "sketchConstraintTangent"
+  | "sketchConstraintVertical"
   | "sketchDimension"
   | "sketchExtend"
   | "sketchLine"
@@ -328,9 +368,11 @@ function validateFamilyPresentation(
   state: SketchPresentationValidationState,
 ): EditorCommandRegistryDiagnostic | null {
   if (!presentation.family) return null
-  if (descriptor.toolbarGroup !== "sketch-tools") {
+  const expectedToolbarGroup =
+    presentation.family === "constraint" ? "sketch-precision" : "sketch-tools"
+  if (descriptor.toolbarGroup !== expectedToolbarGroup) {
     return invalidPresentation(
-      `Editor command ${descriptor.id} places sketch-family metadata outside sketch-tools.`,
+      `Editor command ${descriptor.id} places sketch-family metadata outside ${expectedToolbarGroup}.`,
     )
   }
   if (!Number.isSafeInteger(presentation.familyOrder) || presentation.familyOrder < 0) {

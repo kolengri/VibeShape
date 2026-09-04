@@ -1,4 +1,5 @@
 import {
+  appendSketchConstraint,
   createEmptySketch,
   defaultDocumentDisplayUnits,
   type FeatureId,
@@ -14,12 +15,17 @@ import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-command
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
 import {
   addSketch,
+  createBrowserSketchConstraintId,
   createBrowserSketchId,
   updateSketch,
   useDocumentController,
 } from "./document/document-controller"
 import { DocumentDisplayUnitsProvider } from "./document/document-display-units"
-import { EditorSessionProvider, useEditorSession } from "./editor-session/editor-session-provider"
+import {
+  EditorSessionProvider,
+  useEditorSession,
+  useEditorSessionStoreApi,
+} from "./editor-session/editor-session-provider"
 import type {
   EditorSessionActions,
   EditorSessionState,
@@ -29,9 +35,17 @@ import {
   editPartDesignTool,
 } from "./features/part-design/part-design-tool"
 import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
-import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
+import {
+  compatibleSketchConstraintToolsForSelection,
+  selectedSketchLineId,
+} from "./features/sketch/sketch-constraint-tools"
 import { selectedSketchSupportFromController } from "./features/sketch/sketch-support"
-import { type ActiveSketchTool, isActiveSketchEditorTool } from "./features/sketch/sketch-tool"
+import {
+  type ActiveSketchTool,
+  isActiveSketchEditorTool,
+  type SketchEditorTool,
+  sketchConstraintToolKind,
+} from "./features/sketch/sketch-tool"
 import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-portals"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
@@ -154,9 +168,25 @@ function profileFeatureSelectionForCommand(
   return initialProfileFeatureSelection(candidates, activeSketchId)
 }
 
+function preselectedConstraintForTool(
+  tool: SketchEditorTool,
+  sketch: EditorSessionState["sketch"],
+) {
+  const constraintKind = sketchConstraintToolKind(tool)
+  if (!constraintKind) return null
+  const draft = sketch.draft
+  if (!draft) return null
+  const compatible = compatibleSketchConstraintToolsForSelection(
+    draft,
+    sketch.selectedEntityIds,
+  ).find(({ kind }) => kind === constraintKind)
+  return compatible ? compatible.definition : null
+}
+
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
+  const sessionStore = useEditorSessionStoreApi()
   const {
     activeSketchId,
     activeSketchTool,
@@ -278,6 +308,20 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     },
     [controller.report?.snapshot.features, sessionActions],
   )
+  const setSketchEditorTool = useCallback(
+    (tool: SketchEditorTool) => {
+      const currentSketch = sessionStore.getState().sketch
+      const definition = preselectedConstraintForTool(tool, currentSketch)
+      if (definition && currentSketch.draft) {
+        sessionActions.setSketchDraft(
+          appendSketchConstraint(currentSketch.draft, definition, createBrowserSketchConstraintId),
+        )
+        sessionActions.setSketchSelectedEntityIds([])
+      }
+      sessionActions.setSketchEditorTool(tool)
+    },
+    [sessionActions, sessionStore],
+  )
   const toggleAllSketchVisibility = useCallback(
     () =>
       sessionActions.toggleAllSketchVisibility(
@@ -312,7 +356,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         redoSketchDraft: sessionActions.redoSketchDraft,
         setSketchConstruction: sessionActions.setSketchConstruction,
         setSketchDraft: sessionActions.setSketchDraft,
-        setSketchEditorTool: sessionActions.setSketchEditorTool,
+        setSketchEditorTool,
         setFeatureVisibility: sessionActions.setFeatureVisibility,
         setExtrusionDistance: sessionActions.setExtrusionDistance,
         setOriginPlaneVisibility: sessionActions.setOriginPlaneVisibility,
@@ -338,6 +382,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       editSketch,
       select,
       sessionActions,
+      setSketchEditorTool,
       toggleAllSketchVisibility,
     ],
   )

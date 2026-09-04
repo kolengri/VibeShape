@@ -14,7 +14,11 @@ export function EditorSessionProvider({ children }: Readonly<{ children: ReactNo
 }
 
 export function useEditorSession<Result>(selector: (state: EditorSessionStore) => Result) {
+  return useStore(useEditorSessionStoreApi(), selector)
+}
+
+export function useEditorSessionStoreApi() {
   const store = useContext(EditorSessionContext)
   if (!store) throw new Error("useEditorSession must be used within EditorSessionProvider")
-  return useStore(store, selector)
+  return store
 }

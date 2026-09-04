@@ -74,7 +74,7 @@ function ToolbarAction({
   )
 }
 
-const sketchToolFamilies = [
+const sketchGeometryFamilies = [
   {
     id: "line",
     labelKey: "lineToolsLabel",
@@ -109,6 +109,14 @@ const sketchToolFamilies = [
     | "arcToolsLabel"
     | "slotToolsLabel"
 }[]
+
+const sketchConstraintFamily = {
+  id: "constraint",
+  labelKey: "constraintToolsLabel",
+} as const satisfies {
+  id: EditorCommandSketchFamilyId
+  labelKey: "constraintToolsLabel"
+}
 
 const profileFeatureCommandIds = [
   editorCommandIds.createExtrusion,
@@ -191,7 +199,7 @@ function ToolbarCommandFamilyAction({
         </Tooltip>
         <DropdownMenuContent align="start">
           <DropdownMenuRadioGroup
-            value={activeCommand?.descriptor.id ?? ""}
+            value={primaryCommand.descriptor.id}
             onValueChange={(commandId) => {
               const command = commands.find(({ descriptor }) => descriptor.id === commandId)
               if (command) onCommandSelect(command)
@@ -330,8 +338,9 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
   const [lastUsedFamilyCommands, setLastUsedFamilyCommands] = useState<
     Partial<Record<EditorCommandSketchFamilyId, EditorCommandId>>
   >({})
-  const activeSketchToolId = sketchToolCommands.find(({ active }) => active)?.descriptor.id
-  const activeSketchFamilyId = sketchToolCommands.find(
+  const sketchInteractiveCommands = [...sketchToolCommands, ...sketchPrecisionCommands]
+  const activeSketchToolId = sketchInteractiveCommands.find(({ active }) => active)?.descriptor.id
+  const activeSketchFamilyId = sketchInteractiveCommands.find(
     ({ descriptor }) => descriptor.id === activeSketchToolId,
   )?.descriptor.sketchPresentation?.family
   const profileFeatureCommands = commandsById(modelPrimaryCommands, profileFeatureCommandIds)
@@ -392,7 +401,7 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               getLabel={getLabel}
               label={t("sketchToolsLabel")}
             />
-            {sketchToolFamilies.map((family) => (
+            {sketchGeometryFamilies.map((family) => (
               <ToolbarCommandFamilyAction
                 key={family.id}
                 commands={familyCommands(sketchToolCommands, family.id)}
@@ -405,10 +414,20 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
             ))}
             <ToolbarSeparator />
             <ToolbarCommandGroup
-              commands={sketchPrecisionCommands}
+              commands={sketchPrecisionCommands.filter(
+                ({ descriptor }) => !descriptor.sketchPresentation?.family,
+              )}
               getDisabledReason={getDisabledReason}
               getLabel={getLabel}
               label={t("sketchPrecisionLabel")}
+            />
+            <ToolbarCommandFamilyAction
+              commands={familyCommands(sketchPrecisionCommands, sketchConstraintFamily.id)}
+              disabledReason={getDisabledReason}
+              familyLabel={t(sketchConstraintFamily.labelKey)}
+              label={getLabel}
+              lastUsedCommandId={lastUsedFamilyCommands[sketchConstraintFamily.id]}
+              onCommandSelect={(command) => selectFamilyCommand(sketchConstraintFamily.id, command)}
             />
             <ToolbarCommandGroup
               commands={sketchModeCommands}

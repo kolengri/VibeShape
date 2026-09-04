@@ -187,7 +187,8 @@ Idle -> Collecting references -> Placing annotation -> Editing value -> Committe
 ### Constraints
 
 - Selection-first is the default discovery path: compatible constraint icons appear in a compact toolbar adjacent to the selection bounds.
-- Tool-first remains available from the command toolbar, palette, shortcuts, and `S` shortcut surface.
+- Tool-first constraints use one registered family in the command toolbar and command palette. The family remembers its last-used member. An active constraint collects compatible geometry directly on the drawing, commits as soon as its semantic selection is complete, clears that selection, and remains active for repeated application. `Escape` clears a partial selection before a second `Escape` exits the tool.
+- Selection-first activation of the same registered constraint consumes a complete compatible selection immediately and then keeps the tool active. The adjacent selection toolbar and context menu remain one-step alternatives backed by the same pure constraint builders.
 - Applying a constraint animates no geometry fiction: the exact solver result replaces the preview, and conflicts remain marked.
 - Constraint glyphs support hover-related highlighting, click selection, drag layout, Delete, and a context menu.
 - Glyph layout is presentation metadata keyed by stable constraint ID. It is not solver input.

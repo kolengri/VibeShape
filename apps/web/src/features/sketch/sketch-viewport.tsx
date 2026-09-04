@@ -108,7 +108,26 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@vibeshape/ui/components/context-menu"
-import { IntersectionIcon, Link2, PierceIcon, Ruler, Trash2 } from "@vibeshape/ui/components/icons"
+import {
+  ConstraintCoincidentIcon,
+  ConstraintConcentricIcon,
+  ConstraintEqualIcon,
+  ConstraintFixedIcon,
+  ConstraintHorizontalIcon,
+  ConstraintMidpointIcon,
+  ConstraintParallelIcon,
+  ConstraintPerpendicularIcon,
+  ConstraintPointOnCurveIcon,
+  ConstraintPointOnLineIcon,
+  ConstraintSymmetricIcon,
+  ConstraintTangentIcon,
+  ConstraintVerticalIcon,
+  IntersectionIcon,
+  Link2,
+  PierceIcon,
+  Ruler,
+  Trash2,
+} from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
 import type {
@@ -118,6 +137,7 @@ import type {
 import { viewerSketchReferenceCandidateKey } from "@vibeshape/viewer/sketch-reference-identity"
 import type { ViewerFrame } from "@vibeshape/viewer/three-viewport"
 import {
+  type ComponentType,
   type CSSProperties,
   type Dispatch,
   type KeyboardEvent,
@@ -126,6 +146,7 @@ import {
   type PointerEvent,
   type RefObject,
   type SetStateAction,
+  type SVGProps,
   startTransition,
   useCallback,
   useEffect,
@@ -172,6 +193,7 @@ import {
 import {
   compatibleSketchConstraintToolsForSelection,
   compatibleSketchDimensionToolsForSelection,
+  nextSketchConstraintSelection,
   nextSketchDimensionSelection,
   type SketchConstraintToolKind,
   type SketchDimensionKind,
@@ -197,11 +219,14 @@ import {
 } from "./sketch-linear-pattern-form"
 import { useSketchProjectionStoreApi } from "./sketch-projection-store"
 import {
+  isSketchConstraintEditorTool,
   isSketchModificationTool,
   isSketchSelectionTool,
+  type SketchConstraintEditorTool,
   type SketchDraftChangeMode,
   type SketchEditorTool,
   type SketchModificationTool,
+  sketchConstraintToolKind,
   usesSketchCrosshairCursor,
 } from "./sketch-tool"
 import { type SketchTransformExactValue, SketchTransformForm } from "./sketch-transform-form"
@@ -6261,17 +6286,25 @@ const placementBuilders = {
 } satisfies Record<
   Exclude<
     SketchEditorTool,
-    "dimension" | "intersection" | "pierce" | "select" | "use" | SketchModificationTool
+    | "dimension"
+    | "intersection"
+    | "pierce"
+    | "select"
+    | "use"
+    | SketchConstraintEditorTool
+    | SketchModificationTool
   >,
   (input: PlacementInput) => PlacementUpdate
 >
 
 function placementUpdate(tool: SketchEditorTool, input: PlacementInput) {
-  return isSketchSelectionTool(tool) ||
+  return tool === "select" ||
+    tool === "dimension" ||
     tool === "use" ||
     tool === "intersection" ||
     tool === "pierce" ||
-    isSketchModificationTool(tool)
+    isSketchModificationTool(tool) ||
+    isSketchConstraintEditorTool(tool)
     ? null
     : placementBuilders[tool](input)
 }
@@ -7323,9 +7356,13 @@ const pointInferenceSupport = {
   "three-point-circle": alwaysSupportsPointInference,
   transform: neverSupportsPointInference,
   trim: neverSupportsPointInference,
-} satisfies Record<SketchEditorTool, (pending: PendingGeometry | null) => boolean>
+} satisfies Record<
+  Exclude<SketchEditorTool, SketchConstraintEditorTool>,
+  (pending: PendingGeometry | null) => boolean
+>
 
 function supportsPointInference(editorTool: SketchEditorTool, pending: PendingGeometry | null) {
+  if (isSketchConstraintEditorTool(editorTool)) return false
   return pointInferenceSupport[editorTool](pending)
 }
 
@@ -8156,6 +8193,20 @@ function handleSketchKeyDown(input: {
   input.event.preventDefault()
   input.onDraftChange(removeSketchEntities(input.draft, input.selectedEntityIds))
   input.onSelectionChange([])
+}
+
+function consumeSketchConstraintEscape(
+  event: KeyboardEvent<SVGSVGElement>,
+  editorTool: SketchEditorTool,
+  selectedEntityIds: readonly SketchEntityId[],
+  onSelectionChange: (entityIds: readonly SketchEntityId[]) => void,
+) {
+  if (event.key !== "Escape") return false
+  if (!sketchConstraintToolKind(editorTool) || selectedEntityIds.length === 0) return false
+  event.preventDefault()
+  event.stopPropagation()
+  onSelectionChange([])
+  return true
 }
 
 function handleSketchWheel(input: {
@@ -9041,6 +9092,10 @@ function SketchDrawingView({
         editorTool={configuration.editorTool}
         selectedEntityIds={configuration.selectedEntityIds}
       />
+      <SketchConstraintInstruction
+        editorTool={configuration.editorTool}
+        selectedEntityCount={configuration.selectedEntityIds.length}
+      />
       <SketchLinearPatternInstruction
         editorTool={configuration.editorTool}
         selectedEntityCount={configuration.selectedEntityIds.length}
@@ -9290,6 +9345,31 @@ function SketchDimensionInstruction({
       role="status"
     >
       {t(ready ? "dimensionPlace" : "dimensionSelectGeometry")}
+    </div>
+  )
+}
+
+function SketchConstraintInstruction({
+  editorTool,
+  selectedEntityCount,
+}: Readonly<{
+  editorTool: SketchEditorTool
+  selectedEntityCount: number
+}>) {
+  const t = useTranslations("app.sketch.viewport")
+  const labels = useSketchConstraintToolLabels()
+  const kind = sketchConstraintToolKind(editorTool)
+  if (!kind) return null
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      data-sketch-constraint-instruction
+      role="status"
+    >
+      {t("constraintSelectGeometry", {
+        constraint: labels[kind],
+        selected: selectedEntityCount,
+      })}
     </div>
   )
 }
@@ -10733,6 +10813,8 @@ function SketchDrawing({
     if (circularPattern.consumeKeyDown(event)) return
     if (linearPattern.consumeKeyDown(event)) return
     if (dimensions.consumeEscape(event)) return
+    if (consumeSketchConstraintEscape(event, editorTool, selectedEntityIds, onSelectionChange))
+      return
     handleSketchKeyDown({
       appendAt,
       cursor,
@@ -10892,13 +10974,29 @@ function SketchDrawing({
   const handleSelection = useCallback(
     (entityId: SketchEntityId, additive: boolean) => {
       resetDimensionEditor()
+      const constraintKind = sketchConstraintToolKind(editorTool)
+      if (constraintKind && draft) {
+        const result = nextSketchConstraintSelection(
+          draft,
+          constraintKind,
+          selectedEntityIds,
+          entityId,
+        )
+        if (result.definition) {
+          onDraftChange(
+            appendSketchConstraint(draft, result.definition, createBrowserSketchConstraintId),
+          )
+        }
+        onSelectionChange(result.selectedEntityIds)
+        return
+      }
       onSelectionChange(
         editorTool === "dimension" && draft && !additive
           ? nextSketchDimensionSelection(draft, selectedEntityIds, entityId)
           : toggleSelection(selectedEntityIds, entityId, additive),
       )
     },
-    [draft, editorTool, onSelectionChange, resetDimensionEditor, selectedEntityIds],
+    [draft, editorTool, onDraftChange, onSelectionChange, resetDimensionEditor, selectedEntityIds],
   )
   return (
     <>
@@ -11223,21 +11321,29 @@ function SketchOrientation({ plane }: { plane: SketchRecord["plane"] | null }) {
   )
 }
 
-const constraintToolSymbols = {
-  coincident: "×",
-  concentric: "◎",
-  equal: "=",
-  fixed: "F",
-  horizontal: "H",
-  midpoint: "M",
-  parallel: "∥",
-  perpendicular: "⊥",
-  "point-on-curve": "⊙",
-  "point-on-line": "⊙",
-  symmetric: "S",
-  tangent: "T",
-  vertical: "V",
-} satisfies Record<SketchConstraintToolKind, string>
+const constraintToolIcons = {
+  coincident: ConstraintCoincidentIcon,
+  concentric: ConstraintConcentricIcon,
+  equal: ConstraintEqualIcon,
+  fixed: ConstraintFixedIcon,
+  horizontal: ConstraintHorizontalIcon,
+  midpoint: ConstraintMidpointIcon,
+  parallel: ConstraintParallelIcon,
+  perpendicular: ConstraintPerpendicularIcon,
+  "point-on-curve": ConstraintPointOnCurveIcon,
+  "point-on-line": ConstraintPointOnLineIcon,
+  symmetric: ConstraintSymmetricIcon,
+  tangent: ConstraintTangentIcon,
+  vertical: ConstraintVerticalIcon,
+} satisfies Record<SketchConstraintToolKind, ComponentType<SVGProps<SVGSVGElement>>>
+
+function SketchConstraintIcon({
+  kind,
+  ...props
+}: SVGProps<SVGSVGElement> & Readonly<{ kind: SketchConstraintToolKind }>) {
+  const Icon = constraintToolIcons[kind]
+  return <Icon aria-hidden="true" {...props} />
+}
 
 type SketchSelectionToolbarAnchor = Readonly<{
   placement: "above" | "below"
@@ -11332,9 +11438,7 @@ function SketchConstraintToolbarAction({
           aria-label={label}
           onClick={() => onApply(definition)}
         >
-          <span aria-hidden="true" className="font-mono text-sm font-semibold">
-            {constraintToolSymbols[kind]}
-          </span>
+          <SketchConstraintIcon kind={kind} />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -11473,9 +11577,7 @@ function SketchSelectionContextMenu({
       <ContextMenuLabel>{viewportT("contextActions")}</ContextMenuLabel>
       {constraints.map(({ definition, kind }) => (
         <ContextMenuItem key={kind} onSelect={() => apply(definition)}>
-          <span aria-hidden="true" className="w-4 text-center font-mono font-semibold">
-            {constraintToolSymbols[kind]}
-          </span>
+          <SketchConstraintIcon className="size-4" kind={kind} />
           {labels[kind]}
         </ContextMenuItem>
       ))}

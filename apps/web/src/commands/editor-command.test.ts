@@ -115,7 +115,8 @@ describe("editor command registry", () => {
           .map(({ sketchPresentation }) => sketchPresentation?.familyOrder)
           .sort((first, second) => (first ?? 0) - (second ?? 0)),
       ).toEqual(Array.from({ length: commands.length }, (_, index) => index))
-      expect(commands.every(({ toolbarGroup }) => toolbarGroup === "sketch-tools")).toBe(true)
+      const expectedToolbarGroup = family === "constraint" ? "sketch-precision" : "sketch-tools"
+      expect(commands.every(({ toolbarGroup }) => toolbarGroup === expectedToolbarGroup)).toBe(true)
     }
   })
 
@@ -350,6 +351,22 @@ describe("editor command registry", () => {
     expect(context.actions.setSketchTool).toHaveBeenCalledWith("dimension")
   })
 
+  it("routes registered constraints to repeatable sketch tools", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchConstraintPointOnLine,
+    )
+
+    expect(command?.descriptor.toolbarGroup).toBe("sketch-precision")
+    expect(command?.descriptor.sketchPresentation?.family).toBe("constraint")
+    expect(command?.toolbarVisible).toBe(true)
+    command?.invoke()
+    expect(context.actions.setSketchTool).toHaveBeenCalledWith("constraint-point-on-line")
+  })
+
   it("routes the three-point arc shortcut descriptor to the trusted sketch tool handler", () => {
     const context = commandContext({
       activeSketchTool: { kind: "create-sketch" },
@@ -561,7 +578,7 @@ describe("editor command registry", () => {
   it("cancels the active sketch tool before canceling the sketch command", () => {
     const toolContext = commandContext({
       activeSketchTool: { kind: "create-sketch" },
-      sketchTool: "rectangle",
+      sketchTool: "constraint-parallel",
       workspace: "sketch",
     })
     const cancelTool = resolveBuiltInEditorCommands(toolContext).find(
