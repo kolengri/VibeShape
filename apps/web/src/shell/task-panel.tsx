@@ -201,8 +201,6 @@ function useSketchEditorCopy() {
     pointOnCurve: t("pointOnCurve"),
     pointOnLine: t("pointOnLine"),
     pierceReference: (source: string) => t("pierceReference", { source }),
-    profile: (number: number) => t("profile", { number }),
-    profiles: t("profiles"),
     primaryAxisDiameter: t("primaryAxisDiameter"),
     radius: t("radius"),
     reference: t("reference"),
@@ -1685,7 +1683,6 @@ type ActiveSketchTaskPanelActions = Readonly<{
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
-  onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
   onSketchSaved: (
     sketch: SketchRecord,
     presentation?: Readonly<{
@@ -1730,7 +1727,6 @@ function ActiveSketchTaskPanel({
     onReferenceRepairChange,
     onSupportReplace,
     onSelectedConstraintChange,
-    onSelectedProfileChange,
     onSketchSaved,
   } = actions
   const t = useTranslations("app.shell.taskPanel.sketch")
@@ -1877,12 +1873,10 @@ function ActiveSketchTaskPanel({
             missingExternalReferenceIds: sketchReferenceResolution.missingReferenceIds,
             failedConstraintIds,
             message,
-            profiles,
             referenceDimensionLabels,
             repairReferenceId,
             selectedConstraintId,
             selectedEntityIds,
-            selectedProfile,
             supportLabel,
             supportProblem,
             variables: report.snapshot.variables,
@@ -1892,7 +1886,6 @@ function ActiveSketchTaskPanel({
             onReferenceRepairChange,
             onSupportReplace,
             onSelectedConstraintChange,
-            onSelectedProfileChange,
           }}
         />
       </div>
@@ -2076,7 +2069,6 @@ function SketchTaskPanel(props: TaskPanelProps) {
           onReferenceRepairChange: props.onSketchReferenceRepairChange,
           onSupportReplace: props.onSketchSupportReplace,
           onSelectedConstraintChange: props.onSketchSelectedConstraintChange,
-          onSelectedProfileChange: props.onSketchSelectedProfileChange,
           onSketchSaved: props.onSketchSaved,
         }}
       />

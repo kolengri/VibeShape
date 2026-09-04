@@ -12,6 +12,7 @@ export {
   Cuboid,
   Download,
   DraftingCompass,
+  Ellipsis,
   Eye,
   EyeOff,
   FlipHorizontal2,

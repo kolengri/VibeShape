@@ -22,11 +22,13 @@ export function ParameterPanel({
   message?: ReactNode
 }) {
   return (
-    <div className="grid gap-4">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+    <div className="grid min-w-0 gap-4">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-medium">{copy.title}</h2>
-          <p className="mt-1 text-xs leading-4 text-muted-foreground">{copy.description}</p>
+          <p className="mt-1 break-words text-xs leading-4 text-muted-foreground">
+            {copy.description}
+          </p>
         </div>
         {actions}
       </div>
@@ -38,7 +40,7 @@ export function ParameterPanel({
           {message}
         </p>
       ) : null}
-      <fieldset disabled={disabled} className="grid gap-3">
+      <fieldset disabled={disabled} className="grid min-w-0 gap-3">
         <legend className="mb-2 text-xs font-medium text-muted-foreground">{legend}</legend>
         {children}
       </fieldset>

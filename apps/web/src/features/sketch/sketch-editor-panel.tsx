@@ -9,7 +9,6 @@ import {
   type SketchEntity,
   type SketchEntityId,
   type SketchExternalReferenceId,
-  type SketchProfileSelector,
   type SketchRecord,
   setSketchDimensionValue,
   type VariableDefinition,
@@ -28,7 +27,6 @@ import {
   defaultLengthExpression,
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
-import { profileSelectorsEqual } from "../part-design/profile-feature-selection"
 import { VariableExpressionField } from "../variables/variable-expression-field"
 import { variableExpressionSuggestions } from "../variables/variable-expression-input"
 import {
@@ -91,8 +89,6 @@ type SketchEditorPanelCopy = Readonly<{
   pointOnCurve: string
   pointOnLine: string
   pierceReference: (source: string) => string
-  profile: (number: number) => string
-  profiles: string
   primaryAxisDiameter: string
   radius: string
   remove: string
@@ -709,41 +705,6 @@ function AppliedConstraintsSection({
   )
 }
 
-function SketchProfilesSection({
-  copy,
-  onSelectedProfileChange,
-  profiles,
-  selectedProfile,
-}: {
-  copy: SketchEditorPanelCopy
-  onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
-  profiles: readonly SketchProfileSelector[]
-  selectedProfile: SketchProfileSelector | null
-}) {
-  if (profiles.length === 0) return null
-  return (
-    <section className="grid gap-2 border-t pt-3">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {copy.profiles}
-      </h3>
-      <div className="flex flex-wrap gap-1">
-        {profiles.map((profile, index) => (
-          <Button
-            key={profile.outerBoundaryEntityIds.join(":")}
-            type="button"
-            size="xs"
-            variant={profileSelectorsEqual(selectedProfile, profile) ? "secondary" : "outline"}
-            aria-pressed={profileSelectorsEqual(selectedProfile, profile)}
-            onClick={() => onSelectedProfileChange(profile)}
-          >
-            {copy.profile(index + 1)}
-          </Button>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 function ExternalReferencesSection({
   candidates,
   copy,
@@ -880,12 +841,10 @@ type SketchEditorPanelState = Readonly<{
   missingExternalReferenceIds: ReadonlySet<SketchExternalReferenceId>
   failedConstraintIds: readonly string[]
   message: string | null
-  profiles: readonly SketchProfileSelector[]
   referenceDimensionLabels: Readonly<Record<string, string>>
   repairReferenceId: SketchExternalReferenceId | null
   selectedEntityIds: readonly SketchEntityId[]
   selectedConstraintId: SketchConstraintId | null
-  selectedProfile: SketchProfileSelector | null
   supportLabel: string | null
   supportProblem: SketchSupportProblem
   variables: readonly VariableDefinition[]
@@ -896,7 +855,6 @@ type SketchEditorPanelActions = Readonly<{
   onReferenceRepairChange: (referenceId: SketchExternalReferenceId | null) => void
   onSupportReplace: () => void
   onSelectedConstraintChange: (constraintId: SketchConstraintId | null) => void
-  onSelectedProfileChange: (profile: SketchProfileSelector | null) => void
 }>
 
 export function SketchEditorPanel({
@@ -916,23 +874,16 @@ export function SketchEditorPanel({
     missingExternalReferenceIds,
     failedConstraintIds,
     message,
-    profiles,
     referenceDimensionLabels,
     repairReferenceId,
     selectedEntityIds,
     selectedConstraintId,
-    selectedProfile,
     supportLabel,
     supportProblem,
     variables,
   } = state
-  const {
-    onDraftChange,
-    onReferenceRepairChange,
-    onSupportReplace,
-    onSelectedConstraintChange,
-    onSelectedProfileChange,
-  } = actions
+  const { onDraftChange, onReferenceRepairChange, onSupportReplace, onSelectedConstraintChange } =
+    actions
   const entities = useMemo(
     () => selectedSketchConstraintEntities(draft, selectedEntityIds),
     [draft, selectedEntityIds],
@@ -984,12 +935,6 @@ export function SketchEditorPanel({
           variables={variables}
           onDraftChange={onDraftChange}
           onSelectedConstraintChange={onSelectedConstraintChange}
-        />
-        <SketchProfilesSection
-          copy={copy}
-          profiles={profiles}
-          selectedProfile={selectedProfile}
-          onSelectedProfileChange={onSelectedProfileChange}
         />
       </div>
       {message ? (

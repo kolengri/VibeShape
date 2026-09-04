@@ -26,6 +26,7 @@ import { Scan } from "@vibeshape/ui/components/icons"
 import { NativeSelectField } from "@vibeshape/ui/components/native-select-field"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { Form, useAppForm } from "@vibeshape/ui/integrations/tanstack-form"
+import { cn } from "@vibeshape/ui/lib/cn"
 import { useCallback, useEffect, useLayoutEffect, useState } from "react"
 import type { FeatureMutationResult } from "../../document/document-controller"
 import {
@@ -359,9 +360,9 @@ function RevolveAxisField({
   value: RevolveAxis
 }>) {
   return (
-    <fieldset className="grid gap-2" disabled={disabled}>
+    <fieldset className="grid min-w-0 gap-2" disabled={disabled}>
       <legend className="text-sm font-medium">{copy.axis}</legend>
-      <div className="flex gap-2">
+      <div className="flex min-w-0 gap-2">
         {(["x", "y"] as const).map((axis) => {
           const selected = value.kind === "origin-axis" && value.axis === axis
           const label = axis === "x" ? copy.axisX : copy.axisY
@@ -392,14 +393,19 @@ function RevolveAxisField({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            className="h-auto min-h-9 justify-start gap-2 border-dashed px-3 py-2 text-left"
+            className="h-auto min-h-9 w-full min-w-0 justify-start gap-2 overflow-hidden border-dashed px-3 py-2 text-left"
             variant={selectionActive ? "secondary" : "outline"}
             aria-label={copy.axisSelectHint}
             aria-pressed={selectionActive}
             {...(onSelectionRequest ? { onClick: onSelectionRequest } : {})}
           >
             <Scan className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className={axisLineLabel ? undefined : "text-muted-foreground"}>
+            <span
+              className={cn(
+                "min-w-0 truncate",
+                axisLineLabel ? undefined : "text-muted-foreground",
+              )}
+            >
               {axisLineLabel ?? copy.axisSelectHint}
             </span>
           </Button>
