@@ -1716,7 +1716,9 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator("[data-sketch-external-curve-count='1']")).toHaveCount(1)
   })
 
-  test("keeps constraint forms out of the primary sketch workflow", async ({ page }) => {
+  test("keeps the constraint manager behind an explicit sketch diagnostic action", async ({
+    page,
+  }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page
@@ -1726,13 +1728,21 @@ test.describe("full sketch editor", () => {
     await confirmSketchPlane(page)
 
     const sketchPanel = page.getByRole("complementary", { name: "Sketch task panel" })
-    const manager = sketchPanel.locator("details").filter({ hasText: /^Constraint manager \(0\)/ })
-    await expect(manager).not.toHaveAttribute("open", "")
-    await expect(sketchPanel.getByText("Applied constraints", { exact: true })).toBeHidden()
+    const trigger = sketchPanel.getByRole("button", {
+      name: "Open constraint manager",
+      exact: true,
+    })
+    await expect(page.getByRole("dialog", { name: "Constraint manager (0)" })).toHaveCount(0)
+    await expect(sketchPanel.getByText("Constraint manager (0)", { exact: true })).toHaveCount(0)
 
-    await manager.locator("summary").click()
-    await expect(manager).toHaveAttribute("open", "")
-    await expect(sketchPanel.getByText("Applied constraints", { exact: true })).toBeVisible()
+    await trigger.click()
+    const manager = page.getByRole("dialog", { name: "Constraint manager (0)" })
+    await expect(manager).toBeVisible()
+    await expect(manager.getByText("Applied constraints", { exact: true })).toBeVisible()
+    await expect(manager.getByRole("button", { name: "Add constraint" })).toHaveCount(0)
+    await expect(manager.getByRole("combobox", { name: "Dimension type" })).toHaveCount(0)
+    await manager.getByRole("button", { name: "Close constraint manager" }).click()
+    await expect(manager).toHaveCount(0)
   })
 
   test("keeps sketch lifecycle actions compact in the command header", async ({ page }) => {
@@ -1747,23 +1757,43 @@ test.describe("full sketch editor", () => {
 
     const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
     const toolbar = page.getByRole("toolbar", { name: "Model commands" })
+    const diagnostics = taskPanel.getByRole("button", {
+      name: "Open constraint manager",
+      exact: true,
+    })
     const cancel = taskPanel.getByRole("button", { name: "Cancel", exact: true })
     const finish = taskPanel.getByRole("button", { name: "Finish sketch", exact: true })
     const extrude = toolbar.getByRole("button", { name: "Extrude", exact: true })
     const revolve = toolbar.getByRole("button", { name: "Revolve", exact: true })
-    const [panelBounds, cancelBounds, finishBounds, extrudeBounds, revolveBounds] =
-      await Promise.all([
-        taskPanel.boundingBox(),
-        cancel.boundingBox(),
-        finish.boundingBox(),
-        extrude.boundingBox(),
-        revolve.boundingBox(),
-      ])
-    if (!panelBounds || !cancelBounds || !finishBounds || !extrudeBounds || !revolveBounds) {
+    const [
+      panelBounds,
+      diagnosticsBounds,
+      cancelBounds,
+      finishBounds,
+      extrudeBounds,
+      revolveBounds,
+    ] = await Promise.all([
+      taskPanel.boundingBox(),
+      diagnostics.boundingBox(),
+      cancel.boundingBox(),
+      finish.boundingBox(),
+      extrude.boundingBox(),
+      revolve.boundingBox(),
+    ])
+    if (
+      !panelBounds ||
+      !diagnosticsBounds ||
+      !cancelBounds ||
+      !finishBounds ||
+      !extrudeBounds ||
+      !revolveBounds
+    ) {
       throw new Error("Sketch lifecycle and profile-feature actions are not visible.")
     }
 
+    expect(Math.abs(diagnosticsBounds.y - cancelBounds.y)).toBeLessThanOrEqual(2)
     expect(Math.abs(cancelBounds.y - finishBounds.y)).toBeLessThanOrEqual(2)
+    expect(diagnosticsBounds.width).toBeLessThanOrEqual(36)
     expect(cancelBounds.width).toBeLessThanOrEqual(36)
     expect(finishBounds.width).toBeLessThanOrEqual(36)
     expect(cancelBounds.x).toBeGreaterThanOrEqual(panelBounds.x)
@@ -2468,15 +2498,12 @@ test.describe("full sketch editor", () => {
     await expect(drawing.locator('[data-sketch-entity-type="ellipse"]')).toHaveCount(1)
 
     await selectSketchEntities(page, drawing, "ellipse", [0])
-    const precisionTools = page.getByRole("toolbar", { name: "Sketch precision tools" })
-    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
     await addDimension(page, "Primary axis diameter", "40 mm")
     await expect(
       page.getByRole("listitem").filter({ hasText: "Primary axis diameter · 40 mm" }),
     ).toBeVisible()
 
     await selectSketchEntities(page, drawing, "ellipse", [0])
-    await precisionTools.getByRole("button", { name: "Add drawing dimension" }).click()
     await addDimension(page, "Secondary axis diameter", "18 mm")
     await expect(
       page.getByRole("listitem").filter({ hasText: "Secondary axis diameter · 18 mm" }),

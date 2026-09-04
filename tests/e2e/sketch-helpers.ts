@@ -31,12 +31,11 @@ export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" =
 }
 
 export async function openConstraintManager(page: Page) {
-  const manager = page
+  const trigger = page
     .getByRole("complementary", { name: "Sketch task panel" })
-    .locator("details")
-    .filter({ hasText: /^Constraint manager \(\d+\)/ })
-  if ((await manager.getAttribute("open")) === null) await manager.locator("summary").click()
-  await expect(manager).toHaveAttribute("open", "")
+    .getByRole("button", { name: "Open constraint manager", exact: true })
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click()
+  await expect(page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })).toBeVisible()
 }
 
 export async function selectOriginPlaneInViewport(page: Page, plane: "xy" | "xz" | "yz") {
@@ -228,9 +227,42 @@ export async function addDimension(
     | "Secondary axis diameter",
   expression: string,
 ) {
-  await openConstraintManager(page)
-  await page.getByRole("combobox", { name: "Dimension type" }).selectOption({ label: type })
-  const input = page.getByRole("combobox", { name: "Driving expression" })
+  const selectionAction = page.getByRole("button", { name: "Add drawing dimension" })
+  if (await selectionAction.isVisible()) await selectionAction.click()
+
+  const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+  const bounds = await drawing.boundingBox()
+  if (!bounds) throw new Error("The editable sketch canvas is not visible.")
+  const placement = {
+    Angle: { x: 0.7, y: 0.3 },
+    Diameter: { x: 0.7, y: 0.3 },
+    Distance: { x: 0.5, y: 0.25 },
+    "Horizontal distance": { x: 0.5, y: 0.25 },
+    "Primary axis diameter": { x: 0.7, y: 0.3 },
+    Radius: { x: 0.7, y: 0.3 },
+    "Secondary axis diameter": { x: 0.3, y: 0.7 },
+    "Vertical distance": { x: 0.75, y: 0.5 },
+  } as const
+  const anchor = placement[type]
+  await page.mouse.click(bounds.x + bounds.width * anchor.x, bounds.y + bounds.height * anchor.y)
+
+  const editor = page.getByRole("form", { name: "Dimension value" })
+  const typeControl = editor.getByRole("combobox", { name: "Dimension type" })
+  if (await typeControl.isVisible()) {
+    const optionLabels = {
+      Angle: "Angle",
+      Diameter: "Diameter",
+      Distance: "Distance",
+      "Horizontal distance": "Horizontal",
+      "Primary axis diameter": "Primary axis",
+      Radius: "Radius",
+      "Secondary axis diameter": "Secondary axis",
+      "Vertical distance": "Vertical",
+    } as const
+    await typeControl.selectOption({ label: optionLabels[type] })
+  }
+  const input = editor.getByRole("combobox", { name: "Driving dimension expression" })
   await input.fill(expression)
-  await page.getByRole("button", { name: "Add constraint" }).click()
+  await editor.getByRole("button", { name: "Apply dimension" }).click()
+  await openConstraintManager(page)
 }
