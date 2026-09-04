@@ -480,11 +480,13 @@
       },
       "taskPanel": {
         "ariaLabel": "Task panel",
+        "collapsePanel": "Collapse task panel",
         "createBox": "Create box",
         "createCylinder": "Create cylinder",
         "createSubtract": "Subtract solids",
         "createSketch": "Create sketch",
         "description": "Choose a support plane, define a constrained 2D profile, then turn that selected profile into a solid with Extrude.",
+        "expandPanel": "Open task panel",
         "directSolids": "Direct solids (advanced)",
         "directSolidsDescription": "Box and Cylinder remain available for fast blocking and compatibility, but sketch-driven features are the primary parametric workflow.",
         "selectedProfileDescription": "The selected sketch contains a supported closed region. Use Extrude or Revolve in the modeling toolbar, or return to the sketch to edit its dimensions.",

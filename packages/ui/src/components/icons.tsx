@@ -23,6 +23,8 @@ export {
   Minus,
   MousePointer2,
   Move,
+  PanelBottomClose,
+  PanelBottomOpen,
   Pencil,
   PenLine,
   RectangleHorizontal,
