@@ -449,6 +449,7 @@ Every core flow is checked against the [Design and UX Guidelines](product/design
 Automated coverage includes:
 
 - keyboard access and focus order for application bars, toolbars, menus, dialogs, the model tree, and the command palette;
+- cursor-near sketch shortcut placement, shared registry invocation, focus restoration, staged `Escape`, text-entry safety, and viewport collision handling at 200% zoom;
 - focus trap and restoration for modal layers;
 - accessible names, dialog titles, form labels, validation relationships, and live status regions;
 - no single-letter shortcut activation while typing or composing text;

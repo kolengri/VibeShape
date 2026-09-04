@@ -659,7 +659,10 @@ export function ModelingSketchViewportStack({
   status?: ReactNode
 }>) {
   return (
-    <div className="relative grid min-h-0">
+    <div
+      className="relative grid min-h-0"
+      data-sketch-shortcut-surface={sketchActive ? "" : undefined}
+    >
       {modeling}
       {sketchActive ? sketch : null}
       {sketchActive ? status : null}

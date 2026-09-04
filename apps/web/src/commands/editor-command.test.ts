@@ -140,6 +140,22 @@ describe("editor command registry", () => {
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
   })
 
+  it("keeps Use external geometry registry-owned and disables downstream display context", () => {
+    const context = commandContext({
+      activeSketchTool: { kind: "edit-sketch", sketchId: "sketch-1" as SketchId },
+      sketchFinalContext: true,
+      workspace: "sketch",
+    })
+    const command = resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.sketchUse,
+    )
+
+    expect(command?.toolbarVisible).toBe(true)
+    expect(command?.eligibility).toEqual({ enabled: false, reason: "hideFinalContext" })
+    command?.invoke()
+    expect(context.actions.setSketchTool).not.toHaveBeenCalled()
+  })
+
   it("toggles every saved sketch through the shared Shift+H command", () => {
     const unavailableContext = commandContext()
     const unavailable = resolveBuiltInEditorCommands(unavailableContext).find(

@@ -42,6 +42,7 @@ export const editorCommandIds = {
   sketchSplit: "org.vibeshape.editor.sketch.modify.split",
   sketchTransform: "org.vibeshape.editor.sketch.modify.transform",
   sketchTrim: "org.vibeshape.editor.sketch.modify.trim",
+  sketchUse: "org.vibeshape.editor.sketch.reference.use",
   sketchUndo: "org.vibeshape.editor.sketch.undo",
   workspaceModel: "org.vibeshape.editor.workspace.model",
   workspaceSketch: "org.vibeshape.editor.workspace.sketch",
@@ -102,6 +103,7 @@ export type EditorCommandIcon =
   | "subtract"
   | "tangent-arc"
   | "trim"
+  | "use-external-geometry"
   | "undo"
   | "three-point-arc"
   | "three-point-circle"
@@ -150,6 +152,7 @@ export type EditorCommandLabelKey =
   | "sketchTransform"
   | "sketchTangentArc"
   | "sketchTrim"
+  | "sketchUse"
   | "sketchUndo"
   | "toggleAllSketchVisibility"
   | "workspaceModel"
@@ -159,6 +162,7 @@ export type EditorCommandDisabledReason =
   | "activeFeature"
   | "activeSketch"
   | "documentUnavailable"
+  | "hideFinalContext"
   | "noActiveCommand"
   | "noSketchRedo"
   | "noSavedSketches"

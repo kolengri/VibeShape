@@ -8,7 +8,7 @@ import {
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
 import type { ViewerOriginPlane } from "@vibeshape/viewer/origin-planes"
-import { useCallback, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { resolveBuiltInEditorCommands } from "./commands/built-in-editor-commands"
 import { useEditorCommandShortcuts } from "./commands/editor-command-shortcuts"
@@ -31,11 +31,15 @@ import {
 import { initialProfileFeatureSelection } from "./features/part-design/profile-feature-selection"
 import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
 import { selectedSketchSupportFromController } from "./features/sketch/sketch-support"
-import type { ActiveSketchTool } from "./features/sketch/sketch-tool"
+import { type ActiveSketchTool, isActiveSketchEditorTool } from "./features/sketch/sketch-tool"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
 import { EditorWorkspace, type EditorWorkspaceActions } from "./shell/editor-workspace"
+import {
+  SketchShortcutToolbar,
+  type SketchShortcutToolbarAnchor,
+} from "./shell/sketch-shortcut-toolbar"
 import { StatusBar } from "./shell/status-bar"
 
 type SketchPersistenceBeforeExtrusionResult = "failed" | "saved" | "unchanged"
@@ -492,6 +496,14 @@ function EditorApplication({
   const sessionActions = useEditorSession((state) => state.actions)
   const workspaceActions = useEditorWorkspaceActions(controller)
   const commandPaletteReturnFocusRef = useRef<HTMLElement | null>(null)
+  const sketchShortcutReturnFocusRef = useRef<HTMLElement | null>(null)
+  const lastSketchPointerRef = useRef<SketchShortcutToolbarAnchor | null>(null)
+  const [sketchShortcutAnchor, setSketchShortcutAnchor] = useState<SketchShortcutToolbarAnchor>({
+    x: 0,
+    y: 0,
+  })
+  const [sketchShortcutToolbarOpen, setSketchShortcutToolbarOpen] = useState(false)
+  const sketchShortcutToolbarAvailable = isActiveSketchEditorTool(session.sketch.activeSketchTool)
   const setCommandPaletteOpenWithFocus = useCallback(
     (open: boolean, returnFocusTarget?: HTMLElement) => {
       if (open) {
@@ -509,10 +521,46 @@ function EditorApplication({
     sessionActions,
     workspaceActions,
   )
+  useEffect(() => {
+    const trackSketchPointer = (event: PointerEvent) => {
+      const target = event.target
+      lastSketchPointerRef.current =
+        target instanceof Element && target.closest("[data-sketch-shortcut-surface]")
+          ? { x: event.clientX, y: event.clientY }
+          : null
+    }
+    document.addEventListener("pointermove", trackSketchPointer, { passive: true })
+    return () => document.removeEventListener("pointermove", trackSketchPointer)
+  }, [])
+  useEffect(() => {
+    if (!sketchShortcutToolbarAvailable) setSketchShortcutToolbarOpen(false)
+  }, [sketchShortcutToolbarAvailable])
+  const closeSketchShortcutToolbar = useCallback(() => setSketchShortcutToolbarOpen(false), [])
+  const openSketchShortcutToolbar = useCallback(() => {
+    const surface = document.querySelector<HTMLElement>("[data-sketch-shortcut-surface]")
+    if (!surface) return
+    sketchShortcutReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const bounds = surface.getBoundingClientRect()
+    setSketchShortcutAnchor(
+      lastSketchPointerRef.current ?? {
+        x: bounds.left + bounds.width / 2,
+        y: bounds.top + bounds.height / 2,
+      },
+    )
+    setSketchShortcutToolbarOpen(true)
+  }, [])
+  const setSketchShortcutToolbarOpenWithAnchor = useCallback(
+    (open: boolean) => (open ? openSketchShortcutToolbar() : closeSketchShortcutToolbar()),
+    [closeSketchShortcutToolbar, openSketchShortcutToolbar],
+  )
   useEditorCommandShortcuts({
     commands,
     paletteOpen: session.commandPaletteOpen,
+    sketchShortcutToolbarAvailable,
+    sketchShortcutToolbarOpen,
     onPaletteOpenChange: setCommandPaletteOpenWithFocus,
+    onSketchShortcutToolbarOpenChange: setSketchShortcutToolbarOpenWithAnchor,
   })
 
   return (
@@ -528,6 +576,13 @@ function EditorApplication({
         open={session.commandPaletteOpen}
         returnFocusRef={commandPaletteReturnFocusRef}
         onOpenChange={setCommandPaletteOpenWithFocus}
+      />
+      <SketchShortcutToolbar
+        anchor={sketchShortcutAnchor}
+        commands={commands}
+        open={sketchShortcutToolbarOpen}
+        returnFocusRef={sketchShortcutReturnFocusRef}
+        onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
       />
       <CommandToolbar commands={commands} />
       <EditorWorkspaceComposition

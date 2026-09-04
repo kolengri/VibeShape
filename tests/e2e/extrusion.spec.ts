@@ -459,7 +459,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(normalSketchViewport).toHaveAttribute("data-sketch-reference-candidate-count", "0")
     await expect(
       page.getByRole("button", { name: "Use external geometry", exact: true }),
-    ).toHaveCount(0)
+    ).toBeDisabled()
     await page.getByRole("button", { name: "Replace support" }).click()
     await expect(page.getByRole("heading", { name: "Replace sketch support" })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "0")

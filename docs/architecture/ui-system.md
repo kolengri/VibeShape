@@ -150,6 +150,7 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 - Toolbar actions use button variants without losing native focus and keyboard behavior.
 - Invalid inputs have labels, messages, and `aria-invalid`, not only a red border.
 - The command palette invokes the same application commands as toolbars, menus, and shortcuts.
+- The cursor-near sketch shortcut toolbar is a non-modal `Popover` + ARIA `Toolbar` projection of the same resolved command registry. It stores only transient anchor and focus-return state; it never owns document intent, command eligibility, or handlers.
 - Command presentation uses source-owned shadcn composition over `cmdk`. Serializable descriptors contain stable identity, owner, localization keys, grouping, icon identity, toolbar placement, and shortcut metadata; trusted handlers contain eligibility and invocation. Composition fails closed before the shell renders.
 - Disabled commands remain searchable with localized reasons. Successful palette invocations may affect bounded local ranking, but project data, command eligibility, and document history never depend on that preference.
 - `Ctrl/Cmd+K` is reserved from text entry. Tool shortcuts ignore input, textarea, select, editable, textbox, repeat, and IME events; `Escape` remains eligible for the documented CAD cancellation hierarchy.

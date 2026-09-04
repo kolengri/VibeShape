@@ -1684,6 +1684,108 @@ test.describe("full sketch editor", () => {
     await expect(taskPanel.getByRole("button", { name: /^Profile \d+$/ })).toHaveCount(0)
   })
 
+  test("opens registered sketch shortcuts beside the pointer at 200 percent zoom", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 512, height: 360 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await selectOriginPlaneInViewport(page, "xy")
+
+    const drawing = page.getByRole("img", { name: "Editable sketch geometry" })
+    const drawingBounds = await drawing.boundingBox()
+    if (!drawingBounds) throw new Error("The sketch viewport is not visible at 200 percent zoom.")
+    await page.mouse.move(
+      drawingBounds.x + drawingBounds.width - 4,
+      drawingBounds.y + drawingBounds.height - 4,
+    )
+    await page.keyboard.press("s")
+
+    const shortcuts = page.getByRole("toolbar", { name: "Sketch shortcuts" })
+    await expect(shortcuts).toBeVisible()
+    await expect(shortcuts.getByRole("button", { name: "Select" })).toBeFocused()
+    await page.keyboard.press("ArrowRight")
+    await expect(shortcuts.getByRole("button", { name: "Use external geometry" })).toBeFocused()
+    await expect(shortcuts.getByRole("button", { name: "Finish sketch" })).toHaveCount(0)
+    await expect(shortcuts.getByRole("button", { name: "Cancel" })).toHaveCount(0)
+    await expect(shortcuts.getByRole("button", { name: "Extrude" })).toBeDisabled()
+    await expect(shortcuts.getByRole("button", { name: "Revolve" })).toBeDisabled()
+    const shortcutBounds = await shortcuts.boundingBox()
+    if (!shortcutBounds) throw new Error("The sketch shortcut toolbar is not measurable.")
+    expect(shortcutBounds.x).toBeGreaterThanOrEqual(0)
+    expect(shortcutBounds.y).toBeGreaterThanOrEqual(0)
+    expect(shortcutBounds.x + shortcutBounds.width).toBeLessThanOrEqual(512)
+    expect(shortcutBounds.y + shortcutBounds.height).toBeLessThanOrEqual(360)
+
+    await page.keyboard.press("Escape")
+    await expect(shortcuts).toHaveCount(0)
+    await expect(drawing).toBeVisible()
+
+    await page.keyboard.press("s")
+    await page
+      .getByRole("toolbar", { name: "Sketch shortcuts" })
+      .getByRole("button", { name: "Use external geometry" })
+      .click()
+    await expect(
+      page
+        .getByRole("toolbar", { name: "Model commands" })
+        .getByRole("button", { name: "Use external geometry" }),
+    ).toHaveAttribute("aria-pressed", "true")
+
+    await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
+    const sketchSurface = page.locator("[data-sketch-shortcut-surface]")
+    const sketchSurfaceBounds = await sketchSurface.boundingBox()
+    if (!sketchSurfaceBounds) throw new Error("The sketch orbit surface is not measurable.")
+    await page.mouse.move(sketchSurfaceBounds.x + 16, sketchSurfaceBounds.y + 16)
+    await page.keyboard.press("s")
+
+    const orbitShortcutBounds = await page
+      .getByRole("toolbar", { name: "Sketch shortcuts" })
+      .boundingBox()
+    if (!orbitShortcutBounds) throw new Error("The orbit shortcut toolbar is not measurable.")
+    expect(orbitShortcutBounds.x).toBeLessThan(
+      sketchSurfaceBounds.x + sketchSurfaceBounds.width / 2,
+    )
+  })
+
+  test("keeps the expanded sketch panel inside a compact viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 720, height: 500 })
+    await page.goto("/")
+    await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
+    await page
+      .getByRole("toolbar", { name: "Model commands" })
+      .getByRole("button", { name: "Create sketch", exact: true })
+      .click()
+    await selectOriginPlaneInViewport(page, "xy")
+    await page.getByRole("button", { name: "Open task panel" }).click()
+
+    const panel = page.locator(".responsive-task-panel")
+    const taskPanel = page.getByRole("complementary", { name: "Sketch task panel" })
+    const [panelBounds, taskPanelBounds] = await Promise.all([
+      panel.boundingBox(),
+      taskPanel.boundingBox(),
+    ])
+    if (!panelBounds || !taskPanelBounds) {
+      throw new Error("The expanded compact sketch panel is not measurable.")
+    }
+
+    expect(taskPanelBounds.y + taskPanelBounds.height).toBeLessThanOrEqual(
+      panelBounds.y + panelBounds.height,
+    )
+    expect(
+      await taskPanel
+        .locator(":scope > div")
+        .last()
+        .evaluate(
+          (element) => element.ownerDocument.defaultView?.getComputedStyle(element).overflowY,
+        ),
+    ).toBe("auto")
+  })
+
   test("adds and edits a driving dimension from a selected line", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()

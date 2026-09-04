@@ -131,6 +131,8 @@ describe("CommandToolbar", () => {
       screen.getByRole("button", { name: "Construction geometry" }).getAttribute("aria-pressed"),
     ).toBe("false")
     expect(screen.getByRole("button", { name: "Dimension" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Use external geometry" }))
+    expect(actions.setSketchTool).toHaveBeenCalledWith("use")
     expect((screen.getByRole("button", { name: "Model" }) as HTMLButtonElement).disabled).toBe(true)
 
     await user.click(screen.getByRole("button", { name: "Rectangle tools" }))

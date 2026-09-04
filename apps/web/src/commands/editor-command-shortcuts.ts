@@ -27,8 +27,18 @@ function isPaletteShortcut(event: KeyboardEvent) {
   )
 }
 
-function shouldIgnoreEditorShortcut(event: KeyboardEvent, paletteOpen: boolean) {
-  return paletteOpen || event.defaultPrevented || event.isComposing || event.repeat
+function isSketchShortcutToolbarShortcut(event: KeyboardEvent) {
+  return (
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    event.key.toLowerCase() === "s"
+  )
+}
+
+function shouldIgnoreEditorShortcut(event: KeyboardEvent) {
+  return event.defaultPrevented || event.isComposing || event.repeat
 }
 
 function matchingEditorCommand(event: KeyboardEvent, commands: readonly ResolvedEditorCommand[]) {
@@ -44,14 +54,57 @@ function canInvokeFromTarget(event: KeyboardEvent, command: ResolvedEditorComman
   return !hasTextInputTarget(event.target) || command.descriptor.shortcut?.key === "Escape"
 }
 
+function consumeSketchShortcutToolbarKey({
+  available,
+  event,
+  open,
+  onOpenChange,
+}: {
+  available: boolean
+  event: KeyboardEvent
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  if (open) {
+    if (event.key === "Escape" || isSketchShortcutToolbarShortcut(event)) {
+      event.preventDefault()
+      onOpenChange(false)
+      return true
+    }
+    return false
+  }
+  if (!available || !isSketchShortcutToolbarShortcut(event) || hasTextInputTarget(event.target)) {
+    return false
+  }
+  event.preventDefault()
+  onOpenChange(true)
+  return true
+}
+
+function invokeMatchingEditorCommand(
+  event: KeyboardEvent,
+  commands: readonly ResolvedEditorCommand[],
+) {
+  const command = matchingEditorCommand(event, commands)
+  if (!command || !canInvokeFromTarget(event, command)) return
+  event.preventDefault()
+  command.invoke()
+}
+
 export function useEditorCommandShortcuts({
   commands,
   paletteOpen,
+  sketchShortcutToolbarAvailable,
+  sketchShortcutToolbarOpen,
   onPaletteOpenChange,
+  onSketchShortcutToolbarOpenChange,
 }: {
   commands: readonly ResolvedEditorCommand[]
   paletteOpen: boolean
+  sketchShortcutToolbarAvailable: boolean
+  sketchShortcutToolbarOpen: boolean
   onPaletteOpenChange: (open: boolean) => void
+  onSketchShortcutToolbarOpenChange: (open: boolean) => void
 }) {
   const commandsRef = useRef(commands)
   commandsRef.current = commands
@@ -60,17 +113,30 @@ export function useEditorCommandShortcuts({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isPaletteShortcut(event)) {
         event.preventDefault()
+        if (sketchShortcutToolbarOpen) onSketchShortcutToolbarOpenChange(false)
         onPaletteOpenChange(!paletteOpen)
         return
       }
-      if (shouldIgnoreEditorShortcut(event, paletteOpen)) return
-      const command = matchingEditorCommand(event, commandsRef.current)
-      if (!command || !canInvokeFromTarget(event, command)) return
-      event.preventDefault()
-      command.invoke()
+      if (shouldIgnoreEditorShortcut(event) || paletteOpen) return
+      if (
+        consumeSketchShortcutToolbarKey({
+          available: sketchShortcutToolbarAvailable,
+          event,
+          open: sketchShortcutToolbarOpen,
+          onOpenChange: onSketchShortcutToolbarOpenChange,
+        })
+      )
+        return
+      invokeMatchingEditorCommand(event, commandsRef.current)
     }
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [onPaletteOpenChange, paletteOpen])
+  }, [
+    onPaletteOpenChange,
+    onSketchShortcutToolbarOpenChange,
+    paletteOpen,
+    sketchShortcutToolbarAvailable,
+    sketchShortcutToolbarOpen,
+  ])
 }
