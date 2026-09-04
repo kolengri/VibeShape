@@ -32,7 +32,7 @@ export async function confirmSketchPlane(page: Page, plane: "xy" | "xz" | "yz" =
 
 export async function openConstraintManager(page: Page) {
   const trigger = page
-    .getByRole("complementary", { name: "Sketch task panel" })
+    .getByRole("toolbar", { name: "Model commands" })
     .getByRole("button", { name: "Open constraint manager", exact: true })
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click()
   await expect(page.getByRole("dialog", { name: /^Constraint manager \(\d+\)$/ })).toBeVisible()

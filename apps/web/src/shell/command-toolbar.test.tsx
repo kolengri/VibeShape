@@ -11,6 +11,7 @@ import {
 } from "../commands/built-in-editor-commands"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
+import { SketchToolbarPortalsProvider } from "../features/sketch/sketch-toolbar-portals"
 import { CommandToolbar } from "./command-toolbar"
 
 const controller = {
@@ -73,7 +74,9 @@ function renderToolbar(commandSet = commands()) {
   render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider delayDuration={0}>
-        <CommandToolbar commands={commandSet} />
+        <SketchToolbarPortalsProvider>
+          <CommandToolbar commands={commandSet} />
+        </SketchToolbarPortalsProvider>
       </TooltipProvider>
     </I18nProvider>,
   )
@@ -126,6 +129,7 @@ describe("CommandToolbar", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Box" })).toBeNull()
+    expect(document.querySelector("[data-sketch-constraint-manager-toolbar-slot]")).toBeTruthy()
     expect(screen.getByRole("button", { name: "Select" }).getAttribute("aria-pressed")).toBe("true")
     expect(
       screen.getByRole("button", { name: "Construction geometry" }).getAttribute("aria-pressed"),
@@ -237,6 +241,12 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+  })
+
+  it("omits the sketch diagnostics slot outside active sketch editing", () => {
+    renderToolbar()
+
+    expect(document.querySelector("[data-sketch-constraint-manager-toolbar-slot]")).toBeNull()
   })
 
   it("keeps sketch modification commands available in the compact overflow menu", async () => {

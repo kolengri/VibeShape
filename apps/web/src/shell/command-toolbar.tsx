@@ -22,6 +22,7 @@ import {
   editorCommandShortcutLabel,
   useEditorCommandCopy,
 } from "../commands/editor-command-presentation"
+import { SketchConstraintManagerToolbarSlot } from "../features/sketch/sketch-toolbar-portals"
 
 function ToolbarAction({
   buttonClassName,
@@ -461,6 +462,8 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
               getLabel={getLabel}
               label={t("sketchViewLabel")}
             />
+            <ToolbarSeparator />
+            <SketchConstraintManagerToolbarSlot />
             <ToolbarSeparator />
             {historyCommands.map((command) => (
               <ToolbarAction

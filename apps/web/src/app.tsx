@@ -32,6 +32,7 @@ import { initialProfileFeatureSelection } from "./features/part-design/profile-f
 import { selectedSketchLineId } from "./features/sketch/sketch-constraint-tools"
 import { selectedSketchSupportFromController } from "./features/sketch/sketch-support"
 import { type ActiveSketchTool, isActiveSketchEditorTool } from "./features/sketch/sketch-tool"
+import { SketchToolbarPortalsProvider } from "./features/sketch/sketch-toolbar-portals"
 import { ApplicationBar } from "./shell/application-bar"
 import { EditorCommandPalette } from "./shell/command-palette"
 import { CommandToolbar } from "./shell/command-toolbar"
@@ -584,13 +585,15 @@ function EditorApplication({
         returnFocusRef={sketchShortcutReturnFocusRef}
         onOpenChange={setSketchShortcutToolbarOpenWithAnchor}
       />
-      <CommandToolbar commands={commands} />
-      <EditorWorkspaceComposition
-        controller={controller}
-        session={session}
-        sessionActions={sessionActions}
-        workspaceActions={workspaceActions}
-      />
+      <SketchToolbarPortalsProvider>
+        <CommandToolbar commands={commands} />
+        <EditorWorkspaceComposition
+          controller={controller}
+          session={session}
+          sessionActions={sessionActions}
+          workspaceActions={workspaceActions}
+        />
+      </SketchToolbarPortalsProvider>
       <StatusBar
         controller={controller}
         selectedOriginPlane={session.selectedOriginPlane}
