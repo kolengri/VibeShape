@@ -679,7 +679,6 @@
           "profile": "Selected profile",
           "clearProfiles": "Clear selected profiles",
           "removeProfile": "Remove {profile}",
-          "profileSelectAriaLabel": "Select a profile in the 3D viewport: {profile}",
           "profileSelectHint": "Select a profile in the 3D viewport",
           "operation": "Result operation",
           "operationNew": "New body",

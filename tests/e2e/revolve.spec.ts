@@ -307,46 +307,26 @@ test.describe("selector-backed revolve", () => {
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     let form = page.getByRole("form", { name: "Revolve profile" })
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toHaveCount(0)
-    await form
-      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
-      .click()
+    await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 2" })
     await expect(form).toBeVisible()
-    await expect(
-      form.getByRole("button", {
-        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2",
-      }),
-    ).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Create revolve" }).click()
 
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     const editForm = page.getByRole("form", { name: "Edit revolve" })
-    await expect(
-      editForm.getByRole("button", {
-        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2",
-      }),
-    ).toBeVisible()
-    await editForm
-      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 2" })
-      .click()
+    await expect(editForm.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
+    await editForm.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await expect(editForm).toBeVisible()
-    await expect(
-      editForm.getByRole("button", {
-        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1",
-      }),
-    ).toBeVisible()
+    await expect(editForm.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
     await editForm.getByRole("button", { name: "Update revolve" }).click()
 
     await page.getByRole("treeitem", { name: "Variables" }).click()
     await page.getByRole("treeitem", { name: "Revolve 1" }).click()
     form = page.getByRole("form", { name: "Edit revolve" })
-    await expect(
-      form.getByRole("button", {
-        name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1",
-      }),
-    ).toBeVisible()
+    await expect(form.getByText("Sketch 1 · Profile 1", { exact: true })).toBeVisible()
   })
 
   test("creates, previews, edits, and reopens a graphical sketch-line-axis solid", async ({

@@ -1,8 +1,6 @@
-import { Button } from "@vibeshape/ui/components/button"
-import { Trash2, X } from "@vibeshape/ui/components/icons"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import type { ReactNode } from "react"
 import { ParameterPanel, type ParameterPanelCopy } from "../part-design/parameter-panel"
+import { ProfileSelectionField } from "../part-design/profile-selection-field"
 
 export type ExtrusionParameterPanelCopy = ParameterPanelCopy &
   Readonly<{
@@ -45,50 +43,18 @@ export function ExtrusionParameterPanel({
       legend={copy.parameters}
       message={message}
     >
-      <div className="grid gap-1 rounded-md border bg-panel-muted px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-medium text-muted-foreground">{copy.profile}</span>
-          {onProfilesClear ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={copy.clearProfiles}
-                  disabled={disabled}
-                  onClick={onProfilesClear}
-                >
-                  <Trash2 className="size-3.5" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{copy.clearProfiles}</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
-        {profileLabels.map((label, index) => (
-          <div key={label} className="flex items-center justify-between gap-2 text-sm">
-            <span className="min-w-0 truncate">{label}</span>
-            {onProfileRemove ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={copy.removeProfile(label)}
-                    disabled={disabled}
-                    onClick={() => onProfileRemove(index)}
-                  >
-                    <X className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{copy.removeProfile(label)}</TooltipContent>
-              </Tooltip>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      <ProfileSelectionField
+        copy={{
+          clear: copy.clearProfiles,
+          label: copy.profile,
+          remove: copy.removeProfile,
+          select: copy.profile,
+        }}
+        disabled={disabled}
+        labels={profileLabels}
+        onClear={onProfilesClear}
+        onRemove={onProfileRemove}
+      />
       {operationField}
       {targetField}
       {distanceField}
