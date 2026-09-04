@@ -3073,6 +3073,7 @@ function SketchTransformGeometry({
 
 type ConstraintGlyph = Readonly<{
   constraintType: SketchRecord["constraints"][number]["type"]
+  entityIds: readonly string[]
   external: boolean
   id: SketchConstraintId
   label: string
@@ -3316,10 +3317,12 @@ function constraintGlyph(
   const point = constraintAnchor(constraint, pointAnchor, geometryAnchor, ellipseAxisAnchor)
   const label = dimensionLabel ?? geometricConstraintLabels[constraint.type]
   const reference = isReferenceSketchDimension(constraint)
+  const entityIds = sketchConstraintEntityIds(constraint)
   return point && label
     ? {
         constraintType: constraint.type,
-        external: sketchConstraintEntityIds(constraint).some((id) => projectedEntityIds.has(id)),
+        entityIds,
+        external: entityIds.some((id) => projectedEntityIds.has(id)),
         id: constraint.id,
         label,
         point,
@@ -3467,6 +3470,12 @@ type ConstraintAnnotationDrag = Readonly<{
   pointerId: number
   scale: number
 }>
+
+type ConstraintRelatedEntityInteraction = "focus" | "hover"
+type ConstraintRelatedEntityChange = (
+  interaction: ConstraintRelatedEntityInteraction,
+  glyph: ConstraintGlyph | null,
+) => void
 
 function constraintGlyphAccessibleLabel(
   glyph: ConstraintGlyph,
@@ -3624,34 +3633,28 @@ function beginConstraintAnnotationDrag({
   window.addEventListener("pointercancel", finish)
 }
 
-function ConstraintAnnotation({
-  bounds,
-  cleanupRef,
-  dragRef,
-  editDimensionLabel,
-  glyph,
-  onEditDimension,
-  onPositionChange,
-  onSelect,
-  pointerEventsClass,
-  scale,
-  selected,
-  selectConstraintLabel,
-  selectExternalConstraintLabel,
-  suppressClickRef,
-  viewport,
-}: Readonly<{
-  bounds: SketchBounds
+function constraintRelatedEntityEventHandlers(
+  glyph: ConstraintGlyph,
+  onChange: ConstraintRelatedEntityChange,
+) {
+  return {
+    onBlur: () => onChange("focus", null),
+    onFocus: () => onChange("focus", glyph),
+    onPointerEnter: () => onChange("hover", glyph),
+    onPointerLeave: () => onChange("hover", null),
+  }
+}
+
+type ConstraintAnnotationInteraction = Readonly<{
   cleanupRef: RefObject<(() => void) | null>
   dragRef: RefObject<ConstraintAnnotationDrag | null>
   editDimensionLabel: (label: string) => string
-  glyph: ConstraintGlyph
   onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+  onRelatedEntitiesChange: ConstraintRelatedEntityChange
   onSelect: (constraintId: SketchConstraintId) => void
   pointerEventsClass: string
   scale: number
-  selected: boolean
   selectConstraintLabel: (
     label: string,
     constraintType: SketchRecord["constraints"][number]["type"],
@@ -3661,39 +3664,62 @@ function ConstraintAnnotation({
     constraintType: SketchRecord["constraints"][number]["type"],
   ) => string
   suppressClickRef: RefObject<boolean>
+}>
+
+function ConstraintAnnotation({
+  bounds,
+  glyph,
+  interaction,
+  selected,
+  viewport,
+}: Readonly<{
+  bounds: SketchBounds
+  glyph: ConstraintGlyph
+  interaction: ConstraintAnnotationInteraction
+  selected: boolean
   viewport: SketchViewportSize
 }>) {
   const accessibleLabel = constraintGlyphAccessibleLabel(
     glyph,
-    editDimensionLabel,
-    selectConstraintLabel,
-    selectExternalConstraintLabel,
+    interaction.editDimensionLabel,
+    interaction.selectConstraintLabel,
+    interaction.selectExternalConstraintLabel,
   )
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
+          {...constraintRelatedEntityEventHandlers(glyph, interaction.onRelatedEntitiesChange)}
           data-sketch-constraint-id={glyph.id}
           data-sketch-constraint-kind={glyph.dimensional ? "dimension" : "geometric"}
           data-sketch-dimension-mode={glyph.reference ? "reference" : undefined}
           data-sketch-constraint-source={glyph.external ? "external" : "internal"}
           aria-label={accessibleLabel}
           aria-pressed={selected}
-          className={constraintGlyphClassName(glyph, pointerEventsClass, selected)}
+          className={constraintGlyphClassName(glyph, interaction.pointerEventsClass, selected)}
           style={constraintAnnotationPosition(glyph.point, bounds, viewport)}
-          onClick={(event) => selectConstraintAnnotation(event, glyph, onSelect, suppressClickRef)}
-          onDoubleClick={(event) => editConstraintAnnotation(event, glyph, onEditDimension)}
+          onClick={(event) =>
+            selectConstraintAnnotation(
+              event,
+              glyph,
+              interaction.onSelect,
+              interaction.suppressClickRef,
+            )
+          }
+          onDoubleClick={(event) =>
+            editConstraintAnnotation(event, glyph, interaction.onEditDimension)
+          }
           onPointerDown={(event) =>
             beginConstraintAnnotationDrag({
               bounds,
-              cleanupRef,
-              dragRef,
+              cleanupRef: interaction.cleanupRef,
+              dragRef: interaction.dragRef,
               event,
               glyph,
-              onPositionChange,
-              scale,
-              suppressClickRef,
+              onPositionChange: interaction.onPositionChange,
+              scale: interaction.scale,
+              suppressClickRef: interaction.suppressClickRef,
             })
           }
         >
@@ -3708,41 +3734,15 @@ function ConstraintAnnotation({
 
 function ConstraintAnnotationCollection({
   bounds,
-  cleanupRef,
-  dragRef,
-  editDimensionLabel,
   glyphs,
-  onEditDimension,
-  onPositionChange,
-  onSelect,
-  pointerEventsClass,
-  scale,
+  interaction,
   selectedConstraintId,
-  selectConstraintLabel,
-  selectExternalConstraintLabel,
-  suppressClickRef,
   viewport,
 }: Readonly<{
   bounds: SketchBounds
-  cleanupRef: RefObject<(() => void) | null>
-  dragRef: RefObject<ConstraintAnnotationDrag | null>
-  editDimensionLabel: (label: string) => string
   glyphs: readonly ConstraintGlyph[]
-  onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-  onPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-  onSelect: (constraintId: SketchConstraintId) => void
-  pointerEventsClass: string
-  scale: number
+  interaction: ConstraintAnnotationInteraction
   selectedConstraintId: SketchConstraintId | null
-  selectConstraintLabel: (
-    label: string,
-    constraintType: SketchRecord["constraints"][number]["type"],
-  ) => string
-  selectExternalConstraintLabel: (
-    label: string,
-    constraintType: SketchRecord["constraints"][number]["type"],
-  ) => string
-  suppressClickRef: RefObject<boolean>
   viewport: SketchViewportSize
 }>) {
   return (
@@ -3751,19 +3751,9 @@ function ConstraintAnnotationCollection({
         <ConstraintAnnotation
           key={glyph.id}
           bounds={bounds}
-          cleanupRef={cleanupRef}
-          dragRef={dragRef}
-          editDimensionLabel={editDimensionLabel}
           glyph={glyph}
-          onEditDimension={onEditDimension}
-          onPositionChange={onPositionChange}
-          onSelect={onSelect}
-          pointerEventsClass={pointerEventsClass}
-          scale={scale}
+          interaction={interaction}
           selected={selectedConstraintId === glyph.id}
-          selectConstraintLabel={selectConstraintLabel}
-          selectExternalConstraintLabel={selectExternalConstraintLabel}
-          suppressClickRef={suppressClickRef}
           viewport={viewport}
         />
       ))}
@@ -3786,38 +3776,35 @@ function useConstraintGlyphPresentation(
   })
 }
 
+type ConstraintAnnotationConfiguration = Pick<
+  SketchDrawingConfiguration,
+  | "editDimensionLabel"
+  | "onConstraintSelectionChange"
+  | "selectedConstraintId"
+  | "selectConstraintLabel"
+  | "selectExternalConstraintLabel"
+>
+
 function ConstraintAnnotations({
   bounds,
+  configuration,
   dimensionLabelPositions,
-  editDimensionLabel,
   geometry,
   interactive,
   onEditDimension,
   onDimensionPositionChange,
-  onSelect,
-  selectedConstraintId,
-  selectConstraintLabel,
-  selectExternalConstraintLabel,
+  onRelatedEntitiesChange,
   sketch,
   viewport,
 }: {
   bounds: SketchBounds
+  configuration: ConstraintAnnotationConfiguration
   dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
-  editDimensionLabel: (label: string) => string
   geometry: SketchGeometryPresentation
   interactive: boolean
   onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
   onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
-  onSelect: (constraintId: SketchConstraintId) => void
-  selectedConstraintId: SketchConstraintId | null
-  selectConstraintLabel: (
-    label: string,
-    constraintType: SketchRecord["constraints"][number]["type"],
-  ) => string
-  selectExternalConstraintLabel: (
-    label: string,
-    constraintType: SketchRecord["constraints"][number]["type"],
-  ) => string
+  onRelatedEntitiesChange: ConstraintRelatedEntityChange
   sketch: SketchRecord
   viewport: SketchViewportSize
 }) {
@@ -3833,22 +3820,26 @@ function ConstraintAnnotations({
     [],
   )
   const glyphs = useConstraintGlyphPresentation(sketch, geometry, dimensionLabelPositions)
+  const interaction: ConstraintAnnotationInteraction = {
+    cleanupRef: dragCleanupRef,
+    dragRef,
+    editDimensionLabel: configuration.editDimensionLabel,
+    onEditDimension,
+    onPositionChange: onDimensionPositionChange,
+    onRelatedEntitiesChange,
+    onSelect: configuration.onConstraintSelectionChange,
+    pointerEventsClass,
+    scale,
+    selectConstraintLabel: configuration.selectConstraintLabel,
+    selectExternalConstraintLabel: configuration.selectExternalConstraintLabel,
+    suppressClickRef,
+  }
   return (
     <ConstraintAnnotationCollection
       bounds={bounds}
-      cleanupRef={dragCleanupRef}
-      dragRef={dragRef}
-      editDimensionLabel={editDimensionLabel}
       glyphs={glyphs}
-      onEditDimension={onEditDimension}
-      onPositionChange={onDimensionPositionChange}
-      onSelect={onSelect}
-      pointerEventsClass={pointerEventsClass}
-      scale={scale}
-      selectedConstraintId={selectedConstraintId}
-      selectConstraintLabel={selectConstraintLabel}
-      selectExternalConstraintLabel={selectExternalConstraintLabel}
-      suppressClickRef={suppressClickRef}
+      interaction={interaction}
+      selectedConstraintId={configuration.selectedConstraintId}
       viewport={viewport}
     />
   )
@@ -3861,6 +3852,7 @@ function SketchDrawingAnnotations({
   dimensionLabelPositions,
   onEditDimension,
   onDimensionPositionChange,
+  onRelatedEntitiesChange,
   sketch,
   state,
 }: Pick<SketchDrawingViewProps, "configuration" | "sketch" | "state"> &
@@ -3868,22 +3860,36 @@ function SketchDrawingAnnotations({
     dimensionLabelPositions: ReadonlyMap<SketchConstraintId, SketchPoint2>
     onEditDimension: (constraintId: SketchConstraintId, point: SketchPoint2) => void
     onDimensionPositionChange: (constraintId: SketchConstraintId, point: SketchPoint2) => void
+    onRelatedEntitiesChange: ConstraintRelatedEntityChange
   }>) {
+  const annotationConfiguration = useMemo<ConstraintAnnotationConfiguration>(
+    () => ({
+      editDimensionLabel: configuration.editDimensionLabel,
+      onConstraintSelectionChange: configuration.onConstraintSelectionChange,
+      selectedConstraintId: configuration.selectedConstraintId,
+      selectConstraintLabel: configuration.selectConstraintLabel,
+      selectExternalConstraintLabel: configuration.selectExternalConstraintLabel,
+    }),
+    [
+      configuration.editDimensionLabel,
+      configuration.onConstraintSelectionChange,
+      configuration.selectedConstraintId,
+      configuration.selectConstraintLabel,
+      configuration.selectExternalConstraintLabel,
+    ],
+  )
   return (
     <StableConstraintAnnotations
       bounds={state.bounds}
+      configuration={annotationConfiguration}
       dimensionLabelPositions={dimensionLabelPositions}
-      editDimensionLabel={configuration.editDimensionLabel}
       geometry={state.geometry}
       interactive={state.editable && isSketchSelectionTool(configuration.editorTool)}
       onEditDimension={onEditDimension}
       onDimensionPositionChange={onDimensionPositionChange}
-      selectedConstraintId={configuration.selectedConstraintId}
-      selectConstraintLabel={configuration.selectConstraintLabel}
-      selectExternalConstraintLabel={configuration.selectExternalConstraintLabel}
+      onRelatedEntitiesChange={onRelatedEntitiesChange}
       sketch={sketch}
       viewport={state.viewportSize}
-      onSelect={configuration.onConstraintSelectionChange}
     />
   )
 }
@@ -5216,6 +5222,165 @@ function SketchInferenceSourceHighlight({
           markerScale={markerScale}
           point={point}
           selected={false}
+        />
+      ))}
+    </g>
+  )
+}
+
+function entitiesForIds<Value>(
+  entityIds: ReadonlySet<string>,
+  values: readonly Value[],
+  id: (value: Value) => string,
+) {
+  const byId = new Map(values.map((value) => [id(value), value]))
+  return [...entityIds].flatMap((entityId) => {
+    const value = byId.get(entityId)
+    return value ? [value] : []
+  })
+}
+
+function ConstraintRelatedCurveHighlight({
+  entity,
+  presentation,
+}: {
+  entity: SketchCurveEntity
+  presentation: SketchGeometryPresentation
+}) {
+  return (
+    <g data-sketch-constraint-related-entity={entity.id}>
+      <SketchCurve
+        entity={entity}
+        hidden={false}
+        interactive={false}
+        points={presentation.pointsById}
+        preselected
+        selected={false}
+        solvedRadius={presentation.solvedCircles.get(entity.id)}
+        onPointerDown={ignoreCurveAction}
+      />
+    </g>
+  )
+}
+
+function ConstraintRelatedPointHighlight({
+  markerScale,
+  point,
+  presentation,
+}: {
+  markerScale: number
+  point: DisplayPoint
+  presentation: SketchGeometryPresentation
+}) {
+  return (
+    <g data-sketch-constraint-related-entity={point.id}>
+      <SketchPointMarker
+        center={presentation.centerPointIds.has(point.id)}
+        dragging={false}
+        inferenceSource
+        markerScale={markerScale}
+        point={point}
+        selected={false}
+      />
+    </g>
+  )
+}
+
+function ConstraintRelatedExternalLineHighlight({ line }: { line: DisplayExternalLine }) {
+  return (
+    <line
+      data-sketch-constraint-related-entity={line.id}
+      x1={line.start.x}
+      y1={line.start.y}
+      x2={line.end.x}
+      y2={line.end.y}
+      className="stroke-preselection"
+      strokeDasharray="5 3"
+      strokeWidth={3}
+      vectorEffect="non-scaling-stroke"
+    />
+  )
+}
+
+function ConstraintRelatedExternalPointHighlight({
+  markerScale,
+  point,
+}: {
+  markerScale: number
+  point: DisplayPoint
+}) {
+  const markerExtent = 4 * markerScale
+  return (
+    <g data-sketch-constraint-related-entity={point.id}>
+      <line
+        x1={point.x - markerExtent}
+        x2={point.x + markerExtent}
+        y1={point.y}
+        y2={point.y}
+        className="stroke-preselection"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+      <line
+        x1={point.x}
+        x2={point.x}
+        y1={point.y - markerExtent}
+        y2={point.y + markerExtent}
+        className="stroke-preselection"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+    </g>
+  )
+}
+
+function SketchConstraintRelatedEntityHighlight({
+  entityIds,
+  markerScale,
+  presentation,
+}: {
+  entityIds: ReadonlySet<string>
+  markerScale: number
+  presentation: SketchGeometryPresentation
+}) {
+  if (entityIds.size === 0) return null
+  const curves = entitiesForIds(
+    entityIds,
+    [...presentation.curves, ...presentation.externalCurves],
+    ({ id }) => id,
+  )
+  const localPoints = entitiesForIds(entityIds, presentation.points, ({ id }) => id)
+  const externalLines = entitiesForIds(entityIds, presentation.externalLines, ({ id }) => id)
+  const externalPoints = entitiesForIds(entityIds, presentation.externalPoints, ({ id }) => id)
+  return (
+    <g
+      className="pointer-events-none"
+      data-sketch-constraint-related-entity-layer
+      transform="scale(1 -1)"
+    >
+      {curves.map((entity) => (
+        <ConstraintRelatedCurveHighlight
+          key={entity.id}
+          entity={entity}
+          presentation={presentation}
+        />
+      ))}
+      {localPoints.map((point) => (
+        <ConstraintRelatedPointHighlight
+          key={point.id}
+          markerScale={markerScale}
+          point={point}
+          presentation={presentation}
+        />
+      ))}
+      {externalLines.map((line) => (
+        <ConstraintRelatedExternalLineHighlight key={line.id} line={line} />
+      ))}
+      {externalPoints.map((point) => (
+        <ConstraintRelatedExternalPointHighlight
+          key={point.id}
+          markerScale={markerScale}
+          point={point}
         />
       ))}
     </g>
@@ -8576,6 +8741,21 @@ function consumeSecondaryContextMenu(input: {
   return true
 }
 
+function useConstraintRelatedEntityHighlight(sketch: SketchRecord) {
+  const [active, setActive] = useState<
+    Readonly<Record<ConstraintRelatedEntityInteraction, SketchConstraintId | null>>
+  >({ focus: null, hover: null })
+  const highlightedConstraintId = active.hover ?? active.focus
+  const entityIds = useMemo(() => {
+    const constraint = sketch.constraints.find(({ id }) => id === highlightedConstraintId)
+    return new Set(constraint ? sketchConstraintEntityIds(constraint) : [])
+  }, [highlightedConstraintId, sketch.constraints])
+  const onChange = useCallback<ConstraintRelatedEntityChange>((interaction, glyph) => {
+    setActive((current) => ({ ...current, [interaction]: glyph?.id ?? null }))
+  }, [])
+  return { entityIds, onChange }
+}
+
 function SketchDrawingView({
   configuration,
   handlers,
@@ -8588,6 +8768,7 @@ function SketchDrawingView({
     () => inferenceSourceEntityIds(state.inference),
     [state.inference],
   )
+  const constraintHighlight = useConstraintRelatedEntityHighlight(sketch)
   const contextTargetRef = useRef<readonly SketchEntityId[]>([])
   const secondaryPointerGestureRef = useRef<SecondaryPointerGesture | null>(null)
   const replayingContextMenuRef = useRef(false)
@@ -8752,6 +8933,11 @@ function SketchDrawingView({
               markerScale={markerScale}
               presentation={state.geometry}
             />
+            <SketchConstraintRelatedEntityHighlight
+              entityIds={constraintHighlight.entityIds}
+              markerScale={markerScale}
+              presentation={state.geometry}
+            />
             <DraggedSketchGeometry
               dragTarget={state.dragTarget}
               presentation={state.geometry}
@@ -8794,6 +8980,7 @@ function SketchDrawingView({
         dimensionLabelPositions={state.dimensionLabelPositions}
         onEditDimension={handlers.onEditDimension}
         onDimensionPositionChange={handlers.onDimensionPositionChange}
+        onRelatedEntitiesChange={constraintHighlight.onChange}
         sketch={sketch}
         state={state}
       />
