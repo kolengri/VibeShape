@@ -9,7 +9,7 @@ import {
   type SketchReferenceHealth,
 } from "@vibeshape/domain"
 import type { DocumentModelReferenceEvidence, DocumentWorkerResponse } from "@vibeshape/protocol"
-import { terminalFeatureIds } from "../features/part-design/terminal-features"
+import { type ModelBodyView, terminalModelBodies } from "../features/part-design/model-bodies"
 import {
   inspectSketchSupportHealth,
   type SketchSupportHealth,
@@ -30,6 +30,7 @@ export type ModelTreeHistoryView = Readonly<{
   rows: readonly HistoryViewRow[]
   labelsByRef: ReadonlyMap<string, string>
   bodyFeatures: readonly FeatureRecord[]
+  modelBodies: readonly ModelBodyView[]
   graphFailed: boolean
   diagnostic?: string
 }>
@@ -94,6 +95,7 @@ export function selectModelTreeHistory(
       rows,
       labelsByRef: labelsByRef(rows),
       bodyFeatures: [],
+      modelBodies: [],
       graphFailed: true,
       diagnostic: graphResult.diagnostic.message,
     }
@@ -123,11 +125,15 @@ export function selectModelTreeHistory(
       },
     ]
   })
-  const bodyIds = terminalFeatureIds(snapshot.features)
+  const modelBodies = rebuild ? terminalModelBodies(snapshot.features, rebuild) : null
+  const bodyIds = modelBodies
+    ? new Set(modelBodies.map(({ feature }) => feature.id))
+    : new Set<string>()
   return {
     rows,
     labelsByRef: labelsByRef(rows),
     bodyFeatures: snapshot.features.filter((feature) => bodyIds.has(feature.id)),
+    modelBodies: modelBodies ?? [],
     graphFailed: false,
   }
 }

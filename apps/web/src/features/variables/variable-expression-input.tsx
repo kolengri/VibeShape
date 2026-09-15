@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { useNumericValueSelection } from "./use-numeric-value-selection"
 
 const MAX_VISIBLE_SUGGESTIONS = 8
 const variableTokenPattern = /#([A-Za-z_][A-Za-z0-9_]*)?$/
@@ -374,16 +375,19 @@ export function VariableExpressionInput({
   onValueChange,
   ref,
   suggestions,
+  onPointerDown,
+  onKeyUp,
   ...inputProps
 }: VariableExpressionInputProps) {
   const t = useTranslations("app.variableSuggestions")
   const { activeOptionId, inputRef, listboxId, refresh, selectSuggestion, setState, state } =
     useVariableSuggestionState({ excludedSuggestionId, onValueChange, suggestions })
+  const selectionHandlers = useNumericValueSelection({ onBlur, onClick, onKeyUp, onPointerDown })
   const inputBindings = variableExpressionInputBindings({
     inputRef,
-    onBlur,
+    onBlur: selectionHandlers.onBlur,
     onChange,
-    onClick,
+    onClick: selectionHandlers.onClick,
     onFocus,
     onKeyDown,
     onSelect,
@@ -401,6 +405,8 @@ export function VariableExpressionInput({
         <Input
           {...inputProps}
           {...inputBindings}
+          onPointerDown={selectionHandlers.onPointerDown}
+          onKeyUp={selectionHandlers.onKeyUp}
           role="combobox"
           aria-autocomplete="list"
           aria-controls={state ? listboxId : undefined}

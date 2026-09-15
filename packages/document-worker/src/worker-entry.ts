@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { resolveSelectedEdgeCandidates } from "@vibeshape/application/selected-edge-resolution"
 import { ReplicadGeometryEngine } from "@vibeshape/geometry-worker/engine"
 import { createBrowserSketchSolvePort } from "@vibeshape/sketch-solver/browser"
 import { createDocumentWorkerRuntime } from "./runtime"
@@ -7,7 +8,7 @@ import { createDocumentWorkerRuntime } from "./runtime"
 const workerScope = self as DedicatedWorkerGlobalScope
 let sketchSolvePortPromise: ReturnType<typeof createBrowserSketchSolvePort> | null = null
 const runtime = createDocumentWorkerRuntime(
-  new ReplicadGeometryEngine(),
+  new ReplicadGeometryEngine(resolveSelectedEdgeCandidates),
   {
     postMessage(message, transfer = []) {
       workerScope.postMessage(message, { transfer })

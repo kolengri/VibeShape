@@ -387,15 +387,15 @@ geometry-class drift, and degenerate projections; projection tests cover full an
 - shadcn component updates pass typecheck, both themes, and keyboard E2E.
 - Shared UI component tests cover native uncontrolled behavior before TanStack Form adapters, including double activation, async settlement, disabled/busy semantics, labels, and validation relationships.
 - Editor-session component tests prove one vanilla Zustand store per provider mount, retention across ordinary rerenders, and reset only when the owning React boundary remounts.
-- Planar-face Intersection coverage proves that persisted references exclude transient mesh identities, current worker-local face keys never cross the protocol boundary, 3D face selection routes only through the explicit tool, and the browser executes the exact OCCT section into one read-only sketch line. The current document protocol version is 15.
+- Planar-face Intersection coverage proves that persisted references exclude transient mesh identities, current worker-local face keys never cross the protocol boundary, 3D face selection routes only through the explicit tool, and the browser executes the exact OCCT section into one read-only sketch line. The current document protocol version is 18.
 - I18n tests cover locale resolution, base-language fallback, blocked preference storage, runtime switching, document language/direction, duplicate namespace ownership, and exact English key/placeholder parity for every added locale.
 - CI Bun pin matches `packageManager`; an incompatible local version fails with a clear error.
 
-The automatic pull-request workflow is one Linux job: frozen install, skill validation, format, lint, typecheck, unit tests, critical dependency audit, and uncached Fallow audit. The critical audit retries only bounded registry transport failures, applies a per-attempt timeout, and still fails immediately when a completed audit reports a critical advisory. Production build, all Playwright suites, native builds, and spike evidence are local merge gates. The workflow does not run again on `main`.
+The automatic pull-request workflow is one Linux job: frozen install, skill validation, format, lint, typecheck, unit tests, production build, critical dependency audit, and uncached Fallow audit. The critical audit retries only bounded registry transport failures, applies a per-attempt timeout, and still fails immediately when a completed audit reports a critical advisory. All Playwright suites, native builds, and spike evidence are local merge gates. The workflow does not run again on `main`.
 
 Fallow complements but does not replace Biome, TypeScript, dependency CVE scanning, executable boundary tests, or behavior tests. CI checks out full history for merge-base detection, runs the new-only gate without an analysis cache, and distinguishes exit code `1` findings from exit code `2` configuration or runtime failures.
 
-The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed component tests. The automatic pull-request workflow performs a frozen install, skill validation, formatting, linting, typechecking, unit tests, critical dependency audit, and uncached Fallow audit in one job. A superseding commit cancels the older run, and the squash-merged tree is not run again on `main`.
+The foundation scaffold implements these gates as root Bun scripts. Vitest discovers TypeScript and TSX tests across workspaces and build scripts, including jsdom-backed component tests. The automatic pull-request workflow performs a frozen install, skill validation, formatting, linting, typechecking, unit tests, production build, critical dependency audit, and uncached Fallow audit in one job. A superseding commit cancels the older run, and the squash-merged tree is not run again on `main`.
 
 The external-sketch context suite requires a new unsaved draft to include every committed sketch while an existing draft excludes itself and later sketches. Component coverage proves that passive earlier points and lines wake without draft mutation, distinguishes solid ordinary source geometry from dashed construction geometry, and verifies that `Shift` suppresses the preview while acceptance creates one stable reference plus one local Coincident or Point on line relation. External-constraint coverage requires point and line relations to resolve annotation anchors from solved projected geometry, remain selectable with non-color external-relation semantics, and retain that presentation after Finish and reopen. Collision fixtures require source-sketch identity to disambiguate repeated entity IDs, including a two-reference external intersection. Dense inference fixtures require the spatially queried candidate set to match unbounded inference while excluding distant geometry from the pointer hot path. A graphical-overlap fixture requires the normal-view chooser to expose deterministic source labels without mutating the draft, cycle its analytical preselection forward and backward with grave accent, and commit only the Enter-confirmed source. Browser coverage proves both line wake-up without activating Use and keyboard-driven graphical disambiguation of two coincident earlier-sketch lines in Chromium, Firefox, and WebKit. A saved-later-sketch regression creates two sketches around an upstream body, reopens the later sketch, and requires normal mode to retain the body while assigning each earlier sketch only to the analytical projected layer. It then requires orbit mode to restore the earlier saved sketch plus one active draft to Three.js, verifies the model-tree visibility action in normal mode, and rejects duplicate saved-sketch rendering across layer transitions.
 
@@ -497,7 +497,7 @@ A Web Worker or successful WebAssembly instantiation alone is not isolation evid
 
 ## Automation and MCP conformance
 
-The adapter-neutral automation layer is tested before an MCP dependency exists. Query and command fixtures cover:
+The adapter-neutral automation layer is tested independently of the MCP transport. Query and command fixtures cover:
 
 - bounded, revision-tagged resources with pagination and semantic-versus-derived markers;
 - explicit command input and structured output schemas plus stable diagnostics;
@@ -532,3 +532,41 @@ Release is blocked by:
 - unexplained major memory or performance regression;
 - executable extension support without an accepted sandbox result, deterministic version lock, permission revocation, and non-destructive restricted mode;
 - advertised MCP write support without accepted pairing, draft isolation, confirmation, revision, cancellation, provenance, and real-client E2E evidence.
+## CAD workflow baseline gate
+
+Changes to sketch/profile selection, planar-face support, Extrude/Revolve or shared task lifecycle
+require this focused baseline before merge. It supplements the owning unit/invariant tests and the
+production build, which is also configured in pull-request CI. Run it in isolation from other test,
+typecheck and build processes; the ordinary worker and browser must own the runtime evidence.
+
+```bash
+bun run test:e2e \
+  tests/e2e/finished-sketch-features.spec.ts \
+  tests/e2e/extrusion.spec.ts \
+  tests/e2e/extrusion-compact.spec.ts \
+  tests/e2e/feature-input-validation.spec.ts \
+  tests/e2e/revolve.spec.ts \
+  tests/e2e/sketch-editor.spec.ts \
+  --grep 'selector-backed|starts (Extrude|Revolve) immediately|keeps the Extrude preview|rejects invalid Extrude|keeps sketch lifecycle actions compact|opens registered sketch shortcuts beside the pointer at 200 percent zoom|keeps the expanded sketch panel inside a compact viewport|draws, constrains, dimensions, edits, persists, and reopens a profile' \
+  --workers=3 --trace=retain-on-failure
+```
+
+The command uses all three configured browser projects. It covers drawing/constraints/finish,
+preselected and unselected profile entry, preview/Apply/Cancel, invalid input, edit, reload,
+planar-face picking and replacement, overlapping supports, and compact sketch/Extrude layouts.
+The no-selection workflow must keep profile commands available when eligible saved profiles exist:
+activation opens the picker and cannot create a feature until a profile is selected. Empty documents
+still disable these commands. Zero or malformed Extrude distances must remove the draft preview,
+disable saving and preserve existing geometry and authored values after cancellation/reopen.
+
+A rendered feature count alone is not committed-geometry readiness: it includes disposable preview
+meshes, which deliberately cannot be selected. A test that picks a face after Apply must first await
+the submitting form closing and preview status returning to idle, then check the committed model.
+Preserve separate ordering regressions for late save completion and cancelled preview workers.
+
+Record the run date, exact command, source revision plus any uncommitted changes, browser projects,
+expected/discovered case count, terminal pass/fail totals and artifact location. Keep traces,
+screenshots and console errors from failures before another run replaces Playwright's output.
+After a fix, rerun the entire baseline without retries; a focused retry or screenshot alone does
+not establish completion. Update the selected tests when workflow names or boundaries change.
+This is a correctness gate, not a cold-start, throughput or memory certification.

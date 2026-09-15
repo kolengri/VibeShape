@@ -8,6 +8,7 @@ import {
   type FeatureRecord,
   projectedExternalSketchEntities,
   type SketchEntity,
+  type SketchEntityId,
   type SketchPoint2,
   type SketchRecord,
   sketchCurvePointIds,
@@ -31,6 +32,9 @@ type DeepReadonly<T> = T extends readonly (infer U)[]
 type SketchProfileResult = DeepReadonly<SolvedSketchWire["profileResult"]>
 type SketchProfileLoop = SketchProfileResult["loops"][number]
 export type SketchDisplaySolution = Readonly<{
+  sketchId?: string
+  sourceRevision?: number
+  status?: SolvedSketchWire["status"]
   points: readonly SolvedSketchWire["points"][number][]
   circles: readonly SolvedSketchWire["circles"][number][]
   profileResult?: SketchProfileResult
@@ -183,6 +187,54 @@ function worldPoint(frame: SupportFrame, local: SketchPoint2) {
   ] as const
 }
 
+function currentSolvedPointSource(
+  document: DocumentSnapshot,
+  sketch: SketchRecord,
+  solution: SketchDisplaySolution | null,
+) {
+  if (!solution || solution.sketchId !== sketch.id || solution.sourceRevision !== document.revision)
+    return null
+  return solution.status === "fully-constrained" || solution.status === "under-constrained"
+    ? solution
+    : null
+}
+
+function uniqueSolvedPoints(points: Readonly<SolvedSketchWire["points"]>) {
+  const byId = new Map<string, SolvedSketchWire["points"][number]>()
+  for (const point of points) {
+    if (byId.has(point.entityId)) return null
+    byId.set(point.entityId, point)
+  }
+  return byId
+}
+
+function solvedPointMetadata(
+  document: DocumentSnapshot,
+  sketch: SketchRecord,
+  solution: SketchDisplaySolution | null,
+  frame: SupportFrame,
+) {
+  const source = currentSolvedPointSource(document, sketch, solution)
+  if (!source) return undefined
+  const solvedById = uniqueSolvedPoints(source.points)
+  if (!solvedById) return undefined
+
+  const authoredPoints = sketch.entities.filter(
+    (entity): entity is Extract<SketchEntity, { type: "point" }> => entity.type === "point",
+  )
+  const metadata: { entityId: SketchEntityId; position: [number, number, number] }[] = []
+  for (const authoredPoint of authoredPoints) {
+    const solvedPoint = solvedById.get(authoredPoint.id)
+    if (!solvedPoint || !Number.isFinite(solvedPoint.x) || !Number.isFinite(solvedPoint.y)) {
+      return undefined
+    }
+    const position = worldPoint(frame, solvedPoint)
+    if (position.some((coordinate) => !Number.isFinite(coordinate))) return undefined
+    metadata.push({ entityId: authoredPoint.id, position: [...position] })
+  }
+  return metadata
+}
+
 function appendPoint(target: number[], frame: SupportFrame, local: SketchPoint2) {
   target.push(...worldPoint(frame, local))
 }
@@ -332,6 +384,7 @@ export function materializeSketchDisplay(
 ): SketchDisplayRecord | null {
   const frame = sketchFrame(sketch, document, features, new Set(), geometry)
   if (!frame) return null
+  const solvedPoints = solvedPointMetadata(document, sketch, solution, frame)
   const entities = [...sketch.entities, ...resolvedExternalDisplayEntities(sketch, solution)]
   const { points, radii } = solvedGeometry(entities, solution)
   const buffers: SketchDisplayBuffers = {
@@ -361,5 +414,6 @@ export function materializeSketchDisplay(
     constructionPointPositions: new Float32Array(buffers.constructionPointPositions),
     frame,
     profiles: displayProfiles(sketch, solution, entities, points, radii),
+    ...(solvedPoints ? { solvedPoints } : {}),
   }
 }

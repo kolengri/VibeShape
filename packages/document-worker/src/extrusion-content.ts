@@ -13,8 +13,10 @@ import {
   type DocumentSnapshot,
   type EdgeTopoRef,
   type FeatureRecord,
+  type HoleFeatureParameters,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
+  readHoleFeatureParameters,
   readRevolveFeatureParameters,
   resolveTopologyReference,
   type SketchEntity,
@@ -28,6 +30,7 @@ import {
   extrusionFeatureContentParametersSchema,
   extrusionMultiProfileFeatureContentParametersSchema,
   extrusionMultiProfileModifyingFeatureContentParametersSchema,
+  holeFeatureContentParametersSchema,
   revolveFeatureContentParametersSchema,
   revolveMultiProfileFeatureContentParametersSchema,
   revolveMultiProfileModifyingFeatureContentParametersSchema,
@@ -423,7 +426,11 @@ function resolveRevolveAxis(
 }
 
 function domainTopologyCandidate(candidate: ProtocolTopologyCandidate) {
-  const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
+  const {
+    referenceGeometry: _referenceGeometry,
+    edgePolyline: _edgePolyline,
+    ...domainCandidate
+  } = candidate
   return domainCandidate
 }
 
@@ -654,6 +661,21 @@ async function prepareFeatureContent(
     }
   }
   const profileFeature = profileFeatureFromRecord(feature)
+  const hole = readHoleFeatureParameters(feature)
+  if (hole)
+    return prepareHoleContent(
+      {
+        document,
+        features,
+        geometry,
+        modelMaterializationCache,
+        sectionPlanarFace,
+        solveSketch,
+        solvedBySketchId,
+      },
+      feature,
+      hole,
+    )
   if (!profileFeature) return null
   return prepareProfileFeatureContent({
     document,
@@ -679,9 +701,8 @@ type ProfileFeature =
       multiProfile: boolean
     }>
 
-type ProfileFeatureContentInput = Readonly<{
+type SketchFeatureContentInput = Readonly<{
   document: DocumentSnapshot
-  feature: ProfileFeature
   features: readonly FeatureRecord[]
   geometry: readonly FeatureGeometryRecord[]
   modelMaterializationCache: ExternalModelMaterializationCache
@@ -689,6 +710,83 @@ type ProfileFeatureContentInput = Readonly<{
   solveSketch: SketchSolvePort | null
   solvedBySketchId: Map<string, Promise<SolveSketchRecordResult>>
 }>
+
+type ProfileFeatureContentInput = SketchFeatureContentInput & Readonly<{ feature: ProfileFeature }>
+
+async function solveFeatureSketch(input: SketchFeatureContentInput, sketch: SketchRecord) {
+  if (!input.solveSketch) {
+    return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
+  }
+  return validatedSolution(
+    await solveSketchOnce(
+      input.solvedBySketchId,
+      input.solveSketch,
+      input.document,
+      sketch,
+      input.features,
+      input.geometry,
+      input.sectionPlanarFace,
+      input.modelMaterializationCache,
+    ),
+    input.document,
+    sketch,
+  )
+}
+
+function materializeHoleCenters(
+  solution: Extract<SolveSketchRecordResult, { ok: true }>["solution"],
+  pointIds: HoleFeatureParameters["pointIds"],
+  frame: SupportFrame,
+) {
+  const solved = new Map(solution.points.map((point) => [point.entityId, point]))
+  const centers: [number, number, number][] = []
+  for (const id of pointIds) {
+    const point = solved.get(id)
+    if (!point)
+      return failure("org.vibeshape.feature.hole-point-missing", "selected-point-not-solved")
+    const center = supportPointToWorld(frame, point)
+    centers.push([center[0], center[1], center[2]])
+  }
+  centers.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
+  return { ok: true as const, centers }
+}
+
+async function prepareHoleContent(
+  input: SketchFeatureContentInput,
+  feature: FeatureRecord,
+  parameters: HoleFeatureParameters,
+) {
+  const sketch = input.document.sketches.find(({ id }) => id === parameters.sketchId)
+  if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
+  const points = new Set(
+    sketch.entities.filter((entity) => entity.type === "point").map(({ id }) => id),
+  )
+  if (parameters.pointIds.some((id) => !points.has(id))) {
+    return failure("org.vibeshape.feature.hole-point-missing", "selected-point-not-found")
+  }
+  const frame = sketchFrame(sketch, input.document, input.features, new Set(), input.geometry)
+  if (!frame) return failure("org.vibeshape.feature.sketch-support-missing", "support-unresolved")
+  const result = await solveFeatureSketch(input, sketch)
+  if (!result.ok) return result
+  const materialized = materializeHoleCenters(result.solution, parameters.pointIds, frame)
+  if (!materialized.ok) return materialized
+  const prepared = holeFeatureContentParametersSchema.safeParse({
+    frame,
+    centers: materialized.centers,
+    diameter: parameters.diameter.value,
+    direction: parameters.direction,
+    extent: parameters.extent,
+    ...(parameters.extent === "blind" ? { depth: parameters.depth.value } : {}),
+    ...(sketch.support
+      ? {
+          supportInputIndex: feature.dependencies.indexOf(sketch.support.reference.featureId),
+        }
+      : {}),
+  })
+  return prepared.success
+    ? { ok: true as const, parameters: prepared.data }
+    : failure("org.vibeshape.feature.hole-centers-invalid", "invalid-materialized-centers")
+}
 
 function prepareSolvedProfileFeature(
   input: ProfileFeatureContentInput,
@@ -718,7 +816,7 @@ function profileFeatureSketchId(feature: ProfileFeature) {
 }
 
 async function prepareProfileFeatureContent(input: ProfileFeatureContentInput) {
-  const { document, feature, features, geometry, solveSketch } = input
+  const { document, feature, features, geometry } = input
   const profileSketchId = profileFeatureSketchId(feature)
   const sketch = document.sketches.find(({ id }) => id === profileSketchId)
   if (!sketch) return failure("org.vibeshape.feature.sketch-missing", "sketch-not-found")
@@ -726,23 +824,7 @@ async function prepareProfileFeatureContent(input: ProfileFeatureContentInput) {
   if (!frame) {
     return failure("org.vibeshape.feature.sketch-support-missing", "support-unresolved")
   }
-  if (!solveSketch) {
-    return failure("org.vibeshape.feature.sketch-solver-unavailable", "solver-unavailable")
-  }
-  const result = validatedSolution(
-    await solveSketchOnce(
-      input.solvedBySketchId,
-      solveSketch,
-      document,
-      sketch,
-      features,
-      geometry,
-      input.sectionPlanarFace,
-      input.modelMaterializationCache,
-    ),
-    document,
-    sketch,
-  )
+  const result = await solveFeatureSketch(input, sketch)
   if (!result.ok) return result
   return prepareSolvedProfileFeature(input, sketch, result.solution, frame)
 }
@@ -751,7 +833,8 @@ export function shouldPrepareDocumentFeatureContent(feature: FeatureRecord) {
   return Boolean(
     readDatumPlaneFeatureParameters(feature) ||
       readExtrusionFeatureParameters(feature) ||
-      readRevolveFeatureParameters(feature),
+      readRevolveFeatureParameters(feature) ||
+      readHoleFeatureParameters(feature),
   )
 }
 

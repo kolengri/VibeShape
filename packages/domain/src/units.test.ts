@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   angleQuantitySchema,
   angleToRadians,
+  cubicMillimetersToVolume,
   createAngleQuantity,
   createLengthQuantity,
   createScalarQuantity,
@@ -51,6 +52,17 @@ describe("canonical quantities", () => {
   ] as const)("converts canonical length and area into %s", (unit, millimeters) => {
     expect(millimetersToLength(millimeters, unit)).toBe(1)
     expect(squareMillimetersToArea(millimeters * millimeters, unit)).toBe(1)
+  })
+
+  it.each([
+    ["um", 0.001],
+    ["mm", 1],
+    ["cm", 10],
+    ["m", 1_000],
+    ["in", 25.4],
+    ["ft", 304.8],
+  ] as const)("converts canonical volume into %s", (unit, millimeters) => {
+    expect(cubicMillimetersToVolume(millimeters ** 3, unit)).toBe(1)
   })
 
   it.each([

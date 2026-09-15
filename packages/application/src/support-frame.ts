@@ -16,7 +16,8 @@ type Vector3 = readonly [number, number, number]
 export type SupportFrameGeometryRecord = Readonly<{
   featureId: string
   geometry: Readonly<{
-    topologyCandidates: readonly (TopologyCandidate & Readonly<{ referenceGeometry?: unknown }>)[]
+    topologyCandidates: readonly (TopologyCandidate &
+      Readonly<{ referenceGeometry?: unknown; edgePolyline?: unknown }>)[]
   }>
 }>
 type CurrentGeometry =
@@ -118,7 +119,11 @@ function currentFeatureGeometry(
 function domainCandidate(
   candidate: SupportFrameGeometryRecord["geometry"]["topologyCandidates"][number],
 ): TopologyCandidate {
-  const { referenceGeometry: _referenceGeometry, ...result } = candidate
+  const {
+    referenceGeometry: _referenceGeometry,
+    edgePolyline: _edgePolyline,
+    ...result
+  } = candidate
   return result
 }
 

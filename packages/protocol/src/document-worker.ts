@@ -15,7 +15,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 17 as const
+export const DOCUMENT_PROTOCOL_VERSION = 20 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -387,6 +387,17 @@ function sketchDisplayProfilesMatchSketch(
   )
 }
 
+const documentSketchSolvedPointSchema = z
+  .object({
+    entityId: sketchWireIdSchema,
+    position: z.tuple([
+      z.number().finite().min(-1_000_000).max(1_000_000),
+      z.number().finite().min(-1_000_000).max(1_000_000),
+      z.number().finite().min(-1_000_000).max(1_000_000),
+    ]),
+  })
+  .strict()
+
 export const documentSketchDisplaySchema = z
   .object({
     sketchId: sketchWireIdSchema,
@@ -394,6 +405,10 @@ export const documentSketchDisplaySchema = z
     constructionCurvePositions: sketchDisplayLinePositionsSchema,
     pointPositions: sketchDisplayPointPositionsSchema,
     constructionPointPositions: sketchDisplayPointPositionsSchema,
+    solvedPoints: z
+      .array(documentSketchSolvedPointSchema)
+      .max(MAX_SKETCH_DISPLAY_SAMPLE_POINTS)
+      .optional(),
     frame: extrusionFrameSchema,
     profiles: z.array(sketchDisplayProfileSchema).max(MAX_SKETCH_DISPLAY_PROFILES),
   })
@@ -406,6 +421,13 @@ export const documentSketchDisplaySchema = z
   .refine((sketch) => sketchDisplayProfilesMatchSketch(sketch.sketchId, sketch.profiles), {
     message: "Sketch display profiles must have unique selectors owned by the display sketch.",
   })
+  .refine(
+    (sketch) =>
+      !sketch.solvedPoints ||
+      new Set(sketch.solvedPoints.map(({ entityId }) => entityId)).size ===
+        sketch.solvedPoints.length,
+    { message: "Sketch display solved points must have unique entity IDs." },
+  )
 
 const responseEnvelopeSchema = requestEnvelopeSchema
 

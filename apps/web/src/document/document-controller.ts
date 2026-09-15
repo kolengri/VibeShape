@@ -1,3 +1,9 @@
+import { createModelBodyTopologyEvidence } from "@vibeshape/application/model-body-topology"
+import { createModelEdgeEvidence } from "@vibeshape/application/model-edges"
+import {
+  createModelBodyMeasurementEvidence,
+  createModelMeasurementEvidence,
+} from "@vibeshape/application/model-measurements"
 import {
   createPersistentDocumentSession,
   type PersistentDocumentRepositoryPort,
@@ -9,6 +15,23 @@ import {
 } from "@vibeshape/application/persistent-document-session"
 import { openVersionedDocumentSession } from "@vibeshape/application/versioned-document-session"
 import { createVersionedPersistenceAdapter } from "@vibeshape/application/versioned-persistence-adapter"
+import type {
+  CadInspectionDetailQuery,
+  CadInspectionListQuery,
+  ModelBodyMeasurementQuery,
+  ModelBodyTopologyQuery,
+  ModelEdgeQuery,
+  QueryResult,
+  VariableListQuery,
+} from "@vibeshape/automation-api/queries"
+import {
+  createQueryDispatcher,
+  documentCoreQueryHandlers,
+  documentSummaryViewSchema,
+  modelMeasurementQuerySchema,
+  modelMeasurementViewSchema,
+} from "@vibeshape/automation-api/queries"
+import type { AutomationDocumentPort, AutomationHostResult } from "@vibeshape/automation-host/host"
 import { createDocumentWorkerSession } from "@vibeshape/document-worker/session"
 import {
   createCommandDispatcher,
@@ -42,6 +65,8 @@ import {
   type VariableId,
   variableIdSchema,
 } from "@vibeshape/domain"
+import type { DocumentCommand } from "@vibeshape/domain/commands"
+import type { DocumentDraft, DraftCommitResult } from "@vibeshape/domain/drafts"
 import { readVersionedVShape, writeVShapeV2 } from "@vibeshape/formats/vshape"
 import {
   acquireDocumentLease,
@@ -52,6 +77,7 @@ import {
 import type { GeometryExportFormat } from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
+import { createDocumentAutomationSession } from "../automation/document-automation-session"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
@@ -67,6 +93,7 @@ export type DocumentControllerState = Readonly<{
   report: PersistentDocumentSessionReport | null
   saveStatus: SaveStatus
   diagnostic: PersistentDocumentSessionDiagnostic | null
+  history?: Readonly<{ canUndo: boolean; canRedo: boolean }>
 }>
 
 export type ApplyVariableTableResult =
@@ -88,6 +115,12 @@ export type ActiveDocumentExportResult =
       documentName: string
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type ActiveAutomationInfo = Readonly<{
+  summary: ReturnType<typeof documentSummaryViewSchema.parse>
+  measurements: ReturnType<typeof modelMeasurementViewSchema.parse> | null
+  measurementDiagnostic: { code: string; message: string; retryable: boolean } | null
+}>
 
 export type ActiveProjectBackupResult =
   | { ok: true; file: Uint8Array; documentName: string }
@@ -128,7 +161,7 @@ let startPromise: Promise<void> | null = null
 const listeners = new Set<() => void>()
 
 function publish(next: DocumentControllerState) {
-  state = next
+  state = { ...next, history: session?.history ?? { canUndo: false, canRedo: false } }
   for (const listener of listeners) listener()
 }
 
@@ -347,6 +380,298 @@ function getDocumentControllerState() {
   return state
 }
 
+function automationCommitFailure(
+  code:
+    | "document-write-unavailable"
+    | "document-commit-failed"
+    | "draft-commit-intent-mismatch"
+    | "stale-revision",
+  message: string,
+  retryable = false,
+): Extract<AutomationHostResult<never>, { ok: false }> {
+  return { ok: false, diagnostic: { code, message, retryable, issues: [] } }
+}
+
+function automationCommitEligibility(active: PersistentDocumentSession, draft: DocumentDraft) {
+  if (
+    session !== active ||
+    state.status !== "ready" ||
+    !state.report ||
+    state.saveStatus === "saving" ||
+    active.mode !== "read-write"
+  )
+    return automationCommitFailure(
+      "document-write-unavailable",
+      "The active project is not available for writing.",
+      true,
+    )
+  if (active.snapshot.id !== draft.documentId || active.snapshot.revision !== draft.baseRevision)
+    return automationCommitFailure(
+      "stale-revision",
+      "The active project changed after this draft was created.",
+      true,
+    )
+  if (!draft.snapshot)
+    return automationCommitFailure(
+      "draft-commit-intent-mismatch",
+      "The draft has no expected document state.",
+    )
+  return null
+}
+
+function automationSessionFailure(diagnostic: PersistentDocumentSessionDiagnostic) {
+  const code =
+    diagnostic.sourceCode === "stale-revision"
+      ? "stale-revision"
+      : diagnostic.code === "write-access-unavailable"
+        ? "document-write-unavailable"
+        : diagnostic.code === "invalid-draft-commit"
+          ? "draft-commit-intent-mismatch"
+          : "document-commit-failed"
+  return automationCommitFailure(code, diagnostic.message, diagnostic.retryable)
+}
+
+async function commitActiveAutomationDraft(
+  active: PersistentDocumentSession,
+  draft: DocumentDraft,
+  commands: readonly DocumentCommand[],
+): Promise<Awaited<ReturnType<AutomationDocumentPort["compareAndCommitDraft"]>>> {
+  const rejected = automationCommitEligibility(active, draft)
+  if (rejected) return rejected
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await active
+    .commitDraft({
+      draftId: draft.id,
+      commands,
+      expectedSnapshot: draft.snapshot,
+    })
+    .catch(() => ({
+      ok: false as const,
+      diagnostic: {
+        code: "persistence-failed" as const,
+        message: "The document session could not confirm the draft commit.",
+        retryable: false,
+        sourceCode: null,
+      },
+    }))
+  if (!result.ok) {
+    if (session === active)
+      publish({
+        ...state,
+        report: state.report ? { ...state.report, mode: active.mode } : null,
+        saveStatus: "save-error",
+        diagnostic: result.diagnostic,
+      })
+    return automationSessionFailure(result.diagnostic)
+  }
+  if (session === active && state.report)
+    publish({
+      ...state,
+      report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+      saveStatus: "saved",
+      diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+    })
+  return {
+    ok: true,
+    commit: {
+      transactionId: draft.id,
+      documentId: draft.documentId,
+      baseRevision: draft.baseRevision,
+      revision: result.snapshot.revision,
+      actor: draft.actor,
+      commandIds: result.events.map((event) => event.commandId),
+      events: result.events,
+      snapshot: result.snapshot,
+    },
+  } satisfies DraftCommitResult
+}
+
+// Only trusted browser composition may create a handle; MCP pairing and review remain separate gates.
+export function createActiveDocumentAutomationSession() {
+  const active = session
+  if (!active || state.status !== "ready" || !state.report)
+    return automationCommitFailure("document-write-unavailable", "No local project is open.", true)
+  const factory = createDocumentAutomationSession({
+    commands: coreCommandDispatcher(),
+    modules: coreRegistries().modules,
+    createDraftId: browserUuidV7,
+    documents: {
+      readSnapshot: (documentId) =>
+        session === active && state.status === "ready" && active.snapshot.id === documentId
+          ? active.snapshot
+          : null,
+      compareAndCommitDraft: (draft, commands) =>
+        commitActiveAutomationDraft(active, draft, commands),
+    },
+  })
+  if (!factory.ok) return factory
+  const queryDispatcher = createQueryDispatcher(coreRegistries().modules, documentCoreQueryHandlers)
+  if (!queryDispatcher.ok) {
+    factory.dispose()
+    return automationCommitFailure(
+      "document-write-unavailable",
+      queryDispatcher.diagnostic.message,
+      true,
+    )
+  }
+  const capturedDocumentId = active.snapshot.id
+  let closed = false
+  const currentReport = () => {
+    if (
+      closed ||
+      session !== active ||
+      state.status !== "ready" ||
+      active.snapshot.id !== capturedDocumentId
+    )
+      return null
+    return state.report
+  }
+  const readInfo = (): ActiveAutomationInfo | null => {
+    const report = currentReport()
+    if (!report) return null
+    const snapshot = active.snapshot
+    const summary = queryDispatcher.dispatcher.dispatch(snapshot, {
+      kind: "org.vibeshape.document.summary",
+      schemaVersion: 1,
+      documentId: snapshot.id,
+      revision: snapshot.revision,
+    })
+    if (!summary.ok) return null
+    const evidence = createModelMeasurementEvidence(snapshot, report.rebuild)
+    const measurementDiagnostic = evidence.ok
+      ? null
+      : {
+          code: evidence.code,
+          message: "Exact model measurements are unavailable.",
+          retryable: true,
+        }
+    const measurement = evidence.ok
+      ? queryDispatcher.dispatcher.dispatch(
+          snapshot,
+          modelMeasurementQuerySchema.parse({
+            kind: "org.vibeshape.model.measurements",
+            schemaVersion: 1,
+            documentId: snapshot.id,
+            revision: snapshot.revision,
+            cursor: null,
+            limit: 200,
+          }),
+          { measurements: evidence.evidence },
+        )
+      : null
+    return {
+      summary: documentSummaryViewSchema.parse(summary.view),
+      measurements: measurement?.ok ? modelMeasurementViewSchema.parse(measurement.view) : null,
+      measurementDiagnostic,
+    }
+  }
+  const readBodyMeasurements = (
+    query: ModelBodyMeasurementQuery,
+    report: NonNullable<ReturnType<typeof currentReport>>,
+    snapshot: DocumentSnapshot,
+  ): QueryResult => {
+    const evidence = createModelBodyMeasurementEvidence(snapshot, report.rebuild)
+    if (!evidence.ok) {
+      return {
+        ok: false,
+        diagnostic: {
+          code: evidence.code,
+          message: "Exact body measurements are unavailable.",
+          retryable: evidence.code !== "invalid-geometry-evidence",
+          issues: [],
+        },
+      }
+    }
+    return queryDispatcher.dispatcher.dispatch(snapshot, query, {
+      bodyMeasurements: evidence.evidence,
+    })
+  }
+  const readCad = (
+    query:
+      | CadInspectionListQuery
+      | CadInspectionDetailQuery
+      | VariableListQuery
+      | ModelEdgeQuery
+      | ModelBodyMeasurementQuery
+      | ModelBodyTopologyQuery,
+  ): QueryResult => {
+    const report = currentReport()
+    if (!report) return queryDispatcher.dispatcher.dispatch(null, query)
+    const snapshot = active.snapshot
+    if (query.kind === "org.vibeshape.model.body-topology") {
+      const bodyTopology = createModelBodyTopologyEvidence(snapshot, report.rebuild, {
+        featureId: query.featureId,
+        outputRole: query.outputRole,
+        kind: query.topologyKind,
+      })
+      return queryDispatcher.dispatcher.dispatch(snapshot, query, { bodyTopology })
+    }
+    const edges =
+      query.kind === "org.vibeshape.model.edges"
+        ? createModelEdgeEvidence(snapshot, report.rebuild, query.featureId)
+        : undefined
+    if (query.kind === "org.vibeshape.model.body-measurements") {
+      return readBodyMeasurements(query, report, snapshot)
+    }
+    return queryDispatcher.dispatcher.dispatch(snapshot, query, edges ? { edges } : undefined)
+  }
+  const exportRevisionBound = async (format: GeometryExportFormat, revision: number) => {
+    if (!currentReport() || revision !== active.snapshot.revision)
+      return automationCommitFailure(
+        "stale-revision",
+        "The active project changed before export.",
+        true,
+      )
+    const result = await active.exportDocument(format)
+    if (!result.ok) return result
+    if (!currentReport() || active.snapshot.revision !== revision)
+      return automationCommitFailure(
+        "stale-revision",
+        "The active project changed during export.",
+        true,
+      )
+    return {
+      ok: true as const,
+      format: result.response.format,
+      file: result.response.file,
+      bodyCount: result.response.bodyCount,
+      documentName: active.snapshot.name,
+    }
+  }
+  const closeAutomation = factory.dispose
+  let revision = active.snapshot.revision
+  const unsubscribe = subscribeDocumentController(() => {
+    if (session !== active || state.status !== "ready") {
+      dispose()
+      return
+    }
+    if (active.snapshot.revision !== revision) {
+      revision = active.snapshot.revision
+      factory.cancel("stale-revision")
+    }
+  })
+  function dispose() {
+    closed = true
+    unsubscribe()
+    window.removeEventListener("pagehide", dispose)
+    closeAutomation()
+  }
+  window.addEventListener("pagehide", dispose, { once: true })
+  return {
+    ok: true as const,
+    documentId: active.snapshot.id,
+    get revision() {
+      return active.snapshot.revision
+    },
+    host: factory.host,
+    readInfo,
+    readCad,
+    exportRevisionBound,
+    cancel: factory.cancel,
+    dispose,
+  }
+}
+
 export async function applyVariableTable(
   baseRevision: number,
   variables: readonly VariableDefinition[],
@@ -389,6 +714,63 @@ export async function applyVariableTable(
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
   })
   return { ok: true }
+}
+
+async function navigateDocumentHistory(
+  direction: "undo" | "redo",
+  baseRevision: number,
+): Promise<DocumentMutationResult> {
+  if (!session || state.status !== "ready" || !state.report || state.saveStatus === "saving") {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Wait for the active document operation to finish.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  const activeSession = session
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  try {
+    const result = await activeSession.navigateHistory({
+      direction,
+      commandId: browserUuidV7(),
+      documentId: activeSession.snapshot.id,
+      baseRevision,
+      issuedAt: new Date().toISOString(),
+      actor: { type: "user", userId: null },
+    })
+    if (!result.ok) {
+      publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+      return result
+    }
+    publish({
+      ...state,
+      report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+      saveStatus: "saved",
+      diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+    })
+    return { ok: true }
+  } catch {
+    const diagnostic: PersistentDocumentSessionDiagnostic = {
+      code: "persistence-failed",
+      message: "The history change could not be completed.",
+      retryable: true,
+      sourceCode: null,
+    }
+    publish({ ...state, saveStatus: "save-error", diagnostic })
+    return { ok: false, diagnostic }
+  }
+}
+
+export function undoDocument(baseRevision: number) {
+  return navigateDocumentHistory("undo", baseRevision)
+}
+
+export function redoDocument(baseRevision: number) {
+  return navigateDocumentHistory("redo", baseRevision)
 }
 
 async function commitDocumentCommand(

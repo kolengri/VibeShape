@@ -13,6 +13,7 @@ import {
   replayVersionedDocumentEvents,
   sessionIdSchema,
   type VersionedDocumentEvent,
+  VersionedReplayTargets,
   versionedDocumentEventSchema,
 } from "@vibeshape/domain"
 import { z } from "zod"
@@ -112,12 +113,40 @@ function validateCommitRelationship(
   baseSnapshot: DocumentSnapshotV1 | null,
   event: VersionedDocumentEvent,
   snapshot: DocumentSnapshotV1,
+  restoreTarget?: DocumentSnapshotV1,
 ) {
-  const reduced = reduceVersionedDocumentEvent(baseSnapshot, event)
+  const reduced = reduceVersionedDocumentEvent(baseSnapshot, event, restoreTarget)
   if (!reduced.ok || canonicalJson(reduced.snapshot) !== canonicalJson(snapshot))
     throw persistenceInvariantError(
       "invalid-input",
       "The supplied versioned snapshot is not the event result.",
+    )
+}
+
+function validateDraftEventEnvelope(
+  input: ReturnType<typeof persistenceV1DraftCommitInputSchema.parse>,
+  event: VersionedDocumentEvent,
+  firstEvent: VersionedDocumentEvent | undefined,
+) {
+  if (event.type === "org.vibeshape.document.restored")
+    throw persistenceInvariantError(
+      "invalid-input",
+      "Versioned draft commits cannot contain unresolved restore events.",
+    )
+  if (event.transactionId !== input.transactionId)
+    throw persistenceInvariantError(
+      "invalid-input",
+      "Every versioned draft event must use the supplied transaction ID.",
+    )
+  if (event.documentId !== input.snapshot.id || event.documentId !== input.baseSnapshot.id)
+    throw persistenceInvariantError(
+      "invalid-input",
+      "Every versioned draft event must target the supplied document.",
+    )
+  if (firstEvent && !commandActorsEqual(firstEvent.actor, event.actor))
+    throw persistenceInvariantError(
+      "invalid-input",
+      "Every versioned draft event must use the same actor.",
     )
 }
 
@@ -127,21 +156,7 @@ function validateDraftRelationship(
   let snapshot: DocumentSnapshotV1 | null = input.baseSnapshot
   const firstEvent = input.events[0]
   for (const event of input.events) {
-    if (event.transactionId !== input.transactionId)
-      throw persistenceInvariantError(
-        "invalid-input",
-        "Every versioned draft event must use the supplied transaction ID.",
-      )
-    if (event.documentId !== input.snapshot.id || event.documentId !== input.baseSnapshot.id)
-      throw persistenceInvariantError(
-        "invalid-input",
-        "Every versioned draft event must target the supplied document.",
-      )
-    if (firstEvent && !commandActorsEqual(firstEvent.actor, event.actor))
-      throw persistenceInvariantError(
-        "invalid-input",
-        "Every versioned draft event must use the same actor.",
-      )
+    validateDraftEventEnvelope(input, event, firstEvent)
     const reduced = reduceVersionedDocumentEvent(snapshot, event)
     if (!reduced.ok)
       throw persistenceInvariantError(
@@ -318,6 +333,15 @@ async function validStoredSnapshot(record: SnapshotRecordV1) {
     : null
 }
 
+async function storedSnapshotAt(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  revision: number,
+) {
+  const record = await database.snapshotsV1.get([documentId, revision])
+  return record ? validStoredSnapshot(record) : null
+}
+
 async function validStoredEvent(record: EventRecordV1) {
   const parsed = eventRecordV1Schema.safeParse(record)
   if (!parsed.success) return null
@@ -330,6 +354,86 @@ async function validStoredEvent(record: EventRecordV1) {
     : null
 }
 
+type StoredRestoreTargetResolver = (
+  documentId: DocumentId,
+  targetRevision: number,
+) => Promise<DocumentSnapshotV1 | null>
+
+function createStoredRestoreTargetResolver(
+  database: VibeShapeDatabase,
+): StoredRestoreTargetResolver {
+  const cache = new Map<string, { snapshot: DocumentSnapshotV1; bytes: number }>()
+  let bytes = 0
+  return async (documentId, targetRevision) => {
+    const key = `${documentId}:${targetRevision}`
+    const cached = cache.get(key)
+    if (cached) return cached.snapshot
+    const snapshot = await loadStoredRestoreTarget(database, documentId, targetRevision)
+    if (!snapshot) return null
+    const size = canonicalJson(snapshot).length * 2
+    if (size <= 32 * 1024 * 1024) {
+      cache.set(key, { snapshot, bytes: size })
+      bytes += size
+      while (cache.size > 100 || bytes > 32 * 1024 * 1024) {
+        const oldest = cache.entries().next().value
+        if (!oldest) break
+        cache.delete(oldest[0])
+        bytes -= oldest[1].bytes
+      }
+    }
+    return snapshot
+  }
+}
+
+async function loadStoredRestoreTarget(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  targetRevision: number,
+): Promise<DocumentSnapshotV1 | null> {
+  const exactSnapshot = await storedSnapshotAt(database, documentId, targetRevision)
+  if (exactSnapshot) return exactSnapshot
+
+  // Imported native histories may have only a head snapshot. Their verified journal
+  // must still recover historical targets when that snapshot is unavailable.
+  const records = await database.eventsV1
+    .where("[documentId+revision]")
+    .between([documentId, 1], [documentId, targetRevision], true, true)
+    .sortBy("revision")
+  const resolvedSeed = await findRestoreReplaySeed(database, documentId, targetRevision, records)
+  if (!resolvedSeed.ok) return null
+  const seed = resolvedSeed.seed
+  const baseRevision = seed?.revision ?? 0
+  const corrupt: string[] = []
+  const events = await readContiguousEvents(
+    records.filter((record) => record.revision > baseRevision),
+    baseRevision,
+    corrupt,
+  )
+  if (corrupt.length || events.at(-1)?.revision !== targetRevision) return null
+  const replayed = replayVersionedDocumentEvents(seed, events)
+  return replayed.ok ? replayed.snapshot : null
+}
+
+async function findRestoreReplaySeed(
+  database: VibeShapeDatabase,
+  documentId: DocumentId,
+  targetRevision: number,
+  records: readonly EventRecordV1[],
+): Promise<{ ok: true; seed: DocumentSnapshotV1 | null } | { ok: false }> {
+  const first = records[0] ? await validStoredEvent(records[0]) : null
+  if (first?.type === "org.vibeshape.document.created" && first.revision === 1)
+    return { ok: true, seed: null }
+  const seeds = await database.snapshotsV1
+    .where("[documentId+revision]")
+    .between([documentId, 1], [documentId, targetRevision], true, true)
+    .sortBy("revision")
+  for (const record of seeds) {
+    const seed = await validStoredSnapshot(record)
+    if (seed) return { ok: true, seed }
+  }
+  return { ok: false }
+}
+
 async function latestValidSnapshot(records: readonly SnapshotRecordV1[]) {
   const corruptRecords: string[] = []
   for (const record of records) {
@@ -340,38 +444,60 @@ async function latestValidSnapshot(records: readonly SnapshotRecordV1[]) {
   return { snapshot: null, corruptRecords }
 }
 
+async function readContiguousEvents(
+  records: readonly EventRecordV1[],
+  baseRevision: number,
+  corruptRecords: string[],
+) {
+  const events: VersionedDocumentEvent[] = []
+  let expectedRevision = baseRevision + 1
+  for (const record of records) {
+    const event = record.revision === expectedRevision ? await validStoredEvent(record) : null
+    if (!event) {
+      corruptRecords.push(`event-v1:${expectedRevision}`)
+      break
+    }
+    events.push(event)
+    expectedRevision += 1
+  }
+  return events
+}
+
+async function resolveHistoricalEventTarget(
+  event: VersionedDocumentEvent,
+  resolve: StoredRestoreTargetResolver,
+) {
+  return event.type === "org.vibeshape.document.restored" &&
+    event.targetRevision < event.baseRevision
+    ? ((await resolve(event.documentId, event.targetRevision)) ?? undefined)
+    : undefined
+}
+
 async function replayStoredSuffix(
   snapshot: DocumentSnapshotV1 | null,
   records: readonly EventRecordV1[],
   corruptRecords: string[],
   headRevision: number,
+  resolveRestoreTarget: StoredRestoreTargetResolver,
 ) {
+  const events = await readContiguousEvents(records, snapshot?.revision ?? 0, corruptRecords)
   let current = snapshot
-  let expectedRevision = (snapshot?.revision ?? 0) + 1
-  for (const record of records) {
-    const reduced = await replayStoredEvent(current, record, expectedRevision)
-    if (!reduced) {
-      corruptRecords.push(`event-v1:${expectedRevision}`)
+  // Imported journals reuse earlier revisions from this pass instead of replaying each prefix.
+  const targets = new VersionedReplayTargets(snapshot, events)
+  for (const event of events) {
+    const target =
+      targets.target(event) ?? (await resolveHistoricalEventTarget(event, resolveRestoreTarget))
+    const result = reduceVersionedDocumentEvent(current, event, target)
+    if (!result.ok) {
+      corruptRecords.push(`event-v1:${event.revision}`)
       break
     }
-    current = reduced
-    expectedRevision += 1
+    current = result.snapshot
+    targets.accept(current, event)
   }
   if (current && current.revision < headRevision && corruptRecords.length === 0)
-    corruptRecords.push(`event-v1:${expectedRevision}`)
+    corruptRecords.push(`event-v1:${current.revision + 1}`)
   return current
-}
-
-async function replayStoredEvent(
-  snapshot: DocumentSnapshotV1 | null,
-  record: EventRecordV1,
-  expectedRevision: number,
-) {
-  if (record.revision !== expectedRevision) return null
-  const event = await validStoredEvent(record)
-  if (!event) return null
-  const reduced = reduceVersionedDocumentEvent(snapshot, event)
-  return reduced.ok ? reduced.snapshot : null
 }
 
 function recoveryStatus(lostRevisionCount: number, markerPresent: boolean) {
@@ -435,6 +561,7 @@ async function recoverVersionedSnapshot(database: VibeShapeDatabase, project: Pr
     events,
     valid.corruptRecords,
     project.headRevision,
+    createStoredRestoreTargetResolver(database),
   )
   if (!snapshot)
     throw persistenceInvariantError(
@@ -477,8 +604,7 @@ async function exactVersionedSnapshot(
   documentId: DocumentId,
   revision: number,
 ) {
-  const record = await database.snapshotsV1.get([documentId, revision])
-  const snapshot = record ? await validStoredSnapshot(record) : null
+  const snapshot = await storedSnapshotAt(database, documentId, revision)
   if (!snapshot) invalidPortableV2("The persisted versioned snapshot is missing or invalid.")
   return snapshot
 }
@@ -818,7 +944,6 @@ async function deleteProjectSemanticRecords(database: VibeShapeDatabase, documen
 export class VersionedLocalDocumentRepository {
   constructor(readonly database: VibeShapeDatabase) {}
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
   async listProjects(): Promise<PersistenceResult<readonly LocalProjectSummary[]>> {
     try {
       const projects = await authoritativeProjectCatalog(this.database)
@@ -908,7 +1033,24 @@ export class VersionedLocalDocumentRepository {
         ),
       }
     try {
-      validateCommitRelationship(input.data.baseSnapshot, input.data.event, input.data.snapshot)
+      const restoreTarget =
+        input.data.event.type === "org.vibeshape.document.restored"
+          ? await createStoredRestoreTargetResolver(this.database)(
+              input.data.event.documentId,
+              input.data.event.targetRevision,
+            )
+          : undefined
+      if (input.data.event.type === "org.vibeshape.document.restored" && !restoreTarget)
+        throw persistenceInvariantError(
+          "corrupt-history",
+          "The historical restore target is missing or corrupt.",
+        )
+      validateCommitRelationship(
+        input.data.baseSnapshot,
+        input.data.event,
+        input.data.snapshot,
+        restoreTarget ?? undefined,
+      )
       const event = await storedEvent(input.data.event, input.data.storedAt)
       const snapshot = await storedSnapshot(input.data.snapshot, input.data.storedAt)
       await versionedSemanticWriteTransaction(this.database, async () => {
@@ -987,7 +1129,7 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed through the workspace package export.
+  // fallow-ignore-next-line unused-class-member -- Called through VersionedDocumentRepositoryPort by application sessions.
   async recover(documentIdInput: unknown): Promise<PersistenceResult<VersionedRecoveryReport>> {
     const documentId = documentIdSchema.safeParse(documentIdInput)
     if (!documentId.success)
@@ -1025,7 +1167,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned portable project lifecycle.
   async exportPortableProjectV2(
     documentIdInput: unknown,
   ): Promise<PersistenceResult<PortableProjectV2>> {
@@ -1043,7 +1184,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned portable project lifecycle.
   async importPortableProjectV2(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
@@ -1071,7 +1211,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned portable project lifecycle.
   async copyPortableProjectV2(
     inputValue: unknown,
   ): Promise<PersistenceResult<PortableProjectImportReport>> {
@@ -1143,7 +1282,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
   async writeProjectThumbnail(
     inputValue: unknown,
   ): Promise<PersistenceResult<ProjectThumbnailWriteReport>> {
@@ -1183,7 +1321,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Consumed by the versioned application project lifecycle.
   async copyProjectThumbnail(
     inputValue: unknown,
   ): Promise<PersistenceResult<ProjectThumbnailCopyReport>> {
@@ -1241,7 +1378,6 @@ export class VersionedLocalDocumentRepository {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- Reserved by the application project lifecycle.
   async deleteProject(inputValue: unknown): Promise<PersistenceResult<ProjectDeleteReport>> {
     const input = projectDeleteInputSchema.safeParse(inputValue)
     if (!input.success)

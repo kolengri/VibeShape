@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-const finiteNumberSchema = z.number().finite().transform(normalizeZero)
+const finiteNumberSchema = z.number().finite().overwrite(normalizeZero)
 const expressionSchema = z
   .string()
   .min(1)
@@ -61,6 +61,14 @@ export function squareMillimetersToArea(
 ) {
   const factor = millimetersPerUnit[unit]
   return normalizeZero(value / (factor * factor))
+}
+
+export function cubicMillimetersToVolume(
+  value: number,
+  unit: z.infer<typeof lengthInputUnitSchema>,
+) {
+  const factor = millimetersPerUnit[unit]
+  return normalizeZero(value / (factor * factor * factor))
 }
 
 export function angleToRadians(value: number, unit: z.infer<typeof angleInputUnitSchema>) {

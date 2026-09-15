@@ -1,5 +1,7 @@
 export type GeometryFeatureKind =
   | "boolean"
+  | "fillet"
+  | "chamfer"
   | "box"
   | "cylinder"
   | "datum-plane"

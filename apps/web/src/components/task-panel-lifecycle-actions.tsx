@@ -11,7 +11,7 @@ import type { MouseEvent } from "react"
 
 export type TaskPanelLifecycleActionsProps = Readonly<{
   acceptDisabled?: boolean
-  acceptLabel: string
+  acceptLabel?: string
   acceptLoading?: boolean
   acceptType?: "button" | "submit"
   ariaLabel: string
@@ -35,7 +35,7 @@ export function TaskPanelLifecycleActions({
 }: TaskPanelLifecycleActionsProps) {
   return (
     <TooltipProvider>
-      <fieldset className={cn("grid w-fit grid-cols-[repeat(2,2rem)] gap-1", className)}>
+      <fieldset className={cn("grid w-fit grid-flow-col auto-cols-[2rem] gap-1", className)}>
         <legend className="sr-only">{ariaLabel}</legend>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -52,21 +52,23 @@ export function TaskPanelLifecycleActions({
           </TooltipTrigger>
           <TooltipContent>{cancelLabel}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              aria-label={acceptLabel}
-              disabled={acceptDisabled}
-              isLoading={acceptLoading}
-              size="icon-sm"
-              type={acceptType}
-              {...(onAccept ? { onClick: onAccept } : {})}
-            >
-              <Check aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{acceptLabel}</TooltipContent>
-        </Tooltip>
+        {acceptLabel ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={acceptLabel}
+                disabled={acceptDisabled}
+                isLoading={acceptLoading}
+                size="icon-sm"
+                type={acceptType}
+                {...(onAccept ? { onClick: onAccept } : {})}
+              >
+                <Check aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{acceptLabel}</TooltipContent>
+          </Tooltip>
+        ) : null}
       </fieldset>
     </TooltipProvider>
   )

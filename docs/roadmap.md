@@ -1,5 +1,10 @@
 # Implementation roadmap
 
+For current execution order and acceptance gates, use the
+[Local CAD and MCP development plan](product/local-cad-and-mcp-development-plan.md), audited on
+2026-09-04. It accounts for the current modeling implementation and takes precedence over the
+historical phase sequencing and estimates below; accepted architecture decisions remain unchanged.
+
 ## Recommendation
 
 The UI shell is not the first milestone. First remove five core-workflow uncertainties: OCCT binding and worker behavior, sketch solver viability, stable topology references, 3MF interoperability, and local-first recovery. In parallel, resolve the long-term extension trust boundary before exposing any public SDK. Development then proceeds through vertical slices that each end with a working model and export. First-party feature modules and automation share the ordinary command path from the start; an MCP transport is added only when that path can support a real draft, preview, and commit scenario.
@@ -50,6 +55,12 @@ SPK-006 records **Proceed with reduced scope**. Immutable exact-integrity packag
 ## Phase 1 — foundation vertical slice (3–5 weeks)
 
 The production-oriented foundation now spans strict revisioned document, variable, analytical sketch, and feature schemas; deterministic replay and DAG scheduling; canonical geometry identity; worker-owned OCCT rebuild, SolveSpace sketch solving, selector-backed exact new/add/remove/intersect extrusion, and 3MF/STEP/STL export; transactional IndexedDB persistence; configurable Box, Cylinder, Boolean/Subtract, interactive sketch, and extrusion authoring and editing; dependency-safe feature and referenced-sketch deletion; variable refactoring; and a Three.js viewport with rendered-face selection, graphical stable vertex, linear-edge, circle-edge, and arc-edge Use, and non-selectable exact extrusion previews. Native project files now use deterministic replay-proven `.vshape` v2 backup, verified atomic import of v0/v1/v2 complete histories, and History-preserving semantic copy under fresh document, command, and transaction identities while excluding derived geometry. The product creates native v1 projects and promotes complete legacy recovery only while holding its writer lease; contended or lossy legacy recovery remains read-only. Project-library increments add authoritative dual-generation summaries, current-project state, new-project creation, existing-project switching, exact-revision derived SVG previews, and confirmed inactive-project deletion guarded by revision and lease state. The browser harness proves recovery, worker replacement, selective rebuild, variable-driven interactive sketch-to-extrusion modeling, disposable create/edit extrusion preview, exact OCCT volume and bounds for every extrusion operation, deletion, multi-object 3MF plus exact STEP and binary STL export, remembered-slicer fallback and authenticated handoff, v2 native-project round-trip, additive preview-store migration, local-project switching, duplication, preview copying, lease release, and deletion persistence. Signed slicer-bridge packaging, active-project deletion, writable checkpoint import, multi-region feature input, general body/edge/vertex selection, non-circular curved and overlapping external selection, persistent caches, autosave scheduling, backup reminders and restore/copy import UX, BroadcastChannel ownership, user-driven hard cancellation, topology repair, extension-specific variable refactor contributions, richer expressions, committed document undo integration, and configurable print-quality export profiles and reports remain the next gates.
+
+Fillet and Chamfer now provide exact preview, edit, persistence, and export for all or selected
+edges of one explicit target. Version 2 preserves authored references, supports graphical/keyboard
+picking and explicit repair, and retains version 1 all-edge compatibility; see
+[ADR-0040](adr/0040-selected-edge-treatments.md). Measurement and general constituent-body selection
+remain later increments.
 
 ### Scope
 

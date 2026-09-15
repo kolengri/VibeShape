@@ -1,7 +1,9 @@
 import { z } from "zod"
+import { bodyOutputRoleSchema } from "./body-reference"
 import { canonicalJson } from "./canonical-json"
-import type { FeatureTypeRegistry } from "./feature-type-registry"
+import { featureBodyDependencies } from "./feature-dependencies"
 import { featureParametersSchema, featureTypeSchema } from "./feature-graph"
+import type { FeatureTypeRegistry } from "./feature-type-registry"
 import { featureIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "./identifiers"
 import { topoRefContentSchema } from "./topology"
 
@@ -59,6 +61,7 @@ export const featureDependencyContentSchema = z
   .object({
     featureId: featureIdSchema,
     contentHash: sha256Schema,
+    outputRole: bodyOutputRoleSchema.optional(),
   })
   .strict()
 
@@ -72,7 +75,7 @@ const contentReferenceSchema = topoRefContentSchema
   })
   .strict()
 
-export const featureContentIdentitySchema = z
+const legacyFeatureContentIdentitySchema = z
   .object({
     schemaVersion: z.literal(0),
     feature: z
@@ -87,6 +90,37 @@ export const featureContentIdentitySchema = z
     environment: featureContentEnvironmentSchema,
   })
   .strict()
+
+const namedFeatureContentIdentitySchema = legacyFeatureContentIdentitySchema.extend({
+  schemaVersion: z.literal(1),
+  feature: legacyFeatureContentIdentitySchema.shape.feature
+    .extend({
+      inputRoles: z
+        .array(featureDependencyContentSchema.shape.outputRole.unwrap().nullable())
+        .max(MAX_DEPENDENCIES),
+    })
+    .superRefine((feature, context) => {
+      if (feature.inputRoles.length !== feature.inputs.length) {
+        context.addIssue({
+          code: "custom",
+          path: ["inputRoles"],
+          message: "Body roles must match the canonical input slots.",
+        })
+      }
+      if (!feature.inputRoles.some((role) => role !== null)) {
+        context.addIssue({
+          code: "custom",
+          path: ["inputRoles"],
+          message: "Version 1 content must select at least one named body output.",
+        })
+      }
+    }),
+})
+
+export const featureContentIdentitySchema = z.discriminatedUnion("schemaVersion", [
+  legacyFeatureContentIdentitySchema,
+  namedFeatureContentIdentitySchema,
+])
 
 export type FeatureContentEnvironment = Readonly<z.infer<typeof featureContentEnvironmentSchema>>
 export type FeatureDependencyContent = Readonly<z.infer<typeof featureDependencyContentSchema>>
@@ -148,12 +182,13 @@ function zodIssues(error: z.ZodError, prefix: string) {
   }))
 }
 
-function indexDependencyContent(
-  dependencies: readonly FeatureDependencyContent[],
-):
-  | { ok: true; byFeatureId: ReadonlyMap<FeatureDependencyContent["featureId"], string> }
+function indexDependencyContent(dependencies: readonly FeatureDependencyContent[]):
+  | {
+      ok: true
+      byFeatureId: ReadonlyMap<FeatureDependencyContent["featureId"], FeatureDependencyContent>
+    }
   | { ok: false; diagnostic: FeatureContentIdentityDiagnostic } {
-  const byFeatureId = new Map<FeatureDependencyContent["featureId"], string>()
+  const byFeatureId = new Map<FeatureDependencyContent["featureId"], FeatureDependencyContent>()
 
   for (const dependency of dependencies) {
     if (byFeatureId.has(dependency.featureId)) {
@@ -163,17 +198,17 @@ function indexDependencyContent(
       )
     }
 
-    byFeatureId.set(dependency.featureId, dependency.contentHash)
+    byFeatureId.set(dependency.featureId, dependency)
   }
 
   return { ok: true, byFeatureId }
 }
 
-function orderedInputHashes(
+function orderedInputContent(
   featureDependencies: readonly FeatureDependencyContent["featureId"][],
-  byFeatureId: ReadonlyMap<FeatureDependencyContent["featureId"], string>,
+  byFeatureId: ReadonlyMap<FeatureDependencyContent["featureId"], FeatureDependencyContent>,
 ):
-  | { ok: true; inputs: readonly string[] }
+  | { ok: true; inputs: readonly string[]; inputRoles: readonly (string | null)[] }
   | { ok: false; diagnostic: FeatureContentIdentityDiagnostic } {
   const missing = featureDependencies.find((featureId) => !byFeatureId.has(featureId))
 
@@ -191,9 +226,13 @@ function orderedInputHashes(
     )
   }
 
+  const ordered = featureDependencies.map(
+    (featureId) => byFeatureId.get(featureId) as FeatureDependencyContent,
+  )
   return {
     ok: true,
-    inputs: featureDependencies.map((featureId) => byFeatureId.get(featureId) as string),
+    inputs: ordered.map(({ contentHash }) => contentHash),
+    inputRoles: ordered.map(({ outputRole }) => outputRole ?? null),
   }
 }
 
@@ -238,8 +277,18 @@ export function createFeatureContentIdentity(
 
   const indexed = indexDependencyContent(dependencies.data)
   if (!indexed.ok) return indexed
-  const inputs = orderedInputHashes(validated.feature.dependencies, indexed.byFeatureId)
+  const inputs = orderedInputContent(validated.feature.dependencies, indexed.byFeatureId)
   if (!inputs.ok) return inputs
+  const mismatchedBody = featureBodyDependencies(validated.feature).find(
+    ({ featureId, outputRole }) =>
+      outputRole !== undefined && indexed.byFeatureId.get(featureId)?.outputRole !== outputRole,
+  )
+  if (mismatchedBody) {
+    return diagnostic(
+      "invalid-feature-dependency-content",
+      "Dependency content must preserve the authored body selection.",
+    )
+  }
 
   const inputIndexes = new Map(
     validated.feature.dependencies.map((featureId, index) => [featureId, index]),
@@ -259,13 +308,15 @@ export function createFeatureContentIdentity(
       zodIssues(contentParameters.error, "contentParameters"),
     )
   }
+  const hasNamedInput = inputs.inputRoles.some((role) => role !== null)
   const identity = featureContentIdentitySchema.parse({
-    schemaVersion: 0,
+    schemaVersion: hasNamedInput ? 1 : 0,
     feature: {
       schemaVersion: validated.feature.schemaVersion,
       type: validated.feature.type,
       parameters: contentParameters.data,
       inputs: inputs.inputs,
+      ...(hasNamedInput ? { inputRoles: inputs.inputRoles } : {}),
       references,
     },
     environment: environment.data,

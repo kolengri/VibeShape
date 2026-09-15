@@ -1,7 +1,7 @@
 import { isArray, isNaNValue, isNumber, isPlainObject } from "is-what"
 import { z } from "zod"
 
-export const GEOMETRY_PROTOCOL_VERSION = 12 as const
+export const GEOMETRY_PROTOCOL_VERSION = 15 as const
 
 const finiteNumberSchema = z.number().finite()
 const uuidV7Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -31,6 +31,7 @@ const cadCoordinateSchema = finiteNumberSchema.min(-100_000).max(100_000)
 const meshToleranceSchema = finiteNumberSchema.min(0.001).max(10)
 const nonNegativeIntegerSchema = z.number().int().nonnegative().safe()
 const identifierSchema = z.string().trim().min(1).max(128)
+export const MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS = 65_536
 const vector3Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema, cadCoordinateSchema])
 const vector2Schema = z.tuple([cadCoordinateSchema, cadCoordinateSchema])
 const positiveVector3Schema = z.tuple([cadLengthSchema, cadLengthSchema, cadLengthSchema])
@@ -111,8 +112,51 @@ export const cylinderFeatureContentParametersSchema = z
   })
   .strict()
 
+const holeExtentSchema = z.enum(["blind", "through-all"])
+
+function canonicalHoleCenters(centers: readonly (readonly [number, number, number])[]) {
+  return centers.every((current, index) => {
+    const previous = centers[index - 1]
+    if (!previous) return true
+    const order = previous[0] - current[0] || previous[1] - current[1] || previous[2] - current[2]
+    return order < 0
+  })
+}
+
+export const holeFeatureContentParametersSchema = z
+  .object({
+    frame: extrusionFrameSchema,
+    centers: z.array(vector3Schema).min(1).max(256).refine(canonicalHoleCenters, {
+      message: "Hole centers must be unique and in canonical coordinate order.",
+    }),
+    diameter: finiteNumberSchema.positive().max(1_000_000),
+    direction: z.enum(["forward", "reverse"]),
+    extent: holeExtentSchema,
+    depth: finiteNumberSchema.positive().max(1_000_000).optional(),
+    supportInputIndex: z.number().int().min(0).max(1).optional(),
+  })
+  .strict()
+  .superRefine((parameters, context) => {
+    if (parameters.extent === "blind" && parameters.depth === undefined) {
+      context.addIssue({ code: "custom", path: ["depth"], message: "Blind holes require depth." })
+    }
+    if (parameters.extent === "through-all" && parameters.depth !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["depth"],
+        message: "Through-all holes must not declare depth.",
+      })
+    }
+  })
+
 export const booleanFeatureContentParametersSchema = z
   .object({ operation: z.literal("subtract") })
+  .strict()
+
+export const filletFeatureContentParametersSchema = z.object({ radius: cadLengthSchema }).strict()
+
+export const chamferFeatureContentParametersSchema = z
+  .object({ distance: cadLengthSchema })
   .strict()
 
 const extrusionLineSegmentSchema = z
@@ -618,6 +662,15 @@ const featureContentParametersSchema = z
     "Feature content parameters exceed the encoded-size limit.",
   )
 
+const bodyOutputRoleSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/,
+    "Body output roles must use lowercase dotted or hyphenated identifiers.",
+  )
+
 function canonicalJson(value: unknown): string {
   if (isArray(value)) return `[${value.map(canonicalJson).join(",")}]`
   if (!isPlainObject(value)) {
@@ -935,6 +988,7 @@ const topologyCandidateBaseSchema = z
     kind: topologyKindSchema,
     meshFaceId: nonNegativeIntegerSchema.optional(),
     referenceGeometry: topologyReferenceGeometrySchema.optional(),
+    edgePolyline: z.array(topologyVector3Schema).min(2).max(1025).optional(),
     semanticRole: z.string().min(1).max(256).optional(),
     lineageTokens: z.array(z.string().min(1).max(256)).max(256),
     signature: topologySignatureSchema,
@@ -972,9 +1026,33 @@ export const topologyCandidateSchema = topologyCandidateBaseSchema
     message: "Only face topology candidates may declare a tessellation face ID.",
     path: ["meshFaceId"],
   })
+  .refine((candidate) => candidate.edgePolyline === undefined || candidate.kind === "edge", {
+    message: "Only edge candidates may contain display polylines.",
+    path: ["edgePolyline"],
+  })
   .refine(referenceGeometryMatchesCandidate, {
     message: "Topology reference geometry must match its candidate kind and geometry class.",
     path: ["referenceGeometry", "kind"],
+  })
+
+export const topologyCandidatesSchema = z
+  .array(topologyCandidateSchema)
+  .max(10_000)
+  .superRefine((candidates, context) => {
+    const pointCount = candidates.reduce(
+      (total, candidate) => total + (candidate.edgePolyline?.length ?? 0),
+      0,
+    )
+    if (pointCount > MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS) {
+      context.addIssue({
+        code: "too_big",
+        origin: "array",
+        maximum: MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS,
+        type: "array",
+        inclusive: true,
+        message: "Topology display polylines exceed the aggregate point budget.",
+      })
+    }
   })
 
 const topologyIntentSchema = z
@@ -1004,7 +1082,7 @@ const contentReferenceSchema = z
     path: ["signature", "kind"],
   })
 
-export const featureContentIdentitySchema = z
+const featureContentIdentityV0Schema = z
   .object({
     schemaVersion: z.literal(0),
     feature: z
@@ -1019,6 +1097,44 @@ export const featureContentIdentitySchema = z
     environment: featureContentEnvironmentSchema,
   })
   .strict()
+
+const featureContentIdentityV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    feature: z
+      .object({
+        schemaVersion: z.literal(0),
+        type: featureTypeSchema,
+        parameters: featureContentParametersSchema,
+        inputs: z.array(sha256Schema).max(1_024),
+        inputRoles: z.array(bodyOutputRoleSchema.nullable()).max(1_024),
+        references: z.array(contentReferenceSchema).max(4_096),
+      })
+      .strict()
+      .superRefine((feature, context) => {
+        if (feature.inputRoles.length !== feature.inputs.length) {
+          context.addIssue({
+            code: "custom",
+            path: ["inputRoles"],
+            message: "Feature input roles must match the canonical input slots.",
+          })
+        }
+        if (!feature.inputRoles.some((role) => role !== null)) {
+          context.addIssue({
+            code: "custom",
+            path: ["inputRoles"],
+            message: "Feature input roles must declare at least one named role.",
+          })
+        }
+      }),
+    environment: featureContentEnvironmentSchema,
+  })
+  .strict()
+
+export const featureContentIdentitySchema = z.discriminatedUnion("schemaVersion", [
+  featureContentIdentityV0Schema,
+  featureContentIdentityV1Schema,
+])
 
 export function serializeFeatureContentIdentity(input: unknown) {
   return canonicalJson(featureContentIdentitySchema.parse(input))
@@ -1150,53 +1266,79 @@ const runTopologySpikeRequestSchema = requestEnvelopeSchema.extend({
 })
 
 export const featureEvaluationDependencySchema = z
-  .object({ featureId: featureIdSchema, contentHash: sha256Schema })
+  .object({
+    featureId: featureIdSchema,
+    contentHash: sha256Schema,
+    outputRole: bodyOutputRoleSchema.optional(),
+  })
   .strict()
 
-const evaluateFeatureRequestSchema = requestEnvelopeSchema
-  .extend({
-    type: z.literal("evaluateFeature"),
-    featureId: featureIdSchema,
-    content: featureContentIdentitySchema,
-    contentHash: sha256Schema,
-    dependencies: z.array(featureEvaluationDependencySchema).max(8),
-    mesh: featureMeshPolicySchema,
-  })
-  .superRefine((request, context) => {
-    if (request.dependencies.length !== request.content.feature.inputs.length) {
+const featureEvaluationInputFields = {
+  documentId: identifierSchema,
+  featureId: featureIdSchema,
+  content: featureContentIdentitySchema,
+  contentHash: sha256Schema,
+  dependencies: z.array(featureEvaluationDependencySchema).max(8),
+  mesh: featureMeshPolicySchema,
+} as const
+
+const featureEvaluationInputBaseSchema = z.object(featureEvaluationInputFields)
+type FeatureEvaluationInput = z.infer<typeof featureEvaluationInputBaseSchema>
+
+function validateFeatureEvaluationInput(request: FeatureEvaluationInput, context: z.RefinementCtx) {
+  if (request.dependencies.length !== request.content.feature.inputs.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["dependencies"],
+      message: "Evaluation dependencies must match the canonical input slots.",
+    })
+    return
+  }
+  const featureIds = new Set<string>()
+  for (const [index, dependency] of request.dependencies.entries()) {
+    if (dependency.contentHash !== request.content.feature.inputs[index]) {
       context.addIssue({
         code: "custom",
-        path: ["dependencies"],
-        message: "Evaluation dependencies must match the canonical input slots.",
+        path: ["dependencies", index, "contentHash"],
+        message: "Evaluation dependency hashes must preserve canonical input order.",
       })
-      return
     }
-    const featureIds = new Set<string>()
-    for (const [index, dependency] of request.dependencies.entries()) {
-      if (dependency.contentHash !== request.content.feature.inputs[index]) {
-        context.addIssue({
-          code: "custom",
-          path: ["dependencies", index, "contentHash"],
-          message: "Evaluation dependency hashes must preserve canonical input order.",
-        })
-      }
-      if (featureIds.has(dependency.featureId)) {
-        context.addIssue({
-          code: "custom",
-          path: ["dependencies", index, "featureId"],
-          message: "Evaluation dependency feature IDs must be unique.",
-        })
-      }
-      if (dependency.featureId === request.featureId) {
-        context.addIssue({
-          code: "custom",
-          path: ["dependencies", index, "featureId"],
-          message: "A feature cannot evaluate from its own prior shape.",
-        })
-      }
-      featureIds.add(dependency.featureId)
+    if (featureIds.has(dependency.featureId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies", index, "featureId"],
+        message: "Evaluation dependency feature IDs must be unique.",
+      })
     }
-  })
+    if (dependency.featureId === request.featureId) {
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies", index, "featureId"],
+        message: "A feature cannot evaluate from its own prior shape.",
+      })
+    }
+    const expectedRole =
+      request.content.schemaVersion === 1
+        ? (request.content.feature.inputRoles[index] ?? undefined)
+        : undefined
+    if (dependency.outputRole !== expectedRole) {
+      context.addIssue({
+        code: "custom",
+        path: ["dependencies", index, "outputRole"],
+        message: "Evaluation dependency output roles must preserve canonical input roles.",
+      })
+    }
+    featureIds.add(dependency.featureId)
+  }
+}
+
+export const featureEvaluationInputSchema = featureEvaluationInputBaseSchema.superRefine(
+  validateFeatureEvaluationInput,
+)
+
+const evaluateFeatureRequestSchema = requestEnvelopeSchema
+  .extend({ type: z.literal("evaluateFeature"), ...featureEvaluationInputFields })
+  .superRefine(validateFeatureEvaluationInput)
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({
   type: z.literal("healthCheck"),
@@ -1278,6 +1420,41 @@ const meshPayloadSchema = z
     triangleFaceIds: z.instanceof(Uint32Array),
   })
   .strict()
+
+const featureEvaluationBodySchema = z
+  .object({
+    outputRole: bodyOutputRoleSchema,
+    shape: shapeMetricsSchema,
+    mesh: meshPayloadSchema,
+    topologyCandidates: topologyCandidatesSchema,
+  })
+  .strict()
+  .superRefine((body, context) => {
+    if (!body.shape.valid || body.shape.volume <= 0 || body.shape.solidCount !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["shape"],
+        message: "Derived body geometry must be a valid positive-volume single solid.",
+      })
+    }
+  })
+
+const featureEvaluationBodiesSchema = z
+  .array(featureEvaluationBodySchema)
+  .max(256)
+  .superRefine((bodies, context) => {
+    const roles = new Set<string>()
+    for (const [index, body] of bodies.entries()) {
+      if (roles.has(body.outputRole)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "outputRole"],
+          message: "Derived body output roles must be unique.",
+        })
+      }
+      roles.add(body.outputRole)
+    }
+  })
 
 const operationHistoryStatsSchema = z
   .object({
@@ -1419,7 +1596,7 @@ const kernelSpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   engine: engineMetadataSchema,
   shape: shapeMetricsSchema,
   history: operationHistorySchema,
-  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
+  topologyCandidates: topologyCandidatesSchema,
   mesh: meshPayloadSchema,
   exchange: exchangeMetricsSchema,
   lifecycle: lifecycleSchema,
@@ -1431,17 +1608,18 @@ const topologySpikeCompletedResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("topologySpikeCompleted"),
   engine: engineMetadataSchema,
   shape: shapeMetricsSchema,
-  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
+  topologyCandidates: topologyCandidatesSchema,
 })
 
-const featureEvaluatedResponseSchema = responseEnvelopeSchema.extend({
+const featureEvaluatedResponseBaseSchema = responseEnvelopeSchema.extend({
   type: z.literal("featureEvaluated"),
   featureId: featureIdSchema,
   contentHash: sha256Schema,
   engine: engineMetadataSchema,
   shape: shapeMetricsSchema,
-  topologyCandidates: z.array(topologyCandidateSchema).max(10_000),
+  topologyCandidates: topologyCandidatesSchema,
   mesh: meshPayloadSchema,
+  bodies: featureEvaluationBodiesSchema.optional(),
   cache: z.object({ brepHit: z.boolean() }).strict(),
   timings: z
     .object({
@@ -1452,14 +1630,57 @@ const featureEvaluatedResponseSchema = responseEnvelopeSchema.extend({
     .strict(),
 })
 
-export const featureEvaluationEngineResultSchema = featureEvaluatedResponseSchema.pick({
-  engine: true,
-  shape: true,
-  topologyCandidates: true,
-  mesh: true,
-  cache: true,
-  timings: true,
-})
+type FeatureEvaluatedBodyEnvelope = Pick<
+  z.infer<typeof featureEvaluatedResponseBaseSchema>,
+  "shape" | "bodies"
+>
+
+function validateFeatureEvaluationBodies(
+  response: FeatureEvaluatedBodyEnvelope,
+  context: z.RefinementCtx,
+) {
+  const bodies = response.bodies
+  if (!bodies || bodies.length === 0) return
+  const aggregateSolidCount = bodies.reduce((total, body) => total + body.shape.solidCount, 0)
+  if (bodies.length !== response.shape.solidCount) {
+    context.addIssue({
+      code: "custom",
+      path: ["bodies"],
+      message: "A non-empty derived body catalog must cover every root solid.",
+    })
+  }
+  if (aggregateSolidCount > response.shape.solidCount) {
+    context.addIssue({
+      code: "custom",
+      path: ["bodies"],
+      message: "Derived body solids must not exceed the root shape solid count.",
+    })
+  }
+  const resultBody = bodies.find((body) => body.outputRole === "result")
+  if (resultBody && (bodies.length !== 1 || response.shape.solidCount !== 1)) {
+    context.addIssue({
+      code: "custom",
+      path: ["bodies"],
+      message: "The result body role requires a single-solid root and sole catalog entry.",
+    })
+  }
+}
+
+const featureEvaluatedResponseSchema = featureEvaluatedResponseBaseSchema.superRefine(
+  validateFeatureEvaluationBodies,
+)
+
+export const featureEvaluationEngineResultSchema = featureEvaluatedResponseBaseSchema
+  .pick({
+    engine: true,
+    shape: true,
+    topologyCandidates: true,
+    mesh: true,
+    bodies: true,
+    cache: true,
+    timings: true,
+  })
+  .superRefine(validateFeatureEvaluationBodies)
 
 const healthResponseSchema = responseEnvelopeSchema.extend({
   type: z.literal("health"),
@@ -1533,6 +1754,7 @@ export type FeatureMeshPolicy = z.infer<typeof featureMeshPolicySchema>
 export type GeometryExportFormat = z.infer<typeof geometryExportFormatSchema>
 export type FeatureContentEnvironment = z.infer<typeof featureContentEnvironmentSchema>
 export type FeatureContentIdentity = z.infer<typeof featureContentIdentitySchema>
+export type HoleFeatureContentParameters = z.infer<typeof holeFeatureContentParametersSchema>
 export type ExtrusionMultiProfileContentParameters = z.infer<
   typeof extrusionMultiProfileFeatureContentParametersSchema
 >

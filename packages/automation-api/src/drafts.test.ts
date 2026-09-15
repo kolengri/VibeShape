@@ -95,9 +95,45 @@ describe("automation draft contracts", () => {
     }
 
     expect(automationDraftStateSchema.safeParse(draft).success).toBe(true)
+    const preview = {
+      schemaVersion: 2,
+      draft,
+      summary,
+      geometry: {
+        status: "valid",
+        measurements: {
+          kind: "org.vibeshape.model.measurements",
+          schemaVersion: 1,
+          documentId,
+          revision: 2,
+          generation: 1,
+          classification: "derived",
+          nextCursor: null,
+          units: { length: "mm", area: "mm2", volume: "mm3" },
+          data: { features: [], total: 0 },
+        },
+      },
+    }
+    expect(automationDraftPreviewSchema.safeParse(preview).success).toBe(true)
+    expect(automationDraftPreviewSchema.safeParse({ ...preview, schemaVersion: 1 }).success).toBe(
+      false,
+    )
     expect(
-      automationDraftPreviewSchema.safeParse({ schemaVersion: 1, draft, summary }).success,
-    ).toBe(true)
+      automationDraftPreviewSchema.safeParse({ ...preview, summary: { ...summary, revision: 1 } })
+        .success,
+    ).toBe(false)
+    expect(
+      automationDraftPreviewSchema.safeParse({
+        ...preview,
+        geometry: {
+          ...preview.geometry,
+          measurements: {
+            ...preview.geometry.measurements,
+            documentId: "0195b5ac-b220-7a2c-8c33-000000000999",
+          },
+        },
+      }).success,
+    ).toBe(false)
     expect(
       automationDraftCommitViewSchema.safeParse({
         schemaVersion: 1,

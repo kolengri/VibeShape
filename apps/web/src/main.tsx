@@ -1,3 +1,5 @@
+import "./schema-runtime"
+
 import { I18nProvider } from "@vibeshape/i18n/provider"
 import { TooltipProvider } from "@vibeshape/ui/components/tooltip"
 import { StrictMode } from "react"

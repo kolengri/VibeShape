@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./body-reference": "./src/body-reference.ts",
     "./canonical-json": "./src/canonical-json.ts",
     "./command-dispatcher": "./src/command-dispatcher.ts",
     "./commands": "./src/commands.ts",
@@ -16,12 +17,18 @@
     "./document-node": "./src/document-node.ts",
     "./drafts": "./src/drafts.ts",
     "./feature-content-identity": "./src/feature-content-identity.ts",
+    "./feature-dependencies": "./src/feature-dependencies.ts",
     "./feature-graph": "./src/feature-graph.ts",
     "./feature-type-contracts": "./src/feature-type-contracts.ts",
     "./feature-type-registry": "./src/feature-type-registry.ts",
     "./identifiers": "./src/identifiers.ts",
     "./modules": "./src/modules.ts",
+    "./model-measurements": "./src/model-measurements.ts",
+    "./model-body-measurements": "./src/model-body-measurements.ts",
+    "./model-body-topology": "./src/model-body-topology.ts",
+    "./model-bodies": "./src/model-bodies.ts",
     "./part-design": "./src/part-design.ts",
+    "./part-design-hole": "./src/part-design-hole.ts",
     "./rectangle-sketch": "./src/rectangle-sketch.ts",
     "./sketch": "./src/sketch.ts",
     "./sketch-edit": "./src/sketch-edit.ts",
@@ -32,7 +39,8 @@
     "./sketch-transform-edit": "./src/sketch-transform-edit.ts",
     "./topology": "./src/topology.ts",
     "./units": "./src/units.ts",
-    "./variables": "./src/variables.ts"
+    "./variables": "./src/variables.ts",
+    "./model-edges": "./src/model-edges.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

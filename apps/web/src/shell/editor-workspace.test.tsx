@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react"
+import type { SketchDisplayRecord } from "@vibeshape/application/sketch-display"
 import { useEffect } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ModelingSketchViewportStack } from "./editor-workspace"
+import { activeSketchDisplayForCamera, ModelingSketchViewportStack } from "./editor-workspace"
 
 afterEach(cleanup)
 
@@ -39,5 +40,12 @@ describe("ModelingSketchViewportStack", () => {
 
     view.unmount()
     expect(onUnmount).toHaveBeenCalledOnce()
+  })
+
+  it("renders the active Three.js sketch display only in the orbit context", () => {
+    const display = { sketchId: "active-sketch" } as unknown as SketchDisplayRecord
+
+    expect(activeSketchDisplayForCamera(display, "normal")).toBeNull()
+    expect(activeSketchDisplayForCamera(display, "orbit")).toBe(display)
   })
 })

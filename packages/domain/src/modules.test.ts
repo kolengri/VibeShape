@@ -6,6 +6,7 @@ import {
   partDesignModule,
 } from "./modules"
 import { booleanFeatureType, boxFeatureType } from "./part-design"
+import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
 
 function moduleDescriptor(
   id: string,
@@ -72,6 +73,11 @@ describe("module registry", () => {
         classification: "semantic",
         automation: { exposure: "resource", pagination: "cursor" },
       })
+      expect(result.registry.getQuery("org.vibeshape.model.body-measurements")).toMatchObject({
+        ownerModuleId: "org.vibeshape.core.document",
+        classification: "derived",
+        automation: { exposure: "resource", pagination: "cursor" },
+      })
       expect(result.registry.getQuery("org.vibeshape.unknown")).toBeUndefined()
     }
   })
@@ -113,14 +119,22 @@ describe("module registry", () => {
       expect(result.registry.getModule(partDesignModule.id)).toEqual(partDesignModule)
       expect(result.registry.getFeatureType(boxFeatureType.type)).toEqual(boxFeatureType)
       expect(result.registry.getFeatureType(booleanFeatureType.type)).toEqual(booleanFeatureType)
+      expect(result.registry.getFeatureType(holeFeatureType.type)).toEqual(holeFeatureType)
+      expect(result.registry.getFeatureType(holeFeatureTypeV2.type)).toEqual(holeFeatureTypeV2)
       expect(result.registry.featureTypes.map(({ type }) => type.typeId)).toEqual([
         "org.vibeshape.feature.part-design.boolean",
         "org.vibeshape.feature.part-design.box",
+        "org.vibeshape.feature.part-design.chamfer",
+        "org.vibeshape.feature.part-design.chamfer",
         "org.vibeshape.feature.part-design.cylinder",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
         "org.vibeshape.feature.part-design.extrusion",
+        "org.vibeshape.feature.part-design.fillet",
+        "org.vibeshape.feature.part-design.fillet",
+        "org.vibeshape.feature.part-design.hole",
+        "org.vibeshape.feature.part-design.hole",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",
         "org.vibeshape.feature.part-design.revolve",

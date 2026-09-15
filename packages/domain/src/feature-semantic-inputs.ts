@@ -4,10 +4,14 @@ import { featureTypeKey } from "./feature-type-contracts"
 import {
   booleanFeatureType,
   boxFeatureType,
+  chamferFeatureType,
+  chamferFeatureTypeV2,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  filletFeatureType,
+  filletFeatureTypeV2,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -18,6 +22,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import { holeFeatureType, holeFeatureTypeV2, readHoleFeatureParameters } from "./part-design-hole"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 type VersionedFeatureRecord = FeatureRecord | FeatureRecordV1
@@ -28,9 +33,16 @@ export type FirstPartySemanticInputProjection =
   | Readonly<{ recognized: true; ok: true; inputs: readonly DocumentNodeRef[] }>
 
 const emptySemanticInputTypeKeys = new Set(
-  [boxFeatureType, cylinderFeatureType, booleanFeatureType, datumPlaneFeatureType].map((feature) =>
-    featureTypeKey(feature.type),
-  ),
+  [
+    boxFeatureType,
+    cylinderFeatureType,
+    booleanFeatureType,
+    datumPlaneFeatureType,
+    filletFeatureType,
+    chamferFeatureType,
+    filletFeatureTypeV2,
+    chamferFeatureTypeV2,
+  ].map((feature) => featureTypeKey(feature.type)),
 )
 
 const extrusionTypeKeys = new Set([
@@ -52,6 +64,15 @@ export function projectFirstPartyFeatureSemanticInputs(
   feature: VersionedFeatureRecord,
 ): FirstPartySemanticInputProjection {
   const typeKey = featureTypeKey(feature.type)
+  if (
+    typeKey === featureTypeKey(holeFeatureType.type) ||
+    typeKey === featureTypeKey(holeFeatureTypeV2.type)
+  ) {
+    const parameters = readHoleFeatureParameters(feature)
+    return parameters
+      ? { recognized: true, ok: true, inputs: [{ kind: "sketch", id: parameters.sketchId }] }
+      : { recognized: true, ok: false, message: "A hole must contain valid sketch point intent." }
+  }
   if (emptySemanticInputTypeKeys.has(typeKey)) return { recognized: true, ok: true, inputs: [] }
   if (extrusionTypeKeys.has(typeKey)) {
     const parameters = readExtrusionFeatureParameters(feature as FeatureRecord)

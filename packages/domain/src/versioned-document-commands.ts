@@ -15,6 +15,7 @@ import {
   documentSnapshotSchema,
   documentSnapshotV1Schema,
 } from "./document"
+import { documentRestoredEventSchema, reduceDocumentRestoredEvent } from "./document-history"
 import type { HistoryItemRef } from "./document-node"
 import type { FeatureRecord, FeatureRecordV1 } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
@@ -32,6 +33,7 @@ import {
   applyVersionedDestructiveCommand,
   reduceVersionedDestructiveEvent,
 } from "./versioned-destructive-commands"
+import { VersionedReplayTargets } from "./versioned-replay-targets"
 
 export const versionedDocumentCommandSchema = z.union([
   documentCommandSchema,
@@ -42,6 +44,7 @@ export const versionedDocumentEventSchema = z.union([
   documentEventSchema,
   sketchInsertedInHistoryEventSchema,
   featureInsertedInHistoryEventSchema,
+  documentRestoredEventSchema,
 ])
 
 export type VersionedDocumentCommand = Readonly<z.infer<typeof versionedDocumentCommandSchema>>
@@ -412,11 +415,16 @@ function reduceLegacyEvent(
 export function reduceVersionedDocumentEvent(
   snapshot: DocumentSnapshotV1 | null,
   input: unknown,
+  restoreTarget?: DocumentSnapshotV1,
 ): VersionedDocumentEventResult {
   const current = snapshot ? parseSnapshot(snapshot, "event") : null
   if (current && !current.ok) return current
   const parsed = versionedDocumentEventSchema.safeParse(input)
   if (!parsed.success) return invalid("event", parsed.error)
+  if (parsed.data.type === "org.vibeshape.document.restored")
+    return current
+      ? reduceDocumentRestoredEvent(current.value, parsed.data, restoreTarget)
+      : documentNotFound()
   if (
     parsed.data.type === "org.vibeshape.history.sketch-inserted" ||
     parsed.data.type === "org.vibeshape.history.feature-inserted"
@@ -438,10 +446,12 @@ export function replayVersionedDocumentEvents(
 ): VersionedDocumentEventResult {
   const inputs = suffix ?? (seedOrInputs as readonly unknown[])
   let snapshot = suffix ? (seedOrInputs as DocumentSnapshotV1 | null) : null
+  const targets = new VersionedReplayTargets(snapshot, inputs)
   for (const input of inputs) {
-    const result = reduceVersionedDocumentEvent(snapshot, input)
+    const result = reduceVersionedDocumentEvent(snapshot, input, targets.target(input))
     if (!result.ok) return result
     snapshot = result.snapshot
+    targets.accept(snapshot, input)
   }
   return snapshot ? { ok: true, snapshot } : documentNotFound()
 }

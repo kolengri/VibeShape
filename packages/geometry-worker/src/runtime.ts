@@ -49,16 +49,24 @@ function transferablesFor(response: GeometryWorkerResponse): Transferable[] {
     return []
   }
 
-  const buffers: ArrayBufferLike[] = [
+  const buffers = new Set<ArrayBufferLike>([
     response.mesh.positions.buffer,
     response.mesh.normals.buffer,
     response.mesh.indices.buffer,
     response.mesh.triangleFaceIds.buffer,
-  ]
-  if (response.type === "kernelSpikeCompleted") {
-    buffers.push(response.exchange.stepFile.buffer)
+  ])
+  if (response.type === "featureEvaluated") {
+    for (const body of response.bodies ?? []) {
+      buffers.add(body.mesh.positions.buffer)
+      buffers.add(body.mesh.normals.buffer)
+      buffers.add(body.mesh.indices.buffer)
+      buffers.add(body.mesh.triangleFaceIds.buffer)
+    }
   }
-  return buffers.filter((buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer)
+  if (response.type === "kernelSpikeCompleted") {
+    buffers.add(response.exchange.stepFile.buffer)
+  }
+  return [...buffers].filter((buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer)
 }
 
 async function sha256Text(value: string) {

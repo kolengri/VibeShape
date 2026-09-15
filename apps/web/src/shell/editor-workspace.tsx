@@ -34,7 +34,16 @@ import type {
   ViewerSketchProfileSelectionIntent,
   ViewerSketchReferenceCandidate,
 } from "@vibeshape/viewer/three-viewport"
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react"
+import { automationReviews } from "../automation/automation-review-controller"
+import { AutomationReviewPanel } from "../automation/automation-review-panel"
 import {
   type DocumentControllerState,
   removeSketch,
@@ -44,7 +53,10 @@ import {
   updateSketch,
 } from "../document/document-controller"
 import type { SketchCameraMode } from "../editor-session/editor-session-store"
+import { useEdgeTreatmentPicking } from "../features/edge-treatment/use-edge-treatment-picking"
 import type { ExtrusionDistanceRequest } from "../features/extrusion/extrusion-distance-manipulator"
+import { useHolePointPicking } from "../features/hole/use-hole-point-picking"
+import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import {
   type ActivePartDesignTool,
   activeFeatureId,
@@ -135,6 +147,12 @@ function committedGeometry(controller: DocumentControllerState) {
 }
 
 const PREVIEWED_FEATURE_TOOL_KINDS: ReadonlySet<ActivePartDesignTool["kind"]> = new Set([
+  "create-hole",
+  "edit-hole",
+  "create-fillet",
+  "edit-fillet",
+  "create-chamfer",
+  "edit-chamfer",
   "create-extrusion",
   "edit-extrusion",
   "create-datum-plane",
@@ -434,6 +452,8 @@ function revolveAngularGizmoProps(
 
 type WorkspaceContentProps = Readonly<{
   actions: Readonly<{
+    onBodySelectionChange?: (body: ModelBodySelection | null) => void
+    onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
     onSelectionChange: (selection: ViewerSelection | null) => void
     onSavedSketchProfileSelect: (
       profile: SketchProfileSelector | null,
@@ -469,12 +489,15 @@ type WorkspaceContentProps = Readonly<{
     hiddenSketchIds: readonly SketchId[]
     idleOriginPlaneSelectionAvailable: boolean
     originPlaneVisibility: ViewerOriginPlaneVisibility
+    preselectedBody?: ModelBodySelection | null
+    selectedBody?: ModelBodySelection | null
     preselectedFeatureId: FeatureId | null
     selectedOriginPlane: ViewerOriginPlane | null
     selectedFeatureId: FeatureId | null
     selection: ViewerSelection | null
     revolveAxisCandidates: readonly RevolveAxisCandidate[]
     revolveAxisSelectionActive: boolean
+    featureSelectionContext: GeometryViewportSketchContext | undefined
   }>
   sketch: Readonly<{
     activeTool: ActiveSketchTool | null
@@ -568,6 +591,22 @@ function idleOriginPlaneSelection(
   }
 }
 
+function workspaceBodySelectionProps(
+  model: WorkspaceContentProps["model"],
+  actions: WorkspaceContentProps["actions"],
+) {
+  return {
+    preselectedBody: model.preselectedBody ?? null,
+    selectedBody: model.selectedBody ?? null,
+    ...(actions.onBodySelectionChange
+      ? { onBodySelectionChange: actions.onBodySelectionChange }
+      : {}),
+    ...(actions.onBodyPreselectionChange
+      ? { onBodyPreselectionChange: actions.onBodyPreselectionChange }
+      : {}),
+  }
+}
+
 function ModelingWorkspaceContent({
   actions,
   controller,
@@ -622,6 +661,7 @@ function ModelingWorkspaceContent({
         onChange: actions.onOriginPlaneVisibilityChange,
       }}
       preselectedFeatureId={model.preselectedFeatureId}
+      {...workspaceBodySelectionProps(model, actions)}
       idleOriginPlaneSelection={idleOriginPlaneSelection(model, sketch, actions)}
       selectedFeatureId={model.selectedFeatureId}
       selection={model.selection}
@@ -668,6 +708,13 @@ export function ModelingSketchViewportStack({
       {sketchActive ? status : null}
     </div>
   )
+}
+
+export function activeSketchDisplayForCamera(
+  display: SketchDisplayRecord | null,
+  cameraMode: SketchCameraMode,
+) {
+  return cameraMode === "orbit" ? display : null
 }
 
 function useExternalSketchSolutions(
@@ -1213,6 +1260,10 @@ function WorkspaceContentView({
   if (props.workspace === "variables") {
     return <VariablesPanel controller={props.controller} />
   }
+  const visibleActiveSketchDisplay = activeSketchDisplayForCamera(
+    activeSketchDisplay,
+    props.sketch.cameraMode,
+  )
   return (
     <ModelingSketchViewportStack
       modeling={
@@ -1223,7 +1274,9 @@ function WorkspaceContentView({
           model={props.model}
           sketch={props.sketch}
           editVisibility={editVisibility}
-          {...(activeSketchDisplay ? { activeSketchDisplay } : {})}
+          {...(visibleActiveSketchDisplay
+            ? { activeSketchDisplay: visibleActiveSketchDisplay }
+            : {})}
           {...(sketchContext ? { sketchContext } : {})}
         />
       }
@@ -1581,7 +1634,8 @@ function WorkspaceContent(props: WorkspaceContentProps) {
     sketchActive: sketchGeometry.sketchActive,
   })
   const revolveAxisContext = useRevolveAxisReferenceSelection(props)
-  const sketchContext = sketchReferenceContext ?? revolveAxisContext
+  const sketchContext =
+    sketchReferenceContext ?? revolveAxisContext ?? props.model.featureSelectionContext
   return (
     <WorkspaceContentView
       activeSketchDisplay={activeSketchDisplay}
@@ -1608,6 +1662,10 @@ export type EditorWorkspaceActions = Readonly<{
   acknowledgeRevolveAngle: (featureId: FeatureId) => void
   beginSketchSupportReplacement: () => void
   closeTool: () => void
+  completeTool: () => void
+  createHole: () => void
+  createFillet: () => void
+  createChamfer: () => void
   createBox: () => void
   createCylinder: () => void
   createDatumPlane: () => void
@@ -1615,8 +1673,11 @@ export type EditorWorkspaceActions = Readonly<{
   createRevolve: () => Promise<boolean>
   createSketch: () => void
   createSubtract: () => void
+  measure: () => void
   editFeature: (featureId: FeatureId) => void
   editSketch: (sketchId: SketchId) => void
+  preselectBody?: (body: ModelBodySelection | null) => void
+  selectBody?: (body: ModelBodySelection | null) => void
   preselectFeature: (featureId: FeatureId | null) => void
   select: (selection: ViewerSelection | null) => void
   selectSavedSketchProfile: (
@@ -1664,6 +1725,8 @@ type EditorWorkspaceProps = Readonly<{
   hiddenSketchIds: readonly SketchId[]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onSketchFinalContextChange: (visible: boolean) => void
+  preselectedBody?: ModelBodySelection | null
+  selectedBody?: ModelBodySelection | null
   preselectedFeatureId: FeatureId | null
   extrusionDistanceRequest: ExtrusionDistanceRequest | null
   primitivePlacementRequest: PrimitivePlacementRequest | null
@@ -1694,6 +1757,7 @@ function useEditorFeaturePreview(
     controller.report?.snapshot ?? null,
     featurePreviewCandidate(activeTool, previewFeature),
     committedGeometry(controller),
+    isPreviewedFeatureToolActive(activeTool),
   )
   return { featurePreview, previewFeature, setPreviewFeature }
 }
@@ -1819,18 +1883,27 @@ function useRevolveAxisSelection(
   return { value, setValue }
 }
 
+function defaultRevolveSelectionPurpose(
+  activeTool: ActivePartDesignTool | null,
+): RevolveSelectionPurpose {
+  return activeTool?.kind === "create-revolve" && activeTool.profiles.length === 0
+    ? "profile"
+    : "axis"
+}
+
 function useRevolveSelectionPurpose(activeTool: ActivePartDesignTool | null) {
   const key = revolveToolKey(activeTool)
-  const [state, setState] = useState<Readonly<{ key: string; value: RevolveSelectionPurpose }>>(
-    () => ({ key, value: "axis" }),
-  )
+  const [state, setState] = useState(() => ({
+    key,
+    value: defaultRevolveSelectionPurpose(activeTool),
+  }))
   useEffect(() => {
     if (key !== "inactive") return
     setState((current) =>
       current.key === "inactive" ? current : { key: "inactive", value: "axis" },
     )
   }, [key])
-  const value = state.key === key ? state.value : "axis"
+  const value = state.key === key ? state.value : defaultRevolveSelectionPurpose(activeTool)
   const setValue = useCallback(
     (purpose: RevolveSelectionPurpose) => setState({ key, value: purpose }),
     [key],
@@ -1887,6 +1960,9 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       controller={controller}
       hiddenFeatureIds={props.hiddenFeatureIds}
       hiddenSketchIds={props.hiddenSketchIds}
+      activeBody={props.selectedBody}
+      onBodyActivate={actions.selectBody}
+      onBodyPreselectionChange={actions.preselectBody}
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
       onFeaturePreselectionChange={actions.preselectFeature}
@@ -1944,7 +2020,15 @@ function rebuiltSketchDisplays(controller: DocumentControllerState) {
   return rebuild?.ok ? rebuild.response.sketches : []
 }
 
+function workspaceBodySelectionActions(actions: EditorWorkspaceActions) {
+  return {
+    ...(actions.selectBody ? { onBodySelectionChange: actions.selectBody } : {}),
+    ...(actions.preselectBody ? { onBodyPreselectionChange: actions.preselectBody } : {}),
+  }
+}
+
 function EditorContent({
+  featureSelectionContext,
   featureProfileSelections,
   featureProfileHiddenSketchIds,
   featurePreview,
@@ -1956,6 +2040,7 @@ function EditorContent({
   onRevolveAxisChange,
   props,
 }: {
+  featureSelectionContext: GeometryViewportSketchContext | undefined
   featureProfileSelections: readonly SketchProfileSelector[]
   featureProfileHiddenSketchIds: readonly SketchId[]
   featurePreview: ReturnType<typeof useFeaturePreview>
@@ -1984,6 +2069,7 @@ function EditorContent({
         onExtrusionDistanceChange: actions.setExtrusionDistance,
         onRevolveAngleChange: actions.setRevolveAngle,
         onSelectionChange: actions.select,
+        ...workspaceBodySelectionActions(actions),
         onSavedSketchProfileSelect: savedProfileSelectionAction(props, onFeatureProfileChange),
         onRevolveAxisChange,
         onPrimitivePlacementChange: actions.setPrimitivePlacement,
@@ -2004,6 +2090,7 @@ function EditorContent({
       }}
       controller={controller}
       model={{
+        featureSelectionContext,
         extrusionManipulator: extrusionManipulator(
           props.activeTool,
           previewFeature,
@@ -2031,6 +2118,8 @@ function EditorContent({
         idleOriginPlaneSelectionAvailable: props.activeTool === null,
         originPlaneVisibility: props.originPlaneVisibility,
         preselectedFeatureId: props.preselectedFeatureId,
+        preselectedBody: props.preselectedBody ?? null,
+        selectedBody: props.selectedBody ?? null,
         selectedOriginPlane: props.selectedOriginPlane,
         selectedFeatureId: activeFeatureId(props.activeTool),
         selection,
@@ -2058,6 +2147,8 @@ function EditorContent({
 }
 
 function EditorTaskPanel({
+  edgeTreatmentPicking,
+  holePicking,
   featurePreviewStatus,
   featureProfileSelections,
   onFeatureProfileRemove,
@@ -2069,7 +2160,10 @@ function EditorTaskPanel({
   revolveAxisCandidates,
   revolveAxisSelection,
   revolveSelectionPurpose,
+  review,
 }: {
+  edgeTreatmentPicking: ReturnType<typeof useEdgeTreatmentPicking>
+  holePicking: ReturnType<typeof useHolePointPicking>
   featurePreviewStatus: ReturnType<typeof useFeaturePreview>["status"]
   featureProfileSelections: readonly SketchProfileSelector[]
   onFeatureProfileRemove: (profile: SketchProfileSelector) => void
@@ -2081,31 +2175,42 @@ function EditorTaskPanel({
   revolveAxisCandidates: readonly RevolveAxisCandidate[]
   revolveAxisSelection: RevolveAxis | null
   revolveSelectionPurpose: RevolveSelectionPurpose
+  review: ReturnType<typeof automationReviews.getSnapshot>
 }) {
   const { actions } = props
+  if (review) return <AutomationReviewPanel review={review} />
+  const selectedMeasurementBody = selectedMeasurementBodyForTaskPanel(props)
   const selectedAxisLabel = revolveAxisSelection
     ? revolveAxisCandidates.find(({ axis }) => revolveAxisIntentsMatch(axis, revolveAxisSelection))
         ?.label
     : undefined
   return (
     <TaskPanel
+      holePickingRequest={holePicking.request}
+      onHolePickingContextChange={holePicking.onContextChange}
+      edgeTreatmentPickRequest={edgeTreatmentPicking.request}
+      onEdgeTreatmentPickingContextChange={edgeTreatmentPicking.onContextChange}
       activeSketchId={props.activeSketchId}
       activeSketchTool={props.activeSketchTool}
       activeTool={props.activeTool}
       controller={props.controller}
+      selectedFeatureId={selectedMeasurementBody.featureId}
+      {...(selectedMeasurementBody.outputRole === undefined
+        ? {}
+        : { selectedOutputRole: selectedMeasurementBody.outputRole })}
       featurePreviewStatus={featurePreviewStatus}
       featureProfileSelections={featureProfileSelections}
       onFeatureProfileRemove={onFeatureProfileRemove}
       onFeatureProfilesClear={onFeatureProfilesClear}
       workspace={props.workspace}
       onCloseTool={actions.closeTool}
+      onCompleteTool={actions.completeTool}
       onCreateBox={actions.createBox}
       onCreateCylinder={actions.createCylinder}
       onCreateExtrusion={actions.createExtrusion}
       onCreateRevolve={actions.createRevolve}
       onCreateSketch={actions.createSketch}
       onCreateSubtract={actions.createSubtract}
-      onEditSketch={actions.editSketch}
       extrusionDistanceRequest={props.extrusionDistanceRequest}
       onFeaturePreviewChange={onFeaturePreviewChange}
       primitivePlacementRequest={props.primitivePlacementRequest}
@@ -2133,6 +2238,13 @@ function EditorTaskPanel({
       onSketchSupportReplace={actions.beginSketchSupportReplacement}
     />
   )
+}
+
+function selectedMeasurementBodyForTaskPanel(props: EditorWorkspaceProps) {
+  return {
+    featureId: props.selectedBody?.featureId ?? props.selection?.featureId ?? null,
+    outputRole: props.selectedBody?.outputRole ?? props.selection?.outputRole,
+  }
 }
 
 function revolveAxisIntentsMatch(left: RevolveAxis, right: RevolveAxis) {
@@ -2165,7 +2277,27 @@ function modelEdgeAxesMatch(
   return canonicalJson(left.reference.signature) === canonicalJson(right.reference.signature)
 }
 
+function useModelFeaturePicking(props: EditorWorkspaceProps) {
+  const holePicking = useHolePointPicking(props.controller, props.activeTool, props.hiddenSketchIds)
+  const edgeTreatmentPicking = useEdgeTreatmentPicking(
+    props.controller,
+    props.activeTool,
+    props.hiddenFeatureIds,
+  )
+  return {
+    holePicking,
+    edgeTreatmentPicking,
+    viewportContext: holePicking.viewportContext ?? edgeTreatmentPicking.viewportContext,
+  }
+}
+
 export function EditorWorkspace(props: EditorWorkspaceProps) {
+  const review = useSyncExternalStore(
+    automationReviews.subscribe,
+    automationReviews.getSnapshot,
+    automationReviews.getSnapshot,
+  )
+  const { holePicking, edgeTreatmentPicking, viewportContext } = useModelFeaturePicking(props)
   const taskPanelT = useTranslations("app.shell.taskPanel")
   const { featurePreview, previewFeature, setPreviewFeature } = useEditorFeaturePreview(
     props.controller,
@@ -2236,6 +2368,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
       <div className="cad-workspace-grid min-h-0">
         <EditorModelTree props={props} />
         <EditorContent
+          featureSelectionContext={viewportContext}
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
           featureProfileSelections={featureProfileSelection.value}
           featurePreview={featurePreview}
@@ -2248,12 +2381,14 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
         <ResponsiveTaskPanel
-          activeTaskKey={taskPanelActivityKey(props)}
+          activeTaskKey={taskPanelActivityKey(props, review)}
           autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
           collapseLabel={taskPanelT("collapsePanel")}
           expandLabel={taskPanelT("expandPanel")}
         >
           <EditorTaskPanel
+            holePicking={holePicking}
+            edgeTreatmentPicking={edgeTreatmentPicking}
             featurePreviewStatus={featurePreview.status}
             featureProfileSelections={featureProfileSelection.value}
             onFeatureProfileRemove={removeFeatureProfile}
@@ -2265,6 +2400,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
             revolveAxisCandidates={revolveAxisCandidates}
             revolveAxisSelection={revolveAxisSelection.value}
             revolveSelectionPurpose={revolveSelectionPurpose.value}
+            review={review}
           />
         </ResponsiveTaskPanel>
       </div>
@@ -2272,7 +2408,11 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
 }
 
-function taskPanelActivityKey(props: EditorWorkspaceProps) {
+function taskPanelActivityKey(
+  props: EditorWorkspaceProps,
+  review: ReturnType<typeof automationReviews.getSnapshot>,
+) {
+  if (review) return `automation-review:${review.id}`
   if (props.activeSketchTool) {
     return props.activeSketchTool.kind === "edit-sketch"
       ? `sketch:${props.activeSketchTool.sketchId}`

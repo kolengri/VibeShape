@@ -27,6 +27,10 @@ const recentCommandIdsSchema = z
   .array(
     z.enum([
       editorCommandIds.cancelActive,
+      editorCommandIds.documentUndo,
+      editorCommandIds.documentRedo,
+      editorCommandIds.createFillet,
+      editorCommandIds.createChamfer,
       editorCommandIds.createBox,
       editorCommandIds.createCylinder,
       editorCommandIds.createExtrusion,

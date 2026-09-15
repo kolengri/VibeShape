@@ -9,6 +9,7 @@ import {
   type BuiltInEditorCommandContext,
   resolveBuiltInEditorCommands,
 } from "../commands/built-in-editor-commands"
+import { editorCommandIds } from "../commands/editor-command"
 import type { DocumentControllerState } from "../document/document-controller"
 import { SketchToolbarPortalsProvider } from "../features/sketch/sketch-toolbar-portals"
 import { i18n } from "../i18n"
@@ -16,14 +17,21 @@ import { CommandToolbar } from "./command-toolbar"
 
 const controller = {
   status: "ready",
+  saveStatus: "saved",
+  history: { canUndo: true, canRedo: true },
   report: {
     mode: "read-write",
-    snapshot: { features: [] },
+    snapshot: { features: [], revision: 1 },
   },
 } as unknown as DocumentControllerState
 
 const actions = {
   cancelActive: vi.fn(),
+  documentRedo: vi.fn(() => Promise.resolve({ ok: true })),
+  documentUndo: vi.fn(() => Promise.resolve({ ok: true })),
+  createFillet: vi.fn(),
+  createChamfer: vi.fn(),
+  createHole: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),
   createDatumPlane: vi.fn(),
@@ -265,6 +273,30 @@ describe("CommandToolbar", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Model" }))
     await user.keyboard("{ArrowRight}")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sketch" }))
+  })
+
+  it("shows committed history only in idle model mode", () => {
+    renderToolbar()
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Redo" })).toBeTruthy()
+
+    cleanup()
+    renderToolbar(commands({ activePartDesignCommand: "box" }))
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Redo" })).toBeNull()
+
+    cleanup()
+    const sketchCommands = commands({
+      activeSketchTool: { kind: "create-sketch" },
+      workspace: "sketch",
+      sketchUndoAvailable: true,
+    })
+    renderToolbar(sketchCommands)
+    expect(
+      sketchCommands.find(({ descriptor }) => descriptor.id === editorCommandIds.documentUndo)
+        ?.toolbarVisible,
+    ).toBe(false)
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy()
   })
 
   it("omits the sketch diagnostics slot outside active sketch editing", () => {

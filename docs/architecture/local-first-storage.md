@@ -49,6 +49,12 @@ A user command becomes committed only after:
 
 OPFS cache writes are independent of semantic atomicity. Publish a cache-index entry only after a complete write and checksum. Orphan cleanup removes unregistered temporary files.
 
+Committed Undo/Redo follows this same protocol. Its event references an earlier revision resolved
+from repository-owned verified history; it never decrements the head or deletes newer events.
+Recovery and portable replay retain referenced targets, including when stored historical snapshots
+are missing or corrupt. Navigation stacks are session-local; saved navigation results remain durable.
+See [ADR-0039](../adr/0039-committed-document-undo.md) for the bounds and replay contract.
+
 ## Autosave
 
 - Debounce for 0.5–2 seconds after a committed command, never after each pointer move.

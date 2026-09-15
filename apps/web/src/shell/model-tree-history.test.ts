@@ -151,7 +151,7 @@ function modelReferenceChain() {
 }
 
 describe("selectModelTreeHistory", () => {
-  it("interleaves graph history and derives terminal bodies without mutating the snapshot", () => {
+  it("interleaves graph history without inventing bodies before rebuild", () => {
     const snapshot = { sketches: [sketch], features: [feature] }
     const before = JSON.stringify(snapshot)
     const view = selectModelTreeHistory(snapshot)
@@ -161,7 +161,7 @@ describe("selectModelTreeHistory", () => {
       `feature:${feature.id}`,
       `sketch:${sketch.id}`,
     ])
-    expect(view.bodyFeatures.map(({ id }) => id)).toEqual([feature.id])
+    expect(view.bodyFeatures).toEqual([])
     expect(JSON.stringify(snapshot)).toBe(before)
   })
 
@@ -179,7 +179,7 @@ describe("selectModelTreeHistory", () => {
     const view = selectModelTreeHistory({ sketches: [sketch], features: [feature, datum] })
 
     expect(view.rows.find((row) => row.ref.id === datum.id)?.datum).toBe(true)
-    expect(view.bodyFeatures.map(({ id }) => id)).toEqual([feature.id])
+    expect(view.bodyFeatures).toEqual([])
   })
 
   it("projects direct and chained sketch-reference failures onto their History rows", () => {

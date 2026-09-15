@@ -135,10 +135,11 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
     radius: number,
     height: number,
     origin: Vector3,
+    direction: Vector3 = [0, 0, 1],
   ): Shape3D {
     const point = new opencascade.gp_Pnt_3(...origin)
-    const direction = new opencascade.gp_Dir_4(0, 0, 1)
-    const axis = new opencascade.gp_Ax2_3(point, direction)
+    const axisDirection = new opencascade.gp_Dir_4(...direction)
+    const axis = new opencascade.gp_Ax2_3(point, axisDirection)
 
     try {
       const maker = new opencascade.BRepPrimAPI_MakeCylinder_3(axis, radius, height)
@@ -150,7 +151,7 @@ export function createOcctShapeOperations(castShape: OcctShapeCaster) {
       }
     } finally {
       axis.delete()
-      direction.delete()
+      axisDirection.delete()
       point.delete()
     }
   }

@@ -1,14 +1,22 @@
+import { canonicalJson } from "@vibeshape/domain/canonical-json"
 import type { CommandDispatcher } from "@vibeshape/domain/command-dispatcher"
 import type { DocumentEvent } from "@vibeshape/domain/commands"
-import { commandActorsEqual, documentCommandSchema } from "@vibeshape/domain/commands"
+import {
+  commandActorSchema,
+  commandActorsEqual,
+  documentCommandSchema,
+} from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
+  commandIdSchema,
   type DocumentId,
   documentIdSchema,
   draftIdSchema,
+  revisionSchema,
   type SessionId,
   type SketchId,
   sessionIdSchema,
+  timestampSchema,
 } from "@vibeshape/domain/identifiers"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import {
@@ -21,6 +29,32 @@ import {
 import { z } from "zod"
 
 const DEFAULT_LEASE_DURATION_MS = 30_000
+
+export const documentHistoryRequestSchema = z
+  .object({
+    direction: z.enum(["undo", "redo"]),
+    commandId: commandIdSchema,
+    documentId: documentIdSchema,
+    baseRevision: revisionSchema,
+    issuedAt: timestampSchema,
+    actor: commandActorSchema,
+  })
+  .strict()
+
+export type DocumentHistoryRequest = Readonly<z.infer<typeof documentHistoryRequestSchema>>
+export type DocumentHistoryAvailability = Readonly<{ canUndo: boolean; canRedo: boolean }>
+
+export type DocumentHistoryPort = Readonly<{
+  readonly availability: DocumentHistoryAvailability
+  navigate: (
+    input: Readonly<{
+      request: DocumentHistoryRequest
+      sessionId: SessionId
+      lease: { epoch: number; nowMs: number }
+      baseSnapshot: DocumentSnapshot
+    }>,
+  ) => Promise<SessionPortResult<DocumentSnapshot>>
+}>
 
 const openSessionInputSchema = z
   .object({
@@ -44,6 +78,7 @@ const draftCommitInputSchema = z
   .object({
     draftId: draftIdSchema,
     commands: z.array(z.unknown()).min(1).max(256),
+    expectedSnapshot: documentSnapshotSchema.optional(),
   })
   .strict()
 
@@ -115,6 +150,7 @@ type PersistenceDraftCommitInput = Readonly<{
 }>
 
 export type PersistentDocumentRepositoryPort = Readonly<{
+  history?: DocumentHistoryPort
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
   commitDraft: (input: PersistenceDraftCommitInput) => Promise<SessionPortResult<unknown>>
   recover: (documentId: DocumentId) => Promise<SessionPortResult<PersistedRecoveryReport>>
@@ -227,6 +263,10 @@ export type PersistentDocumentDraftCommitResult =
       events: readonly DocumentEvent[]
       rebuild: DocumentRebuildOutcome
     }
+  | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
+
+export type PersistentDocumentHistoryResult =
+  | { ok: true; snapshot: DocumentSnapshot; rebuild: DocumentRebuildOutcome }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
 type WriterLease = Readonly<{ epoch: number; expiresAt: number }>
@@ -349,6 +389,66 @@ function dispatchDraftCommands(
       }
 }
 
+function historyRequestDiagnostic(
+  message: string,
+  retryable = false,
+  sourceCode: string | null = null,
+): PersistentDocumentSessionDiagnostic {
+  return diagnostic("command-rejected", message, retryable, sourceCode)
+}
+
+function validateHistoryRequest(
+  input: unknown,
+  history: DocumentHistoryPort | undefined,
+  documentId: DocumentId,
+  revision: number,
+) {
+  const parsed = documentHistoryRequestSchema.safeParse(input)
+  if (!parsed.success || !history)
+    return {
+      ok: false as const,
+      diagnostic: historyRequestDiagnostic(
+        "Document history is unavailable or the request is invalid.",
+      ),
+    }
+  if (parsed.data.documentId !== documentId || parsed.data.baseRevision !== revision)
+    return {
+      ok: false as const,
+      diagnostic: historyRequestDiagnostic(
+        "The history request does not target the current revision.",
+        true,
+        "stale-revision",
+      ),
+    }
+  return { ok: true as const, request: parsed.data, history }
+}
+
+async function persistHistoryRequest(
+  history: DocumentHistoryPort,
+  request: DocumentHistoryRequest,
+  sessionId: SessionId,
+  lease: { epoch: number; nowMs: number },
+  baseSnapshot: DocumentSnapshot,
+) {
+  try {
+    return await history.navigate({ request, sessionId, lease, baseSnapshot })
+  } catch {
+    return {
+      ok: false as const,
+      diagnostic: diagnostic("persistence-failed", "The history change was not saved.", true),
+    }
+  }
+}
+
+function validateHistoryResult(value: DocumentSnapshot, documentId: DocumentId, revision: number) {
+  const restored = documentSnapshotSchema.safeParse(value)
+  return restored.success &&
+    restored.data.id === documentId &&
+    restored.data.revision === revision + 1
+    ? restored.data
+    : null
+}
+
 export class PersistentDocumentSession {
   readonly #documentId: DocumentId
   readonly #sessionId: SessionId
@@ -386,6 +486,60 @@ export class PersistentDocumentSession {
 
   get mode() {
     return this.#lease ? ("read-write" as const) : ("read-only" as const)
+  }
+
+  get history(): DocumentHistoryAvailability {
+    return !this.#closed && this.#lease && this.#dependencies.repository.history
+      ? this.#dependencies.repository.history.availability
+      : { canUndo: false, canRedo: false }
+  }
+
+  navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#enqueue(() => this.#navigateHistory(input))
+  }
+
+  async #navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    if (this.#closed)
+      return {
+        ok: false,
+        diagnostic: diagnostic("session-closed", "The document session is closed."),
+      }
+    const validated = validateHistoryRequest(
+      input,
+      this.#dependencies.repository.history,
+      this.#documentId,
+      this.#snapshot.revision,
+    )
+    if (!validated.ok) return validated
+    const lease = await this.#renewWriteAccess()
+    if (!lease.ok) return lease
+    const result = await persistHistoryRequest(
+      validated.history,
+      validated.request,
+      this.#sessionId,
+      { epoch: lease.lease.epoch, nowMs: lease.nowMs },
+      this.#snapshot,
+    )
+    if (!result.ok)
+      return {
+        ok: false,
+        diagnostic: portDiagnostic(
+          "persistence-failed",
+          "The history change was not saved.",
+          result.diagnostic,
+        ),
+      }
+    const restored = validateHistoryResult(result.value, this.#documentId, this.#snapshot.revision)
+    if (!restored)
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "invalid-recovered-document",
+          "The history adapter returned an invalid document revision.",
+        ),
+      }
+    this.#snapshot = restored
+    return { ok: true, snapshot: this.#snapshot, rebuild: await this.#rebuild() }
   }
 
   commit(input: unknown): Promise<PersistentDocumentCommitResult> {
@@ -468,15 +622,26 @@ export class PersistentDocumentSession {
         diagnostic: diagnostic("invalid-draft-commit", "The document draft commit is invalid."),
       }
     }
-    const lease = await this.#renewWriteAccess()
-    if (!lease.ok) return lease
-
     const dispatched = dispatchDraftCommands(
       this.#dependencies.commandDispatcher,
       this.#snapshot,
       parsed.data,
     )
     if (!dispatched.ok) return dispatched
+    if (
+      parsed.data.expectedSnapshot &&
+      canonicalJson(dispatched.snapshot) !== canonicalJson(parsed.data.expectedSnapshot)
+    ) {
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "invalid-draft-commit",
+          "The document draft commit target does not match the dispatched snapshot.",
+        ),
+      }
+    }
+    const lease = await this.#renewWriteAccess()
+    if (!lease.ok) return lease
     const persisted = await this.#dependencies.repository.commitDraft({
       sessionId: this.#sessionId,
       lease: { epoch: lease.lease.epoch, nowMs: lease.nowMs },

@@ -38,6 +38,8 @@ If a future business model requires a permissive or commercial SDK, the GPL solv
 | Immer | MIT | Include a third-party notice; it ships with the browser editor-state store |
 | Dexie | Apache-2.0 | Include license and applicable `NOTICE` obligations |
 | Zod | MIT | Include a third-party notice |
+| MCP TypeScript SDK 1.30.0 | MIT | Server-only runtime dependency; preserve the Anthropic notice and inventory its locked transitives |
+| MCP/CLI transitives: qs 6.16.0 / fast-uri 3.1.6 | BSD-3-Clause / BSD-3-Clause | Compatible security overrides; include exact locked notices in the release bundle |
 | is-what | MIT | Include a third-party notice; it is a zero-runtime-dependency ESM guard library shipped only by importing workspaces |
 | fflate | MIT | Include a third-party notice; the browser-shipped 3MF writer and private extension package validator import it for ZIP processing |
 | Bun | MIT | Pin the toolchain and link its source; it is normally not part of the browser distribution |

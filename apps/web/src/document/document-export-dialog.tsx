@@ -155,7 +155,13 @@ export function DocumentExportDialog({ controller }: { controller: DocumentContr
         <Tooltip>
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
-              <Button type="button" size="icon-sm" variant="ghost" aria-label={t("trigger")}>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("trigger")}
+                disabled={controller.status !== "ready" || controller.report === null}
+              >
                 <Download aria-hidden="true" />
               </Button>
             </DialogTrigger>

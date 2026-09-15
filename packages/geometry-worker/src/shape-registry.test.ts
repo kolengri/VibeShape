@@ -7,7 +7,7 @@ class TrackedShape {
   constructor(
     readonly id: string,
     private readonly deletionOrder: string[],
-    private readonly shouldFail = false,
+    private shouldFail = false,
   ) {}
 
   delete() {
@@ -18,6 +18,10 @@ class TrackedShape {
     }
 
     this.deletionOrder.push(this.id)
+  }
+
+  recover() {
+    this.shouldFail = false
   }
 }
 
@@ -149,7 +153,7 @@ describe("DocumentFeatureShapeRegistry", () => {
     expect(registry.size).toBe(1)
   })
 
-  it("keeps the previous feature entry when replacement disposal fails", () => {
+  it("invalidates the previous feature entry when replacement disposal fails", () => {
     const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
     const previous = new TrackedShape("previous", [], true)
     const replacement = new TrackedShape("replacement", [])
@@ -158,9 +162,145 @@ describe("DocumentFeatureShapeRegistry", () => {
     expect(() => registry.replace("document-a", "feature-a", "b".repeat(64), replacement)).toThrow(
       "Failed to delete previous.",
     )
-    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBe(previous)
+    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBeUndefined()
     expect(registry.get("document-a", "feature-a", "b".repeat(64))).toBeUndefined()
     expect(replacement.deleteCount).toBe(0)
     expect(registry.size).toBe(1)
+  })
+
+  it("resolves named outputs and treats result as the root alias", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const root = new TrackedShape("root", [])
+    const cap = new TrackedShape("cap", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), root, [
+      { role: "result", shape: root },
+      { role: "cap.start", shape: cap },
+    ])
+
+    expect(
+      registry.resolve("document-a", [
+        { featureId: "feature-a", contentHash: "a".repeat(64), outputRole: "cap.start" },
+        { featureId: "feature-a", contentHash: "a".repeat(64) },
+      ]),
+    ).toEqual([cap, root])
+    expect(
+      registry.resolve("document-a", [
+        { featureId: "feature-a", contentHash: "a".repeat(64), outputRole: "result" },
+      ]),
+    ).toEqual([root])
+    expect(
+      registry.resolve("document-a", [
+        { featureId: "feature-a", contentHash: "a".repeat(64), outputRole: "missing" },
+      ]),
+    ).toBeNull()
+
+    const undeclared = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const undeclaredRoot = new TrackedShape("undeclared-root", [])
+    undeclared.replace("document-a", "feature-a", "a".repeat(64), undeclaredRoot)
+    expect(
+      undeclared.resolve("document-a", [{ featureId: "feature-a", contentHash: "a".repeat(64) }]),
+    ).toEqual([undeclaredRoot])
+    expect(
+      undeclared.resolve("document-a", [
+        { featureId: "feature-a", contentHash: "a".repeat(64), outputRole: "result" },
+      ]),
+    ).toBeNull()
+  })
+
+  it("rejects duplicate roles and aliases before mutating the current entry", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const root = new TrackedShape("root", [])
+    const current = new TrackedShape("current", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), current)
+
+    expect(() =>
+      registry.replace("document-a", "feature-a", "b".repeat(64), root, [
+        { role: "cap", shape: root },
+        { role: "cap", shape: new TrackedShape("other", []) },
+      ]),
+    ).toThrow("aliased")
+    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBe(current)
+    expect(current.deleteCount).toBe(0)
+  })
+
+  it("deduplicates root aliases and cleans every live wrapper once", () => {
+    const order: string[] = []
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const root = new TrackedShape("root", order)
+    const output = new TrackedShape("output", order)
+    registry.replace("document-a", "feature-a", "a".repeat(64), root, [
+      { role: "result", shape: root },
+      { role: "cap", shape: output },
+    ])
+
+    expect(registry.size).toBe(2)
+    registry.disposeDocument("document-a")
+    expect(order).toEqual(["output", "root"])
+    expect(root.deleteCount).toBe(1)
+    expect(output.deleteCount).toBe(1)
+    expect(registry.size).toBe(0)
+  })
+
+  it("retains only failed cleanup and recovers without double deletion", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const failed = new TrackedShape("failed", [], true)
+    const successful = new TrackedShape("successful", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), failed, [
+      { role: "cap", shape: successful },
+    ])
+
+    expect(() => registry.disposeDocument("document-a")).toThrow("Failed to delete failed.")
+    expect(registry.size).toBe(1)
+    expect(successful.deleteCount).toBe(1)
+    failed.recover()
+    expect(registry.disposeDocument("document-a")).toBe(0)
+    expect(failed.deleteCount).toBe(2)
+    expect(successful.deleteCount).toBe(1)
+  })
+
+  it("cleans sibling entries after one synchronization deletion fails", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const failed = new TrackedShape("failed", [], true)
+    const successful = new TrackedShape("successful", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), failed)
+    registry.replace("document-a", "feature-b", "b".repeat(64), successful)
+
+    expect(() => registry.synchronize("document-a", [])).toThrow("Failed to delete failed.")
+    expect(successful.deleteCount).toBe(1)
+    expect(registry.size).toBe(1)
+    failed.recover()
+    expect(registry.synchronize("document-a", [])).toBe(0)
+    expect(failed.deleteCount).toBe(2)
+    expect(successful.deleteCount).toBe(1)
+  })
+
+  it("cleans sibling entries after one document deletion fails", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const failed = new TrackedShape("failed", [], true)
+    const successful = new TrackedShape("successful", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), successful)
+    registry.replace("document-a", "feature-b", "b".repeat(64), failed)
+
+    expect(() => registry.disposeDocument("document-a")).toThrow("Failed to delete failed.")
+    expect(successful.deleteCount).toBe(1)
+    expect(registry.size).toBe(1)
+    failed.recover()
+    expect(registry.disposeDocument("document-a")).toBe(0)
+    expect(failed.deleteCount).toBe(2)
+    expect(successful.deleteCount).toBe(1)
+  })
+
+  it("rejects native object sharing across features and documents", () => {
+    const registry = new DocumentFeatureShapeRegistry<TrackedShape>()
+    const shared = new TrackedShape("shared", [])
+    registry.replace("document-a", "feature-a", "a".repeat(64), shared)
+
+    expect(() => registry.replace("document-a", "feature-b", "b".repeat(64), shared)).toThrow(
+      "already owned",
+    )
+    expect(() => registry.replace("document-b", "feature-a", "c".repeat(64), shared)).toThrow(
+      "already owned",
+    )
+    expect(registry.get("document-a", "feature-a", "a".repeat(64))).toBe(shared)
   })
 })

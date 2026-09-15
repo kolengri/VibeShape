@@ -34,7 +34,7 @@ import type {
   ViewerSketchReferenceCandidate,
   ViewerStandardView,
 } from "@vibeshape/viewer/three-viewport"
-import { viewerSketchProfileKey } from "@vibeshape/viewer/three-viewport"
+import { viewerBodyKey, viewerSketchProfileKey } from "@vibeshape/viewer/three-viewport"
 import {
   type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -54,8 +54,8 @@ import {
   saveActiveProjectThumbnail,
 } from "../document/document-controller"
 import { useDocumentDisplayUnits } from "../document/document-display-units"
+import { type ModelBodySelection, terminalModelBodies } from "../features/part-design/model-bodies"
 import type { PrimitivePlacement } from "../features/part-design/primitive-placement"
-import { terminalFeatureIds } from "../features/part-design/terminal-features"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
@@ -80,7 +80,7 @@ export type GeometryViewportSketchContext = Readonly<{
   referenceSelection?: Readonly<{
     candidates: readonly ViewerSketchReferenceCandidate[]
     onSelect: (candidate: ViewerSketchReferenceCandidate) => void
-    purpose?: "pierce" | "revolve-axis" | "use"
+    purpose?: "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "use"
   }>
   faceIntersectionSelection?: Readonly<{
     onSelect: (selection: ViewerSelection) => void
@@ -102,27 +102,30 @@ export function viewerMeshes(
 ): readonly ViewerMesh[] {
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return []
-  const contextHiddenIds = new Set(contextualHiddenFeatureIds)
-  const visibleContextFeatures = (controller.report?.snapshot.features ?? []).filter(
-    ({ id }) => !contextHiddenIds.has(id),
-  )
-  const terminalIds = terminalFeatureIds(visibleContextFeatures)
+  const features = controller.report?.snapshot.features ?? []
+  const bodies = terminalModelBodies(features, rebuild.response, contextualHiddenFeatureIds)
+  if (!bodies) return []
+  const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
+  const solidMeshes = bodies
+    .filter(({ geometry }) => !hiddenIds.has(geometry.featureId))
+    .map(({ geometry: body }) => ({
+      featureId: body.featureId,
+      ...(body.outputRole === undefined ? {} : { outputRole: body.outputRole }),
+      ...body.mesh,
+    }))
   const datumIds = new Set<string>(
-    visibleContextFeatures
+    features
       .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
       .map(({ id }) => id),
   )
-  const hiddenIds = new Set([...hiddenFeatureIds, ...contextualHiddenFeatureIds])
-  return rebuild.response.geometry
-    .filter(
-      ({ featureId }) =>
-        (terminalIds.has(featureId) || datumIds.has(featureId)) && !hiddenIds.has(featureId),
-    )
+  const datumMeshes = rebuild.response.geometry
+    .filter(({ featureId }) => datumIds.has(featureId) && !hiddenIds.has(featureId))
     .map(({ featureId, geometry }) => ({
       featureId,
       ...geometry.mesh,
-      ...(datumIds.has(featureId) ? { appearance: "datum" as const } : {}),
+      appearance: "datum" as const,
     }))
+  return [...solidMeshes, ...datumMeshes]
 }
 
 export function viewerSketches(
@@ -819,11 +822,13 @@ function ViewportControls({
   clearLabel,
   fitLabel,
   selection,
+  onBodyClear,
   viewportRef,
 }: {
   clearLabel: string
   fitLabel: string
-  selection: ViewerSelection | null
+  onBodyClear?: (() => void) | undefined
+  selection: ViewerSelection | ModelBodySelection | null
   viewportRef: RefObject<GeometryViewportPort | null>
 }) {
   const t = useTranslations("app.shell.viewport")
@@ -843,7 +848,10 @@ function ViewportControls({
           <TooltipTrigger asChild>
             <Button
               aria-label={clearLabel}
-              onClick={() => viewportRef.current?.clearSelection()}
+              onClick={() => {
+                viewportRef.current?.clearSelection()
+                onBodyClear?.()
+              }}
               size="icon-xs"
               type="button"
               variant="ghost"
@@ -938,6 +946,12 @@ function OriginPlaneSelectionOverlay({
 
 type ActivePreviewStatus = Exclude<FeaturePreviewState["status"], "idle">
 type PreviewMessageKey =
+  | "holePreviewFailed"
+  | "holePreviewLoading"
+  | "holePreviewReady"
+  | "edgeTreatmentPreviewFailed"
+  | "edgeTreatmentPreviewLoading"
+  | "edgeTreatmentPreviewReady"
   | "datumPreviewFailed"
   | "datumPreviewLoading"
   | "datumPreviewReady"
@@ -947,10 +961,16 @@ type PreviewMessageKey =
 
 const PREVIEW_MESSAGE_KEYS: Readonly<
   Record<
-    "datum-plane" | "extrusion" | "primitive" | "revolve",
+    "datum-plane" | "extrusion" | "primitive" | "revolve" | "edge-treatment" | "hole",
     Record<ActivePreviewStatus, PreviewMessageKey>
   >
 > = {
+  hole: { error: "holePreviewFailed", loading: "holePreviewLoading", ready: "holePreviewReady" },
+  "edge-treatment": {
+    error: "edgeTreatmentPreviewFailed",
+    loading: "edgeTreatmentPreviewLoading",
+    ready: "edgeTreatmentPreviewReady",
+  },
   "datum-plane": {
     error: "datumPreviewFailed",
     loading: "datumPreviewLoading",
@@ -1019,6 +1039,10 @@ type GeometryViewportProps = Readonly<{
     onChange: (plane: ViewerOriginPlane, visible: boolean) => void
     visibility: ViewerOriginPlaneVisibility
   }>
+  preselectedBody?: ModelBodySelection | null
+  selectedBody?: ModelBodySelection | null
+  onBodySelectionChange?: (body: ModelBodySelection | null) => void
+  onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
   preselectedFeatureId?: string | null
   selectedFeatureId?: string | null
   onSelectionChange: (selection: ViewerSelection | null) => void
@@ -1052,7 +1076,7 @@ type GeometryViewportProps = Readonly<{
 function viewerFeatureMesh(
   controller: DocumentControllerState,
   featureId: string | null | undefined,
-) {
+): ViewerMesh | null {
   if (!featureId || !controller.report?.rebuild.ok) return null
   const result = controller.report.rebuild.response.geometry.find(
     (candidate) => candidate.featureId === featureId,
@@ -1146,7 +1170,7 @@ function useClearInvalidSelection(
   onSelectionChange: GeometryViewportProps["onSelectionChange"],
 ) {
   useEffect(() => {
-    if (selection && !meshes.some(({ featureId }) => featureId === selection.featureId)) {
+    if (selection && !meshes.some((mesh) => viewerBodyKey(mesh) === viewerBodyKey(selection))) {
       onSelectionChange(null)
     }
   }, [meshes, onSelectionChange, selection])
@@ -1256,6 +1280,16 @@ function selectedSketchProfileKey(selection: GeometryViewportProps["sketchProfil
     : null
 }
 
+function useClearInvalidBodyHighlight(
+  selection: ModelBodySelection | null | undefined,
+  mesh: ViewerMesh | null,
+  onChange: ((body: ModelBodySelection | null) => void) | undefined,
+) {
+  useEffect(() => {
+    if (selection && !mesh) onChange?.(null)
+  }, [mesh, selection, onChange])
+}
+
 function useGeometryViewportScene(props: GeometryViewportProps) {
   const { controller, featurePreview, preselectedFeatureId, selectedFeatureId } = props
   const { allCommittedMeshes, allHiddenFeatureIds, meshes } = useViewportMeshPresentation(props)
@@ -1272,7 +1306,31 @@ function useGeometryViewportScene(props: GeometryViewportProps) {
     allHiddenFeatureIds,
     featurePreview,
   )
-  return { allCommittedMeshes, featurePreselection, featureSelection, meshes, sketches }
+  const selectedBody = props.selectedBody
+  const preselectedBody = props.preselectedBody
+  const bodySelection = useMemo(
+    () =>
+      selectedBody
+        ? (meshes.find((mesh) => viewerBodyKey(mesh) === viewerBodyKey(selectedBody)) ?? null)
+        : null,
+    [meshes, selectedBody],
+  )
+  const bodyPreselection = useMemo(
+    () =>
+      preselectedBody
+        ? (meshes.find((mesh) => viewerBodyKey(mesh) === viewerBodyKey(preselectedBody)) ?? null)
+        : null,
+    [meshes, preselectedBody],
+  )
+  useClearInvalidBodyHighlight(selectedBody, bodySelection, props.onBodySelectionChange)
+  useClearInvalidBodyHighlight(preselectedBody, bodyPreselection, props.onBodyPreselectionChange)
+  return {
+    allCommittedMeshes,
+    featurePreselection: preselectedBody ? bodyPreselection : featurePreselection,
+    featureSelection: selectedBody ? bodySelection : featureSelection,
+    meshes,
+    sketches,
+  }
 }
 
 function useGeometryViewportInteraction(
@@ -1357,6 +1415,15 @@ function useGeometryViewportInteraction(
   }
 }
 
+function viewportHighlightIdentity(scene: ReturnType<typeof useGeometryViewportScene>) {
+  return {
+    preselectedFeatureId: scene.featurePreselection?.featureId ?? null,
+    preselectedBodyRole: scene.featurePreselection?.outputRole ?? null,
+    selectedFeatureId: scene.featureSelection?.featureId ?? null,
+    selectedBodyRole: scene.featureSelection?.outputRole ?? null,
+  }
+}
+
 function useGeometryViewportModel(props: GeometryViewportProps) {
   const t = useTranslations("app.shell.viewport")
   const scene = useGeometryViewportScene(props)
@@ -1374,8 +1441,8 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     t,
   )
   return {
+    ...viewportHighlightIdentity(scene),
     canvasRef: interaction.canvasRef,
-    preselectedFeatureId: scene.featurePreselection?.featureId ?? null,
     meshes: scene.meshes,
     sketches: scene.sketches,
     message,
@@ -1391,7 +1458,6 @@ function useGeometryViewportModel(props: GeometryViewportProps) {
     originPlaneVisibility: visibleOriginPlanes(props.originPlaneVisibility),
     onOriginPlaneVisibilityChange: changeOriginPlaneVisibilityHandler(props.originPlaneVisibility),
     viewportRef: interaction.viewportRef,
-    selectedFeatureId: scene.featureSelection?.featureId ?? null,
     selectedSketchProfileCount: props.sketchProfileSelection?.selectedProfiles.length ?? 0,
     selectedSketchProfileKey: selectedSketchProfileKey(props.sketchProfileSelection),
   }
@@ -1404,6 +1470,7 @@ function ViewportControlsSlot({
   originPlaneVisibility,
   onOriginPlaneVisibilityChange,
   selection,
+  onBodyClear,
   viewportRef,
 }: Readonly<{
   meshes: readonly ViewerMesh[]
@@ -1411,7 +1478,8 @@ function ViewportControlsSlot({
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   onOriginPlaneVisibilityChange: (plane: ViewerOriginPlane, visible: boolean) => void
-  selection: GeometryViewportProps["selection"]
+  onBodyClear?: (() => void) | undefined
+  selection: ViewerSelection | ModelBodySelection | null
   viewportRef: RefObject<GeometryViewportPort | null>
 }>) {
   const t = useTranslations("app.shell.viewport")
@@ -1426,6 +1494,7 @@ function ViewportControlsSlot({
           clearLabel={t("clearSelection")}
           fitLabel={t("fit")}
           selection={selection}
+          onBodyClear={onBodyClear}
           viewportRef={viewportRef}
         />
       ) : null}
@@ -1594,7 +1663,7 @@ function useSupportFaceSelection(
 }
 
 function viewerSelectionKey(selection: ViewerSelection) {
-  return `${selection.featureId}:${selection.faceId}`
+  return `${viewerBodyKey(selection)}:${selection.faceId}`
 }
 
 function sameSupportFaceCandidates(
@@ -2059,6 +2128,7 @@ function ModelViewportChrome({
   originPlaneVisibility,
   profileChrome,
   selection,
+  onBodyClear,
   supportFacePreselectionLabel,
   supportFaceSelectOther,
   sketches,
@@ -2073,7 +2143,8 @@ function ModelViewportChrome({
   originPlaneSelection: GeometryViewportProps["originPlaneSelection"]
   originPlaneVisibility: ViewerOriginPlaneVisibility
   profileChrome: ReactNode
-  selection: ViewerSelection | null
+  onBodyClear?: (() => void) | undefined
+  selection: ViewerSelection | ModelBodySelection | null
   supportFacePreselectionLabel: string | null
   supportFaceSelectOther: SupportFaceSelectOtherState
   sketches: readonly ViewerSketch[]
@@ -2091,6 +2162,7 @@ function ModelViewportChrome({
         originPlaneVisibility={originPlaneVisibility}
         onOriginPlaneVisibilityChange={onOriginPlaneVisibilityChange}
         selection={selection}
+        onBodyClear={onBodyClear}
         viewportRef={viewportRef}
       />
       <OriginPlaneSelectionOverlay
@@ -2215,17 +2287,21 @@ function SavedProfileKeyboardPicker({
   )
 }
 
-type SketchReferencePurpose = "pierce" | "revolve-axis" | "use"
+type SketchReferencePurpose = "pierce" | "revolve-axis" | "edge-treatment" | "hole-point" | "use"
 
 function referenceSelectionMessageKey(purpose: SketchReferencePurpose) {
+  if (purpose === "hole-point") return "holePointSelection" as const
   if (purpose === "pierce") return "sketchPierceSelection" as const
   if (purpose === "revolve-axis") return "revolveAxisSelection" as const
+  if (purpose === "edge-treatment") return "edgeTreatmentSelection" as const
   return "sketchReferenceSelection" as const
 }
 
 function referenceCandidateMessageKey(purpose: SketchReferencePurpose) {
+  if (purpose === "hole-point") return "holePointCandidate" as const
   if (purpose === "pierce") return "sketchPierceCandidate" as const
   if (purpose === "revolve-axis") return "revolveAxisCandidate" as const
+  if (purpose === "edge-treatment") return "edgeTreatmentCandidate" as const
   return "sketchReferenceCandidate" as const
 }
 
@@ -2269,28 +2345,20 @@ function SketchReferenceKeyboardPicker({
   selection: NonNullable<GeometryViewportSketchContext["referenceSelection"]>
 }>) {
   const t = useTranslations("app.shell.viewport")
-  const pierce = selection.purpose === "pierce"
-  const revolveAxis = selection.purpose === "revolve-axis"
+  const keys = {
+    "hole-point": ["holePointKeyboardSelection", "holePointKeyboardPlaceholder"],
+    use: ["sketchReferenceKeyboardSelection", "sketchReferenceKeyboardPlaceholder"],
+    pierce: ["sketchPierceKeyboardSelection", "sketchPierceKeyboardPlaceholder"],
+    "revolve-axis": ["revolveAxisKeyboardSelection", "revolveAxisKeyboardPlaceholder"],
+    "edge-treatment": ["edgeTreatmentKeyboardSelection", "edgeTreatmentKeyboardPlaceholder"],
+  } as const
+  const [labelKey, placeholderKey] = keys[selection.purpose ?? "use"]
   if (selection.candidates.length === 0) return null
   return (
     <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
-      <span className="text-xs font-medium">
-        {t(
-          pierce
-            ? "sketchPierceKeyboardSelection"
-            : revolveAxis
-              ? "revolveAxisKeyboardSelection"
-              : "sketchReferenceKeyboardSelection",
-        )}
-      </span>
+      <span className="text-xs font-medium">{t(labelKey)}</span>
       <NativeSelect
-        aria-label={t(
-          pierce
-            ? "sketchPierceKeyboardSelection"
-            : revolveAxis
-              ? "revolveAxisKeyboardSelection"
-              : "sketchReferenceKeyboardSelection",
-        )}
+        aria-label={t(labelKey)}
         className="h-8 max-w-72 text-xs"
         defaultValue=""
         onChange={(event) => {
@@ -2299,15 +2367,7 @@ function SketchReferenceKeyboardPicker({
           event.currentTarget.value = ""
         }}
       >
-        <option value="">
-          {t(
-            pierce
-              ? "sketchPierceKeyboardPlaceholder"
-              : revolveAxis
-                ? "revolveAxisKeyboardPlaceholder"
-                : "sketchReferenceKeyboardPlaceholder",
-          )}
-        </option>
+        <option value="">{t(placeholderKey)}</option>
         {selection.candidates.map((candidate, index) => (
           <option key={`${candidate.kind}:${candidate.label}:${index}`} value={index}>
             {candidate.label}
@@ -2429,7 +2489,8 @@ function GeometryViewportContextChrome({
           sketches={model.sketches}
         />
       }
-      selection={selection}
+      selection={props.selectedBody ?? selection}
+      onBodyClear={props.selectedBody ? () => props.onBodySelectionChange?.(null) : undefined}
       sketches={model.sketches}
       supportFacePreselectionLabel={
         supportFaceSelectOther.activeCandidate?.label ??
@@ -2459,14 +2520,23 @@ function viewportOriginPlaneData(
   }
 }
 
+function viewportHighlightData(model: ReturnType<typeof useGeometryViewportModel>) {
+  return {
+    "data-preselected-feature": model.preselectedFeatureId ?? undefined,
+    "data-selected-feature": model.selectedFeatureId ?? undefined,
+    "data-selected-body-role": model.selectedBodyRole ?? undefined,
+    "data-preselected-body-role": model.preselectedBodyRole ?? undefined,
+  }
+}
+
 function viewportRenderData(
   passive: boolean,
   featurePreview: FeaturePreviewState | undefined,
   model: ReturnType<typeof useGeometryViewportModel>,
 ) {
   return {
+    ...viewportHighlightData(model),
     "data-passive": passive ? "true" : undefined,
-    "data-preselected-feature": model.preselectedFeatureId ?? undefined,
     "data-preview-feature-count": model.meshes.filter(({ appearance }) => appearance === "preview")
       .length,
     "data-preview-status": featurePreview?.status ?? "idle",
@@ -2477,7 +2547,6 @@ function viewportRenderData(
       0,
     ),
     "data-sketch-profile-candidate-count": model.sketchProfileCandidateStack.length,
-    "data-selected-feature": model.selectedFeatureId ?? undefined,
     "data-preselected-sketch-profile": model.sketchProfilePreselection
       ? viewerSketchProfileKey(model.sketchProfilePreselection.selector)
       : undefined,

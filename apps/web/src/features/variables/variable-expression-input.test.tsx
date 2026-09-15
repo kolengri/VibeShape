@@ -46,6 +46,46 @@ function renderInput(props: Partial<React.ComponentProps<typeof VariableExpressi
 }
 
 describe("VariableExpressionInput", () => {
+  it.each([
+    ["20 mm", "20"],
+    [" -2.5e+2 cm ", "-2.5e+2"],
+    [".75in", ".75"],
+    ["90 deg", "90"],
+    ["12", "12"],
+  ])("selects the numeric literal in %s on entry", async (value, selected) => {
+    const user = userEvent.setup()
+    const onValueChange = renderInput({ defaultValue: value })
+    const input = screen.getByRole("combobox", { name: "Expression" }) as HTMLInputElement
+    await user.click(input)
+    expect(input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0)).toBe(selected)
+    expect(onValueChange).not.toHaveBeenCalled()
+    await user.keyboard("8")
+    expect(input.value).toBe(value.replace(selected, "8"))
+  })
+
+  it("selects on keyboard entry but preserves subsequent pointer caret placement", async () => {
+    const user = userEvent.setup()
+    renderInput({ defaultValue: "20 mm" })
+    const input = screen.getByRole("combobox", { name: "Expression" }) as HTMLInputElement
+    await user.tab()
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 2])
+    await user.click(input)
+    expect(input.selectionStart).toBe(input.selectionEnd)
+  })
+
+  it("preserves native selection for formulas and read-only values", async () => {
+    const user = userEvent.setup()
+    renderInput({ defaultValue: "2 * #width" })
+    const input = screen.getByRole("combobox", { name: "Expression" }) as HTMLInputElement
+    await user.click(input)
+    expect(input.selectionStart).toBe(input.selectionEnd)
+    cleanup()
+    renderInput({ defaultValue: "20 mm", readOnly: true })
+    const readOnly = screen.getByRole("combobox", { name: "Expression" }) as HTMLInputElement
+    await user.click(readOnly)
+    expect(readOnly.selectionStart).toBe(readOnly.selectionEnd)
+  })
+
   it("filters the current variable token and completes it with the keyboard", async () => {
     const user = userEvent.setup()
     const onValueChange = renderInput()

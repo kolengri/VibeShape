@@ -333,6 +333,9 @@ Placeholder text is an example, never the only label or required instruction.
 - The document's internal length unit is millimeters, but fields display the chosen document or field unit.
 - The application bar exposes one project Units dialog for `um`, `mm`, `cm`, `m`, `in`, or `ft` length display and `deg` or `rad` angle display; the status bar and modeling view keep the active choice visible.
 - Preserve the user's raw text while editing. Parse and normalize on committed change, not on every keystroke.
+- Entering a numeric expression field by pointer or Tab selects the signed numeric literal,
+  excluding its unit suffix. The first click preserves that selection; subsequent clicks allow
+  ordinary caret placement. Formulas, variable references, and read-only values retain native selection.
 - When the collapsed caret follows `#` in an expression field, open a bounded autocomplete list filtered by the variable-name fragment at that caret. Arrow keys move the active option, `Enter` or `Tab` inserts the exact `#name` token, pointer selection preserves input focus, and `Escape` closes only the list. Inserting a suggestion replaces only the active token and never replaces authored text with its resolved value.
 - Accept signed decimals and explicit units in P0; expressions follow the P1 expression grammar. In a dimensionally known field, commit a bare finite numeric literal with the current project unit made explicit so a later preference change cannot alter the model.
 - A preference change converts displayed canonical results and defaults for new fields. It never rewrites an existing authored expression or changes physical geometry.
@@ -568,6 +571,8 @@ Responsive behavior prioritizes model visibility:
 Do not hide Apply, Cancel, errors, save state, or the active selection filter solely to fit a narrow viewport.
 
 The compact task-panel sheet opens automatically for a parameter-driven feature command and may be collapsed with a tooltip-labeled icon. Sketch support selection and active sketch editing start collapsed because their primary interaction belongs to the 3D or analytical canvas; the same icon opens the mounted accessible fallback without losing draft state. Collapsing changes presentation only: the mounted command form, buffered values, validation, preview state, and lifecycle actions are preserved.
+
+The compact sheet occupies a separate workspace row and is capped at half the viewport height. The model tree spans both rows, and the modeling canvas resizes above the sheet so a feature preview remains visible while its parameters are edited. Feature headers remain pinned during parameter scrolling so Apply and Cancel stay reachable.
 
 At the 1024 px authoring minimum, direct sketch creation, profile features, view controls, and history remain visible. Sketch modification commands collapse into one tooltip-labeled overflow menu and return to direct icon actions when the desktop width permits.
 

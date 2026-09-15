@@ -252,7 +252,11 @@ function geometryRecord(
 }
 
 function domainTopologyCandidate(candidate: ProtocolTopologyCandidate): TopologyCandidate {
-  const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
+  const {
+    referenceGeometry: _referenceGeometry,
+    edgePolyline: _edgePolyline,
+    ...domainCandidate
+  } = candidate
   return domainCandidate
 }
 

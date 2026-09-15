@@ -8,7 +8,7 @@ import {
   timestampSchema,
 } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
-import { documentSummaryViewSchema } from "./queries"
+import { documentSummaryViewSchema, modelMeasurementViewSchema } from "./queries"
 
 export const createAutomationDraftRequestSchema = z
   .object({
@@ -59,11 +59,27 @@ export const automationDraftStateSchema = z
 
 export const automationDraftPreviewSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     draft: automationDraftStateSchema,
     summary: documentSummaryViewSchema,
+    geometry: z
+      .object({ status: z.enum(["valid", "invalid"]), measurements: modelMeasurementViewSchema })
+      .strict(),
   })
   .strict()
+  .superRefine((preview, context) => {
+    for (const [name, view] of [
+      ["summary", preview.summary],
+      ["geometry", preview.geometry.measurements],
+    ] as const) {
+      if (view.documentId !== preview.draft.documentId || view.revision !== preview.draft.revision)
+        context.addIssue({
+          code: "custom",
+          path: [name],
+          message: "Preview views must match the draft document and revision.",
+        })
+    }
+  })
 
 export const automationDraftCommitViewSchema = z
   .object({

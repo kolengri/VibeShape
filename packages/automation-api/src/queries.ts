@@ -1,3 +1,54 @@
+import { type ModelBodyTopologyView, queryModelBodyTopology } from "./body-topology-queries"
+
+export type { ModelBodyTopologyQuery, ModelBodyTopologyView } from "./body-topology-queries"
+export {
+  modelBodyTopologyArgumentsSchema,
+  modelBodyTopologyQuerySchema,
+  modelBodyTopologyViewSchema,
+} from "./body-topology-queries"
+
+import { type ModelEdgeView, queryModelEdges } from "./edge-queries"
+import { serializedQueryBytes } from "./query-byte-budget"
+
+export type { ModelEdgeQuery, ModelEdgeView } from "./edge-queries"
+export { modelEdgeQuerySchema, modelEdgeViewSchema } from "./edge-queries"
+
+import {
+  type ModelBodyMeasurementView,
+  queryModelBodyMeasurements,
+} from "./body-measurement-queries"
+import {
+  type CadInspectionDetailView,
+  type CadInspectionListView,
+  queryCadInspectionDetail,
+  queryCadInspectionList,
+} from "./cad-queries"
+import { type ModelMeasurementView, queryModelMeasurements } from "./measurement-queries"
+
+export type {
+  ModelBodyMeasurementQuery,
+  ModelBodyMeasurementView,
+} from "./body-measurement-queries"
+export {
+  modelBodyMeasurementArgumentsSchema,
+  modelBodyMeasurementQuerySchema,
+  modelBodyMeasurementViewSchema,
+} from "./body-measurement-queries"
+export type {
+  CadInspectionDetailQuery,
+  CadInspectionDetailView,
+  CadInspectionListQuery,
+  CadInspectionListView,
+} from "./cad-queries"
+export {
+  cadInspectionDetailQuerySchema,
+  cadInspectionDetailViewSchema,
+  cadInspectionListQuerySchema,
+  cadInspectionListViewSchema,
+} from "./cad-queries"
+export type { ModelMeasurementQuery, ModelMeasurementView } from "./measurement-queries"
+export { modelMeasurementQuerySchema, modelMeasurementViewSchema } from "./measurement-queries"
+
 import { type DocumentSnapshot, documentNameSchema } from "@vibeshape/domain/document"
 import {
   documentIdSchema,
@@ -10,7 +61,11 @@ import {
   type ModuleRegistry,
   type QueryDescriptor,
 } from "@vibeshape/domain/modules"
-import { evaluateVariableDefinitions, variableDefinitionSchema } from "@vibeshape/domain/variables"
+import {
+  evaluateVariableDefinitions,
+  type VariableEvaluationResult,
+  variableDefinitionSchema,
+} from "@vibeshape/domain/variables"
 import { z } from "zod"
 
 const queryRouteSchema = z
@@ -47,13 +102,15 @@ export const documentSummaryViewSchema = z
   })
   .strict()
 
+const variableCursorSchema = z.string().regex(/^(?:0|[1-9]\d{0,3})$/)
+
 export const variableListQuerySchema = z
   .object({
     kind: z.literal("org.vibeshape.variable.list"),
     schemaVersion: z.literal(1),
     documentId: documentIdSchema,
     revision: revisionSchema,
-    cursor: z.string().regex(/^\d+$/).nullable().default(null),
+    cursor: variableCursorSchema.nullable().default(null),
     limit: z.number().int().min(1).max(200).default(100),
   })
   .strict()
@@ -73,7 +130,7 @@ export const variableListViewSchema = z
     documentId: documentIdSchema,
     revision: revisionSchema,
     classification: z.literal("semantic"),
-    nextCursor: z.string().regex(/^\d+$/).nullable(),
+    nextCursor: variableCursorSchema.nullable(),
     data: z
       .object({
         variables: z
@@ -96,7 +153,16 @@ export type DocumentSummaryQuery = Readonly<z.infer<typeof documentSummaryQueryS
 export type DocumentSummaryView = Readonly<z.infer<typeof documentSummaryViewSchema>>
 export type VariableListQuery = Readonly<z.infer<typeof variableListQuerySchema>>
 export type VariableListView = Readonly<z.infer<typeof variableListViewSchema>>
-export type AutomationQueryView = DocumentSummaryView | VariableListView
+const VARIABLE_LIST_MAX_SERIALIZED_BYTES = 128 * 1024
+export type AutomationQueryView =
+  | ModelBodyTopologyView
+  | ModelEdgeView
+  | DocumentSummaryView
+  | VariableListView
+  | ModelMeasurementView
+  | ModelBodyMeasurementView
+  | CadInspectionListView
+  | CadInspectionDetailView
 
 export type QueryIssue = Readonly<{
   path: string
@@ -104,6 +170,14 @@ export type QueryIssue = Readonly<{
 }>
 
 export type QueryDiagnosticCode =
+  | "geometry-unavailable"
+  | "stale-geometry"
+  | "invalid-geometry-evidence"
+  | "feature-not-found"
+  | "sketch-not-found"
+  | "feature-not-measurable"
+  | "body-not-found"
+  | "query-result-too-large"
   | "invalid-query-route"
   | "invalid-query"
   | "unregistered-query"
@@ -128,15 +202,30 @@ export type QueryResult =
   | { ok: true; view: AutomationQueryView }
   | { ok: false; diagnostic: QueryDiagnostic }
 
+export type DerivedQueryContext = Readonly<{
+  measurements?: unknown
+  bodyMeasurements?: unknown
+  bodyTopology?: unknown
+  edges?: unknown
+}>
+
 export type TrustedQueryHandler = Readonly<{
   kind: QueryDescriptor["kind"]
   schemaVersion: QueryDescriptor["schemaVersion"]
   ownerModuleId: QueryDescriptor["ownerModuleId"]
-  execute: (snapshot: DocumentSnapshot | null, input: unknown) => QueryResult
+  execute: (
+    snapshot: DocumentSnapshot | null,
+    input: unknown,
+    context?: DerivedQueryContext,
+  ) => QueryResult
 }>
 
 export type QueryDispatcher = Readonly<{
-  dispatch: (snapshot: DocumentSnapshot | null, input: unknown) => QueryResult
+  dispatch: (
+    snapshot: DocumentSnapshot | null,
+    input: unknown,
+    context?: DerivedQueryContext,
+  ) => QueryResult
 }>
 
 export type QueryDispatcherResult =
@@ -289,9 +378,28 @@ export function queryDocumentVariables(
       diagnostic: queryDiagnostic("invalid-query", "The document variable cursor is invalid."),
     }
   }
-  const definitions = snapshot.variables.slice(cursor, cursor + parsed.data.limit)
+  return createVariablePage(snapshot, parsed.data, cursor, evaluated)
+}
+
+function createVariablePage(
+  snapshot: DocumentSnapshot,
+  query: VariableListQuery,
+  cursor: number,
+  evaluated: Extract<VariableEvaluationResult, { ok: true }>,
+): QueryResult {
+  const definitions = snapshot.variables.slice(cursor, cursor + query.limit)
   const nextIndex = cursor + definitions.length
   const variables = []
+  const emptyPage = {
+    kind: query.kind,
+    schemaVersion: query.schemaVersion,
+    documentId: snapshot.id,
+    revision: snapshot.revision,
+    classification: "semantic",
+    nextCursor: nextIndex < snapshot.variables.length ? String(nextIndex) : null,
+    data: { variables: [] },
+  }
+  let serializedBytes = serializedQueryBytes(emptyPage)
   for (const definition of definitions) {
     const variable = evaluated.valuesById.get(definition.id)
     if (!variable) {
@@ -300,20 +408,33 @@ export function queryDocumentVariables(
         diagnostic: queryDiagnostic("invalid-query", "The committed variable table is invalid."),
       }
     }
-    variables.push({
+    const entry = {
       definition,
       result: {
         ...variable.value,
         unit: canonicalUnit(variable.value.dimension),
       },
       dependencies: variable.dependencies,
-    })
+    }
+    const entryBytes = serializedQueryBytes(entry)
+    serializedBytes += entryBytes + (variables.length > 0 ? 1 : 0)
+    if (serializedBytes > VARIABLE_LIST_MAX_SERIALIZED_BYTES) {
+      return {
+        ok: false,
+        diagnostic: queryDiagnostic(
+          "query-result-too-large",
+          "The variable query result is too large; reduce the page limit.",
+          true,
+        ),
+      }
+    }
+    variables.push(entry)
   }
   return {
     ok: true,
     view: variableListViewSchema.parse({
-      kind: parsed.data.kind,
-      schemaVersion: parsed.data.schemaVersion,
+      kind: query.kind,
+      schemaVersion: query.schemaVersion,
       documentId: snapshot.id,
       revision: snapshot.revision,
       classification: "semantic",
@@ -400,6 +521,7 @@ function dispatchQuery(
   handlersByKind: ReadonlyMap<string, TrustedQueryHandler>,
   snapshot: DocumentSnapshot | null,
   input: unknown,
+  context?: DerivedQueryContext,
 ): QueryResult {
   const route = queryRouteSchema.safeParse(input)
 
@@ -438,7 +560,7 @@ function dispatchQuery(
     }
   }
 
-  return handler.execute(snapshot, input)
+  return handler.execute(snapshot, input, context)
 }
 
 export function createQueryDispatcher(
@@ -451,14 +573,26 @@ export function createQueryDispatcher(
     ? {
         ok: true,
         dispatcher: {
-          dispatch: (snapshot, input) =>
-            dispatchQuery(moduleRegistry, indexed.handlersByKind, snapshot, input),
+          dispatch: (snapshot, input, context) =>
+            dispatchQuery(moduleRegistry, indexed.handlersByKind, snapshot, input, context),
         },
       }
     : indexed
 }
 
 export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
+  {
+    kind: "org.vibeshape.model.body-topology",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryModelBodyTopology,
+  },
+  {
+    kind: "org.vibeshape.model.edges",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryModelEdges,
+  },
   {
     kind: "org.vibeshape.document.summary",
     schemaVersion: 1,
@@ -470,5 +604,29 @@ export const documentCoreQueryHandlers: readonly TrustedQueryHandler[] = [
     schemaVersion: 1,
     ownerModuleId: documentCoreModule.id,
     execute: queryDocumentVariables,
+  },
+  {
+    kind: "org.vibeshape.model.measurements",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryModelMeasurements,
+  },
+  {
+    kind: "org.vibeshape.model.body-measurements",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryModelBodyMeasurements,
+  },
+  {
+    kind: "org.vibeshape.cad.inspection.list",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryCadInspectionList,
+  },
+  {
+    kind: "org.vibeshape.cad.inspection.detail",
+    schemaVersion: 1,
+    ownerModuleId: documentCoreModule.id,
+    execute: queryCadInspectionDetail,
   },
 ]

@@ -781,6 +781,95 @@ describe("editor session store", () => {
     expect(store.getState().workspace).toBe("model")
   })
 
+  it.each(["create-extrusion", "create-revolve"] as const)(
+    "restores the selected saved profile when canceling %s",
+    (kind) => {
+      const store = createEditorSessionStore()
+      const sketch = createSketch()
+      const profile = createProfile()
+      store.getState().actions.beginSketchEdit(sketch)
+      store.getState().actions.saveSketch(sketch, {
+        profiles: [profile],
+        selectedProfile: profile,
+      })
+
+      store.getState().actions.startPartDesignTool({ kind, profiles: [profile] })
+      expect(store.getState().sketch.activeSketchId).toBeNull()
+
+      store.getState().actions.closeActiveTool()
+
+      expect(store.getState()).toMatchObject({
+        activePartDesignTool: null,
+        profileFeatureReturn: null,
+        workspace: "model",
+        sketch: {
+          activeSketchId: sketchId,
+          activeSketchTool: null,
+          draft: null,
+          profiles: [profile],
+          selectedProfile: profile,
+        },
+      })
+    },
+  )
+
+  it("keeps a newer sketch edit when a previous feature save completes", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+    store.getState().actions.startPartDesignTool({ kind: "create-cylinder" })
+    const generation = store.getState().partDesignToolGeneration
+
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.completeActiveTool(generation)
+
+    expect(store.getState()).toMatchObject({
+      workspace: "sketch",
+      sketch: {
+        activeSketchId: sketch.id,
+        activeSketchTool: { kind: "edit-sketch", sketchId: sketch.id },
+        draft: sketch,
+      },
+    })
+  })
+
+  it("ignores a previous save after the same feature tool is reopened", () => {
+    const store = createEditorSessionStore()
+    const tool = { kind: "create-cylinder" } as const
+    store.getState().actions.startPartDesignTool(tool)
+    const generation = store.getState().partDesignToolGeneration
+    store.getState().actions.closeActiveTool()
+    store.getState().actions.startPartDesignTool(tool)
+    store.getState().actions.completeActiveTool(generation)
+
+    expect(store.getState().activePartDesignTool).toEqual(tool)
+    store.getState().actions.completeActiveTool(store.getState().partDesignToolGeneration)
+    expect(store.getState().activePartDesignTool).toBeNull()
+  })
+
+  it("does not restore a saved profile after a profile feature completes", () => {
+    const store = createEditorSessionStore()
+    const sketch = createSketch()
+    const profile = createProfile()
+    store.getState().actions.beginSketchEdit(sketch)
+    store.getState().actions.saveSketch(sketch, {
+      profiles: [profile],
+      selectedProfile: profile,
+    })
+    store.getState().actions.startPartDesignTool({ kind: "create-extrusion", profiles: [profile] })
+
+    store.getState().actions.completeActiveTool(store.getState().partDesignToolGeneration)
+
+    expect(store.getState()).toMatchObject({
+      activePartDesignTool: null,
+      profileFeatureReturn: null,
+      sketch: {
+        activeSketchId: null,
+        profiles: [],
+        selectedProfile: null,
+      },
+    })
+  })
+
   it("selects a saved sketch profile from the model viewport without entering sketch edit", () => {
     const store = createEditorSessionStore()
     const firstProfile = createProfile()
@@ -803,5 +892,57 @@ describe("editor session store", () => {
         selectedProfile: secondProfile,
       },
     })
+  })
+})
+
+describe("constituent body selection", () => {
+  it("keeps sibling body identities distinct and clears hidden selections", () => {
+    const store = createEditorSessionStore()
+    const selected = { featureId, outputRole: "pattern.instance.1" }
+    const hovered = { featureId, outputRole: "pattern.instance.2" }
+    store.getState().actions.setSelectedBody(selected)
+    store.getState().actions.setBodyPreselection(hovered)
+    expect(store.getState().selectedBody).toEqual(selected)
+    expect(store.getState().preselectedBody).toEqual(hovered)
+    expect(store.getState().selection).toBeNull()
+    store.getState().actions.setFeatureVisibility(featureId, false)
+    expect(store.getState().selectedBody).toBeNull()
+    expect(store.getState().preselectedBody).toBeNull()
+  })
+
+  it("preserves an exact selected body when opening read-only measurement", () => {
+    const store = createEditorSessionStore()
+    const body = { featureId, outputRole: "pattern.instance.1" }
+    store.getState().actions.setSelectedBody(body)
+    store.getState().actions.startPartDesignTool({ kind: "measure" })
+    expect(store.getState().selectedBody).toEqual(body)
+    expect(store.getState().activePartDesignTool).toEqual({ kind: "measure" })
+  })
+
+  it("releases body highlighting when a part-design tool starts and preserves face inputs", () => {
+    const store = createEditorSessionStore()
+    store.getState().actions.setSelectedBody({ featureId, outputRole: "pattern.instance.1" })
+    store.getState().actions.startPartDesignTool({ kind: "create-cylinder" })
+    expect(store.getState().selectedBody).toBeNull()
+    const face = { featureId, outputRole: "result", faceId: 1, faceOrdinal: 1 }
+    store.getState().actions.setSelection(face)
+    store.getState().actions.startPartDesignTool({ kind: "create-cylinder" })
+    expect(store.getState().selection).toEqual(face)
+  })
+
+  it("switches between body, face, and origin-plane selection without losing a face role", () => {
+    const store = createEditorSessionStore()
+    const body = { featureId, outputRole: "pattern.instance.1" }
+    store.getState().actions.setSelectedBody(body)
+    store.getState().actions.setSelectedOriginPlane("xy")
+    expect(store.getState().selectedBody).toBeNull()
+    const face = { ...body, faceId: 1, faceOrdinal: 1 }
+    store.getState().actions.setSelection(face)
+    expect(store.getState().selection).toEqual(face)
+    expect(store.getState().selectedOriginPlane).toBeNull()
+    store.getState().actions.setSelectedBody(body)
+    expect(store.getState().selection).toBeNull()
+    store.getState().actions.closeActiveTool()
+    expect(store.getState().selectedBody).toBeNull()
   })
 })

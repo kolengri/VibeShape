@@ -148,7 +148,12 @@ export function ineligibleProfileSketchIds(
   snapshot: DocumentSnapshot,
   tool: ActivePartDesignTool | null,
 ): readonly SketchId[] {
-  if (tool?.kind !== "edit-extrusion" && tool?.kind !== "edit-revolve") return []
+  if (
+    tool?.kind !== "edit-extrusion" &&
+    tool?.kind !== "edit-revolve" &&
+    tool?.kind !== "edit-hole"
+  )
+    return []
   const graphResult = createDocumentDependencyGraphFromSnapshot(snapshot)
   if (!graphResult.ok) return snapshot.sketches.map(({ id }) => id)
   const featureIndex = graphResult.graph.history.findIndex(

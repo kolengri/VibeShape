@@ -92,4 +92,19 @@ describe("TaskPanelLifecycleActions", () => {
     expect(screen.getByRole("button", { name: "Accept feature" })).toHaveProperty("disabled", true)
     expect(screen.getByRole("button", { name: "Cancel feature" })).toHaveProperty("disabled", false)
   })
+
+  it("supports a cancel-only selection task without rendering a fake accept action", () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <TaskPanelLifecycleActions
+          ariaLabel="Feature actions"
+          cancelLabel="Cancel feature"
+          onCancel={vi.fn()}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByRole("button", { name: "Cancel feature" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Accept feature" })).toBeNull()
+  })
 })
