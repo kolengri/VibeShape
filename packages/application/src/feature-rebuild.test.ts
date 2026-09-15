@@ -13,6 +13,8 @@ import {
   type FeatureRecord,
   featureCoreModule,
   featureIdSchema,
+  holeFeatureType,
+  holeFeatureTypeV2,
   partDesignFeatureTypeHandlers,
   partDesignModule,
 } from "@vibeshape/domain"
@@ -28,6 +30,8 @@ import {
   rebuildDocumentFeatures,
   rebuildFeatureGraph,
 } from "./feature-rebuild"
+
+import { terminalBodyGeometry } from "./model-bodies"
 
 const featureIds = {
   box: featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f3101"),
@@ -186,6 +190,7 @@ const schedulingCircleId = "0195b5ac-b220-7a2c-8c33-67a36a7f3902"
 const schedulingCenterId = "0195b5ac-b220-7a2c-8c33-67a36a7f3903"
 const schedulingReferenceId = "0195b5ac-b220-7a2c-8c33-67a36a7f3904"
 const schedulingProjectedPointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3905"
+const schedulingHolePointId = "0195b5ac-b220-7a2c-8c33-67a36a7f3906"
 
 function modelReferencedExtrusionDocument(revision: number, sourceWidth: number) {
   const source = box(featureIds.box, sourceWidth)
@@ -294,6 +299,105 @@ function orphanedModelReferencedExtrusionDocument(revision: number) {
       },
     ],
     features: [live.features[0], box(featureIds.cylinder)],
+  }
+}
+
+function modelReferencedHoleDocument(revision: number) {
+  const target = box(featureIds.box, 20)
+  const externalSource = cylinder(60)
+  const sketch = {
+    schemaVersion: 0 as const,
+    id: schedulingSketchId,
+    label: "Model-referenced hole sketch",
+    plane: "xy" as const,
+    entities: [
+      {
+        schemaVersion: 0 as const,
+        id: schedulingHolePointId,
+        type: "point" as const,
+        x: 0,
+        y: 0,
+        construction: false,
+      },
+    ],
+    constraints: [],
+    externalReferences: [
+      {
+        schemaVersion: 0 as const,
+        id: schedulingReferenceId,
+        kind: "model-point" as const,
+        reference: {
+          schemaVersion: 0 as const,
+          featureId: externalSource.id,
+          kind: "vertex" as const,
+          signature: {
+            kind: "vertex" as const,
+            geometryClass: "POINT",
+            measure: 0,
+            centroid: [0, 0, 0] as const,
+            bounds: { min: [0, 0, 0] as const, max: [0, 0, 0] as const },
+            boundaryCount: 0,
+            adjacentGeometryClasses: [],
+          },
+        },
+        projectedPointId: schedulingProjectedPointId,
+      },
+    ],
+  }
+  const hole: FeatureRecord = {
+    schemaVersion: 0,
+    id: featureIds.independent,
+    type: holeFeatureType.type,
+    parameters: {
+      sketchId: schedulingSketchId,
+      pointIds: [schedulingHolePointId],
+      diameter: createLengthQuantity(8),
+      direction: "forward",
+      extent: "blind",
+      depth: createLengthQuantity(12),
+    },
+    dependencies: [target.id],
+    references: [],
+    suppressed: false,
+  }
+  return {
+    schemaVersion: 0 as const,
+    id: documentIds.primary,
+    revision,
+    name: "Model reference hole scheduling",
+    displayUnits: { length: "mm" as const, angle: "deg" as const },
+    variables: [],
+    sketches: [sketch],
+    features: [hole, target, externalSource],
+    createdAt: "2026-08-25T00:00:00.000Z",
+    updatedAt: "2026-08-25T00:00:00.000Z",
+  }
+}
+
+function orphanedModelReferencedHoleDocument(revision: number) {
+  const live = modelReferencedHoleDocument(revision)
+  const sketch = live.sketches[0]
+  const reference = sketch?.externalReferences?.[0]
+  if (!sketch || !reference)
+    throw new Error("The model-reference Hole fixture requires an external reference.")
+  return {
+    ...live,
+    sketches: [
+      {
+        ...sketch,
+        externalReferences: [
+          {
+            ...reference,
+            schemaVersion: 1 as const,
+            orphanedSource: {
+              kind: "deleted-feature" as const,
+              featureId: reference.reference.featureId,
+            },
+          },
+        ],
+      },
+    ],
+    features: [live.features[0], live.features[1]],
   }
 }
 
@@ -820,6 +924,68 @@ describe("feature rebuild coordination", () => {
     expect(preparedSourceHashes).toHaveLength(2)
   })
 
+  it("schedules a Hole after external sketch sources while dispatching only declared body inputs", async () => {
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const preparedSources: FeatureId[][] = []
+    const result = await rebuildDocumentFeatures({
+      document: modelReferencedHoleDocument(1),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry: successfulPort(requests),
+      prepareFeatureContent: ({ feature, geometry: availableGeometry = [] }) => {
+        if (feature.id !== featureIds.independent) return null
+        preparedSources.push(availableGeometry.map(({ featureId }) => featureId))
+        return { ok: true, parameters: preparedSchedulingExtrusion }
+      },
+      shouldPrepareFeatureContent: ({ id }) => id === featureIds.independent,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const holeRequest = requests.find(({ featureId }) => featureId === featureIds.independent)
+    expect(holeRequest).toBeDefined()
+    expect(requests.findIndex(({ featureId }) => featureId === cylinder().id)).toBeLessThan(
+      requests.findIndex(({ featureId }) => featureId === featureIds.independent),
+    )
+    expect(preparedSources[0]).toContain(cylinder().id)
+    expect(holeRequest?.dependencies.map(({ featureId }) => featureId)).toEqual([featureIds.box])
+  })
+
+  it("fails an orphaned Hole model reference explicitly without evaluating a deleted source", async () => {
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const result = await rebuildDocumentFeatures({
+      document: orphanedModelReferencedHoleDocument(1),
+      generation: 1,
+      registry: registry(),
+      environment,
+      mesh: { chordTolerance: 0.05, angularTolerance: 0.1 },
+      hash: contentHasher(),
+      evaluateGeometry: successfulPort(requests),
+      prepareFeatureContent: ({ feature }) =>
+        feature.id === featureIds.independent
+          ? {
+              ok: false,
+              diagnostic: {
+                code: "org.vibeshape.feature.content-preparation-failed",
+                values: { reason: "external-model-reference-requires-repair" },
+              },
+            }
+          : null,
+      shouldPrepareFeatureContent: ({ id }) => id === featureIds.independent,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.evaluation.records).toEqual([
+      expect.objectContaining({ featureId: featureIds.independent, status: "failed" }),
+      expect.objectContaining({ featureId: featureIds.box, status: "succeeded" }),
+    ])
+    expect(requests.map(({ featureId }) => featureId)).toEqual([featureIds.box])
+  })
+
   it("contains orphaned model-reference consumers without scheduling a deleted source", async () => {
     const requests: FeatureGeometryEvaluationRequest[] = []
     const result = await rebuildDocumentFeatures({
@@ -1079,5 +1245,171 @@ describe("feature rebuild coordination", () => {
     if (!restarted.ok) return
     expect(requests.map(({ featureId }) => featureId)).toEqual([featureIds.box])
     expect(restarted.evaluation.reusedFeatureIds).toEqual([])
+  })
+})
+
+function bodyTargetHole(outputRole: string, suppressed = false): FeatureRecord {
+  return {
+    schemaVersion: 0,
+    id: featureIds.independent,
+    type: holeFeatureTypeV2.type,
+    parameters: {
+      sketchId: schedulingSketchId,
+      pointIds: [schedulingHolePointId],
+      diameter: createLengthQuantity(2),
+      extent: "blind",
+      depth: createLengthQuantity(3),
+      direction: "forward",
+      targetBody: { schemaVersion: 0, featureId: featureIds.box, outputRole },
+    },
+    dependencies: [featureIds.box],
+    references: [],
+    suppressed,
+  }
+}
+
+function constituentPort(
+  requests: FeatureGeometryEvaluationRequest[],
+): FeatureGeometryEvaluationPort {
+  return async (request) => {
+    requests.push(request)
+    const result = geometry()
+    const roles =
+      request.featureId === featureIds.box
+        ? ["pattern.instance.0", "pattern.instance.1", "pattern.instance.2"]
+        : ["result"]
+    return {
+      ok: true,
+      geometry: {
+        ...result,
+        shape: { ...result.shape, solidCount: roles.length, volume: roles.length },
+        bodies: roles.map((outputRole) => ({
+          outputRole,
+          shape: result.shape,
+          mesh: result.mesh,
+          topologyCandidates: [],
+        })),
+      },
+    }
+  }
+}
+
+describe("constituent body rebuild and consumption", () => {
+  it("preserves siblings, reuses unchanged selection, and reevaluates a changed selector", async () => {
+    const hash = contentHasher()
+    const requests: FeatureGeometryEvaluationRequest[] = []
+    const initialGraph = graph([bodyTargetHole("pattern.instance.1"), box(featureIds.box)])
+    const initial = await rebuildFeatureGraph(
+      rebuildInput(initialGraph, hash, constituentPort(requests)),
+    )
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) throw new Error(initial.diagnostic.message)
+    expect(requests.at(-1)?.dependencies).toEqual([
+      {
+        featureId: featureIds.box,
+        contentHash: expect.any(String),
+        outputRole: "pattern.instance.1",
+      },
+    ])
+    expect(
+      terminalBodyGeometry(initial)?.map(({ featureId, outputRole }) => [featureId, outputRole]),
+    ).toEqual([
+      [featureIds.independent, "result"],
+      [featureIds.box, "pattern.instance.0"],
+      [featureIds.box, "pattern.instance.2"],
+    ])
+    const reused = await rebuildFeatureGraph({
+      ...rebuildInput(initialGraph, hash, constituentPort(requests)),
+      previous: initial,
+    })
+    expect(reused.ok && reused.evaluation.evaluatedFeatureIds).toEqual([])
+    const changed = await rebuildFeatureGraph({
+      ...rebuildInput(
+        graph([bodyTargetHole("pattern.instance.2"), box(featureIds.box)]),
+        hash,
+        constituentPort(requests),
+      ),
+      previous: initial,
+      revision: 2,
+    })
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) throw new Error(changed.diagnostic.message)
+    expect(changed.evaluation.evaluatedFeatureIds).toEqual([featureIds.independent])
+    expect(requests.at(-1)?.dependencies[0]?.outputRole).toBe("pattern.instance.2")
+    expect(requests.at(-1)?.contentHash).not.toBe(requests[1]?.contentHash)
+    expect(terminalBodyGeometry(changed)?.map(({ outputRole }) => outputRole)).toEqual([
+      "result",
+      "pattern.instance.0",
+      "pattern.instance.1",
+    ])
+    expect(terminalBodyGeometry({ ...changed, geometry: [] })).toBeNull()
+  })
+
+  it.each(["suppressed", "failed"] as const)(
+    "keeps all source bodies when a consumer is %s",
+    async (status) => {
+      const port = constituentPort([])
+      const result = await rebuildFeatureGraph(
+        rebuildInput(
+          graph([
+            box(featureIds.box),
+            bodyTargetHole("pattern.instance.1", status === "suppressed"),
+          ]),
+          contentHasher(),
+          async (request) =>
+            request.featureId === featureIds.independent && status === "failed"
+              ? {
+                  ok: false,
+                  diagnosticCode: "geometry-operation-failed",
+                }
+              : port(request),
+        ),
+      )
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(result.diagnostic.message)
+      expect(terminalBodyGeometry(result)?.map(({ outputRole }) => outputRole)).toEqual([
+        "pattern.instance.0",
+        "pattern.instance.1",
+        "pattern.instance.2",
+      ])
+    },
+  )
+
+  it("preserves source bodies when a consumer returns no solid replacement", async () => {
+    const port = constituentPort([])
+    const result = await rebuildFeatureGraph(
+      rebuildInput(
+        graph([box(featureIds.box), bodyTargetHole("pattern.instance.1")]),
+        contentHasher(),
+        async (request) => {
+          if (request.featureId !== featureIds.independent) return port(request)
+          const empty = geometry()
+          return {
+            ok: true,
+            geometry: { ...empty, shape: { ...empty.shape, solidCount: 0, volume: 0 }, bodies: [] },
+          }
+        },
+      ),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.diagnostic.message)
+    expect(terminalBodyGeometry(result)?.map(({ outputRole }) => outputRole)).toEqual([
+      "pattern.instance.0",
+      "pattern.instance.1",
+      "pattern.instance.2",
+    ])
+  })
+
+  it("refuses to substitute a missing constituent with the aggregate", async () => {
+    const result = await rebuildFeatureGraph(
+      rebuildInput(
+        graph([box(featureIds.box), bodyTargetHole("pattern.instance.99")]),
+        contentHasher(),
+        constituentPort([]),
+      ),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.diagnostic.message)
+    expect(terminalBodyGeometry(result)).toBeNull()
   })
 })

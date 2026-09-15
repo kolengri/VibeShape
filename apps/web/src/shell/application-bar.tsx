@@ -2,6 +2,8 @@ import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import { CommandIcon } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
+import { useEffect, useState, useSyncExternalStore } from "react"
+import { createLocalAutomationConnection } from "../automation/local-automation-connection"
 import type { DocumentControllerState } from "../document/document-controller"
 import { DocumentDisplayUnitsDialog } from "../document/document-display-units-dialog"
 import { DocumentExportDialog } from "../document/document-export-dialog"
@@ -20,6 +22,61 @@ function saveStatusMessage(
   const loadingStatuses = new Set<DocumentControllerState["status"]>(["idle", "loading"])
   const messageKey = loadingStatuses.has(controller.status) ? "loading" : controller.saveStatus
   return messages[messageKey]
+}
+
+function LocalAutomationControl({ controller }: { controller: DocumentControllerState }) {
+  const [connection] = useState(createLocalAutomationConnection)
+  const current = useSyncExternalStore(
+    connection.subscribe,
+    connection.getSnapshot,
+    connection.getSnapshot,
+  )
+  useEffect(() => {
+    connection.start()
+    void connection.status()
+    return connection.dispose
+  }, [connection])
+  if (!current.available || controller.status !== "ready") return null
+  return <LocalAutomationStatus connection={connection} current={current} />
+}
+
+function LocalAutomationStatus({
+  connection,
+  current,
+}: {
+  connection: ReturnType<typeof createLocalAutomationConnection>
+  current: ReturnType<ReturnType<typeof createLocalAutomationConnection>["getSnapshot"]>
+}) {
+  const t = useTranslations("app.shell.applicationBar")
+  const action = current.connected
+    ? { label: "disableAi" as const, run: connection.disable, disabled: false }
+    : { label: "enableAi" as const, run: connection.enable, disabled: current.client === null }
+  const clientName = current.client?.name
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={action.disabled}
+        onClick={action.run}
+      >
+        {t(action.label)}
+      </Button>
+      <span
+        className="hidden max-w-32 truncate text-xs text-muted-foreground lg:block"
+        title={clientName}
+      >
+        {clientName}
+      </span>
+      {current.error ? (
+        <span role="status" className="max-w-48 text-xs text-destructive">
+          {t("aiConnectionFailed")}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 export function ApplicationBar({
@@ -45,7 +102,8 @@ export function ApplicationBar({
       <span className="truncate text-muted-foreground">{documentName}</span>
       <DocumentRenameDialog controller={controller} />
       <DocumentDisplayUnitsDialog controller={controller} />
-      <span className="ml-auto text-xs text-muted-foreground" role="status">
+      <LocalAutomationControl controller={controller} />
+      <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground" role="status">
         {saveStatus}
       </span>
       <Tooltip>

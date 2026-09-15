@@ -39,6 +39,20 @@
 | [0035](0035-versioned-portable-history.md) | Accepted | Replay-proven complete and explicitly evidenced checkpoint history in `.vshape` v2 |
 | [0036](0036-multi-profile-modifying-extrusion.md) | Accepted | Target-first Add, Remove, and Intersect with a canonical multi-profile Extrude tool |
 | [0037](0037-multi-profile-modifying-revolve.md) | Accepted | Target-first Add, Remove, and Intersect with one canonical multi-profile Revolve tool and axis |
+| [0038](0038-all-edge-fillet-and-chamfer.md) | Accepted | All-edge Fillet and Chamfer over one explicit solid target |
+| [0039](0039-committed-document-undo.md) | Accepted | Revisioned committed Undo/Redo with verified historical targets and session-scoped navigation |
+| [0040](0040-selected-edge-treatments.md) | Accepted | Selected-edge Fillet and Chamfer with durable references and explicit repair |
+| [0041](0041-revision-bound-model-measurements.md) | Accepted | Revision-bound model measurements shared by editor and automation queries |
+| [0042](0042-exact-automation-draft-application-path.md) | Accepted | Exact disposable automation preview and ordinary document commit integration |
+| [0043](0043-local-stdio-mcp-browser-session.md) | Accepted with reduced scope | Local stdio MCP with explicit browser-owned document pairing |
+| [0044](0044-local-mcp-cad-authoring-and-inspection.md) | Accepted | Named sketch/Extrude/Revolve MCP authoring and bounded semantic CAD inspection |
+| [0045](0045-local-mcp-variables-and-chamfer.md) | Accepted | Named variable and all-edge Chamfer MCP tools with bounded variable inspection |
+| [0046](0046-local-mcp-selected-edge-inspection.md) | Accepted | Exact rebuild-bound edge inspection and selected-edge MCP authoring/repair |
+| [0047](0047-local-mcp-draft-inspection.md) | Accepted | Owned draft inspection with bounded exact edge paging before one commit approval |
+| [0048](0048-sketch-point-holes.md) | Accepted; first delivery gates passed | Sketch-point Hole authoring, solved-center preparation, directional cuts, and shared UI/MCP delivery evidence |
+| [0049](0049-constituent-body-identity-and-solid-patterns.md) | Accepted architecture; staged implementation | Exact constituent body ownership, role-sensitive input identity, and independently selectable solid patterns |
+| [0050](0050-constituent-body-measurements.md) | Accepted | Revision-bound constituent body measurements shared by the editor and local MCP |
+| [0051](0051-body-bound-topology-inspection.md) | Accepted staged contract | Exact body-scoped edge and face inspection with isolated reference resolution |
 
 Statuses:
 

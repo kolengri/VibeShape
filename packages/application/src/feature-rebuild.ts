@@ -5,6 +5,7 @@ import {
   type FeatureContentHasher,
   sha256Schema,
 } from "@vibeshape/domain/feature-content-identity"
+import { featureBodyDependencies } from "@vibeshape/domain/feature-dependencies"
 import {
   createFeatureGraph,
   evaluateFeatureGraph,
@@ -24,6 +25,7 @@ import {
   readExtrusionFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain/part-design"
+import { readHoleFeatureParameters } from "@vibeshape/domain/part-design-hole"
 import { isOrphanedModelReference, isSketchExternalModelReference } from "@vibeshape/domain/sketch"
 import { evaluateVariableDefinitions } from "@vibeshape/domain/variables"
 import {
@@ -351,11 +353,22 @@ function indexPreviousState(
   }
 }
 
-function successfulDependencies(records: readonly FeatureEvaluationRecord[]) {
-  return records.map((record) => ({
-    featureId: record.featureId,
-    contentHash: (record as Extract<FeatureEvaluationRecord, { status: "succeeded" }>).contentHash,
-  }))
+function successfulDependencies(
+  feature: FeatureRecord,
+  records: readonly FeatureEvaluationRecord[],
+) {
+  const bodyRoles = new Map(
+    featureBodyDependencies(feature).map(({ featureId, outputRole }) => [featureId, outputRole]),
+  )
+  return records.map((record) => {
+    const outputRole = bodyRoles.get(record.featureId)
+    return {
+      featureId: record.featureId,
+      contentHash: (record as Extract<FeatureEvaluationRecord, { status: "succeeded" }>)
+        .contentHash,
+      ...(outputRole === undefined ? {} : { outputRole }),
+    }
+  })
 }
 
 function presentGeometry(
@@ -526,6 +539,7 @@ async function scheduledFeatureContent(
   const feature = contentFeature(input, context.feature.id) as FeatureRecord
   const dependencyIds = new Set(feature.dependencies)
   const dependencies = successfulDependencies(
+    feature,
     context.dependencies.filter(({ featureId }) => dependencyIds.has(featureId)),
   )
   const preparedParameters = await prepareScheduledFeatureContent(input, prepared, feature)
@@ -807,11 +821,13 @@ function documentSchedulingFeatures(
   return features.map((feature) => {
     const extrusion = readExtrusionFeatureParameters(feature)
     const revolve = readRevolveFeatureParameters(feature)
+    const hole = readHoleFeatureParameters(feature)
     return {
       ...feature,
       dependencies: [
         ...new Set([
           ...feature.dependencies,
+          ...(hole ? sketchModelFeatureIds(document, hole.sketchId) : []),
           ...(extrusion
             ? [
                 ...new Set(

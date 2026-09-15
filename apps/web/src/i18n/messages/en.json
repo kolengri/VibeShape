@@ -236,21 +236,37 @@
         "hideFinalContext": "Hide the final result before referencing earlier geometry.",
         "noActiveCommand": "No command is active.",
         "noSketchRedo": "There is no sketch change to redo.",
+        "noDocumentRedo": "There is no document change to redo.",
         "noSavedSketches": "Create and save a sketch first.",
         "noSketchUndo": "There is no sketch change to undo.",
+        "noDocumentUndo": "There is no document change to undo.",
         "readOnly": "Open the document with write access.",
+        "saving": "Wait for the document save to finish.",
         "requiresExistingSketch": "Edit an existing sketch first.",
         "requiresSketch": "Start or edit a sketch first.",
         "selectSketchLine": "Select exactly one sketch line first.",
         "selectProfile": "Select a closed sketch profile first.",
+        "selectSolid": "Create an eligible solid first.",
+        "selectHolePoints": "Create and finish a sketch with at least one point first.",
         "selectTwoSolids": "Create at least two eligible solids first."
       },
       "items": {
+        "documentRedo": {
+          "label": "Redo",
+          "keywords": "redo document|restore change|history"
+        },
+        "documentUndo": {
+          "label": "Undo",
+          "keywords": "undo document|revert change|history"
+        },
         "cancelActive": {
           "label": "Cancel active command",
           "keywords": "escape|close|stop|discard preview"
         },
-        "createBox": { "label": "Box", "keywords": "create box|primitive|solid|cube" },
+        "createBox": {
+          "label": "Box",
+          "keywords": "create box|primitive|solid|cube"
+        },
         "createCylinder": {
           "label": "Cylinder",
           "keywords": "create cylinder|primitive|solid|round"
@@ -259,12 +275,37 @@
           "label": "Datum plane",
           "keywords": "create datum plane|reference plane|offset plane|construction plane"
         },
-        "createExtrusion": { "label": "Extrude", "keywords": "create extrusion|profile|solid|pad" },
-        "createRevolve": { "label": "Revolve", "keywords": "create revolve|profile|axis|turn" },
-        "createSketch": { "label": "Create sketch", "keywords": "new sketch|2d|profile|draw" },
+        "createExtrusion": {
+          "label": "Extrude",
+          "keywords": "create extrusion|profile|solid|pad"
+        },
+        "createFillet": {
+          "label": "Fillet",
+          "keywords": "round|radius|all edges|edge treatment"
+        },
+        "createHole": {
+          "label": "Hole",
+          "keywords": "drill|sketch points|blind hole|through all|diameter"
+        },
+        "createChamfer": {
+          "label": "Chamfer",
+          "keywords": "bevel|distance|all edges|edge treatment"
+        },
+        "createRevolve": {
+          "label": "Revolve",
+          "keywords": "create revolve|profile|axis|turn"
+        },
+        "createSketch": {
+          "label": "Create sketch",
+          "keywords": "new sketch|2d|profile|draw"
+        },
         "createSubtract": {
           "label": "Subtract",
           "keywords": "boolean cut|remove solid|difference"
+        },
+        "measure": {
+          "label": "Measure",
+          "keywords": "measure|volume|surface area|bounds"
         },
         "toggleAllSketchVisibility": {
           "label": "Toggle all sketches",
@@ -274,7 +315,10 @@
           "label": "Aligned rectangle",
           "keywords": "aligned rectangle|rotated rectangle|three point rectangle|perpendicular box"
         },
-        "sketchArc": { "label": "Center-point arc", "keywords": "arc|curve|center start end" },
+        "sketchArc": {
+          "label": "Center-point arc",
+          "keywords": "arc|curve|center start end"
+        },
         "sketchThreePointArc": {
           "label": "Three-point arc",
           "keywords": "three point arc|arc through point|start end curve"
@@ -379,7 +423,10 @@
           "label": "Extend",
           "keywords": "extend sketch line|lengthen to boundary|modify geometry"
         },
-        "sketchLine": { "label": "Line", "keywords": "sketch line|segment|edge" },
+        "sketchLine": {
+          "label": "Line",
+          "keywords": "sketch line|segment|edge"
+        },
         "sketchLinearPattern": {
           "label": "Linear pattern",
           "keywords": "linear sketch pattern|array geometry|repeat selection|grid copies"
@@ -412,17 +459,26 @@
           "label": "Midpoint line",
           "keywords": "midpoint line|center line|symmetric segment"
         },
-        "sketchPoint": { "label": "Point", "keywords": "sketch point|vertex|coordinate" },
+        "sketchPoint": {
+          "label": "Point",
+          "keywords": "sketch point|vertex|coordinate"
+        },
         "sketchRectangle": {
           "label": "Rectangle",
           "keywords": "sketch rectangle|box profile|four sides"
         },
-        "sketchRedo": { "label": "Redo", "keywords": "redo sketch|restore change|history" },
+        "sketchRedo": {
+          "label": "Redo",
+          "keywords": "redo sketch|restore change|history"
+        },
         "sketchNormalView": {
           "label": "Normal to sketch",
           "keywords": "normal view|align camera|face sketch plane|reset orbit"
         },
-        "sketchSelect": { "label": "Select", "keywords": "selection|pointer|choose geometry" },
+        "sketchSelect": {
+          "label": "Select",
+          "keywords": "selection|pointer|choose geometry"
+        },
         "sketchSlot": {
           "label": "Straight slot",
           "keywords": "straight slot|center to center slot|obround|slotted hole"
@@ -447,8 +503,14 @@
           "label": "Use external geometry",
           "keywords": "use external geometry|project geometry|reference edge|reference sketch"
         },
-        "sketchUndo": { "label": "Undo", "keywords": "undo sketch|revert change|history" },
-        "workspaceModel": { "label": "Model", "keywords": "model workspace|3d|features|solid" },
+        "sketchUndo": {
+          "label": "Undo",
+          "keywords": "undo sketch|revert change|history"
+        },
+        "workspaceModel": {
+          "label": "Model",
+          "keywords": "model workspace|3d|features|solid"
+        },
         "workspaceSketch": {
           "label": "Sketch",
           "keywords": "sketch workspace|2d|drawing|constraints"
@@ -461,10 +523,14 @@
         "saveFailed": "Could not save",
         "saving": "Saving…",
         "savedInBrowser": "Saved in this browser",
-        "untitledProject": "Untitled project"
+        "untitledProject": "Untitled project",
+        "enableAi": "Enable AI session",
+        "disableAi": "Disable AI session",
+        "aiConnectionFailed": "AI connection ended. Enable it to reconnect."
       },
       "commandToolbar": {
         "ariaLabel": "Model commands",
+        "historyLabel": "History",
         "arcToolsLabel": "Arc tools",
         "circleToolsLabel": "Circle tools",
         "constraintToolsLabel": "Constraint tools",
@@ -505,7 +571,7 @@
         "sketchVisibilityShortcut": "{action} · Shift+H",
         "deleteSketch": "Delete {sketch}",
         "deleteSketchTitle": "Delete {sketch}?",
-        "deleteSketchDescription": "This removes the sketch from model history. This action cannot be undone yet.",
+        "deleteSketchDescription": "This removes the sketch from model history.",
         "deleteSketchConfirm": "Delete sketch",
         "deleteSketchCancel": "Keep sketch",
         "deleteSketchFailed": "The sketch could not be deleted. The model history was not changed.",
@@ -535,6 +601,8 @@
         "ready": "Ready",
         "selection": "Selection: {selection}",
         "selectionAny": "Any",
+        "selectionBody": "{feature} · Body {body}",
+        "selectionBodyFace": "{feature} · Body {body} · Face {face}",
         "selectionFace": "{feature} · Face {face}",
         "selectionNone": "None",
         "selectionOriginPlane": "{plane, select, xy {XY plane} xz {XZ plane} yz {YZ plane} other {Origin plane}}",
@@ -542,7 +610,148 @@
         "units": "Units: {length} · {angle}"
       },
       "taskPanel": {
+        "edgeTreatment": {
+          "scopeLabel": "Edges",
+          "allEdges": "All edges",
+          "target": "Target body",
+          "targetDescription": "Choose the body to modify.",
+          "expressionDescription": "Enter a length or a document variable, such as #edgeSize.",
+          "invalidExpression": "Enter a valid length expression.",
+          "invalidDimension": "Use a length value.",
+          "invalidRange": "Enter a positive size no greater than 1,000,000 mm.",
+          "missingTarget": "Choose an available solid body.",
+          "saveFailed": "The edge treatment could not be saved. Review the preview and try again.",
+          "staleRevision": "The document changed. Close this task and reopen it before saving.",
+          "validationSummary": "Review the size and target body.",
+          "cancel": "Cancel",
+          "fillet": {
+            "title": "Create fillet",
+            "editTitle": "Edit fillet",
+            "description": "Round all edges or a selected set of edges.",
+            "distance": "Radius",
+            "create": "Create fillet",
+            "update": "Update fillet",
+            "featureLabel": "Fillet {number}"
+          },
+          "chamfer": {
+            "title": "Create chamfer",
+            "editTitle": "Edit chamfer",
+            "description": "Bevel all edges or a selected set of edges.",
+            "distance": "Distance",
+            "create": "Create chamfer",
+            "update": "Update chamfer",
+            "featureLabel": "Chamfer {number}"
+          },
+          "selectedEdges": "Selected edges",
+          "selectedEdgesDescription": "Select source edges in the viewport or choose them below.",
+          "edgeLabel": "Edge {ordinal}",
+          "removeEdge": "Remove edge",
+          "clearEdges": "Clear edges",
+          "pickEdges": "Choose an edge",
+          "missingEdge": "Missing edge — remove it and select a replacement.",
+          "ambiguousEdge": "Ambiguous edge — remove it and select a replacement."
+        },
         "ariaLabel": "Task panel",
+        "measurement": {
+          "title": "Measure",
+          "description": "Inspect exact volume, surface area, and dimensions of the selected model output.",
+          "output": "Body output",
+          "bodyOutput": "{feature} · Body {number}",
+          "bodyOutputRole": "{feature} · {role}",
+          "allOutputs": "Show all current outputs",
+          "unnamed": "Unnamed feature",
+          "close": "Close",
+          "empty": "There are no current model outputs to measure.",
+          "unavailable": "Measurements are unavailable until the model has a current rebuild.",
+          "bodyNotFound": "The selected body output is no longer available.",
+          "featureNotMeasurable": "Construction planes cannot be measured as solid outputs. Choose a model output to inspect.",
+          "failed": "Measurements are unavailable because this feature failed to rebuild.",
+          "blocked": "Measurements are unavailable because this feature is blocked.",
+          "suppressed": "Measurements are unavailable because this feature is suppressed.",
+          "volume": "Volume",
+          "surfaceArea": "Surface area",
+          "width": "Width",
+          "depth": "Depth",
+          "height": "Height",
+          "solids": "Solids",
+          "previous": "Previous",
+          "next": "Next",
+          "count": "{total, plural, one {# output} other {# outputs}}"
+        },
+        "automationReview": {
+          "title": "Review AI changes",
+          "description": "Inspect the proposed document changes before they are applied.",
+          "client": "Client",
+          "actorMcp": "MCP · {clientId}",
+          "actorExtension": "Extension · {extensionId}",
+          "actorUser": "User",
+          "actorSystem": "System",
+          "document": "Document",
+          "baseRevision": "Base revision",
+          "changes": "Proposed changes",
+          "target": "Target: {target}",
+          "documentTarget": "Document",
+          "noParameters": "No additional parameters",
+          "parameter": "Parameter",
+          "parameterName": "Name",
+          "parameterExpression": "Expression",
+          "parameterDisplayUnits": "Display units",
+          "parameterSuppressed": "Suppressed",
+          "createDocument": "Create document",
+          "renameDocument": "Rename document",
+          "setDisplayUnits": "Set display units",
+          "addVariable": "Add variable",
+          "setVariableExpression": "Set variable expression",
+          "renameVariable": "Rename variable",
+          "removeVariable": "Remove variable",
+          "replaceVariableTable": "Replace variable table",
+          "addSketch": "Add sketch",
+          "updateSketch": "Update sketch",
+          "removeSketch": "Remove sketch",
+          "addFeature": "Add feature",
+          "updateFeature": "Update feature",
+          "removeFeature": "Remove feature",
+          "removeFeaturePreservingReferences": "Remove feature and preserve references",
+          "setFeatureSuppression": "Change feature suppression",
+          "unknownCommand": "Document change",
+          "limitedChanges": "Showing {shown} of {total} proposed changes.",
+          "measurements": "Exact preview measurements",
+          "unnamedOutput": "Unnamed output",
+          "volume": "Volume",
+          "bounds": "Bounds",
+          "surfaceArea": "Surface area",
+          "limitedMeasurements": "Showing {shown} of {total} measured outputs.",
+          "destructiveWarning": "This review includes a destructive document change. Confirm it before applying.",
+          "destructiveTitle": "Apply destructive changes?",
+          "destructiveDescription": "The proposed change removes document content and may affect dependent references.",
+          "cancel": "Cancel",
+          "confirmApply": "Apply changes",
+          "apply": "Apply",
+          "applying": "Applying…",
+          "applyFailed": "The changes could not be applied. You can close this review and try again later.",
+          "expired": "This review expired before it could be applied. Close it and request a new review.",
+          "writeUnavailable": "The document could not be written. Close this review and try again later.",
+          "discard": "Discard",
+          "close": "Close",
+          "invalidReview": "This review is unavailable because its bounded preview is invalid.",
+          "width": "Width",
+          "depth": "Depth",
+          "height": "Height",
+          "radius": "Radius",
+          "distance": "Distance",
+          "angle": "Angle",
+          "quantity": "{value} {unit}",
+          "sketchContents": "{entities} entities and {constraints} constraints",
+          "variableValue": "{name} = {expression}",
+          "expressionValue": "Expression: {expression}",
+          "nameValue": "Name: {name}",
+          "unitsValue": "Length: {length}; angle: {angle}",
+          "suppressFeature": "Suppress this feature",
+          "restoreFeature": "Restore this feature",
+          "stale": "The document changed during review. Request a new draft based on the current model.",
+          "cancelled": "This review was cancelled because its session or calculation ended.",
+          "unconfirmed": "The save could not be confirmed. Reopen the project to inspect its saved state before trying again."
+        },
         "collapsePanel": "Collapse task panel",
         "createBox": "Create box",
         "createCylinder": "Create cylinder",
@@ -565,7 +774,7 @@
         "featureDelete": {
           "action": "Delete feature",
           "title": "Delete {feature}?",
-          "description": "This removes the feature from model history. This action cannot be undone yet.",
+          "description": "This removes the feature from model history.",
           "confirm": "Delete feature",
           "cancel": "Keep feature",
           "failed": "The feature could not be deleted. The model history was not changed.",
@@ -892,6 +1101,45 @@
           "reference": "Reference a value with #name in a supported parameter.",
           "units": "Length and angle literals require a supported unit; scalars do not.",
           "names": "Rename a committed variable explicitly to refactor every supported reference atomically."
+        },
+        "hole": {
+          "title": "Hole",
+          "editTitle": "Edit hole",
+          "featureLabel": "Hole {number}",
+          "description": "Cut holes at selected sketch points.",
+          "cancel": "Cancel",
+          "create": "Create hole",
+          "update": "Update hole",
+          "sketch": "Sketch",
+          "sketchDescription": "Choose a finished sketch containing the hole centers.",
+          "target": "Target body",
+          "targetDescription": "Choose the solid to cut.",
+          "points": "Hole centers",
+          "pointsDescription": "Select points in the model or use the checkboxes below.",
+          "pointLabel": "Point {ordinal}",
+          "missingPoint": "This point is missing. Remove it and select a replacement.",
+          "removePoint": "Remove missing point",
+          "noPoints": "This sketch has no points.",
+          "missingSketch": "Choose an available sketch.",
+          "missingTarget": "Choose an available body.",
+          "missingTargetRole": "This body output is no longer available. Choose a replacement.",
+          "unavailableBodyRole": "{feature} · {role} (unavailable)",
+          "incompatibleTarget": "This sketch support refers to the feature result. Choose its result body or a sketch on another support.",
+          "diameter": "Diameter",
+          "depth": "Depth",
+          "expressionDescription": "Enter a length or a variable expression.",
+          "direction": "Direction",
+          "forward": "Forward",
+          "reverse": "Reverse",
+          "extent": "End condition",
+          "blind": "Blind",
+          "throughAll": "Through all",
+          "invalidExpression": "Enter a valid expression.",
+          "invalidDimension": "Enter a length.",
+          "invalidRange": "Enter a length greater than 0 and at most 1,000,000 mm.",
+          "validationSummary": "Check the highlighted values.",
+          "saveFailed": "The hole could not be saved. Try again.",
+          "staleRevision": "The document changed. Reopen this task before saving."
         }
       },
       "viewport": {
@@ -968,6 +1216,9 @@
         "previewFailed": "The unsaved extrusion could not be previewed. Adjust its parameters or target.",
         "previewLoading": "Rebuilding unsaved extrusion preview…",
         "previewReady": "Unsaved extrusion preview",
+        "edgeTreatmentPreviewFailed": "The edge treatment could not be previewed. Reduce its size or choose another body.",
+        "edgeTreatmentPreviewLoading": "Rebuilding unsaved edge treatment…",
+        "edgeTreatmentPreviewReady": "Unsaved edge treatment preview",
         "datumPreviewFailed": "The unsaved datum plane could not be previewed. Adjust its support or offset.",
         "datumPreviewLoading": "Rebuilding unsaved datum plane preview…",
         "datumPreviewReady": "Unsaved datum plane preview",
@@ -977,7 +1228,20 @@
         "worldAxes": "World axes",
         "unknownFeature": "Unknown feature",
         "unknownSketch": "Unknown sketch",
-        "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved."
+        "unavailable": "WebGL2 is unavailable in this browser or device. Modeling data remains saved.",
+        "edgeTreatmentSelection": "Select source edges. Click a selected edge again to remove it.",
+        "edgeTreatmentCandidate": "Source edge: {label}",
+        "edgeTreatmentKeyboardSelection": "Select an edge",
+        "edgeTreatmentKeyboardPlaceholder": "Choose an edge…",
+        "edgeTreatmentEdgeLabel": "Edge {ordinal}",
+        "holePointLabel": "Point {ordinal}",
+        "holePointSelection": "Select sketch points for the hole centers.",
+        "holePointCandidate": "Select {label} as a hole center.",
+        "holePointKeyboardSelection": "Hole center selection",
+        "holePointKeyboardPlaceholder": "Choose a sketch point",
+        "holePreviewFailed": "The selected holes cannot be cut. Check the centers, body, direction, and dimensions.",
+        "holePreviewLoading": "Calculating hole preview…",
+        "holePreviewReady": "Hole preview ready."
       }
     },
     "sketch": {

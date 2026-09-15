@@ -15,11 +15,14 @@
 | Autosave and crash recovery | P0 | Transaction journal restores the latest confirmed command |
 | `.vshape` import/export | P0 | Round-trip without losing parametrics |
 | Save/Open through system picker | P1 | Progressive enhancement with mandatory download/upload fallback |
+| Committed Undo/Redo | P0 | One step per saved transaction; revision-safe persistence, replay, and separate sketch draft history |
 | Named snapshots/versions | P1 | Immutable snapshot with restore |
 | Branching and merge | P2 | Only after a formal operation-conflict model exists |
 | Cloud synchronization | P2 | Separate opt-in adapter, never a core dependency |
 
 The implemented persistence foundation immediately saves each accepted command through the transactional repository, recovers an interrupted page, and rebuilds the same variable-driven model after clean reopen in Chromium, Firefox, and WebKit. The project-library slices list bounded, strictly validated local summaries with exact-revision derived SVG previews or accessible placeholders; support persistent revisioned project rename, new-project creation, and switching by stable document ID; duplicate replay-verified semantic history under fresh document and command identities; and permanently delete an explicitly confirmed inactive project through an exact-revision, live-lease-checked transaction. `.vshape` v0 now downloads and opens the exact semantic snapshot plus full event journal without losing the project name, stable variable IDs, formulas, or feature parameter sources. Import verifies structure, checksums, schemas, and replay before atomic publication and never overwrites an existing document ID. This does not yet satisfy the complete project-library row above: active-project deletion and richer storage-state presentation remain open, alongside debounced editor commit policy, same-ID restore/copy UX, format migrations, backup prompts, bulk export, multi-tab ownership UX, and installed-build update handling.
+
+Committed Undo/Redo is implemented for the active writable project session, including feature and variable changes, deletion, and grouped draft commits. Navigation creates a new saved revision referencing a verified earlier revision; native backup and project copy retain the resulting history. The navigation stacks reset on reopen or project switch and are bounded to 100 entries and an estimated 32 MiB. See [ADR-0039](../adr/0039-committed-document-undo.md) for failure handling and restart policy.
 
 ## Viewport and navigation
 
@@ -99,6 +102,23 @@ invoking Point on curve.
 
 ## Parametric 3D features
 
+Dedicated sketch-point Hole is implemented under [ADR-0048](../adr/0048-sketch-point-holes.md).
+Create/edit supports graphical and keyboard center selection, one explicit solid target,
+variable-aware diameter/depth, forward/reverse direction, blind or directional through-all,
+exact preview, and explicit missing-point repair. Apply uses ordinary committed undo/redo.
+Named `create_hole` / `update_hole` MCP tools share the same intent and draft/review path.
+Native backup/reopen and STEP/STL/3MF export are covered by the Hole delivery evidence.
+Countersink, counterbore, threads, drill-tip geometry, and constituent-body targeting remain open.
+
+Fillet and Chamfer schema version 1 treat all edges of one explicit solid target. The task panel
+accepts a variable-aware radius or equal chamfer distance, requires the latest exact preview before
+saving, and restores the same expression and target on edit/reopen. Invalid sizes preserve the
+committed model. Schema version 2 adds 1–256 selected edges with graphical and keyboard picking,
+explicit missing/ambiguous reference repair, committed undo/redo, and native-history persistence.
+Changing the target retains old references as broken until they are removed and replaced; it never
+silently maps them onto congruent geometry. Tangent propagation controls, variable radii, asymmetric
+chamfers, and constituent-body targeting remain open. See [ADR-0040](../adr/0040-selected-edge-treatments.md).
+
 | Operation | P0 | P1 | P2 |
 |---|:---:|:---:|:---:|
 | Extrude: new/add/remove/intersect | ✓ |  |  |
@@ -163,6 +183,17 @@ The implemented foundation is intentionally narrower: document variables have st
 
 ## Measurement and analysis
 
+Implemented: the Measure task reports exact volume, surface area, world-aligned bounding dimensions,
+and solid count for each current body output. It uses the registered revision-bound body query,
+converts metrics to project display units, supports read-only projects and bounded output paging, and
+hides stale or failed results. Consumed history inputs are omitted by default; explicit earlier solid
+outputs remain inspectable. Construction-plane display plates cannot be measured as solid outputs.
+Named constituent roles remain distinct in selection and measurements, including the read-only
+local MCP tool `model_body_measurements`. Legacy unnamed aggregates retain their original identity.
+Whole-feature query clients remain compatible. Aggregate unions and printability reports are not
+part of this read model. See [ADR-0041](../adr/0041-revision-bound-model-measurements.md) and
+[ADR-0050](../adr/0050-constituent-body-measurements.md).
+
 - P0: point-to-point and minimum distance, edge length, angle, radius/diameter, face area, body volume, bounding box, and center of mass.
 - P0: OCCT shape validity and closed-solid checks.
 - P0: mesh manifoldness, inverted/degenerate triangles, and disconnected shells.
@@ -211,7 +242,7 @@ The implemented export dialog downloads successful terminal bodies as determinis
 
 ## Modules, extensions, and automation
 
-The microkernel, extension, and automation boundaries are designed during Phase 0. SPK-006 accepts only a reduced extension sandbox boundary; executable third-party support remains post-alpha until the production modeling, memory, document, and recovery gates pass. MCP is not published until one real draft/preview/commit scenario passes its local pairing and real-client gate.
+The microkernel, extension, and automation boundaries are designed during Phase 0. SPK-006 accepts only a reduced extension sandbox boundary; executable third-party support remains post-alpha until the production modeling, memory, document, and recovery gates pass. The first local MCP slice passes its pairing and real-client draft/preview/commit gate under [ADR-0043](../adr/0043-local-stdio-mcp-browser-session.md). Its original nine tools cover model information, drafts, box and all-edge fillet authoring/correction, preview, review/commit, discard, and export. [ADR-0044](../adr/0044-local-mcp-cad-authoring-and-inspection.md) adds sketch/Extrude/Revolve creation and editing plus bounded feature/sketch inspection, bringing discovery to seventeen tools. [ADR-0045](../adr/0045-local-mcp-variables-and-chamfer.md) adds variable inspection and mutation, all-edge Chamfer creation/editing, and variable expressions for treatment sizes, bringing discovery to twenty-five tools. [ADR-0046](../adr/0046-local-mcp-selected-edge-inspection.md) adds rebuild-bound edge inspection and selected Fillet/Chamfer authoring/repair, bringing discovery to twenty-six tools. [ADR-0047](../adr/0047-local-mcp-draft-inspection.md) adds owned draft tree/entity/variable/edge inspection, bringing discovery to thirty tools and enabling source creation plus selected treatment repair before one approval. Full CAD tool coverage and packaged release gates remain open.
 
 | Capability | Priority | Completion condition |
 |---|---:|---|

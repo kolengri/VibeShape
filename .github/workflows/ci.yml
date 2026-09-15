@@ -49,5 +49,8 @@ jobs:
       - name: Test
         run: bun run test
 
+      - name: Build browser application
+        run: bun run build
+
       - name: Fallow audit
         run: bun run fallow:audit -- --no-cache

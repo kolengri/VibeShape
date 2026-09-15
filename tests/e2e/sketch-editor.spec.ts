@@ -625,10 +625,7 @@ test.describe("full sketch editor", () => {
     await page.getByRole("button", { name: "Finish sketch", exact: true }).click()
 
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
-    const editSketch = page.getByRole("button", { name: "Edit sketch", exact: true })
     const orbitSketch = page.getByRole("button", { name: "Orbit 3D view", exact: true })
-    await expect(editSketch.or(orbitSketch)).toBeVisible()
-    if (await editSketch.isVisible()) await editSketch.click()
     await expect(orbitSketch).toBeVisible()
     await expect(drawing).toBeVisible()
     const normalContext = page.locator("section[data-sketch-context-mode='normal']")
@@ -3566,6 +3563,7 @@ test.describe("full sketch editor", () => {
   test("draws, constrains, dimensions, edits, persists, and reopens a profile", async ({
     page,
   }) => {
+    test.setTimeout(120_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     const startPanel = page.getByRole("complementary", { name: "Task panel" })

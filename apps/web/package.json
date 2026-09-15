@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@vibeshape/application": "workspace:*",
+    "@vibeshape/automation-api": "workspace:*",
+    "@vibeshape/automation-host": "workspace:*",
     "@vibeshape/document-worker": "workspace:*",
     "@vibeshape/domain": "workspace:*",
     "@vibeshape/formats": "workspace:*",

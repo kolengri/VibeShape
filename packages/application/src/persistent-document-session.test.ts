@@ -5,7 +5,7 @@ import { boxFeatureType } from "@vibeshape/domain/part-design"
 import type { SketchRecord } from "@vibeshape/domain/sketch"
 import { createLengthQuantity } from "@vibeshape/domain/units"
 import { DOCUMENT_PROTOCOL_VERSION } from "@vibeshape/protocol"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   createPersistentDocumentSession,
   type DocumentLeasePort,
@@ -89,8 +89,10 @@ class MemoryLeases implements DocumentLeasePort {
   ownerId: SessionId | null = null
   epoch = 0
   expiresAt = 0
+  acquireGate: Promise<void> | null = null
 
   async acquire(input: Parameters<DocumentLeasePort["acquire"]>[0]) {
+    if (this.acquireGate) await this.acquireGate
     if (this.ownerId !== null && this.ownerId !== input.ownerId && this.expiresAt > input.nowMs) {
       return portFailure("lease-held", "Another session owns the writer lease.", true)
     }
@@ -591,6 +593,135 @@ describe("persistent document session", () => {
     })
     expect(state.repository.draftCommitCount).toBe(1)
     expect(state.rebuildPorts[0]?.revisions).toEqual([1, 3])
+  })
+
+  it("persists a draft when its expected snapshot matches the dispatched intent", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const command = addVariableCommand(1, "06", {
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f2506",
+      name: "wall",
+      expression: "2 mm",
+    })
+    const expected = applyDocumentCommand(created.session.snapshot, command)
+    expect(expected.ok).toBe(true)
+    if (!expected.ok) return
+
+    await expect(
+      created.session.commitDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2406",
+        commands: [command],
+        expectedSnapshot: expected.snapshot,
+      }),
+    ).resolves.toMatchObject({ ok: true, snapshot: expected.snapshot })
+    expect(state.repository.draftCommitCount).toBe(1)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1, 2])
+  })
+
+  it("rejects a draft whose expected snapshot differs before acquiring a lease or persisting", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const acquire = vi.spyOn(state.leases, "acquire")
+    const expiresAt = state.leases.expiresAt
+    state.setNow(2_000)
+    const command = addVariableCommand(1, "07", {
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f2507",
+      name: "wall",
+      expression: "2 mm",
+    })
+
+    await expect(
+      created.session.commitDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2407",
+        commands: [command],
+        expectedSnapshot: created.session.snapshot,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-draft-commit" },
+    })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(state.leases.expiresAt).toBe(expiresAt)
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(created.session.snapshot.revision).toBe(1)
+    expect(state.rebuildPorts[0]?.revisions).toEqual([1])
+  })
+
+  it("keeps stale base revisions rejected when a draft is queued behind a commit", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const queuedCommit = created.session.commit(renameCommand(1, "08"))
+    const queuedDraft = created.session.commitDraft({
+      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2408",
+      commands: [
+        addVariableCommand(1, "08", {
+          id: "0195b5ac-b220-7a2c-8c33-67a36a7f2508",
+          name: "wall",
+          expression: "2 mm",
+        }),
+      ],
+    })
+
+    await expect(queuedCommit).resolves.toMatchObject({ ok: true, snapshot: { revision: 2 } })
+    await expect(queuedDraft).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "command-rejected", sourceCode: "stale-revision" },
+    })
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(created.session.snapshot).toMatchObject({ revision: 2, variables: [] })
+  })
+
+  it("uses the parsed expected snapshot when the caller mutates it during lease renewal", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+    const command = addVariableCommand(1, "09", {
+      id: "0195b5ac-b220-7a2c-8c33-67a36a7f2509",
+      name: "wall",
+      expression: "2 mm",
+    })
+    const expected = applyDocumentCommand(created.session.snapshot, command)
+    expect(expected.ok).toBe(true)
+    if (!expected.ok) return
+    let releaseLease!: () => void
+    state.leases.acquireGate = new Promise<void>((resolve) => {
+      releaseLease = resolve
+    })
+    const input = {
+      draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2409",
+      commands: [command],
+      expectedSnapshot: JSON.parse(JSON.stringify(expected.snapshot)) as DocumentSnapshot,
+    }
+    const pending = created.session.commitDraft(input)
+    await Promise.resolve()
+    ;(input.expectedSnapshot as unknown as { name: string }).name = "Caller mutation"
+    releaseLease()
+
+    await expect(pending).resolves.toMatchObject({ ok: true, snapshot: expected.snapshot })
+    expect(state.repository.draftCommitCount).toBe(1)
+  })
+
+  it("rejects an invalid expected snapshot at the draft boundary", async () => {
+    const state = harness()
+    const created = await createSession(state.dependencies)
+
+    await expect(
+      created.session.commitDraft({
+        draftId: "0195b5ac-b220-7a2c-8c33-67a36a7f2410",
+        commands: [
+          addVariableCommand(1, "10", {
+            id: "0195b5ac-b220-7a2c-8c33-67a36a7f2510",
+            name: "wall",
+            expression: "2 mm",
+          }),
+        ],
+        expectedSnapshot: { revision: "invalid" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-draft-commit" },
+    })
+    expect(state.repository.draftCommitCount).toBe(0)
+    expect(created.session.snapshot.revision).toBe(1)
   })
 
   it("retains the base snapshot when an atomic draft persistence commit fails", async () => {

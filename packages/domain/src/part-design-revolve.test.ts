@@ -9,6 +9,10 @@ import {
   partDesignModule,
 } from "./modules"
 import {
+  chamferFeatureParametersSchema,
+  chamferFeatureType,
+  filletFeatureParametersSchema,
+  filletFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
   legacyRevolveFeatureTypeV3,
@@ -22,7 +26,7 @@ import {
   revolveFeatureType,
   revolveFeatureTypeV6,
 } from "./part-design"
-import { createAngleQuantity } from "./units"
+import { createAngleQuantity, createLengthQuantity } from "./units"
 import { evaluateVariableDefinitions } from "./variables"
 
 const profile = {
@@ -339,5 +343,53 @@ describe("selector-backed revolve feature", () => {
       angle: Math.PI / 2,
       operation: "new",
     })
+  })
+})
+
+describe("all-edge treatment feature contracts", () => {
+  const target = "0195b5ac-b220-7a2c-8c33-67a36a7f3302"
+  const base = {
+    schemaVersion: 0 as const,
+    id: "0195b5ac-b220-7a2c-8c33-67a36a7f3399",
+    dependencies: [target],
+    references: [],
+    suppressed: false,
+    label: "Edge treatment",
+  }
+
+  it("requires positive bounded canonical dimensions and resolves expressions", () => {
+    expect(
+      filletFeatureParametersSchema.safeParse({ radius: createLengthQuantity(1) }).success,
+    ).toBe(true)
+    expect(
+      chamferFeatureParametersSchema.safeParse({ distance: createLengthQuantity(0) }).success,
+    ).toBe(false)
+    const resolved = registry().resolveFeatureParameters(
+      {
+        ...base,
+        type: filletFeatureType.type,
+        parameters: { radius: createLengthQuantity(2, "mm", "#r") },
+      },
+      new Map([["r", { dimension: "length", value: 3, unit: "mm" }]]),
+    )
+    expect(resolved).toMatchObject({ ok: true, feature: { parameters: { radius: { value: 3 } } } })
+  })
+
+  it("requires exactly one target dependency and consumes only that body", () => {
+    const feature = featureRecordSchema.parse({
+      ...base,
+      type: chamferFeatureType.type,
+      parameters: { distance: createLengthQuantity(1) },
+    })
+    expect(featureBodyDependencyIds(feature)).toEqual([target])
+    expect(registry().validateFeature({ ...feature, dependencies: [] })).toMatchObject({
+      ok: false,
+    })
+    expect(
+      registry().validateFeature({ ...feature, dependencies: [target, target] }),
+    ).toMatchObject({ ok: false })
+    expect(
+      registry().validateFeature({ ...feature, references: [modelEdgeReference] }),
+    ).toMatchObject({ ok: false })
   })
 })

@@ -1,4 +1,8 @@
-import type { TopologyCandidate, TopologySignature } from "@vibeshape/protocol"
+import {
+  MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS,
+  type TopologyCandidate,
+  type TopologySignature,
+} from "@vibeshape/protocol"
 import {
   type Edge,
   type Face,
@@ -8,6 +12,8 @@ import {
   type Shape3D,
   type Vector,
 } from "replicad"
+
+import { edgeDisplayPolyline } from "./edge-display-polyline"
 
 type Vector3 = [number, number, number]
 type ReferenceGeometry =
@@ -61,6 +67,7 @@ interface TopologySample {
   boundaryKeys: number[]
   signature: Omit<TopologySignature, "adjacentGeometryClasses">
   referenceGeometry?: ReferenceGeometry
+  edgePolyline?: Vector3[]
 }
 
 export interface TopologyCandidateContext {
@@ -223,24 +230,36 @@ function readFaceSample(face: Face, index: number): TopologySample {
   }
 }
 
-function readEdgeSample(edge: Edge, index: number) {
+function readEdgeReferenceGeometry(edge: Edge, start: Vector3, end: Vector3) {
+  if (edge.geomType === "LINE") return { kind: "line-edge" as const, start, end }
+  return edge.geomType === "ELLIPSE"
+    ? readEllipticalReferenceGeometry(edge)
+    : readCircularReferenceGeometry(edge)
+}
+
+function readEdgeDisplayGeometry(
+  edge: Edge,
+  start: Vector3,
+  end: Vector3,
+  displayPointBudget: number,
+) {
+  if (displayPointBudget < 2) return undefined
+  return edge.geomType === "LINE"
+    ? [start, end]
+    : edgeDisplayPolyline(edge, Math.min(1025, displayPointBudget))
+}
+
+function readEdgeSample(edge: Edge, index: number, displayPointBudget: number) {
   const properties = measureShapeLinearProperties(edge)
   try {
     const direction = normalizedDirection(edge.tangentAt(0.5))
     const start = readVector(edge.startPoint)
     const end = readVector(edge.endPoint)
-    const referenceGeometry =
-      edge.geomType === "LINE"
-        ? {
-            kind: "line-edge" as const,
-            start,
-            end,
-          }
-        : edge.geomType === "ELLIPSE"
-          ? readEllipticalReferenceGeometry(edge)
-          : readCircularReferenceGeometry(edge)
+    const referenceGeometry = readEdgeReferenceGeometry(edge, start, end)
+    const edgePolyline = readEdgeDisplayGeometry(edge, start, end, displayPointBudget)
     return {
       endpoints: [start, end] as const,
+      displayPointCount: edgePolyline?.length ?? 0,
       sample: {
         candidateId: `edge:${index}`,
         kind: "edge" as const,
@@ -256,6 +275,7 @@ function readEdgeSample(edge: Edge, index: number) {
           boundaryCount: edge.isClosed ? 0 : 2,
         },
         ...(referenceGeometry ? { referenceGeometry } : {}),
+        ...(edgePolyline ? { edgePolyline } : {}),
       },
     }
   } finally {
@@ -333,6 +353,7 @@ export function createTopologyCandidates(
       ...(sample.kind === "face" ? { meshFaceId: sample.ownKey } : {}),
       signature,
       ...(sample.referenceGeometry ? { referenceGeometry: sample.referenceGeometry } : {}),
+      ...(sample.edgePolyline ? { edgePolyline: sample.edgePolyline } : {}),
       lineageTokens: annotations.lineageTokens?.(context) ?? [],
       ...(semanticRole ? { semanticRole } : {}),
     }
@@ -355,7 +376,12 @@ export function captureReplicadTopologySnapshot(
   try {
     faces.push(...shape.faces)
     edges.push(...shape.edges)
-    const capturedEdges = edges.map((edge, index) => readEdgeSample(edge, index))
+    let displayPointBudget = MAX_TOPOLOGY_DISPLAY_POLYLINE_POINTS
+    const capturedEdges = edges.map((edge, index) => {
+      const sample = readEdgeSample(edge, index, displayPointBudget)
+      displayPointBudget -= sample.displayPointCount
+      return sample
+    })
     const samples = [
       ...vertexSamples(capturedEdges),
       ...faces.map((face, index) => readFaceSample(face, index)),

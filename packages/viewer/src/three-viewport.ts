@@ -93,6 +93,7 @@ export function createLatestFramePublisher<Value>(
 export type ViewerMesh = Readonly<{
   appearance?: "datum" | "model" | "preview"
   featureId: string
+  outputRole?: string
   positions: Float32Array
   normals: Float32Array
   indices: Uint32Array
@@ -127,6 +128,7 @@ export type ViewerSketchProfileSelectionIntent = "replace" | "toggle"
 
 export type ViewerSketchPointCandidate = Readonly<{
   kind?: "point"
+  selected?: boolean
   label: string
   position: ViewerVector3
   sourcePointId: string
@@ -170,11 +172,12 @@ export type ViewerModelLineCandidate = Readonly<{
 
 export type ViewerModelCurveCandidate = Readonly<{
   kind: "model-curve"
+  selected?: boolean
   label: string
   featureId: string
   candidateId: string
   points: readonly ViewerVector3[]
-  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc"
+  sourceType: "arc" | "circle" | "ellipse" | "elliptical-arc" | "edge"
 }>
 
 export type ViewerSketchReferenceCandidate =
@@ -411,9 +414,17 @@ export type GeometryViewport = Readonly<{
 
 export type ViewerSelection = Readonly<{
   featureId: string
+  outputRole?: string
   faceId: number
   faceOrdinal: number
 }>
+
+/** Returns the stable identity key for one feature body output. */
+export function viewerBodyKey(body: Readonly<{ featureId: string; outputRole?: string }>) {
+  return body.outputRole === undefined
+    ? body.featureId
+    : `${body.featureId}\u0000${body.outputRole}`
+}
 
 export type ViewerSelectionHit = Readonly<{
   selection: ViewerSelection
@@ -434,13 +445,13 @@ export function orderedUniqueViewerSelections(
       ? right.distance
       : Number.POSITIVE_INFINITY
     if (leftDistance !== rightDistance) return leftDistance - rightDistance
-    const featureOrder =
-      left.selection.featureId < right.selection.featureId
+    const bodyOrder =
+      viewerBodyKey(left.selection) < viewerBodyKey(right.selection)
         ? -1
-        : left.selection.featureId > right.selection.featureId
+        : viewerBodyKey(left.selection) > viewerBodyKey(right.selection)
           ? 1
           : 0
-    if (featureOrder !== 0) return featureOrder
+    if (bodyOrder !== 0) return bodyOrder
     if (left.selection.faceOrdinal !== right.selection.faceOrdinal) {
       return left.selection.faceOrdinal - right.selection.faceOrdinal
     }
@@ -450,7 +461,7 @@ export function orderedUniqueViewerSelections(
   const selections: ViewerSelection[] = []
   for (const hit of sorted) {
     const { selection } = hit
-    const key = `${selection.featureId}\u0000${selection.faceId}`
+    const key = `${viewerBodyKey(selection)}\u0000${selection.faceId}`
     if (seen.has(key)) continue
     seen.add(key)
     selections.push(selection)
@@ -684,7 +695,11 @@ export function createViewerGeometry(mesh: ViewerMesh) {
   geometry.setAttribute("position", new BufferAttribute(mesh.positions, 3))
   geometry.setAttribute("normal", new BufferAttribute(mesh.normals, 3))
   geometry.setIndex(new BufferAttribute(mesh.indices, 1))
-  geometry.userData = { featureId: mesh.featureId, triangleFaceIds: mesh.triangleFaceIds }
+  geometry.userData = {
+    featureId: mesh.featureId,
+    ...(mesh.outputRole === undefined ? {} : { outputRole: mesh.outputRole }),
+    triangleFaceIds: mesh.triangleFaceIds,
+  }
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
   return geometry
@@ -830,7 +845,8 @@ function disposeMaterials(materials: readonly (MeshStandardMaterial | LineBasicM
 }
 
 function sameSelection(left: ViewerSelection | null, right: ViewerSelection | null) {
-  return left?.featureId === right?.featureId && left?.faceId === right?.faceId
+  if (left === null || right === null) return left === right
+  return viewerBodyKey(left) === viewerBodyKey(right) && left.faceId === right.faceId
 }
 
 function sameSelectionStack(left: readonly ViewerSelection[], right: readonly ViewerSelection[]) {
@@ -860,6 +876,16 @@ function isViewerSketchPointCandidate(
   candidate: ViewerSketchReferenceCandidate,
 ): candidate is ViewerSketchPointCandidate | ViewerModelPointCandidate {
   return candidate.kind === "point" || candidate.kind === "model-point"
+}
+
+/** Positions for the persistent selected-point overlay; candidate hit targets remain transparent. */
+export function selectedViewerSketchPointPositions(
+  candidates: readonly ViewerSketchReferenceCandidate[],
+) {
+  const positions = candidates.flatMap((candidate) =>
+    candidate.kind === "point" && candidate.selected ? candidate.position : [],
+  )
+  return new Float32Array(positions)
 }
 
 function isViewerSketchLineCandidate(
@@ -1416,14 +1442,14 @@ class ThreeGeometryViewport implements GeometryViewport {
           ? this.#datumEdgeMaterial
           : this.#createModelEdgeMaterial()
       const surface = new Mesh(geometry, surfaceMaterial)
-      surface.name = source.featureId
+      surface.name = viewerBodyKey(source)
       if (!preview) {
-        this.#meshSources.set(source.featureId, source)
+        this.#meshSources.set(viewerBodyKey(source), source)
         this.#surfaceMeshes.push(surface)
       }
       this.#modelGroup.add(surface)
       const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
-      edges.name = `${source.featureId}:edges`
+      edges.name = `${viewerBodyKey(source)}:edges`
       this.#modelGroup.add(edges)
     }
     this.#render()
@@ -1431,7 +1457,12 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   setFeaturePreselection(mesh: ViewerMesh | null) {
     if (this.#disposed) return
-    const visibleMesh = mesh?.featureId === this.#featureSelection?.featureId ? null : mesh
+    const visibleMesh =
+      mesh &&
+      this.#featureSelection &&
+      viewerBodyKey(mesh) === viewerBodyKey(this.#featureSelection)
+        ? null
+        : mesh
     if (visibleMesh === this.#featurePreselection) return
     this.#featurePreselection = visibleMesh
     this.#replaceFeatureHighlight(
@@ -1453,7 +1484,11 @@ class ThreeGeometryViewport implements GeometryViewport {
       mesh,
       3,
     )
-    if (mesh?.featureId === this.#featurePreselection?.featureId) {
+    if (
+      mesh &&
+      this.#featurePreselection &&
+      viewerBodyKey(mesh) === viewerBodyKey(this.#featurePreselection)
+    ) {
       this.setFeaturePreselection(null)
     }
   }
@@ -1509,6 +1544,12 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#render()
   }
 
+  #sketchReferenceLineMaterial(candidate: ViewerSketchReferenceCandidate) {
+    if (candidate.kind !== "model-curve" || candidate.sourceType !== "edge")
+      return this.#sketchLineCandidateMaterial
+    return candidate.selected ? this.#featureSelectionEdgeMaterial : this.#sketchCurveMaterial
+  }
+
   setSketchReferenceCandidates(candidates: readonly ViewerSketchReferenceCandidate[]) {
     if (this.#disposed) return
     this.#clearSketchReferencePicking()
@@ -1530,11 +1571,21 @@ class ThreeGeometryViewport implements GeometryViewport {
       this.#sketchPointObject = points
       this.#sketchPointCandidateGroup.add(points)
     }
+    const selectedPointPositions = selectedViewerSketchPointPositions(candidates)
+    if (selectedPointPositions.length > 0) {
+      const points = new Points(
+        createViewerSketchGeometry(selectedPointPositions),
+        this.#sketchPointPreselectionMaterial,
+      )
+      points.name = "selected-sketch-reference-points"
+      points.renderOrder = 9
+      this.#sketchPointCandidateGroup.add(points)
+    }
     for (const candidate of candidates) {
       if (!isViewerSketchLineCandidate(candidate)) continue
       const line = new LineSegments(
         createViewerSketchGeometry(sketchReferenceLinePositions(candidate)),
-        this.#sketchLineCandidateMaterial,
+        this.#sketchReferenceLineMaterial(candidate),
       )
       line.name = `sketch-reference-${candidate.kind}:${sketchReferenceEntityId(candidate)}`
       line.renderOrder = 8
@@ -2046,7 +2097,14 @@ class ThreeGeometryViewport implements GeometryViewport {
     const faceId = source?.triangleFaceIds[intersection.faceIndex]
     if (!source || faceId === undefined) return null
     const faceOrdinal = viewerFaceOrdinal(source, faceId)
-    return faceOrdinal === null ? null : { featureId: source.featureId, faceId, faceOrdinal }
+    return faceOrdinal === null
+      ? null
+      : {
+          featureId: source.featureId,
+          ...(source.outputRole === undefined ? {} : { outputRole: source.outputRole }),
+          faceId,
+          faceOrdinal,
+        }
   }
 
   #pickOriginPlane(event: PointerEvent): ViewerOriginPlane | null {
@@ -2453,7 +2511,7 @@ class ThreeGeometryViewport implements GeometryViewport {
   #replaceHighlight(group: Group, material: MeshBasicMaterial, selection: ViewerSelection | null) {
     disposeModelGroup(group)
     if (selection) {
-      const source = this.#meshSources.get(selection.featureId)
+      const source = this.#meshSources.get(viewerBodyKey(selection))
       const geometry = source ? createFaceHighlightGeometry(source, selection.faceId) : null
       if (geometry) group.add(new Mesh(geometry, material))
     }
@@ -2471,11 +2529,11 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (source) {
       const geometry = createViewerGeometry(source)
       const surface = new Mesh(geometry, surfaceMaterial)
-      surface.name = `${source.featureId}:feature-highlight`
+      surface.name = `${viewerBodyKey(source)}:feature-highlight`
       surface.renderOrder = renderOrder
       group.add(surface)
       const edges = new LineSegments(new EdgesGeometry(geometry, 28), edgeMaterial)
-      edges.name = `${source.featureId}:feature-highlight-edges`
+      edges.name = `${viewerBodyKey(source)}:feature-highlight-edges`
       edges.renderOrder = renderOrder
       group.add(edges)
     }
@@ -2613,13 +2671,17 @@ class ThreeGeometryViewport implements GeometryViewport {
     if (!this.#originPlaneIdleSelectionEnabled) {
       this.#clearSketchProfileCandidateStack()
       this.#setOriginPlanePreselection(null)
+      const hadSelection = this.#selection !== null
       this.#setSelection(null)
       this.#setSketchProfileSelections([])
+      if (!hadSelection) this.#onSelectionChange(null)
       return
     }
+    const hadSelection = this.#selection !== null
     this.#setSelection(null)
     this.#clearSketchProfileCandidateStack()
     this.#setSketchProfileSelections([])
+    if (!hadSelection) this.#onSelectionChange(null)
     this.#onOriginPlaneSelectionChange(this.#pickOriginPlane(event))
   }
 

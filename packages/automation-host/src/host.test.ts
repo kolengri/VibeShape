@@ -131,9 +131,33 @@ function documentStore(initial: DocumentSnapshot | null) {
   }
 }
 
+function geometryEvidence(snapshot: DocumentSnapshot) {
+  return {
+    schemaVersion: 1,
+    documentId: snapshot.id,
+    revision: snapshot.revision,
+    generation: 1,
+    features: snapshot.features.map((feature) => ({
+      featureId: feature.id,
+      status: "succeeded",
+      contentHash: "a".repeat(64),
+      shape: {
+        valid: true,
+        volume: 1,
+        surfaceArea: 6,
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        solidCount: 1,
+        faceCount: 6,
+        edgeCount: 12,
+      },
+    })),
+  }
+}
+
 function automationHost(
   documents: AutomationDocumentPort,
   options: {
+    geometry?: { evaluate: (snapshot: DocumentSnapshot) => unknown }
     draftIds?: readonly unknown[]
     now?: () => number
     draftTtlMs?: number
@@ -145,6 +169,8 @@ function automationHost(
   const factory = createAutomationHost({
     ...dispatchers(),
     documents,
+    geometry: options.geometry ?? { evaluate: geometryEvidence },
+    review: { confirm: () => "approved" },
     createDraftId: () => ids.shift(),
     now: options.now ?? (() => startedAt),
     draftTtlMs: options.draftTtlMs ?? 5 * 60 * 1_000,
@@ -592,8 +618,8 @@ describe("automation draft host", () => {
       diagnostic: { code: "stale-revision", retryable: true },
     })
     expect(await host.previewDraft(actor, operationRequest())).toMatchObject({
-      ok: true,
-      value: { summary: { data: { name: "Draft rename" } } },
+      ok: false,
+      diagnostic: { code: "stale-revision", retryable: true },
     })
     expect(store.snapshot()).toMatchObject({ name: "Concurrent rename" })
   })
@@ -603,6 +629,8 @@ describe("automation draft host", () => {
       createAutomationHost({
         ...dispatchers(),
         documents: documentStore(null).port,
+        geometry: { evaluate: geometryEvidence },
+        review: { confirm: () => "approved" },
         createDraftId: () => draftIdA,
         draftTtlMs: 0,
       }),
@@ -635,6 +663,34 @@ describe("automation draft host", () => {
     expect(await staleBaseHost.createDraft(actor, createRequest(0))).toMatchObject({
       ok: false,
       diagnostic: { code: "stale-revision", retryable: true },
+    })
+  })
+
+  it("fails closed when the review port is missing or malformed", () => {
+    const missingReview = {
+      ...dispatchers(),
+      documents: documentStore(null).port,
+      geometry: { evaluate: geometryEvidence },
+      review: { confirm: () => "approved" },
+      createDraftId: () => draftIdA,
+    }
+    Reflect.deleteProperty(missingReview, "review")
+    expect(createAutomationHost(missingReview)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-host-configuration" },
+    })
+
+    const malformedReview = {
+      ...dispatchers(),
+      documents: documentStore(null).port,
+      geometry: { evaluate: geometryEvidence },
+      review: { confirm: () => "approved" },
+      createDraftId: () => draftIdA,
+    }
+    Reflect.set(malformedReview, "review", { confirm: "unavailable" })
+    expect(createAutomationHost(malformedReview)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-host-configuration" },
     })
   })
 

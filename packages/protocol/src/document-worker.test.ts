@@ -208,6 +208,21 @@ describe("document worker protocol", () => {
     expect(
       documentSketchDisplaySchema.safeParse({
         ...display,
+        solvedPoints: [{ entityId: offsetLineId, position: [1, 2, 3] }],
+      }).success,
+    ).toBe(true)
+    expect(
+      documentSketchDisplaySchema.safeParse({
+        ...display,
+        solvedPoints: [
+          { entityId: offsetLineId, position: [1, 2, 3] },
+          { entityId: offsetLineId, position: [4, 5, 6] },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      documentSketchDisplaySchema.safeParse({
+        ...display,
         profiles: [
           {
             ...profile,

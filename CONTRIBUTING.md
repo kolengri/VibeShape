@@ -13,6 +13,16 @@ bun run check
 
 Use `bun run dev` for the Vite application, `bun run test:e2e:chromium` for fast browser feedback, and `bun run test:e2e` for the full Chromium, Firefox, and WebKit suite. Keep `bun.lock` synchronized with every manifest change and verify it with `bun ci` before opening a pull request.
 
+## CAD workflow evidence
+
+Changes to sketch/profile selection, model-face support, Extrude/Revolve, or shared CAD task
+lifecycle require the [CAD workflow baseline gate](docs/testing-strategy.md#cad-workflow-baseline-gate)
+in one uninterrupted Chromium/Firefox/WebKit run before merge. Run it separately from unit tests,
+typechecking, builds and other browser processes. Retain the exact command, date, source state,
+browser projects, complete result and failure artifacts. An isolated retry does not close the gate.
+The production build runs in pull-request CI; browser and native interoperability evidence remains
+local. New CAD features also require their own scoped invariant and failure coverage.
+
 ## Language policy
 
 - Write all documentation, ADRs, source identifiers, commit messages, diagnostics intended for developers, tests, and code comments in **English**.

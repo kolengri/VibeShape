@@ -11,11 +11,13 @@ import {
   orderedUniqueViewerSelections,
   orderedUniqueViewerSketchProfiles,
   orthographicFrustum,
+  selectedViewerSketchPointPositions,
   type ViewerMesh,
   viewerAngularGizmoAngle,
   viewerAngularGizmoPoint,
   viewerAxialGizmoDistance,
   viewerAxialGizmoHandlePosition,
+  viewerBodyKey,
   viewerCameraPoseForFrame,
   viewerCameraPoseForStandardView,
   viewerFaceOrdinal,
@@ -218,6 +220,29 @@ describe("Three viewport geometry", () => {
     )
   })
 
+  it("keeps sibling body outputs distinct while preserving the legacy key", () => {
+    expect(viewerBodyKey({ featureId: "feature-a" })).toBe("feature-a")
+    expect(viewerBodyKey({ featureId: "feature-a", outputRole: "result" })).toBe(
+      "feature-a\u0000result",
+    )
+
+    const primary = {
+      featureId: "feature-a",
+      outputRole: "pattern.instance.1",
+      faceId: 7,
+      faceOrdinal: 1,
+    }
+    const secondary = { ...primary, outputRole: "pattern.instance.2" }
+    const duplicate = { ...primary }
+    expect(
+      orderedUniqueViewerSelections([
+        { selection: secondary, distance: 1 },
+        { selection: duplicate, distance: 0.5 },
+        { selection: primary, distance: 1 },
+      ]),
+    ).toEqual([primary, secondary])
+  })
+
   it("filters unsupported faces before applying the support candidate cap", () => {
     const unsupported = Array.from({ length: 9 }, (_, index) => ({
       distance: index + 1,
@@ -330,6 +355,28 @@ describe("Three viewport geometry", () => {
         kind: "model-line",
       }),
     ).toBe("model-line:box-1:edge-1")
+  })
+
+  it("renders persistent overlays only for selected sketch-point candidates", () => {
+    expect(
+      selectedViewerSketchPointPositions([
+        {
+          kind: "point",
+          label: "Selected point",
+          position: [1, 2, 3],
+          selected: true,
+          sourcePointId: "point-1",
+          sourceSketchId: "sketch-1",
+        },
+        {
+          kind: "point",
+          label: "Available point",
+          position: [4, 5, 6],
+          sourcePointId: "point-2",
+          sourceSketchId: "sketch-1",
+        },
+      ]),
+    ).toEqual(new Float32Array([1, 2, 3]))
   })
 
   it("keeps a valid orthographic projection for measured and zero-sized viewports", () => {

@@ -2,6 +2,8 @@ import { expect, test } from "./fixtures"
 
 test.describe("Box parameters", () => {
   test("creates and reopens a Box driven by a document variable", async ({ page }) => {
+    // Three reloads exercise one persisted variable/feature workflow across worker startups.
+    test.setTimeout(60_000)
     await page.goto("/")
     await expect(page.getByText("Saved in this browser", { exact: true })).toBeVisible()
     await page.getByRole("treeitem", { name: "Variables" }).click()

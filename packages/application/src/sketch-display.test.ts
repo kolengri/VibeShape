@@ -100,6 +100,71 @@ describe("materializeSketchDisplay", () => {
     expect(Array.from(record?.curvePositions ?? [])).toEqual([20, 0, 30, 70, 0, 110])
   })
 
+  it("publishes selectable solved points only for complete, matching solver provenance", () => {
+    const sketch = sourceSketch()
+    const record = materializeSketchDisplay(sketchDocument(sketch), sketch, {
+      sketchId,
+      sourceRevision: 4,
+      status: "under-constrained",
+      points: [
+        { entityId: secondPointId, x: 70, y: 110 },
+        { entityId: firstPointId, x: 20, y: 30 },
+      ],
+      circles: [],
+    })
+
+    expect(record?.solvedPoints).toEqual([
+      { entityId: firstPointId, position: [20, 0, 30] },
+      { entityId: secondPointId, position: [70, 0, 110] },
+    ])
+  })
+
+  it("omits selectable metadata when provenance or authored point coverage is invalid", () => {
+    const sketch = sourceSketch()
+    const document = sketchDocument(sketch)
+    const base = {
+      sketchId,
+      sourceRevision: 4,
+      status: "under-constrained" as const,
+      circles: [],
+    }
+    expect(
+      materializeSketchDisplay(document, sketch, {
+        ...base,
+        points: [{ entityId: firstPointId, x: 20, y: 30 }],
+      })?.solvedPoints,
+    ).toBeUndefined()
+    expect(
+      materializeSketchDisplay(document, sketch, {
+        ...base,
+        points: [
+          { entityId: firstPointId, x: 20, y: 30 },
+          { entityId: firstPointId, x: 21, y: 31 },
+          { entityId: secondPointId, x: 70, y: 110 },
+        ],
+      })?.solvedPoints,
+    ).toBeUndefined()
+    expect(
+      materializeSketchDisplay(document, sketch, {
+        ...base,
+        sketchId: "0195b5ac-b220-7a2c-8c33-67a36a7f3299",
+        points: [
+          { entityId: firstPointId, x: 20, y: 30 },
+          { entityId: secondPointId, x: 70, y: 110 },
+        ],
+      })?.solvedPoints,
+    ).toBeUndefined()
+    expect(
+      materializeSketchDisplay(document, sketch, {
+        ...base,
+        points: [
+          { entityId: firstPointId, x: Number.NaN, y: 30 },
+          { entityId: secondPointId, x: 70, y: 110 },
+        ],
+      })?.solvedPoints,
+    ).toBeUndefined()
+  })
+
   it("materializes a saved closed profile with stable boundary identity in local sketch space", () => {
     const sketch = createRectangleSketch({
       id: sketchId,

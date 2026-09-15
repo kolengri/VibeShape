@@ -26,6 +26,7 @@ import type {
   DocumentControllerState,
   DocumentMutationResult,
 } from "../document/document-controller"
+import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
@@ -455,12 +456,14 @@ function SketchSupportHealthSummary({
 
 function ModelTreeRootItem({
   current,
+  disabled = false,
   onWorkspaceChange,
   targetWorkspace,
   tabIndex = -1,
   title,
 }: {
   current?: "page" | undefined
+  disabled?: boolean
   onWorkspaceChange: (workspace: EditorWorkspaceName) => void
   targetWorkspace: EditorWorkspaceName
   tabIndex?: number
@@ -475,6 +478,7 @@ function ModelTreeRootItem({
       role="treeitem"
       tabIndex={tabIndex}
       aria-current={current}
+      disabled={disabled}
       onClick={() => onWorkspaceChange(targetWorkspace)}
     >
       {title}
@@ -531,15 +535,20 @@ type ModelTreeProps = {
   sketchRenameBlockedId: SketchId | null
   hiddenFeatureIds: readonly FeatureRecord["id"][]
   hiddenSketchIds: readonly SketchId[]
+  activeBody?: ModelBodySelection | null | undefined
+  onBodyActivate?: ((selection: ModelBodySelection) => void) | undefined
+  onBodyPreselectionChange?: ((selection: ModelBodySelection | null) => void) | undefined
 }
 
 function ModelTreeWorkspaceItems({
   activeWorkspace,
+  controller,
   onWorkspaceChange,
   t,
-}: Pick<ModelTreeProps, "activeWorkspace" | "onWorkspaceChange"> & {
+}: Pick<ModelTreeProps, "activeWorkspace" | "controller" | "onWorkspaceChange"> & {
   t: ReturnType<typeof useTranslations>
 }) {
+  const workspaceUnavailable = controller.status !== "ready"
   return (
     <>
       <ModelTreeRootItem
@@ -547,11 +556,13 @@ function ModelTreeWorkspaceItems({
         tabIndex={0}
         targetWorkspace="variables"
         title={t("items.variables")}
+        disabled={workspaceUnavailable}
         onWorkspaceChange={onWorkspaceChange}
       />
       <ModelTreeRootItem
         targetWorkspace="model"
         title={t("items.origin")}
+        disabled={workspaceUnavailable}
         onWorkspaceChange={onWorkspaceChange}
       />
     </>
@@ -799,19 +810,41 @@ function BodiesGroup({
       {expanded && (
         <fieldset className="contents">
           <legend className="sr-only">{t("items.bodies")}</legend>
-          {view.bodyFeatures.map((feature, index) => {
+          {view.modelBodies.map((body, index) => {
+            const { feature, geometry } = body
             const label = t("bodyLabel", { number: index + 1 })
             const source = t("bodySource", {
               feature: feature.label || t("unnamedFeature"),
             })
-            const sourceId = `body-source-${feature.id}`
+            const bodyKey = `${feature.id}\u0000${geometry.outputRole ?? ""}`
+            const bodyId =
+              geometry.outputRole === undefined ? feature.id : encodeURIComponent(bodyKey)
+            const sourceId = `body-source-${bodyId}`
+            const selection: ModelBodySelection = {
+              featureId: feature.id,
+              ...(geometry.outputRole === undefined ? {} : { outputRole: geometry.outputRole }),
+            }
+            const namedBody = geometry.outputRole !== undefined
+            const active = props.activeBody
+              ? props.activeBody.featureId === selection.featureId &&
+                props.activeBody.outputRole === selection.outputRole
+              : !namedBody && feature.id === props.activeFeatureId
             return (
               <div
-                key={`body:${feature.id}`}
+                key={`body:${bodyKey}`}
                 role="none"
-                data-body-id={feature.id}
-                onPointerEnter={() => props.onFeaturePreselectionChange(feature.id)}
-                onPointerLeave={() => props.onFeaturePreselectionChange(null)}
+                data-body-id={bodyId}
+                data-feature-id={feature.id}
+                onPointerEnter={() =>
+                  namedBody
+                    ? props.onBodyPreselectionChange?.(selection)
+                    : props.onFeaturePreselectionChange(feature.id)
+                }
+                onPointerLeave={() =>
+                  namedBody
+                    ? props.onBodyPreselectionChange?.(null)
+                    : props.onFeaturePreselectionChange(null)
+                }
               >
                 <Button
                   type="button"
@@ -819,17 +852,28 @@ function BodiesGroup({
                   size="xs"
                   className={cn(
                     "w-full justify-start pl-6 font-normal text-muted-foreground",
-                    feature.id === props.activeFeatureId &&
-                      "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+                    active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
                   )}
                   role="treeitem"
                   tabIndex={-1}
-                  aria-selected={feature.id === props.activeFeatureId}
+                  aria-selected={active}
                   aria-label={label}
                   aria-describedby={sourceId}
-                  onClick={() => props.onFeatureActivate(feature.id)}
-                  onFocus={() => props.onFeaturePreselectionChange(feature.id)}
-                  onBlur={() => props.onFeaturePreselectionChange(null)}
+                  onClick={() =>
+                    namedBody
+                      ? props.onBodyActivate?.(selection)
+                      : props.onFeatureActivate(feature.id)
+                  }
+                  onFocus={() =>
+                    namedBody
+                      ? props.onBodyPreselectionChange?.(selection)
+                      : props.onFeaturePreselectionChange(feature.id)
+                  }
+                  onBlur={() =>
+                    namedBody
+                      ? props.onBodyPreselectionChange?.(null)
+                      : props.onFeaturePreselectionChange(null)
+                  }
                 >
                   <Cuboid aria-hidden="true" className="mr-1 size-4 shrink-0" />
                   <span className="truncate">{label}</span>

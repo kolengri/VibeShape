@@ -5,17 +5,21 @@ import {
   type DocumentId,
   type DocumentSnapshot,
   type DocumentSnapshotV1,
+  documentRestoredEventSchema,
   documentSnapshotV1Schema,
   projectDocumentSnapshotV1ToV0,
   reduceVersionedDocumentEvent,
   type VersionedDocumentEvent,
 } from "@vibeshape/domain"
+import { DocumentUndoHistory } from "./document-undo-history"
 import type {
+  DocumentHistoryRequest,
   PersistedRecoveryMigration,
   PersistedRecoveryReport,
   PersistentDocumentRepositoryPort,
   SessionPortDiagnostic,
 } from "./persistent-document-session"
+import { documentHistoryRequestSchema } from "./persistent-document-session"
 
 export type VersionedLease = { epoch: number; nowMs: number }
 export type VersionedCommitInput = Readonly<{
@@ -64,7 +68,7 @@ export type VersionedPortResult<Value> =
   | Readonly<{ ok: true; value: Value }>
   | Readonly<{ ok: false; diagnostic: SessionPortDiagnostic }>
 
-function failed(code: string, message: string): VersionedPortResult<never> {
+function failed(code: string, message: string): Extract<VersionedPortResult<never>, { ok: false }> {
   return { ok: false, diagnostic: { code, message, retryable: false } }
 }
 
@@ -119,14 +123,82 @@ function translateAddEvent(
   return event as VersionedDocumentEvent
 }
 
+function parseHistoryNavigation(
+  input: Readonly<{
+    request: unknown
+    sessionId: string
+    lease: VersionedLease
+    baseSnapshot: DocumentSnapshot
+  }>,
+  authority: DocumentSnapshotV1 | null,
+  projectInput: (
+    snapshot: DocumentSnapshotV1 | null,
+    expected: DocumentSnapshot | null,
+  ) => Extract<VersionedPortResult<never>, { ok: false }> | null,
+):
+  | { ok: true; request: DocumentHistoryRequest; authority: DocumentSnapshotV1 }
+  | { ok: false; diagnostic: SessionPortDiagnostic } {
+  const parsed = documentHistoryRequestSchema.safeParse(input.request)
+  if (!parsed.success || !authority)
+    return failed("invalid-input", "The history request is invalid.")
+  const baseMatch = projectInput(authority, input.baseSnapshot)
+  if (baseMatch) return baseMatch
+  const request = parsed.data
+  if (request.documentId !== authority.id || request.baseRevision !== authority.revision)
+    return failed(
+      "stale-revision",
+      "The history request does not target the current document revision.",
+    )
+  return { ok: true, request, authority }
+}
+
+function buildHistoryRestore(
+  authority: DocumentSnapshotV1,
+  request: DocumentHistoryRequest,
+  history: DocumentUndoHistory,
+):
+  | {
+      ok: true
+      event: VersionedDocumentEvent
+      restored: DocumentSnapshotV1
+      projected: DocumentSnapshot
+    }
+  | { ok: false; diagnostic: SessionPortDiagnostic } {
+  const target = history.target(request.direction)
+  if (!target) return failed("history-unavailable", "There is no saved change in this direction.")
+  const event = documentRestoredEventSchema.safeParse({
+    ...request,
+    schemaVersion: 1,
+    type: "org.vibeshape.document.restored",
+    transactionId: null,
+    revision: authority.revision + 1,
+    targetRevision: target.revision,
+  })
+  if (!event.success) return failed("invalid-event", "The history event is invalid.")
+  const restored = reduceVersionedDocumentEvent(authority, event.data, target)
+  if (!restored.ok) return failed("invalid-event", restored.diagnostic.message)
+  const projected = projectDocumentSnapshotV1ToV0(restored.snapshot)
+  if (!projected.ok) return failed("invalid-event", projected.diagnostic.message)
+  return {
+    ok: true as const,
+    event: event.data,
+    restored: restored.snapshot,
+    projected: projected.snapshot,
+  }
+}
+
 export function createVersionedPersistenceAdapter(
   repository: VersionedDocumentRepositoryPort,
   initialSnapshot: DocumentSnapshotV1 | null = null,
 ): PersistentDocumentRepositoryPort &
   Readonly<{ readonly currentV1Snapshot: DocumentSnapshotV1 | null }> {
   let authority = initialSnapshot
+  const history = new DocumentUndoHistory()
 
-  const projectInput = (snapshot: DocumentSnapshotV1 | null, expected: DocumentSnapshot | null) => {
+  const projectInput = (
+    snapshot: DocumentSnapshotV1 | null,
+    expected: DocumentSnapshot | null,
+  ): Extract<VersionedPortResult<never>, { ok: false }> | null => {
     const projected = project(snapshot)
     return projected.ok && canonicalJson(projected.snapshot) === canonicalJson(expected)
       ? null
@@ -134,6 +206,34 @@ export function createVersionedPersistenceAdapter(
   }
 
   return {
+    history: {
+      get availability() {
+        return history.availability
+      },
+      async navigate(input) {
+        const parsed = parseHistoryNavigation(input, authority, projectInput)
+        if (!parsed.ok) return parsed
+        const restored = buildHistoryRestore(parsed.authority, parsed.request, history)
+        if (!restored.ok) return restored
+        let persisted: VersionedPortResult<unknown>
+        try {
+          persisted = await repository.commit({
+            sessionId: input.sessionId,
+            lease: input.lease,
+            storedAt: parsed.request.issuedAt,
+            baseSnapshot: authority,
+            event: restored.event,
+            snapshot: restored.restored,
+          })
+        } catch {
+          return failed("persistence-failed", "The history change was not saved.")
+        }
+        if (!persisted.ok) return persisted
+        authority = restored.restored
+        history.accept(parsed.request.direction)
+        return { ok: true, value: restored.projected }
+      },
+    },
     get currentV1Snapshot() {
       return authority
     },
@@ -157,7 +257,10 @@ export function createVersionedPersistenceAdapter(
       } catch {
         return failed("persistence-failed", "The versioned persistence commit failed.")
       }
-      if (persisted.ok) authority = reduced.snapshot
+      if (persisted.ok) {
+        history.record(authority, reduced.snapshot)
+        authority = reduced.snapshot
+      }
       return persisted
     },
     async commitDraft(input) {
@@ -188,7 +291,10 @@ export function createVersionedPersistenceAdapter(
       } catch {
         return failed("persistence-failed", "The versioned draft persistence commit failed.")
       }
-      if (persisted.ok) authority = current
+      if (persisted.ok) {
+        history.record(authority, current)
+        authority = current
+      }
       return persisted
     },
     async recover(documentId) {
@@ -205,6 +311,7 @@ export function createVersionedPersistenceAdapter(
       const projected = projectDocumentSnapshotV1ToV0(parsed.data)
       if (!projected.ok) return failed("invalid-recovered-document", projected.diagnostic.message)
       authority = parsed.data
+      history.clear()
       const value: PersistedRecoveryReport = {
         ...recovered.value,
         snapshot: projected.snapshot,

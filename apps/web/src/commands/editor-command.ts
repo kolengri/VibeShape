@@ -1,5 +1,10 @@
 export const editorCommandIds = {
   cancelActive: "org.vibeshape.editor.cancel-active",
+  documentUndo: "org.vibeshape.editor.document.undo",
+  documentRedo: "org.vibeshape.editor.document.redo",
+  createHole: "org.vibeshape.editor.part-design.create-hole",
+  createFillet: "org.vibeshape.editor.part-design.create-fillet",
+  createChamfer: "org.vibeshape.editor.part-design.create-chamfer",
   createBox: "org.vibeshape.editor.part-design.create-box",
   createCylinder: "org.vibeshape.editor.part-design.create-cylinder",
   createDatumPlane: "org.vibeshape.editor.reference-geometry.create-datum-plane",
@@ -7,6 +12,7 @@ export const editorCommandIds = {
   createRevolve: "org.vibeshape.editor.part-design.create-revolve",
   createSketch: "org.vibeshape.editor.sketch.create",
   createSubtract: "org.vibeshape.editor.part-design.create-subtract",
+  measure: "org.vibeshape.editor.measurements.measure",
   sketchDimension: "org.vibeshape.editor.sketch.tool.dimension",
   sketchConstraintCoincident: "org.vibeshape.editor.sketch.constraint.coincident",
   sketchConstraintConcentric: "org.vibeshape.editor.sketch.constraint.concentric",
@@ -131,6 +137,9 @@ export type EditorCommandIcon =
   | "constraint-symmetric"
   | "constraint-tangent"
   | "constraint-vertical"
+  | "hole"
+  | "fillet"
+  | "chamfer"
   | "cylinder"
   | "datum-plane"
   | "dimension"
@@ -165,7 +174,12 @@ export type EditorCommandIcon =
   | "sketch-visibility"
 
 export type EditorCommandLabelKey =
+  | "createHole"
   | "cancelActive"
+  | "documentUndo"
+  | "documentRedo"
+  | "createFillet"
+  | "createChamfer"
   | "createBox"
   | "createCylinder"
   | "createDatumPlane"
@@ -173,6 +187,7 @@ export type EditorCommandLabelKey =
   | "createRevolve"
   | "createSketch"
   | "createSubtract"
+  | "measure"
   | "sketchAlignedRectangle"
   | "sketchArc"
   | "sketchMidpointLine"
@@ -233,12 +248,17 @@ export type EditorCommandDisabledReason =
   | "hideFinalContext"
   | "noActiveCommand"
   | "noSketchRedo"
+  | "noDocumentRedo"
   | "noSavedSketches"
   | "noSketchUndo"
+  | "noDocumentUndo"
   | "readOnly"
+  | "saving"
   | "requiresExistingSketch"
   | "requiresSketch"
   | "selectProfile"
+  | "selectHolePoints"
+  | "selectSolid"
   | "selectTwoSolids"
   | "selectSketchLine"
 

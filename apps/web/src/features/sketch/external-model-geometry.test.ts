@@ -19,6 +19,7 @@ import {
   externalModelGeometryCandidates,
   externalModelPierceCandidates,
   externalModelReferenceLabels,
+  modelFaceSelectionDisplayOrdinal,
   planarFaceCanIntersectSketch,
   projectExternalModelGeometryCandidates,
   repairExternalModelGeometryCandidates,
@@ -289,6 +290,29 @@ describe("external model geometry candidates", () => {
         99,
       ),
     ).toBeNull()
+  })
+
+  it("keeps result-body labels aligned with face-supported sketches", () => {
+    const firstFace = { ...faceCandidate("face-a", "extrusion.cap.start"), meshFaceId: 1 }
+    const secondFace = { ...faceCandidate("face-b", "extrusion.cap.end"), meshFaceId: 2 }
+    const records = [geometryRecord(featureId, [secondFace, firstFace])]
+
+    expect(
+      modelFaceSelectionDisplayOrdinal(records, {
+        faceId: 2,
+        faceOrdinal: 6,
+        featureId,
+        outputRole: "result",
+      }),
+    ).toBe(1)
+    expect(
+      modelFaceSelectionDisplayOrdinal(records, {
+        faceId: 2,
+        faceOrdinal: 6,
+        featureId,
+        outputRole: "pattern.instance.1",
+      }),
+    ).toBe(6)
   })
 
   it("offers exact vertices and linear edges from visible model features", () => {

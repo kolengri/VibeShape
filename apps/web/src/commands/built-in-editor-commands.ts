@@ -3,6 +3,7 @@ import type { SketchCameraMode } from "../editor-session/editor-session-store"
 import {
   type activePartDesignCommand,
   booleanInputFeatures,
+  modifyingSolidTargetFeatures,
 } from "../features/part-design/part-design-tool"
 import {
   type ActiveSketchTool,
@@ -27,6 +28,11 @@ type PartDesignCommand = NonNullable<ReturnType<typeof activePartDesignCommand>>
 export type BuiltInEditorCommandContext = Readonly<{
   actions: Readonly<{
     cancelActive: () => void
+    documentRedo?: (baseRevision: number) => Promise<unknown>
+    documentUndo?: (baseRevision: number) => Promise<unknown>
+    createHole: () => void
+    createFillet: () => void
+    createChamfer: () => void
     createBox: () => void
     createCylinder: () => void
     createDatumPlane: () => void
@@ -34,6 +40,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     createRevolve?: () => unknown
     createSketch: () => void
     createSubtract: () => void
+    measure?: () => void
     redoSketch: () => void
     setSketchCameraMode: (mode: SketchCameraMode) => void
     setSketchConstruction: (construction: boolean) => void
@@ -48,6 +55,7 @@ export type BuiltInEditorCommandContext = Readonly<{
     activeSketchTool: ActiveSketchTool | null
     controller: DocumentControllerState
     extrusionAvailable: boolean
+    selectionAvailable?: boolean
     hasSavedSketches: boolean
     revolveAvailable?: boolean
     sketchConstruction: boolean
@@ -98,6 +106,32 @@ const constraintEditorCommandDescriptors: readonly EditorCommandDescriptor[] =
   }))
 
 const descriptors: readonly EditorCommandDescriptor[] = [
+  {
+    group: "modeling",
+    icon: "dimension",
+    id: editorCommandIds.measure,
+    labelKey: "measure",
+    ownerModuleId: editorOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "history",
+    icon: "undo",
+    id: editorCommandIds.documentUndo,
+    labelKey: "documentUndo",
+    ownerModuleId: editorOwner,
+    shortcut: { key: "z", modifiers: ["mod"] },
+    toolbarGroup: "history",
+  },
+  {
+    group: "history",
+    icon: "redo",
+    id: editorCommandIds.documentRedo,
+    labelKey: "documentRedo",
+    ownerModuleId: editorOwner,
+    shortcut: { key: "z", modifiers: ["mod", "shift"] },
+    toolbarGroup: "history",
+  },
   {
     group: "workspace",
     icon: "model",
@@ -154,6 +188,30 @@ const descriptors: readonly EditorCommandDescriptor[] = [
     labelKey: "createRevolve",
     ownerModuleId: partDesignOwner,
     sketchPresentation: { shortcutOrder: 10 },
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "hole",
+    id: editorCommandIds.createHole,
+    labelKey: "createHole",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "fillet",
+    id: editorCommandIds.createFillet,
+    labelKey: "createFillet",
+    ownerModuleId: partDesignOwner,
+    toolbarGroup: "model-primary",
+  },
+  {
+    group: "modeling",
+    icon: "chamfer",
+    id: editorCommandIds.createChamfer,
+    labelKey: "createChamfer",
+    ownerModuleId: partDesignOwner,
     toolbarGroup: "model-primary",
   },
   {
@@ -536,25 +594,60 @@ const descriptors: readonly EditorCommandDescriptor[] = [
   },
 ]
 
-function canCreateFeature(context: BuiltInEditorCommandContext) {
+function writableDocumentEligibility(
+  context: BuiltInEditorCommandContext,
+  options: Readonly<{ allowActiveSketch?: boolean }> = {},
+) {
   const { controller } = context.state
   if (controller.status !== "ready" || !controller.report) {
     return editorCommandDisabled("documentUnavailable")
   }
   if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
-  if (context.state.activeSketchTool) return editorCommandDisabled("activeSketch")
+  if (controller.saveStatus === "saving") return editorCommandDisabled("saving")
+  if (context.state.activeSketchTool && !options.allowActiveSketch) {
+    return editorCommandDisabled("activeSketch")
+  }
   if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
   return editorCommandEnabled()
 }
 
+function canCreateFeature(context: BuiltInEditorCommandContext) {
+  return writableDocumentEligibility(context)
+}
+
+function canUseDocumentHistory(context: BuiltInEditorCommandContext, direction: "undo" | "redo") {
+  const eligibility = writableDocumentEligibility(context)
+  if (!eligibility.enabled) return eligibility
+  const { controller } = context.state
+  const available = direction === "undo" ? controller.history?.canUndo : controller.history?.canRedo
+  return available
+    ? editorCommandEnabled()
+    : editorCommandDisabled(direction === "undo" ? "noDocumentUndo" : "noDocumentRedo")
+}
+
+function canCreateEdgeTreatment(context: BuiltInEditorCommandContext) {
+  const eligibility = canCreateFeature(context)
+  if (!eligibility.enabled) return eligibility
+  const features = context.state.controller.report?.snapshot.features ?? []
+  return modifyingSolidTargetFeatures(features).length > 0
+    ? editorCommandEnabled()
+    : editorCommandDisabled("selectSolid")
+}
+
+function canCreateHole(context: BuiltInEditorCommandContext) {
+  const eligibility = canCreateEdgeTreatment(context)
+  if (!eligibility.enabled) return eligibility
+  const sketches = context.state.controller.report?.snapshot.sketches ?? []
+  return sketches.some(({ entities }) => entities.some(({ type }) => type === "point"))
+    ? editorCommandEnabled()
+    : editorCommandDisabled("selectHolePoints")
+}
+
 function canCreateProfileFeature(context: BuiltInEditorCommandContext, available: boolean) {
-  const { activeSketchTool, controller } = context.state
+  const { activeSketchTool } = context.state
   if (isActiveSketchEditorTool(activeSketchTool)) {
-    if (controller.status !== "ready" || !controller.report) {
-      return editorCommandDisabled("documentUnavailable")
-    }
-    if (controller.report.mode !== "read-write") return editorCommandDisabled("readOnly")
-    if (context.state.activePartDesignCommand) return editorCommandDisabled("activeFeature")
+    const eligibility = writableDocumentEligibility(context, { allowActiveSketch: true })
+    if (!eligibility.enabled) return eligibility
     return available ? editorCommandEnabled() : editorCommandDisabled("selectProfile")
   }
   const eligibility = canCreateFeature(context)
@@ -598,6 +691,48 @@ function sketchToolHandler(
 }
 
 const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
+  {
+    execute: ({ actions }) => actions.measure?.(),
+    getEligibility: (context) => {
+      const { controller, activePartDesignCommand } = context.state
+      if (controller.status !== "ready" || !controller.report || !context.actions.measure)
+        return editorCommandDisabled("documentUnavailable")
+      if (context.state.activeSketchTool) return editorCommandDisabled("activeSketch")
+      if (controller.saveStatus === "saving") return editorCommandDisabled("saving")
+      if (activePartDesignCommand) return editorCommandDisabled("activeFeature")
+      return editorCommandEnabled()
+    },
+    id: editorCommandIds.measure,
+    isActive: ({ state }) => state.activePartDesignCommand === "measure",
+    isToolbarVisible: ({ state }) => state.workspace === "model" && !state.activeSketchTool,
+    ownerModuleId: editorOwner,
+  },
+  {
+    execute: ({ actions, state }) => {
+      const revision = state.controller.report?.snapshot.revision
+      return revision === undefined
+        ? Promise.resolve()
+        : (actions.documentUndo?.(revision) ?? Promise.resolve())
+    },
+    getEligibility: (context) => canUseDocumentHistory(context, "undo"),
+    id: editorCommandIds.documentUndo,
+    isToolbarVisible: ({ state }) =>
+      !state.activeSketchTool && !state.activePartDesignCommand && state.workspace === "model",
+    ownerModuleId: editorOwner,
+  },
+  {
+    execute: ({ actions, state }) => {
+      const revision = state.controller.report?.snapshot.revision
+      return revision === undefined
+        ? Promise.resolve()
+        : (actions.documentRedo?.(revision) ?? Promise.resolve())
+    },
+    getEligibility: (context) => canUseDocumentHistory(context, "redo"),
+    id: editorCommandIds.documentRedo,
+    isToolbarVisible: ({ state }) =>
+      !state.activeSketchTool && !state.activePartDesignCommand && state.workspace === "model",
+    ownerModuleId: editorOwner,
+  },
   {
     execute: ({ actions }) => actions.toggleAllSketchVisibility(),
     getEligibility: ({ state }) =>
@@ -659,6 +794,30 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
     id: editorCommandIds.createRevolve,
     isActive: ({ state }) => state.activePartDesignCommand === "revolve",
     isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createHole(),
+    getEligibility: canCreateHole,
+    id: editorCommandIds.createHole,
+    isActive: ({ state }) => state.activePartDesignCommand === "hole",
+    isToolbarVisible: ({ state }) => state.activeSketchTool?.kind !== "select-sketch-plane",
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createFillet(),
+    getEligibility: canCreateEdgeTreatment,
+    id: editorCommandIds.createFillet,
+    isActive: ({ state }) => state.activePartDesignCommand === "fillet",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
+    ownerModuleId: partDesignOwner,
+  },
+  {
+    execute: ({ actions }) => actions.createChamfer(),
+    getEligibility: canCreateEdgeTreatment,
+    id: editorCommandIds.createChamfer,
+    isActive: ({ state }) => state.activePartDesignCommand === "chamfer",
+    isToolbarVisible: ({ state }) => state.activeSketchTool === null,
     ownerModuleId: partDesignOwner,
   },
   {
@@ -805,7 +964,7 @@ const handlers: readonly EditorCommandHandler<BuiltInEditorCommandContext>[] = [
       actions.cancelActive()
     },
     getEligibility: ({ state }) =>
-      state.activePartDesignCommand || state.activeSketchTool
+      state.activePartDesignCommand || state.activeSketchTool || state.selectionAvailable
         ? editorCommandEnabled()
         : editorCommandDisabled("noActiveCommand"),
     id: editorCommandIds.cancelActive,

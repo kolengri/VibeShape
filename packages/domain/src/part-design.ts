@@ -1,8 +1,10 @@
 import { z } from "zod"
+import { canonicalJson } from "./canonical-json"
 import type { FeatureRecord } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
 import type { TrustedFeatureTypeHandler } from "./feature-type-registry"
 import { type FeatureId, sketchEntityIdSchema, sketchIdSchema } from "./identifiers"
+import { holeFeatureTypeHandler, holeFeatureTypeHandlerV2 } from "./part-design-hole"
 import {
   createSketchProfileSet,
   sketchProfileSelectorSchema,
@@ -102,6 +104,49 @@ export const booleanFeatureParametersSchema = z
   .strict()
 
 export const booleanFeatureContentParametersSchema = booleanFeatureParametersSchema
+
+const edgeTreatmentLengthSchema = lengthQuantitySchema.refine(
+  ({ value }) => value > 0 && value <= MAX_PRIMITIVE_LENGTH_MM,
+  `Edge treatment dimensions must be greater than zero and at most ${MAX_PRIMITIVE_LENGTH_MM} mm.`,
+)
+
+export const filletFeatureParametersSchema = z
+  .object({ radius: edgeTreatmentLengthSchema })
+  .strict()
+
+export const chamferFeatureParametersSchema = z
+  .object({ distance: edgeTreatmentLengthSchema })
+  .strict()
+
+function durableEdgeKeys(reference: FeatureRecord["references"][number]): string[] {
+  const keys: string[] = []
+  if (reference.semanticRole !== undefined) keys.push(`role:${reference.semanticRole}`)
+  if (reference.lineageToken !== undefined) keys.push(`lineage:${reference.lineageToken}`)
+  return keys.length ? keys : [`reference:${canonicalJson(reference)}`]
+}
+
+function selectedEdgeTreatmentInvariant(feature: FeatureRecord) {
+  const issues: { path: string; message: string }[] = []
+  const seen = new Set<string>()
+  for (const [index, reference] of feature.references.entries()) {
+    if (reference.kind !== "edge") {
+      issues.push({
+        path: `references.${index}.kind`,
+        message: "Selected edge treatment references must target edges.",
+      })
+      continue
+    }
+    const keys = durableEdgeKeys(reference)
+    if (keys.some((key) => seen.has(key))) {
+      issues.push({
+        path: `references.${index}`,
+        message: "Selected edge treatment references must identify distinct durable edges.",
+      })
+    }
+    for (const key of keys) seen.add(key)
+  }
+  return issues
+}
 
 export const extrusionOperationSchema = z.enum(["new", "add", "remove", "intersect"])
 
@@ -309,6 +354,21 @@ function resolveLengthParameter(
     : expressionFailure(path, "The expression did not resolve to a length.", "dimension-mismatch")
 }
 
+function resolveEdgeTreatmentParameters(
+  schema: typeof filletFeatureParametersSchema | typeof chamferFeatureParametersSchema,
+  parameter: "radius" | "distance",
+) {
+  return (parameters: unknown, variables: VariableValues) => {
+    const parsed = schema.safeParse(parameters)
+    if (!parsed.success) return { ok: true as const, parameters }
+    const quantity = "radius" in parsed.data ? parsed.data.radius : parsed.data.distance
+    const resolved = resolveLengthParameter(parameter, quantity, variables)
+    return resolved.ok
+      ? { ok: true as const, parameters: { ...parsed.data, [parameter]: resolved.quantity } }
+      : resolved
+  }
+}
+
 function resolvePrimitiveOrigin(
   origin: z.infer<typeof primitiveOriginSchema>,
   variables: VariableValues,
@@ -435,6 +495,58 @@ export const booleanFeatureType = featureTypeDescriptorSchema.parse({
   classification: "solid",
   dependencies: { min: 2, max: 2 },
   references: { min: 0, max: 0 },
+})
+
+export const filletFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.fillet",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 1 },
+  references: { min: 0, max: 0 },
+})
+
+export const chamferFeatureType = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.chamfer",
+    schemaVersion: 1,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 1 },
+  references: { min: 0, max: 0 },
+})
+
+export const filletFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.fillet",
+    schemaVersion: 2,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 1 },
+  references: { min: 1, max: 256 },
+})
+
+export const chamferFeatureTypeV2 = featureTypeDescriptorSchema.parse({
+  schemaVersion: 0,
+  type: {
+    moduleId: "org.vibeshape.core.part-design",
+    moduleVersion: "0.1.0",
+    typeId: "org.vibeshape.feature.part-design.chamfer",
+    schemaVersion: 2,
+  },
+  classification: "solid",
+  dependencies: { min: 1, max: 1 },
+  references: { min: 1, max: 256 },
 })
 
 export const legacyExtrusionFeatureType = featureTypeDescriptorSchema.parse({
@@ -895,6 +1007,44 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
     },
   },
   {
+    type: filletFeatureType.type,
+    parametersSchema: filletFeatureParametersSchema,
+    resolveParameters: resolveEdgeTreatmentParameters(filletFeatureParametersSchema, "radius"),
+    contentParameters(parameters) {
+      const fillet = filletFeatureParametersSchema.parse(parameters)
+      return { radius: fillet.radius.value }
+    },
+  },
+  {
+    type: filletFeatureTypeV2.type,
+    parametersSchema: filletFeatureParametersSchema,
+    validateFeature: selectedEdgeTreatmentInvariant,
+    resolveParameters: resolveEdgeTreatmentParameters(filletFeatureParametersSchema, "radius"),
+    contentParameters(parameters) {
+      const fillet = filletFeatureParametersSchema.parse(parameters)
+      return { radius: fillet.radius.value }
+    },
+  },
+  {
+    type: chamferFeatureType.type,
+    parametersSchema: chamferFeatureParametersSchema,
+    resolveParameters: resolveEdgeTreatmentParameters(chamferFeatureParametersSchema, "distance"),
+    contentParameters(parameters) {
+      const chamfer = chamferFeatureParametersSchema.parse(parameters)
+      return { distance: chamfer.distance.value }
+    },
+  },
+  {
+    type: chamferFeatureTypeV2.type,
+    parametersSchema: chamferFeatureParametersSchema,
+    validateFeature: selectedEdgeTreatmentInvariant,
+    resolveParameters: resolveEdgeTreatmentParameters(chamferFeatureParametersSchema, "distance"),
+    contentParameters(parameters) {
+      const chamfer = chamferFeatureParametersSchema.parse(parameters)
+      return { distance: chamfer.distance.value }
+    },
+  },
+  {
     type: legacyExtrusionFeatureType.type,
     parametersSchema: legacyExtrusionFeatureParametersSchema,
     resolveParameters: resolveExtrusionParameters,
@@ -1043,4 +1193,6 @@ export const partDesignFeatureTypeHandlers: readonly TrustedFeatureTypeHandler[]
       }
     },
   },
+  holeFeatureTypeHandler,
+  holeFeatureTypeHandlerV2,
 ]

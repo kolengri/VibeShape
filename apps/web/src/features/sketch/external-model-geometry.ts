@@ -125,7 +125,11 @@ type ExternalModelReferenceContext = Readonly<{
 }>
 
 function domainTopologyCandidate(candidate: ProtocolTopologyCandidate): DomainTopologyCandidate {
-  const { referenceGeometry: _referenceGeometry, ...domainCandidate } = candidate
+  const {
+    referenceGeometry: _referenceGeometry,
+    edgePolyline: _edgePolyline,
+    ...domainCandidate
+  } = candidate
   return domainCandidate
 }
 
@@ -607,6 +611,24 @@ export function resolveModelFaceSelectionOrdinal(
   )
   if (!candidate || candidateDisplayKind(candidate) !== "face") return null
   return candidateDisplayOrdinals(candidates).get(topologyCandidateKey(candidate)) ?? null
+}
+
+export function modelFaceSelectionDisplayOrdinal(
+  records: readonly ExternalModelGeometryRecord[],
+  selection: Readonly<{
+    faceId: number
+    faceOrdinal: number
+    featureId: string
+    outputRole?: string
+  }>,
+) {
+  if (selection.outputRole !== undefined && selection.outputRole !== "result") {
+    return selection.faceOrdinal
+  }
+  return (
+    resolveModelFaceSelectionOrdinal(records, selection.featureId, selection.faceId) ??
+    selection.faceOrdinal
+  )
 }
 
 export function projectExternalModelGeometryCandidates(

@@ -12,6 +12,9 @@ import { SketchShortcutToolbar } from "./sketch-shortcut-toolbar"
 
 const actions = {
   cancelActive: vi.fn(),
+  createFillet: vi.fn(),
+  createChamfer: vi.fn(),
+  createHole: vi.fn(),
   createBox: vi.fn(),
   createCylinder: vi.fn(),
   createDatumPlane: vi.fn(),

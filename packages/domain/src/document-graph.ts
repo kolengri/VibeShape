@@ -13,11 +13,15 @@ import type { FeatureId } from "./identifiers"
 import {
   booleanFeatureType,
   boxFeatureType,
+  chamferFeatureType,
+  chamferFeatureTypeV2,
   cylinderFeatureType,
   expectedRevolveDependencyIds,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  filletFeatureType,
+  filletFeatureTypeV2,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -28,6 +32,12 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import {
+  expectedHoleDependencyIds,
+  holeFeatureType,
+  holeFeatureTypeV2,
+  readHoleFeatureParameters,
+} from "./part-design-hole"
 import { datumPlaneFeatureType, hasCompleteDatumPlaneDependencyModel } from "./reference-geometry"
 import {
   isOrphanedModelReference,
@@ -151,6 +161,10 @@ const dependencyCompleteFeatureTypeKeys = new Set([
   featureTypeKey(boxFeatureType.type),
   featureTypeKey(cylinderFeatureType.type),
   featureTypeKey(booleanFeatureType.type),
+  featureTypeKey(filletFeatureType.type),
+  featureTypeKey(chamferFeatureType.type),
+  featureTypeKey(filletFeatureTypeV2.type),
+  featureTypeKey(chamferFeatureTypeV2.type),
 ])
 const revolveTypeKeys = new Set(
   [
@@ -162,6 +176,14 @@ const revolveTypeKeys = new Set(
     legacyRevolveFeatureTypeV3,
   ].map(({ type }) => featureTypeKey(type)),
 )
+const extrusionTypeKeys = new Set(
+  [
+    legacyExtrusionFeatureType,
+    extrusionFeatureType,
+    extrusionFeatureTypeV3,
+    extrusionFeatureTypeV4,
+  ].map(({ type }) => featureTypeKey(type)),
+)
 const multiProfileResultTypeKeys = new Set([
   featureTypeKey(extrusionFeatureTypeV3.type),
   featureTypeKey(revolveFeatureTypeV5.type),
@@ -170,13 +192,13 @@ const multiProfileResultTypeKeys = new Set([
 function hasCompleteDependencyModel(feature: FeatureRecord | FeatureRecordV1) {
   if (feature.schemaVersion === 1) return feature.semanticInputs !== null
   const typeKey = featureTypeKey(feature.type)
-  if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
   if (
-    typeKey === featureTypeKey(legacyExtrusionFeatureType.type) ||
-    typeKey === featureTypeKey(extrusionFeatureType.type) ||
-    typeKey === featureTypeKey(extrusionFeatureTypeV3.type) ||
-    typeKey === featureTypeKey(extrusionFeatureTypeV4.type)
-  ) {
+    typeKey === featureTypeKey(holeFeatureType.type) ||
+    typeKey === featureTypeKey(holeFeatureTypeV2.type)
+  )
+    return readHoleFeatureParameters(feature) !== null
+  if (dependencyCompleteFeatureTypeKeys.has(typeKey)) return true
+  if (extrusionTypeKeys.has(typeKey)) {
     return readExtrusionFeatureParameters(feature) !== null
   }
   if (revolveTypeKeys.has(typeKey)) {
@@ -425,7 +447,11 @@ function relationCount(document: IndexedDocument) {
 }
 
 function hasProfileRelation(feature: FeatureRecord) {
-  return Boolean(readExtrusionFeatureParameters(feature) || readRevolveFeatureParameters(feature))
+  return Boolean(
+    readExtrusionFeatureParameters(feature) ||
+      readRevolveFeatureParameters(feature) ||
+      (feature.schemaVersion === 0 && readHoleFeatureParameters(feature)),
+  )
 }
 
 function addEdge(state: EdgeState, candidate: RelationCandidate): void {
@@ -529,6 +555,25 @@ function revolveProfileCandidate(
   }
 }
 
+function holeSketchCandidate(
+  feature: VersionedFeatureRecord,
+  index: number,
+): RelationCandidate | undefined {
+  if (feature.schemaVersion !== 0) return
+  const parameters = readHoleFeatureParameters(feature)
+  if (!parameters) return
+  return {
+    source: { kind: "sketch", id: parameters.sketchId },
+    target: { kind: "feature", id: feature.id },
+    relation: "semantic-input",
+    missingMessage: "A hole references a missing sketch.",
+    issue: {
+      path: `features.${index}.parameters.sketchId`,
+      message: "Referenced sketch does not exist.",
+    },
+  }
+}
+
 function semanticInputCandidates(
   feature: VersionedFeatureRecord,
   featureIndex: number,
@@ -552,11 +597,13 @@ function semanticInputCandidates(
 function featureCandidates(feature: VersionedFeatureRecord, featureIndex: number) {
   const profile = extrusionProfileCandidate(feature as FeatureRecord, featureIndex)
   const revolveProfile = revolveProfileCandidate(feature as FeatureRecord, featureIndex)
+  const holeSketch = holeSketchCandidate(feature, featureIndex)
   return [
     ...featureDependencyCandidates(feature as FeatureRecord, featureIndex),
     ...featureTopologyCandidates(feature as FeatureRecord, featureIndex),
     ...(profile ? [profile] : []),
     ...(revolveProfile ? [revolveProfile] : []),
+    ...(holeSketch ? [holeSketch] : []),
     ...semanticInputCandidates(feature, featureIndex),
   ]
 }
@@ -651,22 +698,34 @@ function validateFirstPartySemanticInputs(
   )
 }
 
+function validateFeatureIntent(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  index: number,
+) {
+  const semanticFailure =
+    feature.schemaVersion === 1 ? validateFirstPartySemanticInputs(feature, index) : undefined
+  return (
+    semanticFailure ??
+    validateRevolveSupportIntent(document, feature, index) ??
+    validateHoleSupportIntent(document, feature, index) ??
+    validateMultiProfileResultInputs(document, feature, index)
+  )
+}
+
 function validateFeatureSources(document: IndexedDocument): GraphFailure | undefined {
   for (const [index, feature] of document.features.entries()) {
-    const semanticFailure =
-      feature.schemaVersion === 1 ? validateFirstPartySemanticInputs(feature, index) : undefined
-    if (semanticFailure) return semanticFailure
-    const revolveSupportFailure = validateRevolveSupportIntent(document, feature, index)
-    if (revolveSupportFailure) return revolveSupportFailure
-    const multiProfileInputFailure = validateMultiProfileResultInputs(document, feature, index)
-    if (multiProfileInputFailure) return multiProfileInputFailure
+    const intentFailure = validateFeatureIntent(document, feature, index)
+    if (intentFailure) return intentFailure
     const profile = extrusionProfileCandidate(feature as FeatureRecord, index)
     const revolveProfile = revolveProfileCandidate(feature as FeatureRecord, index)
+    const holeSketch = holeSketchCandidate(feature, index)
     const invalid = validateCandidates(document, [
       ...featureTopologyCandidates(feature as FeatureRecord, index),
       ...featureDependencyCandidates(feature as FeatureRecord, index),
       ...(profile ? [profile] : []),
       ...(revolveProfile ? [revolveProfile] : []),
+      ...(holeSketch ? [holeSketch] : []),
       ...semanticInputCandidates(feature, index),
     ])
     if (invalid) return invalid
@@ -674,6 +733,7 @@ function validateFeatureSources(document: IndexedDocument): GraphFailure | undef
 }
 
 function modifyingInputIndexes(feature: VersionedFeatureRecord) {
+  if (readHoleFeatureParameters(feature)) return [0]
   if (featureTypeKey(feature.type) === featureTypeKey(booleanFeatureType.type)) {
     return feature.dependencies.map((_, index) => index)
   }
@@ -707,6 +767,39 @@ function validateMultiProfileResultInputs(
         path: `features.${featureIndex}.dependencies.${invalidDependencyIndex}`,
         message:
           "Select a single-solid result until stable per-solid multi-profile result identity is available.",
+      },
+    ],
+  )
+}
+
+function validateHoleSupportIntent(
+  document: IndexedDocument,
+  feature: VersionedFeatureRecord,
+  index: number,
+): GraphFailure | undefined {
+  const parameters = readHoleFeatureParameters(feature)
+  if (!parameters) return
+  const sketch = document.sketches.find(({ id }) => id === parameters.sketchId)
+  if (!sketch) return
+  const target = feature.dependencies[0]
+  const references = sketch.support ? [sketch.support.reference] : []
+  if (
+    target &&
+    orderedIdsMatch(
+      feature.dependencies,
+      expectedHoleDependencyIds(target, sketch.support?.reference.featureId ?? null),
+    ) &&
+    canonicalJson(feature.references) === canonicalJson(references)
+  )
+    return
+  return diagnostic(
+    "invalid-feature",
+    "A hole must retain its target and source sketch support intent.",
+    [
+      {
+        path: `features.${index}`,
+        message:
+          "Hole inputs must contain the target first and distinct sketch support, with matching support references.",
       },
     ],
   )

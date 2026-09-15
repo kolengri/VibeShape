@@ -69,6 +69,16 @@ const undoCommand: ResolvedEditorCommand = {
   invoke: invokeUndo,
   toolbarVisible: true,
 }
+const documentUndoCommand: ResolvedEditorCommand = {
+  ...undoCommand,
+  descriptor: {
+    ...undoCommand.descriptor,
+    group: "history",
+    id: editorCommandIds.documentUndo,
+    labelKey: "documentUndo",
+    ownerModuleId: "org.vibeshape.core.editor",
+  },
+}
 
 function ShortcutHarness({
   commands = [lineCommand],
@@ -187,6 +197,15 @@ describe("useEditorCommandShortcuts", () => {
 
     expect(invokeUndo).toHaveBeenCalledOnce()
     expect(sketchShortcutToolbarChange).not.toHaveBeenCalled()
+  })
+
+  it("routes Ctrl/Cmd+Z to the committed document command when registered", async () => {
+    const user = userEvent.setup()
+    render(<ShortcutHarness commands={[documentUndoCommand]} />)
+
+    await user.keyboard("{Control>}z{/Control}")
+
+    expect(invokeUndo).toHaveBeenCalledOnce()
   })
 
   it("allows Escape to cancel the active editor command from text input", async () => {

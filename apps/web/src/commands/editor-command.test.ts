@@ -32,9 +32,11 @@ const handler: EditorCommandHandler<null> = {
 function readyController(featureCount = 0) {
   return {
     status: "ready",
+    saveStatus: "saved",
+    history: { canUndo: true, canRedo: true },
     report: {
       mode: "read-write",
-      snapshot: { features: Array.from({ length: featureCount }) },
+      snapshot: { features: Array.from({ length: featureCount }), revision: 7 },
     },
   } as unknown as DocumentControllerState
 }
@@ -45,6 +47,11 @@ function commandContext(
   return {
     actions: {
       cancelActive: vi.fn(),
+      documentRedo: vi.fn(),
+      documentUndo: vi.fn(),
+      createFillet: vi.fn(),
+      createChamfer: vi.fn(),
+      createHole: vi.fn(),
       createBox: vi.fn(),
       createCylinder: vi.fn(),
       createDatumPlane: vi.fn(),
@@ -52,6 +59,7 @@ function commandContext(
       createRevolve: vi.fn(),
       createSketch: vi.fn(),
       createSubtract: vi.fn(),
+      measure: vi.fn(),
       redoSketch: vi.fn(),
       setSketchCameraMode: vi.fn(),
       setSketchConstruction: vi.fn(),
@@ -254,6 +262,27 @@ describe("editor command registry", () => {
 
     expect(line?.toolbarVisible).toBe(false)
     expect(line?.eligibility).toEqual({ enabled: false, reason: "requiresSketch" })
+  })
+
+  it("routes committed history through the document controller and hides it during tasks", () => {
+    const context = commandContext()
+    const commands = resolveBuiltInEditorCommands(context)
+    const undo = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.documentUndo)
+    const redo = commands.find(({ descriptor }) => descriptor.id === editorCommandIds.documentRedo)
+
+    expect(undo?.eligibility).toEqual({ enabled: true })
+    expect(redo?.eligibility).toEqual({ enabled: true })
+    undo?.invoke()
+    redo?.invoke()
+    expect(context.actions.documentUndo).toHaveBeenCalledWith(7)
+    expect(context.actions.documentRedo).toHaveBeenCalledWith(7)
+
+    const activeContext = commandContext({ activePartDesignCommand: "box" })
+    const activeUndo = resolveBuiltInEditorCommands(activeContext).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.documentUndo,
+    )
+    expect(activeUndo?.toolbarVisible).toBe(false)
+    expect(activeUndo?.eligibility).toEqual({ enabled: false, reason: "activeFeature" })
   })
 
   it("keeps Use external geometry registry-owned and disables downstream display context", () => {
@@ -613,4 +642,79 @@ describe("editor command registry", () => {
     expect(planeContext.actions.cancelActive).toHaveBeenCalledOnce()
     expect(planeContext.actions.setSketchTool).not.toHaveBeenCalled()
   })
+})
+
+it("blocks new modeling tasks while a saved document mutation is pending", () => {
+  for (const activeSketchTool of [null, { kind: "create-sketch" as const, plane: "xy" as const }]) {
+    const context = commandContext({
+      controller: { ...readyController(), saveStatus: "saving" },
+      activeSketchTool,
+      extrusionAvailable: true,
+      revolveAvailable: true,
+    })
+    const commands = resolveBuiltInEditorCommands(context)
+    for (const id of [
+      editorCommandIds.createExtrusion,
+      editorCommandIds.createRevolve,
+      editorCommandIds.createBox,
+    ]) {
+      expect(commands.find((command) => command.descriptor.id === id)?.eligibility).toMatchObject({
+        enabled: false,
+        reason: "saving",
+      })
+    }
+  }
+})
+
+describe("measurement command", () => {
+  const resolve = (context: BuiltInEditorCommandContext) =>
+    resolveBuiltInEditorCommands(context).find(
+      ({ descriptor }) => descriptor.id === editorCommandIds.measure,
+    )
+
+  it("reads a read-only document without invoking a document mutation", () => {
+    const controller = readyController()
+    if (!controller.report) throw new Error("Expected a loaded document.")
+    const context = commandContext({
+      controller: { ...controller, report: { ...controller.report, mode: "read-only" } },
+    })
+    const command = resolve(context)
+    expect(command?.eligibility).toEqual({ enabled: true })
+    command?.invoke()
+    expect(context.actions.measure).toHaveBeenCalledOnce()
+    expect(context.actions.createBox).not.toHaveBeenCalled()
+    expect(context.actions.documentUndo).not.toHaveBeenCalled()
+  })
+
+  it("rejects missing handlers, saving, active features, and active sketch editing", () => {
+    const unavailable = commandContext()
+    const { measure: _measure, ...actions } = unavailable.actions
+    const withoutHandler = { ...unavailable, actions }
+    expect(resolve(withoutHandler)?.eligibility).toEqual({
+      enabled: false,
+      reason: "documentUnavailable",
+    })
+    const cases: Partial<BuiltInEditorCommandContext["state"]>[] = [
+      { controller: { ...readyController(), saveStatus: "saving" } },
+      { activePartDesignCommand: "box" },
+      { activeSketchTool: { kind: "select-sketch-plane" } },
+    ]
+    for (const state of cases) {
+      const context = commandContext(state)
+      const command = resolve(context)
+      expect(command?.eligibility.enabled).toBe(false)
+      command?.invoke()
+      expect(context.actions.measure).not.toHaveBeenCalled()
+    }
+  })
+})
+
+it("allows Escape to clear idle body selection through the shared command", async () => {
+  const context = commandContext({ selectionAvailable: true })
+  const command = resolveBuiltInEditorCommands(context).find(
+    ({ descriptor }) => descriptor.id === editorCommandIds.cancelActive,
+  )
+  expect(command?.eligibility.enabled).toBe(true)
+  await command?.invoke()
+  expect(context.actions.cancelActive).toHaveBeenCalledOnce()
 })

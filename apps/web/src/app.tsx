@@ -17,6 +17,8 @@ import {
   addSketch,
   createBrowserSketchConstraintId,
   createBrowserSketchId,
+  redoDocument,
+  undoDocument,
   updateSketch,
   useDocumentController,
 } from "./document/document-controller"
@@ -164,8 +166,16 @@ function profileFeatureSelectionForCommand(
     ? profiles
     : selectedProfile
       ? [selectedProfile]
-      : []
+      : profiles
   return initialProfileFeatureSelection(candidates, activeSketchId)
+}
+
+function canStartProfileFeature(
+  profiles: readonly SketchProfileSelector[],
+  activeSketchTool: ActiveSketchTool | null,
+  hasSavedSketches: boolean,
+) {
+  return profiles.length > 0 || (!activeSketchTool && hasSavedSketches)
 }
 
 function preselectedConstraintForTool(
@@ -184,6 +194,7 @@ function preselectedConstraintForTool(
 }
 
 function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentController>) {
+  const hasSavedSketches = Boolean(controller.report?.snapshot.sketches.length)
   const t = useTranslations("app.shell.taskPanel.sketch")
   const sessionActions = useEditorSession((state) => state.actions)
   const sessionStore = useEditorSessionStoreApi()
@@ -191,6 +202,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     activeSketchId,
     activeSketchTool,
     draft,
+    partDesignToolGeneration,
     profiles,
     selectedOriginPlane,
     selectedProfile,
@@ -200,6 +212,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       activeSketchId: state.sketch.activeSketchId,
       activeSketchTool: state.sketch.activeSketchTool,
       draft: state.sketch.draft,
+      partDesignToolGeneration: state.partDesignToolGeneration,
       profiles: state.sketch.profiles,
       selectedOriginPlane: state.selectedOriginPlane,
       selectedProfile: state.sketch.selectedProfile,
@@ -256,7 +269,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       activeSketchId,
       activeSketchTool,
     )
-    if (initialProfiles.length === 0) return false
+    if (!canStartProfileFeature(initialProfiles, activeSketchTool, hasSavedSketches)) return false
     const request = openSketchSaveRequest(controller, activeSketchTool, draft)
     const persistence = await persistOpenSketchBeforeExtrusion(request)
     if (persistence === "failed") return false
@@ -271,6 +284,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     activeSketchTool,
     controller.report,
     draft,
+    hasSavedSketches,
     profiles,
     selectedProfile,
     sessionActions,
@@ -282,7 +296,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       activeSketchId,
       activeSketchTool,
     )
-    if (initialProfiles.length === 0) return false
+    if (!canStartProfileFeature(initialProfiles, activeSketchTool, hasSavedSketches)) return false
     const request = openSketchSaveRequest(controller, activeSketchTool, draft)
     const persistence: SketchPersistenceBeforeRevolveResult =
       await persistOpenSketchBeforeRevolve(request)
@@ -295,6 +309,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
     activeSketchTool,
     controller.report,
     draft,
+    hasSavedSketches,
     profiles,
     selectedProfile,
     sessionActions,
@@ -336,7 +351,11 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         acknowledgeExtrusionDistance: sessionActions.acknowledgeExtrusionDistance,
         acknowledgeRevolveAngle: sessionActions.acknowledgeRevolveAngle,
         closeTool: sessionActions.closeActiveTool,
+        completeTool: () => sessionActions.completeActiveTool(partDesignToolGeneration),
         beginSketchSupportReplacement: sessionActions.beginSketchSupportReplacement,
+        createHole: () => sessionActions.startPartDesignTool({ kind: "create-hole" }),
+        createFillet: () => sessionActions.startPartDesignTool({ kind: "create-fillet" }),
+        createChamfer: () => sessionActions.startPartDesignTool({ kind: "create-chamfer" }),
         createBox: () => sessionActions.startPartDesignTool({ kind: "create-box" }),
         createCylinder: () => sessionActions.startPartDesignTool({ kind: "create-cylinder" }),
         createDatumPlane,
@@ -344,9 +363,12 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
         createRevolve,
         createSketch,
         createSubtract: () => sessionActions.startPartDesignTool({ kind: "create-subtract" }),
+        measure: () => sessionActions.startPartDesignTool({ kind: "measure" }),
         editFeature,
         editSketch,
         preselectFeature: sessionActions.setFeaturePreselection,
+        preselectBody: sessionActions.setBodyPreselection,
+        selectBody: sessionActions.setSelectedBody,
         setPrimitivePlacement: sessionActions.setPrimitivePlacement,
         setRevolveAngle: sessionActions.setRevolveAngle,
         select,
@@ -380,6 +402,7 @@ function useEditorWorkspaceActions(controller: ReturnType<typeof useDocumentCont
       createSketch,
       editFeature,
       editSketch,
+      partDesignToolGeneration,
       select,
       sessionActions,
       setSketchEditorTool,
@@ -396,6 +419,8 @@ type EditorApplicationSession = Pick<
   | "hiddenFeatureIds"
   | "hiddenSketchIds"
   | "originPlaneVisibility"
+  | "preselectedBody"
+  | "selectedBody"
   | "preselectedFeatureId"
   | "primitivePlacementRequest"
   | "revolveAngleRequest"
@@ -415,6 +440,8 @@ function useEditorApplicationSession() {
       hiddenSketchIds: state.hiddenSketchIds,
       originPlaneVisibility: state.originPlaneVisibility,
       preselectedFeatureId: state.preselectedFeatureId,
+      preselectedBody: state.preselectedBody,
+      selectedBody: state.selectedBody,
       primitivePlacementRequest: state.primitivePlacementRequest,
       revolveAngleRequest: state.revolveAngleRequest,
       selectedOriginPlane: state.selectedOriginPlane,
@@ -425,19 +452,21 @@ function useEditorApplicationSession() {
   )
 }
 
-function sketchProfileCommandAvailable(session: EditorApplicationSession) {
+function sketchProfileCommandAvailable(
+  session: EditorApplicationSession,
+  hasSavedSketches: boolean,
+) {
   if (session.activePartDesignTool) return false
-  if (openSketchProfileCommandAvailable(session)) return true
-  return savedProfileCommandAvailable(session)
-}
-
-function openSketchProfileCommandAvailable(session: EditorApplicationSession) {
-  if (!sketchSaveForTool(session.sketch.activeSketchTool)) return false
-  return session.sketch.profiles.some(({ sketchId }) => sketchId === session.sketch.activeSketchId)
-}
-
-function savedProfileCommandAvailable(session: EditorApplicationSession) {
-  return session.sketch.selectedProfile?.sketchId === session.sketch.activeSketchId
+  return canStartProfileFeature(
+    profileFeatureSelectionForCommand(
+      session.sketch.profiles,
+      session.sketch.selectedProfile,
+      session.sketch.activeSketchId,
+      session.sketch.activeSketchTool,
+    ),
+    session.sketch.activeSketchTool,
+    hasSavedSketches,
+  )
 }
 
 function sketchLineCommandAvailable(session: EditorApplicationSession) {
@@ -451,10 +480,34 @@ function resolveEditorApplicationCommands(
   sessionActions: EditorSessionActions,
   workspaceActions: EditorWorkspaceActions,
 ) {
-  const profileCommandAvailable = sketchProfileCommandAvailable(session)
+  const profileCommandAvailable = sketchProfileCommandAvailable(
+    session,
+    Boolean(controller.report?.snapshot.sketches.length),
+  )
+  const undoCommittedDocument = async (baseRevision: number) => {
+    const result = await undoDocument(baseRevision)
+    if (result.ok) {
+      sessionActions.setSelection(null)
+      sessionActions.setFeaturePreselection(null)
+    }
+    return result
+  }
+  const redoCommittedDocument = async (baseRevision: number) => {
+    const result = await redoDocument(baseRevision)
+    if (result.ok) {
+      sessionActions.setSelection(null)
+      sessionActions.setFeaturePreselection(null)
+    }
+    return result
+  }
   return resolveBuiltInEditorCommands({
     actions: {
       cancelActive: workspaceActions.closeTool,
+      documentRedo: redoCommittedDocument,
+      documentUndo: undoCommittedDocument,
+      createHole: workspaceActions.createHole,
+      createFillet: workspaceActions.createFillet,
+      createChamfer: workspaceActions.createChamfer,
       createBox: workspaceActions.createBox,
       createCylinder: workspaceActions.createCylinder,
       createDatumPlane: workspaceActions.createDatumPlane,
@@ -462,6 +515,7 @@ function resolveEditorApplicationCommands(
       createRevolve: workspaceActions.createRevolve,
       createSketch: workspaceActions.createSketch,
       createSubtract: workspaceActions.createSubtract,
+      measure: workspaceActions.measure,
       redoSketch: workspaceActions.redoSketchDraft,
       setSketchCameraMode: sessionActions.setSketchCameraMode,
       setSketchConstruction: workspaceActions.setSketchConstruction,
@@ -476,6 +530,9 @@ function resolveEditorApplicationCommands(
       activeSketchTool: session.sketch.activeSketchTool,
       controller,
       extrusionAvailable: profileCommandAvailable,
+      selectionAvailable: Boolean(
+        session.selectedBody || session.selection || session.selectedOriginPlane,
+      ),
       hasSavedSketches: (controller.report?.snapshot.sketches.length ?? 0) > 0,
       revolveAvailable: profileCommandAvailable,
       sketchConstruction: session.sketch.construction,
@@ -514,6 +571,8 @@ function EditorWorkspaceComposition({
       originPlaneVisibility={session.originPlaneVisibility}
       onSketchFinalContextChange={sessionActions.setSketchFinalContext}
       preselectedFeatureId={session.preselectedFeatureId}
+      preselectedBody={session.preselectedBody}
+      selectedBody={session.selectedBody}
       primitivePlacementRequest={session.primitivePlacementRequest}
       revolveAngleRequest={session.revolveAngleRequest}
       selectedOriginPlane={session.selectedOriginPlane}
@@ -640,6 +699,7 @@ function EditorApplication({
         />
       </SketchToolbarPortalsProvider>
       <StatusBar
+        selectedBody={session.selectedBody}
         controller={controller}
         selectedOriginPlane={session.selectedOriginPlane}
         selection={session.selection}

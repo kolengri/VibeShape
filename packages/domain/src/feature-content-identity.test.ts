@@ -4,6 +4,7 @@ import {
   computeFeatureContentHash,
   createFeatureContentIdentity,
   type FeatureContentEnvironment,
+  featureContentIdentitySchema,
 } from "./feature-content-identity"
 import { type FeatureRecord, featureRecordSchema } from "./feature-graph"
 import { featureTypeDescriptorSchema } from "./feature-type-contracts"
@@ -176,6 +177,96 @@ function expectSuccessfulIdentity(result: ReturnType<typeof identity>) {
 }
 
 describe("feature content identity", () => {
+  it("binds named bodies to canonical input slots without retaining source UUIDs", () => {
+    const registry = partDesignRegistry()
+    const feature = booleanFeature(featureIds.e, [featureIds.a, featureIds.b])
+    const dependencies = [
+      { featureId: featureIds.b, contentHash: "b".repeat(64) },
+      { featureId: featureIds.a, contentHash: "a".repeat(64), outputRole: "pattern.instance.2" },
+    ]
+    const selected = expectSuccessfulIdentity(identity(registry, feature, dependencies))
+    expect(selected.identity.schemaVersion).toBe(1)
+    expect(selected.identity.feature).toMatchObject({
+      inputs: ["a".repeat(64), "b".repeat(64)],
+      inputRoles: ["pattern.instance.2", null],
+    })
+    const renamed = expectSuccessfulIdentity(
+      identity(registry, booleanFeature(featureIds.f, [featureIds.c, featureIds.d]), [
+        { featureId: featureIds.c, contentHash: "a".repeat(64), outputRole: "pattern.instance.2" },
+        { featureId: featureIds.d, contentHash: "b".repeat(64) },
+      ]),
+    )
+    expect(renamed.canonicalPayload).toBe(selected.canonicalPayload)
+    expect(selected.canonicalPayload).not.toContain(featureIds.a)
+    expect(selected.canonicalPayload).not.toContain(featureIds.b)
+
+    const differentCopy = expectSuccessfulIdentity(
+      identity(
+        registry,
+        feature,
+        dependencies.map((dependency) =>
+          dependency.outputRole ? { ...dependency, outputRole: "pattern.instance.3" } : dependency,
+        ),
+      ),
+    )
+    expect(differentCopy.canonicalPayload).not.toBe(selected.canonicalPayload)
+    const whole = expectSuccessfulIdentity(
+      identity(
+        registry,
+        feature,
+        dependencies.map(({ featureId, contentHash }) => ({
+          featureId,
+          contentHash,
+        })),
+      ),
+    )
+    expect(whole.identity.schemaVersion).toBe(0)
+    expect(whole.identity.feature).not.toHaveProperty("inputRoles")
+    expect(whole.canonicalPayload).not.toBe(selected.canonicalPayload)
+  })
+
+  it.each(["", " result", "Result", "pattern..1", "x".repeat(129)])(
+    "rejects invalid body role %j before hashing",
+    (outputRole) => {
+      const result = identity(
+        partDesignRegistry(),
+        booleanFeature(featureIds.e, [featureIds.a, featureIds.b]),
+        [
+          { featureId: featureIds.a, contentHash: "a".repeat(64), outputRole },
+          { featureId: featureIds.b, contentHash: "b".repeat(64) },
+        ],
+      )
+      expect(result).toMatchObject({
+        ok: false,
+        diagnostic: { code: "invalid-feature-dependency-content" },
+      })
+    },
+  )
+
+  it("rejects noncanonical or unbound role arrays in serialized identities", () => {
+    const legacy = expectSuccessfulIdentity(
+      identity(partDesignRegistry(), booleanFeature(featureIds.e, [featureIds.a, featureIds.b]), [
+        { featureId: featureIds.a, contentHash: "a".repeat(64) },
+        { featureId: featureIds.b, contentHash: "b".repeat(64) },
+      ]),
+    ).identity
+    expect(
+      featureContentIdentitySchema.safeParse({
+        ...legacy,
+        feature: { ...legacy.feature, inputRoles: ["result", null] },
+      }).success,
+    ).toBe(false)
+    for (const inputRoles of [[], [null, null], ["result"], ["result", null, null]]) {
+      expect(
+        featureContentIdentitySchema.safeParse({
+          ...legacy,
+          schemaVersion: 1,
+          feature: { ...legacy.feature, inputRoles },
+        }).success,
+      ).toBe(false)
+    }
+  })
+
   it("ignores record identity, labels, suppression, and equivalent source units", () => {
     const registry = partDesignRegistry()
     const first = identity(

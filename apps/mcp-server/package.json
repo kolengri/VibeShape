@@ -1,0 +1,20 @@
+{
+  "name": "@vibeshape/mcp-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local stdio MCP adapter with an opt-in browser-owned document session.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@vibeshape/automation-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vibeshape/typescript-config": "workspace:*"
+  }
+}

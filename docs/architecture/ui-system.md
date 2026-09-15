@@ -68,6 +68,12 @@ and persistence path. Third-party extensions and MCP adapters never receive the 
 Persistent UI preferences use their existing schema-validated preference owners rather than the
 editor-session store. Zustand persistence middleware is not enabled for semantic or draft state.
 
+Feature-save completion is scoped to the initiating tool generation. A late save may finish its
+ordinary document transaction but cannot close a newer sketch edit or a reopened feature task.
+Disposable feature-preview workers exist only while a preview-capable feature tool is active.
+Debounce invalidation clears the visible candidate without restarting the worker; leaving the tool
+releases it, and stale completion or rejection cannot update a newer preview.
+
 ## shadcn CLI routing in the monorepo
 
 Every workspace that can receive CLI-generated files has a consistent `components.json`.

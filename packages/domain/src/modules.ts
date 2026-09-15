@@ -9,10 +9,14 @@ import { moduleIdSchema, moduleVersionSchema, technicalIdentifierSchema } from "
 import {
   booleanFeatureType,
   boxFeatureType,
+  chamferFeatureType,
+  chamferFeatureTypeV2,
   cylinderFeatureType,
   extrusionFeatureType,
   extrusionFeatureTypeV3,
   extrusionFeatureTypeV4,
+  filletFeatureType,
+  filletFeatureTypeV2,
   legacyExtrusionFeatureType,
   legacyRevolveFeatureType,
   legacyRevolveFeatureTypeV2,
@@ -21,6 +25,7 @@ import {
   revolveFeatureTypeV5,
   revolveFeatureTypeV6,
 } from "./part-design"
+import { holeFeatureType, holeFeatureTypeV2 } from "./part-design-hole"
 import { datumPlaneFeatureType } from "./reference-geometry"
 
 export const commandDescriptorSchema = z
@@ -283,6 +288,48 @@ export const documentCoreModule: ModuleDescriptor = moduleDescriptorSchema.parse
         pagination: "cursor",
       },
     },
+    {
+      kind: "org.vibeshape.model.edges",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
+      kind: "org.vibeshape.model.measurements",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
+      kind: "org.vibeshape.model.body-measurements",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
+      kind: "org.vibeshape.model.body-topology",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "derived",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
+      kind: "org.vibeshape.cad.inspection.list",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "semantic",
+      automation: { exposure: "resource", pagination: "cursor" },
+    },
+    {
+      kind: "org.vibeshape.cad.inspection.detail",
+      schemaVersion: 1,
+      ownerModuleId: "org.vibeshape.core.document",
+      classification: "semantic",
+      automation: { exposure: "resource", pagination: "none" },
+    },
   ],
 })
 
@@ -367,13 +414,19 @@ export const partDesignModule: ModuleDescriptor = moduleDescriptorSchema.parse({
   commands: [],
   queries: [],
   featureTypes: [
+    holeFeatureType,
+    holeFeatureTypeV2,
     booleanFeatureType,
+    chamferFeatureType,
+    chamferFeatureTypeV2,
     boxFeatureType,
     cylinderFeatureType,
     legacyExtrusionFeatureType,
     extrusionFeatureType,
     extrusionFeatureTypeV3,
     extrusionFeatureTypeV4,
+    filletFeatureType,
+    filletFeatureTypeV2,
     legacyRevolveFeatureType,
     legacyRevolveFeatureTypeV2,
     legacyRevolveFeatureTypeV3,

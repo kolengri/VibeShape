@@ -82,7 +82,8 @@
     "fallow:health": "fallow health --score",
     "audit": "bun run scripts/run-critical-dependency-audit.ts",
     "shadcn:add": "shadcn add --cwd apps/web",
-    "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build"
+    "check": "bun run skills:validate && bun run solvespace:verify:runtime && bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build",
+    "mcp:local": "bun run --cwd apps/mcp-server start"
   },
   "dependencies": {
     "fflate": "catalog:",
@@ -97,5 +98,9 @@
     "shadcn": "4.16.2",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
+  },
+  "overrides": {
+    "qs": "6.16.0",
+    "fast-uri": "3.1.6"
   }
 }

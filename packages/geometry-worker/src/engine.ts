@@ -1,6 +1,7 @@
 import {
   booleanFeatureContentParametersSchema,
   boxFeatureContentParametersSchema,
+  chamferFeatureContentParametersSchema,
   cylinderFeatureContentParametersSchema,
   datumPlaneFeatureContentParametersSchema,
   extrusionFeatureContentParametersSchema,
@@ -10,10 +11,14 @@ import {
   type FeatureEvaluationDependency,
   type FeatureEvaluationEngineResult,
   featureContentEnvironmentSchema,
+  featureEvaluationInputSchema,
+  filletFeatureContentParametersSchema,
   type GeometryEngineMetadata,
   type GeometryExportFormat,
   type GeometryProgressStage,
   type GeometryWorkerRequest,
+  type HoleFeatureContentParameters,
+  holeFeatureContentParametersSchema,
   type KernelSpikeEngineResult,
   type KernelSpikeParameters,
   revolveFeatureContentParametersSchema,
@@ -71,6 +76,7 @@ import {
 } from "./memory-profile"
 import { createOcctCompound } from "./occt-compound"
 import { purgeOcctAllocator, runNativeOcctLifecycleCycle } from "./occt-diagnostics"
+import { treatAllOcctEdges, treatSelectedOcctEdges } from "./occt-edge-treatment"
 import { exportOcctStep, importOcctStep } from "./occt-exchange"
 import { exportMeshedOcctStl, meshOcctShape } from "./occt-mesh"
 import {
@@ -85,6 +91,7 @@ import {
   intersectOcctShapes,
 } from "./occt-shapes"
 import { revolveProfileCrossesAxis } from "./revolve-profile"
+import { resolveSelectedEdgeKeys } from "./selected-edge-resolver"
 import { DocumentFeatureShapeRegistry, OwnedShapeRegistry } from "./shape-registry"
 import {
   captureReplicadTopologyCandidates,
@@ -95,6 +102,12 @@ import {
 
 type ProgressReporter = (stage: GeometryProgressStage, fraction: number) => void
 type EvaluateFeatureRequest = Extract<GeometryWorkerRequest, { type: "evaluateFeature" }>
+type SelectedEdgeReference = Readonly<
+  Omit<FeatureEvaluationInput["content"]["feature"]["references"][number], "kind"> & {
+    kind: "edge"
+    inputIndex: number
+  }
+>
 
 export type FeatureEvaluationInput = Pick<
   EvaluateFeatureRequest,
@@ -171,6 +184,7 @@ export type DocumentPrintMeshExportInput = Readonly<{
 export type DocumentPrintMeshExportResult = Readonly<{
   meshes: readonly Readonly<{
     featureId: string
+    outputRole?: string
     vertices: readonly number[]
     triangles: readonly number[]
   }>[]
@@ -187,6 +201,14 @@ const CYLINDER_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.cylinder#1"
 const BOOLEAN_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.boolean#1"
+const FILLET_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fillet#1"
+const CHAMFER_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.chamfer#1"
+const FILLET_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.fillet#2"
+const CHAMFER_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.chamfer#2"
 const EXTRUSION_FEATURE_TYPE_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.extrusion#1"
 const EXTRUSION_FEATURE_TYPE_V2_KEY =
@@ -209,6 +231,10 @@ const REVOLVE_FEATURE_TYPE_V6_KEY =
   "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.revolve#6"
 const DATUM_PLANE_FEATURE_TYPE_KEY =
   "org.vibeshape.core.reference-geometry@0.1.0:org.vibeshape.feature.reference-geometry.datum-plane#1"
+const HOLE_FEATURE_TYPE_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#1"
+const HOLE_FEATURE_TYPE_V2_KEY =
+  "org.vibeshape.core.part-design@0.1.0:org.vibeshape.feature.part-design.hole#2"
 
 function featureTypeKey(type: EvaluateFeatureRequest["content"]["feature"]["type"]) {
   return `${type.moduleId}@${type.moduleVersion}:${type.typeId}#${type.schemaVersion}`
@@ -627,7 +653,8 @@ function measureShape(opencascade: OpenCascadeInstance, shape: Shape3D) {
   try {
     opencascade.BRepGProp.VolumeProperties_1(shape.wrapped, volumeProperties, false, false, false)
     opencascade.BRepGProp.SurfaceProperties_1(shape.wrapped, surfaceProperties, false, false)
-    opencascade.BRepBndLib.Add(shape.wrapped, boundingBox, true)
+    // Report analytical extents with shape tolerance, independent of display mesh deflection.
+    opencascade.BRepBndLib.AddOptimal(shape.wrapped, boundingBox, false, true)
     const xMin = { current: 0 }
     const yMin = { current: 0 }
     const zMin = { current: 0 }
@@ -730,6 +757,8 @@ function planeSemanticRole(
 }
 
 type BooleanContentParameters = ReturnType<typeof booleanFeatureContentParametersSchema.parse>
+type FilletContentParameters = ReturnType<typeof filletFeatureContentParametersSchema.parse>
+type ChamferContentParameters = ReturnType<typeof chamferFeatureContentParametersSchema.parse>
 type BoxContentParameters = ReturnType<typeof boxFeatureContentParametersSchema.parse>
 type CylinderContentParameters = ReturnType<typeof cylinderFeatureContentParametersSchema.parse>
 type ExtrusionContentParameters = ReturnType<typeof extrusionFeatureContentParametersSchema.parse>
@@ -749,6 +778,7 @@ type RevolveMultiProfileModifyingContentParameters = ReturnType<
   typeof revolveMultiProfileModifyingFeatureContentParametersSchema.parse
 >
 type DatumPlaneContentParameters = ReturnType<typeof datumPlaneFeatureContentParametersSchema.parse>
+type HoleContentParameters = HoleFeatureContentParameters
 
 function boxTopologyAxes(context: TopologyCandidateContext, parameters: BoxContentParameters) {
   const { centroid } = context.signature
@@ -874,6 +904,18 @@ function cylinderFeatureSemanticRole(
 
 type ParsedFeature =
   | { kind: "boolean"; parameters: BooleanContentParameters }
+  | { kind: "fillet"; parameters: FilletContentParameters }
+  | { kind: "chamfer"; parameters: ChamferContentParameters }
+  | {
+      kind: "selected-fillet"
+      parameters: FilletContentParameters
+      references: readonly SelectedEdgeReference[]
+    }
+  | {
+      kind: "selected-chamfer"
+      parameters: ChamferContentParameters
+      references: readonly SelectedEdgeReference[]
+    }
   | { kind: "box"; parameters: BoxContentParameters }
   | { kind: "cylinder"; parameters: CylinderContentParameters }
   | { kind: "datum-plane"; parameters: DatumPlaneContentParameters }
@@ -889,6 +931,7 @@ type ParsedFeature =
       kind: "multi-revolve-modifying"
       parameters: RevolveMultiProfileModifyingContentParameters
     }
+  | { kind: "hole"; parameters: HoleContentParameters }
 
 type FeatureParseResult =
   | { ok: true; feature: ParsedFeature }
@@ -958,6 +1001,84 @@ function parseBooleanFeature(input: FeatureEvaluationInput): FeatureParseResult 
   return parameters.success
     ? { ok: true, feature: { kind: "boolean", parameters: parameters.data } }
     : featureFailure("invalid-feature-parameters", "Boolean content parameters are invalid.")
+}
+
+function parseEdgeTreatmentFeature(
+  input: FeatureEvaluationInput,
+  kind: "fillet" | "chamfer",
+): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    feature.inputs.length !== 1 ||
+    feature.references.length !== 0 ||
+    input.dependencies.length !== 1
+  ) {
+    return invalidInputCardinality(
+      "Edge treatment requires exactly one target dependency and no topology references.",
+    )
+  }
+  const schema =
+    kind === "fillet" ? filletFeatureContentParametersSchema : chamferFeatureContentParametersSchema
+  const parameters = schema.safeParse(feature.parameters)
+  return parameters.success
+    ? { ok: true, feature: { kind, parameters: parameters.data } as ParsedFeature }
+    : featureFailure("invalid-feature-parameters", "Edge treatment content parameters are invalid.")
+}
+
+function parseSelectedEdgeTreatmentFeature(
+  input: FeatureEvaluationInput,
+  kind: "fillet" | "chamfer",
+): FeatureParseResult {
+  const feature = input.content.feature
+  if (
+    feature.inputs.length !== 1 ||
+    feature.references.length < 1 ||
+    feature.references.length > 256 ||
+    input.dependencies.length !== 1
+  ) {
+    return invalidInputCardinality(
+      "Selected edge treatment requires one target dependency and 1 to 256 topology references.",
+    )
+  }
+  if (
+    feature.references.some((reference) => reference.inputIndex !== 0 || reference.kind !== "edge")
+  ) {
+    return invalidInputCardinality(
+      "Selected edge treatment references must target edges in input 0.",
+    )
+  }
+  if (kind === "fillet") {
+    const parameters = filletFeatureContentParametersSchema.safeParse(feature.parameters)
+    if (!parameters.success) {
+      return featureFailure(
+        "invalid-feature-parameters",
+        "Edge treatment content parameters are invalid.",
+      )
+    }
+    return {
+      ok: true,
+      feature: {
+        kind: "selected-fillet",
+        parameters: parameters.data,
+        references: feature.references as unknown as readonly SelectedEdgeReference[],
+      },
+    }
+  }
+  const parameters = chamferFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Edge treatment content parameters are invalid.",
+    )
+  }
+  return {
+    ok: true,
+    feature: {
+      kind: "selected-chamfer",
+      parameters: parameters.data,
+      references: feature.references as unknown as readonly SelectedEdgeReference[],
+    },
+  }
 }
 
 function extrusionInputCardinalityIsValid(
@@ -1231,8 +1352,74 @@ function parseDatumPlaneFeature(input: FeatureEvaluationInput): FeatureParseResu
   return { ok: true, feature: { kind: "datum-plane", parameters: parameters.data } }
 }
 
+function parseHoleFeature(input: FeatureEvaluationInput): FeatureParseResult {
+  const feature = input.content.feature
+  const parameters = holeFeatureContentParametersSchema.safeParse(feature.parameters)
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
+  }
+  if (!holeInputCardinalityIsValid(input, parameters.data.supportInputIndex)) {
+    return invalidInputCardinality(
+      "A hole requires one target and an optional distinct sketch-support dependency.",
+    )
+  }
+  return { ok: true, feature: { kind: "hole", parameters: parameters.data } }
+}
+
+function parseHoleFeatureV2(input: FeatureEvaluationInput): FeatureParseResult {
+  if (input.content.schemaVersion !== 1) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "A version-2 hole requires version-1 canonical body identity.",
+    )
+  }
+  const targetRole = input.content.feature.inputRoles[0]
+  if (targetRole === null || targetRole === undefined) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "A version-2 hole requires a named canonical target body role.",
+    )
+  }
+  const parameters = holeFeatureContentParametersSchema.safeParse(input.content.feature.parameters)
+  if (!parameters.success) {
+    return featureFailure("invalid-feature-parameters", "Hole content parameters are invalid.")
+  }
+  if (parameters.data.supportInputIndex === 0 && targetRole !== "result") {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "A hole target selected from input 0 must use the whole result body.",
+    )
+  }
+  if (parameters.data.supportInputIndex === 1 && input.content.feature.inputRoles[1] !== null) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "A distinct hole support input must remain the whole result body.",
+    )
+  }
+  return parseHoleFeature(input)
+}
+
+function holeInputCardinalityIsValid(
+  input: FeatureEvaluationInput,
+  supportInputIndex: HoleContentParameters["supportInputIndex"],
+) {
+  const expectedInputs = supportInputIndex === 1 ? 2 : 1
+  const references = supportInputIndex === undefined ? 0 : 1
+  return (
+    input.content.feature.inputs.length === expectedInputs &&
+    input.dependencies.length === expectedInputs &&
+    input.content.feature.references.length === references &&
+    (supportInputIndex === undefined ||
+      input.content.feature.references[0]?.inputIndex === supportInputIndex)
+  )
+}
+
 const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => FeatureParseResult>([
   [BOOLEAN_FEATURE_TYPE_KEY, parseBooleanFeature],
+  [FILLET_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "fillet")],
+  [CHAMFER_FEATURE_TYPE_KEY, (input) => parseEdgeTreatmentFeature(input, "chamfer")],
+  [FILLET_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "fillet")],
+  [CHAMFER_FEATURE_TYPE_V2_KEY, (input) => parseSelectedEdgeTreatmentFeature(input, "chamfer")],
   [BOX_FEATURE_TYPE_KEY, parseBoxFeature],
   [CYLINDER_FEATURE_TYPE_KEY, parseCylinderFeature],
   [EXTRUSION_FEATURE_TYPE_KEY, parseExtrusionFeature],
@@ -1246,13 +1433,30 @@ const FEATURE_PARSERS = new Map<string, (input: FeatureEvaluationInput) => Featu
   [REVOLVE_FEATURE_TYPE_V5_KEY, parseMultiRevolveFeature],
   [REVOLVE_FEATURE_TYPE_V6_KEY, parseMultiRevolveModifyingFeature],
   [DATUM_PLANE_FEATURE_TYPE_KEY, parseDatumPlaneFeature],
+  [HOLE_FEATURE_TYPE_KEY, parseHoleFeature],
+  [HOLE_FEATURE_TYPE_V2_KEY, parseHoleFeatureV2],
 ])
 
-function parseFeature(input: FeatureEvaluationInput): FeatureParseResult {
+function parseFeatureRequest(
+  request: FeatureEvaluationInput,
+):
+  | { ok: true; input: FeatureEvaluationInput; feature: ParsedFeature }
+  | Extract<FeatureParseResult, { ok: false }> {
+  const validated = featureEvaluationInputSchema.safeParse(request)
+  if (!validated.success) {
+    return featureFailure(
+      "invalid-feature-parameters",
+      "Feature input roles and hashes must match the exact canonical dependency slots.",
+    )
+  }
+  const input = validated.data
   const feature = input.content.feature
   const key = featureTypeKey(feature.type)
   const parse = FEATURE_PARSERS.get(key)
-  if (parse) return parse(input)
+  if (parse) {
+    const result = parse(input)
+    return result.ok ? { ...result, input } : result
+  }
 
   return featureFailure(
     "unsupported-feature-type",
@@ -1373,9 +1577,170 @@ function createProfileFeatureShape(
   }
 }
 
+function createEdgeTreatmentShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<ParsedFeature, { kind: "fillet" | "chamfer" }>,
+  target: Shape3D | undefined,
+) {
+  if (!target) throw new Error("Edge treatment target dependency shape is unavailable.")
+  if (measureShape(opencascade, target).solidCount !== 1) {
+    throw new Error("Edge treatment requires a single-solid target dependency.")
+  }
+  const size = feature.kind === "fillet" ? feature.parameters.radius : feature.parameters.distance
+  return treatAllOcctEdges(opencascade, target, feature.kind, size)
+}
+
+function createSelectedEdgeTreatmentShape(
+  opencascade: OpenCascadeInstance,
+  feature: Extract<ParsedFeature, { kind: "selected-fillet" | "selected-chamfer" }>,
+  target: Shape3D | undefined,
+  snapshot: TopologyCaptureSnapshot,
+  sourceFeatureId: string,
+  resolveReferences: GeometryTopologyResolver | undefined,
+) {
+  if (!target) throw new Error("Selected edge treatment target dependency shape is unavailable.")
+  if (measureShape(opencascade, target).solidCount !== 1) {
+    throw new Error("Edge treatment requires a single-solid target dependency.")
+  }
+  if (!resolveReferences) throw new Error("Selected-edge topology resolution is unavailable.")
+  const candidateIds = resolveReferences(feature.references, snapshot.candidates, sourceFeatureId)
+  const selectedEdgeKeys = resolveSelectedEdgeKeys(candidateIds, snapshot.transientShapeKeys)
+  const operation = feature.kind === "selected-fillet" ? "fillet" : "chamfer"
+  const size =
+    feature.kind === "selected-fillet" ? feature.parameters.radius : feature.parameters.distance
+  return treatSelectedOcctEdges(opencascade, target, operation, size, selectedEdgeKeys)
+}
+
+function createBooleanFeatureShape(
+  opencascade: OpenCascadeInstance,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const [target, tool] = dependencyShapes
+  if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
+  return cutOcctShapes(opencascade, target, tool)
+}
+
+type HoleCutterParameters = Readonly<{
+  origin: readonly [number, number, number]
+  height: number
+  direction: readonly [number, number, number]
+}>
+
+function holeCutterDirection(parameters: HoleContentParameters) {
+  const sign = parameters.direction === "forward" ? 1 : -1
+  return [
+    parameters.frame.normal[0] * sign,
+    parameters.frame.normal[1] * sign,
+    parameters.frame.normal[2] * sign,
+  ] as const
+}
+
+function targetMaximumProjection(
+  bounds: ReturnType<typeof measureShape>["bounds"],
+  direction: readonly [number, number, number],
+) {
+  let maximum = -Infinity
+  for (let index = 0; index < 8; index += 1) {
+    const corner = [
+      index & 1 ? bounds.max[0] : bounds.min[0],
+      index & 2 ? bounds.max[1] : bounds.min[1],
+      index & 4 ? bounds.max[2] : bounds.min[2],
+    ] as const
+    maximum = Math.max(maximum, dot3(corner, direction))
+  }
+  return maximum
+}
+
+function holeCutterParameters(
+  parameters: HoleContentParameters,
+  center: readonly [number, number, number],
+  maximumProjection: number,
+  tolerance: number,
+): HoleCutterParameters {
+  const direction = holeCutterDirection(parameters)
+  if (parameters.extent === "blind") {
+    return { origin: center, height: parameters.depth ?? 0, direction }
+  }
+  const height = maximumProjection - dot3(center, direction) + tolerance
+  if (height <= tolerance)
+    throw new Error("Through-all hole direction does not intersect the target.")
+  return { origin: center, height, direction }
+}
+
+function cutHoleOnce(
+  opencascade: OpenCascadeInstance,
+  current: Shape3D,
+  tool: Shape3D,
+  currentVolume: number,
+) {
+  const next = cutOcctShapes(opencascade, current, tool)
+  try {
+    const metrics = measureShape(opencascade, next)
+    const volumeDeltaTolerance = Number.EPSILON * 32 * Math.max(1, currentVolume)
+    if (
+      !metrics.valid ||
+      metrics.solidCount !== 1 ||
+      metrics.volume <= 0 ||
+      metrics.volume >= currentVolume - volumeDeltaTolerance
+    ) {
+      throw new Error("Hole center does not remove material or produces invalid geometry.")
+    }
+    return { metrics, shape: next }
+  } catch (error) {
+    next.delete()
+    throw error
+  }
+}
+
+function createHoleFeatureShape(
+  opencascade: OpenCascadeInstance,
+  parameters: HoleContentParameters,
+  dependencyShapes: readonly Shape3D[],
+) {
+  const target = dependencyShapes[0]
+  if (!target) throw new Error("Hole target dependency shape is unavailable.")
+  const initialMetrics = measureShape(opencascade, target)
+  if (!initialMetrics.valid || initialMetrics.solidCount !== 1 || initialMetrics.volume <= 0) {
+    throw new Error("Hole requires a valid single-solid target dependency.")
+  }
+
+  const direction = holeCutterDirection(parameters)
+  const radius = parameters.diameter / 2
+  const tolerance = 1e-3
+  const bounds = initialMetrics.bounds
+  const maxProjection = targetMaximumProjection(bounds, direction)
+  let current = target
+  let currentVolume = initialMetrics.volume
+
+  try {
+    for (const center of parameters.centers) {
+      const cutter = holeCutterParameters(parameters, center, maxProjection, tolerance)
+      const tool = createOcctCylinder(
+        opencascade,
+        radius,
+        cutter.height,
+        cutter.origin,
+        cutter.direction,
+      )
+      try {
+        const result = cutHoleOnce(opencascade, current, tool, currentVolume)
+        if (current !== target) current.delete()
+        current = result.shape
+        currentVolume = result.metrics.volume
+      } finally {
+        tool.delete()
+      }
+    }
+    return current
+  } catch (error) {
+    if (current !== target) current.delete()
+    throw error
+  }
+}
+
 function createFeatureShape(
   opencascade: OpenCascadeInstance,
-  feature: ParsedFeature,
+  feature: Exclude<ParsedFeature, { kind: "selected-fillet" | "selected-chamfer" }>,
   dependencyShapes: readonly Shape3D[],
 ) {
   switch (feature.kind) {
@@ -1394,9 +1759,13 @@ function createFeatureShape(
     case "datum-plane":
       return createDatumPlaneFeatureShape(opencascade, feature.parameters)
     case "boolean": {
-      const [target, tool] = dependencyShapes
-      if (!target || !tool) throw new Error("Boolean dependency shapes are unavailable.")
-      return cutOcctShapes(opencascade, target, tool)
+      return createBooleanFeatureShape(opencascade, dependencyShapes)
+    }
+    case "hole":
+      return createHoleFeatureShape(opencascade, feature.parameters, dependencyShapes)
+    case "fillet":
+    case "chamfer": {
+      return createEdgeTreatmentShape(opencascade, feature, dependencyShapes[0])
     }
     default:
       return createProfileFeatureShape(opencascade, feature, dependencyShapes)
@@ -2043,7 +2412,7 @@ function featureTopologySemanticRole(
 }
 
 function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
-  if (feature.kind === "boolean") return captureReplicadTopologyCandidates(shape)
+  if (feature.kind === "boolean") return captureReplicadTopologySnapshot(shape)
   const extrusionParameters =
     feature.kind === "extrusion"
       ? feature.parameters
@@ -2053,10 +2422,33 @@ function captureFeatureTopology(shape: Shape3D, feature: ParsedFeature) {
   const extrusionRoleIndex = extrusionParameters
     ? createExtrusionRoleIndex(extrusionParameters)
     : undefined
-  return captureReplicadTopologyCandidates(shape, {
+  return captureReplicadTopologySnapshot(shape, {
     semanticRole: (context) =>
       featureTopologySemanticRole(context, feature, extrusionParameters, extrusionRoleIndex),
   })
+}
+
+function featureProfileCount(feature: ParsedFeature) {
+  return feature.kind === "multi-extrusion" || feature.kind === "multi-revolve"
+    ? feature.parameters.profiles.length
+    : 1
+}
+
+function featureSolidKind(feature: ParsedFeature): Parameters<typeof featureSolidCountLimit>[0] {
+  switch (feature.kind) {
+    case "selected-fillet":
+      return "fillet"
+    case "selected-chamfer":
+      return "chamfer"
+    case "hole":
+      return "boolean"
+    default:
+      return feature.kind
+  }
+}
+
+function featureHasSingleBody(metrics: ReturnType<typeof measureShape>, feature: ParsedFeature) {
+  return metrics.solidCount === 1 && feature.kind !== "datum-plane"
 }
 
 function evaluateFeatureGeometry(
@@ -2066,17 +2458,21 @@ function evaluateFeatureGeometry(
 ) {
   const startedAt = performance.now()
   const metrics = measureShape(opencascade, shape)
-  const profileCount =
-    feature.kind === "multi-extrusion" || feature.kind === "multi-revolve"
-      ? feature.parameters.profiles.length
-      : 1
-  const maximumSolidCount = featureSolidCountLimit(feature.kind, profileCount)
+  const maximumSolidCount = featureSolidCountLimit(
+    featureSolidKind(feature),
+    featureProfileCount(feature),
+  )
   if (!featureResultMetricsAreValid(metrics, maximumSolidCount)) {
     throw new Error("Feature evaluation did not produce a valid bounded positive-volume result.")
   }
+  const topologySnapshot = captureFeatureTopology(shape, feature)
+  const hasSingleBody = featureHasSingleBody(metrics, feature)
   return {
     metrics,
-    topologyCandidates: captureFeatureTopology(shape, feature),
+    outputs: hasSingleBody ? [{ role: "result", shape }] : [],
+    hasSingleBody,
+    topologyCandidates: topologySnapshot.candidates,
+    topologySnapshot,
     evaluationMs: elapsed(startedAt),
   }
 }
@@ -2094,6 +2490,66 @@ function tessellateFeatureGeometry(
   return { mesh, tessellationMs: elapsed(startedAt) }
 }
 
+function createFeatureEvaluationShape(
+  opencascade: OpenCascadeInstance,
+  source: Extract<FeatureShapeSource, { ok: true }>,
+  feature: ParsedFeature,
+  input: FeatureEvaluationInput,
+  createUncached: (
+    opencascade: OpenCascadeInstance,
+    feature: ParsedFeature,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) => Shape3D,
+) {
+  if (source.brepHit) return { shape: source.shape, temporaryShape: null }
+  const shape = createUncached(opencascade, feature, source.dependencies, input)
+  return { shape, temporaryShape: shape }
+}
+
+function cacheFeatureEvaluation(
+  registry: DocumentFeatureShapeRegistry<Shape3D>,
+  input: FeatureEvaluationInput,
+  temporaryShape: Shape3D | null,
+  outputs: readonly { role: string; shape: Shape3D }[],
+) {
+  if (!temporaryShape) return null
+  registry.replace(input.documentId, input.featureId, input.contentHash, temporaryShape, outputs)
+  return null
+}
+
+function featureEvaluationResult(
+  engine: GeometryEngineMetadata,
+  evaluation: ReturnType<typeof evaluateFeatureGeometry>,
+  tessellation: ReturnType<typeof tessellateFeatureGeometry>,
+  brepHit: boolean,
+  totalMs: number,
+): FeatureEvaluationEngineResult {
+  const bodies = evaluation.hasSingleBody
+    ? [
+        {
+          outputRole: "result" as const,
+          shape: evaluation.metrics,
+          mesh: tessellation.mesh,
+          topologyCandidates: evaluation.topologyCandidates,
+        },
+      ]
+    : []
+  return {
+    engine,
+    shape: evaluation.metrics,
+    topologyCandidates: evaluation.topologyCandidates,
+    mesh: tessellation.mesh,
+    bodies,
+    cache: { brepHit },
+    timings: {
+      evaluationMs: evaluation.evaluationMs,
+      tessellationMs: tessellation.tessellationMs,
+      totalMs,
+    },
+  }
+}
+
 type FeatureShapeSource =
   | { ok: true; brepHit: true; shape: Shape3D }
   | { ok: true; brepHit: false; dependencies: Shape3D[] }
@@ -2103,9 +2559,6 @@ function resolveFeatureShapeSource(
   registry: DocumentFeatureShapeRegistry<Shape3D>,
   input: FeatureEvaluationInput,
 ): FeatureShapeSource {
-  const cached = registry.get(input.documentId, input.featureId, input.contentHash)
-  if (cached) return { ok: true, shape: cached, brepHit: true }
-
   const dependencies = registry.resolve(input.documentId, input.dependencies)
   if (!dependencies) {
     return featureFailure(
@@ -2113,6 +2566,9 @@ function resolveFeatureShapeSource(
       "One or more exact feature dependency shapes are unavailable.",
     )
   }
+
+  const cached = registry.get(input.documentId, input.featureId, input.contentHash)
+  if (cached) return { ok: true, shape: cached, brepHit: true }
 
   return { ok: true, dependencies, brepHit: false }
 }
@@ -2252,12 +2708,21 @@ export interface GeometryKernelEngine {
   disposeDocument(documentId: string): number
 }
 
+export type GeometryTopologyResolver = (
+  references: readonly SelectedEdgeReference[],
+  candidates: readonly TopologyCaptureSnapshot["candidates"][number][],
+  sourceFeatureId: string,
+) => readonly string[]
+
 export class ReplicadGeometryEngine implements GeometryKernelEngine {
   readonly #ownedShapes = new OwnedShapeRegistry()
   readonly #featureShapes = new DocumentFeatureShapeRegistry<Shape3D>()
+  readonly #topologySnapshots = new WeakMap<Shape3D, TopologyCaptureSnapshot>()
   #metadata: GeometryEngineMetadata | null = null
   #opencascade: OpenCascadeModule | null = null
   #initialization: Promise<GeometryEngineMetadata> | null = null
+
+  constructor(private readonly resolveReferences?: GeometryTopologyResolver) {}
 
   isInitialized() {
     return this.#metadata !== null && this.#opencascade !== null
@@ -2333,9 +2798,12 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
   }
 
   async evaluateFeature(
-    input: FeatureEvaluationInput,
+    request: FeatureEvaluationInput,
     reportProgress: ProgressReporter,
   ): Promise<FeatureEvaluationResult> {
+    const parsed = parseFeatureRequest(request)
+    if (!parsed.ok) return parsed
+    const input = parsed.input
     const engine = await this.initialize()
     const opencascade = this.#opencascade
     if (!opencascade) {
@@ -2343,9 +2811,6 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
     }
 
     reportProgress("feature-validation", 0.1)
-    const parsed = parseFeature(input)
-    if (!parsed.ok) return parsed
-
     const totalStartedAt = performance.now()
     const source = resolveFeatureShapeSource(this.#featureShapes, input)
     if (!source.ok) return source
@@ -2353,40 +2818,38 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
 
     try {
       reportProgress("feature-evaluation", 0.35)
-      const shape = source.brepHit
-        ? source.shape
-        : createFeatureShape(opencascade, parsed.feature, source.dependencies)
-      if (!source.brepHit) temporaryShape = shape
-      const evaluation = evaluateFeatureGeometry(opencascade, shape, parsed.feature)
+      const evaluatedShape = createFeatureEvaluationShape(
+        opencascade,
+        source,
+        parsed.feature,
+        input,
+        (module, feature, dependencies, featureInput) =>
+          this.#createUncachedFeature(module, feature, dependencies, featureInput),
+      )
+      temporaryShape = evaluatedShape.temporaryShape
+      const evaluation = evaluateFeatureGeometry(opencascade, evaluatedShape.shape, parsed.feature)
+      this.#topologySnapshots.set(evaluatedShape.shape, evaluation.topologySnapshot)
 
       reportProgress("feature-tessellation", 0.7)
-      const tessellation = tessellateFeatureGeometry(opencascade, shape, input.mesh)
+      const tessellation = tessellateFeatureGeometry(opencascade, evaluatedShape.shape, input.mesh)
 
-      if (temporaryShape) {
-        this.#featureShapes.replace(
-          input.documentId,
-          input.featureId,
-          input.contentHash,
-          temporaryShape,
-        )
-        temporaryShape = null
-      }
+      temporaryShape = cacheFeatureEvaluation(
+        this.#featureShapes,
+        input,
+        temporaryShape,
+        evaluation.outputs,
+      )
 
       reportProgress("complete", 1)
       return {
         ok: true,
-        result: {
+        result: featureEvaluationResult(
           engine,
-          shape: evaluation.metrics,
-          topologyCandidates: evaluation.topologyCandidates,
-          mesh: tessellation.mesh,
-          cache: { brepHit: source.brepHit },
-          timings: {
-            evaluationMs: evaluation.evaluationMs,
-            tessellationMs: tessellation.tessellationMs,
-            totalMs: elapsed(totalStartedAt),
-          },
-        },
+          evaluation,
+          tessellation,
+          source.brepHit,
+          elapsed(totalStartedAt),
+        ),
       }
     } catch {
       const cleanupSucceeded = disposeTemporaryShape(temporaryShape)
@@ -2397,6 +2860,28 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           : "Feature geometry evaluation failed and temporary shape cleanup did not complete.",
       )
     }
+  }
+
+  #createUncachedFeature(
+    opencascade: OpenCascadeInstance,
+    feature: ParsedFeature,
+    dependencies: readonly Shape3D[],
+    input: FeatureEvaluationInput,
+  ) {
+    if (feature.kind !== "selected-fillet" && feature.kind !== "selected-chamfer") {
+      return createFeatureShape(opencascade, feature, dependencies)
+    }
+    const target = dependencies[0]
+    const snapshot = target ? this.#topologySnapshots.get(target) : undefined
+    if (!snapshot) throw new Error("Exact source topology is unavailable for selected edges.")
+    return createSelectedEdgeTreatmentShape(
+      opencascade,
+      feature,
+      target,
+      snapshot,
+      input.dependencies[0]?.featureId ?? "",
+      this.resolveReferences,
+    )
   }
 
   async sectionPlanarFace(input: PlanarFaceSectionInput): Promise<PlanarFaceSectionResult> {
@@ -2456,6 +2941,9 @@ export class ReplicadGeometryEngine implements GeometryKernelEngine {
           })
           return {
             featureId: input.features[index]?.featureId ?? "unknown-feature",
+            ...(input.features[index]?.outputRole
+              ? { outputRole: input.features[index]?.outputRole }
+              : {}),
             vertices: mesh.vertices,
             triangles: mesh.triangles,
           }

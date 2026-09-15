@@ -1,4 +1,8 @@
 import {
+  automationDraftInspectionRequestSchema,
+  automationDraftInspectionViewSchema,
+} from "@vibeshape/automation-api/draft-inspection"
+import {
   type AutomationCommandEnvelope,
   type AutomationDraftCommitView,
   type AutomationDraftDiscardView,
@@ -25,6 +29,8 @@ import {
   type CommandActor,
   commandActorSchema,
   commandActorsEqual,
+  type DocumentCommand,
+  parseDocumentCommand,
 } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
 import {
@@ -35,6 +41,14 @@ import {
 } from "@vibeshape/domain/drafts"
 import { type DocumentId, type DraftId, draftIdSchema } from "@vibeshape/domain/identifiers"
 import { z } from "zod"
+import { type DraftEdgeCache, inspectDraftQuery } from "./draft-inspection"
+import type { DraftReviewInput, DraftReviewPort } from "./draft-review"
+import { type DraftGeometryPort, evaluateDraftGeometry } from "./exact-draft-preview"
+
+export type { DraftReviewDecision, DraftReviewInput, DraftReviewPort } from "./draft-review"
+export type { DraftGeometryPort } from "./exact-draft-preview"
+
+const draftReviewDecisionSchema = z.enum(["approved", "rejected", "cancelled"])
 
 const hostOptionsSchema = z
   .object({
@@ -54,13 +68,18 @@ type Awaitable<Value> = Value | PromiseLike<Value>
 
 export type AutomationDocumentPort = Readonly<{
   readSnapshot: (documentId: DocumentId) => Awaitable<unknown>
-  compareAndCommitDraft: (draft: DocumentDraft) => Awaitable<DraftCommitResult>
+  compareAndCommitDraft: (
+    draft: DocumentDraft,
+    commands: readonly DocumentCommand[],
+  ) => Awaitable<DraftCommitResult | Extract<AutomationHostResult<never>, { ok: false }>>
 }>
 
 export type AutomationHostConfiguration = Readonly<{
   commandDispatcher: CommandDispatcher
   queryDispatcher: QueryDispatcher
   documents: AutomationDocumentPort
+  geometry: DraftGeometryPort
+  review: DraftReviewPort
   createDraftId: () => unknown
   now?: () => number
   draftTtlMs?: number
@@ -72,6 +91,13 @@ export type AutomationHostDiagnosticCode =
   | CommandDispatcherDiagnosticCode
   | DraftDiagnosticCode
   | QueryDiagnosticCode
+  | "document-write-unavailable"
+  | "document-commit-failed"
+  | "draft-commit-intent-mismatch"
+  | "draft-geometry-invalid"
+  | "draft-review-rejected"
+  | "draft-review-cancelled"
+  | "invalid-review-result"
   | "invalid-host-configuration"
   | "invalid-automation-actor"
   | "invalid-draft-request"
@@ -121,6 +147,10 @@ export type AutomationHost = Readonly<{
     actor: unknown,
     input: unknown,
   ) => Promise<AutomationHostResult<AutomationDraftDiscardView>>
+  inspectDraft: (
+    actor: unknown,
+    input: unknown,
+  ) => Promise<AutomationHostResult<ReturnType<typeof automationDraftInspectionViewSchema.parse>>>
 }>
 
 export type AutomationHostFactoryResult =
@@ -128,6 +158,7 @@ export type AutomationHostFactoryResult =
   | { ok: false; diagnostic: AutomationHostDiagnostic }
 
 type ManagedDraft = Readonly<{
+  commands: readonly DocumentCommand[]
   draft: DocumentDraft
   expiresAt: number
 }>
@@ -137,6 +168,35 @@ type OperationContext<Request> = Readonly<{
   request: Request
   at: number
 }>
+
+function detachedReviewCommands(
+  record: ManagedDraft,
+): AutomationHostResult<readonly DocumentCommand[]> {
+  const commands: DocumentCommand[] = []
+  for (const command of record.commands) {
+    const detached = parseDocumentCommand(command)
+    if (!detached.ok)
+      return failure(
+        hostDiagnostic(
+          "invalid-review-result",
+          "The automation host could not prepare the draft review input.",
+        ),
+      )
+    commands.push(detached.command)
+  }
+  return { ok: true, value: commands }
+}
+
+function reviewDecisionDiagnostic(decisionInput: unknown): AutomationHostDiagnostic | null {
+  const decision = draftReviewDecisionSchema.safeParse(decisionInput)
+  if (!decision.success)
+    return hostDiagnostic("invalid-review-result", "The draft review returned an invalid decision.")
+  if (decision.data === "rejected")
+    return hostDiagnostic("draft-review-rejected", "The draft review rejected this commit.")
+  if (decision.data === "cancelled")
+    return hostDiagnostic("draft-review-cancelled", "The draft review was cancelled.")
+  return null
+}
 
 function hostDiagnostic(
   code: AutomationHostDiagnosticCode,
@@ -258,6 +318,16 @@ export function createAutomationHost(
     }
   }
 
+  if (!configuration.review || typeof configuration.review.confirm !== "function") {
+    return {
+      ok: false,
+      diagnostic: hostDiagnostic(
+        "invalid-host-configuration",
+        "The automation host review port is invalid.",
+      ),
+    }
+  }
+
   const options = parsedOptions.data
   const drafts = new Map<DraftId, ManagedDraft>()
   const now = configuration.now ?? Date.now
@@ -267,6 +337,7 @@ export function createAutomationHost(
     .nonnegative()
     .max(8_640_000_000_000_000 - options.draftTtlMs)
   let operationQueue: Promise<void> = Promise.resolve()
+  let edgeCache: DraftEdgeCache | null = null
 
   function enqueue<Value>(
     operation: () => Promise<AutomationHostResult<Value>>,
@@ -292,10 +363,19 @@ export function createAutomationHost(
     return result
   }
 
+  function invalidateDraftEdges(draftId: DraftId) {
+    if (edgeCache?.draftId === draftId) edgeCache = null
+  }
+
+  function forgetDraft(draftId: DraftId) {
+    drafts.delete(draftId)
+    invalidateDraftEdges(draftId)
+  }
+
   function purgeExpired(at: number) {
     for (const [draftId, record] of drafts) {
       if (record.expiresAt <= at) {
-        drafts.delete(draftId)
+        forgetDraft(draftId)
       }
     }
   }
@@ -433,7 +513,7 @@ export function createAutomationHost(
     }
 
     if (record.expiresAt <= at) {
-      drafts.delete(draftId)
+      forgetDraft(draftId)
       return failure(hostDiagnostic("draft-expired", "The automation draft has expired."))
     }
 
@@ -567,6 +647,7 @@ export function createAutomationHost(
 
     const record: ManagedDraft = {
       draft: created.draft,
+      commands: [],
       expiresAt: operation.value.at + options.draftTtlMs,
     }
     drafts.set(created.draft.id, record)
@@ -608,56 +689,182 @@ export function createAutomationHost(
       return dispatched
     }
 
+    const command = parseDocumentCommand(operation.value.request.command)
+    if (!command.ok) return failure(command.diagnostic)
+
     const record = renew(
-      { draft: dispatched.value, expiresAt: owned.value.expiresAt },
+      {
+        draft: dispatched.value,
+        commands: [...owned.value.commands, command.command],
+        expiresAt: owned.value.expiresAt,
+      },
       operation.value.at,
     )
     drafts.set(record.draft.id, record)
+    invalidateDraftEdges(record.draft.id)
     return { ok: true, value: createDraftState(record) }
+  }
+
+  async function revalidateAfterGeometry(
+    record: ManagedDraft,
+  ): Promise<AutomationHostResult<number>> {
+    const base = await readDraftBase(record.draft.documentId, record.draft.baseRevision)
+    if (!base.ok) {
+      invalidateDraftEdges(record.draft.id)
+      return base
+    }
+    const time = currentTime()
+    if (!time.ok) return time
+    const current = ownedDraft(record.draft.actor, record.draft.id, time.value)
+    return current.ok ? { ok: true, value: time.value } : current
+  }
+
+  function ownedOperation(actorInput: unknown, input: unknown): AutomationHostResult<ManagedDraft> {
+    const operation = parseOperation(actorInput, input, automationDraftOperationRequestSchema)
+    if (!operation.ok) return operation
+    return ownedDraft(operation.value.actor, operation.value.request.draftId, operation.value.at)
+  }
+
+  async function currentDraftGeometry(
+    record: ManagedDraft,
+  ): Promise<AutomationHostResult<{ geometry: AutomationDraftPreview["geometry"]; at: number }>> {
+    if (!record.draft.snapshot)
+      return failure(hostDiagnostic("draft-empty", "The draft has no document to preview."))
+    const base = await readDraftBase(record.draft.documentId, record.draft.baseRevision)
+    if (!base.ok) return base
+    const exact = await evaluateDraftGeometry(
+      record.draft.snapshot,
+      configuration.geometry,
+      configuration.queryDispatcher,
+    )
+    if (!exact.ok) return failure(exact.diagnostic)
+    const refreshed = await revalidateAfterGeometry(record)
+    if (!refreshed.ok) return refreshed
+    return { ok: true as const, value: { geometry: exact.geometry, at: refreshed.value } }
+  }
+
+  async function inspectDraft(
+    actorInput: unknown,
+    input: unknown,
+  ): Promise<AutomationHostResult<ReturnType<typeof automationDraftInspectionViewSchema.parse>>> {
+    const operation = parseOperation(actorInput, input, automationDraftInspectionRequestSchema)
+    if (!operation.ok) return operation
+    const owned = ownedDraft(
+      operation.value.actor,
+      operation.value.request.draftId,
+      operation.value.at,
+    )
+    if (!owned.ok) return owned
+    const snapshot = owned.value.draft.snapshot
+    if (!snapshot)
+      return failure(hostDiagnostic("draft-empty", "The draft has no document to inspect."))
+    if (
+      operation.value.request.query.documentId !== snapshot.id ||
+      operation.value.request.query.revision !== snapshot.revision
+    )
+      return failure(
+        hostDiagnostic(
+          "stale-query-revision",
+          "The draft query does not match the draft revision.",
+          true,
+        ),
+      )
+    const current = await revalidateAfterGeometry(owned.value)
+    if (!current.ok) return current
+    const inspected = await inspectDraftQuery(
+      operation.value.request,
+      snapshot,
+      owned.value.draft.id,
+      configuration.geometry,
+      configuration.queryDispatcher,
+      edgeCache,
+    )
+    if (!inspected.ok) return failure(inspected.diagnostic)
+    const refreshed = await revalidateAfterGeometry(owned.value)
+    if (!refreshed.ok) return refreshed
+    edgeCache = inspected.cache
+    return {
+      ok: true,
+      value: automationDraftInspectionViewSchema.parse({
+        schemaVersion: 1,
+        draft: createDraftState(owned.value),
+        view: inspected.view,
+      }),
+    }
+  }
+
+  async function confirmDraft(
+    record: ManagedDraft,
+    geometry: AutomationDraftPreview["geometry"],
+  ): Promise<AutomationHostResult<null>> {
+    const snapshot = record.draft.snapshot
+    if (!snapshot)
+      return failure(hostDiagnostic("draft-empty", "The draft has no document to commit."))
+    const queried = configuration.queryDispatcher.dispatch(snapshot, {
+      kind: "org.vibeshape.document.summary",
+      schemaVersion: 1,
+      documentId: record.draft.documentId,
+      revision: snapshot.revision,
+    })
+    if (!queried.ok) return failure(queried.diagnostic)
+    const preview = automationDraftPreviewSchema.parse({
+      schemaVersion: 2,
+      draft: createDraftState(record),
+      summary: queried.view,
+      geometry,
+    })
+    const reviewCommands = detachedReviewCommands(record)
+    if (!reviewCommands.ok) return reviewCommands
+    let reviewResult: unknown
+    try {
+      reviewResult = await configuration.review.confirm({
+        actor: commandActorSchema.parse(record.draft.actor),
+        preview,
+        commands: reviewCommands.value,
+      } satisfies DraftReviewInput)
+    } catch {
+      return failure(
+        hostDiagnostic("invalid-review-result", "The draft review could not be completed."),
+      )
+    }
+    const reviewDiagnostic = reviewDecisionDiagnostic(reviewResult)
+    if (reviewDiagnostic) return failure(reviewDiagnostic)
+    const refreshed = await revalidateAfterGeometry(record)
+    return refreshed.ok ? { ok: true, value: null } : refreshed
   }
 
   async function previewDraft(
     actorInput: unknown,
     input: unknown,
   ): Promise<AutomationHostResult<AutomationDraftPreview>> {
-    const operation = parseOperation(actorInput, input, automationDraftOperationRequestSchema)
-
-    if (!operation.ok) {
-      return operation
-    }
-
-    const owned = ownedDraft(
-      operation.value.actor,
-      operation.value.request.draftId,
-      operation.value.at,
-    )
-
-    if (!owned.ok) {
-      return owned
-    }
-    if (!owned.value.draft.snapshot) {
+    const owned = ownedOperation(actorInput, input)
+    if (!owned.ok) return owned
+    const exact = await currentDraftGeometry(owned.value)
+    if (!exact.ok) return exact
+    const snapshot = owned.value.draft.snapshot
+    if (!snapshot)
       return failure(hostDiagnostic("draft-empty", "The draft has no document to preview."))
-    }
 
-    const queried = configuration.queryDispatcher.dispatch(owned.value.draft.snapshot, {
+    const queried = configuration.queryDispatcher.dispatch(snapshot, {
       kind: "org.vibeshape.document.summary",
       schemaVersion: 1,
       documentId: owned.value.draft.documentId,
-      revision: owned.value.draft.snapshot.revision,
+      revision: snapshot.revision,
     })
 
     if (!queried.ok) {
       return failure(queried.diagnostic)
     }
 
-    const record = renew(owned.value, operation.value.at)
+    const record = renew(owned.value, exact.value.at)
     drafts.set(record.draft.id, record)
     return {
       ok: true,
       value: automationDraftPreviewSchema.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
         draft: createDraftState(record),
         summary: queried.view,
+        geometry: exact.value.geometry,
       }),
     }
   }
@@ -666,23 +873,26 @@ export function createAutomationHost(
     actorInput: unknown,
     input: unknown,
   ): Promise<AutomationHostResult<AutomationDraftCommitView>> {
-    const operation = parseOperation(actorInput, input, automationDraftOperationRequestSchema)
+    const owned = ownedOperation(actorInput, input)
+    if (!owned.ok) return owned
+    if (!owned.value.commands.length)
+      return failure(hostDiagnostic("draft-empty", "The draft has no commands to commit."))
+    const exact = await currentDraftGeometry(owned.value)
+    if (!exact.ok) return exact
+    if (exact.value.geometry.status !== "valid")
+      return failure(
+        hostDiagnostic(
+          "draft-geometry-invalid",
+          "The draft contains failed or blocked geometry and cannot be committed.",
+        ),
+      )
 
-    if (!operation.ok) {
-      return operation
-    }
-
-    const owned = ownedDraft(
-      operation.value.actor,
-      operation.value.request.draftId,
-      operation.value.at,
+    const confirmed = await confirmDraft(owned.value, exact.value.geometry)
+    if (!confirmed.ok) return confirmed
+    const committed = await configuration.documents.compareAndCommitDraft(
+      owned.value.draft,
+      owned.value.commands,
     )
-
-    if (!owned.ok) {
-      return owned
-    }
-
-    const committed = await configuration.documents.compareAndCommitDraft(owned.value.draft)
 
     if (!committed.ok) {
       return failure(committed.diagnostic)
@@ -696,7 +906,7 @@ export function createAutomationHost(
       )
     }
 
-    drafts.delete(owned.value.draft.id)
+    forgetDraft(owned.value.draft.id)
     return {
       ok: true,
       value: automationDraftCommitViewSchema.parse({
@@ -723,7 +933,7 @@ export function createAutomationHost(
     const record = drafts.get(operation.value.request.draftId)
 
     if (!record || record.expiresAt <= operation.value.at) {
-      drafts.delete(operation.value.request.draftId)
+      forgetDraft(operation.value.request.draftId)
       return {
         ok: true,
         value: automationDraftDiscardViewSchema.parse({
@@ -739,7 +949,7 @@ export function createAutomationHost(
       )
     }
 
-    drafts.delete(record.draft.id)
+    forgetDraft(record.draft.id)
     return {
       ok: true,
       value: automationDraftDiscardViewSchema.parse({
@@ -758,6 +968,7 @@ export function createAutomationHost(
       previewDraft: (actor, input) => enqueue(() => previewDraft(actor, input)),
       commitDraft: (actor, input) => enqueue(() => commitDraft(actor, input)),
       discardDraft: (actor, input) => enqueue(() => discardDraft(actor, input)),
+      inspectDraft: (actor, input) => enqueue(() => inspectDraft(actor, input)),
     },
   }
 }

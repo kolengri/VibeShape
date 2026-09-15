@@ -39,7 +39,11 @@ export type SketchSupportHealth = Readonly<{
 function domainCandidate(
   candidate: DocumentRebuiltResponse["geometry"][number]["geometry"]["topologyCandidates"][number],
 ): TopologyCandidate {
-  const { referenceGeometry: _referenceGeometry, ...result } = candidate
+  const {
+    referenceGeometry: _referenceGeometry,
+    edgePolyline: _edgePolyline,
+    ...result
+  } = candidate
   return result
 }
 
@@ -137,11 +141,18 @@ export function selectedPlanarFaceReferenceFromController(
   controller: DocumentControllerState,
   selection: ViewerSelection,
 ) {
+  // Constituent topology needs a body-bound TopoRef version before it can be authored.
+  if (selection.outputRole !== undefined && selection.outputRole !== "result") return null
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return null
   const geometry = rebuild.response.geometry.find(
     ({ featureId }) => featureId === selection.featureId,
   )
+  if (
+    selection.outputRole === "result" &&
+    !geometry?.geometry.bodies?.some((body) => body.outputRole === "result")
+  )
+    return null
   return geometry
     ? selectedPlanarFaceReference(
         selection.featureId as FeatureId,
@@ -155,11 +166,18 @@ export function selectedSketchSupportFromController(
   controller: DocumentControllerState,
   selection: ViewerSelection,
 ) {
+  // Constituent topology needs a body-bound TopoRef version before it can be authored.
+  if (selection.outputRole !== undefined && selection.outputRole !== "result") return null
   const rebuild = controller.report?.rebuild
   if (!rebuild?.ok) return null
   const geometry = rebuild.response.geometry.find(
     ({ featureId }) => featureId === selection.featureId,
   )
+  if (
+    selection.outputRole === "result" &&
+    !geometry?.geometry.bodies?.some((body) => body.outputRole === "result")
+  )
+    return null
   return geometry
     ? selectedSketchSupport(
         selection.featureId as FeatureId,

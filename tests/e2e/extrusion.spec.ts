@@ -22,6 +22,7 @@ async function drawTwoSeparatedProfiles(page: Page) {
     [0.6, 0.62, 0.82, 0.38],
   ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
+    await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
     await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
@@ -38,6 +39,7 @@ async function drawTwoProfilesForDefaultBox(page: Page) {
     [0.72, 0.56, 0.82, 0.44],
   ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
+    await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
     await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
@@ -54,6 +56,7 @@ async function drawTwoProfilesInsideDefaultBox(page: Page) {
     [0.52, 0.54, 0.545, 0.46],
   ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
+    await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
     await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
@@ -262,7 +265,7 @@ test.describe("selector-backed extrusion", () => {
     await expect(form.getByText("Sketch 1 · Profile 2", { exact: true })).toBeVisible()
     await expect(viewport).toHaveAttribute("data-preview-status", "ready", { timeout: 120_000 })
     await form.getByRole("button", { name: "Cancel" }).click()
-    await expect(profilePicker).toHaveValue("")
+    await expect(profilePicker.locator("option:checked")).toHaveText("Sketch 1 · Profile 1")
 
     await profilePicker.selectOption({ label: "Sketch 1 · Profile 1" })
     await extrudeCommand(page).click()
@@ -344,7 +347,7 @@ test.describe("selector-backed extrusion", () => {
     const extrudeCommand = page
       .getByRole("toolbar", { name: "Model commands" })
       .getByRole("button", { name: "Extrude", exact: true })
-    await expect(extrudeCommand).toBeDisabled()
+    await expect(extrudeCommand).toBeEnabled()
     const canvas = viewport.locator("canvas")
     const bounds = await canvas.boundingBox()
     if (!bounds) throw new Error("The geometry canvas has no measurable bounds.")
@@ -620,12 +623,12 @@ test.describe("selector-backed extrusion", () => {
     await drawRectangle(page)
     await page.getByRole("button", { name: "Finish sketch" }).click()
     await extrudeCommand(page).click()
-    await page
-      .getByRole("form", { name: "Extrude profile" })
-      .getByRole("button", { name: "Create extrusion" })
-      .click()
+    const extrusion = page.getByRole("form", { name: "Extrude profile" })
+    await extrusion.getByRole("button", { name: "Create extrusion" }).click()
+    await expect(extrusion).toHaveCount(0, { timeout: 30_000 })
 
     const viewport = page.getByRole("region", { name: "3D viewport" })
+    await expect(viewport).toHaveAttribute("data-preview-status", "idle")
     await expect(viewport).toHaveAttribute("data-rendered-feature-count", "1", {
       timeout: 120_000,
     })
@@ -713,7 +716,6 @@ test.describe("selector-backed extrusion", () => {
       timeout: 120_000,
     })
     await page.getByRole("treeitem", { name: "Sketch 2" }).click()
-    await page.getByRole("button", { name: "Edit sketch", exact: true }).click()
     await expect(support.locator("option:checked")).toHaveText(sideLabel)
     await page.getByRole("button", { name: "Orbit 3D view", exact: true }).click()
     await expect(page.locator("section[data-sketch-context-mode='orbit']")).toHaveAttribute(

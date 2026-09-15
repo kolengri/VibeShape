@@ -5,6 +5,7 @@ import {
   rebuildDocumentFeatures,
   resolveDocumentFeatureParameters,
 } from "@vibeshape/application/feature-rebuild"
+import { terminalBodyGeometry } from "@vibeshape/application/model-bodies"
 import {
   createFeatureTypeRegistry,
   createModuleRegistry,
@@ -12,11 +13,9 @@ import {
   documentCoreModule,
   documentSnapshotSchema,
   type FeatureTypeRegistry,
-  featureBodyDependencyIds,
   featureCoreModule,
   partDesignFeatureTypeHandlers,
   partDesignModule,
-  readDatumPlaneFeatureParameters,
   referenceGeometryFeatureTypeHandlers,
   referenceGeometryModule,
   type SketchRecord,
@@ -145,18 +144,7 @@ async function sha256(value: string) {
 }
 
 function cloneGeometry(record: FeatureGeometryRecord): FeatureGeometryRecord {
-  return {
-    ...record,
-    geometry: {
-      ...record.geometry,
-      mesh: {
-        positions: record.geometry.mesh.positions.slice(),
-        normals: record.geometry.mesh.normals.slice(),
-        indices: record.geometry.mesh.indices.slice(),
-        triangleFaceIds: record.geometry.mesh.triangleFaceIds.slice(),
-      },
-    },
-  }
+  return structuredClone(record)
 }
 
 function transferablesFor(response: DocumentWorkerResponse) {
@@ -165,17 +153,21 @@ function transferablesFor(response: DocumentWorkerResponse) {
   }
   if (response.type !== "documentRebuilt") return []
   return [
-    ...response.geometry.flatMap(({ geometry }) => [
-      geometry.mesh.positions.buffer as ArrayBuffer,
-      geometry.mesh.normals.buffer as ArrayBuffer,
-      geometry.mesh.indices.buffer as ArrayBuffer,
-      geometry.mesh.triangleFaceIds.buffer as ArrayBuffer,
-    ]),
-    ...response.sketches.flatMap((sketch) => [
-      sketch.curvePositions.buffer as ArrayBuffer,
-      sketch.constructionCurvePositions.buffer as ArrayBuffer,
-      sketch.pointPositions.buffer as ArrayBuffer,
-      sketch.constructionPointPositions.buffer as ArrayBuffer,
+    ...new Set([
+      ...response.geometry.flatMap(({ geometry }) =>
+        [geometry.mesh, ...(geometry.bodies ?? []).map(({ mesh }) => mesh)].flatMap((mesh) => [
+          mesh.positions.buffer as ArrayBuffer,
+          mesh.normals.buffer as ArrayBuffer,
+          mesh.indices.buffer as ArrayBuffer,
+          mesh.triangleFaceIds.buffer as ArrayBuffer,
+        ]),
+      ),
+      ...response.sketches.flatMap((sketch) => [
+        sketch.curvePositions.buffer as ArrayBuffer,
+        sketch.constructionCurvePositions.buffer as ArrayBuffer,
+        sketch.pointPositions.buffer as ArrayBuffer,
+        sketch.constructionPointPositions.buffer as ArrayBuffer,
+      ]),
     ]),
   ]
 }
@@ -188,7 +180,11 @@ async function exportThreeMfDocument(
   const result = await engine.exportPrintMeshes({ documentId: document.id, features })
   if (
     result.meshes.length !== features.length ||
-    result.meshes.some((mesh, index) => mesh.featureId !== features[index]?.featureId)
+    result.meshes.some(
+      (mesh, index) =>
+        mesh.featureId !== features[index]?.featureId ||
+        mesh.outputRole !== features[index]?.outputRole,
+    )
   ) {
     throw new Error("Print mesh export returned mismatched feature bodies.")
   }
@@ -205,33 +201,13 @@ async function exportThreeMfDocument(
 }
 
 function terminalExportFeatures(state: FeatureRebuildState) {
-  const successfulHashes = new Map(
-    state.evaluation.records.flatMap((record) =>
-      record.status === "succeeded" ? [[record.featureId, record.contentHash] as const] : [],
-    ),
-  )
-  const consumedFeatureIds = new Set<string>()
-  for (const feature of state.features) {
-    if (!successfulHashes.has(feature.id)) continue
-    for (const dependencyId of featureBodyDependencyIds(feature)) {
-      if (successfulHashes.has(dependencyId)) consumedFeatureIds.add(dependencyId)
-    }
-  }
-  const solidFeatureIds = new Set(
-    state.geometry.flatMap((record) =>
-      record.geometry.shape.solidCount > 0 ? [record.featureId] : [],
-    ),
-  )
-
-  return state.features.flatMap((feature) => {
-    const contentHash = successfulHashes.get(feature.id)
-    return contentHash &&
-      solidFeatureIds.has(feature.id) &&
-      !consumedFeatureIds.has(feature.id) &&
-      readDatumPlaneFeatureParameters(feature) === null
-      ? [{ featureId: feature.id, contentHash }]
-      : []
-  })
+  const bodies = terminalBodyGeometry(state)
+  if (!bodies) throw new Error("Exact terminal body geometry is unavailable.")
+  return bodies.map(({ featureId, contentHash, outputRole }) => ({
+    featureId,
+    contentHash,
+    ...(outputRole === undefined ? {} : { outputRole }),
+  }))
 }
 
 function retainedFeatureContent(state: FeatureRebuildState) {
@@ -347,18 +323,18 @@ export class DocumentWorkerRuntime {
       return
     }
 
-    const features = terminalExportFeatures(state)
-    if (features.length === 0) {
-      this.#postFailure(
-        request,
-        "no-exportable-bodies",
-        "The current document does not contain a terminal solid body to export.",
-        false,
-      )
-      return
-    }
-
     try {
+      const features = terminalExportFeatures(state)
+      if (features.length === 0) {
+        this.#postFailure(
+          request,
+          "no-exportable-bodies",
+          "The current document does not contain a terminal solid body to export.",
+          false,
+        )
+        return
+      }
+
       const exported =
         request.format === "3mf"
           ? await exportThreeMfDocument(this.engine, document, features)

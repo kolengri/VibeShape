@@ -1,5 +1,8 @@
 # VibeShape documentation
 
+Current delivery priorities: [Local CAD and MCP development plan](product/local-cad-and-mcp-development-plan.md)
+(working-tree audit, 2026-09-04).
+
 ## Recommended reading order
 
 1. [Product vision and scope](product/vision-and-scope.md).

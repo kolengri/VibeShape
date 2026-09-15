@@ -22,6 +22,7 @@ async function drawTwoProfilesAwayFromOriginAxes(page: Page) {
     [0.6, 0.42, 0.82, 0.28],
   ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
+    await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
     await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
@@ -38,6 +39,7 @@ async function drawOverlappingSweepProfilesForModifyingRevolve(page: Page) {
     [0.6, 0.68, 0.74, 0.8],
   ] as const
   for (const [startX, startY, endX, endY] of rectangles) {
+    await page.keyboard.press("Escape")
     await selectSketchTool(page, "Rectangle tools", "Rectangle G")
     await page.mouse.click(bounds.x + bounds.width * startX, bounds.y + bounds.height * startY)
     await page.mouse.click(bounds.x + bounds.width * endX, bounds.y + bounds.height * endY)
@@ -183,9 +185,7 @@ test.describe("selector-backed revolve", () => {
         .selectOption({ label: "Sketch 1 · Profile 1" })
       await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
       const form = page.getByRole("form", { name: "Revolve profile" })
-      await form
-        .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
-        .click()
+      await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
       await page.getByRole("button", { name: "Hide Box 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
       await page.getByRole("button", { name: "Show Box 1" }).click()
@@ -218,7 +218,7 @@ test.describe("selector-backed revolve", () => {
       await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
       const downstreamForm = page.getByRole("form", { name: "Revolve profile" })
       await downstreamForm
-        .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
+        .getByRole("button", { name: "Select a profile in the 3D viewport" })
         .click()
       await page.getByRole("button", { name: "Hide Box 1" }).click()
       await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
@@ -268,9 +268,7 @@ test.describe("selector-backed revolve", () => {
       .selectOption({ label: "Sketch 1 · Profile 1" })
     await toolbar.getByRole("button", { name: "Revolve", exact: true }).click()
     const form = page.getByRole("form", { name: "Revolve profile" })
-    await form
-      .getByRole("button", { name: "Select a profile in the 3D viewport: Sketch 1 · Profile 1" })
-      .click()
+    await form.getByRole("button", { name: "Select a profile in the 3D viewport" }).click()
     await clickSavedProfileInViewport(page, "Sketch 1 · Profile 2", true)
     await form.getByRole("combobox", { name: "Result operation" }).selectOption("intersect")
 

@@ -8,13 +8,19 @@
   "exports": {
     ".": "./src/index.ts",
     "./feature-rebuild": "./src/feature-rebuild.ts",
+    "./model-measurements": "./src/model-measurements.ts",
+    "./model-bodies": "./src/model-bodies.ts",
+    "./disposable-document-preview": "./src/disposable-document-preview.ts",
     "./persistent-document-session": "./src/persistent-document-session.ts",
     "./versioned-persistence-adapter": "./src/versioned-persistence-adapter.ts",
     "./versioned-document-session": "./src/versioned-document-session.ts",
     "./sketch-curve-projection": "./src/sketch-curve-projection.ts",
     "./support-frame": "./src/support-frame.ts",
     "./pierce-point": "./src/pierce-point.ts",
-    "./sketch-display": "./src/sketch-display.ts"
+    "./sketch-display": "./src/sketch-display.ts",
+    "./selected-edge-resolution": "./src/selected-edge-resolution.ts",
+    "./model-edges": "./src/model-edges.ts",
+    "./model-body-topology": "./src/model-body-topology.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

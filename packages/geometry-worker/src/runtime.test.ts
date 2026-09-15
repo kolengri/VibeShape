@@ -179,6 +179,14 @@ class FakeEngine implements GeometryKernelEngine {
         shape: result.shape,
         topologyCandidates: result.topologyCandidates,
         mesh: result.mesh,
+        bodies: [
+          {
+            outputRole: "result",
+            shape: result.shape,
+            topologyCandidates: result.topologyCandidates,
+            mesh: result.mesh,
+          },
+        ],
         cache: { brepHit: false },
         timings: { evaluationMs: 1, tessellationMs: 1, totalMs: 2 },
       },
@@ -395,6 +403,7 @@ describe("GeometryWorkerRuntime", () => {
       cache: { brepHit: false },
     })
     expect(transfers.at(-1)).toHaveLength(4)
+    expect(new Set(transfers.at(-1)).size).toBe(4)
   })
 
   it("rejects mismatched feature environments and hashes before engine execution", async () => {

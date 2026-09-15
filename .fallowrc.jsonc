@@ -4,6 +4,7 @@
   "entry": [
     "apps/web/public/persistence-spike-sw.js",
     "apps/web/src/spikes/geometry-worker.ts",
+    "apps/web/src/spikes/body-selection.tsx",
     "apps/web/src/spikes/extension-sandbox.ts",
     "apps/web/src/spikes/feature-rebuild.ts",
     "apps/web/src/spikes/persistence.ts",
@@ -13,6 +14,7 @@
     "apps/web/src/spikes/three-mf.ts",
     "apps/web/src/spikes/topology.ts",
     "apps/slicer-bridge/src/index.ts",
+    "apps/mcp-server/src/index.ts",
     "playwright.formats.config.ts",
     "playwright.extension.config.ts",
     "playwright.persistence.config.ts",
@@ -22,6 +24,11 @@
   "workspaces": {
     "patterns": ["apps/*", "packages/*"]
   },
+  // Bun resolves these transitive security pins in bun.lock; Fallow currently checks pnpm lockfiles only.
+  "ignoreDependencyOverrides": [
+    { "package": "fast-uri", "source": "package.json" },
+    { "package": "qs", "source": "package.json" }
+  ],
   "ignorePatterns": [
     "**/__generated__/**",
     "**/generated/**",
@@ -38,6 +45,7 @@
   "boundaries": {
     "zones": [
       { "name": "web", "patterns": ["apps/web/**"] },
+      { "name": "mcp-server", "patterns": ["apps/mcp-server/**"] },
       { "name": "slicer-bridge", "patterns": ["apps/slicer-bridge/**"] },
       { "name": "i18n", "patterns": ["packages/i18n/**"] },
       { "name": "domain", "patterns": ["packages/domain/**"] },
@@ -76,6 +84,7 @@
       { "from": "slicer-handoff", "allow": [] },
       // The loopback adapter depends only on its strict shared contract.
       { "from": "slicer-bridge", "allow": ["slicer-handoff"] },
+      { "from": "mcp-server", "allow": ["automation-api"] },
       // Use-case coordination depends on pure domain policy and serializable runtime contracts.
       { "from": "application", "allow": ["domain", "protocol"] },
       // The document worker composes application policy, native geometry, and approved file formats.

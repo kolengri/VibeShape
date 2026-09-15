@@ -59,6 +59,30 @@ const controller = {
   report: {
     mode: "read-write",
     snapshot: { features: [feature], revision: 7, sketches: [sketch] },
+    rebuild: {
+      ok: true,
+      response: {
+        evaluation: {
+          records: [{ featureId, status: "succeeded", contentHash: "a".repeat(64) }],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [featureId],
+          reusedFeatureIds: [],
+        },
+        geometry: [
+          {
+            featureId,
+            contentHash: "a".repeat(64),
+            meshPolicy: { chordTolerance: 0.05, angularTolerance: 0.1 },
+            geometry: {
+              shape: { solidCount: 1 },
+              mesh: {},
+              topologyCandidates: [],
+            },
+          },
+        ],
+        modelReferenceEvidence: [],
+      },
+    },
   },
 } as unknown as DocumentControllerState
 
@@ -421,6 +445,34 @@ describe("ModelTree History disclosure", () => {
     expect(screen.getByRole("treeitem", { name: "History" }).getAttribute("aria-expanded")).toBe(
       "false",
     )
+  })
+})
+
+describe("ModelTree workspace readiness", () => {
+  it("keeps workspace activation locked while the document session is loading", async () => {
+    const user = userEvent.setup()
+    const onWorkspaceChange = vi.fn()
+    const loadingController = { ...controller, status: "loading" } as DocumentControllerState
+
+    renderTree({ controller: loadingController, onWorkspaceChange })
+
+    const variables = screen.getByRole("treeitem", { name: "Variables" })
+    expect((variables as HTMLButtonElement).disabled).toBe(true)
+    await user.click(variables)
+    expect(onWorkspaceChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps workspace activation available for a ready read-only document", async () => {
+    const user = userEvent.setup()
+    const onWorkspaceChange = vi.fn()
+    const readOnlyController = {
+      ...controller,
+      report: { ...controller.report, mode: "read-only" },
+    } as unknown as DocumentControllerState
+
+    renderTree({ controller: readOnlyController, onWorkspaceChange })
+    await user.click(screen.getByRole("treeitem", { name: "Variables" }))
+    expect(onWorkspaceChange).toHaveBeenCalledWith("variables")
   })
 })
 

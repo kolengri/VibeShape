@@ -205,6 +205,8 @@ class FakeEngine implements GeometryKernelEngine {
   exportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
   printMeshExportedFeatures: Array<{ featureId: string; contentHash: string }[]> = []
   printMeshFeatureIdOverride: string | null = null
+  printMeshOutputRoleOverride: string | null = null
+  bodyRoles: string[] | null = null
 
   async initialize() {
     this.initialized = true
@@ -229,7 +231,21 @@ class FakeEngine implements GeometryKernelEngine {
     reportProgress("feature-evaluation", 0.35)
     reportProgress("feature-tessellation", 0.7)
     reportProgress("complete", 1)
-    return { ok: true, result: geometry() }
+    const result = geometry()
+    if (this.bodyRoles) {
+      result.bodies = this.bodyRoles.map((outputRole) => ({
+        outputRole,
+        shape: result.shape,
+        mesh: result.mesh,
+        topologyCandidates: result.topologyCandidates,
+      }))
+      result.shape = {
+        ...result.shape,
+        volume: this.bodyRoles.length,
+        solidCount: this.bodyRoles.length,
+      }
+    }
+    return { ok: true, result }
   }
 
   async exportDocument(input: Parameters<GeometryKernelEngine["exportDocument"]>[0]) {
@@ -243,8 +259,11 @@ class FakeEngine implements GeometryKernelEngine {
   async exportPrintMeshes(input: Parameters<GeometryKernelEngine["exportPrintMeshes"]>[0]) {
     this.printMeshExportedFeatures.push([...input.features])
     return {
-      meshes: input.features.map(({ featureId }) => ({
+      meshes: input.features.map(({ featureId, outputRole }) => ({
         featureId: this.printMeshFeatureIdOverride ?? featureId,
+        ...(outputRole === undefined
+          ? {}
+          : { outputRole: this.printMeshOutputRoleOverride ?? outputRole }),
         vertices: [
           0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1,
           1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
@@ -304,13 +323,13 @@ function request(
   }
 }
 
-function createHarness(solveSketch: SketchSolvePort | null = null) {
+function createHarness(solveSketch: SketchSolvePort | null = null, transferBuffers = false) {
   const messages: DocumentWorkerResponse[] = []
   const transfers: Transferable[][] = []
   const engine = new FakeEngine()
   const endpoint: DocumentWorkerEndpoint = {
     postMessage(message, transfer = []) {
-      messages.push(message)
+      messages.push(transferBuffers ? structuredClone(message, { transfer }) : message)
       transfers.push(transfer)
     },
   }
@@ -1278,4 +1297,72 @@ describe("DocumentWorkerRuntime", () => {
       diagnostic: { code: "invalid-request" },
     })
   })
+})
+
+describe("document body catalogs", () => {
+  it("transfers deduplicated body buffers without detaching retained rebuild state", async () => {
+    const { engine, runtime, messages, transfers } = createHarness(null, true)
+    engine.bodyRoles = ["result"]
+    await runtime.handle(request("catalog-initial"))
+    await runtime.handle(request("catalog-reused"))
+    const initial = rebuilt(messages, "catalog-initial")
+    const reused = rebuilt(messages, "catalog-reused")
+    expect(reused.evaluation.evaluatedFeatureIds).toEqual([])
+    expect(reused.evaluation.reusedFeatureIds).toHaveLength(3)
+    expect(engine.evaluatedFeatureIds).toHaveLength(3)
+    expect(transfers.filter((entry) => entry.length).map((entry) => entry.length)).toEqual([12, 12])
+    for (const response of [initial, reused]) {
+      for (const { geometry: result } of response.geometry) {
+        expect(result.mesh.positions.byteLength).toBe(12)
+        expect(result.bodies?.[0]?.mesh.positions.buffer).toBe(result.mesh.positions.buffer)
+      }
+    }
+    expect(initial.geometry[0]?.geometry.mesh.positions.buffer).not.toBe(
+      reused.geometry[0]?.geometry.mesh.positions.buffer,
+    )
+  })
+
+  it.each(["step", "stl", "3mf"] as const)(
+    "exports every named sibling through %s",
+    async (format) => {
+      const { engine, runtime, messages } = createHarness()
+      engine.bodyRoles = ["pattern.instance.0", "pattern.instance.1", "pattern.instance.2"]
+      const rebuild = request("catalog-export")
+      if (rebuild.type !== "rebuildDocument") throw new Error("Expected rebuild request.")
+      await runtime.handle({ ...rebuild, document: { ...rebuild.document, features: [box()] } })
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: "export-catalog",
+        documentId: documentIds.primary,
+        revision: 1,
+        generation: 1,
+        type: "exportDocument",
+        format,
+      })
+      const exported = format === "3mf" ? engine.printMeshExportedFeatures : engine.exportedFeatures
+      expect(exported.at(-1)).toEqual(
+        engine.bodyRoles.map((outputRole) => ({
+          featureId: featureIds.box,
+          contentHash: expect.any(String),
+          outputRole,
+        })),
+      )
+      expect(messages.at(-1)).toMatchObject({ type: "documentExported", bodyCount: 3 })
+      if (format !== "3mf") return
+      engine.printMeshOutputRoleOverride = "pattern.instance.0"
+      await runtime.handle({
+        protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+        requestId: "wrong-catalog-role",
+        documentId: documentIds.primary,
+        revision: 1,
+        generation: 1,
+        type: "exportDocument",
+        format,
+      })
+      expect(messages.at(-1)).toMatchObject({
+        type: "failure",
+        diagnostic: { code: "export-failed" },
+      })
+    },
+  )
 })

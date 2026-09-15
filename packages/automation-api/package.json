@@ -8,7 +8,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./drafts": "./src/drafts.ts",
-    "./queries": "./src/queries.ts"
+    "./draft-inspection": "./src/draft-inspection.ts",
+    "./queries": "./src/queries.ts",
+    "./local-tools": "./src/local-tools.ts",
+    "./local-session": "./src/local-session.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

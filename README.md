@@ -10,6 +10,19 @@ By default, all computation, files, and model history remain on the user's devic
 
 ## Status
 
+Fillet and Chamfer are persistent Part Design features over all or selected edges of one explicit solid target.
+Both support unit and variable expressions, exact disposable previews, edit/reopen, and ordinary export.
+Selected edges support graphical/keyboard picking, retained references, explicit repair, and upstream dimension edits.
+Revolve already supports origin, sketch-line, and stable linear
+model-edge axes plus multi-profile New/Add/Remove/Intersect; it is not a missing primitive.
+See [ADR-0040](docs/adr/0040-selected-edge-treatments.md) for the selected-edge contract and v1 compatibility.
+The Measure task now reads exact per-output volume, surface area, bounding dimensions, and solid count
+through a bounded query shared with the automation API. Measurements follow the current document
+revision and project units. [ADR-0041](docs/adr/0041-revision-bound-model-measurements.md) defines the
+read contract. Exact automation drafts now connect to ordinary browser persistence and session Undo/Redo through a trusted application adapter; commits require a host-owned browser review. A local stdio MCP adapter now pairs an explicitly enabled browser document and exposes thirty tools, including sketch/Extrude/Revolve authoring, variables, selected-edge Fillet/Chamfer, and bounded committed/draft inspection. Source geometry and selected treatments can be created and repaired in one draft before one browser approval.
+
+Committed document Undo/Redo now saves revisioned changes through the ordinary history and rebuild path. Navigation stacks last for the current project session; see [ADR-0039](docs/adr/0039-committed-document-undo.md). Full CAD/MCP command coverage remains unfinished.
+
 Sketch Transform supports preselection and post-selection with a canvas manipulator for free or
 axis-constrained translation, rotation, and positive uniform scale. Its live SVG overlay stays local
 to the viewport and commits one schema-validated domain edit only on explicit apply; cancel leaves
@@ -30,13 +43,13 @@ Document protocol v16 sends a runtime-validated committed snapshot, including pr
 
 The first sketch solve lazily loads the exact reviewed SolveSpace v3.2 ES module and `251,544`-byte WASM asset. Stable document entity IDs compile to ephemeral native handles; solved points, circles, conflict IDs, degrees of freedom, and residuals map back to stable identities. Authored variable expressions are resolved before native execution, branch continuation is keyed by stable IDs and document revision, and drag targets are applied last. Every valid solve also derives deterministic line, circular-arc, circle, full-ellipse, and elliptical-arc profiles, analytical area and bounds, outer/hole/island nesting, and bounded fail-closed diagnostics without exposing native handles. A document-scoped session replaces a failed worker, increments generation, rebuilds the latest successful semantic snapshot, and retries one recoverable rebuild, export, or sketch solve.
 
-The browser integration harness proves main-thread session → document worker → variable resolution → domain DAG → application coordinator → OCCT, plus the real generated SolveSpace WASM path. It covers selective geometry rebuild, hard worker replacement, exact-revision export, a variable-driven fully constrained transient and committed sketch, selector-backed exact extrusion, continuation/drag solves, and a 1,000-point under-constrained sketch within the declared solve and heap budgets. Stable profile-selector schema v0 records canonical boundary entity IDs and resolves the same region after transient loop indices change while failing closed on missing or ambiguous intent. The product shell now makes Sketch → selected profile → Extrude its primary path: activating a saved sketch enters editing directly, an open profile can be saved and handed to Extrude through one single-flight action, and direct Box and Cylinder commands remain in a secondary advanced path. A selected supported planar Box face, Cylinder cap, or Extrusion cap can start a sketch immediately through a stable `TopoRef`; the resulting new-body extrusion remains independent from its support body. The interactive orthographic SVG sketcher authors Point, Line/Polyline, Rectangle, Circle, Ellipse, circular and elliptical arcs, and Construction geometry; supports entity and stable region selection, point dragging, cascade Delete, pan, zoom, local undo/redo, every P0 constraint family, variable-ready length and angle dimensions, and visible solver conflicts; and reports live worker-owned SolveSpace status, degrees of freedom, and analytical profiles without committing intermediate edits. It also exposes the TanStack Form-backed Variables table; creates and edits persisted ordered Boolean/Subtract and new/add/remove/intersect extrusion features; protects dependency-owned feature, support-feature, and referenced-sketch deletion; downloads 3MF, STEP, STL, and deterministic `.vshape` v0 backups; and renders authoritative worker meshes through raw Three.js/WebGL2. Origin datums and committed features have independent visibility controls, while successful geometry rebuilds persist disposable project-list previews. `.vshape` round-trip tests preserve stable variable IDs, formulas, feature sources, analytical sketch records, and sketch dimension expressions. Multi-profile feature input, offset/angular datum features, general topology repair, guided conflict repair, interior-intersection splitting, body/edge/vertex selection, committed document undo/redo, `.vshape` migrations, configurable print profiles, and persistent export reports remain open.
+The browser integration harness proves main-thread session → document worker → variable resolution → domain DAG → application coordinator → OCCT, plus the real generated SolveSpace WASM path. It covers selective geometry rebuild, hard worker replacement, exact-revision export, a variable-driven fully constrained transient and committed sketch, selector-backed exact extrusion, continuation/drag solves, and a 1,000-point under-constrained sketch within the declared solve and heap budgets. Stable profile-selector schema v0 records canonical boundary entity IDs and resolves the same region after transient loop indices change while failing closed on missing or ambiguous intent. The product shell now makes Sketch → selected profile → Extrude its primary path: activating a saved sketch enters editing directly, an open profile can be saved and handed to Extrude through one single-flight action, and direct Box and Cylinder commands remain in a secondary advanced path. A selected supported planar Box face, Cylinder cap, or Extrusion cap can start a sketch immediately through a stable `TopoRef`; the resulting new-body extrusion remains independent from its support body. The interactive orthographic SVG sketcher authors Point, Line/Polyline, Rectangle, Circle, Ellipse, circular and elliptical arcs, and Construction geometry; supports entity and stable region selection, point dragging, cascade Delete, pan, zoom, local undo/redo, every P0 constraint family, variable-ready length and angle dimensions, and visible solver conflicts; and reports live worker-owned SolveSpace status, degrees of freedom, and analytical profiles without committing intermediate edits. It also exposes the TanStack Form-backed Variables table; creates and edits persisted ordered Boolean/Subtract and new/add/remove/intersect extrusion features; protects dependency-owned feature, support-feature, and referenced-sketch deletion; downloads 3MF, STEP, STL, and deterministic `.vshape` v0 backups; and renders authoritative worker meshes through raw Three.js/WebGL2. Origin datums and committed features have independent visibility controls, while successful geometry rebuilds persist disposable project-list previews. `.vshape` round-trip tests preserve stable variable IDs, formulas, feature sources, analytical sketch records, and sketch dimension expressions. Multi-profile feature input, offset/angular datum features, general topology repair, guided conflict repair, interior-intersection splitting, body/edge/vertex selection, restart-persistent undo navigation, `.vshape` migrations, configurable print profiles, and persistent export reports remain open.
 
 The export dialog also remembers an allowlisted desktop slicer and sends its generated 3MF through the explicitly paired, authenticated VibeShape Slicer Bridge on `127.0.0.1`. The source bridge starts OrcaSlicer, Bambu Studio, PrusaSlicer, Snapmaker Orca, or UltiMaker Cura without a shell. If the bridge is unpaired, unavailable, or cannot launch the selected application, the browser downloads the same 3MF and reports the fallback instead of claiming that the slicer opened. Signed bridge installers and background startup remain release-packaging work.
 
 The local-project library now reads bounded, strict IndexedDB summaries; identifies the current project; creates, switches, and duplicates projects; and permanently deletes an explicitly confirmed inactive project in one revision- and lease-checked transaction. Successful geometry rebuilds also produce a bounded isometric SVG preview from authoritative terminal meshes. The exact-revision preview is disposable derived data in an additive IndexedDB v2 store: it cannot block semantic saves, does not enter `.vshape`, fails open to an accessible placeholder, copies separately after semantic duplication, and is removed with project deletion. Duplication verifies the source history, assigns a new document ID and globally unique command IDs, preserves document-scoped variable and feature identities plus authored expressions, appends an explicit copy-name event, and publishes the result atomically without claiming an external backup. Active-project deletion is blocked until the user switches away; richer storage-state presentation remains required before the P0 library is complete.
 
-`@vibeshape/automation-api` provides strict lifecycle schemas and a bounded revision-tagged document-summary view; `@vibeshape/automation-host` coordinates host-generated, owner-bound, expiring disposable drafts over injected document ports and ordinary query and command dispatchers. There is no MCP transport or SDK dependency yet. SPK-001 through SPK-005 clear the controlled OCCT worker, SolveSpace solver, stable topology, minimal 3MF interoperability, and semantic persistence/recovery gates. SPK-006 proceeds with reduced scope: immutable exact-integrity packages, no-import WebAssembly features, capabilities, restricted states, and opaque iframe UI pass locally in Chromium, Firefox, and WebKit, while arbitrary same-origin workspace JavaScript is rejected. Advanced sketch inference and repair, general production persistence, and extension workflows remain incomplete.
+`@vibeshape/automation-api` provides strict lifecycle schemas and a bounded revision-tagged document-summary view; `@vibeshape/automation-host` coordinates host-generated, owner-bound, expiring disposable drafts over injected document ports and ordinary query and command dispatchers. `apps/mcp-server` now adds the local stdio transport and server-only MCP SDK; see [ADR-0043](docs/adr/0043-local-stdio-mcp-browser-session.md) for its supported subset and limits. SPK-001 through SPK-005 clear the controlled OCCT worker, SolveSpace solver, stable topology, minimal 3MF interoperability, and semantic persistence/recovery gates. SPK-006 proceeds with reduced scope: immutable exact-integrity packages, no-import WebAssembly features, capabilities, restricted states, and opaque iframe UI pass locally in Chromium, Firefox, and WebKit, while arbitrary same-origin workspace JavaScript is rejected. Advanced sketch inference and repair, general production persistence, and extension workflows remain incomplete.
 
 Key decisions:
 
@@ -49,7 +62,7 @@ Key decisions:
 - internationalization: typed ICU messages through **use-intl** in a local-first `@vibeshape/i18n` package;
 - code quality: **Biome + TypeScript + Fallow**, with separate formatting/lint, type, and changed-code architecture gates;
 - extensibility: an accepted reduced-scope **capability-based extension platform** with exact-integrity no-import WebAssembly features and opaque iframe UI; executable third-party support remains gated by production modeling, memory, document, and recovery work;
-- modularity and automation: a proposed **microkernel plus cohesive first-party modules**, with a local MCP bridge planned over the same revisioned query, draft, preview, and command contracts used by the application;
+- modularity and automation: a proposed **microkernel plus cohesive first-party modules**, with a local MCP bridge implemented over the same revisioned query, draft, preview, and command contracts used by the application;
 - heavy CAD operations: a dedicated **Web Worker**;
 - persistence: IndexedDB/Dexie for the model and journal, OPFS for large binary caches, and an exportable `.vshape` container for portability;
 - primary print format: **3MF**; STEP preserves exact geometry, while STL remains a compatibility format;
@@ -119,21 +132,25 @@ bun run fallow:audit
 bun run test:e2e
 ```
 
-Automatic pull-request CI intentionally uses one fast job and omits production build and Playwright. The full local result is recorded before merge to conserve GitHub Actions minutes.
+Automatic pull-request CI uses one fast job including the production build. Playwright remains a local gate. Changes to sketch/profile workflows or shared CAD task lifecycle require the [focused CAD baseline](docs/testing-strategy.md#cad-workflow-baseline-gate) and its recorded complete result before merge.
 
 Run `bun ci` to verify a frozen installation from `bun.lock`. `bun run solvespace:verify:runtime` verifies the promoted ES module, WASM, and matching public corresponding-source bundle before tests or production bundling. The first local cross-browser run may require `bunx playwright install chromium firefox webkit`; use `bun run test:e2e:chromium` for the fastest local E2E feedback and `bun run test:e2e:ui` for Playwright UI mode. `bun run shadcn:add <component>` adds one reviewed component through the app workspace; `add --all` is prohibited. `bun run occt:prepare` verifies the pinned controlled OCCT inputs, `bun run occt:build:source` performs the local Docker source build, `bun run occt:evidence:memory` runs the local allocator matrix, `bun run occt:evidence:performance` runs the local controlled Chromium budget, `bun run occt:evidence:step` exports through the browser worker and validates the STEP file with local headless FreeCAD, and `bun run occt:bundle:compliance` creates the verified corresponding-source archive from the staged package. Use `bun run occt:verify:compliance` to recheck an existing bundle. `bun run solvespace:prepare` verifies pinned solver sources, `bun run solvespace:build` performs the local source build, `bun run solvespace:evidence` runs the Bun and Chromium-worker corpus, and `bun run solvespace:bundle:compliance` creates its corresponding-source archive. `bun run topology:evidence` runs the dedicated stable-reference corpus in local Chromium. `bun run formats:evidence:3mf` generates the deterministic Core fixture and verifies it with local XML tooling plus at least two independent slicer families. `bun run persistence:evidence` verifies atomic history, forced-page recovery, writer takeover, quota rollback, OPFS degradation, and cached-shell offline reopen in Chromium, Firefox, and WebKit. `bun run extension:evidence` verifies the extension package and sandbox corpus in the same three engines. Heavy OCCT, SolveSpace, topology, slicer, persistence, and extension evidence paths are local-only, have no GitHub Actions workflow, reject truthy `CI`, and keep generated artifacts under `.artifacts`.
 
 ## Next practical step
 
-Implementation continues through the **Phase 1 foundation vertical slice**, not interface expansion. The Phase 0 spike gates are recorded; accepted adapters are promoted only through production-oriented contracts with local evidence. The next boundaries are:
+Follow the [local CAD and MCP development plan](docs/product/local-cad-and-mcp-development-plan.md).
+Revolve, Fillet/Chamfer, sketch-point Hole, selected-edge repair, committed Undo/Redo, bounded measurements, and the first
+paired local MCP workflow now have implementation evidence. The next boundaries are:
 
-1. Extend the implemented sketch-to-new/add/remove/intersect flow with intersection splitting, multi-region feature input, and interactive solid preview.
-2. Add topology repair events over the accepted `TopoRef` and downstream-failure contracts.
-3. Add configurable print-quality profiles, progress, cancellation, validation, and persistent reports around the implemented deterministic 3MF/STEP/STL export path.
-4. Extend `.vshape` v0 with migrations, explicit same-ID restore/copy policy, backup reminders, bulk export, and progressive system pickers; continue persistence work with autosave scheduling policy, BroadcastChannel coordination, persistent cache promotion, and an installed-build update gate.
-5. Before any executable extension release, promote the accepted SPK-006 seams through a deterministic modeling ABI, portable memory policy, production transactions, document locks, persisted update/rollback, and recovery rebuild coverage.
+1. Extend the implemented CAD and variable MCP path with profile/face inspection
+   and the remaining existing CAD workflows, each with matching inspection and review.
+2. Complete the broader CAD workflow baseline and introduce constituent-body identity when an
+   operation requires it.
+3. Add everyday part features in bounded slices: solid patterns, mirror/transform, richer extrusion
+   extents, then shell and more complex profile-based operations.
+4. Complete recovery-to-backup, installation, offline updates, and performance release gates.
 
-If a spike fails, the corresponding ADR must be revisited before the UI is expanded.
+Executable third-party extensions remain subject to their separate production and release gates.
 
 ## Scale estimate
 
@@ -152,3 +169,22 @@ All documentation, architecture records, source identifiers, commit-facing techn
 ## License
 
 VibeShape is distributed under the **GNU General Public License v3.0 or later**. See [LICENSE](LICENSE) and the [licensing strategy](docs/licensing.md).
+
+## Local MCP development preview
+
+Build the editor with `bun run build`, then configure a local stdio MCP client to run `bun` with the
+absolute path to `apps/mcp-server/src/index.ts`. The process writes its editor URL to stderr and
+keeps stdout for MCP. The default is `http://127.0.0.1:43114`; open that URL, open/import a project,
+and choose **Enable AI session**. Use **Disable AI session** to revoke access.
+
+The tool set supports model information, paged model inspection, disposable drafts, box creation,
+variable inspection and editing, all-edge and selected-edge Fillet/Chamfer creation and correction with expressions,
+sketch/Extrude/Revolve creation and editing, exact preview,
+browser-confirmed commit, discard, and STEP/STL/3MF export links. See
+[CAD authoring and inspection](docs/adr/0044-local-mcp-cad-authoring-and-inspection.md) and
+[variables and Chamfer](docs/adr/0045-local-mcp-variables-and-chamfer.md), plus
+[selected-edge inspection and authoring](docs/adr/0046-local-mcp-selected-edge-inspection.md), and
+[draft inspection](docs/adr/0047-local-mcp-draft-inspection.md) for the expanded tool contracts.
+It does not yet expose all editor CAD features. Browser storage at this origin is separate from the
+development server: transfer a project through native backup/import when needed. See
+[the local MCP decision](docs/adr/0043-local-stdio-mcp-browser-session.md) for limits and remaining gates.

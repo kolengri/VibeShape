@@ -4,23 +4,37 @@ import {
   documentSnapshotSchema,
   type FeatureRecord,
   readDatumPlaneFeatureParameters,
+  readHoleFeatureParameters,
   readRevolveFeatureParameters,
 } from "@vibeshape/domain"
+import type { DocumentWorkerResponse } from "@vibeshape/protocol"
 import type { ViewerMesh } from "@vibeshape/viewer/three-viewport"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createBrowserDocumentId } from "../../document/document-controller"
 import { PRODUCT_MESH_POLICY } from "../../document/document-worker-settings"
-import { isBoxFeature, isCylinderFeature } from "../part-design/part-design-tool"
-import { terminalFeatureIds } from "../part-design/terminal-features"
+import { type ModelBodyGeometry, terminalModelBodies } from "../part-design/model-bodies"
+import {
+  isBoxFeature,
+  isChamferFeature,
+  isCylinderFeature,
+  isFilletFeature,
+} from "../part-design/part-design-tool"
 
 type PreviewSession = Pick<ReturnType<typeof createDocumentWorkerSession>, "rebuild" | "terminate">
 
 type PreviewGeometryIdentity = Readonly<{
   contentHash: string
   featureId: string
+  outputRole?: string
 }>
 
-export type FeaturePreviewKind = "datum-plane" | "extrusion" | "primitive" | "revolve"
+export type FeaturePreviewKind =
+  | "edge-treatment"
+  | "hole"
+  | "datum-plane"
+  | "extrusion"
+  | "primitive"
+  | "revolve"
 
 export type FeaturePreviewState = Readonly<{
   candidateMesh?: ViewerMesh
@@ -36,7 +50,12 @@ function createFeaturePreviewCandidateMesh(
 ) {
   const candidate = geometry.find((result) => result.featureId === featureId)
   return candidate
-    ? ({ ...candidate.geometry.mesh, appearance: "preview", featureId } satisfies ViewerMesh)
+    ? ({
+        ...candidate.geometry.mesh,
+        appearance: "preview",
+        featureId,
+        ...(candidate.outputRole === undefined ? {} : { outputRole: candidate.outputRole }),
+      } satisfies ViewerMesh)
     : undefined
 }
 
@@ -60,11 +79,9 @@ export function createFeaturePreviewDocument(
 
 export function createFeaturePreviewMeshes(
   document: DocumentSnapshot,
-  geometry: readonly (PreviewGeometryIdentity &
-    Readonly<{ geometry: { mesh: Omit<ViewerMesh, "featureId"> } }>)[],
+  response: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
   committedGeometry: readonly PreviewGeometryIdentity[],
-) {
-  const terminalIds = terminalFeatureIds(document.features)
+): readonly ViewerMesh[] {
   const datumIds = new Set<string>(
     document.features
       .filter((feature) => readDatumPlaneFeatureParameters(feature) !== null)
@@ -73,17 +90,25 @@ export function createFeaturePreviewMeshes(
   const committedHashes = new Map(
     committedGeometry.map(({ contentHash, featureId }) => [featureId, contentHash]),
   )
-  return geometry
-    .filter(({ featureId }) => terminalIds.has(featureId) || datumIds.has(featureId))
-    .map(({ contentHash, featureId, geometry: result }) => ({
-      ...result.mesh,
+  const bodies = terminalModelBodies(document.features, response, [...datumIds])
+  if (!bodies) return []
+  const modelMeshes = bodies.map(({ geometry: body }: { geometry: ModelBodyGeometry }) => {
+    const { contentHash, featureId, outputRole, mesh } = body
+    return {
+      ...mesh,
       featureId,
-      appearance: datumIds.has(featureId)
-        ? "datum"
-        : committedHashes.get(featureId) === contentHash
-          ? "model"
-          : "preview",
-    })) satisfies readonly ViewerMesh[]
+      ...(outputRole === undefined ? {} : { outputRole }),
+      appearance: committedHashes.get(featureId) === contentHash ? "model" : "preview",
+    }
+  }) satisfies readonly ViewerMesh[]
+  const datumMeshes = response.geometry
+    .filter(({ featureId }) => datumIds.has(featureId))
+    .map(({ featureId, geometry }) => ({
+      ...geometry.mesh,
+      featureId,
+      appearance: "datum" as const,
+    }))
+  return [...modelMeshes, ...datumMeshes]
 }
 
 async function rebuildPreview(
@@ -103,13 +128,15 @@ async function rebuildPreview(
   }
   return {
     candidateMesh: createFeaturePreviewCandidateMesh(response.geometry, candidate.id),
-    meshes: createFeaturePreviewMeshes(document, response.geometry, committedGeometry),
+    meshes: createFeaturePreviewMeshes(document, response, committedGeometry),
   }
 }
 
 export function featurePreviewKind(candidate: FeatureRecord): FeaturePreviewKind {
+  if (readHoleFeatureParameters(candidate)) return "hole"
   if (readDatumPlaneFeatureParameters(candidate)) return "datum-plane"
   if (readRevolveFeatureParameters(candidate)) return "revolve"
+  if (isFilletFeature(candidate) || isChamferFeature(candidate)) return "edge-treatment"
   if (isBoxFeature(candidate) || isCylinderFeature(candidate)) {
     return "primitive"
   }
@@ -120,6 +147,7 @@ export function useFeaturePreview(
   snapshot: DocumentSnapshot | null,
   candidate: FeatureRecord | null,
   committedGeometry: readonly PreviewGeometryIdentity[],
+  sessionActive = candidate !== null,
 ) {
   const [state, setState] = useState<FeaturePreviewState>({ status: "idle", meshes: [] })
   const sequenceRef = useRef(0)
@@ -128,9 +156,10 @@ export function useFeaturePreview(
     () => (snapshot ? createBrowserDocumentId() : null),
     [snapshot?.id],
   )
+  const previewSessionActive = snapshot !== null && sessionActive
 
   useEffect(() => {
-    if (!previewDocumentId) return
+    if (!previewDocumentId || !previewSessionActive) return
     const session = createDocumentWorkerSession(previewDocumentId, {
       retryRecoverableFailure: false,
     })
@@ -139,7 +168,7 @@ export function useFeaturePreview(
       if (sessionRef.current === session) sessionRef.current = null
       session.terminate()
     }
-  }, [previewDocumentId])
+  }, [previewDocumentId, previewSessionActive])
 
   useEffect(() => {
     const sequence = sequenceRef.current + 1
@@ -161,6 +190,9 @@ export function useFeaturePreview(
         if (sequenceRef.current === sequence) setState({ status: "error", meshes: [], kind })
       },
     )
+    return () => {
+      sequenceRef.current += 1
+    }
   }, [candidate, committedGeometry, previewDocumentId, snapshot])
 
   return state

@@ -39,15 +39,20 @@
 @media (width < 64rem) {
   .cad-workspace-grid {
     grid-template-columns: 13rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .cad-workspace-grid > :first-child {
+    grid-row: 1 / -1;
   }
 
   .responsive-task-panel {
-    position: absolute;
-    z-index: 30;
-    inset-inline: 13rem 0;
-    bottom: 0;
+    position: relative;
+    z-index: 1;
+    grid-column: 2;
+    grid-row: 2;
     display: grid;
-    height: min(78%, 32rem);
+    height: min(50svh, 32rem);
     grid-template-rows: 2.25rem minmax(0, 1fr);
     border-top: 1px solid var(--border);
     background: var(--panel);

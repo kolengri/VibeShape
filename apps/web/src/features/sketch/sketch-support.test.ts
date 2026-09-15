@@ -5,12 +5,18 @@ import {
   sketchRecordSchema,
   topologyCandidateSchema,
 } from "@vibeshape/domain"
-import type { DocumentWorkerResponse } from "@vibeshape/protocol"
+import {
+  type DocumentWorkerResponse,
+  topologyCandidateSchema as workerTopologyCandidateSchema,
+} from "@vibeshape/protocol"
 import { describe, expect, it } from "vitest"
+import type { DocumentControllerState } from "../../document/document-controller"
 import {
   inspectSketchSupportHealth,
   selectedPlanarFaceReference,
+  selectedPlanarFaceReferenceFromController,
   selectedSketchSupport,
+  selectedSketchSupportFromController,
 } from "./sketch-support"
 
 const featureId = featureIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2602")
@@ -163,6 +169,37 @@ describe("selectedPlanarFaceReference", () => {
 })
 
 describe("inspectSketchSupportHealth", () => {
+  it.each(["resolved", "missing", "ambiguous"] as const)(
+    "preserves %s face support with worker edge display data present",
+    (status) => {
+      const edge = workerTopologyCandidateSchema.parse({
+        candidateId: "edge:0",
+        kind: "edge",
+        lineageTokens: [],
+        signature: {
+          kind: "edge",
+          geometryClass: "LINE",
+          measure: 20,
+          centroid: [0, -10, 10],
+          bounds: { min: [-10, -10, 10], max: [10, -10, 10] },
+          boundaryCount: 2,
+          adjacentGeometryClasses: ["PLANE", "PLANE"],
+        },
+        edgePolyline: [
+          [-10, -10, 10],
+          [10, -10, 10],
+        ],
+      })
+      expect(topologyCandidateSchema.safeParse(edge).success).toBe(false)
+      const faces = status === "missing" ? [] : [candidate()]
+      if (status === "ambiguous") faces.push(candidate({ candidateId: "face:1", meshFaceId: 43 }))
+      expect(
+        inspectSketchSupportHealth(supportedSketch(), rebuiltResponse([...faces, edge])),
+      ).toEqual({ status })
+      expect(edge.edgePolyline).toHaveLength(2)
+    },
+  )
+
   it("distinguishes resolved, missing, and ambiguous topology without retargeting", () => {
     const sketch = supportedSketch()
 
@@ -229,4 +266,18 @@ describe("inspectSketchSupportHealth", () => {
       ),
     ).toBeNull()
   })
+})
+
+it("never converts a constituent face selection into a whole-feature topology reference", () => {
+  const response = rebuiltResponse([candidate()])
+  const controller = {
+    report: { rebuild: { ok: true, response } },
+  } as unknown as DocumentControllerState
+  for (const outputRole of ["pattern.instance.1", "result"]) {
+    const selection = { featureId, outputRole, faceId: 42, faceOrdinal: 1 }
+    expect(selectedSketchSupportFromController(controller, selection)).toBeNull()
+    expect(selectedPlanarFaceReferenceFromController(controller, selection)).toBeNull()
+  }
+  const selection = { featureId, faceId: 42, faceOrdinal: 1 }
+  expect(selectedSketchSupportFromController(controller, selection)).not.toBeNull()
 })

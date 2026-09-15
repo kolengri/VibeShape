@@ -25,6 +25,7 @@ import {
   appendSketchThreePointArc,
   appendSketchThreePointCircle,
   type CircularSketchPatternDefinition,
+  canonicalJson,
   centeredAlignedRectangleGeometry,
   circularPatternSketchEntities,
   circularSketchPatternTransforms,
@@ -295,6 +296,7 @@ type SketchPointDragPreview = Readonly<{
 }>
 
 type SketchSolveRequest = Readonly<{
+  clearPreviousSolution: boolean
   dragTarget: SketchDragTarget | null
   requestId: number
   resetContinuation: boolean
@@ -575,7 +577,7 @@ function loadingSolveState(current: SolveState, request: SketchSolveRequest): So
   return {
     dragTarget: request.dragTarget,
     kind: "loading",
-    previousSolution: request.resetContinuation
+    previousSolution: request.clearPreviousSolution
       ? null
       : solutionForSketch(current, request.sketch.id),
     sourceSketch: request.sketch,
@@ -640,11 +642,14 @@ function useSketchSolution(
       return
     }
 
-    const resetContinuation =
+    const clearPreviousSolution =
       dragTarget === null && authoredSketchGeometryChanged(scheduler.latestSketch, sketch)
+    const resetContinuation =
+      dragTarget === null && authoredSketchSolveInputsChanged(scheduler.latestSketch, sketch)
     scheduler.latestSketch = sketch
     if (resetContinuation) scheduler.latestSolution = null
     const request: SketchSolveRequest = {
+      clearPreviousSolution,
       dragTarget: stableDragTarget,
       requestId: scheduler.nextRequestId,
       resetContinuation,
@@ -671,14 +676,42 @@ function solutionForSketch(solveState: SolveState, sketchId: SketchRecord["id"])
 
 function authoredSketchGeometryChanged(previous: SketchRecord | null, next: SketchRecord) {
   if (!previous || previous.id !== next.id) return false
-  const previousEntities = new Map(previous.entities.map((entity) => [entity.id, entity]))
-  return next.entities.some((entity) => {
-    const prior = previousEntities.get(entity.id)
-    if (entity.type === "point" && prior?.type === "point") {
-      return entity.x !== prior.x || entity.y !== prior.y
-    }
-    return entity.type === "circle" && prior?.type === "circle" && entity.radius !== prior.radius
-  })
+  return [
+    previous.plane !== next.plane,
+    authoredValueChanged(previous.support ?? null, next.support ?? null),
+    authoredEntitiesChanged(previous.entities, next.entities),
+    authoredValueChanged(previous.externalReferences ?? [], next.externalReferences ?? []),
+  ].some(Boolean)
+}
+
+function authoredValueChanged<Value>(previous: Value, next: Value) {
+  return previous !== next && canonicalJson(previous) !== canonicalJson(next)
+}
+
+function authoredEntitiesChanged(previous: readonly SketchEntity[], next: readonly SketchEntity[]) {
+  if (previous === next) return false
+  if (previous.length !== next.length) return true
+  const previousById = new Map(previous.map((entity) => [entity.id, entity]))
+  return next.some((entity) => authoredEntityChanged(previousById.get(entity.id), entity))
+}
+
+function authoredEntityChanged(previous: SketchEntity | undefined, next: SketchEntity) {
+  return !previous || authoredEntityGeometryKey(previous) !== authoredEntityGeometryKey(next)
+}
+
+function authoredEntityGeometryKey(entity: SketchEntity) {
+  const prefix = `${entity.id}:${entity.type}:${entity.construction}`
+  if (entity.type === "point") return `${prefix}:${entity.x}:${entity.y}`
+  const radius = entity.type === "circle" ? entity.radius : ""
+  return `${prefix}:${radius}:${sketchCurvePointIds(entity).join(":")}`
+}
+
+function authoredSketchSolveInputsChanged(previous: SketchRecord | null, next: SketchRecord) {
+  if (!previous || previous.id !== next.id) return false
+  return (
+    authoredSketchGeometryChanged(previous, next) ||
+    authoredValueChanged(previous.constraints, next.constraints)
+  )
 }
 
 function solvedSolution(solveState: SolveState): SolvedSketchWire | null {

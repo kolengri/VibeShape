@@ -7762,4 +7762,32 @@ describe("SketchViewport", () => {
       expect(document.querySelector(pointSelector)?.getAttribute("cx")).toBe("12"),
     )
   })
+
+  it("resets solver continuation after a dimension value changes", async () => {
+    const dimension = sketch.constraints.find(
+      (constraint) => constraint.type === "horizontal-distance" && "value" in constraint,
+    )
+    if (!dimension) throw new Error("The rectangle fixture must contain a width dimension.")
+    const solveSketch = vi
+      .fn<NonNullable<React.ComponentProps<typeof SketchViewport>["solveSketch"]>>()
+      .mockResolvedValueOnce(solveResult())
+      .mockImplementationOnce(() => new Promise<ActiveSketchSolveResult>(() => undefined))
+    const result = renderViewport({ draft: sketch, sketch, solveSketch })
+    await screen.findByText("Fully constrained")
+    expect(document.querySelector('[data-sketch-profile-index="0"]')).toBeTruthy()
+    const changedDimension = sketchRecordSchema.parse({
+      ...sketch,
+      constraints: sketch.constraints.map((constraint) =>
+        constraint.id === dimension.id
+          ? { ...dimension, value: createLengthQuantity(dimension.value.value + 10) }
+          : constraint,
+      ),
+    })
+
+    result.rerender(viewportElement({ draft: changedDimension, sketch, solveSketch }))
+
+    await screen.findByText("Solving the saved sketch locally…")
+    await waitFor(() => expect(solveSketch).toHaveBeenCalledTimes(2))
+    expect(solveSketch.mock.calls[1]?.[2]?.continuation).toBeNull()
+  })
 })

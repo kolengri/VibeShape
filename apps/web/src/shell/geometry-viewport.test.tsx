@@ -7,6 +7,7 @@ import {
   boxFeatureType,
   createLengthQuantity,
   datumPlaneFeatureType,
+  featureIdSchema,
   type SketchProfileSelector,
   sketchEntityIdSchema,
   sketchIdSchema,
@@ -20,6 +21,7 @@ import type {
 } from "@vibeshape/viewer"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
+import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import type { FeaturePreviewState } from "../features/preview/use-feature-preview"
 import { createSketchProjectionStore } from "../features/sketch/sketch-projection-store"
 import { i18n } from "../i18n"
@@ -208,7 +210,40 @@ function readyController(
           label: `Sketch ${index + 1}`,
         })),
       },
-      rebuild: { ok: true, response: { geometry, sketches } },
+      rebuild: {
+        ok: true,
+        response: {
+          evaluation: {
+            records: features.map(({ id }) =>
+              geometry.some(({ featureId }) => featureId === id)
+                ? { featureId: id, status: "succeeded", contentHash: "a".repeat(64) }
+                : { featureId: id, status: "suppressed" },
+            ),
+            dirtyFeatureIds: [],
+            evaluatedFeatureIds: geometry.map(({ featureId }) => featureId),
+            reusedFeatureIds: [],
+          },
+          geometry: geometry.map((record) => ({
+            ...record,
+            contentHash: "a".repeat(64),
+            meshPolicy: { chordTolerance: 0.05, angularTolerance: 0.1 },
+            geometry: {
+              shape: {
+                valid: true,
+                volume: 1,
+                surfaceArea: 1,
+                solidCount: 1,
+                faceCount: 1,
+                edgeCount: 3,
+                bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+              },
+              topologyCandidates: [],
+              ...record.geometry,
+            },
+          })),
+          sketches,
+        },
+      },
     },
   } as unknown as DocumentControllerState
 }
@@ -233,6 +268,10 @@ function renderViewport(
   featureHighlight?: Readonly<{
     preselectedFeatureId?: string
     selectedFeatureId?: string
+    selectedBody?: ModelBodySelection
+    preselectedBody?: ModelBodySelection
+    onBodySelectionChange?: (body: ModelBodySelection | null) => void
+    onBodyPreselectionChange?: (body: ModelBodySelection | null) => void
   }>,
   sketchContext?: GeometryViewportSketchContext,
   idleOriginPlaneSelection?: Readonly<{
@@ -1452,5 +1491,131 @@ describe("GeometryViewport", () => {
     await vi.advanceTimersByTimeAsync(250)
     await vi.waitFor(() => expect(saveActiveProjectThumbnailMock).toHaveBeenCalledTimes(2))
     vi.useRealTimers()
+  })
+})
+
+function bodyController(roles = ["pattern.instance.0", "pattern.instance.1"]) {
+  const controller = readyController(
+    [{ id: boxId, dependencies: [] }],
+    [{ featureId: boxId, geometry: { mesh } }],
+  )
+  const report = controller.report
+  if (!report?.rebuild.ok) throw new Error("Expected fixture geometry.")
+  const geometry = report.rebuild.response.geometry.map((record) => ({
+    ...record,
+    geometry: {
+      ...record.geometry,
+      shape: { ...record.geometry.shape, solidCount: roles.length, volume: roles.length },
+      bodies: roles.map((outputRole) => ({
+        outputRole,
+        shape: record.geometry.shape,
+        mesh: record.geometry.mesh,
+        topologyCandidates: [],
+      })),
+    },
+  }))
+  return {
+    ...controller,
+    report: {
+      ...report,
+      rebuild: {
+        ...report.rebuild,
+        response: { ...report.rebuild.response, geometry },
+      },
+    },
+  }
+}
+
+describe("constituent viewport projection", () => {
+  it("highlights an exact body and a different hovered sibling", async () => {
+    const selectedBody = {
+      featureId: featureIdSchema.parse(boxId),
+      outputRole: "pattern.instance.0",
+    }
+    const preselectedBody = { ...selectedBody, outputRole: "pattern.instance.1" }
+    const controller = bodyController()
+    expect(viewerMeshes(controller).map(({ outputRole }) => outputRole)).toEqual([
+      "pattern.instance.0",
+      "pattern.instance.1",
+    ])
+    const rendered = renderViewport(controller, null, undefined, undefined, undefined, {
+      selectedBody,
+      preselectedBody,
+    })
+    await waitFor(() =>
+      expect(rendered.port.setFeatureSelection).toHaveBeenCalledWith(
+        expect.objectContaining(selectedBody),
+      ),
+    )
+    expect(rendered.port.setFeaturePreselection).toHaveBeenCalledWith(
+      expect.objectContaining(preselectedBody),
+    )
+  })
+
+  it("clears a removed body role without selecting its surviving sibling", async () => {
+    const selectedBody = {
+      featureId: featureIdSchema.parse(boxId),
+      outputRole: "pattern.instance.1",
+    }
+    const onBodySelectionChange = vi.fn()
+    const rendered = renderViewport(bodyController(), null, undefined, undefined, undefined, {
+      selectedBody,
+      onBodySelectionChange,
+    })
+    await waitFor(() =>
+      expect(rendered.port.setFeatureSelection).toHaveBeenCalledWith(
+        expect.objectContaining(selectedBody),
+      ),
+    )
+    rendered.rerenderController(bodyController(["pattern.instance.0"]))
+    await waitFor(() => expect(onBodySelectionChange).toHaveBeenCalledWith(null))
+    expect(rendered.port.setFeatureSelection).toHaveBeenLastCalledWith(null)
+  })
+
+  it("clears a removed hovered role without highlighting its surviving sibling", async () => {
+    const preselectedBody = {
+      featureId: featureIdSchema.parse(boxId),
+      outputRole: "pattern.instance.1",
+    }
+    const onBodyPreselectionChange = vi.fn()
+    const rendered = renderViewport(bodyController(), null, undefined, undefined, undefined, {
+      preselectedBody,
+      onBodyPreselectionChange,
+    })
+    await waitFor(() =>
+      expect(rendered.port.setFeaturePreselection).toHaveBeenCalledWith(
+        expect.objectContaining(preselectedBody),
+      ),
+    )
+    expect(onBodyPreselectionChange).not.toHaveBeenCalled()
+    rendered.rerenderController(bodyController(["pattern.instance.0"]))
+    await waitFor(() => expect(onBodyPreselectionChange).toHaveBeenCalledWith(null))
+    expect(rendered.port.setFeaturePreselection).toHaveBeenLastCalledWith(null)
+  })
+
+  it("clears a body through the visible clear-selection control", async () => {
+    const selectedBody = {
+      featureId: featureIdSchema.parse(boxId),
+      outputRole: "pattern.instance.0",
+    }
+    const onBodySelectionChange = vi.fn()
+    renderViewport(bodyController(), null, undefined, undefined, undefined, {
+      selectedBody,
+      onBodySelectionChange,
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }))
+    expect(onBodySelectionChange).toHaveBeenCalledOnce()
+    expect(onBodySelectionChange).toHaveBeenCalledWith(null)
+  })
+
+  it("clears a removed face role even while its producing feature remains visible", async () => {
+    const selection = {
+      featureId: boxId,
+      outputRole: "pattern.instance.1",
+      faceId: 1,
+      faceOrdinal: 1,
+    }
+    const rendered = renderViewport(bodyController(["pattern.instance.0"]), selection)
+    await waitFor(() => expect(rendered.onSelectionChange).toHaveBeenCalledWith(null))
   })
 })

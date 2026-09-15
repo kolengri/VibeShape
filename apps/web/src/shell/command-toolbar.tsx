@@ -505,6 +505,13 @@ export function CommandToolbar({ commands }: { commands: readonly ResolvedEditor
                 label={getLabel(command)}
               />
             ))}
+            <ToolbarSeparator />
+            <ToolbarCommandGroup
+              commands={historyCommands}
+              getDisabledReason={getDisabledReason}
+              getLabel={getLabel}
+              label={t("historyLabel")}
+            />
           </>
         )}
       </nav>
