@@ -298,6 +298,67 @@ it("translates a legacy feature add and derives its semantic inputs", async () =
   })
 })
 
+it("persists a semantic History move without losing the projected legacy session", async () => {
+  const { inserted } = insertedSnapshot()
+  const secondSketch = createEmptySketch({
+    id: "0195b5ac-b250-7a2c-8c33-000000000014" as never,
+    label: "Second",
+    plane: "xy",
+  })
+  const second = applyVersionedDocumentCommand(inserted.snapshot, {
+    ...createEvent,
+    kind: "org.vibeshape.history.insert-sketch",
+    commandId: "0195b5ac-b250-7a2c-8c33-000000000015",
+    baseRevision: inserted.snapshot.revision,
+    payload: { sketch: secondSketch, historyAfter: inserted.snapshot.history[0] },
+  })
+  if (!second.ok) throw new Error(second.diagnostic.message)
+  const projected = projectDocumentSnapshotV1ToV0(second.snapshot)
+  if (!projected.ok) throw new Error(projected.diagnostic.message)
+  let received: VersionedDocumentEvent | undefined
+  const repository = {
+    async commit(input: { event: VersionedDocumentEvent }) {
+      received = input.event
+      return { ok: true, value: undefined }
+    },
+    async commitDraft() {
+      return { ok: true, value: undefined }
+    },
+    async recover() {
+      throw new Error("Not used")
+    },
+    async closeCleanly() {
+      return { ok: true, value: undefined }
+    },
+  } as VersionedDocumentRepositoryPort
+  const adapter = createVersionedPersistenceAdapter(repository, second.snapshot)
+  if (!adapter.semanticHistory) throw new Error("Expected semantic History support.")
+
+  const result = await adapter.semanticHistory.move({
+    sessionId: "s" as never,
+    lease: { epoch: 1, nowMs: 1 },
+    baseSnapshot: projected.snapshot,
+    command: {
+      ...createEvent,
+      kind: "org.vibeshape.history.move-item",
+      commandId: "0195b5ac-b250-7a2c-8c33-000000000016",
+      baseRevision: second.snapshot.revision,
+      payload: { item: second.snapshot.history[1], historyAfter: null },
+    },
+  })
+
+  expect(result).toMatchObject({ ok: true, value: { revision: second.snapshot.revision + 1 } })
+  expect(received).toMatchObject({
+    type: "org.vibeshape.history.item-moved",
+    item: second.snapshot.history[1],
+    historyAfter: null,
+  })
+  expect(adapter.semanticHistory.items).toEqual([
+    second.snapshot.history[1],
+    second.snapshot.history[0],
+  ])
+})
+
 it("preserves one transaction identity across translated draft insertions", async () => {
   const { inserted } = insertedSnapshot()
   const transactionId = draftIdSchema.parse("0195b5ac-b250-7a2c-8c33-000000000030")

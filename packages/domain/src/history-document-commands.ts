@@ -10,7 +10,7 @@ import {
 import { commandActorSchema } from "./commands"
 import { type DocumentSnapshotV1, documentSnapshotV1Schema } from "./document"
 import { createDocumentDependencyGraph } from "./document-graph"
-import { type HistoryItemRef, historyItemRefSchema } from "./document-node"
+import { type HistoryItemRef, historyItemRefSchema, historyItemsSchema } from "./document-node"
 import { type FeatureRecordV1, featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-inputs"
 import {
@@ -50,6 +50,16 @@ export const insertFeatureInHistoryCommandSchema = historyCommandEnvelopeSchema.
     .strict(),
 })
 
+export const moveHistoryItemCommandSchema = historyCommandEnvelopeSchema.extend({
+  kind: z.literal("org.vibeshape.history.move-item"),
+  payload: z
+    .object({
+      item: historyItemRefSchema,
+      historyAfter: historyItemRefSchema.nullable(),
+    })
+    .strict(),
+})
+
 const historyEventEnvelopeSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -77,13 +87,20 @@ export const featureInsertedInHistoryEventSchema = historyEventEnvelopeSchema.ex
   feature: featureRecordV1Schema,
   historyAfter: historyItemRefSchema.nullable(),
 })
+export const historyItemMovedEventSchema = historyEventEnvelopeSchema.extend({
+  type: z.literal("org.vibeshape.history.item-moved"),
+  item: historyItemRefSchema,
+  historyAfter: historyItemRefSchema.nullable(),
+})
 export const historyDocumentCommandSchema = z.discriminatedUnion("kind", [
   insertSketchInHistoryCommandSchema,
   insertFeatureInHistoryCommandSchema,
+  moveHistoryItemCommandSchema,
 ])
 export const historyDocumentEventSchema = z.discriminatedUnion("type", [
   sketchInsertedInHistoryEventSchema,
   featureInsertedInHistoryEventSchema,
+  historyItemMovedEventSchema,
 ])
 
 export type InsertSketchInHistoryCommand = Readonly<
@@ -98,12 +115,14 @@ export type InsertFeatureInHistoryCommand = Readonly<
 export type FeatureInsertedInHistoryEvent = Readonly<
   z.infer<typeof featureInsertedInHistoryEventSchema>
 >
+export type MoveHistoryItemCommand = Readonly<z.infer<typeof moveHistoryItemCommandSchema>>
+export type HistoryItemMovedEvent = Readonly<z.infer<typeof historyItemMovedEventSchema>>
 
 export type HistoryDocumentCommandResult =
   | Readonly<{
       ok: true
       snapshot: DocumentSnapshotV1
-      event: SketchInsertedInHistoryEvent | FeatureInsertedInHistoryEvent
+      event: SketchInsertedInHistoryEvent | FeatureInsertedInHistoryEvent | HistoryItemMovedEvent
     }>
   | Readonly<{ ok: false; diagnostic: DomainDiagnostic }>
 
@@ -156,6 +175,27 @@ function insertAfter(
   const anchorIndex = history.findIndex((candidate) => historyRefsEqual(candidate, anchor))
   if (anchorIndex < 0) return null
   return [...history.slice(0, anchorIndex + 1), item, ...history.slice(anchorIndex + 1)]
+}
+
+function moveAfter(
+  history: readonly HistoryItemRef[],
+  item: HistoryItemRef,
+  anchor: HistoryItemRef | null,
+): readonly HistoryItemRef[] | null {
+  const itemIndex = history.findIndex((candidate) => historyRefsEqual(candidate, item))
+  if (itemIndex < 0 || (anchor && historyRefsEqual(anchor, item))) return null
+  const remaining = history.filter((_, index) => index !== itemIndex)
+  return insertAfter(remaining, item, anchor)
+}
+
+function sameHistory(left: readonly HistoryItemRef[], right: readonly HistoryItemRef[]) {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => {
+      const candidate = right[index]
+      return candidate ? historyRefsEqual(item, candidate) : false
+    })
+  )
 }
 
 function sketchIntroducesOrphanedIntent(sketch: SketchRecord) {
@@ -348,9 +388,94 @@ function reduceParsedFeatureHistoryEvent(
       }
 }
 
+function reduceParsedHistoryItemMovedEvent(
+  snapshot: DocumentSnapshotV1,
+  event: HistoryItemMovedEvent,
+  invalidEvent: boolean,
+): HistoryDocumentEventResult {
+  const revision = revisionDiagnostic(snapshot, event)
+  if (revision) return { ok: false, diagnostic: revision }
+  const authority = validateHistoryMutationAuthority(snapshot, invalidEvent)
+  if (authority) return { ok: false, diagnostic: authority }
+  const history = moveAfter(snapshot.history, event.item, event.historyAfter)
+  if (!history) return { ok: false, diagnostic: missingAnchorDiagnostic(invalidEvent) }
+  if (sameHistory(snapshot.history, history))
+    return {
+      ok: false,
+      diagnostic: domainDiagnostic(
+        invalidEvent ? "invalid-event" : "command-no-op",
+        "The History item is already in the requested position.",
+      ),
+    }
+  const graph = createDocumentDependencyGraph({ ...snapshot, history })
+  if (!graph.ok)
+    return { ok: false, diagnostic: documentGraphDiagnostic(graph.diagnostic, invalidEvent) }
+  const parsed = documentSnapshotV1Schema.safeParse({
+    ...snapshot,
+    revision: event.revision,
+    history: historyItemsSchema.parse(history),
+    updatedAt: event.issuedAt,
+  })
+  return parsed.success
+    ? { ok: true, snapshot: parsed.data }
+    : {
+        ok: false,
+        diagnostic: invalidInputDiagnostic(invalidEvent ? "event" : "command", parsed.error),
+      }
+}
+
 export type HistoryDocumentCommandOptions = Readonly<
   z.infer<typeof historyDocumentCommandOptionsSchema>
 >
+
+function prepareHistoryCommand(
+  snapshot: DocumentSnapshotV1,
+  input: unknown,
+  options: unknown,
+):
+  | Readonly<{
+      ok: true
+      command: z.infer<typeof historyDocumentCommandSchema>
+      transactionId: z.infer<typeof draftIdSchema> | null
+    }>
+  | Readonly<{ ok: false; diagnostic: DomainDiagnostic }> {
+  const parsed = historyDocumentCommandSchema.safeParse(input)
+  if (!parsed.success)
+    return { ok: false, diagnostic: invalidInputDiagnostic("command", parsed.error) }
+  const revision = revisionDiagnostic(snapshot, parsed.data)
+  if (revision) return { ok: false, diagnostic: revision }
+  const parsedOptions = historyDocumentCommandOptionsSchema.safeParse(options)
+  if (!parsedOptions.success)
+    return { ok: false, diagnostic: invalidOptionsDiagnostic(parsedOptions.error) }
+  return {
+    ok: true,
+    command: parsed.data,
+    transactionId: parsedOptions.data.transactionId ?? null,
+  }
+}
+
+function eventEnvelope(
+  command: z.infer<typeof historyDocumentCommandSchema>,
+  transactionId: z.infer<typeof draftIdSchema> | null,
+) {
+  return {
+    schemaVersion: 1 as const,
+    commandId: command.commandId,
+    transactionId,
+    documentId: command.documentId,
+    baseRevision: command.baseRevision,
+    revision: command.baseRevision + 1,
+    issuedAt: command.issuedAt,
+    actor: command.actor,
+  }
+}
+
+function domainCommandKindMismatch(): Readonly<{ ok: false; diagnostic: DomainDiagnostic }> {
+  return {
+    ok: false,
+    diagnostic: domainDiagnostic("invalid-command", "The History command kind is not supported."),
+  }
+}
 
 export function applyInsertSketchInHistoryCommand(
   snapshot: DocumentSnapshotV1,
@@ -364,26 +489,16 @@ export function applyInsertSketchInHistoryCommand(
   input: unknown,
   options: unknown = {},
 ): HistoryDocumentCommandResult {
-  const parsed = insertSketchInHistoryCommandSchema.safeParse(input)
-  if (!parsed.success)
-    return { ok: false, diagnostic: invalidInputDiagnostic("command", parsed.error) }
-  const revision = revisionDiagnostic(snapshot, parsed.data)
-  if (revision) return { ok: false, diagnostic: revision }
-  const parsedOptions = historyDocumentCommandOptionsSchema.safeParse(options)
-  if (!parsedOptions.success)
-    return { ok: false, diagnostic: invalidOptionsDiagnostic(parsedOptions.error) }
+  const prepared = prepareHistoryCommand(snapshot, input, options)
+  if (!prepared.ok) return prepared
+  if (prepared.command.kind !== "org.vibeshape.history.insert-sketch")
+    return domainCommandKindMismatch()
+  const command = prepared.command
   const event = sketchInsertedInHistoryEventSchema.parse({
-    schemaVersion: 1,
+    ...eventEnvelope(command, prepared.transactionId),
     type: "org.vibeshape.history.sketch-inserted",
-    commandId: parsed.data.commandId,
-    transactionId: parsedOptions.data.transactionId ?? null,
-    documentId: parsed.data.documentId,
-    baseRevision: parsed.data.baseRevision,
-    revision: parsed.data.baseRevision + 1,
-    issuedAt: parsed.data.issuedAt,
-    actor: parsed.data.actor,
-    sketch: parsed.data.payload.sketch,
-    historyAfter: parsed.data.payload.historyAfter,
+    sketch: command.payload.sketch,
+    historyAfter: command.payload.historyAfter,
   })
   const reduced = reduceParsedHistoryEvent(snapshot, event, false)
   return reduced.ok ? { ...reduced, event } : reduced
@@ -401,32 +516,49 @@ export function applyInsertFeatureInHistoryCommand(
   input: unknown,
   options: unknown = {},
 ): HistoryDocumentCommandResult {
-  const parsed = insertFeatureInHistoryCommandSchema.safeParse(input)
-  if (!parsed.success)
-    return { ok: false, diagnostic: invalidInputDiagnostic("command", parsed.error) }
-  const revision = revisionDiagnostic(snapshot, parsed.data)
-  if (revision) return { ok: false, diagnostic: revision }
-  const parsedOptions = historyDocumentCommandOptionsSchema.safeParse(options)
-  if (!parsedOptions.success)
-    return { ok: false, diagnostic: invalidOptionsDiagnostic(parsedOptions.error) }
+  const prepared = prepareHistoryCommand(snapshot, input, options)
+  if (!prepared.ok) return prepared
+  if (prepared.command.kind !== "org.vibeshape.history.insert-feature")
+    return domainCommandKindMismatch()
+  const command = prepared.command
   const event = featureInsertedInHistoryEventSchema.parse({
-    schemaVersion: 1,
+    ...eventEnvelope(command, prepared.transactionId),
     type: "org.vibeshape.history.feature-inserted",
-    commandId: parsed.data.commandId,
-    transactionId: parsedOptions.data.transactionId ?? null,
-    documentId: parsed.data.documentId,
-    baseRevision: parsed.data.baseRevision,
-    revision: parsed.data.baseRevision + 1,
-    issuedAt: parsed.data.issuedAt,
-    actor: parsed.data.actor,
     feature: (() => {
-      const f = parsed.data.payload.feature
+      const f = command.payload.feature
       const p = projectFirstPartyFeatureSemanticInputs(f)
       return { ...f, schemaVersion: 1, semanticInputs: p.recognized && p.ok ? p.inputs : null }
     })(),
-    historyAfter: parsed.data.payload.historyAfter,
+    historyAfter: command.payload.historyAfter,
   })
   const reduced = reduceParsedFeatureHistoryEvent(snapshot, event, false)
+  return reduced.ok ? { ...reduced, event } : reduced
+}
+
+export function applyMoveHistoryItemCommand(
+  snapshot: DocumentSnapshotV1,
+  input: unknown,
+  options?: HistoryDocumentCommandOptions,
+):
+  | (HistoryDocumentCommandResult & { ok: true; event: HistoryItemMovedEvent })
+  | { ok: false; diagnostic: DomainDiagnostic }
+export function applyMoveHistoryItemCommand(
+  snapshot: DocumentSnapshotV1,
+  input: unknown,
+  options: unknown = {},
+): HistoryDocumentCommandResult {
+  const prepared = prepareHistoryCommand(snapshot, input, options)
+  if (!prepared.ok) return prepared
+  if (prepared.command.kind !== "org.vibeshape.history.move-item")
+    return domainCommandKindMismatch()
+  const command = prepared.command
+  const event = historyItemMovedEventSchema.parse({
+    ...eventEnvelope(command, prepared.transactionId),
+    type: "org.vibeshape.history.item-moved",
+    item: command.payload.item,
+    historyAfter: command.payload.historyAfter,
+  })
+  const reduced = reduceParsedHistoryItemMovedEvent(snapshot, event, false)
   return reduced.ok ? { ...reduced, event } : reduced
 }
 
@@ -437,9 +569,11 @@ export function reduceHistoryDocumentEvent(
   const parsed = historyDocumentEventSchema.safeParse(input)
   if (!parsed.success)
     return { ok: false, diagnostic: invalidInputDiagnostic("event", parsed.error) }
-  return parsed.data.type === "org.vibeshape.history.sketch-inserted"
-    ? reduceParsedHistoryEvent(snapshot, parsed.data, true)
-    : reduceParsedFeatureHistoryEvent(snapshot, parsed.data, true)
+  if (parsed.data.type === "org.vibeshape.history.sketch-inserted")
+    return reduceParsedHistoryEvent(snapshot, parsed.data, true)
+  if (parsed.data.type === "org.vibeshape.history.feature-inserted")
+    return reduceParsedFeatureHistoryEvent(snapshot, parsed.data, true)
+  return reduceParsedHistoryItemMovedEvent(snapshot, parsed.data, true)
 }
 
 export function replayHistoryDocumentEvents(

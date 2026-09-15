@@ -7,6 +7,7 @@ import {
   documentCommandSchema,
 } from "@vibeshape/domain/commands"
 import { type DocumentSnapshot, documentSnapshotSchema } from "@vibeshape/domain/document"
+import type { HistoryItemRef } from "@vibeshape/domain/document-node"
 import {
   commandIdSchema,
   type DocumentId,
@@ -149,8 +150,21 @@ type PersistenceDraftCommitInput = Readonly<{
   snapshot: DocumentSnapshot
 }>
 
+type PersistenceHistoryMoveInput = Readonly<{
+  sessionId: SessionId
+  lease: { epoch: number; nowMs: number }
+  baseSnapshot: DocumentSnapshot
+  command: unknown
+}>
+
+export type DocumentSemanticHistoryPort = Readonly<{
+  readonly items: readonly HistoryItemRef[]
+  move: (input: PersistenceHistoryMoveInput) => Promise<SessionPortResult<DocumentSnapshot>>
+}>
+
 export type PersistentDocumentRepositoryPort = Readonly<{
   history?: DocumentHistoryPort
+  semanticHistory?: DocumentSemanticHistoryPort
   commit: (input: PersistenceCommitInput) => Promise<SessionPortResult<unknown>>
   commitDraft: (input: PersistenceDraftCommitInput) => Promise<SessionPortResult<unknown>>
   recover: (documentId: DocumentId) => Promise<SessionPortResult<PersistedRecoveryReport>>
@@ -232,6 +246,7 @@ export type PersistentDocumentSessionReport = Readonly<{
   status: "created" | PersistedRecoveryReport["status"]
   mode: "read-write" | "read-only"
   snapshot: DocumentSnapshot
+  historyItems: readonly HistoryItemRef[] | null
   rebuild: DocumentRebuildOutcome
   lostRevisionCount: number
   corruptRecords: readonly string[]
@@ -494,8 +509,69 @@ export class PersistentDocumentSession {
       : { canUndo: false, canRedo: false }
   }
 
+  get historyItems() {
+    return this.#dependencies.repository.semanticHistory?.items ?? null
+  }
+
   navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
     return this.#enqueue(() => this.#navigateHistory(input))
+  }
+
+  moveHistoryItem(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    return this.#enqueue(() => this.#moveHistoryItem(input))
+  }
+
+  async #moveHistoryItem(input: unknown): Promise<PersistentDocumentHistoryResult> {
+    if (this.#closed)
+      return {
+        ok: false,
+        diagnostic: diagnostic("session-closed", "The document session is closed."),
+      }
+    const semanticHistory = this.#dependencies.repository.semanticHistory
+    if (!semanticHistory)
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "command-rejected",
+          "The document does not expose semantic History mutations.",
+        ),
+      }
+    const lease = await this.#renewWriteAccess()
+    if (!lease.ok) return lease
+    let result: SessionPortResult<DocumentSnapshot>
+    try {
+      result = await semanticHistory.move({
+        sessionId: this.#sessionId,
+        lease: { epoch: lease.lease.epoch, nowMs: lease.nowMs },
+        baseSnapshot: this.#snapshot,
+        command: input,
+      })
+    } catch {
+      return {
+        ok: false,
+        diagnostic: diagnostic("persistence-failed", "The History order was not saved.", true),
+      }
+    }
+    if (!result.ok)
+      return {
+        ok: false,
+        diagnostic: portDiagnostic(
+          "persistence-failed",
+          "The History order was not saved.",
+          result.diagnostic,
+        ),
+      }
+    const restored = validateHistoryResult(result.value, this.#documentId, this.#snapshot.revision)
+    if (!restored)
+      return {
+        ok: false,
+        diagnostic: diagnostic(
+          "invalid-recovered-document",
+          "The History adapter returned an invalid document revision.",
+        ),
+      }
+    this.#snapshot = restored
+    return { ok: true, snapshot: restored, rebuild: await this.#rebuild() }
   }
 
   async #navigateHistory(input: unknown): Promise<PersistentDocumentHistoryResult> {
@@ -876,6 +952,7 @@ export async function openPersistentDocumentSession(
       status: recovered.value.status,
       mode: opened.session.mode,
       snapshot: opened.session.snapshot,
+      historyItems: opened.session.historyItems,
       rebuild: opened.rebuild,
       lostRevisionCount: recovered.value.lostRevisionCount,
       corruptRecords: recovered.value.corruptRecords,
@@ -928,6 +1005,7 @@ export async function createPersistentDocumentSession(
       status: "created",
       mode: opened.session.mode,
       snapshot: opened.session.snapshot,
+      historyItems: opened.session.historyItems,
       rebuild: opened.rebuild,
       lostRevisionCount: 0,
       corruptRecords: [],

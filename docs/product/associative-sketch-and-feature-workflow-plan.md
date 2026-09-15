@@ -411,16 +411,16 @@ part of the rebuild integration work.
 
 Status: versioned domain commands and replay, lease-gated side-by-side promotion, v1 persistence, the v1-to-v0
 application adapter, product controller adoption, authoritative dual-generation project lifecycle, and strict
-`.vshape` v2 complete/checkpoint codecs are implemented. History reorder, a durable writable-checkpoint boundary,
-and the user-visible rollback cursor remain open.
+`.vshape` v2 complete/checkpoint codecs and persisted History reorder are implemented. A durable writable-checkpoint
+boundary and the user-visible rollback cursor remain open.
 
 - Add persisted `HistoryItemRef` ordering and explicit semantic-input declarations.
 - Add deterministic migration from complete legacy journals and snapshot-topological degraded recovery when a
   complete verified journal prefix is unavailable, corrupt, or inconsistent.
 - Add old-format, corrupt-prefix, late-snapshot recovery, archive round-trip, and exact-replay fixtures.
-- Add revisioned History insertion and reorder commands only after the migration matrix passes. The first
-  insertion boundary now adds a sketch after a stable `HistoryItemRef`, with `null` representing the beginning;
-  reorder remains open.
+- Revisioned insertion adds a sketch or feature after a stable `HistoryItemRef`, with `null` representing the
+  beginning. Reorder moves one existing stable item after another stable anchor, validates the complete DAG,
+  and records one replayable event without changing feature or sketch identities.
 
 **Exit:** every schema-version-1 document has one validated interleaved History order, while recoverable legacy
 documents remain openable without changing geometry or overwriting their source records prematurely.
@@ -442,23 +442,24 @@ journal, and an explicit dispatcher distinguishes v0 from v1 archives. Migration
 tampered or merely schema-valid History even when archive checksums are recomputed. Existing product backup APIs
 remain v0-only until the application session can consume version-1 commands and snapshots.
 
-The additive History command boundary accepts only a validated version-1 seed and records stable insertion intent
-in both the command and event. Command application and suffix replay reject missing anchors, duplicate sketch
-identities, non-contiguous revisions, forward dependencies, and newly authored orphaned model-reference intent.
-Sketch storage order remains an implementation detail in version 1; cross-sketch reference ordering follows the
-persisted History sequence. The existing version-0 command union is unchanged until persistence and application
-can migrate and commit the full transaction atomically.
+The History command boundary accepts only a validated version-1 seed and records stable insertion or move intent
+in both the command and event. Command application and suffix replay reject missing items or anchors, self-anchors,
+no-op moves, duplicate identities, non-contiguous revisions, forward dependencies, unavailable dependency models,
+and newly authored orphaned model-reference intent. Sketch and feature storage order remains an implementation
+detail in version 1; the versioned persistence adapter exposes authoritative interleaving to the projected editor
+session while keeping the strict version-0 command union unchanged.
 
 ### Slice 1 — understandable History and editing context
 
-Status: initial History presentation and editing context implemented; persisted History remains in Slice 0C.
-The model tree now derives one dependency-safe History presentation from the schema-version-0 document graph,
-interleaves sketches, Datum Planes, and modeling features, and lists terminal solid results separately under
-Bodies. This is a transitional read-only projection: it does not persist authored order, a cursor, or rollback
-state. During sketch editing, the active row exposes a transient boundary and later rows remain visibly muted as
-final-result context. Graph failure disables that rollback claim and exposes a bounded status instead of guessing
-an order. Row icons distinguish sketches, datum geometry, and solid-producing features; compact support and
-profile-source summaries expose the most important upstream relationship without opening another form.
+Status: History presentation, editing context, and adjacent persisted reorder are implemented; the rollback cursor
+remains transient. The model tree consumes authoritative schema-version-1 History when available, interleaves
+sketches, Datum Planes, and modeling features, and lists terminal solid results separately under Bodies. Icon-only
+earlier/later actions move one independent adjacent item, disable dependency-invalid directions before commit,
+and preserve the exact interleaving through undo, redo, and reload. During sketch editing, the active row exposes
+a transient boundary and later rows remain visibly muted as final-result context. Graph failure disables both
+rollback and reorder claims and exposes a bounded status instead of guessing an order. Row icons distinguish
+sketches, datum geometry, and solid-producing features; compact support and profile-source summaries expose the
+most important upstream relationship without opening another form.
 
 The context layer keeps the same Three.js viewport mounted across Model/Sketch
 transitions and resolves the active sketch's exact support frame for origin planes and the currently

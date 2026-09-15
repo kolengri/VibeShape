@@ -48,6 +48,7 @@ import {
   featureCoreModule,
   featureIdSchema,
   generateUuidV7,
+  type HistoryItemRef,
   partDesignFeatureTypeHandlers,
   partDesignModule,
   referenceGeometryFeatureTypeHandlers,
@@ -467,7 +468,12 @@ async function commitActiveAutomationDraft(
   if (session === active && state.report)
     publish({
       ...state,
-      report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+      report: {
+        ...state.report,
+        snapshot: result.snapshot,
+        historyItems: active.historyItems,
+        rebuild: result.rebuild,
+      },
       saveStatus: "saved",
       diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
     })
@@ -709,7 +715,12 @@ export async function applyVariableTable(
   }
   publish({
     ...state,
-    report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+    report: {
+      ...state.report,
+      snapshot: result.snapshot,
+      historyItems: session.historyItems,
+      rebuild: result.rebuild,
+    },
     saveStatus: "saved",
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
   })
@@ -748,7 +759,12 @@ async function navigateDocumentHistory(
     }
     publish({
       ...state,
-      report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+      report: {
+        ...state.report,
+        snapshot: result.snapshot,
+        historyItems: activeSession.historyItems,
+        rebuild: result.rebuild,
+      },
       saveStatus: "saved",
       diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
     })
@@ -801,7 +817,12 @@ async function commitDocumentCommand(
   }
   publish({
     ...state,
-    report: { ...state.report, snapshot: result.snapshot, rebuild: result.rebuild },
+    report: {
+      ...state.report,
+      snapshot: result.snapshot,
+      historyItems: session.historyItems,
+      rebuild: result.rebuild,
+    },
     saveStatus: "saved",
     diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
   })
@@ -848,6 +869,56 @@ export function setFeatureSuppressed(
     actor: { type: "user", userId: null },
     payload: { featureId, suppressed },
   }))
+}
+
+export async function moveHistoryItem(
+  baseRevision: number,
+  item: HistoryItemRef,
+  historyAfter: HistoryItemRef | null,
+): Promise<DocumentMutationResult> {
+  if (!session || state.status !== "ready" || !state.report || state.saveStatus === "saving") {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "command-rejected",
+        message: "Wait for the active document operation to finish.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  const activeSession = session
+  publish({ ...state, saveStatus: "saving", diagnostic: null })
+  const result = await activeSession.moveHistoryItem({
+    kind: "org.vibeshape.history.move-item",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId: activeSession.snapshot.id,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { item, historyAfter },
+  })
+  if (!result.ok) {
+    if (result.diagnostic.sourceCode === "command-no-op") {
+      publish({ ...state, saveStatus: "saved", diagnostic: null })
+      return { ok: true }
+    }
+    publish({ ...state, saveStatus: "save-error", diagnostic: result.diagnostic })
+    return result
+  }
+  publish({
+    ...state,
+    report: {
+      ...state.report,
+      snapshot: result.snapshot,
+      historyItems: activeSession.historyItems,
+      rebuild: result.rebuild,
+    },
+    saveStatus: "saved",
+    diagnostic: result.rebuild.ok ? null : result.rebuild.diagnostic,
+  })
+  return { ok: true }
 }
 
 export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {

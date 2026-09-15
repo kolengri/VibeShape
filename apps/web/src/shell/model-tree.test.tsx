@@ -290,6 +290,7 @@ type RenderTreeOptions = Partial<
     | "onFeaturePreselectionChange"
     | "onFeatureSuppressionChange"
     | "onFeatureVisibilityChange"
+    | "onHistoryMove"
     | "onSketchActivate"
     | "onSketchSupportRepair"
     | "onAllSketchVisibilityToggle"
@@ -317,6 +318,7 @@ function renderTree(options: RenderTreeOptions = {}) {
     onFeaturePreselectionChange: vi.fn(),
     onFeatureSuppressionChange: vi.fn().mockResolvedValue({ ok: true }),
     onFeatureVisibilityChange: vi.fn(),
+    onHistoryMove: vi.fn().mockResolvedValue({ ok: true }),
     onSketchActivate: vi.fn(),
     onSketchSupportRepair: vi.fn(),
     onAllSketchVisibilityToggle: vi.fn(),
@@ -338,6 +340,67 @@ function renderTree(options: RenderTreeOptions = {}) {
 }
 
 describe("ModelTree History presentation", () => {
+  it("uses semantic History order and moves independent rows by stable identity", async () => {
+    const user = userEvent.setup()
+    const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
+    const semanticController = {
+      ...controller,
+      report: {
+        ...controllerReport,
+        historyItems: [
+          { kind: "sketch" as const, id: sketchId },
+          { kind: "feature" as const, id: featureId },
+        ],
+      },
+    } as unknown as DocumentControllerState
+    const { container } = renderTree({
+      activeFeatureId: null,
+      controller: semanticController,
+      onHistoryMove,
+    })
+
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-history-id]")].map(
+        (element) => element.dataset.historyId,
+      ),
+    ).toEqual([sketchId, featureId])
+    expect(
+      (screen.getByRole("button", { name: "Move Profile earlier" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+
+    await user.click(screen.getByRole("button", { name: "Move Box 1 earlier" }))
+    expect(onHistoryMove).toHaveBeenCalledWith(7, { kind: "feature", id: featureId }, null)
+  })
+
+  it("blocks adjacent History moves across a declared dependency", () => {
+    const fixture = controllerWithBrokenSketchReference()
+    const report = fixture.controller.report
+    if (!report) throw new Error("Expected a controller report.")
+    const [source, target] = report.snapshot.sketches
+    if (!source || !target) throw new Error("Expected source and target sketches.")
+    const dependencyController = {
+      ...fixture.controller,
+      report: {
+        ...report,
+        historyItems: [
+          { kind: "sketch" as const, id: source.id },
+          { kind: "sketch" as const, id: target.id },
+          { kind: "feature" as const, id: featureId },
+        ],
+      },
+    } as unknown as DocumentControllerState
+
+    renderTree({ activeFeatureId: null, controller: dependencyController })
+
+    expect(
+      (screen.getByRole("button", { name: "Move Source later" }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(
+      (screen.getByRole("button", { name: "Move Dependent earlier" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+  })
+
   it("renders one graph-ordered History and terminal Bodies presentation", () => {
     const { container } = renderTree()
 

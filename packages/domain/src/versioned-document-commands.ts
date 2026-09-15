@@ -22,9 +22,12 @@ import { projectFirstPartyFeatureSemanticInputs } from "./feature-semantic-input
 import {
   applyInsertFeatureInHistoryCommand,
   applyInsertSketchInHistoryCommand,
+  applyMoveHistoryItemCommand,
   featureInsertedInHistoryEventSchema,
+  historyItemMovedEventSchema,
   insertFeatureInHistoryCommandSchema,
   insertSketchInHistoryCommandSchema,
+  moveHistoryItemCommandSchema,
   reduceHistoryDocumentEvent,
   sketchInsertedInHistoryEventSchema,
 } from "./history-document-commands"
@@ -39,11 +42,13 @@ export const versionedDocumentCommandSchema = z.union([
   documentCommandSchema,
   insertSketchInHistoryCommandSchema,
   insertFeatureInHistoryCommandSchema,
+  moveHistoryItemCommandSchema,
 ])
 export const versionedDocumentEventSchema = z.union([
   documentEventSchema,
   sketchInsertedInHistoryEventSchema,
   featureInsertedInHistoryEventSchema,
+  historyItemMovedEventSchema,
   documentRestoredEventSchema,
 ])
 
@@ -367,6 +372,8 @@ function applyHistoryCommand(
     return snapshot
       ? applyInsertFeatureInHistoryCommand(snapshot, command, options)
       : documentNotFound()
+  if (command.kind === "org.vibeshape.history.move-item")
+    return snapshot ? applyMoveHistoryItemCommand(snapshot, command, options) : documentNotFound()
   return null
 }
 
@@ -427,7 +434,8 @@ export function reduceVersionedDocumentEvent(
       : documentNotFound()
   if (
     parsed.data.type === "org.vibeshape.history.sketch-inserted" ||
-    parsed.data.type === "org.vibeshape.history.feature-inserted"
+    parsed.data.type === "org.vibeshape.history.feature-inserted" ||
+    parsed.data.type === "org.vibeshape.history.item-moved"
   )
     return current ? reduceHistoryDocumentEvent(current.value, parsed.data) : documentNotFound()
   return reduceLegacyEvent(current?.value ?? null, parsed.data)

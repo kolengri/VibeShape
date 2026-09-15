@@ -4,6 +4,7 @@ import { featureRecordSchema, featureRecordV1Schema } from "./feature-graph"
 import {
   applyInsertFeatureInHistoryCommand,
   applyInsertSketchInHistoryCommand,
+  applyMoveHistoryItemCommand,
   reduceHistoryDocumentEvent,
   replayHistoryDocumentEvents,
   type SketchInsertedInHistoryEvent,
@@ -176,6 +177,23 @@ function featureCommand(
   }
 }
 
+function moveCommand(
+  snapshot: DocumentSnapshotV1,
+  item: DocumentSnapshotV1["history"][number],
+  historyAfter: DocumentSnapshotV1["history"][number] | null,
+) {
+  return {
+    kind: "org.vibeshape.history.move-item",
+    schemaVersion: 1,
+    commandId: uuid(800 + snapshot.revision),
+    documentId: snapshot.id,
+    baseRevision: snapshot.revision,
+    issuedAt,
+    actor,
+    payload: { item, historyAfter },
+  }
+}
+
 function expectApplied(result: ReturnType<typeof applyInsertSketchInHistoryCommand>) {
   expect(result).toMatchObject({ ok: true })
   if (!result.ok) throw new Error(result.diagnostic.message)
@@ -211,6 +229,106 @@ it("uses History rather than sketch storage order for v1 external references", (
   expect(
     documentSnapshotV1Schema.safeParse({ ...input, history: [...input.history].reverse() }).success,
   ).toBe(false)
+})
+
+it("moves an independent History item by stable identity and replays the result", () => {
+  const first = feature(40)
+  const second = feature(41)
+  const current = seed({
+    features: [first, second],
+    history: [
+      { kind: "feature", id: first.id },
+      { kind: "feature", id: second.id },
+    ],
+  })
+  const result = applyMoveHistoryItemCommand(
+    current,
+    moveCommand(current, { kind: "feature", id: second.id }, null),
+  )
+
+  expect(result).toMatchObject({
+    ok: true,
+    event: {
+      type: "org.vibeshape.history.item-moved",
+      item: { kind: "feature", id: second.id },
+      historyAfter: null,
+    },
+    snapshot: {
+      revision: current.revision + 1,
+      history: [
+        { kind: "feature", id: second.id },
+        { kind: "feature", id: first.id },
+      ],
+    },
+  })
+  if (!result.ok) throw new Error(result.diagnostic.message)
+  expect(reduceHistoryDocumentEvent(current, result.event)).toEqual({
+    ok: true,
+    snapshot: result.snapshot,
+  })
+})
+
+it("rejects History moves that place a dependency after its consumer", () => {
+  const source = pointSketch(42, 43)
+  const sourcePoint = source.entities[0]
+  if (!sourcePoint) throw new Error("Expected a source point.")
+  const consumer = sketchRecordSchema.parse({
+    ...sketch(44),
+    externalReferences: [
+      {
+        schemaVersion: 0,
+        id: uuid(45),
+        sourceSketchId: source.id,
+        sourcePointId: sourcePoint.id,
+        projectedPointId: uuid(46),
+      },
+    ],
+  })
+  const current = seed({
+    sketches: [source, consumer],
+    history: [
+      { kind: "sketch", id: source.id },
+      { kind: "sketch", id: consumer.id },
+    ],
+  })
+
+  const invalid = applyMoveHistoryItemCommand(
+    current,
+    moveCommand(current, { kind: "sketch", id: source.id }, { kind: "sketch", id: consumer.id }),
+  )
+  expect(invalid).toMatchObject({ ok: false, diagnostic: { code: "invalid-command" } })
+  expect(invalid.ok ? [] : invalid.diagnostic.issues).toEqual(
+    expect.arrayContaining([expect.objectContaining({ path: "forward-reference" })]),
+  )
+})
+
+it("rejects no-op, missing-item, self-anchor, and missing-anchor History moves", () => {
+  const first = feature(47)
+  const second = feature(48)
+  const current = seed({
+    features: [first, second],
+    history: [
+      { kind: "feature", id: first.id },
+      { kind: "feature", id: second.id },
+    ],
+  })
+  const firstRef = { kind: "feature" as const, id: first.id }
+  const secondRef = { kind: "feature" as const, id: second.id }
+  const missingRef = { kind: "feature" as const, id: featureIdSchema.parse(uuid(49)) }
+
+  expect(
+    applyMoveHistoryItemCommand(current, moveCommand(current, secondRef, firstRef)),
+  ).toMatchObject({ ok: false, diagnostic: { code: "command-no-op" } })
+  for (const commandInput of [
+    moveCommand(current, missingRef, null),
+    moveCommand(current, firstRef, firstRef),
+    moveCommand(current, firstRef, missingRef),
+  ]) {
+    expect(applyMoveHistoryItemCommand(current, commandInput)).toMatchObject({
+      ok: false,
+      diagnostic: { code: "invalid-command" },
+    })
+  }
 })
 
 it("inserts first-party features at stable History anchors with semantic inputs", () => {
