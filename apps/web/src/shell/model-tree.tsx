@@ -12,6 +12,8 @@ import { Button } from "@vibeshape/ui/components/button"
 import {
   ChevronDown,
   CircleAlert,
+  CirclePause,
+  CirclePlay,
   Cuboid,
   Eye,
   EyeOff,
@@ -36,6 +38,12 @@ type FeatureRenameHandler = (
   baseRevision: number,
   feature: FeatureRecord,
 ) => Promise<SemanticRenameResult>
+
+type FeatureSuppressionHandler = (
+  baseRevision: number,
+  featureId: FeatureRecord["id"],
+  suppressed: boolean,
+) => Promise<DocumentMutationResult>
 
 type SketchRenameHandler = (
   baseRevision: number,
@@ -65,6 +73,130 @@ function sketchHasDependents(
   )
 }
 
+function FeatureVisibilityAction({
+  feature,
+  label,
+  onChange,
+  visible,
+}: {
+  feature: FeatureRecord
+  label: string
+  onChange: () => void
+  visible: boolean
+}) {
+  const t = useTranslations("app.shell.modelTree")
+  const visibilityLabel = t(visible ? "hideFeature" : "showFeature", { feature: label })
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={visibilityLabel}
+          aria-pressed={visible}
+          disabled={feature.suppressed}
+          onClick={onChange}
+        >
+          {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{visibilityLabel}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function FeatureSuppressionAction({
+  controller,
+  feature,
+  label,
+  onChange,
+}: {
+  controller: DocumentControllerState
+  feature: FeatureRecord
+  label: string
+  onChange: FeatureSuppressionHandler
+}) {
+  const t = useTranslations("app.shell.modelTree")
+  const actionLabel = t(feature.suppressed ? "unsuppressFeature" : "suppressFeature", {
+    feature: label,
+  })
+  const disabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={actionLabel}
+          aria-pressed={feature.suppressed}
+          disabled={disabled}
+          onClick={() =>
+            onChange(controller.report?.snapshot.revision ?? 0, feature.id, !feature.suppressed)
+          }
+        >
+          {feature.suppressed ? (
+            <CirclePlay aria-hidden="true" />
+          ) : (
+            <CirclePause aria-hidden="true" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{actionLabel}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function FeatureTreeLabel({
+  active,
+  feature,
+  label,
+  onActivate,
+  onPreselectionChange,
+  onRenameOpen,
+  renameDisabled,
+}: {
+  active: boolean
+  feature: FeatureRecord
+  onActivate: (featureId: FeatureRecord["id"]) => void
+  label: string
+  onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
+  onRenameOpen: () => void
+  renameDisabled: boolean
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      className={cn(
+        "min-w-0 flex-1 justify-start pl-6 font-normal",
+        active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
+        feature.suppressed && "text-muted-foreground line-through decoration-dotted",
+      )}
+      role="treeitem"
+      tabIndex={-1}
+      aria-selected={active}
+      onClick={() => onActivate(feature.id)}
+      onFocus={() => onPreselectionChange(feature.id)}
+      onBlur={() => onPreselectionChange(null)}
+      onKeyDown={(event) => {
+        if (event.key !== "F2" || renameDisabled) return
+        event.preventDefault()
+        onRenameOpen()
+      }}
+    >
+      {readDatumPlaneFeatureParameters(feature) ? (
+        <Layers3 aria-hidden="true" className="mr-1 size-4 shrink-0" />
+      ) : (
+        <Cuboid aria-hidden="true" className="mr-1 size-4 shrink-0" />
+      )}
+      <span className="truncate">{label}</span>
+    </Button>
+  )
+}
+
 function FeatureTreeItem({
   active,
   controller,
@@ -72,6 +204,7 @@ function FeatureTreeItem({
   onActivate,
   onFeatureRename,
   onPreselectionChange,
+  onSuppressionChange,
   onVisibilityChange,
   onSketchRename,
   unnamedFeature,
@@ -83,65 +216,43 @@ function FeatureTreeItem({
   onActivate: (featureId: FeatureRecord["id"]) => void
   onFeatureRename: FeatureRenameHandler
   onPreselectionChange: (featureId: FeatureRecord["id"] | null) => void
+  onSuppressionChange: FeatureSuppressionHandler
   onVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchRename: SketchRenameHandler
   unnamedFeature: string
   visible: boolean
 }) {
-  const t = useTranslations("app.shell.modelTree")
   const [renameOpen, setRenameOpen] = useState(false)
   const label = feature.label ?? unnamedFeature
   const renameDisabled = controller.status !== "ready" || controller.report?.mode !== "read-write"
-  const visibilityLabel = t(visible ? "hideFeature" : "showFeature", { feature: label })
-
   return (
     <div
-      className="flex min-w-0 items-center gap-0.5"
+      className={cn("flex min-w-0 items-center gap-0.5", feature.suppressed && "opacity-60")}
+      data-feature-suppressed={feature.suppressed ? "true" : undefined}
       onPointerEnter={() => onPreselectionChange(feature.id)}
       onPointerLeave={() => onPreselectionChange(null)}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={visibilityLabel}
-            aria-pressed={visible}
-            onClick={() => onVisibilityChange(feature.id, !visible)}
-          >
-            {visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{visibilityLabel}</TooltipContent>
-      </Tooltip>
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        className={cn(
-          "min-w-0 flex-1 justify-start pl-6 font-normal",
-          active && "bg-accent text-accent-foreground ring-1 ring-primary ring-inset",
-        )}
-        role="treeitem"
-        tabIndex={-1}
-        aria-selected={active}
-        onClick={() => onActivate(feature.id)}
-        onFocus={() => onPreselectionChange(feature.id)}
-        onBlur={() => onPreselectionChange(null)}
-        onKeyDown={(event) => {
-          if (event.key !== "F2" || renameDisabled) return
-          event.preventDefault()
-          setRenameOpen(true)
-        }}
-      >
-        {readDatumPlaneFeatureParameters(feature) ? (
-          <Layers3 aria-hidden="true" className="mr-1 size-4 shrink-0" />
-        ) : (
-          <Cuboid aria-hidden="true" className="mr-1 size-4 shrink-0" />
-        )}
-        <span className="truncate">{label}</span>
-      </Button>
+      <FeatureVisibilityAction
+        feature={feature}
+        label={label}
+        visible={visible}
+        onChange={() => onVisibilityChange(feature.id, !visible)}
+      />
+      <FeatureTreeLabel
+        active={active}
+        feature={feature}
+        label={label}
+        onActivate={onActivate}
+        onPreselectionChange={onPreselectionChange}
+        onRenameOpen={() => setRenameOpen(true)}
+        renameDisabled={renameDisabled}
+      />
+      <FeatureSuppressionAction
+        controller={controller}
+        feature={feature}
+        label={label}
+        onChange={onSuppressionChange}
+      />
       <ModelTreeRenameDialog
         controller={controller}
         fallbackName={unnamedFeature}
@@ -525,6 +636,7 @@ type ModelTreeProps = {
   onSketchDeleted: () => void
   onSketchRemove: SketchRemoveHandler
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
+  onFeatureSuppressionChange: FeatureSuppressionHandler
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
   onSketchActivate: (sketchId: SketchId) => void
   onSketchSupportRepair: (sketchId: SketchId) => void
@@ -736,6 +848,7 @@ function FeatureHistoryRow({ rolledBack, row, t, view, ...props }: ModelTreeHist
         onActivate={props.onFeatureActivate}
         onFeatureRename={props.onFeatureRename}
         onPreselectionChange={props.onFeaturePreselectionChange}
+        onSuppressionChange={props.onFeatureSuppressionChange}
         onVisibilityChange={props.onFeatureVisibilityChange}
         onSketchRename={props.onSketchRename}
         unnamedFeature={t("unnamedFeature")}

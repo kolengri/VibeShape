@@ -190,6 +190,7 @@ function FixtureTree({
       onBodyPreselectionChange={onBodyPreselectionChange}
       onFeatureActivate={noop}
       onFeaturePreselectionChange={noop}
+      onFeatureSuppressionChange={async () => ({ ok: true as const })}
       onFeatureVisibilityChange={noop}
       onFeatureRename={async () => ({ ok: true as const })}
       onSketchActivate={noop}

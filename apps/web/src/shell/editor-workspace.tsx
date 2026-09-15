@@ -48,6 +48,7 @@ import {
   type DocumentControllerState,
   removeSketch,
   resolveDocumentFeatureParameters,
+  setFeatureSuppressed,
   solveActiveSketch,
   updateFeature,
   updateSketch,
@@ -1966,6 +1967,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onFeatureActivate={actions.editFeature}
       onFeatureRename={updateFeature}
       onFeaturePreselectionChange={actions.preselectFeature}
+      onFeatureSuppressionChange={setFeatureSuppressed}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
       onSketchActivate={actions.editSketch}
       onSketchSupportRepair={repairSketchSupport}

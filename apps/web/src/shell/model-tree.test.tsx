@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
   boxFeatureType,
@@ -81,6 +81,32 @@ const controller = {
           },
         ],
         modelReferenceEvidence: [],
+      },
+    },
+  },
+} as unknown as DocumentControllerState
+
+const controllerReport = controller.report
+if (!controllerReport?.rebuild.ok) {
+  throw new Error("The model-tree fixture requires a successful rebuild report.")
+}
+const suppressedFeature = featureRecordSchema.parse({ ...feature, suppressed: true })
+const suppressedController = {
+  ...controller,
+  report: {
+    ...controllerReport,
+    snapshot: { ...controllerReport.snapshot, features: [suppressedFeature] },
+    rebuild: {
+      ok: true,
+      response: {
+        ...controllerReport.rebuild.response,
+        evaluation: {
+          records: [{ featureId, status: "suppressed" }],
+          dirtyFeatureIds: [],
+          evaluatedFeatureIds: [featureId],
+          reusedFeatureIds: [],
+        },
+        geometry: [],
       },
     },
   },
@@ -256,11 +282,13 @@ type RenderTreeOptions = Partial<
   Pick<
     ModelTreeProps,
     | "activeSketchId"
+    | "activeFeatureId"
     | "activeWorkspace"
     | "controller"
     | "onFeatureActivate"
     | "onFeatureRename"
     | "onFeaturePreselectionChange"
+    | "onFeatureSuppressionChange"
     | "onFeatureVisibilityChange"
     | "onSketchActivate"
     | "onSketchSupportRepair"
@@ -276,50 +304,34 @@ type RenderTreeOptions = Partial<
   >
 >
 
-function renderTree({
-  activeSketchId = null,
-  activeWorkspace = "model",
-  controller: treeController = controller,
-  onFeatureActivate = vi.fn(),
-  onFeatureRename = vi.fn().mockResolvedValue({ ok: true }),
-  onFeaturePreselectionChange = vi.fn(),
-  onFeatureVisibilityChange = vi.fn(),
-  onSketchActivate = vi.fn(),
-  onSketchSupportRepair = vi.fn(),
-  onAllSketchVisibilityToggle = vi.fn(),
-  onSketchDeleted = vi.fn(),
-  onSketchRemove = vi.fn().mockResolvedValue({ ok: true }),
-  onSketchRename = vi.fn().mockResolvedValue({ ok: true }),
-  onSketchVisibilityChange = vi.fn(),
-  onWorkspaceChange = vi.fn(),
-  sketchRenameBlockedId = null,
-  hiddenFeatureIds = [],
-  hiddenSketchIds = [],
-}: RenderTreeOptions = {}) {
+function renderTree(options: RenderTreeOptions = {}) {
+  const props: ModelTreeProps = {
+    activeFeatureId: featureId,
+    activeSketchId: null,
+    activeWorkspace: "model",
+    controller,
+    hiddenFeatureIds: [],
+    hiddenSketchIds: [],
+    onFeatureActivate: vi.fn(),
+    onFeatureRename: vi.fn().mockResolvedValue({ ok: true }),
+    onFeaturePreselectionChange: vi.fn(),
+    onFeatureSuppressionChange: vi.fn().mockResolvedValue({ ok: true }),
+    onFeatureVisibilityChange: vi.fn(),
+    onSketchActivate: vi.fn(),
+    onSketchSupportRepair: vi.fn(),
+    onAllSketchVisibilityToggle: vi.fn(),
+    onSketchDeleted: vi.fn(),
+    onSketchRemove: vi.fn().mockResolvedValue({ ok: true }),
+    onSketchRename: vi.fn().mockResolvedValue({ ok: true }),
+    onSketchVisibilityChange: vi.fn(),
+    onWorkspaceChange: vi.fn(),
+    sketchRenameBlockedId: null,
+    ...options,
+  }
   return render(
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
-        <ModelTree
-          activeFeatureId={featureId}
-          activeSketchId={activeSketchId}
-          activeWorkspace={activeWorkspace}
-          controller={treeController}
-          hiddenFeatureIds={hiddenFeatureIds}
-          hiddenSketchIds={hiddenSketchIds}
-          onFeatureActivate={onFeatureActivate}
-          onFeatureRename={onFeatureRename}
-          onFeaturePreselectionChange={onFeaturePreselectionChange}
-          onFeatureVisibilityChange={onFeatureVisibilityChange}
-          onSketchActivate={onSketchActivate}
-          onSketchSupportRepair={onSketchSupportRepair}
-          onAllSketchVisibilityToggle={onAllSketchVisibilityToggle}
-          onSketchDeleted={onSketchDeleted}
-          onSketchRemove={onSketchRemove}
-          onSketchRename={onSketchRename}
-          onSketchVisibilityChange={onSketchVisibilityChange}
-          onWorkspaceChange={onWorkspaceChange}
-          sketchRenameBlockedId={sketchRenameBlockedId}
-        />
+        <ModelTree {...props} />
       </TooltipProvider>
     </I18nProvider>,
   )
@@ -606,6 +618,50 @@ describe("ModelTree selection", () => {
 })
 
 describe("ModelTree visibility and deletion", () => {
+  it("toggles persisted feature suppression with a single-flight icon action", async () => {
+    const user = userEvent.setup()
+    let resolveSuppression: ((result: { ok: true }) => void) | undefined
+    const onFeatureSuppressionChange = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          resolveSuppression = resolve
+        }),
+    )
+    const { unmount } = renderTree({
+      activeFeatureId: null,
+      onFeatureSuppressionChange,
+    })
+
+    const suppress = screen.getByRole("button", { name: "Suppress Box 1" })
+    await user.click(suppress)
+
+    expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
+    expect(onFeatureSuppressionChange).toHaveBeenCalledWith(7, featureId, true)
+    expect(suppress.getAttribute("aria-busy")).toBe("true")
+    await user.click(suppress)
+    expect(onFeatureSuppressionChange).toHaveBeenCalledOnce()
+
+    resolveSuppression?.({ ok: true })
+    await waitFor(() => expect(suppress.hasAttribute("aria-busy")).toBe(false))
+
+    unmount()
+    renderTree({
+      activeFeatureId: null,
+      controller: suppressedController,
+      onFeatureSuppressionChange,
+    })
+    const suppressedRow = screen
+      .getByRole("button", { name: "Unsuppress Box 1" })
+      .closest("[data-feature-suppressed]")
+    expect(suppressedRow?.getAttribute("data-feature-suppressed")).toBe("true")
+    expect((screen.getByRole("button", { name: "Hide Box 1" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Unsuppress Box 1" }))
+    expect(onFeatureSuppressionChange).toHaveBeenLastCalledWith(7, featureId, false)
+  })
+
   it("toggles terminal feature visibility from an icon-only accessible action", async () => {
     const user = userEvent.setup()
     const onFeatureVisibilityChange = vi.fn()

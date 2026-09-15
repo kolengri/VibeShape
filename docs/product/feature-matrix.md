@@ -223,7 +223,7 @@ The implemented export dialog downloads successful terminal bodies as determinis
 
 - P0: undo/redo at user-command granularity, not per pointer event.
 - P0: edit an early feature and rebuild downstream features.
-- P0: suppress/unsuppress.
+- P0: suppress/unsuppress through a separate persisted History-row action, with downstream rebuild, single-flight commit, and document undo/redo (implemented).
 - P1: reorder with DAG validation.
 - P1: compare two snapshots by feature, parameter, and geometry metrics.
 - P2: branch/merge.
