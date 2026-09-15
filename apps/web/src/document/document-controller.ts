@@ -833,6 +833,23 @@ export function updateFeature(baseRevision: number, feature: FeatureRecord) {
   return commitFeatureMutation("org.vibeshape.feature.update", baseRevision, feature)
 }
 
+export function setFeatureSuppressed(
+  baseRevision: number,
+  featureId: FeatureRecord["id"],
+  suppressed: boolean,
+) {
+  return commitDocumentCommand((documentId) => ({
+    kind: "org.vibeshape.feature.set-suppressed",
+    schemaVersion: 1,
+    commandId: browserUuidV7(),
+    documentId,
+    baseRevision,
+    issuedAt: new Date().toISOString(),
+    actor: { type: "user", userId: null },
+    payload: { featureId, suppressed },
+  }))
+}
+
 export function removeFeature(baseRevision: number, featureId: FeatureRecord["id"]) {
   return commitDocumentCommand((documentId) => ({
     kind: "org.vibeshape.feature.remove",

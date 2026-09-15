@@ -566,6 +566,8 @@
         "hideSketch": "Hide {sketch}",
         "hideAllSketches": "Hide all sketches",
         "showFeature": "Show {feature}",
+        "suppressFeature": "Suppress {feature}",
+        "unsuppressFeature": "Unsuppress {feature}",
         "showSketch": "Show {sketch}",
         "showAllSketches": "Show all sketches",
         "sketchVisibilityShortcut": "{action} · Shift+H",

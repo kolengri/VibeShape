@@ -6,6 +6,8 @@ export {
   Circle,
   CircleAlert,
   CircleDashed,
+  CirclePause,
+  CirclePlay,
   Command as CommandIcon,
   Construction,
   CopyPlus,
