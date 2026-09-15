@@ -47,7 +47,7 @@ Document
 
 Schema version 0 stores `sketches[]` and `features[]` separately. Sketches use stable UUIDv7 identities and store analytical entities plus constraints independently of disposable solved state; features retain stable identity, presentation order within their collection, and explicit B-Rep inputs. Opening a current file validates sketch reference compatibility, constructs the feature DAG, and rejects missing IDs and cycles.
 
-[ADR-0026](../adr/0026-document-dependency-graph-and-interleaved-history.md) accepts a version-1 document evolution with one interleaved History order and durable non-B-Rep semantic input declarations. The pure document-graph foundation validates typed sketch/feature nodes and current first-party relations without changing schema version 0. It is not yet authoritative for persistence, deletion, reorder, dirty propagation, or UI eligibility. Those integrations require the migration-aware snapshot and event replay gates in ADR-0026.
+[ADR-0026](../adr/0026-document-dependency-graph-and-interleaved-history.md) accepts a version-1 document evolution with one interleaved History order and durable non-B-Rep semantic input declarations. The document graph validates typed sketch/feature nodes and current first-party relations and is authoritative for persistence, deletion protection, History reorder, and the corresponding UI eligibility. Dirty propagation remains a separate rebuild concern.
 
 A built-in feature stores a stable first-party module ID, module version, contributed feature-type ID, and feature schema version. A custom feature additionally stores:
 

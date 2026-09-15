@@ -234,6 +234,40 @@ export function createVersionedPersistenceAdapter(
         return { ok: true, value: restored.projected }
       },
     },
+    semanticHistory: {
+      get items() {
+        return authority?.history ?? []
+      },
+      async move(input) {
+        const baseMatch = projectInput(authority, input.baseSnapshot)
+        if (baseMatch) return baseMatch
+        const reduced = applyVersionedDocumentCommand(authority, input.command)
+        if (!reduced.ok || reduced.event.type !== "org.vibeshape.history.item-moved")
+          return failed(
+            "invalid-event",
+            reduced.ok ? "The command is not a History move." : reduced.diagnostic.message,
+          )
+        const projected = projectDocumentSnapshotV1ToV0(reduced.snapshot)
+        if (!projected.ok) return failed("invalid-event", projected.diagnostic.message)
+        let persisted: VersionedPortResult<unknown>
+        try {
+          persisted = await repository.commit({
+            sessionId: input.sessionId,
+            lease: input.lease,
+            storedAt: reduced.event.issuedAt,
+            baseSnapshot: authority,
+            event: reduced.event,
+            snapshot: reduced.snapshot,
+          })
+        } catch {
+          return failed("persistence-failed", "The History move was not saved.")
+        }
+        if (!persisted.ok) return persisted
+        history.record(authority, reduced.snapshot)
+        authority = reduced.snapshot
+        return { ok: true, value: projected.snapshot }
+      },
+    },
     get currentV1Snapshot() {
       return authority
     },

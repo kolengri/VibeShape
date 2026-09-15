@@ -1,5 +1,6 @@
 import {
   type FeatureRecord,
+  type HistoryItemRef,
   isSketchExternalModelReference,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
@@ -10,6 +11,8 @@ import {
 import { useTranslations } from "@vibeshape/i18n"
 import { Button } from "@vibeshape/ui/components/button"
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   CircleAlert,
   CirclePause,
@@ -22,7 +25,7 @@ import {
 } from "@vibeshape/ui/components/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@vibeshape/ui/components/tooltip"
 import { cn } from "@vibeshape/ui/lib/cn"
-import { type FocusEvent, type KeyboardEvent, useMemo, useState } from "react"
+import { type FocusEvent, type KeyboardEvent, type ReactNode, useMemo, useState } from "react"
 import type { SemanticRenameResult } from "../components/semantic-rename-dialog"
 import type {
   DocumentControllerState,
@@ -43,6 +46,12 @@ type FeatureSuppressionHandler = (
   baseRevision: number,
   featureId: FeatureRecord["id"],
   suppressed: boolean,
+) => Promise<DocumentMutationResult>
+
+type HistoryMoveHandler = (
+  baseRevision: number,
+  item: HistoryItemRef,
+  historyAfter: HistoryItemRef | null,
 ) => Promise<DocumentMutationResult>
 
 type SketchRenameHandler = (
@@ -638,6 +647,7 @@ type ModelTreeProps = {
   onFeaturePreselectionChange: (featureId: FeatureRecord["id"] | null) => void
   onFeatureSuppressionChange: FeatureSuppressionHandler
   onFeatureVisibilityChange: (featureId: FeatureRecord["id"], visible: boolean) => void
+  onHistoryMove: HistoryMoveHandler
   onSketchActivate: (sketchId: SketchId) => void
   onSketchSupportRepair: (sketchId: SketchId) => void
   onAllSketchVisibilityToggle: () => void
@@ -781,12 +791,92 @@ type ModelTreeHistoryBranchProps = ModelTreeProps & {
 }
 
 type ModelTreeHistoryRowProps = ModelTreeHistoryBranchProps & {
+  index: number
   marker: boolean
   rolledBack: boolean
   row: HistoryViewRow
 }
 
+function refsEqual(left: HistoryItemRef, right: HistoryItemRef) {
+  return left.kind === right.kind && left.id === right.id
+}
+
+function adjacentHistoryMove(
+  rows: readonly HistoryViewRow[],
+  index: number,
+  direction: "earlier" | "later",
+): Readonly<{ item: HistoryItemRef; historyAfter: HistoryItemRef | null }> | null {
+  const row = rows[index]
+  if (!row) return null
+  if (direction === "earlier") {
+    const previous = rows[index - 1]
+    if (!previous || row.dependencies.some((dependency) => refsEqual(dependency, previous.ref)))
+      return null
+    return { item: row.ref, historyAfter: rows[index - 2]?.ref ?? null }
+  }
+  const next = rows[index + 1]
+  if (!next || next.dependencies.some((dependency) => refsEqual(dependency, row.ref))) return null
+  return { item: row.ref, historyAfter: next.ref }
+}
+
+function HistoryReorderActions({
+  controller,
+  index,
+  label,
+  locked,
+  onMove,
+  rows,
+  t,
+}: {
+  controller: DocumentControllerState
+  index: number
+  label: string
+  locked: boolean
+  onMove: HistoryMoveHandler
+  rows: readonly HistoryViewRow[]
+  t: ReturnType<typeof useTranslations>
+}) {
+  const earlier = adjacentHistoryMove(rows, index, "earlier")
+  const later = adjacentHistoryMove(rows, index, "later")
+  const unavailable =
+    locked || controller.status !== "ready" || controller.report?.mode !== "read-write"
+  const action = (direction: "earlier" | "later", move: typeof earlier, icon: ReactNode) => {
+    const actionLabel = t(direction === "earlier" ? "moveHistoryEarlier" : "moveHistoryLater", {
+      item: label,
+    })
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={actionLabel}
+            disabled={unavailable || !move}
+            onClick={() =>
+              move
+                ? onMove(controller.report?.snapshot.revision ?? 0, move.item, move.historyAfter)
+                : undefined
+            }
+          >
+            {icon}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{actionLabel}</TooltipContent>
+      </Tooltip>
+    )
+  }
+  return (
+    <fieldset className="flex shrink-0 items-center">
+      <legend className="sr-only">{t("reorderHistory", { item: label })}</legend>
+      {action("earlier", earlier, <ArrowUp aria-hidden="true" />)}
+      {action("later", later, <ArrowDown aria-hidden="true" />)}
+    </fieldset>
+  )
+}
+
 function SketchHistoryRow({
+  index,
   marker,
   rolledBack,
   row,
@@ -794,6 +884,12 @@ function SketchHistoryRow({
   view,
   ...props
 }: ModelTreeHistoryRowProps) {
+  const label = (row.record as SketchRecord).label || t("unnamedSketch")
+  const reorderLocked =
+    rolledBack ||
+    props.activeSketchId !== null ||
+    props.activeFeatureId !== null ||
+    view.reorderUnavailable
   return (
     <div
       role="none"
@@ -802,23 +898,36 @@ function SketchHistoryRow({
       data-history-rolled-back={rolledBack ? "true" : undefined}
       className={rolledBack ? "opacity-60" : undefined}
     >
-      <SketchTreeItem
-        active={row.ref.id === props.activeSketchId}
-        controller={props.controller}
-        onActivate={props.onSketchActivate}
-        onSketchSupportRepair={props.onSketchSupportRepair}
-        onFeatureRename={props.onFeatureRename}
-        onSketchDeleted={props.onSketchDeleted}
-        onSketchRemove={props.onSketchRemove}
-        onSketchRename={props.onSketchRename}
-        onVisibilityChange={props.onSketchVisibilityChange}
-        renameBlocked={row.ref.id === props.sketchRenameBlockedId}
-        referenceHealth={row.referenceHealth}
-        supportHealth={row.supportHealth}
-        sketch={row.record as SketchRecord}
-        unnamedSketch={t("unnamedSketch")}
-        visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
-      />
+      <div className="flex min-w-0 items-start">
+        <div className="min-w-0 flex-1">
+          <SketchTreeItem
+            active={row.ref.id === props.activeSketchId}
+            controller={props.controller}
+            onActivate={props.onSketchActivate}
+            onSketchSupportRepair={props.onSketchSupportRepair}
+            onFeatureRename={props.onFeatureRename}
+            onSketchDeleted={props.onSketchDeleted}
+            onSketchRemove={props.onSketchRemove}
+            onSketchRename={props.onSketchRename}
+            onVisibilityChange={props.onSketchVisibilityChange}
+            renameBlocked={row.ref.id === props.sketchRenameBlockedId}
+            referenceHealth={row.referenceHealth}
+            supportHealth={row.supportHealth}
+            sketch={row.record as SketchRecord}
+            unnamedSketch={t("unnamedSketch")}
+            visible={!props.hiddenSketchIds.includes(row.ref.id as SketchId)}
+          />
+        </div>
+        <HistoryReorderActions
+          controller={props.controller}
+          index={index}
+          label={label}
+          locked={reorderLocked}
+          onMove={props.onHistoryMove}
+          rows={view.rows}
+          t={t}
+        />
+      </div>
       <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
       <SketchReferenceHealthSummary health={row.referenceHealth} t={t} />
       <SketchSupportHealthSummary health={row.supportHealth} t={t} />
@@ -831,7 +940,20 @@ function SketchHistoryRow({
   )
 }
 
-function FeatureHistoryRow({ rolledBack, row, t, view, ...props }: ModelTreeHistoryRowProps) {
+function FeatureHistoryRow({
+  index,
+  rolledBack,
+  row,
+  t,
+  view,
+  ...props
+}: ModelTreeHistoryRowProps) {
+  const label = (row.record as FeatureRecord).label ?? t("unnamedFeature")
+  const reorderLocked =
+    rolledBack ||
+    props.activeSketchId !== null ||
+    props.activeFeatureId !== null ||
+    view.reorderUnavailable
   return (
     <div
       role="none"
@@ -841,19 +963,32 @@ function FeatureHistoryRow({ rolledBack, row, t, view, ...props }: ModelTreeHist
       className={rolledBack ? "opacity-60" : undefined}
       data-history-rolled-back={rolledBack ? "true" : undefined}
     >
-      <FeatureTreeItem
-        active={row.ref.id === props.activeFeatureId}
-        controller={props.controller}
-        feature={row.record as FeatureRecord}
-        onActivate={props.onFeatureActivate}
-        onFeatureRename={props.onFeatureRename}
-        onPreselectionChange={props.onFeaturePreselectionChange}
-        onSuppressionChange={props.onFeatureSuppressionChange}
-        onVisibilityChange={props.onFeatureVisibilityChange}
-        onSketchRename={props.onSketchRename}
-        unnamedFeature={t("unnamedFeature")}
-        visible={!props.hiddenFeatureIds.includes(row.ref.id as FeatureRecord["id"])}
-      />
+      <div className="flex min-w-0 items-start">
+        <div className="min-w-0 flex-1">
+          <FeatureTreeItem
+            active={row.ref.id === props.activeFeatureId}
+            controller={props.controller}
+            feature={row.record as FeatureRecord}
+            onActivate={props.onFeatureActivate}
+            onFeatureRename={props.onFeatureRename}
+            onPreselectionChange={props.onFeaturePreselectionChange}
+            onSuppressionChange={props.onFeatureSuppressionChange}
+            onVisibilityChange={props.onFeatureVisibilityChange}
+            onSketchRename={props.onSketchRename}
+            unnamedFeature={t("unnamedFeature")}
+            visible={!props.hiddenFeatureIds.includes(row.ref.id as FeatureRecord["id"])}
+          />
+        </div>
+        <HistoryReorderActions
+          controller={props.controller}
+          index={index}
+          label={label}
+          locked={reorderLocked}
+          onMove={props.onHistoryMove}
+          rows={view.rows}
+          t={t}
+        />
+      </div>
       <HistorySummary labelsByRef={view.labelsByRef} row={row} t={t} />
     </div>
   )
@@ -888,6 +1023,7 @@ function HistoryGroup({
           {view.rows.map((row, index) => {
             const rowProps = {
               ...props,
+              index,
               row,
               rolledBack: rollbackIndex >= 0 && index > rollbackIndex,
               marker: rollbackIndex === index && index < view.rows.length - 1,
@@ -1095,8 +1231,9 @@ export function ModelTree(props: ModelTreeProps) {
         },
         modelReferenceEvidence,
         rebuiltResponse,
+        report?.historyItems,
       ),
-    [modelReferenceEvidence, rebuiltResponse, snapshot],
+    [modelReferenceEvidence, rebuiltResponse, report?.historyItems, snapshot],
   )
   const sketchIds = historyView.rows
     .filter((row) => row.kind === "sketch")

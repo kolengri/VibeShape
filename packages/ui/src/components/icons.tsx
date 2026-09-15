@@ -1,4 +1,6 @@
 export {
+  ArrowDown,
+  ArrowUp,
   ArrowUpRight,
   Box,
   Check,

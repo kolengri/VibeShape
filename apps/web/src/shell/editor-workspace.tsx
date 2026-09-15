@@ -46,6 +46,7 @@ import { automationReviews } from "../automation/automation-review-controller"
 import { AutomationReviewPanel } from "../automation/automation-review-panel"
 import {
   type DocumentControllerState,
+  moveHistoryItem,
   removeSketch,
   resolveDocumentFeatureParameters,
   setFeatureSuppressed,
@@ -1969,6 +1970,7 @@ function EditorModelTree({ props }: { props: EditorWorkspaceProps }) {
       onFeaturePreselectionChange={actions.preselectFeature}
       onFeatureSuppressionChange={setFeatureSuppressed}
       onFeatureVisibilityChange={actions.setFeatureVisibility}
+      onHistoryMove={moveHistoryItem}
       onSketchActivate={actions.editSketch}
       onSketchSupportRepair={repairSketchSupport}
       onSketchDeleted={actions.closeTool}

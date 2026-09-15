@@ -192,6 +192,7 @@ function FixtureTree({
       onFeaturePreselectionChange={noop}
       onFeatureSuppressionChange={async () => ({ ok: true as const })}
       onFeatureVisibilityChange={noop}
+      onHistoryMove={async () => ({ ok: true as const })}
       onFeatureRename={async () => ({ ok: true as const })}
       onSketchActivate={noop}
       onSketchSupportRepair={noop}

@@ -1,4 +1,5 @@
 import {
+  createDocumentDependencyGraph,
   createDocumentDependencyGraphFromSnapshot,
   type DocumentNodeRef,
   type FeatureRecord,
@@ -32,6 +33,7 @@ export type ModelTreeHistoryView = Readonly<{
   bodyFeatures: readonly FeatureRecord[]
   modelBodies: readonly ModelBodyView[]
   graphFailed: boolean
+  reorderUnavailable: boolean
   diagnostic?: string
 }>
 
@@ -60,13 +62,17 @@ export function selectModelTreeHistory(
   snapshot: Snapshot,
   modelReferenceEvidence?: readonly DocumentModelReferenceEvidence[],
   rebuild?: Extract<DocumentWorkerResponse, { type: "documentRebuilt" }>,
+  semanticHistory?: readonly DocumentNodeRef[] | null,
 ): ModelTreeHistoryView {
   const referenceHealth = inspectSketchReferenceHealth(
     snapshot.sketches,
     undefined,
     modelReferenceHealthResolver(modelReferenceEvidence),
   )
-  const graphResult = createDocumentDependencyGraphFromSnapshot(snapshot)
+  const graphResult =
+    semanticHistory !== null && semanticHistory !== undefined
+      ? createDocumentDependencyGraph({ ...snapshot, history: semanticHistory })
+      : createDocumentDependencyGraphFromSnapshot(snapshot)
   if (!graphResult.ok) {
     // Keep visibility bounded and deterministic, but never invent an interleaving on failure.
     const rows = [
@@ -97,6 +103,7 @@ export function selectModelTreeHistory(
       bodyFeatures: [],
       modelBodies: [],
       graphFailed: true,
+      reorderUnavailable: true,
       diagnostic: graphResult.diagnostic.message,
     }
   }
@@ -104,23 +111,24 @@ export function selectModelTreeHistory(
   const rows = graph.history.flatMap((ref) => {
     const node = graph.getNode(ref)
     if (!node) return []
+    const record = node.record as FeatureRecord | SketchRecord
     return [
       {
         ref,
-        record: node.record,
+        record,
         kind: ref.kind,
         datum:
           ref.kind === "feature" &&
-          readDatumPlaneFeatureParameters(node.record as FeatureRecord) !== null,
+          readDatumPlaneFeatureParameters(record as FeatureRecord) !== null,
         dependencies: graph.dependenciesOf(ref),
         dependents: graph.dependentsOf(ref),
         referenceHealth:
           ref.kind === "sketch"
-            ? (referenceHealth.get(node.record.id as SketchRecord["id"]) ?? null)
+            ? (referenceHealth.get(record.id as SketchRecord["id"]) ?? null)
             : null,
         supportHealth:
           ref.kind === "sketch"
-            ? inspectSketchSupportHealth(node.record as SketchRecord, rebuild)
+            ? inspectSketchSupportHealth(record as SketchRecord, rebuild)
             : null,
       },
     ]
@@ -135,5 +143,6 @@ export function selectModelTreeHistory(
     bodyFeatures: snapshot.features.filter((feature) => bodyIds.has(feature.id)),
     modelBodies: modelBodies ?? [],
     graphFailed: false,
+    reorderUnavailable: graph.dependencyModelIssues.length > 0,
   }
 }
