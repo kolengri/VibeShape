@@ -1,6 +1,6 @@
 name = "vibeshape_browser_debugger"
 description = "Browser-focused VibeShape debugger that reproduces UI failures and gathers visual, console, network, and interaction evidence without editing application code."
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """

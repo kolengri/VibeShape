@@ -6,7 +6,7 @@ The setup follows the official [Codex subagent configuration](https://learn.chat
 
 ## Configuration
 
-`.codex/config.toml` enables subagents, caps the session at three concurrent supporting threads, and assigns `gpt-5.6-luna` with medium reasoning as the default for unspecified subagents. This keeps the primary model available for coordination while preventing unbounded parallel work.
+`.codex/config.toml` enables subagents, caps the session at three concurrent supporting threads, and assigns `gpt-6-luna` with medium reasoning as the default for unspecified subagents. This keeps the primary model available for coordination while preventing unbounded parallel work.
 
 `fork_turns` is an execution-time spawn option, not a project configuration field in the current Codex schema. Repository routing rules therefore require `fork_turns = "none"` when the active client supports it and require the primary agent to pass a minimal task packet explicitly.
 
@@ -14,10 +14,10 @@ The setup follows the official [Codex subagent configuration](https://learn.chat
 
 | Agent | Model | Requested sandbox | Use |
 | --- | --- | --- | --- |
-| `vibeshape_researcher` | `gpt-5.6-luna`, medium | Read-only | Trace code, ADRs, tests, and official documentation for one bounded question. |
-| `vibeshape_browser_debugger` | `gpt-5.6-luna`, high | Workspace write | Reproduce UI failures and collect browser, console, network, screenshot, and Playwright evidence without editing source. |
-| `vibeshape_coder` | `gpt-5.6-luna`, medium | Workspace write | Implement one isolated slice after boundaries and acceptance criteria are known. |
-| `vibeshape_reviewer` | `gpt-5.6-terra`, high | Read-only | Review the real diff for correctness, regressions, security, performance, accessibility, and missing tests. |
+| `vibeshape_researcher` | `gpt-6-luna`, medium | Read-only | Trace code, ADRs, tests, and official documentation for one bounded question. |
+| `vibeshape_browser_debugger` | `gpt-6-luna`, high | Workspace write | Reproduce UI failures and collect browser, console, network, screenshot, and Playwright evidence without editing source. |
+| `vibeshape_coder` | `gpt-6-luna`, medium | Workspace write | Implement one isolated slice after boundaries and acceptance criteria are known. |
+| `vibeshape_reviewer` | `gpt-6-sol`, high | Read-only | Review the real diff for correctness, regressions, security, performance, accessibility, and missing tests. |
 
 ## Routing contract
 
@@ -36,12 +36,18 @@ Every delegated task packet must include the objective, relevant paths, applicab
 ## Safety and concurrency
 
 - Never run two agents that may edit the same files.
-- Do not use `gpt-5.6-sol` for subagents without explicit per-task user approval.
+- Luna and Sol supporting agents are authorized by the routing policy above. A flagship subagent requires explicit per-task user authorization.
 - Subagents inherit the active permission policy, and live parent sandbox overrides can take precedence over a custom agent's requested `sandbox_mode`. A researcher or reviewer is capability-enforced read-only only when the active parent run is also read-only; otherwise its non-editing contract is instruction-enforced.
 - Non-editing agents must not modify source, tests, documentation, Git state, or external systems even when the active parent permission mode technically permits writes.
 - The browser debugger's workspace-write request allows diagnostic artifacts but does not create an artifact-only filesystem boundary. Its source-code prohibition is instruction-enforced.
 - Supporting agents do not commit, push, merge, publish, or send messages unless the primary agent delegates that exact external action.
 - The primary agent must inspect returned evidence instead of treating a subagent conclusion as authoritative.
+
+## Model refresh
+
+Before delegation, check that the active runtime offers the configured model and reasoning effort. If unavailable, keep the task in the current primary agent and report the limitation instead of silently selecting a legacy model. A primary-model change does not replace explicit model pins in named agent profiles.
+
+When upgrading generations, update `.codex/config.toml`, every affected `.codex/agents/*.toml` profile, `AGENTS.md`, and this guide together. Keep existing reasoning efforts, concurrency, and permission boundaries unless the migration requires a separately justified change. After the configuration reloads, inspect the actual model in the next authorized child run; existing children do not prove the new routing is active.
 
 ## Local validation
 
