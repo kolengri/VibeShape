@@ -32,6 +32,14 @@ The performance correction avoids an unnecessary renderer disposal/recreation pa
 measured frame-rate or overall speedup claim. Pointer raycasting and thumbnail generation remain
 measurement candidates, not confirmed bottlenecks in this audit.
 
+A parallel browser run additionally encountered a WebKit multisample allocation failure followed by
+context loss, and Firefox document-startup assertion timeouts. These do not establish a memory leak.
+The renderer caps device-pixel ratio at two and always requests antialiasing, but has no backing-buffer
+pixel budget. Three.js handles its own context restoration; the application does not yet publish a
+post-initialization context-loss state or explicitly request an on-demand repaint after restoration.
+Explicit renderer/scene disposal already exists. Reproduce these resource conditions independently
+before attributing them to canvas size, multisampling, concurrent browser load, or retained resources.
+
 ## Regression coverage
 
 - `tests/e2e/ux-layout.spec.ts`: 512 × 384 effective CSS viewport, light/dark themes, project units,
@@ -52,7 +60,10 @@ measurement candidates, not confirmed bottlenecks in this audit.
    output still requires slicer and physical-print validation.
 3. Audit toolbar keyboard traversal separately from command-palette access; horizontal overflow
    alone is not proof that a command is unreachable.
-4. Profile dense pointer picking and large-model thumbnails on a reproducible model/device before
+4. Add a reviewed backing-buffer budget and explicit context-loss/restoration feedback and repaint.
+   Test DPR/resize limits, preserved camera/document state, restored rendering and recovery without
+   hiding real renderer errors. Include a controlled low-memory/context-loss browser fixture.
+5. Profile dense pointer picking and large-model thumbnails on a reproducible model/device before
    changing scheduling or geometry ownership.
-5. Extend exact sketch curves and references only with solver, identity, persistence and profile
+6. Extend exact sketch curves and references only with solver, identity, persistence and profile
    contracts; a toolbar icon or a sampled visual curve is not a completed CAD capability.
