@@ -60,6 +60,12 @@ import type { FeaturePreviewState } from "../features/preview/use-feature-previe
 import { resolvePlanarFaceSupportLabel } from "../features/sketch/external-model-geometry"
 import type { SketchProjectionStoreApi } from "../features/sketch/sketch-projection-store"
 import { selectedSketchSupportFromController } from "../features/sketch/sketch-support"
+import {
+  SAFE_VIEWPORT_CENTER,
+  SAFE_VIEWPORT_LEFT,
+  SAFE_VIEWPORT_REGION,
+  SAFE_VIEWPORT_RIGHT,
+} from "./viewport-chrome-styles"
 
 const EMPTY_IDS = [] as const
 
@@ -260,6 +266,12 @@ function documentViewportMessage(
   return null
 }
 
+function orientationInsetOffsetElement(canvas: HTMLCanvasElement) {
+  return (
+    canvas.parentElement?.querySelector<HTMLElement>("[data-viewport-orientation-offset]") ?? null
+  )
+}
+
 async function initializeViewport(
   canvas: HTMLCanvasElement,
   createViewport: ViewportFactory,
@@ -300,6 +312,7 @@ async function initializeViewport(
 ) {
   try {
     const viewport = await createViewport(canvas, {
+      orientationInsetOffsetElement: orientationInsetOffsetElement(canvas),
       isSelectionCandidateEligible: (selection) =>
         selectedSketchSupportFromController(latestControllerRef.current, selection) !== null,
       onOriginPlanePreselectionChange,
@@ -807,7 +820,12 @@ function ViewportMessage({
       ? "mt-2 text-sm text-destructive"
       : "mt-2 text-sm text-muted-foreground"
   return (
-    <div className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center">
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0 grid place-items-center px-6 text-center",
+        SAFE_VIEWPORT_REGION,
+      )}
+    >
       <div className="max-w-sm rounded-md bg-background/85 p-3 shadow-sm backdrop-blur-sm">
         <p className="text-sm font-medium">{title}</p>
         <p className={className} role={message.kind === "error" ? "alert" : "status"}>
@@ -842,7 +860,12 @@ function ViewportControls({
     ["bottom", t("viewBottom")],
   ] as const satisfies readonly (readonly [ViewerStandardView, string])[]
   return (
-    <div className="absolute right-3 top-3 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+    <div
+      className={cn(
+        "absolute right-3 top-3 flex items-center gap-1 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_RIGHT,
+      )}
+    >
       {selection ? (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -935,7 +958,12 @@ function OriginPlaneSelectionOverlay({
     selection.mode === "replace" ? t("replaceSketchSupport") : t("selectSketchPlane")
 
   return (
-    <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm">
+    <div
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-center shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
+    >
       <p className="text-xs font-medium">{instruction}</p>
       <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">
         {status}
@@ -1004,7 +1032,12 @@ function PreviewStatus({ preview }: { preview: FeaturePreviewState | undefined }
   if (!messageKey) return null
   const failed = preview?.status === "error"
   return (
-    <div className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+    <div
+      className={cn(
+        "pointer-events-none absolute left-3 top-14 rounded-md border bg-background/90 px-3 py-2 shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
+    >
       <p
         className={failed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
         role={failed ? "alert" : "status"}
@@ -1487,11 +1520,13 @@ function ViewportControlsSlot({
 }>) {
   const t = useTranslations("app.shell.viewport")
   return (
-    <div className="flex items-center gap-1">
-      <OriginPlaneVisibilityControls
-        onChange={onOriginPlaneVisibilityChange}
-        visibility={originPlaneVisibility}
-      />
+    <>
+      <div className={cn("absolute left-3 top-3", SAFE_VIEWPORT_LEFT)}>
+        <OriginPlaneVisibilityControls
+          onChange={onOriginPlaneVisibilityChange}
+          visibility={originPlaneVisibility}
+        />
+      </div>
       {meshes.length > 0 || sketches.length > 0 || originPlaneSelection ? (
         <ViewportControls
           clearLabel={t("clearSelection")}
@@ -1501,7 +1536,7 @@ function ViewportControlsSlot({
           viewportRef={viewportRef}
         />
       ) : null}
-    </div>
+    </>
   )
 }
 
@@ -1510,7 +1545,10 @@ function WorldAxesLegend() {
   return (
     <div
       aria-label={t("worldAxes")}
-      className="pointer-events-none absolute bottom-2 left-2 size-20 rounded-md border border-border/70 bg-background/10 shadow-inner"
+      className={cn(
+        "pointer-events-none absolute bottom-2 left-2 size-20 rounded-md border border-border/70 bg-background/10 shadow-inner",
+        SAFE_VIEWPORT_LEFT,
+      )}
       role="img"
     >
       <div className="absolute bottom-1 right-1 flex gap-1 rounded-sm bg-background/75 px-1 font-mono text-[10px] font-semibold">
@@ -1974,7 +2012,10 @@ function SketchReferenceSelectOtherOverlay({
     <div
       aria-activedescendant={activeOptionId}
       aria-label={t("selectOtherReference")}
-      className="pointer-events-auto absolute bottom-12 left-1/2 z-10 w-80 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+      className={cn(
+        "pointer-events-auto absolute bottom-12 z-10 w-80 -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-reference-select-other
       onKeyDown={selection.onKeyDown}
       ref={listboxRef}
@@ -2035,7 +2076,10 @@ function SupportFaceSelectOtherOverlay({
     <div
       aria-activedescendant={activeOptionId}
       aria-label={t("selectOtherSupport")}
-      className="pointer-events-auto absolute bottom-12 left-1/2 z-10 w-80 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+      className={cn(
+        "pointer-events-auto absolute bottom-12 z-10 w-80 -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-support-face-select-other
       onKeyDown={selection.onKeyDown}
       ref={listboxRef}
@@ -2110,7 +2154,10 @@ function SavedProfileViewportChrome({
       />
       {profilePreselectionLabel ? (
         <div
-          className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          className={cn(
+            "pointer-events-none absolute bottom-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
+            SAFE_VIEWPORT_CENTER,
+          )}
           role="status"
         >
           {t("savedProfileCandidate", { label: profilePreselectionLabel })}
@@ -2176,7 +2223,12 @@ function ModelViewportChrome({
       <SupportFaceSelectOtherOverlay selection={supportFaceSelectOther} />
       {profileChrome}
       <WorldAxesLegend />
-      <div className="pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
+      <div
+        className={cn(
+          "pointer-events-none absolute bottom-3 right-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground",
+          SAFE_VIEWPORT_RIGHT,
+        )}
+      >
         {t("orientation", { plane: "XYZ", unit: displayUnit })}
       </div>
     </>
@@ -2193,7 +2245,10 @@ function SavedProfileSelectOtherOverlay({
     <div
       aria-activedescendant={`saved-profile-select-other-${selection.activeIndex}`}
       aria-label={t("selectOtherProfile")}
-      className="pointer-events-auto absolute bottom-12 left-1/2 z-20 w-80 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md"
+      className={cn(
+        "pointer-events-auto absolute bottom-12 z-20 w-80 -translate-x-1/2 rounded-md border bg-popover p-2 text-popover-foreground shadow-md",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-saved-profile-select-other
       onKeyDown={selection.onKeyDown}
       ref={listboxRef}
@@ -2268,7 +2323,12 @@ function SavedProfileKeyboardPicker({
   })
   if (options.length === 0) return null
   return (
-    <fieldset className="pointer-events-auto absolute left-3 top-3 z-10 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+    <fieldset
+      className={cn(
+        "pointer-events-auto absolute left-3 top-3 z-10 rounded-md border bg-background/90 p-1 shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
+    >
       <legend className="sr-only">{t("savedProfiles")}</legend>
       <NativeSelect
         aria-label={t("selectSavedProfile")}
@@ -2314,7 +2374,10 @@ function SketchReferenceSelectionStatus({
   const t = useTranslations("app.shell.viewport")
   return (
     <div
-      className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+      className={cn(
+        "pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
       role="status"
     >
       {t(referenceSelectionMessageKey(purpose))}
@@ -2332,7 +2395,10 @@ function SketchReferencePreselectionStatus({
   const t = useTranslations("app.shell.viewport")
   return (
     <div
-      className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+      className={cn(
+        "pointer-events-none absolute bottom-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       role="status"
     >
       {t(referenceCandidateMessageKey(purpose), {
@@ -2358,7 +2424,12 @@ function SketchReferenceKeyboardPicker({
   const [labelKey, placeholderKey] = keys[selection.purpose ?? "use"]
   if (selection.candidates.length === 0) return null
   return (
-    <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm">
+    <div
+      className={cn(
+        "sr-only focus-within:not-sr-only focus-within:absolute focus-within:bottom-3 focus-within:left-3 focus-within:z-10 focus-within:grid focus-within:gap-1 focus-within:rounded-md focus-within:border focus-within:bg-background focus-within:p-2 focus-within:shadow-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
+    >
       <span className="text-xs font-medium">{t(labelKey)}</span>
       <NativeSelect
         aria-label={t(labelKey)}
@@ -2409,7 +2480,10 @@ function SketchContextChrome({
       {referenceSelection ? <SketchReferenceSelectionStatus purpose={referencePurpose} /> : null}
       {context.faceIntersectionSelection ? (
         <div
-          className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm"
+          className={cn(
+            "pointer-events-none absolute left-3 top-3 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm backdrop-blur-sm",
+            SAFE_VIEWPORT_LEFT,
+          )}
           role="status"
         >
           {t("sketchIntersectionSelection")}
@@ -2647,6 +2721,11 @@ export function GeometryViewport(props: GeometryViewportProps) {
       tabIndex={referenceInteraction.tabIndex ?? -1}
     >
       <canvas ref={canvasRef} className={regionClassNames.canvas} />
+      <div
+        aria-hidden="true"
+        data-viewport-orientation-offset
+        className="pointer-events-none absolute left-0 top-0 h-0 w-[var(--workspace-chrome-left,0px)]"
+      />
       <GeometryViewportContextChrome
         displayUnit={displayUnits.length}
         model={model}

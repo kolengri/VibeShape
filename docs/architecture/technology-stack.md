@@ -19,6 +19,7 @@
 | 3MF ZIP writer | Project-owned Core profile with `fflate` | Deterministic browser-compatible archives without a native format runtime |
 | Styles | Tailwind CSS v4 through `@tailwindcss/vite` | Zero-runtime utility CSS, tokens, and first-party Vite integration |
 | UI primitives | shadcn/ui CLI v4 with Radix base | Accessible source-owned components and monorepo routing |
+| Resizable workspace panels | `react-resizable-panels` 4.13.2 | Shared UI wrappers with pointer/keyboard separators; layout preferences remain shell-local and independent of CAD history |
 | Icons | Lucide React | Consistent low-noise icon set for tools, trees, and actions |
 | Project DB | IndexedDB through Dexie | Transactions and indexes without another heavy WASM runtime |
 | Large binary cache | OPFS | Efficient local files accessed from workers |
@@ -54,6 +55,7 @@ Verified against the npm registry on **2026-08-07**, with `is-what` and `fflate`
 | `@tailwindcss/vite` | 4.3.3 | MIT |
 | `shadcn` CLI | 4.16.2 | MIT |
 | `radix-ui` | 1.6.7 | MIT |
+| `react-resizable-panels` | 4.13.2 | MIT |
 | `lucide-react` | 1.30.0 | ISC |
 | `class-variance-authority` | 0.7.1 | Apache-2.0 |
 | `clsx` | 2.1.1 | MIT |

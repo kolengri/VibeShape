@@ -138,6 +138,7 @@ import { ModelTree } from "./model-tree"
 import { ResponsiveTaskPanel } from "./responsive-task-panel"
 import { TaskPanel } from "./task-panel"
 import type { EditorWorkspaceName } from "./workspace"
+import { WorkspacePanels } from "./workspace-panels"
 
 const EMPTY_GEOMETRY = [] as const
 type RevolveAxis = ReturnType<typeof revolveFeatureParametersSchema.parse>["axis"]
@@ -2369,8 +2370,35 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
   )
   return (
     <SketchProjectionProvider>
-      <div className="cad-workspace-grid min-h-0">
-        <EditorModelTree props={props} />
+      <WorkspacePanels
+        allowTransparency={props.workspace !== "variables"}
+        modelTree={<EditorModelTree props={props} />}
+        taskPanel={
+          <ResponsiveTaskPanel
+            activeTaskKey={taskPanelActivityKey(props, review)}
+            autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
+            collapseLabel={taskPanelT("collapsePanel")}
+            expandLabel={taskPanelT("expandPanel")}
+          >
+            <EditorTaskPanel
+              holePicking={holePicking}
+              edgeTreatmentPicking={edgeTreatmentPicking}
+              featurePreviewStatus={featurePreview.status}
+              featureProfileSelections={featureProfileSelection.value}
+              onFeatureProfileRemove={removeFeatureProfile}
+              onFeatureProfilesClear={clearFeatureProfiles}
+              onFeaturePreviewChange={onFeaturePreviewChange}
+              onRevolveAxisChange={revolveAxisSelection.setValue}
+              onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
+              props={props}
+              revolveAxisCandidates={revolveAxisCandidates}
+              revolveAxisSelection={revolveAxisSelection.value}
+              revolveSelectionPurpose={revolveSelectionPurpose.value}
+              review={review}
+            />
+          </ResponsiveTaskPanel>
+        }
+      >
         <EditorContent
           featureSelectionContext={viewportContext}
           featureProfileHiddenSketchIds={featureProfileHiddenSketchIds}
@@ -2384,30 +2412,7 @@ export function EditorWorkspace(props: EditorWorkspaceProps) {
           revolveAxisSelection={revolveAxisSelection.value}
           revolveSelectionPurpose={revolveSelectionPurpose.value}
         />
-        <ResponsiveTaskPanel
-          activeTaskKey={taskPanelActivityKey(props, review)}
-          autoExpandActiveTask={!props.activeSketchTool && !props.activeSketchId}
-          collapseLabel={taskPanelT("collapsePanel")}
-          expandLabel={taskPanelT("expandPanel")}
-        >
-          <EditorTaskPanel
-            holePicking={holePicking}
-            edgeTreatmentPicking={edgeTreatmentPicking}
-            featurePreviewStatus={featurePreview.status}
-            featureProfileSelections={featureProfileSelection.value}
-            onFeatureProfileRemove={removeFeatureProfile}
-            onFeatureProfilesClear={clearFeatureProfiles}
-            onFeaturePreviewChange={onFeaturePreviewChange}
-            onRevolveAxisChange={revolveAxisSelection.setValue}
-            onRevolveSelectionPurposeChange={revolveSelectionPurpose.setValue}
-            props={props}
-            revolveAxisCandidates={revolveAxisCandidates}
-            revolveAxisSelection={revolveAxisSelection.value}
-            revolveSelectionPurpose={revolveSelectionPurpose.value}
-            review={review}
-          />
-        </ResponsiveTaskPanel>
-      </div>
+      </WorkspacePanels>
     </SketchProjectionProvider>
   )
 }

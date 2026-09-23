@@ -295,6 +295,12 @@ The local Bun version is 1.3.14 (`1.3.14+0d9b296af`) and is pinned in `packageMa
 
 Registry metadata does not replace the license files in the exact lockfile and distribution.
 
+## Workspace panel resizing, reviewed 2026-09-23
+
+- [shadcn Resizable](https://ui.shadcn.com/docs/components/radix/resizable) documents the source-owned wrapper pattern and accessible resize behavior.
+- [react-resizable-panels upstream](https://github.com/bvaughn/react-resizable-panels) and the installed 4.13.2 declarations establish the current `Group` / `Panel` / `Separator` API, pixel sizes, panel handles, and final-interaction `onLayoutChanged` callback. The exact MIT package version is pinned in the Bun catalog; React 19 satisfies its peer requirements.
+- Context7 was unavailable in this session; official upstream documentation and the installed versioned source were used instead. The integration does not change the existing Tailwind/Radix configuration or CAD/worker contracts.
+
 ## Excluded or Rejected Conclusions
 
 - Context7 results for Next.js and PostHog returned by an OpenCascade.js query were treated as irrelevant.

@@ -32,6 +32,7 @@ export {
   Move,
   PanelBottomClose,
   PanelBottomOpen,
+  PanelsTopLeft,
   Pencil,
   PenLine,
   RectangleHorizontal,

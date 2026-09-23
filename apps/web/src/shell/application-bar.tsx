@@ -9,6 +9,7 @@ import { DocumentDisplayUnitsDialog } from "../document/document-display-units-d
 import { DocumentExportDialog } from "../document/document-export-dialog"
 import { DocumentProjectDialog } from "../document/document-project-dialog"
 import { DocumentRenameDialog } from "../document/document-rename-dialog"
+import { WorkspaceLayoutSettings } from "./workspace-layout-settings"
 
 function saveStatusMessage(
   controller: DocumentControllerState,
@@ -104,6 +105,7 @@ export function ApplicationBar({
       <span className="truncate text-muted-foreground">{documentName}</span>
       <DocumentRenameDialog controller={controller} />
       <DocumentDisplayUnitsDialog controller={controller} />
+      <WorkspaceLayoutSettings />
       <LocalAutomationControl controller={controller} />
       <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground" role="status">
         {saveStatus}

@@ -174,6 +174,12 @@ import {
   useDocumentDisplayUnits,
 } from "../../document/document-display-units"
 import {
+  SAFE_VIEWPORT_CENTER,
+  SAFE_VIEWPORT_LEFT,
+  SAFE_VIEWPORT_REGION,
+  SAFE_VIEWPORT_RIGHT,
+} from "../../shell/viewport-chrome-styles"
+import {
   applyExternalModelCandidateSelection,
   type ExternalModelGeometryCandidate,
   materializeExternalModelCandidate,
@@ -9265,7 +9271,10 @@ function SketchExternalInferenceInstruction({
   if (!candidate) return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border border-amber-500/50 bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border border-amber-500/50 bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-external-inference-label={candidate.label}
       role="status"
     >
@@ -9279,7 +9288,10 @@ function SketchUseInstruction({ editorTool }: Readonly<{ editorTool: SketchEdito
   if (editorTool !== "use") return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-use-instruction
       role="status"
     >
@@ -9304,7 +9316,10 @@ function SketchMirrorInstruction({
   else if (selectedEntityCount > 0) instruction = t("mirrorSelectAxisForSelection")
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-mirror-instruction
       role="status"
     >
@@ -9326,7 +9341,10 @@ function SketchOffsetInstruction({
     pending?.kind === "offset-distance" ? t("offsetSetDistance") : t("offsetSelectSource")
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-offset-instruction
       role="status"
     >
@@ -9346,7 +9364,10 @@ function SketchTransformInstruction({
   if (editorTool !== "transform") return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-transform-instruction
       role="status"
     >
@@ -9373,7 +9394,10 @@ function SketchDimensionInstruction({
   if (editorTool !== "dimension") return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-dimension-instruction
       role="status"
     >
@@ -9395,7 +9419,10 @@ function SketchConstraintInstruction({
   if (!kind) return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-constraint-instruction
       role="status"
     >
@@ -9418,7 +9445,10 @@ function SketchLinearPatternInstruction({
   if (editorTool !== "linear-pattern") return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-linear-pattern-instruction
       role="status"
     >
@@ -9438,7 +9468,10 @@ function SketchCircularPatternInstruction({
   if (editorTool !== "circular-pattern") return null
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm"
+      className={cn(
+        "pointer-events-none absolute top-3 -translate-x-1/2 rounded-md border bg-background/90 px-3 py-2 text-xs font-medium shadow-sm",
+        SAFE_VIEWPORT_CENTER,
+      )}
       data-sketch-circular-pattern-instruction
       role="status"
     >
@@ -11277,7 +11310,12 @@ function SketchViewportContent({
 }) {
   if (!activeSketch) {
     return (
-      <div className="absolute inset-0 grid place-items-center px-6 text-center">
+      <div
+        className={cn(
+          "absolute inset-0 grid place-items-center px-6 text-center",
+          SAFE_VIEWPORT_REGION,
+        )}
+      >
         <p className="max-w-sm text-sm text-muted-foreground">{emptyMessage}</p>
       </div>
     )
@@ -11320,7 +11358,12 @@ function SketchSolveOverlay({
     })
   }
   return (
-    <div className="pointer-events-none absolute left-3 top-3 grid gap-1 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm">
+    <div
+      className={cn(
+        "pointer-events-none absolute left-3 top-3 grid gap-1 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-sm",
+        SAFE_VIEWPORT_LEFT,
+      )}
+    >
       <span className="font-medium" role="status">
         {status}
       </span>
@@ -11348,7 +11391,12 @@ function SketchOrientation({ plane }: { plane: SketchRecord["plane"] | null }) {
   const displayUnits = useDocumentDisplayUnits()
   if (!plane) return null
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground">
+    <div
+      className={cn(
+        "pointer-events-none absolute bottom-3 left-3 rounded-sm border bg-background/90 px-2 py-1 font-mono text-xs text-muted-foreground",
+        SAFE_VIEWPORT_LEFT,
+      )}
+    >
       {t("orientation", { plane: plane.toUpperCase(), unit: displayUnits.length })}
     </div>
   )
@@ -12134,7 +12182,9 @@ export function SketchViewport({
         profileText={presentation.solve.profileText}
         status={presentation.solve.statusText}
       />
-      <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
+      <div
+        className={cn("absolute right-3 top-3 flex flex-col items-end gap-1", SAFE_VIEWPORT_RIGHT)}
+      >
         <SketchExternalReferenceToolbar
           draft={draft}
           editorTool={editorTool}
@@ -12144,7 +12194,7 @@ export function SketchViewport({
           selectedEntityIds={selectedEntityIds}
         />
       </div>
-      <div className="absolute bottom-3 right-3">
+      <div className={cn("absolute bottom-3 right-3", SAFE_VIEWPORT_RIGHT)}>
         <OriginPlaneVisibilityControls
           onChange={onOriginPlaneVisibilityChange}
           visibility={originPlaneVisibility}

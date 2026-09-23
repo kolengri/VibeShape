@@ -10,15 +10,68 @@
 }
 
 .cad-workspace-grid {
+  --workspace-tree-size: 240px;
+  --workspace-task-size: 320px;
+  --workspace-chrome-left: 0px;
+  --workspace-chrome-right: 0px;
+  --workspace-solid-panel: var(--panel);
   position: relative;
-  display: grid;
-  grid-template-columns:
-    var(--model-tree-width) minmax(0, 1fr)
-    var(--task-panel-width);
   overflow: hidden;
 }
 
+.workspace-viewport {
+  z-index: 0;
+  position: absolute;
+  inset: 0 calc(var(--workspace-task-size) + 8px) 0 calc(var(--workspace-tree-size) + 8px);
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+}
+
+.cad-workspace-grid[data-transparent="true"] .workspace-viewport {
+  --workspace-chrome-left: calc(var(--workspace-tree-size) + 8px);
+  --workspace-chrome-right: calc(var(--workspace-task-size) + 8px);
+  inset: 0;
+}
+
+.workspace-panel {
+  --panel: transparent;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.workspace-panel--tree {
+  background: color-mix(
+    in oklab,
+    var(--workspace-solid-panel) var(--workspace-tree-opacity),
+    transparent
+  );
+}
+
+.workspace-panel--tree > aside {
+  height: 100%;
+}
+
+.workspace-panel--task {
+  background: color-mix(
+    in oklab,
+    var(--workspace-solid-panel) var(--workspace-task-opacity),
+    transparent
+  );
+}
+
+.workspace-panel--task[data-collapsed="true"] {
+  visibility: hidden;
+}
+
+.cad-workspace-grid[data-transparent="false"] .workspace-panel {
+  background: var(--workspace-solid-panel);
+}
+
 .responsive-task-panel {
+  height: 100%;
   overflow: hidden;
 }
 
@@ -38,19 +91,35 @@
 
 @media (width < 64rem) {
   .cad-workspace-grid {
-    grid-template-columns: 13rem minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    --workspace-sheet-height: min(50svh, 32rem);
   }
 
-  .cad-workspace-grid > :first-child {
-    grid-row: 1 / -1;
+  .cad-workspace-grid:has(.responsive-task-panel[data-expanded="false"]) {
+    --workspace-sheet-height: 2.25rem;
+  }
+
+  .workspace-viewport {
+    right: 0;
+    bottom: var(--workspace-sheet-height);
+  }
+
+  .workspace-panel--tree,
+  .workspace-panel--task {
+    --panel: var(--workspace-solid-panel);
+    background: var(--workspace-solid-panel);
+  }
+
+  .workspace-panel--task {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: calc(var(--workspace-tree-size) + 8px);
+    height: var(--workspace-sheet-height);
   }
 
   .responsive-task-panel {
     position: relative;
     z-index: 1;
-    grid-column: 2;
-    grid-row: 2;
     display: grid;
     height: min(50svh, 32rem);
     grid-template-rows: 2.25rem minmax(0, 1fr);

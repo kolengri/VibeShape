@@ -34,6 +34,7 @@ import {
 } from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import { TransformControls } from "three/addons/controls/TransformControls.js"
+import { orientationInsetPlacement } from "./orientation-inset"
 import {
   defaultViewerOriginPlaneVisibility,
   type ViewerOriginPlane,
@@ -55,8 +56,6 @@ const FIT_PADDING = 1.35
 const MAX_PIXEL_RATIO = 2
 const ORIGIN_PLANE_SIZE = 64
 const MIN_AXIAL_GIZMO_DISTANCE = 0.01
-const ORIENTATION_INSET_MARGIN = 8
-const ORIENTATION_INSET_SIZE = 80
 
 function isFiniteViewerVector3(position: ViewerVector3): boolean {
   return position.length === 3 && position.every((value) => Number.isFinite(value))
@@ -483,6 +482,8 @@ export function orderedEligibleViewerSelections(
 }
 
 export type GeometryViewportOptions = Readonly<{
+  /** The element's width reserves a left safe area for the orientation scene. */
+  orientationInsetOffsetElement?: HTMLElement | null
   isSelectionCandidateEligible?: (selection: ViewerSelection) => boolean
   onOriginPlanePreselectionChange?: (plane: ViewerOriginPlane | null) => void
   onOriginPlaneSelectionChange?: (plane: ViewerOriginPlane | null) => void
@@ -1223,6 +1224,7 @@ class ThreeGeometryViewport implements GeometryViewport {
     transparent: true,
   })
   readonly #resizeObserver: ResizeObserver
+  readonly #orientationInsetOffsetElement: GeometryViewportOptions["orientationInsetOffsetElement"]
   readonly #onOriginPlanePreselectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onOriginPlaneSelectionChange: (plane: ViewerOriginPlane | null) => void
   readonly #onSelectionChange: (selection: ViewerSelection | null) => void
@@ -1298,6 +1300,7 @@ class ThreeGeometryViewport implements GeometryViewport {
 
   constructor(canvas: HTMLCanvasElement, options: GeometryViewportOptions) {
     this.#canvas = canvas
+    this.#orientationInsetOffsetElement = options.orientationInsetOffsetElement
     const sketchProfileCallbacks = viewerSketchProfileCallbacks(options)
     this.#isSelectionCandidateEligible = viewerSelectionEligibilityCallback(
       options.isSelectionCandidateEligible,
@@ -1406,12 +1409,20 @@ class ThreeGeometryViewport implements GeometryViewport {
     document.addEventListener("keydown", this.#onTranslationGestureKeyDown, true)
     window.addEventListener("blur", this.#cancelTranslationGesture)
 
-    this.#resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      this.#resize(entry.contentRect.width, entry.contentRect.height)
+    this.#resizeObserver = this.#observeLayout(canvas)
+  }
+
+  #observeLayout(canvas: HTMLCanvasElement) {
+    const observer = new ResizeObserver((entries) => {
+      const canvasEntry = entries.find((entry) => entry.target === canvas)
+      if (canvasEntry) this.#resize(canvasEntry.contentRect.width, canvasEntry.contentRect.height)
+      else this.#render()
     })
-    this.#resizeObserver.observe(canvas)
+    observer.observe(canvas)
+    if (this.#orientationInsetOffsetElement) {
+      observer.observe(this.#orientationInsetOffsetElement)
+    }
+    return observer
   }
 
   setMeshes(meshes: readonly ViewerMesh[]) {
@@ -2738,11 +2749,15 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#renderer.setViewport(0, 0, width, height)
     this.#renderer.render(this.#scene, this.#camera)
 
-    const insetSize = Math.min(
-      ORIENTATION_INSET_SIZE,
-      width - ORIENTATION_INSET_MARGIN * 2,
-      height - ORIENTATION_INSET_MARGIN * 2,
-    )
+    const {
+      x: insetX,
+      y: insetY,
+      size: insetSize,
+    } = orientationInsetPlacement(width, height, this.#orientationInsetOffsetElement?.clientWidth)
+    const insetPlacement = `${insetX},${insetY},${insetSize}`
+    if (this.#canvas.dataset.orientationInset !== insetPlacement) {
+      this.#canvas.dataset.orientationInset = insetPlacement
+    }
     if (insetSize <= 0) return
     this.#orientationCamera.position
       .copy(this.#camera.position)
@@ -2753,18 +2768,8 @@ class ThreeGeometryViewport implements GeometryViewport {
     this.#orientationCamera.lookAt(0, 0, 0)
     this.#orientationCamera.updateMatrixWorld()
     this.#renderer.setScissorTest(true)
-    this.#renderer.setScissor(
-      ORIENTATION_INSET_MARGIN,
-      ORIENTATION_INSET_MARGIN,
-      insetSize,
-      insetSize,
-    )
-    this.#renderer.setViewport(
-      ORIENTATION_INSET_MARGIN,
-      ORIENTATION_INSET_MARGIN,
-      insetSize,
-      insetSize,
-    )
+    this.#renderer.setScissor(insetX, insetY, insetSize, insetSize)
+    this.#renderer.setViewport(insetX, insetY, insetSize, insetSize)
     this.#renderer.clearDepth()
     this.#renderer.render(this.#orientationScene, this.#orientationCamera)
     this.#renderer.setScissorTest(false)

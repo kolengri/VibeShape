@@ -590,6 +590,23 @@
         "disableAi": "Disable AI session",
         "aiConnectionFailed": "AI connection ended. Enable it to reconnect."
       },
+      "workspaceLayout": {
+        "title": "Workspace layout settings",
+        "tree": "Model tree",
+        "task": "Task panel",
+        "treeResize": "Model tree width",
+        "taskResize": "Task panel width",
+        "help": "Drag a panel edge or use arrow keys to resize; double-click an edge to reset. Available space may limit panel widths. Lower opacity reveals the model beneath on desktop; panels stay opaque on narrow screens.",
+        "helpCompact": "The task panel is a bottom sheet on narrow screens. Use its own button to expand or collapse it; desktop width, opacity, and visibility settings are unavailable here.",
+        "opacity": "Background opacity",
+        "opacityLabel": "{panel} background opacity",
+        "opacityValue": "{value, number}%",
+        "width": "Preferred width",
+        "widthValue": "{value, number} px",
+        "show": "Show {panel}",
+        "hide": "Hide {panel}",
+        "reset": "Reset layout"
+      },
       "commandToolbar": {
         "ariaLabel": "Model commands",
         "historyLabel": "History",
