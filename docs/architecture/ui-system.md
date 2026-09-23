@@ -171,6 +171,16 @@ The model tree is a dedicated accessible and virtualized tree because generic sh
 
 ## Direct manipulation and keyboard adapters
 
+History source links resolve canonical single- or multi-profile feature inputs, including hole identity,
+into existing viewport preselection. The workspace owns the disposable preview; tool, workspace, project,
+or semantic revision changes clear it. A successful exact rebuilt selector may temporarily reveal a
+hidden sketch without changing session visibility, selected profiles, or document intent. Missing or
+stale selectors reveal nothing. The renderer and saved-profile picker remain separate: inspection must
+not open a new profile-selection control. No additional worker solve or geometry rebuild is requested.
+Hovering a visible source, or another region within the same revealed sketch, preserves the rendered
+sketch collection instead of recreating its meshes. A missing sketch is a noninteractive unavailable
+source, not an unnamed locate action.
+
 The sketch projection store is a transient bridge between the analytical SVG editor and the
 Three.js viewport. Normal mode publishes sketch bounds to align the camera. Orbit editing publishes
 the camera's normalized support-plane affine transform in the opposite direction; camera publications

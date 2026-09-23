@@ -6,9 +6,12 @@ import {
   boxFeatureType,
   createEmptySketch,
   createLengthQuantity,
+  createSketchProfileSet,
   datumPlaneFeatureType,
   featureIdSchema,
   featureRecordSchema,
+  legacyExtrusionFeatureType,
+  multiProfileExtrusionFeatureType,
   sketchEntityIdSchema,
   sketchIdSchema,
   sketchRecordSchema,
@@ -19,6 +22,7 @@ import type { ComponentProps } from "react"
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import type { DocumentControllerState } from "../document/document-controller"
 import { i18n } from "../i18n"
+import { HistoryProfileSources } from "./history-profile-sources"
 import { ModelTree } from "./model-tree"
 
 const sortableCallbacks = vi.hoisted(() => ({ current: null as unknown }))
@@ -341,6 +345,8 @@ type RenderTreeOptions = Partial<
     | "sketchRenameBlockedId"
     | "hiddenFeatureIds"
     | "hiddenSketchIds"
+    | "onSourceProfilePreview"
+    | "sourcePreviewSketchId"
   >
 >
 
@@ -379,6 +385,115 @@ function renderTree(options: RenderTreeOptions = {}) {
 }
 
 describe("ModelTree History presentation", () => {
+  it.each([false, true])(
+    "distinguishes missing sources from unnamed existing sketches (%s)",
+    async (exists) => {
+      const onPreview = vi.fn()
+      render(
+        <I18nProvider i18n={i18n} initialLocale="en">
+          <TooltipProvider>
+            <HistoryProfileSources
+              profiles={[
+                {
+                  schemaVersion: 0,
+                  sketchId,
+                  outerBoundaryEntityIds: [
+                    sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901"),
+                  ],
+                  holeBoundaryEntityIds: [],
+                },
+              ]}
+              labelsByRef={new Map(exists ? [[`sketch:${sketchId}`, ""]] : [])}
+              dependencyDescription="Depends on 1 item."
+              onPreview={onPreview}
+            />
+          </TooltipProvider>
+        </I18nProvider>,
+      )
+      if (exists) {
+        expect(
+          screen.getByRole("button", { name: "Source region 1 from Unnamed sketch" }),
+        ).toBeTruthy()
+      } else {
+        const missing = screen.getByText("Missing sketch")
+        await userEvent.setup().hover(missing)
+        expect(screen.queryByRole("button")).toBeNull()
+        expect(onPreview).not.toHaveBeenCalled()
+        expect(screen.getByText(/The source sketch is unavailable/)).toBeTruthy()
+      }
+    },
+  )
+  it.each(["legacy", "multi"] as const)(
+    "shows compact %s profile sources and locates the sketch without editing it",
+    async (kind) => {
+      const user = userEvent.setup()
+      const onPreview = vi.fn()
+      const onSketchActivate = vi.fn()
+      const profile = {
+        schemaVersion: 0 as const,
+        sketchId,
+        outerBoundaryEntityIds: [
+          sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2901"),
+        ],
+        holeBoundaryEntityIds: [],
+      }
+      const secondProfile = {
+        ...profile,
+        outerBoundaryEntityIds: [
+          sketchEntityIdSchema.parse("0195b5ac-b220-7a2c-8c33-67a36a7f2902"),
+        ],
+      }
+      const extrusion = featureRecordSchema.parse({
+        ...feature,
+        type:
+          kind === "legacy"
+            ? legacyExtrusionFeatureType.type
+            : multiProfileExtrusionFeatureType.type,
+        parameters: {
+          ...(kind === "legacy"
+            ? { profile }
+            : { profiles: createSketchProfileSet([profile, secondProfile]) }),
+          distance: createLengthQuantity(10, "mm", "10 mm"),
+          symmetric: false,
+          operation: "new",
+        },
+      })
+      const source = {
+        ...controller,
+        report: {
+          ...controllerReport,
+          snapshot: { ...controllerReport.snapshot, features: [extrusion] },
+        },
+      } as DocumentControllerState
+      renderTree({
+        controller: source,
+        onSourceProfilePreview: onPreview,
+        onSketchActivate,
+        sourcePreviewSketchId: sketchId,
+      })
+      const link = screen.getByRole("button", { name: "Source region 1 from Profile" })
+      expect(link.textContent).toBe(kind === "legacy" ? "Profile" : "Profile1")
+      await user.hover(link)
+      expect(onPreview).toHaveBeenLastCalledWith(profile)
+      await user.unhover(link)
+      expect(onPreview).toHaveBeenLastCalledWith(null)
+      if (kind === "multi") {
+        await user.hover(screen.getByRole("button", { name: "Source region 2 from Profile" }))
+        expect(onPreview).toHaveBeenLastCalledWith(secondProfile)
+      }
+      const sketchRow = screen.getByRole("treeitem", { name: "Profile" })
+      expect(
+        sketchRow.closest("[data-history-id]")?.getAttribute("data-history-source-highlighted"),
+      ).toBe("true")
+      const scroll = vi.fn()
+      sketchRow.scrollIntoView = scroll
+      await user.click(link)
+      expect(scroll).toHaveBeenCalledWith({ block: "nearest" })
+      expect(document.activeElement).toBe(sketchRow)
+      expect(onSketchActivate).not.toHaveBeenCalled()
+      expect(onPreview).toHaveBeenLastCalledWith(null)
+    },
+  )
   it("captures a sortable source at drag start before a drop target exists", async () => {
     const onHistoryMove = vi.fn().mockResolvedValue({ ok: true })
     const semanticController = {

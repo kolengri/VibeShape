@@ -13,8 +13,10 @@ import {
   isSketchExternalModelReference,
   readDatumPlaneFeatureParameters,
   readExtrusionFeatureParameters,
-  readRevolveFeatureParameters,
+  readExtrusionProfileSet,
+  readRevolveProfileSet,
   type SketchId,
+  type SketchProfileSelector,
   type SketchRecord,
 } from "@vibeshape/domain"
 import { useTranslations } from "@vibeshape/i18n"
@@ -53,6 +55,7 @@ import type {
 } from "../document/document-controller"
 import type { ModelBodySelection } from "../features/part-design/model-bodies"
 import { SketchDeleteAction } from "../features/sketch/sketch-delete-action"
+import { HistoryProfileSources } from "./history-profile-sources"
 import { type HistoryViewRow, historyRefKey, selectModelTreeHistory } from "./model-tree-history"
 import { historyMovePositions, proposeHistoryMoveToIndex } from "./model-tree-history-dnd"
 import { ModelTreeRenameDialog } from "./model-tree-rename-dialog"
@@ -738,6 +741,8 @@ function ModelTreeGroupItem({
 }
 
 type ModelTreeProps = {
+  onSourceProfilePreview?: ((profile: SketchProfileSelector | null) => void) | undefined
+  sourcePreviewSketchId?: SketchId | null | undefined
   activeFeatureId: FeatureRecord["id"] | null
   activeSketchId: SketchId | null
   activeWorkspace: EditorWorkspaceName
@@ -843,26 +848,6 @@ function historySourceSummary(
       : t("supportedByPlane", { plane: sketch.plane.toUpperCase() })
   }
   const feature = row.record as FeatureRecord
-  const extrusion = readExtrusionFeatureParameters(feature)
-  if (extrusion) {
-    return t("profileFromSketch", {
-      sketch: historyRecordLabel(
-        labelsByRef,
-        { kind: "sketch", id: extrusion.profile.sketchId },
-        t("unnamedSketch"),
-      ),
-    })
-  }
-  const revolve = readRevolveFeatureParameters(feature)
-  if (revolve) {
-    return t("profileFromSketch", {
-      sketch: historyRecordLabel(
-        labelsByRef,
-        { kind: "sketch", id: revolve.profile.sketchId },
-        t("unnamedSketch"),
-      ),
-    })
-  }
   const datum = readDatumPlaneFeatureParameters(feature)
   if (!datum) return null
   if (datum.support.kind === "origin-plane") {
@@ -1071,9 +1056,25 @@ type HistoryRowFrameProps = Pick<
   label: string
   content: ReactNode
   details?: ReactNode
+  sourcePresentation: { summary: ReactNode; highlighted: boolean }
   controller: DocumentControllerState
   activeSketchId: SketchId | null
   activeFeatureId: FeatureRecord["id"] | null
+}
+
+function historyRowStateData(
+  feedback: ReturnType<typeof historyRowDropFeedback>,
+  rolledBack: boolean,
+  reorderLocked: boolean,
+  sourceHighlighted: boolean,
+) {
+  return {
+    "data-history-feature-kind": feedback.featureKind,
+    "data-history-rolled-back": rolledBack ? "true" : undefined,
+    "data-history-drop-invalid": feedback.invalid ? "true" : undefined,
+    "data-history-reorder-disabled": reorderLocked ? "true" : undefined,
+    "data-history-source-highlighted": sourceHighlighted ? "true" : undefined,
+  }
 }
 
 function HistoryRowPresentation({
@@ -1089,6 +1090,7 @@ function HistoryRowPresentation({
   row,
   sortableRef,
   summaryLabels,
+  sourcePresentation,
   t,
   view,
 }: Pick<
@@ -1096,6 +1098,7 @@ function HistoryRowPresentation({
   | "controller"
   | "content"
   | "details"
+  | "sourcePresentation"
   | "label"
   | "marker"
   | "onMoveToIndex"
@@ -1120,12 +1123,10 @@ function HistoryRowPresentation({
       }}
       data-history-kind={row.kind}
       data-history-id={row.ref.id}
-      data-history-feature-kind={feedback.featureKind}
-      data-history-rolled-back={rolledBack ? "true" : undefined}
-      data-history-drop-invalid={feedback.invalid ? "true" : undefined}
-      data-history-reorder-disabled={reorderLocked ? "true" : undefined}
+      {...historyRowStateData(feedback, rolledBack, reorderLocked, sourcePresentation.highlighted)}
       className={cn(
         feedback.className,
+        sourcePresentation.highlighted && "bg-accent ring-1 ring-primary ring-inset",
         !reorderLocked &&
           "cursor-grab active:cursor-grabbing [&_[role=treeitem]]:cursor-grab [&_[role=treeitem]]:active:cursor-grabbing",
       )}
@@ -1142,7 +1143,7 @@ function HistoryRowPresentation({
           t={t}
         />
       </div>
-      <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />
+      {sourcePresentation.summary ?? <HistorySummary labelsByRef={summaryLabels} row={row} t={t} />}
       {details}
       {marker && (
         <div role="status" className="px-2 text-[11px] text-muted-foreground">
@@ -1153,60 +1154,35 @@ function HistoryRowPresentation({
   )
 }
 
-function HistoryRowFrame({
-  busy,
-  dragDestinationIndex,
-  dragSourceKey,
-  index,
-  marker,
-  onMoveToIndex,
-  rolledBack,
-  row,
-  t,
-  view,
-  label,
-  content,
-  details,
-  controller,
-  activeSketchId,
-  activeFeatureId,
-}: HistoryRowFrameProps) {
+function HistoryRowFrame(props: HistoryRowFrameProps) {
+  const { busy, rolledBack, view, controller, activeSketchId, activeFeatureId } = props
   const reorderLocked =
     historyRowReorderIsLocked(rolledBack, busy, activeSketchId, activeFeatureId, view) ||
     !historyMoveIsAvailable(controller, activeSketchId, activeFeatureId, true)
   const { sortable, dropMove, insertionClass } = useHistoryRowSortable({
     controller,
-    dragDestinationIndex,
-    dragSourceKey,
-    index,
+    dragDestinationIndex: props.dragDestinationIndex,
+    dragSourceKey: props.dragSourceKey,
+    index: props.index,
     locked: reorderLocked,
-    row,
+    row: props.row,
     view,
   })
   const feedback = historyRowDropFeedback(
-    row,
+    props.row,
     rolledBack,
     sortable,
-    dragSourceKey,
+    props.dragSourceKey,
     dropMove,
     insertionClass,
   )
   return (
     <HistoryRowPresentation
-      content={content}
-      controller={controller}
-      details={details}
+      {...props}
       feedback={feedback}
-      label={label}
-      marker={marker}
-      onMoveToIndex={onMoveToIndex}
       reorderLocked={reorderLocked}
-      rolledBack={rolledBack}
-      row={row}
       sortableRef={sortable.ref}
       summaryLabels={view.labelsByRef}
-      t={t}
-      view={view}
     />
   )
 }
@@ -1228,6 +1204,10 @@ function SketchHistoryRow({
   const label = sketch.label || t("unnamedSketch")
   return (
     <HistoryRowFrame
+      sourcePresentation={{
+        highlighted: props.sourcePreviewSketchId === sketch.id,
+        summary: undefined,
+      }}
       activeFeatureId={props.activeFeatureId}
       activeSketchId={props.activeSketchId}
       busy={busy}
@@ -1285,6 +1265,7 @@ function FeatureHistoryRow({
 }: ModelTreeHistoryRowProps) {
   const feature = row.record as FeatureRecord
   const label = feature.label ?? t("unnamedFeature")
+  const profiles = readExtrusionProfileSet(feature) ?? readRevolveProfileSet(feature)
   return (
     <HistoryRowFrame
       activeFeatureId={props.activeFeatureId}
@@ -1296,6 +1277,20 @@ function FeatureHistoryRow({
       index={index}
       label={label}
       marker={false}
+      sourcePresentation={{
+        highlighted: false,
+        summary: profiles ? (
+          <HistoryProfileSources
+            profiles={profiles.profiles}
+            labelsByRef={view.labelsByRef}
+            onPreview={props.onSourceProfilePreview}
+            dependencyDescription={t("dependencySummary", {
+              parents: row.dependencies.length,
+              children: row.dependents.length,
+            })}
+          />
+        ) : undefined,
+      }}
       onMoveToIndex={onMoveToIndex}
       rolledBack={rolledBack}
       row={row}

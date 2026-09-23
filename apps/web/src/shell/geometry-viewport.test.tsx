@@ -306,6 +306,8 @@ function renderViewport(
     onAngleChange: (angle: number) => void
     rotationOrigin: readonly [number, number, number]
   }>,
+  sketchProfilePreview?: SketchProfileSelector | null,
+  hiddenSketchIds: readonly string[] = [],
 ) {
   const port: GeometryViewportPort = {
     clearSketchProjection: vi.fn(),
@@ -341,7 +343,12 @@ function renderViewport(
   const createViewport = vi.fn(
     (_canvas: HTMLCanvasElement, _options: GeometryViewportOptions) => port,
   )
-  const element = (nextController: DocumentControllerState, nextSketchContext = sketchContext) => (
+  const element = (
+    nextController: DocumentControllerState,
+    nextSketchContext = sketchContext,
+    nextSketchProfilePreview = sketchProfilePreview,
+    nextHiddenSketchIds = hiddenSketchIds,
+  ) => (
     <I18nProvider i18n={i18n} initialLocale="en">
       <TooltipProvider>
         <GeometryViewport
@@ -356,6 +363,8 @@ function renderViewport(
           {...optionalProp("originPlaneVisibility", originPlaneVisibility)}
           {...optionalProp("idleOriginPlaneSelection", idleOriginPlaneSelection)}
           {...optionalProp("sketchProfileSelection", sketchProfileSelection)}
+          {...optionalProp("sketchProfilePreview", nextSketchProfilePreview)}
+          hiddenSketchIds={nextHiddenSketchIds}
           {...optionalProp("translationGizmo", translationGizmo)}
           {...optionalProp("axialGizmo", axialGizmo)}
           {...optionalProp("angularGizmo", angularGizmo)}
@@ -371,6 +380,10 @@ function renderViewport(
     port,
     rerenderController: (nextController: DocumentControllerState) =>
       result.rerender(element(nextController)),
+    rerenderSketchProfilePreview: (
+      nextPreview: SketchProfileSelector | null,
+      nextHiddenSketchIds = hiddenSketchIds,
+    ) => result.rerender(element(controller, sketchContext, nextPreview, nextHiddenSketchIds)),
     rerenderSketchContext: (nextSketchContext?: GeometryViewportSketchContext) =>
       result.rerender(element(controller, nextSketchContext)),
   }
@@ -486,6 +499,138 @@ describe("GeometryViewport", () => {
       0, 0, 10, 0, 10, 10, 0, 10,
     ])
     expect(sketch?.profiles?.[0]?.selector).toEqual(profileSelector)
+  })
+
+  it("previews the exact hidden profile selector and clears it without changing selection", async () => {
+    const onSelect = vi.fn()
+    const controller = readyController([], [], [profileSketchDisplay])
+    const { port, rerenderSketchProfilePreview } = renderViewport(
+      controller,
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfiles: [], onSelect },
+      undefined,
+      undefined,
+      undefined,
+      profileSelector,
+      [sketchDisplay.sketchId],
+    )
+    await waitFor(() => expect(port.setSketchProfilePreselection).toHaveBeenCalled())
+    const shown = vi.mocked(port.setSketches).mock.calls.at(-1)?.[0] ?? []
+    const profile = shown.flatMap((sketch) => sketch.profiles ?? [])[0]
+    expect(profile?.selector).toEqual(profileSelector)
+    expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(profile)
+    expect(port.setSketchProfileSelections).toHaveBeenLastCalledWith([])
+    expect(onSelect).not.toHaveBeenCalled()
+
+    rerenderSketchProfilePreview(null)
+    await waitFor(() => expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(null))
+    expect(vi.mocked(port.setSketches).mock.calls.at(-1)?.[0]).toEqual([])
+  })
+
+  it("fails closed when the preview selector is stale", async () => {
+    const staleSelector = {
+      ...profileSelector,
+      holeBoundaryEntityIds: [[fourthProfileBoundaryId]],
+    }
+    const { port } = renderViewport(
+      readyController([], [], [profileSketchDisplay]),
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfiles: [], onSelect: vi.fn() },
+      undefined,
+      undefined,
+      undefined,
+      staleSelector,
+      [sketchDisplay.sketchId],
+    )
+    await waitFor(() => expect(port.setSketchProfilePreselection).toHaveBeenCalled())
+    expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(null)
+    expect(port.setSketches).toHaveBeenLastCalledWith([])
+    expect(
+      screen
+        .getByRole("region", { name: "3D viewport" })
+        .getAttribute("data-source-profile-preview"),
+    ).toBeNull()
+  })
+
+  it("does not resend sketches for visible hover or profile changes within one hidden sketch", async () => {
+    const alternateSelector: SketchProfileSelector = {
+      ...profileSelector,
+      outerBoundaryEntityIds: [
+        firstProfileBoundaryId,
+        secondProfileBoundaryId,
+        thirdProfileBoundaryId,
+      ],
+    }
+    const baseProfile = profileSketchDisplay.profiles[0]
+    if (!baseProfile) throw new Error("The saved-profile fixture must contain one profile.")
+    const controller = readyController(
+      [],
+      [],
+      [
+        {
+          ...profileSketchDisplay,
+          profiles: [baseProfile, { ...baseProfile, selector: alternateSelector }],
+        },
+      ],
+    )
+    const { port, rerenderSketchProfilePreview } = renderViewport(
+      controller,
+      null,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { selectedProfiles: [], onSelect: vi.fn() },
+      undefined,
+      undefined,
+      undefined,
+    )
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalled())
+    const initialCallCount = vi.mocked(port.setSketches).mock.calls.length
+
+    rerenderSketchProfilePreview(profileSelector, [])
+    await waitFor(() =>
+      expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selector: profileSelector }),
+      ),
+    )
+    expect(port.setSketches).toHaveBeenCalledTimes(initialCallCount)
+
+    rerenderSketchProfilePreview(null, [])
+    await waitFor(() => expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(null))
+    expect(port.setSketches).toHaveBeenCalledTimes(initialCallCount)
+
+    rerenderSketchProfilePreview({ ...alternateSelector }, [])
+    await waitFor(() =>
+      expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selector: alternateSelector }),
+      ),
+    )
+    expect(port.setSketches).toHaveBeenCalledTimes(initialCallCount)
+
+    rerenderSketchProfilePreview(profileSelector, [sketchDisplay.sketchId])
+    await waitFor(() => expect(port.setSketches).toHaveBeenCalledTimes(initialCallCount + 1))
+    rerenderSketchProfilePreview({ ...alternateSelector }, [sketchDisplay.sketchId])
+    await waitFor(() =>
+      expect(port.setSketchProfilePreselection).toHaveBeenLastCalledWith(
+        expect.objectContaining({ selector: alternateSelector }),
+      ),
+    )
+    expect(port.setSketches).toHaveBeenCalledTimes(initialCallCount + 1)
   })
 
   it("reports saved profile hover and selection through semantic selectors", async () => {

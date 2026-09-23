@@ -305,6 +305,7 @@ async function initializeViewport(
   latestFeatureSelectionRef: RefObject<ViewerMesh | null>,
   latestSketchContextRef: RefObject<GeometryViewportSketchContext | null>,
   latestSketchProfileSelectionRef: RefObject<GeometryViewportProps["sketchProfileSelection"]>,
+  latestSketchProfilePreviewRef: RefObject<SketchProfileSelector | null | undefined>,
   latestAngularGizmoRef: RefObject<GeometryViewportProps["angularGizmo"]>,
   latestAxialGizmoRef: RefObject<GeometryViewportProps["axialGizmo"]>,
   latestTranslationGizmoRef: RefObject<GeometryViewportProps["translationGizmo"]>,
@@ -339,34 +340,78 @@ async function initializeViewport(
     }
     mount.viewport = viewport
     viewportRef.current = viewport
-    viewport.setMeshes(latestMeshesRef.current)
-    viewport.setSketches(latestSketchesRef.current)
-    viewport.setSketchProfileSelections(
-      selectedViewerSketchProfiles(
-        latestSketchesRef.current,
-        latestSketchProfileSelectionRef.current?.selectedProfiles ?? [],
-      ),
-    )
-    viewport.setOriginPlaneVisibility(latestOriginPlaneVisibilityRef.current)
-    viewport.setOriginPlaneSelection(
-      latestOriginPlaneRef.current,
-      latestOriginPlaneSelectionActiveRef.current,
-      latestOriginPlaneIdleSelectionEnabledRef.current,
-    )
-    viewport.setFeatureSelection(latestFeatureSelectionRef.current)
-    viewport.setFeaturePreselection(latestFeaturePreselectionRef.current)
-    const angularGizmo = latestAngularGizmoRef.current
-    const axialGizmo = latestAxialGizmoRef.current
-    const translationGizmo = latestTranslationGizmoRef.current
-    if (angularGizmo) viewport.showAngularGizmo(angularGizmo)
-    else if (axialGizmo) viewport.showAxialTranslationGizmo(axialGizmo)
-    else if (translationGizmo) viewport.showTranslationGizmo(translationGizmo.position)
-    viewport.fit()
-    synchronizeViewportSketchContext(viewport, latestSketchContextRef.current)
+    initializeViewportPresentation(viewport, {
+      meshesRef: latestMeshesRef,
+      sketchesRef: latestSketchesRef,
+      originPlaneRef: latestOriginPlaneRef,
+      originPlaneSelectionActiveRef: latestOriginPlaneSelectionActiveRef,
+      originPlaneIdleSelectionEnabledRef: latestOriginPlaneIdleSelectionEnabledRef,
+      originPlaneVisibilityRef: latestOriginPlaneVisibilityRef,
+      featurePreselectionRef: latestFeaturePreselectionRef,
+      featureSelectionRef: latestFeatureSelectionRef,
+      sketchProfileSelectionRef: latestSketchProfileSelectionRef,
+      sketchProfilePreviewRef: latestSketchProfilePreviewRef,
+      angularGizmoRef: latestAngularGizmoRef,
+      axialGizmoRef: latestAxialGizmoRef,
+      translationGizmoRef: latestTranslationGizmoRef,
+      sketchContextRef: latestSketchContextRef,
+    })
     setRendererFailed(false)
   } catch {
     if (!mount.cancelled) setRendererFailed(true)
   }
+}
+
+function initializeViewportPresentation(
+  viewport: GeometryViewportPort,
+  latest: Pick<
+    ReturnType<typeof useLatestViewportInputs>,
+    | "meshesRef"
+    | "sketchesRef"
+    | "originPlaneRef"
+    | "originPlaneSelectionActiveRef"
+    | "originPlaneIdleSelectionEnabledRef"
+    | "originPlaneVisibilityRef"
+    | "featurePreselectionRef"
+    | "featureSelectionRef"
+    | "sketchProfileSelectionRef"
+    | "sketchProfilePreviewRef"
+    | "angularGizmoRef"
+    | "axialGizmoRef"
+    | "translationGizmoRef"
+    | "sketchContextRef"
+  >,
+) {
+  viewport.setMeshes(latest.meshesRef.current)
+  viewport.setSketches(latest.sketchesRef.current)
+  viewport.setSketchProfileSelections(
+    selectedViewerSketchProfiles(
+      latest.sketchesRef.current,
+      latest.sketchProfileSelectionRef.current?.selectedProfiles ?? [],
+    ),
+  )
+  viewport.setSketchProfilePreselection(
+    selectedViewerSketchProfile(
+      latest.sketchesRef.current,
+      latest.sketchProfilePreviewRef.current ?? null,
+    ),
+  )
+  viewport.setOriginPlaneVisibility(latest.originPlaneVisibilityRef.current)
+  viewport.setOriginPlaneSelection(
+    latest.originPlaneRef.current,
+    latest.originPlaneSelectionActiveRef.current,
+    latest.originPlaneIdleSelectionEnabledRef.current,
+  )
+  viewport.setFeatureSelection(latest.featureSelectionRef.current)
+  viewport.setFeaturePreselection(latest.featurePreselectionRef.current)
+  const angularGizmo = latest.angularGizmoRef.current
+  const axialGizmo = latest.axialGizmoRef.current
+  const translationGizmo = latest.translationGizmoRef.current
+  if (angularGizmo) viewport.showAngularGizmo(angularGizmo)
+  else if (axialGizmo) viewport.showAxialTranslationGizmo(axialGizmo)
+  else if (translationGizmo) viewport.showTranslationGizmo(translationGizmo.position)
+  viewport.fit()
+  synchronizeViewportSketchContext(viewport, latest.sketchContextRef.current)
 }
 
 function synchronizeViewportSketchContext(
@@ -451,6 +496,7 @@ function useLatestViewportInputs({
   sketchContext,
   sketches,
   sketchProfileSelection,
+  sketchProfilePreview,
   angularGizmo,
   axialGizmo,
   translationGizmo,
@@ -466,6 +512,7 @@ function useLatestViewportInputs({
   sketchContext: GeometryViewportSketchContext | null
   sketches: readonly ViewerSketch[]
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"]
+  sketchProfilePreview: GeometryViewportProps["sketchProfilePreview"]
   angularGizmo: GeometryViewportProps["angularGizmo"]
   axialGizmo: GeometryViewportProps["axialGizmo"]
   translationGizmo: GeometryViewportProps["translationGizmo"]
@@ -481,6 +528,7 @@ function useLatestViewportInputs({
   const sketchContextRef = useRef(sketchContext)
   const sketchesRef = useRef(sketches)
   const sketchProfileSelectionRef = useRef(sketchProfileSelection)
+  const sketchProfilePreviewRef = useRef(sketchProfilePreview)
   const angularGizmoRef = useRef(angularGizmo)
   const axialGizmoRef = useRef(axialGizmo)
   const translationGizmoRef = useRef(translationGizmo)
@@ -495,6 +543,7 @@ function useLatestViewportInputs({
   sketchContextRef.current = sketchContext
   sketchesRef.current = sketches
   sketchProfileSelectionRef.current = sketchProfileSelection
+  sketchProfilePreviewRef.current = sketchProfilePreview
   angularGizmoRef.current = angularGizmo
   axialGizmoRef.current = axialGizmo
   translationGizmoRef.current = translationGizmo
@@ -510,6 +559,7 @@ function useLatestViewportInputs({
     sketchContextRef,
     sketchesRef,
     sketchProfileSelectionRef,
+    sketchProfilePreviewRef,
     angularGizmoRef,
     axialGizmoRef,
     translationGizmoRef,
@@ -582,6 +632,7 @@ function useViewportRenderer(
   featureSelection: ViewerMesh | null,
   sketchContext: GeometryViewportSketchContext | null,
   sketchProfileSelection: GeometryViewportProps["sketchProfileSelection"],
+  sketchProfilePreview: GeometryViewportProps["sketchProfilePreview"],
   angularGizmo: GeometryViewportProps["angularGizmo"],
   axialGizmo: GeometryViewportProps["axialGizmo"],
   translationGizmo: GeometryViewportProps["translationGizmo"],
@@ -600,6 +651,7 @@ function useViewportRenderer(
     sketchContext,
     sketches,
     sketchProfileSelection,
+    sketchProfilePreview,
     angularGizmo,
     axialGizmo,
     translationGizmo,
@@ -669,6 +721,7 @@ function useViewportRenderer(
       latest.featureSelectionRef,
       latest.sketchContextRef,
       latest.sketchProfileSelectionRef,
+      latest.sketchProfilePreviewRef,
       latest.angularGizmoRef,
       latest.axialGizmoRef,
       latest.translationGizmoRef,
@@ -699,11 +752,12 @@ function useViewportRenderer(
     viewportRef.current?.setSketches(sketches)
   }, [profileInteraction.dismissSelectionRequest, sketches])
 
-  useEffect(() => {
-    viewportRef.current?.setSketchProfileSelections(
-      selectedViewerSketchProfiles(sketches, sketchProfileSelection?.selectedProfiles ?? []),
-    )
-  }, [sketchProfileSelection?.selectedProfiles, sketches])
+  useViewportProfileSelectionSynchronization(
+    viewportRef,
+    sketches,
+    sketchProfileSelection,
+    sketchProfilePreview,
+  )
 
   useEffect(() => {
     viewportRef.current?.setOriginPlaneSelection(
@@ -741,6 +795,22 @@ function useViewportRenderer(
     sketchReferenceCandidateStack: sketchReferenceInteraction.candidateStack,
     viewportRef,
   }
+}
+
+function useViewportProfileSelectionSynchronization(
+  viewportRef: RefObject<GeometryViewportPort | null>,
+  sketches: readonly ViewerSketch[],
+  selection: GeometryViewportProps["sketchProfileSelection"],
+  preview: GeometryViewportProps["sketchProfilePreview"],
+) {
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.setSketchProfileSelections(
+      selectedViewerSketchProfiles(sketches, selection?.selectedProfiles ?? []),
+    )
+    viewport.setSketchProfilePreselection(selectedViewerSketchProfile(sketches, preview ?? null))
+  }, [preview, selection?.selectedProfiles, sketches, viewportRef])
 }
 
 function useSelectionCandidateEvents(active: boolean) {
@@ -1105,6 +1175,7 @@ type GeometryViewportProps = Readonly<{
       intent: ViewerSketchProfileSelectionIntent,
     ) => void
   }>
+  sketchProfilePreview?: SketchProfileSelector | null
   angularGizmo?: ViewerAngularGizmo &
     Readonly<{
       featureId: string
@@ -1334,16 +1405,47 @@ function useViewportSketchPresentation({
   activeSketchDisplay,
   controller,
   hiddenSketchIds,
+  sketchProfilePreview,
   sketchContext,
 }: Pick<
   GeometryViewportProps,
-  "activeSketchDisplay" | "controller" | "hiddenSketchIds" | "sketchContext"
+  | "activeSketchDisplay"
+  | "controller"
+  | "hiddenSketchIds"
+  | "sketchContext"
+  | "sketchProfilePreview"
 >) {
   const hiddenIds = hiddenSketchIds ?? EMPTY_IDS
+  const hiddenIdsKey = hiddenIds.join("\u0000")
+  const resolvedPreviewSketchId = resolvedSketchProfilePreviewId(controller, sketchProfilePreview)
+  const previewSketchId =
+    resolvedPreviewSketchId && hiddenIds.includes(resolvedPreviewSketchId)
+      ? resolvedPreviewSketchId
+      : null
   return useMemo(() => {
-    const committed = viewerSketches(controller, hiddenIds)
+    const committed = viewerSketches(
+      controller,
+      previewSketchId ? hiddenIds.filter((id) => id !== previewSketchId) : hiddenIds,
+    )
     return withActiveSketchDisplay(committed, activeSketchDisplay, sketchContext?.mode === "orbit")
-  }, [activeSketchDisplay, controller, hiddenIds, sketchContext?.mode])
+  }, [activeSketchDisplay, controller, hiddenIdsKey, previewSketchId, sketchContext?.mode])
+}
+
+function resolvedSketchProfilePreviewId(
+  controller: DocumentControllerState,
+  selector: SketchProfileSelector | null | undefined,
+) {
+  if (!selector) return null
+  const rebuild = controller.report?.rebuild
+  if (!rebuild?.ok) return null
+  const source = rebuild.response.sketches?.find(({ sketchId }) => sketchId === selector.sketchId)
+  if (!source) return null
+  const selectorKey = viewerSketchProfileKey(selector)
+  return source.profiles.some(
+    ({ selector: candidate }) => viewerSketchProfileKey(candidate) === selectorKey,
+  )
+    ? selector.sketchId
+    : null
 }
 
 function selectedSketchProfileKey(selection: GeometryViewportProps["sketchProfileSelection"]) {
@@ -1455,6 +1557,7 @@ function useGeometryViewportInteraction(
     scene.featureSelection,
     sketchContext ?? null,
     sketchProfileSelection,
+    props.sketchProfilePreview,
     props.angularGizmo,
     props.axialGizmo,
     props.translationGizmo,
@@ -2598,7 +2701,10 @@ function GeometryViewportContextChrome({
             (sketch, number) => t("savedProfileLabel", { number, sketch }),
           )}
           profileSelectOther={profileSelectOther}
-          profileSelection={props.sketchProfileSelection}
+          profileSelection={savedProfilePickerSelection(
+            props.sketchProfileSelection,
+            props.sketchProfilePreview,
+          )}
           selectedSketchProfileKey={model.selectedSketchProfileKey}
           sketches={model.sketches}
         />
@@ -2615,6 +2721,13 @@ function GeometryViewportContextChrome({
       viewportRef={model.viewportRef}
     />
   )
+}
+
+function savedProfilePickerSelection(
+  selection: GeometryViewportProps["sketchProfileSelection"],
+  sourcePreview: GeometryViewportProps["sketchProfilePreview"],
+) {
+  return sourcePreview ? undefined : selection
 }
 
 function viewportOriginPlaneData(
@@ -2647,7 +2760,9 @@ function viewportRenderData(
   passive: boolean,
   featurePreview: FeaturePreviewState | undefined,
   model: ReturnType<typeof useGeometryViewportModel>,
+  sketchProfilePreview: SketchProfileSelector | null | undefined,
 ) {
+  const resolvedPreview = selectedViewerSketchProfile(model.sketches, sketchProfilePreview ?? null)
   return {
     ...viewportHighlightData(model),
     "data-passive": passive ? "true" : undefined,
@@ -2663,6 +2778,9 @@ function viewportRenderData(
     "data-sketch-profile-candidate-count": model.sketchProfileCandidateStack.length,
     "data-preselected-sketch-profile": model.sketchProfilePreselection
       ? viewerSketchProfileKey(model.sketchProfilePreselection.selector)
+      : undefined,
+    "data-source-profile-preview": resolvedPreview
+      ? viewerSketchProfileKey(resolvedPreview.selector)
       : undefined,
     "data-selected-sketch-profile-count": model.selectedSketchProfileCount,
     "data-selected-sketch-profile": model.selectedSketchProfileKey ?? undefined,
@@ -2743,7 +2861,7 @@ export function GeometryViewport(props: GeometryViewportProps) {
       aria-hidden={passive ? true : undefined}
       className={regionClassNames.region}
       {...viewportOriginPlaneData(originPlaneSelection, idleOriginPlaneSelection, model)}
-      {...viewportRenderData(passive, featurePreview, model)}
+      {...viewportRenderData(passive, featurePreview, model, props.sketchProfilePreview)}
       {...viewportSketchContextData(sketchContext)}
       data-angular-gizmo-angle={props.angularGizmo?.angle}
       data-angular-gizmo-feature={props.angularGizmo?.featureId}
