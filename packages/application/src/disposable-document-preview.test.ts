@@ -48,7 +48,7 @@ function snapshotWithFeatures(features: readonly string[]): DocumentSnapshot {
 
 function response(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 20,
+    protocolVersion: 21,
     requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f2201",
     documentId,
     revision: 4,

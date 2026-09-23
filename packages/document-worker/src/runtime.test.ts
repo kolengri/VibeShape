@@ -786,6 +786,56 @@ describe("DocumentWorkerRuntime", () => {
     expect(transfers.at(-1)).toEqual([expect.any(ArrayBuffer)])
   })
 
+  it("prepares an oriented print copy without changing the rebuilt design revision", async () => {
+    const { messages, runtime } = createHarness()
+    await runtime.handle(request("rebuild-for-print-preparation"))
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "prepared-print",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "3mf",
+      printPreparation: {
+        rotationX: 45,
+        rotationY: 0,
+        layerHeight: 0.2,
+        clearance: 0.2,
+        thickness: 0.6,
+        spacing: 8,
+        reach: 6,
+        supports: true,
+      },
+    })
+    const prepared = messages.at(-1)
+    expect(prepared).toMatchObject({
+      type: "documentExported",
+      revision: 1,
+      printPreparation: { report: { bodyCount: 1 } },
+    })
+    if (prepared?.type !== "documentExported" || !prepared.printPreparation)
+      throw new Error("Expected prepared print.")
+    expect([...prepared.file.slice(0, 2)]).toEqual([80, 75])
+    const [preparedBody] = prepared.printPreparation.meshes
+    if (!preparedBody) throw new Error("Expected a prepared body mesh.")
+    const minZ = preparedBody.vertices
+      .filter((_, index) => index % 3 === 2)
+      .reduce((a, b) => Math.min(a, b), Infinity)
+    expect(minZ).toBeCloseTo(0, 7)
+    await runtime.handle({
+      protocolVersion: DOCUMENT_PROTOCOL_VERSION,
+      requestId: "design-export-after-print",
+      documentId: documentIds.primary,
+      revision: 1,
+      generation: 1,
+      type: "exportDocument",
+      format: "3mf",
+    })
+    expect(messages.at(-1)).toMatchObject({ type: "documentExported", revision: 1, bodyCount: 1 })
+    expect(messages.at(-1)).not.toHaveProperty("printPreparation")
+  })
+
   it("never exports datum-plane display geometry as a printable body", async () => {
     const { engine, runtime } = createHarness()
     const datumDocument = documentRebuildSnapshotSchema.parse({

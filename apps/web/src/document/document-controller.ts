@@ -75,10 +75,15 @@ import {
   releaseDocumentLease,
   VibeShapeDatabase,
 } from "@vibeshape/persistence"
-import type { GeometryExportFormat } from "@vibeshape/protocol"
+import type {
+  GeometryExportFormat,
+  PrintPreparationResult,
+  PrintPreparationSettings,
+} from "@vibeshape/protocol"
 import { isString } from "is-what"
 import { useEffect, useSyncExternalStore } from "react"
 import { createDocumentAutomationSession } from "../automation/document-automation-session"
+import { prepareDocumentPrint } from "../printing/prepare-document-print"
 import { BrowserProjectRepository } from "./browser-project-repository"
 import { PRODUCT_MESH_POLICY } from "./document-worker-settings"
 import { copyPortableProjectV2, portableProjectV2FromArchive } from "./versioned-project-file"
@@ -114,6 +119,7 @@ export type ActiveDocumentExportResult =
       file: Uint8Array
       bodyCount: number
       documentName: string
+      printPreparation?: PrintPreparationResult
     }
   | { ok: false; diagnostic: PersistentDocumentSessionDiagnostic }
 
@@ -1035,16 +1041,57 @@ export async function exportActiveDocument(
       },
     }
   }
-  const result = await session.exportDocument(format)
+  const active = session
+  const { revision, name } = active.snapshot
+  const result = await active.exportDocument(format)
+  if (session !== active || active.snapshot.revision !== revision) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "The active project changed during export. Prepare the current revision again.",
+        retryable: true,
+        sourceCode: "stale-revision",
+      },
+    }
+  }
   return result.ok
     ? {
         ok: true,
         format: result.response.format,
         file: result.response.file,
         bodyCount: result.response.bodyCount,
-        documentName: session.snapshot.name,
+        documentName: name,
+        ...(result.response.printPreparation
+          ? { printPreparation: result.response.printPreparation }
+          : {}),
       }
     : result
+}
+
+export async function prepareActiveDocumentPrint(
+  settings: PrintPreparationSettings,
+  signal: AbortSignal,
+): Promise<ActiveDocumentExportResult> {
+  const active = session
+  if (!active || state.status !== "ready" || !state.report || signal.aborted) {
+    return {
+      ok: false,
+      diagnostic: {
+        code: "export-failed",
+        message: "Print preparation requires an active document.",
+        retryable: true,
+        sourceCode: null,
+      },
+    }
+  }
+  const snapshot = active.snapshot
+  return prepareDocumentPrint(
+    snapshot,
+    settings,
+    signal,
+    () => session === active && active.snapshot.revision === snapshot.revision,
+  )
 }
 
 function unavailableProjectFileResult() {

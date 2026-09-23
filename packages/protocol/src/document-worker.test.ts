@@ -975,6 +975,58 @@ describe("document worker protocol", () => {
   })
 
   it("validates non-empty 3MF, STEP, and STL export transfers", () => {
+    const preparedResponse = {
+      ...envelope(),
+      type: "documentExported",
+      format: "3mf",
+      file: new Uint8Array([1]),
+      bodyCount: 1,
+      printPreparation: {
+        meshes: [
+          {
+            name: "Body",
+            vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+            triangles: [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3],
+          },
+        ],
+        normals: [Array.from({ length: 12 }, () => 0)],
+        report: { bodyCount: 1, finCount: 0, contactCount: 0, bounds: [1, 1, 1], warnings: [] },
+      },
+    }
+    expect(documentWorkerResponseSchema.safeParse(preparedResponse).success).toBe(true)
+    expect(
+      documentWorkerResponseSchema.safeParse({ ...preparedResponse, format: "step" }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerResponseSchema.safeParse({ ...preparedResponse, format: "stl" }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerResponseSchema.safeParse({ ...preparedResponse, bodyCount: 2 }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerRequestSchema.safeParse({
+        ...envelope(),
+        type: "exportDocument",
+        format: "step",
+        printPreparation: {},
+      }).success,
+    ).toBe(false)
+    expect(
+      documentWorkerRequestSchema.parse({
+        ...envelope(),
+        type: "exportDocument",
+        format: "3mf",
+        printPreparation: {},
+      }),
+    ).toMatchObject({ printPreparation: { rotationX: 45, layerHeight: 0.2 } })
+    expect(
+      documentWorkerRequestSchema.safeParse({
+        ...envelope(),
+        type: "exportDocument",
+        format: "3mf",
+        printPreparation: { spacing: 0 },
+      }).success,
+    ).toBe(false)
     expect(
       documentWorkerRequestSchema.parse({
         ...envelope(),

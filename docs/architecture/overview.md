@@ -109,7 +109,7 @@ packages/
   viewer/                 # Three.js scene, selection, overlays
   persistence/            # IndexedDB, OPFS, migrations, recovery
   formats/                # .vshape, STEP orchestration, STL, 3MF
-  print-analysis/         # mesh and build-volume checks
+  print-analysis/         # bounded derived print placement and fin meshes
   slicer-handoff/         # strict browser-to-bridge protocol
   i18n/                   # ICU catalogs, locale resolution, React provider
   ui/                     # Tailwind v4, shadcn/Radix primitives, tokens
@@ -251,6 +251,9 @@ The domain now defines canonical feature-content identity schema version `0`. Tr
 ## Hangs and memory
 
 - One geometry worker per active document in alpha.
+- Print preparation rebuilds an immutable revision in a disposable worker, separate from the
+  document command queue. Closing the preparation panel terminates that worker; stale results
+  cannot replace the prepared download. See [print preparation](../product/print-preparation-and-ux-plan.md).
 - CAD jobs execute sequentially to avoid shared mutable OCCT state.
 - Every temporary kernel object is released with a `finally` or RAII-style facade.
 - Closing a document invokes `disposeDocument` and verifies live-handle counts.

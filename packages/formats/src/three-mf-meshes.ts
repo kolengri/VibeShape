@@ -40,6 +40,7 @@ export const threeMfMeshExportInputSchema = z
   .object({
     title: z.string().trim().min(1).max(4_096),
     meshes: z.array(triangleSoupSchema).min(1).max(10_000),
+    assembly: z.boolean().optional(),
   })
   .strict()
 
@@ -87,11 +88,19 @@ export function writeThreeMfMeshes(input: ThreeMfMeshExportInput) {
     ...(mesh.name ? { name: mesh.name } : {}),
     mesh: weldMesh(mesh),
   }))
+  const assembly = {
+    kind: "components" as const,
+    id: objects.length + 1,
+    name: parsed.title,
+    components: objects.map(({ id }) => ({ objectId: id })),
+  }
   return writeThreeMf({
     schemaVersion: 1,
     language: "en-US",
     metadata: { title: parsed.title, application: "VibeShape" },
-    objects,
-    build: objects.map(({ id }) => ({ objectId: id })),
+    objects: parsed.assembly ? [...objects, assembly] : objects,
+    build: parsed.assembly
+      ? [{ objectId: assembly.id }]
+      : objects.map(({ id }) => ({ objectId: id })),
   })
 }

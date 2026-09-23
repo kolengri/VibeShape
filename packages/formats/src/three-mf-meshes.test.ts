@@ -10,6 +10,19 @@ const faceVertices = [
 ]
 
 describe("3MF triangle-soup export", () => {
+  it("keeps support and model meshes in one build assembly without rearranging them", () => {
+    const mesh = { vertices: faceVertices, triangles: Array.from({ length: 36 }, (_, i) => i) }
+    const output = writeThreeMfMeshes({
+      title: "Prepared print",
+      meshes: [mesh, mesh],
+      assembly: true,
+    })
+    const xml = strFromU8(unzipSync(output.bytes)["3D/3dmodel.model"] as Uint8Array)
+    expect(xml).toContain('<component objectid="1"')
+    expect(xml).toContain('<component objectid="2"')
+    expect(xml.match(/<item objectid=/g)).toHaveLength(1)
+    expect(xml).toContain('<item objectid="3"')
+  })
   it("welds face-local vertices into a valid deterministic model", () => {
     const input = {
       title: "Cube",

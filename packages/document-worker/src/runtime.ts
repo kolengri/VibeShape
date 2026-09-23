@@ -23,6 +23,8 @@ import {
 } from "@vibeshape/domain"
 import { writeThreeMfMeshes } from "@vibeshape/formats/three-mf-meshes"
 import type { GeometryKernelEngine } from "@vibeshape/geometry-worker/engine"
+import { preparePrintMeshes } from "@vibeshape/print-analysis"
+import type { PrintPreparationSettings } from "@vibeshape/protocol"
 import {
   DOCUMENT_PROTOCOL_VERSION,
   type DocumentWorkerDiagnosticCode,
@@ -176,6 +178,7 @@ async function exportThreeMfDocument(
   engine: GeometryKernelEngine,
   document: RebuildDocumentSnapshot,
   features: readonly FeatureEvaluationDependency[],
+  settings?: PrintPreparationSettings,
 ) {
   const result = await engine.exportPrintMeshes({ documentId: document.id, features })
   if (
@@ -189,15 +192,22 @@ async function exportThreeMfDocument(
     throw new Error("Print mesh export returned mismatched feature bodies.")
   }
   const labels = new Map(document.features.map(({ id, label }) => [id, label]))
+  const meshes = result.meshes.map((mesh, index) => ({
+    name: labels.get(mesh.featureId) ?? `Body ${index + 1}`,
+    vertices: [...mesh.vertices],
+    triangles: [...mesh.triangles],
+  }))
+  const printPreparation = settings ? preparePrintMeshes({ meshes, settings }) : undefined
   const exported = writeThreeMfMeshes({
     title: document.name,
-    meshes: result.meshes.map((mesh, index) => ({
-      name: labels.get(mesh.featureId) ?? `Body ${index + 1}`,
-      vertices: [...mesh.vertices],
-      triangles: [...mesh.triangles],
-    })),
+    meshes: printPreparation?.meshes ?? meshes,
+    ...(printPreparation ? { assembly: true } : {}),
   })
-  return { file: exported.bytes, bodyCount: result.meshes.length }
+  return {
+    file: exported.bytes,
+    bodyCount: result.meshes.length,
+    ...(printPreparation ? { printPreparation } : {}),
+  }
 }
 
 function terminalExportFeatures(state: FeatureRebuildState) {
@@ -337,7 +347,7 @@ export class DocumentWorkerRuntime {
 
       const exported =
         request.format === "3mf"
-          ? await exportThreeMfDocument(this.engine, document, features)
+          ? await exportThreeMfDocument(this.engine, document, features, request.printPreparation)
           : await this.engine.exportDocument({
               documentId: request.documentId,
               features,
@@ -349,6 +359,7 @@ export class DocumentWorkerRuntime {
         format: request.format,
         file: exported.file,
         bodyCount: exported.bodyCount,
+        ...("printPreparation" in exported ? { printPreparation: exported.printPreparation } : {}),
       })
     } catch (error) {
       this.#postFailure(request, "export-failed", errorMessage(error), true)

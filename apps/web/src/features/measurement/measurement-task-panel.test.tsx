@@ -138,7 +138,7 @@ function fixture(
         },
       }))
   const response = {
-    protocolVersion: 20,
+    protocolVersion: 21,
     requestId: "0195b5ac-b220-7a2c-8c33-67a36a7f6201",
     documentId,
     revision: 7,

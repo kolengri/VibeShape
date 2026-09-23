@@ -13,5 +13,8 @@
   },
   "devDependencies": {
     "@vibeshape/typescript-config": "workspace:*"
+  },
+  "dependencies": {
+    "@vibeshape/protocol": "workspace:*"
   }
 }

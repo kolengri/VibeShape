@@ -7,6 +7,7 @@ import {
   geometryProgressStageSchema,
   sha256Schema,
 } from "./geometry-worker"
+import { printPreparationResultSchema, printPreparationSettingsSchema } from "./print-preparation"
 import {
   sketchDragTargetWireSchema,
   sketchSolveContinuationWireSchema,
@@ -15,7 +16,7 @@ import {
   solvedSketchWireSchema,
 } from "./sketch"
 
-export const DOCUMENT_PROTOCOL_VERSION = 20 as const
+export const DOCUMENT_PROTOCOL_VERSION = 21 as const
 
 const MAX_FEATURES = 100_000
 const MAX_SKETCHES = 256
@@ -143,10 +144,15 @@ const disposeDocumentRequestSchema = requestEnvelopeSchema.extend({
 
 const healthCheckRequestSchema = requestEnvelopeSchema.extend({ type: z.literal("healthCheck") })
 
-const exportDocumentRequestSchema = requestEnvelopeSchema.extend({
-  type: z.literal("exportDocument"),
-  format: geometryExportFormatSchema,
-})
+const exportDocumentRequestSchema = requestEnvelopeSchema
+  .extend({
+    type: z.literal("exportDocument"),
+    format: geometryExportFormatSchema,
+    printPreparation: printPreparationSettingsSchema.optional(),
+  })
+  .refine((request) => !request.printPreparation || request.format === "3mf", {
+    message: "Print preparation is available only for 3MF export.",
+  })
 
 const solveSketchRequestSchema = requestEnvelopeSchema
   .extend({
@@ -599,8 +605,19 @@ const documentExportedResponseSchema = responseEnvelopeSchema
     format: geometryExportFormatSchema,
     file: z.instanceof(Uint8Array),
     bodyCount: z.number().int().positive().safe(),
+    printPreparation: printPreparationResultSchema.optional(),
   })
   .superRefine((response, context) => {
+    if (
+      response.printPreparation &&
+      (response.format !== "3mf" ||
+        response.bodyCount !== response.printPreparation.report.bodyCount)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A prepared print must be a 3MF with matching source body counts.",
+      })
+    }
     if (response.file.byteLength === 0) {
       context.addIssue({
         code: "custom",

@@ -145,7 +145,45 @@
         "saveFailed": "The sketch could not be renamed. Its current name is unchanged."
       }
     },
+    "printPreparation": {
+      "title": "Prepare print with breakaway fins",
+      "description": "Rotate and seat a print copy, generate thin walls with one-layer breakaway contacts, then inspect the result. Design geometry and history stay unchanged.",
+      "limitations": "Experimental: fin generation currently supports a single convex body with a suitable sloped planar surface. This is not automatic support coverage for arbitrary overhangs.",
+      "settings": "Print preparation settings",
+      "rotationX": "Tilt around X (degrees)",
+      "rotationY": "Tilt around Y (degrees)",
+      "layerHeight": "Slicer layer height (mm)",
+      "clearance": "Horizontal fin clearance (mm)",
+      "thickness": "Fin and contact width (mm)",
+      "spacing": "Contact spacing (mm)",
+      "reach": "Fin reach (mm)",
+      "prepare": "Generate print preview",
+      "invalid": "Check the settings: use finite angles and positive printable dimensions within the supported limits.",
+      "invalidNumber": "Enter a finite number.",
+      "failed": "Print preparation failed or the project changed. Reduce mesh complexity, check the settings, and generate a new preview.",
+      "previewLabel": "Prepared print model and breakaway fins",
+      "previewFailed": "The 3D preview could not be displayed. Do not rely on the report alone; inspect the exported geometry in your slicer.",
+      "fit": "Fit preview",
+      "navigation": "Drag to orbit; Shift-drag to pan; scroll to zoom. Supports use the preview color.",
+      "report": "{bodies, plural, one {# body} other {# bodies}} · {fins, plural, one {# fin} other {# fins}} · {contacts, plural, one {# contact} other {# contacts}}",
+      "dimensions": "Prepared bounds: {x} × {y} × {z} mm. Check these against your printer's build volume.",
+      "warnings": "Only eligible surfaces were considered. Some geometry could not receive fins; inspect all remaining overhangs in the slicer.",
+      "warning": {
+        "partial-coverage": "Only selected planar regions have fins. This is not complete support coverage; inspect remaining overhangs in the slicer.",
+        "multiple-bodies": "The print copy contains several bodies. Automatic fins currently require one body; no fins were added.",
+        "nonconvex-or-open": "This mesh is not a verified closed convex body. Its orientation is preserved, but no fins were added.",
+        "complexity-limit": "The mesh exceeds the bounded convexity-check budget. No fins were added; use slicer supports or a simpler model.",
+        "no-suitable-facet": "This orientation has no eligible sloped planar region for a fin.",
+        "no-safe-contacts": "No contact fits safely inside the selected regions. Try another tilt, smaller contact width, or closer spacing."
+      },
+      "noFins": "No safe fin was generated. Change the print orientation or use slicer supports. The export contains only the rotated model.",
+      "verify": "Match both first-layer and regular layer heights in your slicer. Inspect every contact and remaining overhang before printing. The file contains geometry only, not printer settings. Print quality and easy removal require a calibration print.",
+      "download": "Download prepared 3MF",
+      "downloaded": "Prepared 3MF download started. The CAD model was not changed."
+    },
     "export": {
+      "preparePrint": "Prepare print / breakaway fins…",
+      "originalExport": "Back to original model export",
       "trigger": "Export…",
       "title": "Export model",
       "description": "Download the terminal solid bodies from the current rebuilt revision.",
@@ -162,6 +200,7 @@
         "preparing": "Preparing 3MF for {slicer}…",
         "opened": "3MF sent to {slicer}",
         "exportFailed": "The 3MF could not be prepared. Your saved document is unchanged.",
+        "actionFailed": "The slicer action could not finish. Try again or download the 3MF. Your saved document is unchanged.",
         "fallback": {
           "notConfigured": "The desktop bridge is not connected. The 3MF was downloaded for {slicer} instead.",
           "unavailable": "The desktop bridge could not be reached. The 3MF was downloaded for {slicer} instead.",

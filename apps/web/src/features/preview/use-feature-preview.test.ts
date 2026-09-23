@@ -89,7 +89,7 @@ function rebuiltResponse(
 ): Extract<DocumentWorkerResponse, { type: "documentRebuilt" }> {
   return {
     type: "documentRebuilt",
-    protocolVersion: 20,
+    protocolVersion: 21,
     requestId: previewDocumentId,
     documentId: documentId,
     revision: 4,

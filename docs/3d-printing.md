@@ -109,7 +109,30 @@ Do not promise portability of slicer profiles between vendors; metadata and exte
 
 SPK-004 selects a deterministic project-owned Core writer using `fflate`. Its local-only gate verifies the same two-mesh component fixture through PrusaSlicer and the Orca/Bambu family and requires matching facet, manifold, and volume metrics. See [SPK-004 evidence](spikes/spk-004-3mf.md).
 
-The Phase 1 product dialog now exports each successful terminal exact B-Rep as a separate 3MF mesh object. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, validates the resulting manifold mesh through the Core writer, preserves feature labels as object names, and emits millimeter build items. Materials, colors, vendor settings, placement controls, configurable profiles, progress, cancellation, persistent reports, and hostile 3MF import remain outside the current product slice.
+The Phase 1 product dialog exports successful terminal exact B-Rep bodies through the print-mesh path. The geometry worker retessellates each body with a fixed `0.02 mm` chord tolerance and `0.1 rad` angular tolerance, clears the temporary OCCT triangulation after extraction, and returns bounded triangle soups. The document worker verifies body identity and order, welds face-local duplicate vertices at `1e-7 mm`, validates the resulting manifold mesh through the Core writer, preserves feature labels as object names, and emits millimeter build items.
+
+The current prepared-print slice adds a disposable derived copy from **Export → Prepare print /
+breakaway fins**. It rotates around X/Y, centers the copy over the XY build area, seats its lowest
+point at Z=0, and can add at most two coplanar disjoint comb-prism fins to selected sloped planar
+facets. Fin contacts are aligned to the requested layer height and the prepared export contains one
+3MF build item with model and fin components. The prepared file can be downloaded or sent through the
+same paired slicer handoff; it does not mutate CAD history or design coordinates, and closing or
+cancelling the preparation terminates its disposable worker operation.
+
+The support heuristic is intentionally bounded: it accepts one validated convex closed body only.
+Multiple bodies, non-convex or open meshes, and complexity or contact-limit cases retain the
+transformed model in the analysis result, add no fins, and return an explicit warning. Export still
+requires the normal 3MF manifold validation; an invalid open source is not made exportable by a
+warning. Even supported cases always report
+`partial-coverage`; full overhang coverage is not assured. Independent local evidence confirms that
+the generated body and fin components are manifold and positive-volume in PrusaSlicer `--info`, and
+that a Bambu Studio `--info` inspection reports the expected 84 facets, 3 parts, manifold status, and
+`20 x 28.942136 x 28.284271` bounds for the checked fixture. These checks are format/mesh evidence
+only: they do not establish successful slicing, toolpaths, or a physical print.
+
+Materials, colors, vendor settings, graphical face-on-bed placement, printer/build-volume profiles,
+overhang analysis, persistent print setups, progress reports, and hostile 3MF import remain outside
+the current product slice.
 
 ## STL
 
@@ -138,7 +161,8 @@ The same Phase 1 dialog exports those terminal exact B-Rep shapes as STEP for CA
 Print placement is a derived configuration, not a change to design coordinates:
 
 - body transform on the build plate belongs to print setup;
-- provide Place Face on Bed, rotate, and manual arrangement;
+- the current preparation slice provides bounded X/Y rotation and automatic centering/seating;
+- provide Place Face on Bed and manual arrangement in a future graphical placement workflow;
 - never rewrite design origin;
 - 3MF build items receive placement transforms;
 - STEP exports design coordinates by default, with an explicit Apply Placement option.
